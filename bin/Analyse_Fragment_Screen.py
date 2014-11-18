@@ -1,6 +1,6 @@
-import os, sys, glob
+import os, sys, glob, time
 
-from PANDDAs.Main import multi_dataset_analyser
+from PANDDAs.Main import multi_dataset_analyser, spherical_mask, protein_mask
 
 # ============================================================================>
 #####
@@ -64,7 +64,7 @@ print 'Number of Datasets: ', num_raw_datasets
 # ============================================================================>
 # TODO Change the name of the main processor object
 
-pandda = multi_dataset_analyser()
+pandda = multi_dataset_analyser(outdir=input_dir)
 pandda.set_map_type(map_type='2mFo-DFc')
 
 # ============================================================================>
@@ -89,7 +89,10 @@ pandda.load_reference_dataset(ref_pdb=ref_pdb, ref_mtz=ref_mtz)
 # ============================================================================>
 
 pandda.set_cut_resolution(d_min=pandda.get_reference_dataset().get_dataset_resolution())
-pandda.create_reference_grid(res_factor=0.33, include_origin=True, buffer=None)
+
+if pandda.get_reference_grid() is None:
+    pandda.create_reference_grid(res_factor=0.25, include_origin=True, buffer=None)
+
 pandda.extract_reference_map_values()
 
 # ============================================================================>
@@ -100,9 +103,22 @@ pandda.extract_reference_map_values()
 # Global mask used for removing points in the bulk solvent regions
 # ============================================================================>
 
-pandda.get_reference_grid().create_local_mask(distance_cutoff=4)
-pandda.get_reference_grid().create_global_mask(cart_sites=pandda.get_reference_dataset().get_calpha_sites(), distance_cutoff=15)
-pandda.mask_resampled_reference_grid()
+if pandda.get_reference_grid().get_local_mask() is None:
+    print('===================================>>>')
+    print('Generating Local Mask')
+    #pandda.get_reference_grid().create_local_mask(distance_cutoff=3)
+    local_mask = spherical_mask(grid_spacing=pandda.get_reference_grid().get_grid_spacing(), distance_cutoff=4, grid_jump=None)
+    pandda.get_reference_grid().set_local_mask(local_mask)
+
+if pandda.get_reference_grid().get_global_mask() is None:
+    print('===================================>>>')
+    print('Generating Global Mask')
+    #pandda.get_reference_grid().create_global_mask(cart_sites=pandda.get_reference_dataset().get_calpha_sites(), distance_cutoff=7)
+    global_mask = protein_mask(cart_sites=pandda.get_reference_dataset().get_calpha_sites(), grid_spacing=pandda.get_reference_grid().get_grid_spacing(), distance_cutoff=7)
+    pandda.get_reference_grid().set_global_mask(global_mask)
+
+if pandda.get_reference_grid().get_masked_grid_points() is None:
+    pandda.mask_resampled_reference_grid()
 
 # ============================================================================>
 #####
@@ -117,7 +133,9 @@ pandda.add_input_files(raw_file_pairs)
 pandda.load_input_datasets()
 pandda.scale_datasets_and_load_maps()
 pandda.align_and_filter_datasets()
-pandda.extract_map_values()
+
+if not pandda.get_maps():
+    pandda.extract_map_values()
 
 # ============================================================================>
 #####
@@ -128,9 +146,29 @@ pandda.extract_map_values()
 # Use the local mask to look for groups of significant z-values
 # ============================================================================>
 
-pandda.calculate_map_statistics()
-pandda.normalise_maps_to_z_maps()
-pandda.post_process_z_maps()
+if not (pandda.get_mean_map() and pandda.get_stds_map() and pandda.get_skew_map() and pandda.get_kurt_map()):
+    pandda.calculate_map_statistics()
+
+if not pandda.get_z_maps():
+    pandda.normalise_maps_to_z_maps()
+
+if not pandda.get_modified_z_maps():
+    pandda.post_process_z_maps()
 
 # ============================================================================>
+
+pandda.pickle_the_pandda()
+
+# ============================================================================>
+
+# ============================================================================>
+
+# ============================================================================>
+
+# ============================================================================>
+
+for z_cutoff in [3,5,7,10]:
+    hits = pandda.extract_modz_values_and_coords(z_cutoff=z_cutoff)
+    print('{!s} hits found for z={!s}'.format(len(hits), z_cutoff))
+
 
