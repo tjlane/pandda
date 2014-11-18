@@ -1,6 +1,11 @@
 
 from libtbx.math_utils import iceil, ifloor
 
+def calculate_minimum_redundancy(unsampled_size, max_sample_size):
+    """Calculate the redundancy required to down-sample a vector of size unsampled_size to size max_sample_size"""
+    min_redundancy = int(1+(unsampled_size-1)/max_sample_size)
+    return min_redundancy
+
 def resample_ordered_list_of_values(vals, redundancy=8):
     """resample a list of values with interpolation"""
     # Number of vals given
@@ -30,6 +35,8 @@ def resample_ordered_list_of_values(vals, redundancy=8):
         sampled_vals.append(sample_val)
     # Add the last point
     sampled_vals.append(ordered_vals[-1])
+
+    assert len(sampled_vals) == num_samp_vals
 
     return sampled_vals
 
