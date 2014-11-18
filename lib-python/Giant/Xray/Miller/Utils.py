@@ -89,7 +89,7 @@ def scale_amplitude_arrays_via_intensities(chg_arr_a, ref_arr_a, n_bins=20):
 
     assert chg_arr_a_scale.is_similar_symmetry(chg_arr_a)
 
-    print('Correlation between unscaled and scaled amplitudes: {!s}'.format(round(chg_arr_a.correlation(chg_arr_a_scale).coefficient(),3)))
+#    print('Correlation between unscaled and scaled amplitudes: {!s}'.format(round(chg_arr_a.correlation(chg_arr_a_scale).coefficient(),3)))
 
     return chg_arr_a_scale
 
