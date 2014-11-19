@@ -25,5 +25,8 @@ def convert_pvalue_to_zscore(pval, two_tailed=True):
         zsco = nrm.quantile(1.0-pval)
     except RuntimeError:
         # pval too small - return default (8.0 is max calculable)
-        zsco = 8.0
+        if pval < 0.00000000000000006:
+            zsco = 8.2
+        else:
+            raise
     return zsco
