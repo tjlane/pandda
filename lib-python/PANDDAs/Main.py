@@ -1,4 +1,4 @@
-import os, sys, glob, time
+import os, sys, glob, time, copy
 import numpy
 
 import iotbx.pdb as pdb_reader
@@ -24,12 +24,7 @@ from Giant.Xray.Maps.Grid import get_grid_points_within_distance_cutoff_of_cart_
 from Giant.Stats.Tests import test_significance_of_group_of_z_values, convert_pvalue_to_zscore
 from Giant.Stats.Utils import resample_ordered_list_of_values, calculate_minimum_redundancy
 
-def status_bar(n, n_max):
-    if (n+1==n_max):
-        print '\r>>', 100, '%'
-    elif (n%int(n_max/100)==0):
-        print '\r>>', int(round(100.0*(n+1)/n_max,0)), '%',
-    sys.stdout.flush()
+from Giant.Utils import status_bar
 
 def easy_directory(directory):
     """Checks a directory exists and creates it if not"""
@@ -44,7 +39,13 @@ class multi_dataset_analyser(object):
         self.verbose = verbose
         self._log = ''
 
+        # ===============================================================================>
+        # OUTPUT FILES STUFF
+        # ===============================================================================>
+
         self.outdir = easy_directory(os.path.abspath(outdir))
+
+        self.log_file = os.path.join(self.outdir, 'pandda.log')
 
         # ===============================================================================>
         # SETTINGS STUFF
@@ -58,21 +59,26 @@ class multi_dataset_analyser(object):
         # DATA AND MAPS STUFF
         # ===============================================================================>
 
+        # File names
         self._raw_file_pairs = []
         self._file_pairs = []
-
+        self._rejected_file_pairs = []
+        # Dataset Objects
         self._raw_datasets = []
         self._datasets = []
-
+        self._rejected_datasets = []
+        # Reference Objects
         self._ref_dataset = None
         self._ref_grid = None
         self._ref_map = None
-
+        # Dataset statistics
+        self._dataset_statistics = {}
+        # Map Statistics
         self._mean_map = None
         self._stds_map = None
         self._skew_map = None
         self._kurt_map = None
-
+        # Map Arrays
         self._maps = []
         self._z_maps = []
         self._mod_z_maps = []
@@ -83,19 +89,17 @@ class multi_dataset_analyser(object):
 
         self.pickledir = easy_directory(os.path.join(self.outdir, 'pickled_panddas'))
 
+        # Pickled Reference Objects
         self.reference_grid_pickle = os.path.join(self.pickledir, 'reference_grid.pickle')
         self.global_mask_pickle = os.path.join(self.pickledir, 'global_mask.pickle')
         self.local_mask_pickle = os.path.join(self.pickledir, 'local_mask.pickle')
-
-        # Pickled datasets
-#        self.ref_dataset_pickle = os.path.join(self.pickledir, 'ref_dataset.pickle')
-#        self.all_dataset_pickle = os.path.join(self.pickledir, 'all_dataset.pickle')
-
+        # Pickled Datasets
+        self.used_files_pickle = os.path.join(self.pickledir, 'used_files.pickle')
+        self.used_datasets_pickle = os.path.join(self.pickledir, 'used_datasets.pickle')
         # Pickled Maps
         self.map_values_pickle = os.path.join(self.pickledir, 'map_values.pickle')
         self.z_map_values_pickle = os.path.join(self.pickledir, 'z_map_values.pickle')
         self.mod_z_map_values_pickle = os.path.join(self.pickledir, 'mod_z_map_values.pickle')
-
         # Pickled Stats
         self.mean_map_pickle = os.path.join(self.pickledir, 'mean_map.pickle')
         self.stds_map_pickle = os.path.join(self.pickledir, 'stds_map.pickle')
@@ -107,8 +111,8 @@ class multi_dataset_analyser(object):
     def load_pickled_objects(self):
         """Loads any pickled objects it finds"""
 
-        print('===================================>>>')
-        print('Looking for Pickled Files in Input Directory: {!s}'.format(os.path.relpath(self.pickledir)))
+        self.log('===================================>>>', True)
+        self.log('Looking for Pickled Files in Input Directory: {!s}'.format(os.path.relpath(self.pickledir)), True)
         # Load Reference Grid
         if os.path.exists(self.reference_grid_pickle):
             self.set_reference_grid(self.unpickle(self.reference_grid_pickle))
@@ -118,8 +122,13 @@ class multi_dataset_analyser(object):
             if os.path.exists(self.local_mask_pickle) and (self.get_reference_grid().get_local_mask() is None):
                 self.get_reference_grid().set_local_mask(self.unpickle(self.local_mask_pickle))
 
-#        if os.path.exists(self.ref_dataset_pickle):
-#            self.set_reference_dataset(self.unpickle(self.ref_dataset_pickle))
+        # Load the datasets
+        if os.path.exists(self.used_files_pickle):
+            self._file_pairs = self.unpickle(self.used_files_pickle)
+            self._raw_pairs = self._file_pairs
+        if os.path.exists(self.used_datasets_pickle):
+            self._datasets = self.unpickle(self.used_datasets_pickle)
+            self._raw_datasets = self._datasets
 
         # Load Map Values
         if os.path.exists(self.map_values_pickle):
@@ -142,11 +151,11 @@ class multi_dataset_analyser(object):
     def pickle_the_pandda(self):
         """Pickles it's major components for quick loading..."""
 
-        print('===================================>>>')
-        print('Pickling the PanDDA')
+        self.log('===================================>>>', True)
+        self.log('Pickling the PanDDA', True)
 
-        print('===================================>>>')
-        print('Pickling Reference Grid')
+        self.log('===================================>>>')
+        self.log('Pickling Reference Grid')
         if self.get_reference_grid() is not None:
             self.pickle(pickle_file=self.reference_grid_pickle, pickle_object=self.get_reference_grid())
         if self.get_reference_grid().get_global_mask() is not None:
@@ -154,8 +163,15 @@ class multi_dataset_analyser(object):
         if self.get_reference_grid().get_local_mask() is not None:
             self.pickle(pickle_file=self.local_mask_pickle, pickle_object=self.get_reference_grid().get_local_mask())
 
-        print('===================================>>>')
-        print('Pickling Map Values')
+        self.log('===================================>>>')
+        self.log('Pickling Datasets')
+        if self.get_used_files():
+            self.pickle(pickle_file=self.used_files_pickle, pickle_object=self.get_used_files())
+        if self.get_used_datasets():
+            self.pickle(pickle_file=self.used_datasets_pickle, pickle_object=[d.get_pickle_copy() for d in self.get_used_datasets()])
+
+        self.log('===================================>>>')
+        self.log('Pickling Map Values')
         if self.get_maps():
             self.pickle(pickle_file=self.map_values_pickle, pickle_object=self.get_maps())
         if self.get_z_maps():
@@ -163,8 +179,8 @@ class multi_dataset_analyser(object):
         if self.get_modified_z_maps():
             self.pickle(pickle_file=self.mod_z_map_values_pickle, pickle_object=self.get_modified_z_maps())
 
-        print('===================================>>>')
-        print('Pickling Statistical Maps')
+        self.log('===================================>>>')
+        self.log('Pickling Statistical Maps')
         if self.get_mean_map() is not None:
             self.pickle(pickle_file=self.mean_map_pickle, pickle_object=self.get_mean_map())
         if self.get_stds_map() is not None:
@@ -176,13 +192,16 @@ class multi_dataset_analyser(object):
 
     def log(self, message, show=False):
         """Log message to file, and mirror to stdout if verbose or force_print"""
-
-        if self.verbose or show:
-            print(message)
+        if not isinstance(message, str):    message = str(message)
+        # Print to stdout
+        if self.verbose or show:            print(message)
+        # Store in internal string
         self._log = self._log + message + '\n'
+        # Write to file
+        open(self.log_file, 'a').write(message+'\n')
 
     def print_log(self):
-        print self._log
+        print(self._log)
 
     def set_map_type(self, map_type):
         self._map_type = map_type
@@ -197,13 +216,6 @@ class multi_dataset_analyser(object):
     def get_cut_resolution(self):
         return self._cut_resolution
 
-    def get_input_files(self):
-        """Get all of the files that were added"""
-        return self._raw_file_pairs
-    def get_used_files(self):
-        """Get the files that have been used to generate the distributions"""
-        return self._file_pairs
-
     def set_reference_dataset(self, dataset):
         """Set a reference dataset created externally"""
         self._ref_dataset = dataset
@@ -217,12 +229,25 @@ class multi_dataset_analyser(object):
         """Get the reference grid used to generate the points for sampling the maps"""
         return self._ref_grid
 
+    def get_input_files(self):
+        """Get all of the files that were added"""
+        return self._raw_file_pairs
+    def get_used_files(self):
+        """Get the files that have been used to generate the distributions"""
+        return self._file_pairs
+    def get_rejected_files(self):
+        """Get the files that have been rejected from the analysis"""
+        return self._rejected_file_pairs
+
     def get_all_datasets(self):
         """Return all datasets added"""
         return self._raw_datasets
     def get_used_datasets(self):
         """Return datasets used to build distributions"""
         return self._datasets
+    def get_rejected_datasets(self):
+        """Get the datasets that have been rejected from the analysis"""
+        return self._rejected_datasets
 
     def get_mean_map(self):
         """Returns the average map across the datasets"""
@@ -251,8 +276,8 @@ class multi_dataset_analyser(object):
     def load_reference_dataset(self, ref_pdb, ref_mtz):
         """Set the reference dataset, to which all other datasets will be aligned and scaled"""
 
-        print('===================================>>>')
-        print('Loading Reference Dataset: {!s}'.format(ref_mtz))
+        self.log('===================================>>>', True)
+        self.log('Loading Reference Dataset: {!s}'.format(ref_mtz), True)
         self._ref_dataset = dataset_handler(ref_pdb, ref_mtz)
         self._ref_dataset.create_fft_map(map_type=self.get_map_type())
         self._ref_dataset.get_map().apply_volume_scaling()
@@ -274,7 +299,7 @@ class multi_dataset_analyser(object):
         grid_spacing = calculate_sampling_distance(self.get_cut_resolution(), self.get_res_factor())
         min_max_sites = self.get_reference_dataset().get_structure_min_max_sites()
 
-        self._ref_grid = grid_handler()
+        self._ref_grid = grid_handler(verbose=self.verbose)
         self._ref_grid.set_grid_spacing(spacing=grid_spacing)
         self._ref_grid.set_cart_extent(cart_min=min_max_sites[0], cart_max=min_max_sites[1])
         self._ref_grid.create_cartesian_grid(include_origin=include_origin)
@@ -283,8 +308,8 @@ class multi_dataset_analyser(object):
     def mask_resampled_reference_grid(self):
         """Using the local and global masks, mask the resamples grid points"""
 
-        print('===================================>>>')
-        print('Masking Resampled Grid (Global and Local Mask)')
+        self.log('===================================>>>', True)
+        self.log('Masking Resampled Grid (Global and Local Mask)', True)
         # Create a grid mask around each point
         self.get_reference_grid().show_summary()
         self.get_reference_grid().get_local_mask().show_summary()
@@ -296,16 +321,16 @@ class multi_dataset_analyser(object):
         global_mask      = self.get_reference_grid().get_global_mask_points()
 
         masked_resampled_points_1 = resampled_points
-        print('===================================>>>')
-        print('Resampled Grid Size (3D): {!s}'.format(self.get_reference_grid().get_resampled_grid_size()))
-        print('Resampled Grid Size (1D): {!s}'.format(len(masked_resampled_points_1)))
-        print('===================================>>>')
-        print('Filtering with Buffer Mask... (Edge of Cell)')
+        self.log('===================================>>>')
+        self.log('Resampled Grid Size (3D): {!s}'.format(self.get_reference_grid().get_resampled_grid_size()))
+        self.log('Resampled Grid Size (1D): {!s}'.format(len(masked_resampled_points_1)))
+        self.log('===================================>>>')
+        self.log('Filtering with Buffer Mask... (Edge of Cell)')
         masked_resampled_points_2 = [p for p in masked_resampled_points_1 if p not in buffer_mask]
-        print('Filtered Points: {!s}'.format(len(masked_resampled_points_2)))
-        print('Filtering with Global Mask... (Protein)')
+        self.log('Filtered Points: {!s}'.format(len(masked_resampled_points_2)))
+        self.log('Filtering with Global Mask... (Protein)')
         masked_resampled_points_3 = [p for p in masked_resampled_points_2 if p in global_mask]
-        print('Filtered Points: {!s}'.format(len(masked_resampled_points_3)))
+        self.log('Filtered Points: {!s}'.format(len(masked_resampled_points_3)))
         masked_resampled_points = masked_resampled_points_3
 
         self.get_reference_grid().set_masked_grid_points(masked_resampled_points)
@@ -313,40 +338,75 @@ class multi_dataset_analyser(object):
     def add_input_files(self, file_pairs):
         """Add (pdb, mtz) file pairs to the datasets to be processed"""
 
-        print '===================================>>>'
+        self.log('===================================>>>', True)
         self._raw_file_pairs = file_pairs
-        print '{!s} datasets added'.format(len(file_pairs))
+        self.log('{!s} datasets added'.format(len(file_pairs)), True)
 
     def load_input_datasets(self):
         """Read in maps for the input datasets"""
 
-        print('===================================>>>')
+        self.log('===================================>>>', True)
         for d_num, (pdb, mtz) in enumerate(self.get_input_files()):
             print '\rLoading Dataset {!s}'.format(d_num+1),; sys.stdout.flush()
             # Create object to handle processing of the dataset
             new_dataset = dataset_handler(pdb, mtz)
             # Add dataset to the list of all datasets
             self._raw_datasets.append(new_dataset)
-        print('')
+        self.log('\rDatasets Loaded.          ', True)
 
-    def scale_datasets_and_load_maps(self):
+    def scale_and_align_datasets(self):
         """Iterate through the datasets, scale them to the reference, and extract maps"""
 
-        print('===================================>>>')
+        self.log('===================================>>>', True)
         for d_num, new_dataset in enumerate(self.get_all_datasets()):
             print '\rScaling Dataset {!s}'.format(d_num+1),; sys.stdout.flush()
             # Scale new data to the reference dataset
             new_dataset.scale_fobs_to_reference(ref_miller=self.get_reference_dataset().get_fobs_miller_array())
+            # Align to reference structure to get mapping transform
+            new_dataset.align_to_reference(reference_calphas=self.get_reference_dataset().get_calpha_sites())
+        self.log('\rDatasets Scaled.          ', True)
+
+    def load_map_handlers(self):
+        self.log('===================================>>>', True)
+        for d_num, new_dataset in enumerate(self.get_all_datasets()):
+            print '\rGetting Map Handlers {!s}'.format(d_num+1),; sys.stdout.flush()
             # Create maps
             new_dataset.create_fft_map(miller=new_dataset.get_scaled_fobs_miller_array(), map_type=self.get_map_type(), d_min=self.get_cut_resolution())
             new_dataset.get_map().apply_volume_scaling()
             new_dataset.create_map_handler()
-        print('')
+        self.log('\rMap Handlers Loaded.          ', True)
 
-    def align_and_filter_datasets(self):
+    def calculate_dataset_statistics(self):
+        """Go through all of the datasets and calculate lots of different characteristics of the datasets for identifying odd datasets"""
+
+        self.log('===================================>>>', True)
+        self.log('Calculating Dataset Statistics', True)
+
+        # Object to hold the results of comparing the different datasets
+        summary = comparison_summary()
+
+        self.log('===================================>>>')
+        self.log('Calculating Average RMSD to Reference')
+        rmsds = [n.get_calpha_sites().rms_difference(n.transform_points_from_reference(self.get_reference_dataset().get_calpha_sites())) for n in self.get_all_datasets()]
+        summary.mean_reference_rmsd = numpy.mean(rmsds)
+        summary.stds_reference_rmsd = numpy.std(rmsds)
+
+        self.log('===================================>>>')
+        self.log('Calculating Average Resolution')
+        rslns = [n.get_fobs_miller_array().d_min() for n in self.get_all_datasets()]
+        summary.mean_data_resolution = numpy.mean(rslns)
+        summary.stds_data_resolution = numpy.std(rslns)
+
+#        # Data Metrics
+#        self.mean_ref_data_correlation = None
+#        self.stds_ref_data_correlation = None
+
+
+
+    def filter_datasets(self):
         """Iterate through the datasets, and filter them by quality"""
 
-        print('===================================>>>')
+        self.log('===================================>>>', True)
         for d_num, new_dataset in enumerate(self.get_all_datasets()):
             # Retrieve associated files
             pdb, mtz = self.get_input_files()[d_num]
@@ -370,9 +430,6 @@ class multi_dataset_analyser(object):
                 print('===================================>>>')
                 continue
 
-            # Align to reference structure to get mapping transform
-            new_dataset.align_to_reference(reference_calphas=self.get_reference_dataset().get_calpha_sites())
-
             # TODO Check that the transformation is SMALL and filter for large movements?
 #            alignment_fit = new_dataset.get_alignment_transform()
 #            print 'R:\t', '\n\t'.join([' '.join(map(str,l)) for l in alignment_fit.r.as_list_of_lists()])
@@ -387,17 +444,19 @@ class multi_dataset_analyser(object):
             self._file_pairs.append((pdb, mtz))
             self._datasets.append(new_dataset)
 
-        print('')
+        self.log('\rDatasets Filtered.          ', True)
 
     def extract_map_values(self):
         """Extract map values for the filtered datasets"""
 
+        assert self.get_maps() == [], 'Maps list is not empty!'
+
         for d_num, new_dataset in enumerate(self.get_used_datasets()):
             # Retrieve associated files
             pdb, mtz = self.get_used_files()[d_num]
-            print '===================================>>>'
-            print 'Loading Dataset Maps {!s}'.format(d_num+1)
-            print '===============>>>'
+            self.log('===================================>>>')
+            self.log('Loading Dataset {!s} Maps'.format(d_num+1))
+            self.log('===============>>>')
             # Extract the map values at the transformed grid points
             new_sample_points = new_dataset.transform_points_from_reference(self.get_reference_grid().get_cart_points())
             new_map_vals = new_dataset.get_map_handler().get_cart_values(new_sample_points)
@@ -412,18 +471,18 @@ class multi_dataset_analyser(object):
             # Append the dataset, the map values to common lists
             self._maps.append(new_map_vals)
 
-        print '===================================>>>'
-        print 'After Filtering: {!s} Datasets'.format(len(self.get_used_files()))
+        self.log('===================================>>>', True)
+        self.log('Maps Values Loaded: {!s} Datasets'.format(len(self.get_used_files())), True)
 
     def calculate_map_statistics(self):
         """Take the sampled maps and calculate statistics for each grid point across the datasets"""
 
-        print '===================================>>>'
+        self.log('===================================>>>', True)
         print 'Combining maps into array...',; sys.stdout.flush()
         map_array = numpy.array(self.get_maps())
         print 'finished.'
 
-        print 'Calculating Statistics of Grid Points'
+        self.log('Calculating Statistics of Grid Points', True)
 
         # Calculate Mean Maps
         mean_map_vals = numpy.array([basic_statistics(flex.double(map_array[:,i].tolist())).mean for i in xrange(self.get_reference_grid().get_grid_size_1d())])
@@ -462,9 +521,11 @@ class multi_dataset_analyser(object):
     def normalise_maps_to_z_maps(self):
         """Normalise the map values to z-values"""
 
+        assert self.get_z_maps() == [], 'Z-Maps list is not empty!'
+
         for d_num, map_data in enumerate(self.get_maps()):
-            print '===================================>>>'
-            print 'Normalising Dataset {!s}'.format(d_num+1)
+            self.log('===================================>>>', True)
+            self.log('Normalising Dataset {!s}'.format(d_num+1), True)
 
             pdb, mtz = self.get_used_files()[d_num]
 
@@ -484,6 +545,8 @@ class multi_dataset_analyser(object):
     def post_process_z_maps(self):
         """Process the z_maps, looking for groups of high z-values"""
 
+        assert self.get_modified_z_maps() == [], 'Modified Z-Maps list is not empty!'
+
         print '===================================>>>'
         print 'Combining maps into array...',; sys.stdout.flush()
         z_map_array = numpy.array(self.get_z_maps())
@@ -501,12 +564,12 @@ class multi_dataset_analyser(object):
         # Calculate the redundancy required for the statistical tests
         max_stat_sample_size = 344
         redundancy = max(8, calculate_minimum_redundancy(unsampled_size=self.get_reference_grid().get_local_mask().get_size(), max_sample_size=max_stat_sample_size))
-        print('===================================>>>')
-        print('Sampling Redundancy: {!s}'.format(redundancy))
+        self.log('===================================>>>')
+        self.log('Sampling Redundancy: {!s}'.format(redundancy))
 
         for d_num, z_map_data in enumerate(self.get_z_maps()):
-            print '===================================>>>'
-            print 'Post-Processing Dataset {!s}'.format(d_num+1)
+            self.log('===================================>>>', True)
+            self.log('Post-Processing Dataset {!s}'.format(d_num+1), True)
 
             mod_z_map_data = [0]*self.get_reference_grid().get_grid_size_1d()
 
@@ -577,20 +640,20 @@ class multi_dataset_analyser(object):
         """Takes a 1d array and writes it to a map"""
         if not grid_size:    grid_size    = self.get_reference_grid().get_grid_size()
         if not grid_spacing: grid_spacing = self.get_reference_grid().get_grid_spacing()
-        print 'Writing Map: {!s}'.format(output_file)
+        self.log('Writing Map: {!s}'.format(output_file))
         write_1d_array_as_p1_map(file_name=output_file, map_data=map_data, grid_size=grid_size, grid_spacing=grid_spacing)
 
     def pickle(self, pickle_file, pickle_object):
         """Takes an object and pickles it"""
         if os.path.exists(pickle_file):
-            print('NOT PICKLING: {!s}'.format(pickle_file))
+            self.log('NOT PICKLING: {!s}'.format(pickle_file))
         else:
-            print('Pickling Object: {!s}'.format(pickle_file))
+            self.log('Pickling Object: {!s}'.format(pickle_file))
             easy_pickle.dump(pickle_file, pickle_object)
 
     def unpickle(self, pickle_file):
         """Takes an object and unpickles it"""
-        print('Unpickling File: {!s}'.format(pickle_file))
+        self.log('Unpickling File: {!s}'.format(pickle_file))
         return easy_pickle.load(pickle_file)
 
 class dataset_handler(object):
@@ -647,6 +710,17 @@ class dataset_handler(object):
     def get_map_handler(self):
         return self._basic_map
 
+    def get_pickle_copy(self):
+        """Get copy of self that can be pickled - some cctbx objects cannot be pickled..."""
+        assert self._fft_map is not None, 'No Things exist!'
+        assert self._basic_map is not None, 'No Things exist!'
+        new = copy.copy(self)
+        new._fft_map = None
+        new._basic_map = None
+        assert self._fft_map is not None, 'Theyve been deleted!'
+        assert self._basic_map is not None, 'Theyve been deleted!'
+        return new
+
     def transform_points_from_reference(self, points):
         """Use alignment to map from reference frame to our frame"""
         return self.get_alignment_transform().rt().inverse() * points
@@ -682,9 +756,25 @@ class dataset_handler(object):
                             self._unit_cell.orthogonalization_matrix(), maptbx.out_of_bounds_clamp(0).as_handle(), self._unit_cell)
         return self._basic_map
 
-class grid_handler(object):
+class comparison_summary(object):
     def __init__(self):
+        """Stores lots of comparison values for isomorphous structures"""
+
+        # Structure Metrics
+        self.mean_reference_rmsd = None
+        self.stds_reference_rmsd = None
+
+        # Data Metrics
+        self.mean_data_resolution = None
+        self.stds_data_resolution = None
+        self.mean_ref_data_correlation = None
+        self.stds_ref_data_correlation = None
+
+class grid_handler(object):
+    def __init__(self, verbose=True):
         """Create and manage a grid object to be sampled across many aligned datasets"""
+
+        self.verbose = verbose
 
         self._grid_size = None
         self._grid_spacing = None

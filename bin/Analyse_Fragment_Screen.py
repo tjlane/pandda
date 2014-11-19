@@ -1,31 +1,7 @@
 import os, sys, glob, time
+import numpy
 
 from PANDDAs.Main import multi_dataset_analyser, spherical_mask, protein_mask
-
-# ============================================================================>
-#####
-# Output Files
-#####
-# ============================================================================>
-
-output_dir = '/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak'
-
-output_points = os.path.join(output_dir, 'sample_points.csv')
-output_map_values = os.path.join(output_dir, 'map_values.csv')
-output_map_point_summary = os.path.join(output_dir, 'map_point_summary.csv')
-output_z_values = os.path.join(output_dir, 'z_values.csv')
-output_z_values_summary = os.path.join(output_dir, 'z_values_summary.csv')
-output_modified_z_values_summary = os.path.join(output_dir, 'mod_z_values_summary.csv')
-if os.path.exists(output_points):
-    os.remove(output_points)
-if os.path.exists(output_map_values):
-    os.remove(output_map_values)
-if os.path.exists(output_map_point_summary):
-    os.remove(output_map_point_summary)
-if os.path.exists(output_z_values):
-    os.remove(output_z_values)
-if os.path.exists(output_z_values_summary):
-    os.remove(output_z_values_summary)
 
 # ============================================================================>
 #####
@@ -106,15 +82,13 @@ pandda.extract_reference_map_values()
 if pandda.get_reference_grid().get_local_mask() is None:
     print('===================================>>>')
     print('Generating Local Mask')
-    #pandda.get_reference_grid().create_local_mask(distance_cutoff=3)
-    local_mask = spherical_mask(grid_spacing=pandda.get_reference_grid().get_grid_spacing(), distance_cutoff=4, grid_jump=None)
+    local_mask = spherical_mask(grid_spacing=pandda.get_reference_grid().get_grid_spacing(), distance_cutoff=3, grid_jump=None)
     pandda.get_reference_grid().set_local_mask(local_mask)
 
 if pandda.get_reference_grid().get_global_mask() is None:
     print('===================================>>>')
     print('Generating Global Mask')
-    #pandda.get_reference_grid().create_global_mask(cart_sites=pandda.get_reference_dataset().get_calpha_sites(), distance_cutoff=7)
-    global_mask = protein_mask(cart_sites=pandda.get_reference_dataset().get_calpha_sites(), grid_spacing=pandda.get_reference_grid().get_grid_spacing(), distance_cutoff=7)
+    global_mask = protein_mask(cart_sites=pandda.get_reference_dataset().get_calpha_sites(), grid_spacing=pandda.get_reference_grid().get_grid_spacing(), distance_cutoff=6)
     pandda.get_reference_grid().set_global_mask(global_mask)
 
 if pandda.get_reference_grid().get_masked_grid_points() is None:
@@ -129,10 +103,16 @@ if pandda.get_reference_grid().get_masked_grid_points() is None:
 # TODO Revisit Scaling
 # ============================================================================>
 
-pandda.add_input_files(raw_file_pairs)
-pandda.load_input_datasets()
-pandda.scale_datasets_and_load_maps()
-pandda.align_and_filter_datasets()
+if not (pandda.get_used_files() and pandda.get_used_datasets()):
+    pandda.add_input_files(raw_file_pairs)
+    pandda.load_input_datasets()
+    pandda.scale_and_align_datasets()
+
+# This always needs to be done, even if the objects are retrieved from a pickle
+pandda.load_map_handlers()
+
+if not (pandda.get_used_files() and pandda.get_used_datasets()):
+    pandda.filter_datasets()
 
 if not pandda.get_maps():
     pandda.extract_map_values()
@@ -167,8 +147,15 @@ pandda.pickle_the_pandda()
 
 # ============================================================================>
 
-for z_cutoff in [3,5,7,10]:
-    hits = pandda.extract_modz_values_and_coords(z_cutoff=z_cutoff)
-    print('{!s} hits found for z={!s}'.format(len(hits), z_cutoff))
+hits = {}
+hit_count = {}
+for z_cutoff in [3,5,7,8]:
+    hits[z_cutoff] = pandda.extract_modz_values_and_coords(z_cutoff=z_cutoff)
+    print('{!s} hits found for z={!s}'.format(len(hits[z_cutoff]), z_cutoff))
 
+    if hits[z_cutoff]:
+        bin_count = numpy.bincount([h[0] for h in hits[z_cutoff]])
+        freq_count = sorted(zip(numpy.nonzero(bin_count)[0],bin_count[numpy.nonzero(bin_count)[0]]), key=lambda tup: tup[1])
+        dataset_count = [(num, pandda.get_used_files()[d_num][0]) for d_num, num in freq_count]
+        hit_count[z_cutoff] = dataset_count
 
