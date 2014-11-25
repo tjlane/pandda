@@ -6,11 +6,11 @@ from Bamboo.Rdkit.Mol import check_pdb_readable
 
 from rdkit import Chem
 
-def get_centroid(model):
+def get_centroid_from_file(model):
     """Get the centroid of an isolated ligand"""
-    return get_mol_centroid(model)
+    return get_centroid_from_mol(Chem.MolFromPDBFile(model))
 
-def get_mol_centroid(mol):
+def get_centroid_from_mol(mol):
     """Get the centroid of a mol"""
 
     num_atm = mol.GetNumHeavyAtoms()
