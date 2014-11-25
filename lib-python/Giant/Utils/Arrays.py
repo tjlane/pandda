@@ -8,6 +8,7 @@ from Giant.Utils import status_bar
 def write_numpy_array_to_file(np_array, output_file, status=True):
     """Takes numpy array and writes to file. Chooses axis of numpy array so as to maximise the number of rows of the output file"""
 
+    assert isinstance(np_array, numpy.array), 'Array must be numpy array!'
     assert not os.path.exists(output_file), 'Output file already exists!'
     assert np_array.ndim <= 2, 'Dimension of Matrix must be less than 3!'
 

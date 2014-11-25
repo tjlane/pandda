@@ -70,42 +70,46 @@ def combine_grid_point_and_grid_vectors(start_point, grid_vectors):
     grid_points = [tuple(start_point+flex.int(vec)) for vec in grid_vectors]
     return grid_points
 
-def get_grid_points_within_distance_cutoff_of_cart_sites(cart_sites, grid_spacing, distance_cutoff):
+def get_grid_points_within_distance_cutoff_of_cart_sites(cart_sites, grid_spacing, max_dist, min_dist=None):
     """Find all points on isotropic grid within distance cutoff of cartesian sites"""
 
     # Normalise the cutoff and the sites to make them grid-independent
-    grid_index_cutoff = (1.0*distance_cutoff)/grid_spacing
+    max_grid_dist = (1.0*max_dist)/grid_spacing
+    if min_dist: min_grid_dist = (1.0*min_dist)/grid_spacing
+    else:        min_grid_dist = None
     grid_sites = [tuple([1.0*c/grid_spacing for c in coords]) for coords in cart_sites]
 
-    return get_grid_points_within_index_cutoff_of_grid_sites(grid_sites=grid_sites, grid_index_cutoff=grid_index_cutoff)
+    return get_grid_points_within_index_cutoff_of_grid_sites(grid_sites=grid_sites, max_grid_dist=max_grid_dist, min_grid_dist=min_grid_dist)
 
-def get_grid_points_within_index_cutoff_of_grid_sites(grid_sites, grid_index_cutoff):
+def get_grid_points_within_index_cutoff_of_grid_sites(grid_sites, max_grid_dist, min_grid_dist=None):
     """Find all points on a grid within a certain number of grid points of grid sites (not necessarily integer sites)"""
 
     # Calculate the size of the grid we need to check over
-    min_x = ifloor(min([s[0] for s in grid_sites]) - grid_index_cutoff)
+    min_x = ifloor(min([s[0] for s in grid_sites]) - max_grid_dist)
     if min_x < 0: min_x=0
-    min_y = ifloor(min([s[1] for s in grid_sites]) - grid_index_cutoff)
+    min_y = ifloor(min([s[1] for s in grid_sites]) - max_grid_dist)
     if min_y < 0: min_y=0
-    min_z = ifloor(min([s[2] for s in grid_sites]) - grid_index_cutoff)
+    min_z = ifloor(min([s[2] for s in grid_sites]) - max_grid_dist)
     if min_z < 0: min_z=0
-    max_x = iceil(max([s[0] for s in grid_sites]) + grid_index_cutoff)
-    max_y = iceil(max([s[1] for s in grid_sites]) + grid_index_cutoff)
-    max_z = iceil(max([s[2] for s in grid_sites]) + grid_index_cutoff)
+    max_x = iceil(max([s[0] for s in grid_sites]) + max_grid_dist)
+    max_y = iceil(max([s[1] for s in grid_sites]) + max_grid_dist)
+    max_z = iceil(max([s[2] for s in grid_sites]) + max_grid_dist)
     # Grid Extremities
     min_grid = (min_x, min_y, min_z)
     max_grid = (max_x+1, max_y+1, max_z+1)
 
-    # Round the max grid index down to the nearest int - outer bound on the dx,dy,dz values
-    outer_bound_box = int(grid_index_cutoff)
+    # Round the max grid distance down to the nearest int - outer bound on the dx,dy,dz values
+    outer_bound_box = int(max_grid_dist)
     # Calculate r/sqrt(3) - inner bound on dx, dy, dz values
-    inner_bound_box = grid_index_cutoff/math.sqrt(3)
+    inner_bound_box = max_grid_dist/math.sqrt(3)
     # Calculate r^2 - limiting sphere
-    rad_sq = grid_index_cutoff**2
+    rad_sq = max_grid_dist**2
 
     # List of allowed grid indices
-    grid_indices = []
+    allowed_grid_indices = []
+    rejected_grid_indices = []
 
+    # Iterate through and add valid points
     for gp in flex.nested_loop(min_grid, max_grid):
         for site in grid_sites:
             dx, dy, dz = [abs(p1-p2) for p1,p2 in zip(gp, site)]
@@ -113,13 +117,41 @@ def get_grid_points_within_index_cutoff_of_grid_sites(grid_sites, grid_index_cut
             if (dx > outer_bound_box) or (dy > outer_bound_box) or (dz > outer_bound_box):
                 continue
             elif (dx <= inner_bound_box) and (dy <= inner_bound_box) and (dz <= inner_bound_box):
-                grid_indices.append(gp)
+                allowed_grid_indices.append(gp)
                 break
             elif (dx**2 + dy**2 + dz**2) <= rad_sq:
-                grid_indices.append(gp)
+                allowed_grid_indices.append(gp)
                 break
 
-    return grid_indices
+    # Filter the grid points that are too close to the protein
+    if min_grid_dist:
+        # Round the min grid distance up to the nearest int - outer bound on the dx,dy,dz values
+        outer_bound_box = int(min_grid_dist) + 1
+        # Calculate r/sqrt(3) - inner bound on dx, dy, dz values
+        inner_bound_box = min_grid_dist/math.sqrt(3)
+        # Calculate r^2 - limiting sphere
+        rad_sq = min_grid_dist**2
+
+        # Iterate through and add valid points
+        for gp in allowed_grid_indices:
+            for site in grid_sites:
+                dx, dy, dz = [abs(p1-p2) for p1,p2 in zip(gp, site)]
+
+                if (dx > outer_bound_box) or (dy > outer_bound_box) or (dz > outer_bound_box):
+                    continue
+                elif (dx <= inner_bound_box) and (dy <= inner_bound_box) and (dz <= inner_bound_box):
+                    rejected_grid_indices.append(gp)
+                    break
+                elif (dx**2 + dy**2 + dz**2) <= rad_sq:
+                    rejected_grid_indices.append(gp)
+                    break
+
+    if min_grid_dist:
+        total_grid_indices = [gp for gp in allowed_grid_indices if gp not in rejected_grid_indices]
+    else:
+        total_grid_indices = allowed_grid_indices
+
+    return total_grid_indices, allowed_grid_indices, rejected_grid_indices
 
 
 
