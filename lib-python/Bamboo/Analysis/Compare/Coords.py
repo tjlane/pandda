@@ -4,7 +4,7 @@ import os, sys
 import math
 
 from Bamboo.Wrappers.SymUtils import map_to_reference_using_symmetry
-from Bamboo.Rdkit.Coords.Utils import get_centroid, calculate_coordinate_differences
+from Bamboo.Rdkit.Coords.Utils import get_centroid_from_file, calculate_coordinate_differences
 
 from rdkit import Chem
 
@@ -75,8 +75,8 @@ def calculate_rmsd_using_symmetry(model1, model2, suppress=False, delete_structu
 def calculate_centroid_difference(model1, model2):
     """Calculates the length of the vector connecting the centroids of the two models"""
 
-    centroid1 = get_centroid(model1)
-    centroid2 = get_centroid(model2)
+    centroid1 = get_centroid_from_file(model1)
+    centroid2 = get_centroid_from_file(model2)
     diff_vect = [a-b for a,b in zip(centroid1,centroid2)]
     len_diff_vect = math.sqrt(sum([c**2 for c in diff_vect]))
     return len_diff_vect

@@ -1,8 +1,8 @@
 
 from scitbx.array_family import flex
 
-def extract_ligands_from_file(pdb_hierarchy):
-    """Extracts ligands from pdb.input objects. Returns as new pdb.input objects"""
+def extract_ligands_from_hierarchy(pdb_hierarchy):
+    """Extracts ligands from hierarchy objects. Returns as new hierarchy objects"""
 
     # Filter out waters
     no_waters = pdb_hierarchy.select(pdb_hierarchy.atom_selection_cache().selection('not water'))

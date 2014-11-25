@@ -9,12 +9,12 @@ from Bamboo.Maps.Masking import create_masked_map
 # Scoring Density
 from Bamboo.Density.Edstats.Score import score_against_density_by_subset_file
 # Ligand Utils
-from Bamboo.Utils.Rdkit.Mol import check_ligand_from_file_identical_to_smile, check_ligands_from_file_identical
-from Bamboo.Utils.Rdkit.Smile import check_smile_readable
+from Bamboo.Rdkit.Mol import check_ligand_from_file_identical_to_smile, check_ligands_from_file_identical
+from Bamboo.Rdkit.Smile import check_smile_readable
 from Bamboo.Wrappers.PdbUtils import isolate_residue_by_res_id, remove_residue_by_res_id, merge_pdb_files, reset_pdb_file
 from Bamboo.Wrappers.CifUtils import merge_cif_libraries
 from Bamboo.Macro.Utils import get_mean_occupancy, get_residue_labels
-from Bamboo.Utils.Rdkit.Bonds.Fragment import break_and_rename_mol_to_file
+from Bamboo.Rdkit.Bonds.Fragment import break_and_rename_mol_to_file
 # Prototype Pipeline Things
 from Prototypes.AutoModel.Utils import modelLog
 

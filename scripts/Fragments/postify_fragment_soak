@@ -6,7 +6,7 @@ from sgcCode.Beehive import BeehiveDatabase
 
 from Bamboo.Macro.Common import isolate_compound_from_file_by_smile
 from Bamboo.Wrappers.MtzUtils import convert_intensities_to_amplitudes, apply_rfree_set
-from Bamboo.Analysis.CompareModels.Coords import calculate_rmsd_using_symmetry, calculate_centroid_difference_using_symmetry
+from Bamboo.Analysis.Compare.Coords import calculate_rmsd_using_symmetry, calculate_centroid_difference_using_symmetry
 
 try:
     score_file_in = sys.argv[1]
