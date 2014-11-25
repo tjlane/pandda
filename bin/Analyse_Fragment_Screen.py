@@ -37,11 +37,16 @@ file_pairs = []
 print 'Number of Datasets: ', num_raw_datasets
 
 # ============================================================================>
+#####
+# Initialise and Settings
+#####
 # ============================================================================>
 # TODO Change the name of the main processor object
+# TODO Change the way the datasets are scaled
 
 pandda = multi_dataset_analyser(outdir=input_dir)
 pandda.set_map_type(map_type='2mFo-DFc')
+#pandda.set_map_scaling(scaling='sigma')
 
 # ============================================================================>
 #####
@@ -52,6 +57,7 @@ pandda.set_map_type(map_type='2mFo-DFc')
 # ============================================================================>
 
 pandda.load_reference_dataset(ref_pdb=ref_pdb, ref_mtz=ref_mtz)
+pandda.load_reference_map_handler()
 
 # ============================================================================>
 #####
@@ -82,13 +88,13 @@ pandda.extract_reference_map_values()
 if pandda.get_reference_grid().get_local_mask() is None:
     print('===================================>>>')
     print('Generating Local Mask')
-    local_mask = spherical_mask(grid_spacing=pandda.get_reference_grid().get_grid_spacing(), distance_cutoff=3, grid_jump=None)
+    local_mask = spherical_mask(grid_spacing=pandda.get_reference_grid().get_grid_spacing(), distance_cutoff=1.2, grid_jump=2)
     pandda.get_reference_grid().set_local_mask(local_mask)
 
 if pandda.get_reference_grid().get_global_mask() is None:
     print('===================================>>>')
     print('Generating Global Mask')
-    global_mask = protein_mask(cart_sites=pandda.get_reference_dataset().get_calpha_sites(), grid_spacing=pandda.get_reference_grid().get_grid_spacing(), distance_cutoff=6)
+    global_mask = protein_mask(cart_sites=pandda.get_reference_dataset().get_backbone_sites(), grid_spacing=pandda.get_reference_grid().get_grid_spacing(), max_dist=6, min_dist=1.5)
     pandda.get_reference_grid().set_global_mask(global_mask)
 
 if pandda.get_reference_grid().get_masked_grid_points() is None:
@@ -110,6 +116,7 @@ if not (pandda.get_used_files() and pandda.get_used_datasets()):
 
 # This always needs to be done, even if the objects are retrieved from a pickle
 pandda.load_map_handlers()
+pandda.collect_dataset_variation_statistics()
 
 if not (pandda.get_used_files() and pandda.get_used_datasets()):
     pandda.filter_datasets()
@@ -119,7 +126,7 @@ if not pandda.get_maps():
 
 # ============================================================================>
 #####
-# ANALYSIS
+# DATA PROCESSING
 #####
 # Calculate the moments of the distributions at the grid points
 # Use the means and the stds to convert the maps to z-maps
@@ -132,24 +139,34 @@ if not (pandda.get_mean_map() and pandda.get_stds_map() and pandda.get_skew_map(
 if not pandda.get_z_maps():
     pandda.normalise_maps_to_z_maps()
 
-if not pandda.get_modified_z_maps():
-    pandda.post_process_z_maps()
+renormalise = False
+if renormalise and not pandda.get_renormalised_z_maps() and not pandda.get_modified_z_maps():
+    pandda.renormalise_z_maps()
 
+if not pandda.get_modified_z_maps():
+    pandda.post_process_z_maps(renormalise=renormalise)
+
+# ============================================================================>
+#####
+# STORING FOR REUSE
+#####
+# Pickle all of the large arrays so they can be reloaded
 # ============================================================================>
 
 pandda.pickle_the_pandda()
 
 # ============================================================================>
-
+#####
+# ANALYSIS
+#####
+# Analyse the processed data
 # ============================================================================>
 
-# ============================================================================>
-
-# ============================================================================>
+print('===================================>>>')
 
 hits = {}
 hit_count = {}
-for z_cutoff in [3,5,7,8]:
+for z_cutoff in [1,2,2.5,2.6,2.7,2.8,2.9,3,5,7,8]:
     hits[z_cutoff] = pandda.extract_modz_values_and_coords(z_cutoff=z_cutoff)
     print('{!s} hits found for z={!s}'.format(len(hits[z_cutoff]), z_cutoff))
 
@@ -159,3 +176,49 @@ for z_cutoff in [3,5,7,8]:
         dataset_count = [(num, pandda.get_used_files()[d_num][0]) for d_num, num in freq_count]
         hit_count[z_cutoff] = dataset_count
 
+xtals = []
+points = []
+
+for h in hits[3]:
+    if h[0] not in xtals:
+        xtals.append(h[0])
+        points.append((pandda.get_used_files()[h[0]][0][84:88],h))
+
+sorted_hits = sorted(points, key=lambda tup: tup[1][1], reverse=True)
+
+print [pandda.get_used_files()[h[1][0]][0][84:88] for h in sorted_hits]
+
+# ============================================================================>
+#####
+# CLUSTERING
+#####
+# Playing with Clustering
+# ============================================================================>
+
+from libtbx import cluster
+
+print('===================================>>>')
+print('Clustering Datasets')
+#num_data = len(pandda.get_used_files())
+#hierarchy = cluster.HierarchicalClustering(range(num_data), lambda x,y: (pandda.get_maps()[x]-pandda.get_maps()[y]).norm())
+#hierarchy.cluster()
+
+#pairwise_dists = [hierarchy.distance(i,j) for i in range(num_data) for j in range(num_data)]
+#mean_dist = numpy.mean(pairwise_dists)
+#std_dist  = numpt.std(pairwise_dists)
+
+#print hierarchy.getlevel(mean_dist+3*std_dist)
+
+# ============================================================================>
+
+print('===================================>>>')
+print('Writing Datasets Summaries')
+
+data_summary = pandda.get_dataset_variation_summary()
+
+with open(os.path.join(pandda.outdir,'dataset_summary.txt'), 'w') as fh:
+    fh.write('resolution, a, b, c, alpha, beta, gamma, cell volume, rmsd to reference structure\n')
+    for d_num in range(203):
+        out_list = [data_summary.data_resolutions[d_num]] + list(data_summary.cell_params[d_num]) + [data_summary.cell_vols[d_num], data_summary.ref_struc_rmsds[d_num]]
+        out_line = ', '.join(map(str,out_list)) + '\n'
+        fh.write(out_line)
