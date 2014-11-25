@@ -2,7 +2,7 @@
 
 import os
 
-from Bamboo.Utils.Rdkit.Bonds.Fragment import break_and_rename_mol_to_file
+from Bamboo.Rdkit.Bonds.Fragment import break_and_rename_mol_to_file
 
 def test_fragmenting_method():
     try:

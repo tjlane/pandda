@@ -5,7 +5,7 @@ import os, urllib, datetime
 from Bamboo.Utils.Constants import LONGESTPEPTIDE, LONGESTOLIGO
 from Bamboo.Utils.Constants import aaModsDict, aaCodesDict, ntCodesDict, waterNames, ionNames, solventNames
 from Bamboo.Utils.Constants import pdb_headers_to_keep, pdb_footers_to_keep
-from Bamboo.Utils.Rdkit.Smile import get_smile_from_block, match_smile_to_list
+from Bamboo.Rdkit.Smile import get_smile_from_block, match_smile_to_list
 
 # RDKit Error Suppression
 from rdkit import RDLogger

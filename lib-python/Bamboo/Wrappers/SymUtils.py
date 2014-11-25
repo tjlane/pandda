@@ -3,7 +3,7 @@
 import os, sys, shutil
 
 from Bamboo.Common.Command import CommandManager
-from Bamboo.Utils.Rdkit.Mol import check_pdb_readable
+from Bamboo.Rdkit.Mol import check_pdb_readable
 
 def generate_symmetry_mates(pdbin, pdbout, sgno, cell):
     """Takes the input pdb and generates the unit cell from the point group symmetry"""

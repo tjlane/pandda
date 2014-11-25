@@ -6,7 +6,7 @@ from rdkit import Chem
 
 from Bamboo.Common.File import fileObj
 from Bamboo.Macro.Molecule import MacroMol
-from Bamboo.Utils.Rdkit.Mol import check_pdb_readable
+from Bamboo.Rdkit.Mol import check_pdb_readable
 from Bamboo.Utils.Constants import atom_number_trans
 
 ################################################################################################################

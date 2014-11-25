@@ -1,7 +1,7 @@
 #! /usr/local/python/python2.7.3-64bit/bin/python
 
 from Bamboo.Macro.Molecule import MacroMol
-from Bamboo.Utils.Rdkit.Smile import find_structure_matches
+from Bamboo.Rdkit.Smile import find_structure_matches
 from Bamboo.Wrappers.PdbUtils import isolate_residue_by_res_id
 
 def isolate_compound_from_file_by_smile(pdbin, pdbouttemplate, reference_smile, allow_part=True):
