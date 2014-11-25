@@ -2,14 +2,16 @@
 
 import os, sys
 
-from Bamboo.Utils.Rdkit.Mol import check_pdb_readable
+from Bamboo.Rdkit.Mol import check_pdb_readable
 
 from rdkit import Chem
 
 def get_centroid(model):
-    """Get the centroid of a model"""
+    """Get the centroid of an isolated ligand"""
+    return get_mol_centroid(model)
 
-    mol = check_pdb_readable(model)
+def get_mol_centroid(mol):
+    """Get the centroid of a mol"""
 
     num_atm = mol.GetNumHeavyAtoms()
     # Get the conformer (actual coords)

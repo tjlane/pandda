@@ -5,7 +5,7 @@ import os, sys, math
 from rdkit import Chem
 from rdkit.Chem import BRICS
 from Bamboo.Macro.Molecule import MacroMol
-from Bamboo.Utils.Rdkit.Mol import check_pdb_readable
+from Bamboo.Rdkit.Mol import check_pdb_readable
 
 def break_on_rotatable_bonds_to_mol(inmol):
     """Takes a mol and breaks it on all of the rotatable bonds (well, most of them) - returns a single mol, or None if there are no rotatable bonds"""

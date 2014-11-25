@@ -4,7 +4,7 @@ import os, sys
 import math
 
 from Bamboo.Wrappers.SymUtils import map_to_reference_using_symmetry
-from Bamboo.Utils.Rdkit.Coords.Utils import get_centroid, calculate_coordinate_differences
+from Bamboo.Rdkit.Coords.Utils import get_centroid, calculate_coordinate_differences
 
 from rdkit import Chem
 
