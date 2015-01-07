@@ -10,6 +10,7 @@ import iotbx.map_tools as map_tools
 from libtbx import easy_pickle
 
 from cctbx import maptbx
+from scitbx import sparse
 from scitbx.array_family import flex
 from scitbx.math import superpose, basic_statistics
 from libtbx.math_utils import ifloor, iceil
@@ -89,10 +90,8 @@ class multi_dataset_analyser(object):
         self._kurt_map = None
         self._bimo_map = None
         # Map Arrays
-        self._raw_maps = []
         self._maps = []
         self._z_maps = []
-        self._renorm_z_maps = []
         self._mod_z_maps = []
 
         # Get the size of the empty pandda
@@ -123,7 +122,7 @@ class multi_dataset_analyser(object):
         self.kurt_map_pickle = os.path.join(self.pickledir, 'kurt_map.pickle')
         self.bimo_map_pickle = os.path.join(self.pickledir, 'bimo_map.pickle')
 
-        if os.path.exists(self.mod_z_map_values_pickle):
+        if os.path.exists(self.used_datasets_pickle):
             self._new_pandda = False
         else:
             self._new_pandda = True
@@ -151,18 +150,19 @@ class multi_dataset_analyser(object):
         if os.path.exists(self.used_datasets_pickle):
             self._datasets = self.unpickle(self.used_datasets_pickle)
             self._raw_datasets = self._datasets
+            self.update_pandda_size(tag='After Unpickling Dataset Objects')
 
         # Only load these if we've been asked to
         if self.keep_maps_in_memory:
             # Load Map Values
             if os.path.exists(self.map_values_pickle):
-                self._maps = self.unpickle(self.map_values_pickle)
+                self._maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.map_values_pickle)]
                 self.update_pandda_size(tag='After Unpickling Raw Maps')
             if os.path.exists(self.z_map_values_pickle):
-                self._z_maps = self.unpickle(self.z_map_values_pickle)
+                self._z_maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.z_map_values_pickle)]
                 self.update_pandda_size(tag='After Unpickling Z-Maps')
             if os.path.exists(self.mod_z_map_values_pickle):
-                self._mod_z_maps = self.unpickle(self.mod_z_map_values_pickle)
+                self._mod_z_maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.mod_z_map_values_pickle)]
                 self.update_pandda_size(tag='After Unpickling Modified Z-Maps')
 
         # Load Statistical Maps
@@ -331,29 +331,26 @@ class multi_dataset_analyser(object):
         """Returns the bimodality map across the datasets"""
         return self._bimo_map
 
-    def get_raw_maps(self):
-        """Returns the raw electron density maps"""
-        return self._raw_maps
-    def get_maps(self, store=False):
+    def get_maps(self, store=True):
         """Returns maps for the used datasets - after scaling"""
         if (self._maps==[]) and os.path.exists(self.map_values_pickle):
-            if store: self._maps = self.unpickle(self.map_values_pickle)
-            else: return self.unpickle(self.map_values_pickle)
+            maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.map_values_pickle)]
+            if store: self._maps = maps
+            else: return maps
         return self._maps
-    def get_z_maps(self, store=False):
+    def get_z_maps(self, store=True):
         """Returns z-maps for the used datasets - loads from pickle if neccessary"""
         if (self._z_maps==[]) and os.path.exists(self.z_map_values_pickle):
-            if store: self._z_maps = self.unpickle(self.z_map_values_pickle)
-            else: return self.unpickle(self.z_map_values_pickle)
+            maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.z_map_values_pickle)]
+            if store: self._z_maps = maps
+            else: return maps
         return self._z_maps
-    def get_renormalised_z_maps(self):
-        """Returns the renormalised z-maps for the used datasets"""
-        return self._renorm_z_maps
-    def get_modified_z_maps(self, store=False):
+    def get_modified_z_maps(self, store=True):
         """Returns the post-processed, modified, z-maps for the used datasets"""
         if (self._mod_z_maps==[]) and os.path.exists(self.mod_z_map_values_pickle):
-            if store: self._mod_z_maps = self.unpickle(self.mod_z_map_values_pickle)
-            else: return self.unpickle(self.mod_z_map_values_pickle)
+            maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.mod_z_map_values_pickle)]
+            if store: self._mod_z_maps = maps
+            else: return maps
         return self._mod_z_maps
 
     def load_reference_dataset(self, ref_pdb, ref_mtz):
@@ -402,27 +399,30 @@ class multi_dataset_analyser(object):
 
         self.log('===================================>>>', True)
         self.log('Masking Resampled Grid (Global and Local Mask)', True)
+
         # Create a grid mask around each point
         self.get_reference_grid().show_summary()
         self.get_reference_grid().get_local_mask().show_summary()
         self.get_reference_grid().get_global_mask().show_summary()
 
         # Get the grid points that are not masked, and points in the buffer
+        grid_indexer = self.get_reference_grid().get_grid_indexer()
         resampled_points = self.get_reference_grid().get_resampled_grid_points()
-        buffer_mask      = self.get_reference_grid().get_buffer_zone_points()
-        global_mask      = self.get_reference_grid().get_global_mask_points()
+        buffer_mask_binary = self.get_reference_grid().get_buffer_mask_binary()
+        global_mask_binary = self.get_reference_grid().get_global_mask_binary()
+
+        self.log('===================================>>>')
+        self.log('Resampled Grid Size (3D): {!s}'.format(self.get_reference_grid().get_resampled_grid_size()))
+        self.log('Resampled Grid Size (1D): {!s}'.format(len(resampled_points)))
+        self.log('===================================>>>')
 
         # Remove points using the protein mask, and the mask around the edge of the grid
         masked_resampled_points_1 = resampled_points
-        self.log('===================================>>>')
-        self.log('Resampled Grid Size (3D): {!s}'.format(self.get_reference_grid().get_resampled_grid_size()))
-        self.log('Resampled Grid Size (1D): {!s}'.format(len(masked_resampled_points_1)))
-        self.log('===================================>>>')
         self.log('Filtering with Buffer Mask... (Edge of Cell)')
-        masked_resampled_points_2 = [p for p in masked_resampled_points_1 if p not in buffer_mask]
+        masked_resampled_points_2 = [p for p in masked_resampled_points_1 if buffer_mask_binary[grid_indexer(p)] == 0]
         self.log('Filtered Points: {!s}'.format(len(masked_resampled_points_2)))
         self.log('Filtering with Global Mask... (Protein)')
-        masked_resampled_points_3 = [p for p in masked_resampled_points_2 if p in global_mask]
+        masked_resampled_points_3 = [p for p in masked_resampled_points_2 if global_mask_binary[grid_indexer(p)] == 1]
         self.log('Filtered Points: {!s}'.format(len(masked_resampled_points_3)))
         masked_resampled_points = masked_resampled_points_3
 
@@ -572,15 +572,14 @@ class multi_dataset_analyser(object):
 
         self.log('\rDatasets Filtered.          ', True)
 
-    def extract_map_values(self, store_raw_maps=False):
+    def extract_map_values(self):
         """Extract map values for the filtered datasets (with scaling over the masked grid points)"""
 
         assert self.get_maps() == [], 'Maps list is not empty!'
 
-        # Get masked points (unsampled grid, outer mask only - max distance from protein)
+        # Get masked points and binary grid mask (unsampled grid, outer mask only - max distance from protein)
         masked_gps = self.get_reference_grid().get_global_mask().get_outer_mask()
-        # Get masked points (resampled grid, total mask - min+max distance from protein)
-        #masked_gps = self.get_reference_grid().get_masked_grid_points()
+        binary_mask = self.get_reference_grid().get_global_outer_mask_binary()
         # Translate between 3d grid point and 1d array index
         grid_indexer = self.get_reference_grid().get_grid_indexer()
 
@@ -605,21 +604,21 @@ class multi_dataset_analyser(object):
             # Extract the map values for the masked grid to normalise maps
             masked_map_values = [new_map_data[grid_indexer(gp)] for gp in masked_gps]
             # Calculate the mean and standard deviation of the masked map
-            new_map_mean = [numpy.mean(masked_map_values)]*len(new_map_data)
-            new_map_stdv = [numpy.std(masked_map_values)]*len(new_map_data)
+            new_map_mean = numpy.mean(masked_map_values)
+            new_map_stdv = numpy.std(masked_map_values)
 
             # Store them!
-            raw_map_means.append(new_map_mean[0])
-            raw_map_stdvs.append(new_map_stdv[0])
+            raw_map_means.append(new_map_mean)
+            raw_map_stdvs.append(new_map_stdv)
 
             # Normalise the Map Values (roughly equivalent to sigma scaling, except over a subset of the map)
-            norm_map_array = normalise_array_to_z_scores(input_array=numpy.array(new_map_data), element_means=new_map_mean, element_stds=new_map_stdv)
+            norm_map_array = normalise_array_to_z_scores(input_array=numpy.array(new_map_data), element_means=[new_map_mean]*len(new_map_data), element_stds=[new_map_stdv]*len(new_map_data), binary_mask=binary_mask)
+
+            # Convert to sparse vector (due to masking - lots of 0's)
+            norm_map_array_sparse = sparse.vector(len(new_map_data), dict([(i,v) for i,v in enumerate(norm_map_array) if binary_mask[i]==1]))
 
             # Append the dataset, the map values to common lists
-            self._maps.append(norm_map_array.tolist())
-            # Store the raw maps if required
-            if store_raw_maps:
-                self._raw_maps.append(new_map_data)
+            self._maps.append(norm_map_array_sparse)
 
         # Store the raw map means and stds for error spotting
         self.get_dataset_variation_summary().add_map_mean_observations(raw_map_means)
@@ -633,41 +632,32 @@ class multi_dataset_analyser(object):
     def calculate_map_statistics(self):
         """Take the sampled maps and calculate statistics for each grid point across the datasets"""
 
+        # Create statistics objects for each grid point
         self.log('===================================>>>', True)
         self.log('Calculating Statistics of Grid Points', True)
+        point_statistics = [basic_statistics(flex.double([map_data[i] for map_data in self.get_maps()])) for i in xrange(self.get_reference_grid().get_grid_size_1d())]
+        assert len(point_statistics) == self.get_reference_grid().get_grid_size_1d()
         self.log('===================================>>>', True)
 
-        print 'Combining maps into array...',; sys.stdout.flush()
-        map_array = numpy.array(self.get_maps())
-        print 'finished.'
-
-        # Create statistics objects for each grid point
-        point_statistics = [basic_statistics(flex.double(map_array[:,i].tolist())) for i in xrange(self.get_reference_grid().get_grid_size_1d())]
-        assert len(point_statistics) == self.get_reference_grid().get_grid_size_1d()
-
         # Calculate Mean Maps
-        #mean_map_vals = numpy.array([basic_statistics(flex.double(map_array[:,i].tolist())).mean for i in xrange(self.get_reference_grid().get_grid_size_1d())])
         mean_map_vals = numpy.array([ps.mean for ps in point_statistics])
         assert len(mean_map_vals) == self.get_reference_grid().get_grid_size_1d()
         mean_map_file = self.get_reference_dataset().get_mtz_filename().replace('.mtz','.mean.ccp4')
         self.write_array_to_map(output_file=mean_map_file, map_data=flex.double(mean_map_vals))
 
         # Calculate Stds Maps
-        #stds_map_vals = numpy.array([basic_statistics(flex.double(map_array[:,i].tolist())).biased_standard_deviation for i in xrange(self.get_reference_grid().get_grid_size_1d())])
         stds_map_vals = numpy.array([ps.biased_standard_deviation for ps in point_statistics])
         assert len(stds_map_vals) == self.get_reference_grid().get_grid_size_1d()
         stds_map_file = self.get_reference_dataset().get_mtz_filename().replace('.mtz','.stds.ccp4')
         self.write_array_to_map(output_file=stds_map_file, map_data=flex.double(stds_map_vals))
 
         # Calculate Skew Maps
-        #skew_map_vals = numpy.array([basic_statistics(flex.double(map_array[:,i].tolist())).skew for i in xrange(self.get_reference_grid().get_grid_size_1d())])
         skew_map_vals = numpy.array([ps.skew for ps in point_statistics])
         assert len(skew_map_vals) == self.get_reference_grid().get_grid_size_1d()
         skew_map_file = self.get_reference_dataset().get_mtz_filename().replace('.mtz','.skew.ccp4')
         self.write_array_to_map(output_file=skew_map_file, map_data=flex.double(skew_map_vals))
 
         # Calculate Kurtosis Maps
-        #kurt_map_vals = numpy.array([basic_statistics(flex.double(map_array[:,i].tolist())).kurtosis for i in xrange(self.get_reference_grid().get_grid_size_1d())])
         kurt_map_vals = numpy.array([ps.kurtosis for ps in point_statistics])
         assert len(kurt_map_vals) == self.get_reference_grid().get_grid_size_1d()
         kurt_map_file = self.get_reference_dataset().get_mtz_filename().replace('.mtz','.kurt.ccp4')
@@ -693,8 +683,7 @@ class multi_dataset_analyser(object):
 
         # Get masked points (unsampled grid, outer mask only - max distance from protein)
         masked_gps = self.get_reference_grid().get_global_mask().get_outer_mask()
-        # Get masked points (resampled grid, total mask - min+max distance from protein)
-        #masked_gps = self.get_reference_grid().get_masked_grid_points()
+        binary_mask = self.get_reference_grid().get_global_outer_mask_binary()
         # Translate between 3d grid point and 1d array index
         grid_indexer = self.get_reference_grid().get_grid_indexer()
 
@@ -710,21 +699,24 @@ class multi_dataset_analyser(object):
 
             # =====================================>>>
             # Create Map-MeanMap Maps
-            mean_diff_array = normalise_array_to_z_scores(input_array=numpy.array(map_data), element_means=self.get_mean_map(), element_stds=[1]*len(self.get_stds_map()))
+            mean_diff_array = normalise_array_to_z_scores(input_array=numpy.array(map_data.as_dense_vector()), element_means=self.get_mean_map(), element_stds=[1]*len(self.get_stds_map()), binary_mask=binary_mask)
             # Write map
             mean_diff_map_file = mtz.replace('.mtz','.mean_diff_values.ccp4')
             self.write_array_to_map(output_file=mean_diff_map_file, map_data=flex.double(mean_diff_array))
             # =====================================>>>
 
             # Create Z-scores
-            z_array = normalise_array_to_z_scores(input_array=numpy.array(map_data), element_means=self.get_mean_map(), element_stds=self.get_stds_map())
+            z_array = normalise_array_to_z_scores(input_array=numpy.array(map_data.as_dense_vector()), element_means=self.get_mean_map(), element_stds=self.get_stds_map(), binary_mask=binary_mask)
 
             # Write map
             z_map_file = mtz.replace('.mtz','.zvalues.ccp4')
             self.write_array_to_map(output_file=z_map_file, map_data=flex.double(z_array))
 
+            # Convert to sparse vector (due to masking - lots of 0's)
+            z_array_sparse = sparse.vector(len(z_array), dict([(i,v) for i,v in enumerate(z_array) if binary_mask[i]==1]))
+
             # Store data
-            self._z_maps.append(z_array.tolist())
+            self._z_maps.append(z_array_sparse)
 
             # Extract the z_values for the masked grid
             masked_z_values = [z_array[grid_indexer(gp)] for gp in masked_gps]
@@ -745,66 +737,14 @@ class multi_dataset_analyser(object):
         # No longer need maps - clear from memory after pickling
         if (not self.keep_maps_in_memory) and (self._maps):
             self.log('===================================>>>')
-            self.pickle(pickle_file=self.map_values_pickle, pickle_object=self.get_maps())
-            del self._maps
+            self.pickle(pickle_file=self.map_values_pickle, pickle_object=[m.as_dense_vector() for m in self.get_maps()])
             self._maps = []
             gc.collect()
 
-    def renormalise_z_maps(self):
-        """Renormalise the z_maps so that we have values that represent the variation relative to the rest of the dataset"""
-
-        assert self.get_renormalised_z_maps() == [], 'Normalised Z-Maps list is not empty!'
-
-        # Get masked points (unsampled grid, outer mask only - max distance from protein)
-        masked_gps = self.get_reference_grid().get_global_mask().get_outer_mask()
-        # Get masked points (resampled grid, total mask - min+max distance from protein)
-        #masked_gps = self.get_reference_grid().get_masked_grid_points()
-        # Translate between 3d grid point and 1d array index
-        grid_indexer = self.get_reference_grid().get_grid_indexer()
-
-        for d_num, map_data in enumerate(self.get_z_maps()):
-            self.log('===================================>>>', True)
-            self.log('Re-Normalising Dataset {!s}'.format(d_num+1), True)
-
-            pdb, mtz = self.get_used_files()[d_num]
-
-            # Extract the z_values for the masked grid
-            masked_z_values = [map_data[grid_indexer(gp)] for gp in masked_gps]
-
-            # Normalise by the values in the map
-            mean_z = [numpy.mean(masked_z_values)]*len(map_data)
-            stds_z = [numpy.std(masked_z_values)]*len(map_data)
-
-            # Create Z-scores
-            norm_z_array = normalise_array_to_z_scores(input_array=numpy.array(map_data), element_means=mean_z, element_stds=stds_z)
-
-            # Store data
-            self._renorm_z_maps.append(norm_z_array.tolist())
-
-            # Calculate stats for the map
-            z_stats = basic_statistics(flex.double(norm_z_array.tolist()))
-
-            # Write map
-            z_map_file = mtz.replace('.mtz','.renorm.zvalues.ccp4')
-            self.write_array_to_map(output_file=z_map_file, map_data=flex.double(norm_z_array))
-
-        self.update_pandda_size(tag='After Renormalising Z-Maps')
-
-    def post_process_z_maps(self, local_mask_function=None, renormalise=False):
+    def post_process_z_maps(self, local_mask_function=None):
         """Process the z_maps, looking for groups of high z-values"""
 
         assert self.get_modified_z_maps() == [], 'Modified Z-Maps list is not empty!'
-
-        # TODO REMOVE THIS ? ? ? TODO
-        print '===================================>>>'
-        if renormalise:
-            print 'Combining (renormalised) maps into array...',; sys.stdout.flush()
-            assert self.get_renormalised_z_maps() != [], 'No Re-normalised Maps!'
-            z_map_array = numpy.array(self.get_renormalised_z_maps())
-        else:
-            print 'Combining maps into array...',; sys.stdout.flush()
-            z_map_array = numpy.array(self.get_z_maps())
-        print 'finished.'
 
         # Get the size of the down-sampled grid
         resampled_grid_points = self.get_reference_grid().get_resampled_grid_points()
@@ -883,18 +823,20 @@ class multi_dataset_analyser(object):
         # No longer need maps - clear from memory after pickling
         if (not self.keep_maps_in_memory) and (self._z_maps):
             self.log('===================================>>>')
-            self.pickle(pickle_file=self.z_map_values_pickle, pickle_object=self.get_z_maps())
-            del self._z_maps
+            self.pickle(pickle_file=self.z_map_values_pickle, pickle_object=[m.as_dense_vector() for m in self.get_z_maps()])
             self._z_maps = []
             gc.collect()
 
     def cluster_modz_values(self, z_cutoff, cluster_cutoff, cluster_criterion='distance', cluster_metric='euclidean', cluster_method='average'):
-        """Finds all the points in the modified z-maps above z_cutoff, points will then be clustered into groups of radius cluster_cutoff angstroms"""
+        """Finds all the points in the modified z-maps above `z_cutoff`, points will then be clustered into groups of cutoff `cluster_cutoff` angstroms"""
 
         # Translate between grid coords and grid index
         grid_indexer = self.get_reference_grid().get_grid_indexer()
         # List of points to be returned
         all_dataset_clusters = {}
+
+        # Scale the cutoff (Angstroms) into grid units
+        grid_cluster_cutoff = cluster_cutoff/self.get_reference_grid().get_grid_spacing()
 
         # Iterate through the mod_z_maps, extract d_num, coord_num (grid_index), and mod_z_val
         for d_num, mz_map_data in enumerate(self.get_modified_z_maps()):
@@ -909,33 +851,33 @@ class multi_dataset_analyser(object):
                 map_val = mz_map_data[grid_indexer(gp)]
                 # Check if above cutoff
                 if map_val >= z_cutoff:
-                    # Get the cartesian coordinates of the grid point in the dataset's frame of reference
-                    rt_gp_cart = d_handler.transform_points_from_reference(flex.vec3_double([self.get_reference_grid().get_cart_points()[grid_indexer(gp)]]))
                     # Record point as tuple of (map_value, cartesian_coordinates, grid_point)
-                    d_selected_points.append((map_val, tuple(rt_gp_cart.as_double()), gp))
+                    d_selected_points.append((gp, map_val))
 
             if d_selected_points:
                 if len(d_selected_points) == 1:
                     # Only 1 point - 1 cluster!
-                    clust_dict = {1: [d_selected_points[0]]}
+                    clust_num = 1
+                    # Dictionary of results
+                    clust_dict = {1: d_selected_points}
                 else:
                     # Extract only the coordinates and form an array
-                    point_array = numpy.array([tup[1] for tup in d_selected_points])
+                    point_array = numpy.array([tup[0] for tup in d_selected_points])
                     # Cluster the extracted points
-                    clusts = list(fclusterdata(X=point_array, t=cluster_cutoff, criterion=cluster_criterion, metric=cluster_metric, method=cluster_method))
+                    clusts = list(fclusterdata(X=point_array, t=grid_cluster_cutoff, criterion=cluster_criterion, metric=cluster_metric, method=cluster_method))
 
                     # Number of clusters
                     clust_num = max(clusts)
-                    self.log('{!s} Clusters found.'.format(clust_num), True)
-
                     # Initialise dictionary to hold the points for the difference clusters
                     clust_dict = dict([(i+1, []) for i in range(clust_num)])
                     # Populate the clusters according to the clustering
                     [clust_dict[c_idx].append(d_selected_points[p_idx]) for p_idx, c_idx in enumerate(clusts)]
 
                 all_dataset_clusters[d_num] = clust_dict
+                self.log('{!s} Cluster(s) found.'.format(clust_num), True)
             else:
                 all_dataset_clusters[d_num] = None
+                self.log('No Clusters found.', True)
 
         return all_dataset_clusters
 
@@ -1026,8 +968,8 @@ class dataset_handler(object):
         new = copy.copy(self)
         new._fft_map = None
         new._basic_map = None
-        assert self._fft_map is not None, 'Theyve been deleted!'
-        assert self._basic_map is not None, 'Theyve been deleted!'
+        assert self._fft_map is not None, "They've been deleted!"
+        assert self._basic_map is not None, "They've been deleted!"
         return new
 
     def transform_points_from_reference(self, points):
@@ -1180,7 +1122,15 @@ class grid_handler(object):
         self._global_mask = None
 
         # Groups of points defined by the local mask
-        self._buffer_zone_points = None
+        self._buffer_mask_points = None
+        self._buffer_mask_binary = None
+
+        # Binary masks for the protein mask
+        self._total_mask_binary = None
+        self._outer_mask_binary = None
+        self._inner_mask_binary = None
+
+        # Group of points defined by sampling the grid regularly
         self._resampled_grid_points = None
         self._resampled_grid_size = None
 
@@ -1221,32 +1171,34 @@ class grid_handler(object):
         return flex.grid(self.get_grid_size())
 
     def set_local_mask(self, mask):
+        """Add local mask to the grid object"""
+
         self._local_mask = mask
         self.get_local_mask().show_summary()
+
+        grid_size = self.get_grid_size()
+        grid_jump = self.get_local_mask().get_grid_jump()
+        grid_buffer = self.get_local_mask().get_buffer_size()
+        grid_indexer = self.get_grid_indexer()
+
+        # Resample grid points
+        self._resampled_grid_points = [gp for gp in flex.nested_loop(grid_size) if not [1 for coord in gp if (coord%grid_jump != 0)]]
+        self._resampled_grid_size = tuple([int(1+(g-1)/grid_jump) for g in grid_size])
+        self._resampled_grid_spacing = grid_jump*self.get_grid_spacing()
+
+        # Create a buffer zone at the edge of the grid
+        self._buffer_mask_points = [gp for gp in flex.nested_loop(grid_size) if [1 for i_dim, coord in enumerate(gp) if (coord<grid_buffer or coord>(grid_size[i_dim]-1-grid_buffer))]]
+
+        # Create binary mask for the buffer zone
+        buffer_mask_binary = numpy.zeros(self.get_grid_size_1d(), int)
+        [buffer_mask_binary.put(grid_indexer(gp), 1) for gp in self._buffer_mask_points]
+        self._buffer_mask_binary = buffer_mask_binary.tolist()
+
     def get_local_mask(self):
         return self._local_mask
 
-    def set_global_mask(self, mask):
-        self._global_mask = mask
-        self.get_global_mask().show_summary()
-    def get_global_mask(self):
-        return self._global_mask
-
-    def set_masked_grid_points(self, masked_points):
-        self._masked_grid_points = masked_points
-    def get_masked_grid_points(self):
-        return self._masked_grid_points
-
     def get_resampled_grid_points(self):
         """Get a down-sampled list of grid points, based on the local mask used"""
-        if not self._resampled_grid_points:
-            # Local mask gives information about how frequently to sample
-            grid_jump = self.get_local_mask().get_grid_jump()
-            grid_size = self.get_grid_size()
-            # Points to sample at
-            self._resampled_grid_points = [gp for gp in flex.nested_loop(grid_size) if not [1 for coord in gp if (coord%grid_jump != 0)]]
-            self._resampled_grid_size = tuple([int(1+(g-1)/grid_jump) for g in grid_size])
-            self._resampled_grid_spacing = grid_jump*self.get_grid_spacing()
         return self._resampled_grid_points
     def get_resampled_grid_size(self):
         """Gets the size of the re-sampled grid"""
@@ -1254,6 +1206,54 @@ class grid_handler(object):
     def get_resampled_grid_spacing(self):
         """Gets the grid spacing for the re-sampled grid"""
         return self._resampled_grid_spacing
+
+    def get_buffer_mask_points(self):
+        """Get a list of points in the buffer zone of the map"""
+        return self._buffer_mask_points
+    def get_buffer_mask_binary(self):
+        """Get a binary mask for the buffer zone"""
+        return self._buffer_mask_binary
+
+    def set_global_mask(self, mask):
+        """Add a global mask to the grid object - This will create binary mask of the masked grid points"""
+
+        self._global_mask = mask
+        self.get_global_mask().show_summary()
+
+        # Create binary masks
+        grid_indexer = self.get_grid_indexer()
+
+        inner_mask_binary = numpy.zeros(self.get_grid_size_1d(), int)
+        [inner_mask_binary.put(grid_indexer(gp), 1) for gp in self.get_global_mask().get_inner_mask()]
+        self._inner_mask_binary = inner_mask_binary.tolist()
+
+        outer_mask_binary = numpy.zeros(self.get_grid_size_1d(), int)
+        [outer_mask_binary.put(grid_indexer(gp), 1) for gp in self.get_global_mask().get_outer_mask()]
+        self._outer_mask_binary = outer_mask_binary.tolist()
+
+        total_mask_binary = numpy.zeros(self.get_grid_size_1d(), int)
+        [total_mask_binary.put(grid_indexer(gp), 1) for gp in self.get_global_mask().get_grid_points()]
+        self._total_mask_binary = total_mask_binary.tolist()
+
+    def get_global_mask(self):
+        return self._global_mask
+
+    def get_global_mask_points(self):
+        """Mask the grid to a subset of points by distance cutoff from sites"""
+        return self.get_global_mask().get_grid_points()
+    def get_global_mask_binary(self):
+        """Get the binary mask for points in the global mask"""
+        return self._total_mask_binary
+
+    def get_global_outer_mask_binary(self):
+        return self._outer_mask_binary
+    def get_global_inner_mask_binary(self):
+        return self._inner_mask_binary
+
+    def set_masked_grid_points(self, masked_points):
+        self._masked_grid_points = masked_points
+    def get_masked_grid_points(self):
+        return self._masked_grid_points
 
     def show_summary(self):
         print '===================================>>>'
@@ -1298,27 +1298,6 @@ class grid_handler(object):
         print('Generating Global Mask')
         self._global_mask = global_mask(cart_sites=cart_sites, grid_spacing=self.get_grid_spacing(), distance_cutoff=distance_cutoff)
         self.get_global_mask().show_summary()
-
-    def get_buffer_zone_points(self):
-        """Get a list of points in the buffer zone of the map where the values cannot be calculated"""
-
-        if not self._buffer_zone_points:
-            # Local mask gives information about how big the buffer needs to be
-            buffer = self.get_local_mask().get_buffer_size()
-            grid_size = self.get_grid_size()
-            # Get which grid points are within the buffer zones
-            self._buffer_zone_points = [gp for gp in flex.nested_loop(grid_size) if [1 for i_dim, coord in enumerate(gp) if (coord<buffer or coord>(grid_size[i_dim]-1-buffer))]]
-
-        return self._buffer_zone_points
-
-    def get_global_mask_points(self):
-        """Mask the grid to a subset of points by distance cutoff from sites"""
-        return self.get_global_mask().get_grid_points()
-
-class point_cluster(object):
-    def __init__(self, cluster_object):
-        """Takes a cctbx cluster object and handles retrieval of information from it"""
-        pass
 
 class protein_mask(object):
     def __init__(self, cart_sites, grid_spacing, max_dist, min_dist=None):
