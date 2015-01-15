@@ -1,8 +1,8 @@
 import os, sys, glob, time
 import copy, resource, gc
-import numpy
 
 from scipy.cluster.hierarchy import fclusterdata
+import numpy
 
 import iotbx.pdb as pdb_reader
 import iotbx.map_tools as map_tools
@@ -37,7 +37,7 @@ def easy_directory(directory):
     return directory
 
 class multi_dataset_analyser(object):
-    def __init__(self, outdir='./', verbose=True, keep_maps_in_memory=False):
+    def __init__(self, outdir='./', verbose=True, keep_maps_in_memory=False, max_size=25):
         """Class for the processing of datasets from a fragment soaking campaign"""
 
         self.verbose = verbose
@@ -63,7 +63,7 @@ class multi_dataset_analyser(object):
 
         # Current and maximum sizes of the pandda in memory
         self._pandda_size = [('Zero',0)]
-        self._max_pandda_size = 25*1024**3
+        self._max_pandda_size = max_size*1024**3
 
         # ===============================================================================>
         # DATA AND MAPS STUFF
@@ -82,7 +82,12 @@ class multi_dataset_analyser(object):
         self._ref_grid = None
         self._ref_map = None
         # Dataset statistics
-        self._dataset_variation_summary = None
+        self._dataset_variation_summary = dataset_variation_summary()
+
+        # Average Structure (and masks)
+        self._mean_calpha_sites = None
+        self._residue_deviation_masks = None
+
         # Map Statistics
         self._mean_map = None
         self._stds_map = None
@@ -111,6 +116,8 @@ class multi_dataset_analyser(object):
         # Pickled Datasets
         self.used_files_pickle = os.path.join(self.pickledir, 'used_files.pickle')
         self.used_datasets_pickle = os.path.join(self.pickledir, 'used_datasets.pickle')
+        # Pickled Information
+        self.dataset_variation_pickle = os.path.join(self.pickledir, 'dataset_variation.pickle')
         # Pickled Maps
         self.map_values_pickle = os.path.join(self.pickledir, 'map_values.pickle')
         self.z_map_values_pickle = os.path.join(self.pickledir, 'z_map_values.pickle')
@@ -152,17 +159,27 @@ class multi_dataset_analyser(object):
             self._raw_datasets = self._datasets
             self.update_pandda_size(tag='After Unpickling Dataset Objects')
 
+        # Load the dataset summary object
+        if os.path.exists(self.dataset_variation_pickle):
+            self._dataset_variation_summary = self.unpickle(self.dataset_variation_pickle)
+
         # Only load these if we've been asked to
         if self.keep_maps_in_memory:
             # Load Map Values
             if os.path.exists(self.map_values_pickle):
-                self._maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.map_values_pickle)]
+                self.log('Unpickling Maps - this may take a while...', True)
+#                self._maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.map_values_pickle)]
+                self._maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.map_values_pickle)]
                 self.update_pandda_size(tag='After Unpickling Raw Maps')
             if os.path.exists(self.z_map_values_pickle):
-                self._z_maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.z_map_values_pickle)]
+                self.log('Unpickling Maps - this may take a while...', True)
+#                self._z_maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.z_map_values_pickle)]
+                self._z_maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.z_map_values_pickle)]
                 self.update_pandda_size(tag='After Unpickling Z-Maps')
             if os.path.exists(self.mod_z_map_values_pickle):
-                self._mod_z_maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.mod_z_map_values_pickle)]
+                self.log('Unpickling Maps - this may take a while...', True)
+#                self._mod_z_maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.mod_z_map_values_pickle)]
+                self._mod_z_maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.mod_z_map_values_pickle)]
                 self.update_pandda_size(tag='After Unpickling Modified Z-Maps')
 
         # Load Statistical Maps
@@ -201,13 +218,21 @@ class multi_dataset_analyser(object):
             self.pickle(pickle_file=self.used_datasets_pickle, pickle_object=[d.get_pickle_copy() for d in self.get_used_datasets()])
 
         self.log('===================================>>>')
+        self.log('Pickling Dataset Variation Summary')
+        if self._dataset_variation_summary:
+            self.pickle(pickle_file=self.dataset_variation_pickle, pickle_object=self.get_dataset_variation_summary())
+
+        self.log('===================================>>>')
         self.log('Pickling Map Values')
         if self._maps:
-            self.pickle(pickle_file=self.map_values_pickle, pickle_object=self.get_maps())
+#            self.pickle(pickle_file=self.map_values_pickle, pickle_object=self.get_maps())
+            self.pickle(pickle_file=self.map_values_pickle, pickle_object=[(m.size, dict(m)) for m in self.get_maps()])
         if self._z_maps:
-            self.pickle(pickle_file=self.z_map_values_pickle, pickle_object=self.get_z_maps())
+#            self.pickle(pickle_file=self.z_map_values_pickle, pickle_object=self.get_z_maps())
+            self.pickle(pickle_file=self.z_map_values_pickle, pickle_object=[(m.size, dict(m)) for m in self.get_z_maps()])
         if self._mod_z_maps:
-            self.pickle(pickle_file=self.mod_z_map_values_pickle, pickle_object=self.get_modified_z_maps())
+#            self.pickle(pickle_file=self.mod_z_map_values_pickle, pickle_object=self.get_modified_z_maps())
+            self.pickle(pickle_file=self.mod_z_map_values_pickle, pickle_object=[(m.size, dict(m)) for m in self.get_modified_z_maps()])
 
         self.log('===================================>>>')
         self.log('Pickling Statistical Maps')
@@ -315,6 +340,11 @@ class multi_dataset_analyser(object):
         """Returns the variation in different variables across the datasets"""
         return self._dataset_variation_summary
 
+    def get_calpha_average_sites(self):
+        return self._mean_calpha_sites
+    def get_calpha_deviation_masks(self):
+        return self._residue_deviation_masks
+
     def get_mean_map(self):
         """Returns the average map across the datasets"""
         return self._mean_map
@@ -331,24 +361,45 @@ class multi_dataset_analyser(object):
         """Returns the bimodality map across the datasets"""
         return self._bimo_map
 
+    def has_maps(self):
+        """Checks to see if the maps have been calculated - but does not load them if pickled"""
+        if self._maps!=[] or os.path.exists(self.map_values_pickle):
+            return True
+        return False
     def get_maps(self, store=True):
         """Returns maps for the used datasets - after scaling"""
         if (self._maps==[]) and os.path.exists(self.map_values_pickle):
-            maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.map_values_pickle)]
+            self.log('Unpickling Maps - this may take a while...', True)
+#            maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.map_values_pickle)]
+            maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.map_values_pickle)]
             if store: self._maps = maps
             else: return maps
         return self._maps
+    def has_z_maps(self):
+        """Checks to see if the maps have been calculated - but does not load them if pickled"""
+        if self._z_maps!=[] or os.path.exists(self.z_map_values_pickle):
+            return True
+        return False
     def get_z_maps(self, store=True):
         """Returns z-maps for the used datasets - loads from pickle if neccessary"""
         if (self._z_maps==[]) and os.path.exists(self.z_map_values_pickle):
-            maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.z_map_values_pickle)]
+            self.log('Unpickling Maps - this may take a while...', True)
+#            maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.z_map_values_pickle)]
+            maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.z_map_values_pickle)]
             if store: self._z_maps = maps
             else: return maps
         return self._z_maps
+    def has_modified_z_maps(self):
+        """Checks to see if the maps have been calculated - but does not load them if pickled"""
+        if self._mod_z_maps!=[] or os.path.exists(self.mod_z_map_values_pickle):
+            return True
+        return False
     def get_modified_z_maps(self, store=True):
         """Returns the post-processed, modified, z-maps for the used datasets"""
         if (self._mod_z_maps==[]) and os.path.exists(self.mod_z_map_values_pickle):
-            maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.mod_z_map_values_pickle)]
+            self.log('Unpickling Maps - this may take a while...', True)
+#            maps = [sparse.vector(len(m), dict([(i,v) for i,v in enumerate(m) if v])) for m in self.unpickle(self.mod_z_map_values_pickle)]
+            maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.mod_z_map_values_pickle)]
             if store: self._mod_z_maps = maps
             else: return maps
         return self._mod_z_maps
@@ -429,7 +480,7 @@ class multi_dataset_analyser(object):
         # Store points in the reference grid object
         self.get_reference_grid().set_masked_grid_points(masked_resampled_points)
 
-        # Write masked map
+        # Write masked map - TODO make this use the binary masks for speed
         binary_mask = [1 if gp in masked_resampled_points else 0 for gp in resampled_points]
         mask_map_file = self.get_reference_dataset().get_mtz_filename().replace('.mtz','.totalmask.ccp4')
         self.write_array_to_map(output_file = mask_map_file,
@@ -495,35 +546,58 @@ class multi_dataset_analyser(object):
 
         self.update_pandda_size(tag='After Loading Map Handlers')
 
+    def calculate_mean_structure_and_protein_masks(self, deviation_cutoff):
+        """Calculate the average of all of the structures, and create masks for each protein where residues deviate from the mean by more than `deviation_cutoff`"""
+
+        self.log('===================================>>>', True)
+        self.log('Calculating Mean Structure', True)
+        self.log('===================================>>>')
+
+        # TODO Make this reject points until consensus
+
+        # Pull all c-alpha sites for each structure
+        all_sites = numpy.array([d.transform_points_to_reference(d.get_calpha_sites()) for d in self.get_all_datasets()])
+        # Calculate the mean x,y,z for each c-alpha
+        mean_sites = numpy.mean(all_sites, axis=0)
+        # Differences from the mean
+        diff_sites = all_sites - mean_sites
+        # Euclidean norms of the distances moved
+        diff_norms = numpy.apply_along_axis(numpy.linalg.norm, axis=2, arr=diff_sites)
+
+        # Create a list of masks for large-moving c-alphas
+        residue_deviation_masks = []
+        # Iterate by dataset, masking if the deviation of the calpha in the dataset is more than `deviation_cutoff`
+        for calpha_shifts in diff_norms:
+            residue_deviation_masks.append([1 if shift > deviation_cutoff else 0 for shift in calpha_shifts])
+
+        # Save the masks
+        self._mean_calpha_sites = flex.vec3_double(mean_sites)
+        self._residue_deviation_masks = residue_deviation_masks
+
     def collect_dataset_variation_statistics(self):
         """Go through all of the datasets and calculate lots of different characteristics of the datasets for identifying odd datasets"""
 
         self.log('===================================>>>', True)
-        self.log('Calculating Dataset Statistics', True)
+        self.log('Calculating Crystal Variation Statistics', True)
         self.log('===================================>>>')
 
-        # Object to hold the results of comparing the different datasets
-        summary = dataset_variation_summary()
-
         self.log('Calculating Variation in Resolution')
-        summary.add_resolution_observations([d.get_fobs_miller_array().d_max_min() for d in self.get_all_datasets()])
+        self.get_dataset_variation_summary().add_resolutions_observations([d.get_fobs_miller_array().d_max_min() for d in self.get_all_datasets()])
 
         self.log('Calculating Variation in Unit Cell Size')
-        summary.add_cell_params_observations([d.get_fobs_miller_array().unit_cell().parameters() for d in self.get_all_datasets()])
+        self.get_dataset_variation_summary().add_cell_params_observations([d.get_fobs_miller_array().unit_cell().parameters() for d in self.get_all_datasets()])
 
         self.log('Calculating Variation in Unit Cell Volume')
-        summary.add_cell_volume_observations([d.get_fobs_miller_array().unit_cell().volume() for d in self.get_all_datasets()])
+        self.get_dataset_variation_summary().add_cell_volumes_observations([d.get_fobs_miller_array().unit_cell().volume() for d in self.get_all_datasets()])
 
         self.log('Calculating Variation in R-work, R-free')
-        summary.add_rwork_rfree_observations([(d.get_pdb_input().get_r_rfree_sigma().r_work, d.get_pdb_input().get_r_rfree_sigma().r_free) for d in self.get_all_datasets()])
+        self.get_dataset_variation_summary().add_rwork_rfrees_observations([(d.get_pdb_input().get_r_rfree_sigma().r_work, d.get_pdb_input().get_r_rfree_sigma().r_free) for d in self.get_all_datasets()])
+
+        self.log('Calculating Variation in RMSD (Calphas) to Reference Structure')
+        self.get_dataset_variation_summary().add_rmsds_observations([d.get_calpha_sites().rms_difference(d.transform_points_from_reference(self.get_calpha_average_sites())) for d in self.get_all_datasets()])
 
         self.log('Calculating Variation in Correlations between Diffraction Data')
         self.log('NOT YET')
-
-        self.log('Calculating Variation in RMSD (Calphas) to Reference Structure')
-        summary.add_rmsd_observations([d.get_calpha_sites().rms_difference(d.transform_points_from_reference(self.get_reference_dataset().get_calpha_sites())) for d in self.get_all_datasets()])
-
-        self._dataset_variation_summary = summary
 
     def filter_datasets(self):
         """Iterate through the datasets, and filter them by quality"""
@@ -583,9 +657,7 @@ class multi_dataset_analyser(object):
         # Translate between 3d grid point and 1d array index
         grid_indexer = self.get_reference_grid().get_grid_indexer()
 
-        # Store the un-normalised map means and stds
-        raw_map_means = []
-        raw_map_stdvs = []
+        map_stats = []
 
         for d_num, new_dataset in enumerate(self.get_used_datasets()):
             # Retrieve associated files
@@ -607,22 +679,19 @@ class multi_dataset_analyser(object):
             new_map_mean = numpy.mean(masked_map_values)
             new_map_stdv = numpy.std(masked_map_values)
 
-            # Store them!
-            raw_map_means.append(new_map_mean)
-            raw_map_stdvs.append(new_map_stdv)
-
             # Normalise the Map Values (roughly equivalent to sigma scaling, except over a subset of the map)
             norm_map_array = normalise_array_to_z_scores(input_array=numpy.array(new_map_data), element_means=[new_map_mean]*len(new_map_data), element_stds=[new_map_stdv]*len(new_map_data), binary_mask=binary_mask)
 
             # Convert to sparse vector (due to masking - lots of 0's)
             norm_map_array_sparse = sparse.vector(len(new_map_data), dict([(i,v) for i,v in enumerate(norm_map_array) if binary_mask[i]==1]))
-
             # Append the dataset, the map values to common lists
             self._maps.append(norm_map_array_sparse)
 
-        # Store the raw map means and stds for error spotting
-        self.get_dataset_variation_summary().add_map_mean_observations(raw_map_means)
-        self.get_dataset_variation_summary().add_map_stds_observations(raw_map_stdvs)
+            # Calculate stats for the map
+            map_stats.append(basic_statistics(flex.double(masked_map_values)))
+
+#        # Store the raw map stats for error spotting
+#        self.get_dataset_variation_summary().add_map_stats(map_stats)
 
         self.log('===================================>>>', True)
         self.log('Maps Values Loaded: {!s} Datasets'.format(len(self.get_used_files())), True)
@@ -687,9 +756,7 @@ class multi_dataset_analyser(object):
         # Translate between 3d grid point and 1d array index
         grid_indexer = self.get_reference_grid().get_grid_indexer()
 
-        all_z_stats = []
-        z_map_means = []
-        z_map_stdvs = []
+        z_map_stats = []
 
         for d_num, map_data in enumerate(self.get_maps()):
             self.log('===================================>>>', True)
@@ -714,30 +781,22 @@ class multi_dataset_analyser(object):
 
             # Convert to sparse vector (due to masking - lots of 0's)
             z_array_sparse = sparse.vector(len(z_array), dict([(i,v) for i,v in enumerate(z_array) if binary_mask[i]==1]))
-
             # Store data
             self._z_maps.append(z_array_sparse)
 
             # Extract the z_values for the masked grid
             masked_z_values = [z_array[grid_indexer(gp)] for gp in masked_gps]
-
             # Calculate stats for the map
-            z_stats = basic_statistics(flex.double(masked_z_values))
+            z_map_stats.append(basic_statistics(flex.double(masked_z_values)))
 
-            # Append to lists
-            all_z_stats.append(z_stats)
-            z_map_means.append(numpy.mean(masked_z_values))
-            z_map_stdvs.append(numpy.std(masked_z_values))
-
-        # Add to dataset summary
-        self.get_dataset_variation_summary().add_z_map_mean_observations(z_map_means)
-        self.get_dataset_variation_summary().add_z_map_stds_observations(z_map_stdvs)
-        self.get_dataset_variation_summary().add_z_stats(all_z_stats)
+#        # Store the z map stats for error spotting
+#        self.get_dataset_variation_summary().add_z_map_stats(z_map_stats)
 
         # No longer need maps - clear from memory after pickling
         if (not self.keep_maps_in_memory) and (self._maps):
             self.log('===================================>>>')
-            self.pickle(pickle_file=self.map_values_pickle, pickle_object=[m.as_dense_vector() for m in self.get_maps()])
+#            self.pickle(pickle_file=self.map_values_pickle, pickle_object=[m.as_dense_vector() for m in self.get_maps()])
+            self.pickle(pickle_file=self.map_values_pickle, pickle_object=[(m.size, dict(m)) for m in self.get_maps()])
             self._maps = []
             gc.collect()
 
@@ -798,8 +857,11 @@ class multi_dataset_analyser(object):
                 # Add to new map array
                 mod_z_map_data[grid_indexer(gp)] = mod_z_val
 
+            # Convert to sparse vector (due to masking - lots of 0's)
+            mod_z_map_data_sparse = sparse.vector(len(mod_z_map_data), dict([(i,v) for i,v in enumerate(mod_z_map_data) if v != 0]))
+
             # Append to list of maps
-            self._mod_z_maps.append(mod_z_map_data)
+            self._mod_z_maps.append(mod_z_map_data_sparse)
 
             pdb, mtz = self.get_used_files()[d_num]
 
@@ -823,7 +885,8 @@ class multi_dataset_analyser(object):
         # No longer need maps - clear from memory after pickling
         if (not self.keep_maps_in_memory) and (self._z_maps):
             self.log('===================================>>>')
-            self.pickle(pickle_file=self.z_map_values_pickle, pickle_object=[m.as_dense_vector() for m in self.get_z_maps()])
+#            self.pickle(pickle_file=self.z_map_values_pickle, pickle_object=[m.as_dense_vector() for m in self.get_z_maps()])
+            self.pickle(pickle_file=self.z_map_values_pickle, pickle_object=[(m.size, dict(m)) for m in self.get_z_maps()])
             self._z_maps = []
             gc.collect()
 
@@ -855,6 +918,8 @@ class multi_dataset_analyser(object):
                     d_selected_points.append((gp, map_val))
 
             if d_selected_points:
+                self.log('Clustering {!s} Point(s).'.format(len(d_selected_points)), True)
+                # Points found for this cluster!
                 if len(d_selected_points) == 1:
                     # Only 1 point - 1 cluster!
                     clust_num = 1
@@ -963,13 +1028,13 @@ class dataset_handler(object):
 
     def get_pickle_copy(self):
         """Get copy of self that can be pickled - some cctbx objects cannot be pickled..."""
-        assert self._fft_map is not None, 'No Things exist!'
-        assert self._basic_map is not None, 'No Things exist!'
+#        assert self._fft_map is not None, 'No Things exist!'
+#        assert self._basic_map is not None, 'No Things exist!'
         new = copy.copy(self)
         new._fft_map = None
         new._basic_map = None
-        assert self._fft_map is not None, "They've been deleted!"
-        assert self._basic_map is not None, "They've been deleted!"
+#        assert self._fft_map is not None, "They've been deleted!"
+#        assert self._basic_map is not None, "They've been deleted!"
         return new
 
     def transform_points_from_reference(self, points):
@@ -1021,12 +1086,15 @@ class dataset_variation_summary(object):
         self._r_pairs = []
         self._rmsds = []
 
-    def add_resolution_observations(self, rslns):
+        self._stats = []
+        self._z_stats = []
+
+    def add_resolutions_observations(self, rslns):
         """Add (low, high) resolution pairs"""
         self._resolution_pairs = rslns
     def get_resolutions(self):
         return self._resolution_pairs
-    def get_resolution_mean_and_sd(self):
+    def get_resolutions_mean_and_sd(self):
         """Return ((mean_low, sd_low), (mean_high, sd_high)) resolution pair"""
         return [(numpy.mean([r[i] for r in self._resolution_pairs]), numpy.std([r[i] for r in self._resolution_pairs])) for i in [0,1]]
 
@@ -1038,67 +1106,41 @@ class dataset_variation_summary(object):
     def get_cell_params_mean_and_sd(self):
         return zip([numpy.mean([p[i] for p in self._cell_params]) for i in range(6)], [numpy.std([p[i] for p in self._cell_params]) for i in range(6)])
 
-    def add_cell_volume_observations(self, vols):
+    def add_cell_volumes_observations(self, vols):
         """Add volume observations"""
         self._cell_vols = vols
     def get_cell_volumes(self):
         return self._cell_vols
-    def get_cell_volume_mean_and_sd(self):
+    def get_cell_volumes_mean_and_sd(self):
         return (numpy.mean(self._cell_vols), numpy.std(self._cell_vols))
 
-    def add_rwork_rfree_observations(self, rpairs):
+    def add_rwork_rfrees_observations(self, rpairs):
         """Add (R-work, R-free) pairs"""
         self._r_pairs = rpairs
     def get_rwork_rfrees(self):
         return self._r_pairs
-    def get_rwork_rfree_mean_and_sd(self):
+    def get_rwork_rfrees_mean_and_sd(self):
         return [(numpy.mean([r[i] for r in self._r_pairs]), numpy.std([r[i] for r in self._r_pairs])) for i in [0,1]]
 
-    def add_rmsd_observations(self, rmsds):
+    def add_rmsds_observations(self, rmsds):
         """Add rmsds of models to reference"""
         self._rmsds = rmsds
     def get_rmsds(self):
         return self._rmsds
-    def get_rmsd_mean_and_sd(self):
+    def get_rmsds_mean_and_sd(self):
         return (numpy.mean(self._rmsds), numpy.std(self._rmsds))
 
-    def add_map_mean_observations(self, means):
-        """Add means of the raw map values"""
-        self._map_means = means
-    def get_map_means(self):
-        return self._map_means
-    def get_map_means_mean_and_sd(self):
-        return (numpy.mean(self._map_means), numpy.std(self._map_means))
-
-    def add_map_stds_observations(self, stds):
-        """Add stds of the raw map values"""
-        self._map_stds = stds
-    def get_map_stds(self):
-        return self._map_stds
-    def get_map_stds_mean_and_sd(self):
-        return (numpy.mean(self._map_stds), numpy.std(self._map_stds))
-
-    def add_z_map_mean_observations(self, z_means):
-        """Add means of the z-map values"""
-        self._z_map_means = z_means
-    def get_z_map_means(self):
-        return self._z_map_means
-    def get_z_map_means_mean_and_sd(self):
-        return (numpy.mean(self._z_map_means), numpy.std(self._z_map_means))
-
-    def add_z_map_stds_observations(self, z_stds):
-        """Add stds of the z-map values"""
-        self._z_map_stds = z_stds
-    def get_z_map_stds(self):
-        return self._z_map_stds
-    def get_z_map_stds_mean_and_sd(self):
-        return (numpy.mean(self._z_map_stds), numpy.std(self._z_map_stds))
-
-    def add_z_stats(self, z_stats):
-        """Add statistics objects for all of the z_maps"""
-        self._z_stats = z_stats
-    def get_z_stats(self):
-        return self._z_stats
+#    def add_map_stats(self, stats):
+#        """Add statistics objects for all of the z_maps"""
+#        self._stats = stats
+#    def get_map_stats(self):
+#        return self._stats
+#
+#    def add_z_map_stats(self, z_stats):
+#        """Add statistics objects for all of the z_maps"""
+#        self._z_stats = z_stats
+#    def get_z_stats(self):
+#        return self._z_stats
 
 class grid_handler(object):
     def __init__(self, verbose=True):
