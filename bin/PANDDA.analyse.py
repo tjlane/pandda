@@ -106,24 +106,29 @@ if pandda.get_reference_grid().get_masked_grid_points() is None:
 # Read in all of the files
 # Scale and align maps to reference
 # TODO Revisit Scaling
+# TODO Might be able/better to do this before creating the grid?
 # ============================================================================>
 
-if not (pandda.get_used_files() and pandda.get_used_datasets()):
+#if not (pandda.get_used_files() and pandda.get_used_datasets()):
+if not pandda.get_all_datasets():
+#if not pandda.get_dataset_masks().has_mask('rejected'):
     pandda.add_input_files(raw_file_pairs)
     pandda.load_input_datasets()
-    pandda.scale_and_align_datasets()
+    pandda.scale_datasets()
+    pandda.align_datasets()
 
 # This always needs to be done, even if the objects are retrieved from a pickle
 # TODO Make these load dynamically...
-if not pandda.has_maps():
+if not (pandda.has_maps() and pandda.get_dataset_masks().has_mask('rejected')):
     pandda.load_map_handlers()
 
 # Analyses the crystallographic and structural variability of the datasets
 pandda.calculate_mean_structure_and_protein_masks(deviation_cutoff=0.5)
-pandda.collect_dataset_variation_statistics()
+pandda.collect_dataset_summary_statistics()
 
 # Filters and Clusters the datasets using the information gathered above...
-if not (pandda.get_used_files() and pandda.get_used_datasets()):
+#if not (pandda.get_used_files() and pandda.get_used_datasets()):
+if not pandda.get_dataset_masks().has_mask('rejected'):
     pandda.filter_datasets()
 
 if not pandda.has_maps():
@@ -162,15 +167,7 @@ pandda.update_pandda_size(tag='After Processing')
 
 # ============================================================================>
 #####
-# SUMMARIES ------------------------------>>>
-#####
-# ============================================================================>
-
-# TODO Write Summaries to be written the log/output file...
-
-# ============================================================================>
-#####
-# FINISHED ------------------------------>>>
+# MANUAL ANALYSES - TO BE INCORPORATED ------------------------------>>>
 #####
 # ============================================================================>
 
@@ -185,6 +182,7 @@ min_cluster_size = 2
 z_cutoff = 3
 # Cutoff for separation of clusters (sqrt((2x)**2 + (2y)**2 + (2z)**2))
 cluster_cutoff = 1.5 * numpy.sqrt(3*4*pandda.get_reference_grid().get_grid_spacing()**2)
+cluster_cutoff = 5
 # Clustering Methods
 cluster_criterion='distance'
 cluster_metric='euclidean'
@@ -201,8 +199,8 @@ output_cluster_summ_file = os.path.join(input_dir, 'cluster_individual_summaries
 output_cluster_hits_results = []
 output_cluster_hits_file = os.path.join(input_dir, 'cluster_roc_results.csv')
 
-dnum_to_xtal_dict = dict([(i, file_pair[0][84:88]) for i, file_pair in enumerate(pandda.get_used_files())])
-xtal_to_dnum_dict = dict([(file_pair[0][84:88], i) for i, file_pair in enumerate(pandda.get_used_files())])
+dnum_to_xtal_dict = dict([(i, file_pair[0][84:88]) for i, file_pair in enumerate(pandda.get_all_files())])
+xtal_to_dnum_dict = dict([(file_pair[0][84:88], i) for i, file_pair in enumerate(pandda.get_all_files())])
 solution_file = os.path.join(input_dir, 'BAZ2BA.summary')
 solutions = [line.strip().split(', ') for line in open(solution_file, 'r').readlines()]
 
@@ -237,7 +235,7 @@ if 1:
     print('===================================>>>')
     print('Clustering Cutoff: {!s}'.format(cluster_cutoff))
 
-    cluster_num = [(k, dnum_to_xtal_dict[k], len(hits[k])) for k in hits.keys() if hits[k]]
+    cluster_num = [(k, dnum_to_xtal_dict[k], len(hits[k])) for k in sorted(hits.keys()) if hits[k]]
     print('Total Datasets with Clusters: {!s}'.format(len(cluster_num)))
     cluster_total = sum([a[2] for a in cluster_num])
     print('Total Clusters: {!s}'.format(cluster_total))
@@ -247,6 +245,16 @@ if 1:
     # XXX Pulling out cluster nums for each dataset
     output_cluster_nums_results = cluster_num
     # XXX
+
+# ============================================================================>
+#####
+# SUMMARIES ------------------------------>>>
+#####
+# ============================================================================>
+
+# TODO Write Summaries to be written the log/output file...
+
+pandda.write_analysis_summary(output_file=None)
 
 # ============================================================================>
 
@@ -517,13 +525,15 @@ if 0:
     print('===================================>>>')
     print('Writing Dataset Crystal Summaries')
 
-    data_summary = pandda.get_dataset_variation_summary()
+    data_summary = pandda.get_dataset_summary()
 
     with open(os.path.join(analyses_dir,'dataset_xtal_summary.csv'), 'w') as fh:
-        fh.write('res_low, res_high, a, b, c, alpha, beta, gamma, cell volume, rmsd to reference structure\n')
+        fh.write('res_low, res_high, a, b, c, alpha, beta, gamma, cell volume, rmsd to mean, rfree, rwork\n')
         # Write out parameters for each dataset
         for d_num in range(203):
-            out_list = list(data_summary._resolution_pairs[d_num]) + list(data_summary._cell_params[d_num]) + [data_summary._cell_vols[d_num], data_summary._rmsds[d_num]]
+            out_list = list(data_summary.data['resolution'][d_num]) + list(data_summary.data['cell_params'][d_num]) + \
+                                [data_summary.data['cell_volume'][d_num], data_summary.data['rmsd_to_mean'][d_num]] + \
+                                list(data_summary.data['rfree_rwork'][d_num])
             out_line = ', '.join(map(str,out_list)) + '\n'
             fh.write(out_line)
 
@@ -533,7 +543,7 @@ if 0:
     print('===================================>>>')
     print('Writing Dataset Map Summaries')
 
-    data_summary = pandda.get_dataset_variation_summary()
+    data_summary = pandda.get_dataset_summary()
 
     with open(os.path.join(analyses_dir,'dataset_map_summary.csv'), 'w') as fh:
         fh.write('headers\n')
