@@ -1,7 +1,24 @@
 import os, sys, glob, time
 import numpy
 
-from PANDDAs.Main import multi_dataset_analyser, spherical_mask, protein_mask
+from PANDDAs.Parser import build_pandda_parser
+from PANDDAs.Main import multi_dataset_analyser, spherical_mask, atomic_mask
+
+# ============================================================================>
+#####
+# Parse Args
+#####
+# ============================================================================>
+
+pandda_arg_parser = build_pandda_parser()
+pandda_args = pandda_arg_parser.parse_args(['--data-dirs','/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak/ProcessedFragmentSoak/BAZ2BA-*/1-apo',
+                                                '--outdir','/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak/pandda_arg_test',
+                                                '--pdb-style','apo-BAZ2BA-*-refmac.pdb',
+                                                '--ref-pdb','/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak/reference.pdb',
+                                                '--ref-mtz','/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak/reference.mtz',
+                                                '--cpus', '6', '--verbose'])
+
+print pandda_args.__dict__
 
 # ============================================================================>
 #####
@@ -9,9 +26,9 @@ from PANDDAs.Main import multi_dataset_analyser, spherical_mask, protein_mask
 #####
 # ============================================================================>
 
-input_dir = '/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak'
-ref_pdb = os.path.join(input_dir,'reference.pdb')
-ref_mtz = os.path.join(input_dir,'reference.mtz')
+#input_dir = '/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak'
+#ref_pdb = os.path.join(input_dir,'reference.pdb')
+#ref_mtz = os.path.join(input_dir,'reference.mtz')
 
 # ============================================================================>
 #####
@@ -19,22 +36,22 @@ ref_mtz = os.path.join(input_dir,'reference.mtz')
 #####
 # ============================================================================>
 
-raw_pdbs = sorted(glob.glob(os.path.join(input_dir,'ProcessedFragmentSoak/BAZ2BA-*/1-apo/apo-BAZ2BA-*-refmac.pdb')))
-raw_file_pairs = []
-
-for pdb in raw_pdbs:
-    mtz = pdb.replace('.pdb','.mtz')
-    if os.path.exists(mtz):
-        raw_file_pairs.append((pdb,mtz))
+#raw_pdbs = sorted(glob.glob(os.path.join(input_dir,'ProcessedFragmentSoak/BAZ2BA-*/1-apo/apo-BAZ2BA-*-refmac.pdb')))
+#raw_file_pairs = []
+#
+#for pdb in raw_pdbs:
+#    mtz = pdb.replace('.pdb','.mtz')
+#    if os.path.exists(mtz):
+#        raw_file_pairs.append((pdb,mtz))
 
 #raw_file_pairs = raw_file_pairs[0:5]
 
-if not raw_file_pairs: raise SystemExit('No Files Found!')
+#if not raw_file_pairs: raise SystemExit('No Files Found!')
 
-num_raw_datasets = len(raw_file_pairs)
-file_pairs = []
+#num_raw_datasets = len(raw_file_pairs)
+#file_pairs = []
 
-print 'Number of Datasets: ', num_raw_datasets
+#print 'Number of Datasets: ', num_raw_datasets
 
 # ============================================================================>
 #####
@@ -45,22 +62,53 @@ print 'Number of Datasets: ', num_raw_datasets
 # TODO Change the way the datasets are scaled
 # TODO Choose the resolution limit better
 
-pandda = multi_dataset_analyser(outdir=input_dir, keep_maps_in_memory=False)
+pandda = multi_dataset_analyser(pandda_args)
+
 pandda.set_map_type(map_type='2mFo-DFc')
 pandda.set_map_scaling(scaling='none')
 pandda.set_cut_resolution(d_min=2)
 pandda.set_border_padding(6)
 
-# ============================================================================>
-#####
-# Set Reference Dataset
-#####
-# Select the reference dataset
-# TODO Choose the reference dataset better
-# ============================================================================>
+if not pandda.get_all_datasets():
 
-pandda.load_reference_dataset(ref_pdb=ref_pdb, ref_mtz=ref_mtz)
-pandda.load_reference_map_handler()
+    # Build and load list of fragment screen datasets
+    input_files = pandda.build_input_list()
+    pandda.add_new_files(input_files)
+    pandda.load_new_datasets()
+    pandda.collect_dataset_summary_statistics()
+
+    # ============================================================================>
+    #####
+    # Set Reference Dataset
+    #####
+    # Select the reference dataset
+    # ============================================================================>
+
+    if not pandda.get_reference_dataset():
+        # Select the reference dataset
+        ref_pdb, ref_mtz = pandda.select_reference_dataset()
+        # Load the reference dataset
+        pandda.load_reference_dataset(ref_pdb=ref_pdb, ref_mtz=ref_mtz)
+
+    # ============================================================================>
+    #####
+    # Scale, Align and Filter All Data
+    #####
+    # Read in all of the files
+    # Scale and align maps to reference
+    # TODO Revisit Scaling
+    # ============================================================================>
+
+    # Scale and align all of the datasets to the reference
+    pandda.scale_datasets()
+    pandda.align_datasets()
+
+# Analyses the crystallographic and structural variability of the datasets
+pandda.calculate_mean_structure_and_protein_masks(deviation_cutoff=0.5)
+
+# Filters and Clusters the datasets using the information gathered above...
+if not pandda.get_dataset_masks().has_mask('rejected'):
+    pandda.filter_datasets()
 
 # ============================================================================>
 #####
@@ -73,8 +121,6 @@ pandda.load_reference_map_handler()
 
 if pandda.get_reference_grid() is None:
     pandda.create_reference_grid(res_factor=0.25, include_origin=True, buffer=pandda.get_border_padding())
-
-pandda.extract_reference_map_values()
 
 # ============================================================================>
 #####
@@ -93,7 +139,7 @@ if pandda.get_reference_grid().get_local_mask() is None:
 if pandda.get_reference_grid().get_global_mask() is None:
     print('===================================>>>')
     print('Generating Global Mask')
-    global_mask = protein_mask(cart_sites=pandda.get_reference_dataset().get_backbone_sites(), grid_spacing=pandda.get_reference_grid().get_grid_spacing(), max_dist=pandda.get_border_padding(), min_dist=1.5)
+    global_mask = atomic_mask(cart_sites=pandda.get_reference_dataset().get_backbone_sites(), grid_spacing=pandda.get_reference_grid().get_grid_spacing(), max_dist=pandda.get_border_padding(), min_dist=1.5)
     pandda.get_reference_grid().set_global_mask(global_mask)
 
 if pandda.get_reference_grid().get_masked_grid_points() is None:
@@ -101,35 +147,19 @@ if pandda.get_reference_grid().get_masked_grid_points() is None:
 
 # ============================================================================>
 #####
-# Load, Scale and Filter All Data
+# Local Map Handler Objects and Extract Map Values
 #####
-# Read in all of the files
-# Scale and align maps to reference
-# TODO Revisit Scaling
-# TODO Might be able/better to do this before creating the grid?
 # ============================================================================>
 
-#if not (pandda.get_used_files() and pandda.get_used_datasets()):
-if not pandda.get_all_datasets():
-#if not pandda.get_dataset_masks().has_mask('rejected'):
-    pandda.add_input_files(raw_file_pairs)
-    pandda.load_input_datasets()
-    pandda.scale_datasets()
-    pandda.align_datasets()
+pandda.load_reference_map_handler()
+pandda.extract_reference_map_values()
 
 # This always needs to be done, even if the objects are retrieved from a pickle
 # TODO Make these load dynamically...
-if not (pandda.has_maps() and pandda.get_dataset_masks().has_mask('rejected')):
+if not pandda.has_maps():
     pandda.load_map_handlers()
 
-# Analyses the crystallographic and structural variability of the datasets
-pandda.calculate_mean_structure_and_protein_masks(deviation_cutoff=0.5)
-pandda.collect_dataset_summary_statistics()
-
-# Filters and Clusters the datasets using the information gathered above...
-#if not (pandda.get_used_files() and pandda.get_used_datasets()):
-if not pandda.get_dataset_masks().has_mask('rejected'):
-    pandda.filter_datasets()
+pandda.pickle_the_pandda()
 
 if not pandda.has_maps():
     pandda.extract_map_values()
@@ -191,17 +221,17 @@ cluster_method='average'
 max_peak_dist = 5
 
 output_cluster_nums_results = []
-output_cluster_nums_file = os.path.join(input_dir, 'cluster_per_dataset.csv')
+output_cluster_nums_file = os.path.join(pandda.output_handler.get_dir('manual_analyses'), 'cluster_per_dataset.csv')
 
 output_cluster_summ_results = []
-output_cluster_summ_file = os.path.join(input_dir, 'cluster_individual_summaries.csv')
+output_cluster_summ_file = os.path.join(pandda.output_handler.get_dir('manual_analyses'), 'cluster_individual_summaries.csv')
 
 output_cluster_hits_results = []
-output_cluster_hits_file = os.path.join(input_dir, 'cluster_roc_results.csv')
+output_cluster_hits_file = os.path.join(pandda.output_handler.get_dir('manual_analyses'), 'cluster_roc_results.csv')
 
-dnum_to_xtal_dict = dict([(i, file_pair[0][84:88]) for i, file_pair in enumerate(pandda.get_all_files())])
-xtal_to_dnum_dict = dict([(file_pair[0][84:88], i) for i, file_pair in enumerate(pandda.get_all_files())])
-solution_file = os.path.join(input_dir, 'BAZ2BA.summary')
+dnum_to_xtal_dict = dict([(i, d.get_pdb_filename()[84:88]) for i, d in enumerate(pandda.get_all_datasets())])
+xtal_to_dnum_dict = dict([(d.get_pdb_filename()[84:88], i) for i, d in enumerate(pandda.get_all_datasets())])
+solution_file = os.path.join(pandda.output_handler.get_dir('root'), 'correct_hits.summary')
 solutions = [line.strip().split(', ') for line in open(solution_file, 'r').readlines()]
 
 correct_ligands = {}
@@ -218,8 +248,7 @@ correct_ligands = {}
 # TODO Create a `hit processor` class
 # ============================================================================>
 
-initial_results_dir = os.path.join(pandda.outdir, 'initial_hits')
-if not os.path.exists(initial_results_dir): os.mkdir(initial_results_dir)
+initial_results_dir = pandda.output_handler.get_dir('initial_hits')
 
 # ============================================================================>
 
@@ -301,8 +330,8 @@ if 1:
         hit_subdir = os.path.join(initial_results_dir, 'Dataset-{:04}'.format(d_num))
         if not os.path.exists(hit_subdir):
             os.mkdir(hit_subdir)
-            os.symlink(pandda.get_used_files()[d_num][0], os.path.join(hit_subdir, 'initial_model.pdb'.format(d_num)))
-            os.symlink(pandda.get_used_files()[d_num][1], os.path.join(hit_subdir, 'initial_model.mtz'.format(d_num)))
+            os.symlink(pandda.get_dataset(d_num).get_pdb_filename(), os.path.join(hit_subdir, 'initial_model.pdb'.format(d_num)))
+            os.symlink(pandda.get_dataset(d_num).get_mtz_filename(), os.path.join(hit_subdir, 'initial_model.mtz'.format(d_num)))
 
         # Translate GP to array index
         grid_indexer = pandda.get_reference_grid().get_grid_indexer()
@@ -499,8 +528,7 @@ if 0:
 # Manual Analyses - These only need processing once
 # ======================================>
 # ============================================================================>
-analyses_dir = os.path.join(pandda.outdir, 'manual_analyses')
-if not os.path.exists(analyses_dir): os.mkdir(analyses_dir)
+analyses_dir = pandda.output_handler.get_dir('manual_analyses')
 # ============================================================================>
 
 if 0:
@@ -603,6 +631,8 @@ if 0:
 if 1:
     print('===================================>>>')
     print('...')
+
+pandda.exit()
 
 
 # # # # # # # # # # # # # # # # # # # #

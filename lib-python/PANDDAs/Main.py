@@ -1,5 +1,6 @@
 import os, sys, glob, time
 import copy, resource, gc
+import multiprocessing
 
 from scipy.cluster.hierarchy import fclusterdata
 import numpy
@@ -8,6 +9,7 @@ import iotbx.pdb as pdb_reader
 import iotbx.map_tools as map_tools
 
 from libtbx import easy_pickle
+from libtbx import easy_mp
 
 from cctbx import maptbx
 from scitbx import sparse
@@ -20,11 +22,12 @@ from Giant.Xray.Miller.Utils import apply_simple_scaling
 from Giant.Xray.Structure.Select import get_calpha_sites, get_backbone_sites
 from Giant.Xray.Maps.Utils import write_1d_array_as_p1_map
 from Giant.Xray.Maps.Utils import get_fft_map_from_f_obs_and_structure
-from Giant.Xray.Maps.Grid import get_bounding_box_for_structure, create_cartesian_grid, calculate_sampling_distance
+from Giant.Grid.Utils import get_bounding_box_for_structure, create_cartesian_grid, calculate_sampling_distance
 from Giant.Stats.Normalise import normalise_array_to_z_scores
 
-from Giant.Xray.Maps.Grid import get_grid_points_within_distance_cutoff_of_origin, combine_grid_point_and_grid_vectors
-from Giant.Xray.Maps.Grid import get_grid_points_within_distance_cutoff_of_cart_sites
+from Giant.Grid.Utils import get_grid_points_within_distance_cutoff_of_origin, combine_grid_point_and_grid_vectors
+from Giant.Grid.Utils import get_grid_points_within_distance_cutoff_of_cart_sites
+from Giant.Grid.Utils import get_grid_points_within_distance_cutoff_of_cart_sites_2
 from Giant.Stats.Tests import test_significance_of_group_of_z_values, convert_pvalue_to_zscore
 from Giant.Stats.Utils import resample_ordered_list_of_values, calculate_minimum_redundancy
 
@@ -39,21 +42,53 @@ def easy_directory(directory):
         os.mkdir(directory)
     return directory
 
+# Move to Giant.Utils.xxx
 class output_file_object(object):
-    def __init__(self, topdir):
+    def __init__(self, rootdir):
         """Creates and stores output files to be neatly created and retrieved"""
 
-        self.topdir = topdir
+        self.topdir = rootdir
+        self.output_dirs = {'root':rootdir}
         self.output_files = {}
 
-    def add_file(self, file_tag, file_name):
+        # Check root exists
+        assert os.path.exists(rootdir)
+
+    def add_dir(self, dir_name, dir_tag, top_dir_tag=None):
+        """Store a directory `dir_name` under `dir_tag` in directory under `top_dir_tag`"""
+        # Check that it hasn't been created already
+        assert dir_tag not in self.output_dirs.keys()
+        # Check the directory that it's being added to exists
+        if top_dir_tag == None: top_dir_tag = 'root'
+        top_dir_name = self.output_dirs[top_dir_tag]
+        # Create dirname and store
+        self.output_dirs[dir_tag] = os.path.join(top_dir_name, dir_name)
+        # Create if it doesn't exist
+        if not os.path.exists(self.output_dirs[dir_tag]):
+            os.mkdir(self.output_dirs[dir_tag])
+            assert os.path.exists(self.output_dirs[dir_tag])
+
+    def get_dir(self, dir_tag):
+        """Retrieve a dirname by it's dir_tag"""
+        assert dir_tag in self.output_dirs.keys()
+        return self.output_dirs[dir_tag]
+
+    def add_file(self, file_name, file_tag, dir_tag=None):
+        """Store a filename `file_name` under `file_tag` in directory under `dir_tag`"""
+        # Check that it hasn't been created already
         assert file_tag not in self.output_files.keys()
-        self.output_files[file_tag] = os.path.join(self.topdir, file_name)
+        # Check the directory that it's beeing added to exists
+        if dir_tag == None: dir_tag = 'root'
+        dir_name = self.output_dirs[dir_tag]
+        # Create filename and store
+        self.output_files[file_tag] = os.path.join(dir_name, file_name)
 
     def get_file(self, file_tag):
+        """Retrieve a filename by it's file_tag"""
         assert file_tag in self.output_files.keys()
         return self.output_files[file_tag]
 
+# Move to Giant.Utils.xxx
 class mask_collection(object):
     def __init__(self):
         """Stores lots of similar mask objects. Masks can be combined in multiple ways"""
@@ -66,7 +101,7 @@ class mask_collection(object):
 
     def add_mask(self, mask_name, mask):
         """Add a new mask"""
-        assert mask_name not in self.masks.keys()
+#        assert mask_name not in self.masks.keys()
         assert len(mask) == self._mask_length
         self.masks[mask_name] = [True if m else False for m in mask]
 
@@ -88,7 +123,8 @@ class mask_collection(object):
         masks = [self.get_mask(m_name) for m_name in mask_names]
         return [max([m[i] for m in masks]) for i in xrange(self._mask_length)]
 
-class dataset_summary(object):
+# Move to Giant.Stats.xxx
+class data_collection(object):
     def __init__(self):
         """Stores lots of similar observations. Masks can be combined in multiple ways"""
         self.data = {}
@@ -100,7 +136,7 @@ class dataset_summary(object):
 
     def add_data(self, data_name, data_values):
         """Add a new set of data"""
-        assert data_name not in self.data.keys()
+#        assert data_name not in self.data.keys()
         assert len(data_values) == self._dataset_length
         self.data[data_name] = data_values
 
@@ -112,25 +148,175 @@ class dataset_summary(object):
         """Check if it has a single mask"""
         return data_name in self.data.keys()
 
+class dataset_handler(object):
+    def __init__(self, dataset_number, pdb_filename, mtz_filename):
+        """Create a dataset object to allow common functions to be applied easily to a number of datasets"""
+
+        assert os.path.exists(pdb_filename), 'PDB file does not exist!'
+        assert os.path.exists(mtz_filename), 'MTZ file does not exist!'
+
+        # Store dataset number
+        self.d_num = dataset_number
+        # Store filenames
+        self._pdb_file = os.path.abspath(pdb_filename)
+        self._mtz_file = os.path.abspath(mtz_filename)
+        # PDB Objects
+        self._pdb_input = pdb_reader.input(source_info=None,lines=open(self._pdb_file,'r').read())
+        self._pdb_struc = self._pdb_input.xray_structure_simple()
+        self._pdb_hiera = self._pdb_input.construct_hierarchy()
+        self._min_max_sites = get_bounding_box_for_structure(self.get_pdb_structure())
+
+        # Store C-alpha sites
+        self._calpha_sites = get_calpha_sites(input_hierarchy=self._pdb_hiera)
+        self._backbone_sites = get_backbone_sites(input_hierarchy=self._pdb_hiera)
+
+        # Extract miller array
+        self._fobs_miller = extract_miller_array_from_file(self._mtz_file, 'F,SIGF', log=open(os.devnull,'a'))
+        self._scaled_fobs_miller = None
+
+        # Initialise other variables
+        self._fft_map = None
+        self._unit_cell = None
+        self._space_group = None
+        self._basic_map = None
+        self._rt_transform = None
+
+    def get_pdb_filename(self):
+        return self._pdb_file
+    def get_mtz_filename(self):
+        return self._mtz_file
+    def get_pdb_input(self):
+        return self._pdb_input
+    def get_pdb_structure(self):
+        return self._pdb_struc
+    def get_pdb_hierarchy(self):
+        return self._pdb_hiera
+    def get_calpha_sites(self):
+        return self._calpha_sites
+    def get_backbone_sites(self):
+        return self._backbone_sites
+    def get_alignment_transform(self):
+        return self._rt_transform
+    def get_structure_min_max_sites(self):
+        return self._min_max_sites
+    def get_fobs_miller_array(self):
+        return self._fobs_miller
+    def get_scaled_fobs_miller_array(self):
+        return self._scaled_fobs_miller
+    def get_resolution(self):
+        return self.get_fobs_miller_array().d_min()
+    def get_map(self):
+        return self._fft_map
+    def get_map_handler(self):
+        return self._basic_map
+
+    def get_pickle_copy(self):
+        """Get copy of self that can be pickled - some cctbx objects cannot be pickled..."""
+        new = copy.copy(self)
+        new._fft_map = None
+        new._basic_map = None
+        return new
+
+    def transform_points_from_reference(self, points):
+        """Use alignment to map from reference frame to our frame"""
+        return self.get_alignment_transform().rt().inverse() * points
+
+    def transform_points_to_reference(self, points):
+        """Use alignment to map to reference frame from our frame"""
+        return self.get_alignment_transform().rt() * points
+
+    def scale_fobs_to_reference(self, ref_miller):
+        """Scale the observed data to another dataset"""
+        self._scaled_fobs_miller = apply_simple_scaling(self.get_fobs_miller_array(), ref_miller)
+        return self._scaled_fobs_miller
+
+    def align_to_reference(self, reference_sites, sites='calpha'):
+        """Calculate the rotation and translation needed to align one structure to another"""
+        assert sites in ['calpha','backbone']
+        if sites == 'calpha':
+            self._rt_transform = superpose.least_squares_fit(reference_sites=reference_sites, other_sites=self.get_calpha_sites())
+        elif sites == 'backbone':
+            self._rt_transform = superpose.least_squares_fit(reference_sites=reference_sites, other_sites=self.get_backbone_sites())
+        return self._rt_transform
+
+    def create_fft_map(self, miller=None, map_type='2mFo-DFc', d_min=None):
+        """Create an fft map to allow map values to be calculated"""
+        if not miller:
+            self._fft_map = get_fft_map_from_f_obs_and_structure(f_obs=self._fobs_miller, xray_structure=self._pdb_struc, map_type=map_type, d_min=d_min)
+        else:
+            self._fft_map = get_fft_map_from_f_obs_and_structure(f_obs=miller, xray_structure=self._pdb_struc, map_type=map_type, d_min=d_min)
+        self._unit_cell = self._fft_map.unit_cell()
+        self._space_group = self._fft_map.space_group()
+        return self._fft_map
+
+    def create_map_handler(self):
+        """Create a map handler to allow for easy retrieval of map values"""
+        if self._fft_map == None: self.create_fft_map()
+        self._basic_map = maptbx.basic_map(maptbx.basic_map_unit_cell_flag(), self._fft_map.real_map(), self._fft_map.real_map().focus(),
+                            self._unit_cell.orthogonalization_matrix(), maptbx.out_of_bounds_clamp(0).as_handle(), self._unit_cell)
+        return self._basic_map
+
+def pool_load_dataset_handler(input_tup):
+    return dataset_handler(*input_tup)
+
 class multi_dataset_analyser(object):
-    def __init__(self, outdir='./', verbose=True, keep_maps_in_memory=False, max_size=25):
+    def __init__(self, args):
+#                    outdir='./pandda', datadir='./Processing', pdb_style='*/refine.pdb', mtz_style='*/refine.mtz',
+#                    ref_pdb='./reference.pdb', ref_mtz='./reference.mtz', run_mol_subst=False,
+#                    verbose=True, keep_maps_in_memory=False, maxmemory=25):
         """Class for the processing of datasets from a fragment soaking campaign"""
 
-        self.verbose = verbose
-        self.keep_maps_in_memory = keep_maps_in_memory
+        self.args = args
+
+        self.verbose = args.verbose
+        self.keep_maps_in_memory = args.keep_maps_in_memory
 
         self._log = ''
         self._version = 0.1
 
         # ===============================================================================>
+        # PROGRAMMING STUFF
+        # ===============================================================================>
+
+        if args.cpus > 1:
+            self.workers = multiprocessing.Pool(processes=self.args.cpus)
+        else:
+            self.workers = None
+
+        # ===============================================================================>
+        # INPUT FILES STUFF
+        # ===============================================================================>
+
+        self.data_dirs = os.path.abspath(args.data_dirs)
+
+        # ===============================================================================>
         # OUTPUT FILES STUFF
         # ===============================================================================>
 
-        self.outdir = easy_directory(os.path.abspath(outdir))
+        self.outdir = easy_directory(os.path.abspath(args.outdir))
         self.log_file = os.path.join(self.outdir, 'pandda.log')
 
-        self.output_files = output_file_object(topdir=self.outdir)
-        self.output_files.add_file('summary_table','Dataset_Summary_Table.html')
+        # Create a file and directory organiser
+        self.output_handler = output_file_object(rootdir=self.outdir)
+        # Somewhere to store all of the aligned structures
+        self.output_handler.add_dir(dir_name='aligned_structures', dir_tag='aligned_structures', top_dir_tag='root')
+        # Somewhere to store the interesting datasets
+        self.output_handler.add_dir(dir_name='initial_hits', dir_tag='initial_hits', top_dir_tag='root')
+        # Somewhere to store the manual analyses
+        self.output_handler.add_dir(dir_name='manual_analyses', dir_tag='manual_analyses', top_dir_tag='root')
+        # Somewhere to store the analysis summaries
+        self.output_handler.add_dir(dir_name='summaries', dir_tag='output_summaries', top_dir_tag='root')
+        self.output_handler.add_file(file_name='success_summary_table.html', file_tag='summary_table', dir_tag='output_summaries')
+        # Somewhere to store the pickled objects
+        self.output_handler.add_dir(dir_name='pickled_panddas', dir_tag='pickle', top_dir_tag='root')
+
+        # Reference Structure and Dataset
+        self.output_handler.add_dir(dir_name='reference', dir_tag='reference', top_dir_tag='root')
+        self.output_handler.add_file(file_name='reference.pdb', file_tag='reference_structure', dir_tag='reference')
+        self.output_handler.add_file(file_name='reference.mtz', file_tag='reference_dataset', dir_tag='reference')
+
+#        if os.path.exists(self.output_handler.get_file('reference_structure')) and os.path.exists(self.output_hander.get_file('reference_dataset')):
+#            self.load_reference_dataset(ref_pdb=self.output_handler.get_file('reference_structure'), ref_mtz=self.output_handler.get_file('reference_dataset')):
 
         # ===============================================================================>
         # SETTINGS STUFF
@@ -143,27 +329,31 @@ class multi_dataset_analyser(object):
 
         # Current and maximum sizes of the pandda in memory
         self._pandda_size = [('Zero',0)]
-        self._max_pandda_size = max_size*1024**3
+        self._max_pandda_size = args.max_memory*1024**3
 
         # ===============================================================================>
         # DATA AND MAPS STUFF
         # ===============================================================================>
 
         # File names
-        self._file_pairs = []
+        self._input_files = []
         # Dataset Objects
         self._datasets = []
         # Masks for various stages of the pipeline
         self._dataset_masks = mask_collection()
         # Reference Objects
+        self._ref_dataset_index = None
         self._ref_dataset = None
         self._ref_grid = None
         self._ref_map = None
-        # Dataset statistics
-        self._dataset_summary = dataset_summary()
+
+        # Map Arrays
+        self._maps = []
+        self._z_maps = []
+        self._mod_z_maps = []
 
         # Average Structure (and masks)
-        self._mean_calpha_sites = None
+        self._average_calpha_sites = None
         self._residue_deviation_masks = None
 
         # Map Statistics
@@ -172,40 +362,40 @@ class multi_dataset_analyser(object):
         self._skew_map = None
         self._kurt_map = None
         self._bimo_map = None
-        # Map Arrays
-        self._maps = []
-        self._z_maps = []
-        self._mod_z_maps = []
+
+        # Map and Dataset statistics
+        self._map_summary = data_collection()
+        self._dataset_summary = data_collection()
 
         # ===============================================================================>
         # PICKLE STUFF
         # ===============================================================================>
 
-        self.pickledir = os.path.join(self.outdir, 'pickled_panddas')
-        if not os.path.exists(self.pickledir): os.mkdir(self.pickledir)
-
+        # Pickle Handler
+        self.pickle_handler = output_file_object(rootdir=self.output_handler.get_dir('pickle'))
         # Pickled Reference Objects
-        self.reference_grid_pickle = os.path.join(self.pickledir, 'reference_grid.pickle')
-        self.global_mask_pickle = os.path.join(self.pickledir, 'global_mask.pickle')
-        self.local_mask_pickle = os.path.join(self.pickledir, 'local_mask.pickle')
+        self.pickle_handler.add_file(file_name='reference_grid.pickle', file_tag='reference_grid')
+        self.pickle_handler.add_file(file_name='global_mask.pickle', file_tag='global_mask')
+        self.pickle_handler.add_file(file_name='local_mask.pickle', file_tag='local_mask')
         # Pickled Datasets
-        self.dataset_files_pickle = os.path.join(self.pickledir, 'dataset_files.pickle')
-        self.dataset_masks_pickle = os.path.join(self.pickledir, 'dataset_masks.pickle')
-        self.datasets_pickle = os.path.join(self.pickledir, 'datasets.pickle')
+#        self.dataset_files_pickle = os.path.join(self.pickledir, 'dataset_files.pickle')
+        self.pickle_handler.add_file(file_name='dataset_masks.pickle', file_tag='dataset_masks')
+        self.pickle_handler.add_file(file_name='dataset_objs.pickle', file_tag='dataset_objs')
         # Pickled Information
-        self.dataset_summary_pickle = os.path.join(self.pickledir, 'dataset_summary.pickle')
+        self.pickle_handler.add_file(file_name='dataset_summary.pickle', file_tag='dataset_summary')
+        self.pickle_handler.add_file(file_name='map_summary.pickle', file_tag='map_summary')
         # Pickled Maps
-        self.map_values_pickle = os.path.join(self.pickledir, 'map_values.pickle')
-        self.z_map_values_pickle = os.path.join(self.pickledir, 'z_map_values.pickle')
-        self.mod_z_map_values_pickle = os.path.join(self.pickledir, 'mod_z_map_values.pickle')
+        self.pickle_handler.add_file(file_name='map_values.pickle', file_tag='map_values')
+        self.pickle_handler.add_file(file_name='z_map_values.pickle', file_tag='z_map_values')
+        self.pickle_handler.add_file(file_name='mod_z_map_values.pickle', file_tag='mod_z_map_values')
         # Pickled Stats
-        self.mean_map_pickle = os.path.join(self.pickledir, 'mean_map.pickle')
-        self.stds_map_pickle = os.path.join(self.pickledir, 'stds_map.pickle')
-        self.skew_map_pickle = os.path.join(self.pickledir, 'skew_map.pickle')
-        self.kurt_map_pickle = os.path.join(self.pickledir, 'kurt_map.pickle')
-        self.bimo_map_pickle = os.path.join(self.pickledir, 'bimo_map.pickle')
+        self.pickle_handler.add_file(file_name='mean_map.pickle', file_tag='mean_map')
+        self.pickle_handler.add_file(file_name='stds_map.pickle', file_tag='stds_map')
+        self.pickle_handler.add_file(file_name='skew_map.pickle', file_tag='skew_map')
+        self.pickle_handler.add_file(file_name='kurt_map.pickle', file_tag='kurt_map')
+        self.pickle_handler.add_file(file_name='bimo_map.pickle', file_tag='bimo_map')
 
-        if os.path.exists(self.datasets_pickle):
+        if os.path.exists(self.pickle_handler.get_file('dataset_objs')):
             self._new_pandda = False
         else:
             self._new_pandda = True
@@ -217,65 +407,78 @@ class multi_dataset_analyser(object):
         # Print welcome information
         self.print_init()
 
+        # Run the setup
+        self.run_init()
+
         # Get the size of the empty pandda
         self.update_pandda_size(tag='Initialised Pandda')
         # Load any objects from previous runs
         self.load_pickled_objects()
 
+    def run_init(self):
+        """Set up the pandda"""
+
+        if os.path.exists(self.output_handler.get_file('reference_structure')) and os.path.exists(self.output_handler.get_file('reference_dataset')):
+            self.log('===================================>>>', True)
+            self.log('Loading Reference Dataset', True)
+            self.load_reference_dataset(ref_pdb=self.output_handler.get_file('reference_structure'), ref_mtz=self.output_handler.get_file('reference_dataset'))
+
     def load_pickled_objects(self):
         """Loads any pickled objects it finds"""
 
         self.log('===================================>>>', True)
-        self.log('Looking for Pickled Files in Input Directory: {!s}'.format(os.path.relpath(self.pickledir)), True)
+        self.log('Looking for Pickled Files in Input Directory: {!s}'.format(os.path.relpath(self.pickle_handler.get_dir('root'))), True)
         # Load Reference Grid
-        if os.path.exists(self.reference_grid_pickle):
-            self.set_reference_grid(self.unpickle(self.reference_grid_pickle))
+        if os.path.exists(self.pickle_handler.get_file('reference_grid')):
+            self.set_reference_grid(self.unpickle(self.pickle_handler.get_file('reference_grid')))
         if self.get_reference_grid() is not None:
-            if os.path.exists(self.global_mask_pickle) and (self.get_reference_grid().get_global_mask() is None):
-                self.get_reference_grid().set_global_mask(self.unpickle(self.global_mask_pickle))
-            if os.path.exists(self.local_mask_pickle) and (self.get_reference_grid().get_local_mask() is None):
-                self.get_reference_grid().set_local_mask(self.unpickle(self.local_mask_pickle))
+            if os.path.exists(self.pickle_handler.get_file('global_mask')) and (self.get_reference_grid().get_global_mask() is None):
+                self.get_reference_grid().set_global_mask(self.unpickle(self.pickle_handler.get_file('global_mask')))
+            if os.path.exists(self.pickle_handler.get_file('local_mask')) and (self.get_reference_grid().get_local_mask() is None):
+                self.get_reference_grid().set_local_mask(self.unpickle(self.pickle_handler.get_file('local_mask')))
 
         # Load the datasets
-        if os.path.exists(self.dataset_files_pickle):
-            self._file_pairs = self.unpickle(self.dataset_files_pickle)
-        if os.path.exists(self.dataset_masks_pickle):
-            self._dataset_masks = self.unpickle(self.dataset_masks_pickle)
-        if os.path.exists(self.datasets_pickle):
-            self._datasets = self.unpickle(self.datasets_pickle)
+#        if os.path.exists(self.dataset_files_pickle):
+#            self._input_files = self.unpickle(self.dataset_files_pickle)
+        if os.path.exists(self.pickle_handler.get_file('dataset_masks')):
+            self._dataset_masks = self.unpickle(self.pickle_handler.get_file('dataset_masks'))
+        if os.path.exists(self.pickle_handler.get_file('dataset_objs')):
+            self._datasets = self.unpickle(self.pickle_handler.get_file('dataset_objs'))
             self.update_pandda_size(tag='After Unpickling Dataset Objects')
 
         # Load the dataset summary object
-        if os.path.exists(self.dataset_summary_pickle):
-            self._dataset_summary = self.unpickle(self.dataset_summary_pickle)
+        if os.path.exists(self.pickle_handler.get_file('dataset_summary')):
+            self._dataset_summary = self.unpickle(self.pickle_handler.get_file('dataset_summary'))
+        if os.path.exists(self.pickle_handler.get_file('map_summary')):
+            self._map_summary = self.unpickle(self.pickle_handler.get_file('map_summary'))
 
         # Only load these if we've been asked to
         if self.keep_maps_in_memory:
             # Load Map Values
-            if os.path.exists(self.map_values_pickle):
+            if os.path.exists(self.pickle_handler.get_file('map_values')):
                 self.log('Unpickling Maps - this may take a while...', True)
-                self._maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.map_values_pickle)]
+                self._maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.pickle_handler.get_file('map_values'))]
                 self.update_pandda_size(tag='After Unpickling Raw Maps')
-            if os.path.exists(self.z_map_values_pickle):
+            if os.path.exists(self.pickle_handler.get_file('z_map_values')):
                 self.log('Unpickling Maps - this may take a while...', True)
-                self._z_maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.z_map_values_pickle)]
+                self._z_maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.pickle_handler.get_file('z_map_values'))]
                 self.update_pandda_size(tag='After Unpickling Z-Maps')
-            if os.path.exists(self.mod_z_map_values_pickle):
+            if os.path.exists(self.pickle_handler.get_file('mod_z_map_values')):
                 self.log('Unpickling Maps - this may take a while...', True)
-                self._mod_z_maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.mod_z_map_values_pickle)]
+                self._mod_z_maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.pickle_handler.get_file('mod_z_map_values'))]
                 self.update_pandda_size(tag='After Unpickling Modified Z-Maps')
 
         # Load Statistical Maps
-        if os.path.exists(self.mean_map_pickle):
-            self._mean_map = self.unpickle(self.mean_map_pickle)
-        if os.path.exists(self.stds_map_pickle):
-            self._stds_map = self.unpickle(self.stds_map_pickle)
-        if os.path.exists(self.skew_map_pickle):
-            self._skew_map = self.unpickle(self.skew_map_pickle)
-        if os.path.exists(self.kurt_map_pickle):
-            self._kurt_map = self.unpickle(self.kurt_map_pickle)
-        if os.path.exists(self.bimo_map_pickle):
-            self._bimo_map = self.unpickle(self.bimo_map_pickle)
+        if os.path.exists(self.pickle_handler.get_file('mean_map')):
+            self._mean_map = self.unpickle(self.pickle_handler.get_file('mean_map'))
+        if os.path.exists(self.pickle_handler.get_file('stds_map')):
+            self._stds_map = self.unpickle(self.pickle_handler.get_file('stds_map'))
+        if os.path.exists(self.pickle_handler.get_file('skew_map')):
+            self._skew_map = self.unpickle(self.pickle_handler.get_file('skew_map'))
+        if os.path.exists(self.pickle_handler.get_file('kurt_map')):
+            self._kurt_map = self.unpickle(self.pickle_handler.get_file('kurt_map'))
+        if os.path.exists(self.pickle_handler.get_file('bimo_map')):
+            self._bimo_map = self.unpickle(self.pickle_handler.get_file('bimo_map'))
             self.update_pandda_size(tag='After Unpickling Statistical Maps')
 
     def pickle_the_pandda(self):
@@ -287,47 +490,55 @@ class multi_dataset_analyser(object):
         self.log('===================================>>>')
         self.log('Pickling Reference Grid')
         if self._ref_grid is not None:
-            self.pickle(pickle_file=self.reference_grid_pickle, pickle_object=self.get_reference_grid())
+            self.pickle(pickle_file=self.pickle_handler.get_file('reference_grid'), pickle_object=self.get_reference_grid())
             if self._ref_grid.get_global_mask() is not None:
-                self.pickle(pickle_file=self.global_mask_pickle, pickle_object=self.get_reference_grid().get_global_mask())
+                self.pickle(pickle_file=self.pickle_handler.get_file('global_mask'), pickle_object=self.get_reference_grid().get_global_mask())
             if self._ref_grid.get_local_mask() is not None:
-                self.pickle(pickle_file=self.local_mask_pickle, pickle_object=self.get_reference_grid().get_local_mask())
+                self.pickle(pickle_file=self.pickle_handler.get_file('local_mask'), pickle_object=self.get_reference_grid().get_local_mask())
 
         self.log('===================================>>>')
         self.log('Pickling Datasets')
-        if self._file_pairs:
-            self.pickle(pickle_file=self.dataset_files_pickle, pickle_object=self._file_pairs)
+#        if self._input_files:
+#            self.pickle(pickle_file=self.dataset_files_pickle, pickle_object=self._input_files)
         if self._dataset_masks:
-            self.pickle(pickle_file=self.dataset_masks_pickle, pickle_object=self._dataset_masks)
+            self.pickle(pickle_file=self.pickle_handler.get_file('dataset_masks'), pickle_object=self._dataset_masks)
         if self._datasets:
-            self.pickle(pickle_file=self.datasets_pickle, pickle_object=[d.get_pickle_copy() for d in self.get_all_datasets()])
+            self.pickle(pickle_file=self.pickle_handler.get_file('dataset_objs'), pickle_object=[d.get_pickle_copy() for d in self.get_all_datasets()])
 
         self.log('===================================>>>')
         self.log('Pickling Dataset Variation Summary')
         if self._dataset_summary:
-            self.pickle(pickle_file=self.dataset_summary_pickle, pickle_object=self.get_dataset_summary())
+            self.pickle(pickle_file=self.pickle_handler.get_file('dataset_summary'), pickle_object=self.get_dataset_summary())
+        if self._map_summary:
+            self.pickle(pickle_file=self.pickle_handler.get_file('map_summary'), pickle_object=self.get_map_summary())
 
         self.log('===================================>>>')
         self.log('Pickling Map Values')
         if self._maps:
-            self.pickle(pickle_file=self.map_values_pickle, pickle_object=[(m.size, dict(m)) for m in self.get_maps()])
+            self.pickle(pickle_file=self.pickle_handler.get_file('map_values'), pickle_object=[(m.size, dict(m)) for m in self.get_maps()])
         if self._z_maps:
-            self.pickle(pickle_file=self.z_map_values_pickle, pickle_object=[(m.size, dict(m)) for m in self.get_z_maps()])
+            self.pickle(pickle_file=self.pickle_handler.get_file('z_map_values'), pickle_object=[(m.size, dict(m)) for m in self.get_z_maps()])
         if self._mod_z_maps:
-            self.pickle(pickle_file=self.mod_z_map_values_pickle, pickle_object=[(m.size, dict(m)) for m in self.get_modified_z_maps()])
+            self.pickle(pickle_file=self.pickle_handler.get_file('mod_z_map_values'), pickle_object=[(m.size, dict(m)) for m in self.get_modified_z_maps()])
 
         self.log('===================================>>>')
         self.log('Pickling Statistical Maps')
         if self._mean_map is not None:
-            self.pickle(pickle_file=self.mean_map_pickle, pickle_object=self.get_mean_map())
+            self.pickle(pickle_file=self.pickle_handler.get_file('mean_map'), pickle_object=self.get_mean_map())
         if self._stds_map is not None:
-            self.pickle(pickle_file=self.stds_map_pickle, pickle_object=self.get_stds_map())
+            self.pickle(pickle_file=self.pickle_handler.get_file('stds_map'), pickle_object=self.get_stds_map())
         if self._skew_map is not None:
-            self.pickle(pickle_file=self.skew_map_pickle, pickle_object=self.get_skew_map())
+            self.pickle(pickle_file=self.pickle_handler.get_file('skew_map'), pickle_object=self.get_skew_map())
         if self._kurt_map is not None:
-            self.pickle(pickle_file=self.kurt_map_pickle, pickle_object=self.get_kurt_map())
+            self.pickle(pickle_file=self.pickle_handler.get_file('kurt_map'), pickle_object=self.get_kurt_map())
         if self._bimo_map is not None:
-            self.pickle(pickle_file=self.bimo_map_pickle, pickle_object=self.get_bimo_map())
+            self.pickle(pickle_file=self.pickle_handler.get_file('bimo_map'), pickle_object=self.get_bimo_map())
+
+    def exit(self):
+        self.workers.close()
+        self.workers.join()
+        print 'WORKERS CLOSED AND JOINED'
+        raise SystemExit('PANDDA TERMINATED')
 
     def log(self, message, show=False):
         """Log message to file, and mirror to stdout if verbose or force_print"""
@@ -406,15 +617,21 @@ class multi_dataset_analyser(object):
         """Get the mask object for the datasets"""
         return self._dataset_masks
 
-    def get_all_files(self):
+    def get_added_files(self):
         """Get all of the files that were added"""
-        return self._file_pairs
-    def get_used_files(self):
-        """Get the files that have been used to generate the distributions"""
-        return self.get_dataset_masks().mask(mask_name='rejected', input_list=self._file_pairs, invert_mask=True)
-    def get_rejected_files(self):
-        """Get the files that have been rejected from the analysis"""
-        return self.get_dataset_masks().mask(mask_name='rejected', input_list=self._file_pairs, invert_mask=False)
+        return self._input_files
+#    def get_used_files(self):
+#        """Get the files that have been used to generate the distributions"""
+#        return self.get_dataset_masks().mask(mask_name='rejected', input_list=self._input_files, invert_mask=True)
+#    def get_rejected_files(self):
+#        """Get the files that have been rejected from the analysis"""
+#        return self.get_dataset_masks().mask(mask_name='rejected', input_list=self._input_files, invert_mask=False)
+
+    def get_dataset(self, d_num):
+        """Get a dataset by dataset number"""
+        matching = [d for d in self.get_all_datasets() if d.d_num == d_num]
+        assert len(matching) == 1, 'MORE THAN ONE MATCHING DATASET FOR DNUM'
+        return matching[0]
 
     def get_all_datasets(self):
         """Return all datasets added"""
@@ -437,9 +654,12 @@ class multi_dataset_analyser(object):
     def get_dataset_summary(self):
         """Distributions of different variables across the datasets"""
         return self._dataset_summary
+    def get_map_summary(self):
+        """Distributions of different map variables across the datasets"""
+        return self._map_summary
 
     def get_calpha_average_sites(self):
-        return self._mean_calpha_sites
+        return self._average_calpha_sites
     def get_calpha_deviation_masks(self):
         return self._residue_deviation_masks
 
@@ -461,40 +681,40 @@ class multi_dataset_analyser(object):
 
     def has_maps(self):
         """Checks to see if the maps have been calculated - but does not load them if pickled"""
-        if self._maps!=[] or os.path.exists(self.map_values_pickle):
+        if self._maps!=[] or os.path.exists(self.pickle_handler.get_file('map_values')):
             return True
         return False
     def get_maps(self, store=True):
         """Returns maps for the used datasets - after scaling"""
-        if (self._maps==[]) and os.path.exists(self.map_values_pickle):
+        if (self._maps==[]) and os.path.exists(self.pickle_handler.get_file('map_values')):
             self.log('Unpickling Maps - this may take a while...', True)
-            maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.map_values_pickle)]
+            maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.pickle_handler.get_file('map_values'))]
             if store: self._maps = maps
             else: return maps
         return self._maps
     def has_z_maps(self):
         """Checks to see if the maps have been calculated - but does not load them if pickled"""
-        if self._z_maps!=[] or os.path.exists(self.z_map_values_pickle):
+        if self._z_maps!=[] or os.path.exists(self.pickle_handler.get_file('z_map_values')):
             return True
         return False
     def get_z_maps(self, store=True):
         """Returns z-maps for the used datasets - loads from pickle if neccessary"""
-        if (self._z_maps==[]) and os.path.exists(self.z_map_values_pickle):
+        if (self._z_maps==[]) and os.path.exists(self.pickle_handler.get_file('z_map_values')):
             self.log('Unpickling Maps - this may take a while...', True)
-            maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.z_map_values_pickle)]
+            maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.pickle_handler.get_file('z_map_values'))]
             if store: self._z_maps = maps
             else: return maps
         return self._z_maps
     def has_modified_z_maps(self):
         """Checks to see if the maps have been calculated - but does not load them if pickled"""
-        if self._mod_z_maps!=[] or os.path.exists(self.mod_z_map_values_pickle):
+        if self._mod_z_maps!=[] or os.path.exists(self.pickle_handler.get_file('mod_z_map_values')):
             return True
         return False
     def get_modified_z_maps(self, store=True):
         """Returns the post-processed, modified, z-maps for the used datasets"""
-        if (self._mod_z_maps==[]) and os.path.exists(self.mod_z_map_values_pickle):
+        if (self._mod_z_maps==[]) and os.path.exists(self.pickle_handler.get_file('mod_z_map_values')):
             self.log('Unpickling Maps - this may take a while...', True)
-            maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.mod_z_map_values_pickle)]
+            maps = [sparse.vector(dimension=map_size, elements=map_dict) for map_size, map_dict in self.unpickle(self.pickle_handler.get_file('mod_z_map_values'))]
             if store: self._mod_z_maps = maps
             else: return maps
         return self._mod_z_maps
@@ -504,7 +724,11 @@ class multi_dataset_analyser(object):
 
         self.log('===================================>>>', True)
         self.log('Loading Reference Dataset: {!s}'.format(ref_mtz), True)
-        self._ref_dataset = dataset_handler(ref_pdb, ref_mtz)
+        if not os.path.exists(self.output_handler.get_file('reference_structure')):
+            os.symlink(ref_pdb, self.output_handler.get_file('reference_structure'))
+        if not os.path.exists(self.output_handler.get_file('reference_dataset')):
+            os.symlink(ref_mtz, self.output_handler.get_file('reference_dataset'))
+        self._ref_dataset = dataset_handler(dataset_number=-1, pdb_filename=ref_pdb, mtz_filename=ref_mtz)
 
     def load_reference_map_handler(self):
         """Load the reference map handlers"""
@@ -522,7 +746,7 @@ class multi_dataset_analyser(object):
         """Read in map for the reference dataset"""
 
         ref_map_vals = self.get_reference_dataset().get_map_handler().get_cart_values(self.get_reference_grid().get_cart_points())
-        ref_map_file = self.get_reference_dataset().get_mtz_filename().replace('.mtz','.sampled.ccp4')
+        ref_map_file = self.output_handler.get_file('reference_dataset').replace('.mtz','.sampled.ccp4')
         self.write_array_to_map(output_file=ref_map_file, map_data=ref_map_vals)
         self._ref_map = ref_map_vals
 
@@ -541,7 +765,7 @@ class multi_dataset_analyser(object):
         self._ref_grid.show_summary()
 
     def mask_resampled_reference_grid(self):
-        """Using the local and global masks, mask the resamples grid points"""
+        """Using the local and global masks, mask the resampled grid points"""
 
         self.log('===================================>>>', True)
         self.log('Masking Resampled Grid (Global and Local Mask)', True)
@@ -575,37 +799,117 @@ class multi_dataset_analyser(object):
         # Store points in the reference grid object
         self.get_reference_grid().set_masked_grid_points(masked_resampled_points)
 
-        # Write masked map - TODO make this use the binary masks for speed
-        binary_mask = [1 if gp in masked_resampled_points else 0 for gp in resampled_points]
-        mask_map_file = self.get_reference_dataset().get_mtz_filename().replace('.mtz','.totalmask.ccp4')
+        # Calculate the resampled mask on the original grid
+        full_binary_mask = numpy.zeros(self.get_reference_grid().get_grid_size_1d(), int)
+        [full_binary_mask.put(grid_indexer(gp), 1) for gp in masked_resampled_points]
+        # Downsample to the resampled grid
+        resampled_binary_mask = [full_binary_mask[grid_indexer(gp)] for gp in resampled_points]
+        # Write masked map
+        mask_map_file = self.output_handler.get_file('reference_dataset').replace('.mtz','.totalmask.ccp4')
         self.write_array_to_map(output_file = mask_map_file,
-                                map_data = flex.double(binary_mask),
+                                map_data = flex.double(resampled_binary_mask),
                                 grid_size = self.get_reference_grid().get_resampled_grid_size(),
                                 grid_spacing = self.get_reference_grid().get_resampled_grid_spacing())
 
-    def add_input_files(self, file_pairs):
+    def build_input_list(self):
+        """Builds a list of input files from the command line arguments passed"""
+
+        self.log('===================================>>>', True)
+        self.log('Building List of Datasets')
+
+        pdb_style = self.args.pdb_style.lstrip('/')
+        if self.args.mtz_style:
+            mtz_style = self.args.mtz_style.lstrip('/')
+        else:
+            mtz_style = pdb_style.replace('.pdb','.mtz')
+
+        file_pairs = []
+
+        for dir in sorted(glob.glob(self.data_dirs)):
+            pdb_files = glob.glob(os.path.join(dir, pdb_style))
+            mtz_files = glob.glob(os.path.join(dir, mtz_style))
+            if not (pdb_files and mtz_files):
+                print('EMPTY DIRECTORY: {!s}'.format(dir))
+            elif not pdb_files:
+                print('NO PDB IN DIRECTORY: {!s}'.format(dir))
+            elif not mtz_files:
+                print('NO MTZ IN DIRECTORY: {!s}'.format(dir))
+            else:
+                assert len(pdb_files) == 1, 'More than one matching PDB file found: {!s}'.format(os.path.join(dir, pdb_style))
+                assert len(mtz_files) == 1, 'More than one matching MTZ file found: {!s}'.format(os.path.join(dir, mtz_style))
+                file_pairs.append(pdb_files+mtz_files)
+
+        return file_pairs
+
+    def add_new_files(self, file_pairs):
         """Add (pdb, mtz) file pairs to the datasets to be processed"""
 
         self.log('===================================>>>', True)
-        self._file_pairs = file_pairs
-        self.log('{!s} Datasets'.format(len(file_pairs)), True)
+        self._input_files = file_pairs
+        self.log('{!s} Datasets Added'.format(len(file_pairs)), True)
 
-    def load_input_datasets(self):
+    def load_new_datasets(self):
         """Read in maps for the input datasets"""
 
+        # TODO Change this so datasets can be added dynamically
+        assert self._datasets == []
+
         self.log('===================================>>>', True)
-        for d_num, (pdb, mtz) in enumerate(self.get_all_files()):
-            print '\rLoading Dataset {!s}'.format(d_num+1),; sys.stdout.flush()
-            # Create object to handle processing of the dataset
-            new_dataset = dataset_handler(pdb, mtz)
-            # Assign a dataset number
-            new_dataset.d_num = d_num
-            # Add dataset to the list of all datasets
-            self._datasets.append(new_dataset)
-        self.log('\rDatasets Loaded.          ', True)
+        # Generate arg_list for loading
+        arg_list = [(d_num, pdb, mtz) for d_num, (pdb, mtz) in enumerate(self.get_added_files())]
+        loaded_datasets = []
+
+        start = time.time()
+        if self.args.cpus == 1:
+            for arg_item in arg_list:
+                print '\rLoading Dataset {!s}'.format(arg_item[0]+1),; sys.stdout.flush()
+                loaded_datasets.append(dataset_handler(*arg_item))
+            print ''
+        else:
+            print 'Loading Datasets... (using {!s} cores)'.format(self.args.cpus)
+            loaded_datasets = self.workers.map(pool_load_dataset_handler, arg_list)
+        finish = time.time()
+        print('Time Taken: {!s} seconds'.format(int(finish-start)))
+
+        self._datasets.extend(loaded_datasets)
+        self.log('{!s} Datasets Loaded.          '.format(len(loaded_datasets), True))
+
+    def collect_dataset_summary_statistics(self):
+        """Go through all of the datasets and calculate lots of different characteristics of the datasets for identifying odd datasets"""
+
+        self.log('===================================>>>', True)
+        self.log('Calculating Crystal Variation Statistics', True)
+        self.log('===================================>>>')
+
+        self.get_dataset_summary().set_dataset_length(self.get_number_of_datasets())
+
+        self.log('Calculating Variation in Resolution')
+        self.get_dataset_summary().add_data(data_name='resolution', data_values=[d.get_fobs_miller_array().d_max_min() for d in self.get_all_datasets()])
+
+        self.log('Calculating Variation in Unit Cell Size')
+        self.get_dataset_summary().add_data(data_name='cell_params', data_values=[d.get_fobs_miller_array().unit_cell().parameters() for d in self.get_all_datasets()])
+
+        self.log('Calculating Variation in Unit Cell Volume')
+        self.get_dataset_summary().add_data(data_name='cell_volume', data_values=[d.get_fobs_miller_array().unit_cell().volume() for d in self.get_all_datasets()])
+
+        self.log('Calculating Variation in R-work, R-free')
+        self.get_dataset_summary().add_data(data_name='rfree_rwork', data_values=[(d.get_pdb_input().get_r_rfree_sigma().r_free, d.get_pdb_input().get_r_rfree_sigma().r_work) for d in self.get_all_datasets()])
+
+    def select_reference_dataset(self):
+        """Select dataset to act as the reference - scaling, aligning etc"""
+
+        r_frees = [r[0] for r in self.get_dataset_summary().get_data('rfree_rwork')]
+        self._ref_dataset_index = r_frees.index(min(r_frees))
+        reference = self.get_all_datasets()[self._ref_dataset_index]
+        assert reference.d_num == self._ref_dataset_index, 'INDEX DOES NOT MATCH DNUM'
+
+        self.log('===================================>>>', True)
+        self.log('Reference Selected: Dataset {!s}'.format(self._ref_dataset_index+1), True)
+
+        return reference.get_pdb_filename(), reference.get_mtz_filename()
 
     def scale_datasets(self):
-        """Iterate through the datasets, scale them to the reference, and extract maps"""
+        """Iterate through the datasets, and scale the reflections to the reference"""
 
         self.log('===================================>>>', True)
         for new_dataset in self.get_all_datasets():
@@ -613,6 +917,9 @@ class multi_dataset_analyser(object):
             # Scale new data to the reference dataset
             new_dataset.scale_fobs_to_reference(ref_miller=self.get_reference_dataset().get_fobs_miller_array())
         self.log('\rDatasets Scaled.          ', True)
+
+        self.log('Calculating Variation in Correlations between Diffraction Data')
+        self.get_dataset_summary().add_data(data_name='correlation_to_unscaled_data', data_values=[d.get_scaled_fobs_miller_array().correlation(d.get_fobs_miller_array()).coefficient() for d in self.get_all_datasets()])
 
     def align_datasets(self, sites='calpha'):
         """Align each structure the reference structure"""
@@ -630,8 +937,16 @@ class multi_dataset_analyser(object):
             # Write out the aligned structure
             aligned_struc = new_dataset.get_pdb_hierarchy().deep_copy()
             aligned_struc.atoms().set_xyz(new_dataset.transform_points_to_reference(new_dataset.get_pdb_hierarchy().atoms().extract_xyz()))
-            aligned_file = new_dataset.get_pdb_filename.replace('.pdb','.aligned.pdb')
+            aligned_file = new_dataset.get_pdb_filename().replace('.pdb','.aligned.pdb')
+            # Write out next to the original files
             aligned_struc.write_pdb_file(file_name=aligned_file)
+            # Also write out into the aligned_structures folder
+            aligned_struc.write_pdb_file(file_name=os.path.join(self.output_handler.get_dir('aligned_structures'), 'structure_{:04d}.pdb'.format(new_dataset.d_num+1)))
+            # Check that the objects have copied properly so that the original coordinates haven't been modified by .set_xyz()
+            alignment_rmsd = new_dataset.get_pdb_hierarchy().atoms().extract_xyz().rms_difference(aligned_struc.atoms().extract_xyz())
+            # Check that the deep_copy has worked
+            if new_dataset.d_num != self._ref_dataset_index:
+                assert alignment_rmsd != 0.0, 'ALIGNED OBJECT EQUAL TO UNALIGNED OBJECT'
         self.log('\rDatasets Aligned.          ', True)
 
     def load_map_handlers(self):
@@ -644,13 +959,16 @@ class multi_dataset_analyser(object):
         for new_dataset in self.get_all_datasets():
             print '\rGetting Map Handlers {!s}'.format(new_dataset.d_num+1),; sys.stdout.flush()
             # Create maps
+            print 'NOW FFTING'
             new_dataset.create_fft_map(miller=new_dataset.get_scaled_fobs_miller_array(), map_type=self.get_map_type(), d_min=self.get_cut_resolution())
+            print 'NOW SCALING MAPS'
             if self.get_map_scaling() == 'none':
                 pass
             elif self.get_map_scaling() == 'sigma':
                 new_dataset.get_map().apply_sigma_scaling()
             elif self.get_map_scaling() == 'volume':
                 new_dataset.get_map().apply_volume_scaling()
+            print 'NOW LOADING HANDLERS'
             new_dataset.create_map_handler()
         self.log('\rMap Handlers Loaded.          ', True)
 
@@ -681,35 +999,12 @@ class multi_dataset_analyser(object):
             residue_deviation_masks.append([1 if shift > deviation_cutoff else 0 for shift in calpha_shifts])
 
         # Save the masks
-        self._mean_calpha_sites = flex.vec3_double(mean_sites)
+        self._average_calpha_sites = flex.vec3_double(mean_sites)
         self._residue_deviation_masks = residue_deviation_masks
 
-    def collect_dataset_summary_statistics(self):
-        """Go through all of the datasets and calculate lots of different characteristics of the datasets for identifying odd datasets"""
-
-        self.log('===================================>>>', True)
-        self.log('Calculating Crystal Variation Statistics', True)
-        self.log('===================================>>>')
-
-        self.get_dataset_summary().set_dataset_length(self.get_number_of_datasets())
-
-        self.log('Calculating Variation in Resolution')
-        self.get_dataset_summary().add_data(data_name='resolution', data_values=[d.get_fobs_miller_array().d_max_min() for d in self.get_all_datasets()])
-
-        self.log('Calculating Variation in Unit Cell Size')
-        self.get_dataset_summary().add_data(data_name='cell_params', data_values=[d.get_fobs_miller_array().unit_cell().parameters() for d in self.get_all_datasets()])
-
-        self.log('Calculating Variation in Unit Cell Volume')
-        self.get_dataset_summary().add_data(data_name='cell_volume', data_values=[d.get_fobs_miller_array().unit_cell().volume() for d in self.get_all_datasets()])
-
-        self.log('Calculating Variation in R-work, R-free')
-        self.get_dataset_summary().add_data(data_name='rfree_rwork', data_values=[(d.get_pdb_input().get_r_rfree_sigma().r_free, d.get_pdb_input().get_r_rfree_sigma().r_work) for d in self.get_all_datasets()])
-
+        # Now calculate the variation in the structure, from the reference
         self.log('Calculating Variation in RMSD (Calphas) to Reference Structure')
         self.get_dataset_summary().add_data(data_name='rmsd_to_mean', data_values=[d.get_calpha_sites().rms_difference(d.transform_points_from_reference(self.get_calpha_average_sites())) for d in self.get_all_datasets()])
-
-        self.log('Calculating Variation in Correlations between Diffraction Data')
-        self.log('NOT YET')
 
     def filter_datasets(self):
         """Iterate through the datasets, and filter them by quality"""
@@ -727,9 +1022,8 @@ class multi_dataset_analyser(object):
         self.log('===================================>>>', True)
         for new_dataset in self.get_all_datasets():
             # Retrieve associated files
-            pdb, mtz = self.get_all_files()[new_dataset.d_num]
-            # Flag to record whether we will process this dataset - set to True if all tests passed
-#            reject_dataset = True
+            pdb = new_dataset.get_pdb_filename()
+            mtz = new_dataset.get_mtz_filename()
             print '\rFiltering Dataset {!s}'.format(new_dataset.d_num+1),; sys.stdout.flush()
             # Check that it correlates well with itself before and after scaling
             if new_dataset.get_scaled_fobs_miller_array().correlation(new_dataset.get_fobs_miller_array()).coefficient() < 0.9:
@@ -738,11 +1032,11 @@ class multi_dataset_analyser(object):
                 print('Scaled-Unscaled Correlation: {!s}'.format(scaled_correlation))
                 print('===================================>>>')
             # Check the resolution of the dataset
-            elif new_dataset.get_map().d_min() > self.get_cut_resolution():
+            elif new_dataset.get_resolution() > self.get_cut_resolution():
                 print('')
                 print('Does not meet high-resolution cutoff - Rejecting Dataset!')
-                print('Ref Resolution: ', self.get_reference_dataset().get_map().d_min())
-                print('Map Resolution: ', new_dataset.get_map().d_min())
+                print('Cut Resolution: ', self.get_cut_resolution())
+                print('Map Resolution: ', new_dataset.get_resolution())
                 print('===================================>>>')
                 new_masks['bad_resolution'][new_dataset.d_num] = True
             # TODO Check that the transformation is SMALL and filter for large movements?
@@ -753,17 +1047,12 @@ class multi_dataset_analyser(object):
             elif new_dataset.get_calpha_sites().rms_difference(new_dataset.transform_points_from_reference(self.get_calpha_average_sites())) > 0.3:
                 print('')
                 print('C-alpha RMSD is too large - Rejecting dataset')
-                print('Initial (Calpha) RMSD: {!s}'.format(new_dataset.get_calpha_sites().rms_difference(self.get_reference_dataset().get_calpha_sites())))
-                print('Aligned (Calpha) RMSD: {!s}'.format(new_dataset.get_calpha_sites().rms_difference(new_dataset.transform_points_from_reference(self.get_reference_dataset().get_calpha_sites()))))
+                print('Initial (Calpha) RMSD: {!s}'.format(new_dataset.get_calpha_sites().rms_difference(self.get_reference_dataset().get_calpha_average_sites())))
+                print('Aligned (Calpha) RMSD: {!s}'.format(new_dataset.get_calpha_sites().rms_difference(new_dataset.transform_points_from_reference(self.get_reference_dataset().get_calpha_average_sites()))))
                 print('===================================>>>')
                 new_masks['bad_rmsd'][new_dataset.d_num] = True
             else:
-                # Dataset is fine!
-#                reject_dataset = False
                 pass
-
-            # Save whether or not to use the dataset
-#            reject_mask.append(reject_dataset)
 
         # Set the mask length
         self.get_dataset_masks().set_mask_length(mask_length=self.get_number_of_datasets())
@@ -797,7 +1086,8 @@ class multi_dataset_analyser(object):
 
         for new_dataset in self.get_used_datasets():
             # Retrieve associated files
-            pdb, mtz = self.get_all_files()[new_dataset.d_num]
+            pdb = new_dataset.get_pdb_filename()
+            mtz = new_dataset.get_mtz_filename()
             self.log('===================================>>>')
             self.log('Loading Maps for Dataset {!s}'.format(new_dataset.d_num+1))
             self.log('===============>>>')
@@ -826,11 +1116,12 @@ class multi_dataset_analyser(object):
             # Calculate stats for the map
             map_stats.append(basic_statistics(flex.double(masked_map_values)))
 
-#        # Store the raw map stats for error spotting
-#        self.get_dataset_summary().add_map_stats(map_stats)
+        # Store the raw map stats for error spotting
+        self.get_map_summary().set_dataset_length(len(map_stats))
+        self.get_map_summary().add_data(data_name='map_mean', data_values=map_stats)
 
         self.log('===================================>>>', True)
-        self.log('Maps Values Loaded: {!s} Datasets'.format(len(self.get_used_files())), True)
+        self.log('Maps Values Loaded: {!s} Datasets'.format(len(self.get_used_datasets())), True)
 
         self.update_pandda_size(tag='After Loading Maps')
 
@@ -847,31 +1138,31 @@ class multi_dataset_analyser(object):
         # Calculate Mean Maps
         mean_map_vals = numpy.array([ps.mean for ps in point_statistics])
         assert len(mean_map_vals) == self.get_reference_grid().get_grid_size_1d()
-        mean_map_file = self.get_reference_dataset().get_mtz_filename().replace('.mtz','.mean.ccp4')
+        mean_map_file = self.output_handler.get_file('reference_dataset').replace('.mtz','.mean.ccp4')
         self.write_array_to_map(output_file=mean_map_file, map_data=flex.double(mean_map_vals))
 
         # Calculate Stds Maps
         stds_map_vals = numpy.array([ps.biased_standard_deviation for ps in point_statistics])
         assert len(stds_map_vals) == self.get_reference_grid().get_grid_size_1d()
-        stds_map_file = self.get_reference_dataset().get_mtz_filename().replace('.mtz','.stds.ccp4')
+        stds_map_file = self.output_handler.get_file('reference_dataset').replace('.mtz','.stds.ccp4')
         self.write_array_to_map(output_file=stds_map_file, map_data=flex.double(stds_map_vals))
 
         # Calculate Skew Maps
         skew_map_vals = numpy.array([ps.skew for ps in point_statistics])
         assert len(skew_map_vals) == self.get_reference_grid().get_grid_size_1d()
-        skew_map_file = self.get_reference_dataset().get_mtz_filename().replace('.mtz','.skew.ccp4')
+        skew_map_file = self.output_handler.get_file('reference_dataset').replace('.mtz','.skew.ccp4')
         self.write_array_to_map(output_file=skew_map_file, map_data=flex.double(skew_map_vals))
 
         # Calculate Kurtosis Maps
         kurt_map_vals = numpy.array([ps.kurtosis for ps in point_statistics])
         assert len(kurt_map_vals) == self.get_reference_grid().get_grid_size_1d()
-        kurt_map_file = self.get_reference_dataset().get_mtz_filename().replace('.mtz','.kurt.ccp4')
+        kurt_map_file = self.output_handler.get_file('reference_dataset').replace('.mtz','.kurt.ccp4')
         self.write_array_to_map(output_file=kurt_map_file, map_data=flex.double(kurt_map_vals))
 
         # Calculate Bimodality Maps
         bimo_map_vals = numpy.array([(skew_map_vals[i]**2 + 1)/kurt_map_vals[i] for i in xrange(self.get_reference_grid().get_grid_size_1d())])
         assert len(bimo_map_vals) == self.get_reference_grid().get_grid_size_1d()
-        bimo_map_file = self.get_reference_dataset().get_mtz_filename().replace('.mtz','.bimo.ccp4')
+        bimo_map_file = self.output_handler.get_file('reference_dataset').replace('.mtz','.bimo.ccp4')
         self.write_array_to_map(output_file=bimo_map_file, map_data=flex.double(bimo_map_vals))
 
         # Store map vals
@@ -891,16 +1182,15 @@ class multi_dataset_analyser(object):
         binary_mask = self.get_reference_grid().get_global_outer_mask_binary()
         # Translate between 3d grid point and 1d array index
         grid_indexer = self.get_reference_grid().get_grid_indexer()
-        # Get invarient numbers of the datasets
-        dataset_numbers = [d.d_num for d in self.get_used_datasets()]
 
         z_map_stats = []
 
-        for d_num, map_data in zip(dataset_numbers, self.get_maps()):
+        for d_handler, map_data in zip(self.get_used_datasets(), self.get_maps()):
             self.log('===================================>>>', True)
-            self.log('Normalising Dataset {!s}'.format(d_num+1), True)
+            self.log('Normalising Dataset {!s}'.format(d_handler.d_num+1), True)
 
-            pdb, mtz = self.get_all_files()[d_num]
+            pdb = d_handler.get_pdb_filename()
+            mtz = d_handler.get_mtz_filename()
 
             # =====================================>>>
             # Create Map-MeanMap Maps
@@ -927,13 +1217,13 @@ class multi_dataset_analyser(object):
             # Calculate stats for the map
             z_map_stats.append(basic_statistics(flex.double(masked_z_values)))
 
-#        # Store the z map stats for error spotting
-#        self.get_dataset_summary().add_z_map_stats(z_map_stats)
+        # Store the z map stats for error spotting
+        self.get_map_summary().add_data(data_name='z_map_mean', data_values=z_map_stats)
 
         # No longer need maps - clear from memory after pickling
         if (not self.keep_maps_in_memory) and (self._maps):
             self.log('===================================>>>')
-            self.pickle(pickle_file=self.map_values_pickle, pickle_object=[(m.size, dict(m)) for m in self.get_maps()])
+            self.pickle(pickle_file=self.pickle_handler.get_file('map_values'), pickle_object=[(m.size, dict(m)) for m in self.get_maps()])
             self._maps = []
             gc.collect()
 
@@ -951,9 +1241,6 @@ class multi_dataset_analyser(object):
         # Translate between 3d grid point and 1d array index
         grid_indexer = self.get_reference_grid().get_grid_indexer()
 
-        # Get invarient numbers of the datasets
-        dataset_numbers = [d.d_num for d in self.get_used_datasets()]
-
         # Get the number of grid points in the local mask
         local_mask_size = self.get_reference_grid().get_local_mask().get_size()
 
@@ -968,11 +1255,12 @@ class multi_dataset_analyser(object):
         self.log('===================================>>>')
         self.log('Sampling Redundancy: {!s}'.format(redundancy))
 
-        for d_num, z_map_data in zip(dataset_numbers, self.get_z_maps()):
+        for d_handler, z_map_data in zip(self.get_used_datasets(), self.get_z_maps()):
             self.log('===================================>>>', True)
-            self.log('Post-Processing Dataset {!s}'.format(d_num+1), True)
+            self.log('Post-Processing Dataset {!s}'.format(d_handler.d_num+1), True)
 
-            pdb, mtz = self.get_all_files()[d_num]
+            pdb = d_handler.get_pdb_filename()
+            mtz = d_handler.get_mtz_filename()
 
             mod_z_map_data = [0]*self.get_reference_grid().get_grid_size_1d()
 
@@ -1025,7 +1313,7 @@ class multi_dataset_analyser(object):
         # No longer need maps - clear from memory after pickling
         if (not self.keep_maps_in_memory) and (self._z_maps):
             self.log('===================================>>>')
-            self.pickle(pickle_file=self.z_map_values_pickle, pickle_object=[(m.size, dict(m)) for m in self.get_z_maps()])
+            self.pickle(pickle_file=self.pickle_handler.get_file('z_map_values'), pickle_object=[(m.size, dict(m)) for m in self.get_z_maps()])
             self._z_maps = []
             gc.collect()
 
@@ -1090,7 +1378,6 @@ class multi_dataset_analyser(object):
                 self.log('No Clusters found.', True)
 
         # Expand the mask to include rejected datasets
-#        expanded_mask = [interesting_mask.pop(0) if b else False for b in self.get_dataset_masks().get_mask('analysed')]
         self.get_dataset_masks().add_mask(mask_name='interesting', mask=interesting_mask)
 
         return all_dataset_clusters
@@ -1163,7 +1450,7 @@ class multi_dataset_analyser(object):
                                                  'success':overall_success,
                                                  'columns':columns})
 
-        with open(os.path.join(self.outdir, self.output_files.get_file('summary_table')), 'w') as out_html:
+        with open(os.path.join(self.outdir, self.output_handler.get_file(file_tag='summary_table')), 'w') as out_html:
             out_html.write(template.render(output_data))
 
     def write_array_to_map(self, output_file, map_data, grid_size=None, grid_spacing=None):
@@ -1186,182 +1473,7 @@ class multi_dataset_analyser(object):
         self.log('Unpickling File: {!s}'.format(pickle_file))
         return easy_pickle.load(pickle_file)
 
-class dataset_handler(object):
-    def __init__(self, pdb_filename, mtz_filename):
-        """Create a dataset object to allow common functions to be applied easily to a number of datasets"""
-
-        assert os.path.exists(pdb_filename), 'PDB file does not exist!'
-        assert os.path.exists(mtz_filename), 'MTZ file does not exist!'
-
-        # Store filenames
-        self._pdb_file = os.path.abspath(pdb_filename)
-        self._mtz_file = os.path.abspath(mtz_filename)
-        # PDB Objects
-        self._pdb_input = pdb_reader.input(source_info=None,lines=open(self._pdb_file,'r').read())
-        self._pdb_struc = self._pdb_input.xray_structure_simple()
-        self._pdb_hiera = self._pdb_input.construct_hierarchy()
-        self._min_max_sites = get_bounding_box_for_structure(self.get_pdb_structure())
-
-        # Store C-alpha sites
-        self._calpha_sites = get_calpha_sites(input_hierarchy=self._pdb_hiera)
-        self._backbone_sites = get_backbone_sites(input_hierarchy=self._pdb_hiera)
-
-        # Extract miller array
-        self._fobs_miller = extract_miller_array_from_file(self._mtz_file, 'F,SIGF', log=open(os.devnull,'a'))
-        self._scaled_fobs_miller = None
-
-        # Initialise other variables
-        self._fft_map = None
-        self._unit_cell = None
-        self._space_group = None
-        self._basic_map = None
-        self._rt_transform = None
-
-    def get_pdb_filename(self):
-        return self._pdb_file
-    def get_mtz_filename(self):
-        return self._mtz_file
-    def get_pdb_input(self):
-        return self._pdb_input
-    def get_pdb_structure(self):
-        return self._pdb_struc
-    def get_pdb_hierarchy(self):
-        return self._pdb_hiera
-    def get_calpha_sites(self):
-        return self._calpha_sites
-    def get_backbone_sites(self):
-        return self._backbone_sites
-    def get_alignment_transform(self):
-        return self._rt_transform
-    def get_structure_min_max_sites(self):
-        return self._min_max_sites
-    def get_fobs_miller_array(self):
-        return self._fobs_miller
-    def get_scaled_fobs_miller_array(self):
-        return self._scaled_fobs_miller
-    def get_dataset_resolution(self):
-        return self.get_fobs_miller_array().d_min()
-    def get_map(self):
-        return self._fft_map
-    def get_map_handler(self):
-        return self._basic_map
-
-    def get_pickle_copy(self):
-        """Get copy of self that can be pickled - some cctbx objects cannot be pickled..."""
-#        assert self._fft_map is not None, 'No Things exist!'
-#        assert self._basic_map is not None, 'No Things exist!'
-        new = copy.copy(self)
-        new._fft_map = None
-        new._basic_map = None
-#        assert self._fft_map is not None, "They've been deleted!"
-#        assert self._basic_map is not None, "They've been deleted!"
-        return new
-
-    def transform_points_from_reference(self, points):
-        """Use alignment to map from reference frame to our frame"""
-        return self.get_alignment_transform().rt().inverse() * points
-
-    def transform_points_to_reference(self, points):
-        """Use alignment to map to reference frame from our frame"""
-        return self.get_alignment_transform().rt() * points
-
-    def scale_fobs_to_reference(self, ref_miller):
-        """Scale the observed data to another dataset"""
-        self._scaled_fobs_miller = apply_simple_scaling(self.get_fobs_miller_array(), ref_miller)
-        return self._scaled_fobs_miller
-
-    def align_to_reference(self, reference_sites, sites='calpha'):
-        """Calculate the rotation and translation needed to align one structure to another"""
-        assert sites in ['calpha','backbone']
-        if sites == 'calpha':
-            self._rt_transform = superpose.least_squares_fit(reference_sites=reference_sites, other_sites=self.get_calpha_sites())
-        elif sites == 'backbone':
-            self._rt_transform = superpose.least_squares_fit(reference_sites=reference_sites, other_sites=self.get_backbone_sites())
-        return self._rt_transform
-
-    def create_fft_map(self, miller=None, map_type='2mFo-DFc', d_min=None):
-        """Create an fft map to allow map values to be calculated"""
-        if not miller:
-            self._fft_map = get_fft_map_from_f_obs_and_structure(f_obs=self._fobs_miller, xray_structure=self._pdb_struc, map_type=map_type, d_min=d_min)
-        else:
-            self._fft_map = get_fft_map_from_f_obs_and_structure(f_obs=miller, xray_structure=self._pdb_struc, map_type=map_type, d_min=d_min)
-        self._unit_cell = self._fft_map.unit_cell()
-        self._space_group = self._fft_map.space_group()
-        return self._fft_map
-
-    def create_map_handler(self):
-        """Create a map handler to allow for easy retrieval of map values"""
-        if self._fft_map == None: self.create_fft_map()
-        self._basic_map = maptbx.basic_map(maptbx.basic_map_unit_cell_flag(), self._fft_map.real_map(), self._fft_map.real_map().focus(),
-                            self._unit_cell.orthogonalization_matrix(), maptbx.out_of_bounds_clamp(0).as_handle(), self._unit_cell)
-        return self._basic_map
-
-#class dataset_summary(object):
-#    def __init__(self):
-#        """Stores lots of comparison values for isomorphous structures"""
-#
-#        self._resolution_pairs = []
-#        self._cell_params = []
-#        self._cell_vols = []
-#        self._r_pairs = []
-#        self._rmsds = []
-#
-#        self._stats = []
-#        self._z_stats = []
-#
-#    def add_resolutions_observations(self, rslns):
-#        """Add (low, high) resolution pairs"""
-#        self._resolution_pairs = rslns
-#    def get_resolutions(self):
-#        return self._resolution_pairs
-#    def get_resolutions_mean_and_sd(self):
-#        """Return ((mean_low, sd_low), (mean_high, sd_high)) resolution pair"""
-#        return [(numpy.mean([r[i] for r in self._resolution_pairs]), numpy.std([r[i] for r in self._resolution_pairs])) for i in [0,1]]
-#
-#    def add_cell_params_observations(self, cells):
-#        """Add sets of cell parameters"""
-#        self._cell_params = cells
-#    def get_cell_params(self):
-#        return self._cell_params
-#    def get_cell_params_mean_and_sd(self):
-#        return zip([numpy.mean([p[i] for p in self._cell_params]) for i in range(6)], [numpy.std([p[i] for p in self._cell_params]) for i in range(6)])
-#
-#    def add_cell_volumes_observations(self, vols):
-#        """Add volume observations"""
-#        self._cell_vols = vols
-#    def get_cell_volumes(self):
-#        return self._cell_vols
-#    def get_cell_volumes_mean_and_sd(self):
-#        return (numpy.mean(self._cell_vols), numpy.std(self._cell_vols))
-#
-#    def add_rwork_rfrees_observations(self, rpairs):
-#        """Add (R-work, R-free) pairs"""
-#        self._r_pairs = rpairs
-#    def get_rwork_rfrees(self):
-#        return self._r_pairs
-#    def get_rwork_rfrees_mean_and_sd(self):
-#        return [(numpy.mean([r[i] for r in self._r_pairs]), numpy.std([r[i] for r in self._r_pairs])) for i in [0,1]]
-#
-#    def add_rmsds_observations(self, rmsds):
-#        """Add rmsds of models to reference"""
-#        self._rmsds = rmsds
-#    def get_rmsds(self):
-#        return self._rmsds
-#    def get_rmsds_mean_and_sd(self):
-#        return (numpy.mean(self._rmsds), numpy.std(self._rmsds))
-#
-#    def add_map_stats(self, stats):
-#        """Add statistics objects for all of the z_maps"""
-#        self._stats = stats
-#    def get_map_stats(self):
-#        return self._stats
-#
-#    def add_z_map_stats(self, z_stats):
-#        """Add statistics objects for all of the z_maps"""
-#        self._z_stats = z_stats
-#    def get_z_stats(self):
-#        return self._z_stats
-
+# TODO Move to Giant.Grid.Handler(?)
 class grid_handler(object):
     def __init__(self, verbose=True):
         """Create and manage a grid object to be sampled across many aligned datasets"""
@@ -1468,6 +1580,9 @@ class grid_handler(object):
     def get_resampled_grid_spacing(self):
         """Gets the grid spacing for the re-sampled grid"""
         return self._resampled_grid_spacing
+    def get_resampled_grid_indexer(self):
+        """Translates between 3d grid coordinates and 1d array coordinates"""
+        return flex.grid(self.get_resampled_grid_size())
 
     def get_buffer_mask_points(self):
         """Get a list of points in the buffer zone of the map"""
@@ -1561,14 +1676,41 @@ class grid_handler(object):
         self._global_mask = global_mask(cart_sites=cart_sites, grid_spacing=self.get_grid_spacing(), distance_cutoff=distance_cutoff)
         self.get_global_mask().show_summary()
 
-class protein_mask(object):
+# TODO Move to Giant.Grid.Masks
+class atomic_mask(object):
     def __init__(self, cart_sites, grid_spacing, max_dist, min_dist=None):
         """Take a grid and calculate all grid points with a certain distance cutoff of any point in cart_sites"""
 
         if min_dist: assert max_dist > min_dist, 'Minimum Mask Distance must be smaller than Maximum Mask Distance'
-        self._total_mask, self._outer_mask, self._inner_mask = get_grid_points_within_distance_cutoff_of_cart_sites(cart_sites=cart_sites, grid_spacing=grid_spacing, max_dist=max_dist, min_dist=min_dist)
+        print('===================================>>>')
+        # TODO COMPARE THESE TWO MASKS
+        print('Calculating Mask 1')
+        t1 = time.time()
+        self._total_mask, self._outer_mask, self._inner_mask = get_grid_points_within_distance_cutoff_of_cart_sites_2(cart_sites=cart_sites, grid_spacing=grid_spacing, max_dist=max_dist, min_dist=min_dist)
+        t2 = time.time()
+        print('Time: {!s}'.format(int(t2-t1)))
+#        print('Calculating Mask 2')
+#        self._total_mask, self._outer_mask, self._inner_mask = get_grid_points_within_distance_cutoff_of_cart_sites(cart_sites=cart_sites, grid_spacing=grid_spacing, max_dist=max_dist, min_dist=min_dist)
+#        t3 = time.time()
+#        print('Time: {!s}'.format(int(t3-t2)))
         self._max_dist = max_dist
         self._min_dist = min_dist
+
+        print('Calculating Outer Overlap')
+        overlap = [gp for gp in self._outer_mask2 if gp in self._outer_mask]
+        print('Overlap: {!s}'.format(len(overlap)))
+        in_2 = [gp for gp in self._outer_mask2 if gp not in self._outer_mask]
+        print('In 2 not 1: {!s}'.format(len(in_2)))
+        in_1 = [gp for gp in self._outer_mask if gp not in self._outer_mask2]
+        print('In 1 not 2: {!s}'.format(len(in_1)))
+
+        print('Calculating Inner Overlap')
+        overlap = [gp for gp in self._inner_mask2 if gp in self._inner_mask]
+        print('Overlap: {!s}'.format(len(overlap)))
+        in_2 = [gp for gp in self._inner_mask2 if gp not in self._inner_mask]
+        print('In 2 not 1: {!s}'.format(len(in_2)))
+        in_1 = [gp for gp in self._inner_mask if gp not in self._inner_mask2]
+        print('In 1 not 2: {!s}'.format(len(in_1)))
 
     def get_grid_points(self):
         """Return the grid points allowed by the mask - combination of max_dist (allowed) and min_dist (rejected)"""
@@ -1607,6 +1749,7 @@ class protein_mask(object):
         print('Masked Grid Min: {!s}'.format(min(self.get_grid_points())))
         print('Masked Grid Max: {!s}'.format(max(self.get_grid_points())))
 
+# TODO Move to Giant.Grid.Masks
 class spherical_mask(object):
     def __init__(self, grid_spacing, distance_cutoff, grid_jump=None):
         """Sphere used to mask grid points within a certain distance of a point"""
