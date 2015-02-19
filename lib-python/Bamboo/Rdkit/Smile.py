@@ -87,7 +87,7 @@ def get_smile_from_block(block):
     # Check for existence of Mol
     if not mol: return None
     # Get Smile
-    smile = Chem.MolToSmiles(mol, isomericSmiles=True)
+    smile = Chem.MolToSmiles(mol, isomericSmiles=False)
 
     return smile
 

@@ -1,57 +1,60 @@
+#!/home/npearce/bin/Developer/cctbx/cctbx_build/bin/cctbx.python
+
 import os, sys, glob, time
 import numpy
+
+from scitbx.array_family import flex
 
 from PANDDAs.Parser import build_pandda_parser
 from PANDDAs.Main import multi_dataset_analyser, spherical_mask, atomic_mask
 
 # ============================================================================>
 #####
-# Parse Args
+# MANUAL SETTINGS
+#####
+# ============================================================================>
+
+testing = False
+
+# ============================================================================>
+#####
+# Parse Input Args
 #####
 # ============================================================================>
 
 pandda_arg_parser = build_pandda_parser()
-pandda_args = pandda_arg_parser.parse_args(['--data-dirs','/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak/ProcessedFragmentSoak/BAZ2BA-*/1-apo',
-                                                '--outdir','/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak/pandda_arg_test',
+if not testing:
+    pandda_args = pandda_arg_parser.parse_args()
+else:
+    pandda_args = pandda_arg_parser.parse_args(['--data-dirs','/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak/ProcessedFragmentSoak/BAZ2BA-*/1-apo',
+                                                '--outdir','/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak/pandda',
                                                 '--pdb-style','apo-BAZ2BA-*-refmac.pdb',
                                                 '--ref-pdb','/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak/reference.pdb',
                                                 '--ref-mtz','/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak/reference.mtz',
                                                 '--cpus', '6', '--verbose'])
 
-print pandda_args.__dict__
+for key in pandda_args.__dict__.keys():
+    print '{!s:>30}\t\t{!s}'.format(key, pandda_args.__dict__[key])
 
 # ============================================================================>
 #####
-# Reference Dataset
+# Manual Settings
 #####
 # ============================================================================>
 
-#input_dir = '/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak'
-#ref_pdb = os.path.join(input_dir,'reference.pdb')
-#ref_mtz = os.path.join(input_dir,'reference.mtz')
+# Minimum size of cluster
+min_cluster_volume = 10
+# Z cutoff for maps
+z_cutoff = 3
+# Cutoff for separation of clusters (sqrt((2x)**2 + (2y)**2 + (2z)**2))
+clustering_cutoff = 5
+# Clustering Methods
+clustering_criterion='distance'
+clustering_metric='euclidean'
+clustering_method='average'
 
-# ============================================================================>
-#####
-# Create list of data
-#####
-# ============================================================================>
-
-#raw_pdbs = sorted(glob.glob(os.path.join(input_dir,'ProcessedFragmentSoak/BAZ2BA-*/1-apo/apo-BAZ2BA-*-refmac.pdb')))
-#raw_file_pairs = []
-#
-#for pdb in raw_pdbs:
-#    mtz = pdb.replace('.pdb','.mtz')
-#    if os.path.exists(mtz):
-#        raw_file_pairs.append((pdb,mtz))
-
-#raw_file_pairs = raw_file_pairs[0:5]
-
-#if not raw_file_pairs: raise SystemExit('No Files Found!')
-
-#num_raw_datasets = len(raw_file_pairs)
-#file_pairs = []
-
-#print 'Number of Datasets: ', num_raw_datasets
+# Cutoff for how close the "discovered" points have to be to the centroid of the ligand to be correct
+max_peak_dist = 5
 
 # ============================================================================>
 #####
@@ -69,13 +72,26 @@ pandda.set_map_scaling(scaling='none')
 pandda.set_cut_resolution(d_min=2)
 pandda.set_border_padding(6)
 
-if not pandda.get_all_datasets():
+pandda.run_pandda_init()
 
-    # Build and load list of fragment screen datasets
-    input_files = pandda.build_input_list()
+# Build and load list of fragment screen datasets
+input_files = pandda.build_input_list()
+
+if (not pandda.get_all_datasets()) and (not input_files):
+    # No datasets loaded - exit
+    raise SystemExit('NO DATASETS LOADED')
+
+elif input_files:
+
+    # ============================================================================>
+    #####
+    # Add new files and load datasets
+    #####
+    # ============================================================================>
+
     pandda.add_new_files(input_files)
     pandda.load_new_datasets()
-    pandda.collect_dataset_summary_statistics()
+    pandda.initialise_masks()
 
     # ============================================================================>
     #####
@@ -84,7 +100,7 @@ if not pandda.get_all_datasets():
     # Select the reference dataset
     # ============================================================================>
 
-    if not pandda.get_reference_dataset():
+    if not pandda.reference_dataset():
         # Select the reference dataset
         ref_pdb, ref_mtz = pandda.select_reference_dataset()
         # Load the reference dataset
@@ -94,21 +110,32 @@ if not pandda.get_all_datasets():
     #####
     # Scale, Align and Filter All Data
     #####
-    # Read in all of the files
-    # Scale and align maps to reference
     # TODO Revisit Scaling
     # ============================================================================>
 
-    # Scale and align all of the datasets to the reference
+    # Filter out datasets with different protein structures
+    pandda.filter_datasets_1()
+
+    # Scale and align the datasets to the reference
     pandda.scale_datasets()
     pandda.align_datasets()
+
+else:
+    # Rebuild the masks of the rejected datasets (quick)
+    pandda.initialise_masks()
+    pandda.filter_datasets_1()
+
+# Collate many variables across the datasets to be used for filtering
+pandda.collect_dataset_variation_data()
+
+# Filter out the datasets that are not isomorphous and therefore incomparable
+pandda.filter_datasets_2()
 
 # Analyses the crystallographic and structural variability of the datasets
 pandda.calculate_mean_structure_and_protein_masks(deviation_cutoff=0.5)
 
-# Filters and Clusters the datasets using the information gathered above...
-if not pandda.get_dataset_masks().has_mask('rejected'):
-    pandda.filter_datasets()
+# Analyse the structural variation in the datasets
+pandda.collect_structure_variation_data()
 
 # ============================================================================>
 #####
@@ -119,8 +146,8 @@ if not pandda.get_dataset_masks().has_mask('rejected'):
 #
 # ============================================================================>
 
-if pandda.get_reference_grid() is None:
-    pandda.create_reference_grid(res_factor=0.25, include_origin=True, buffer=pandda.get_border_padding())
+if pandda.reference_grid() is None:
+    pandda.create_reference_grid(res_factor=0.25, expand_to_origin=False, buffer=pandda.get_border_padding())
 
 # ============================================================================>
 #####
@@ -130,19 +157,25 @@ if pandda.get_reference_grid() is None:
 # Global mask used for removing points in the bulk solvent regions
 # ============================================================================>
 
-if pandda.get_reference_grid().get_local_mask() is None:
+if pandda.reference_grid().local_mask() is None:
     print('===================================>>>')
     print('Generating Local Mask')
-    local_mask = spherical_mask(grid_spacing=pandda.get_reference_grid().get_grid_spacing(), distance_cutoff=1.2, grid_jump=2)
-    pandda.get_reference_grid().set_local_mask(local_mask)
+    local_mask = spherical_mask(grid_spacing    = pandda.reference_grid().grid_spacing(),
+                                distance_cutoff = 1.2,
+                                grid_jump       = 2 )
+    pandda.reference_grid().set_local_mask(local_mask)
 
-if pandda.get_reference_grid().get_global_mask() is None:
+if pandda.reference_grid().global_mask() is None:
     print('===================================>>>')
     print('Generating Global Mask')
-    global_mask = atomic_mask(cart_sites=pandda.get_reference_dataset().get_backbone_sites(), grid_spacing=pandda.get_reference_grid().get_grid_spacing(), max_dist=pandda.get_border_padding(), min_dist=1.5)
-    pandda.get_reference_grid().set_global_mask(global_mask)
+    global_mask = atomic_mask(  cart_sites = pandda.reference_dataset().get_heavy_atom_sites(),
+                                grid_size  = pandda.reference_grid().grid_size(),
+                                unit_cell  = pandda.reference_grid().fake_unit_cell(),
+                                max_dist   = pandda.get_border_padding(),
+                                min_dist   = 1.5 )
+    pandda.reference_grid().set_global_mask(global_mask)
 
-if pandda.get_reference_grid().get_masked_grid_points() is None:
+if pandda.reference_grid().masked_grid_points() is None:
     pandda.mask_resampled_reference_grid()
 
 # ============================================================================>
@@ -156,13 +189,49 @@ pandda.extract_reference_map_values()
 
 # This always needs to be done, even if the objects are retrieved from a pickle
 # TODO Make these load dynamically...
-if not pandda.has_maps():
-    pandda.load_map_handlers()
+pandda.load_all_map_handlers()
+
+# ============================================================================>
+#####
+# Scale the Maps, Calculate Statistical Maps
+#####
+# ============================================================================>
+
+pandda.analyse_raw_maps()
+
+if not (pandda.get_mean_map() and pandda.get_stds_map() and pandda.get_skew_map() and pandda.get_kurt_map()):
+    pandda.calculate_map_statistics()
+
+# ============================================================================>
+#####
+# Write Grid Point Distributions
+#####
+# ============================================================================>
+
+try:
+    pandda.write_grid_point_distributions(  grid_points = [ (100,  10, 32),
+                                                            ( 90,  20, 36),
+                                                            ( 80,  30, 40),
+                                                            ( 70,  40, 44),
+                                                            ( 60,  50, 48),
+                                                            ( 50,  60, 52),
+                                                            ( 40,  70, 56),
+                                                            ( 30,  80, 60),
+                                                            ( 20,  90, 64),
+                                                            ( 10, 100, 68)],
+                                            output_filename='point_line_distributions.csv' )
+except:
+    pass
+
+# ============================================================================>
+#####
+# STORING FOR REUSE
+#####
+# Pickle all of the large arrays so they can be reloaded
+# ============================================================================>
 
 pandda.pickle_the_pandda()
-
-if not pandda.has_maps():
-    pandda.extract_map_values()
+pandda.update_pandda_size(tag='After Pre-processing')
 
 # ============================================================================>
 #####
@@ -173,72 +242,75 @@ if not pandda.has_maps():
 # Use the local mask to look for groups of significant z-values
 # ============================================================================>
 
-if not (pandda.get_mean_map() and pandda.get_stds_map() and pandda.get_skew_map() and pandda.get_kurt_map()):
-    pandda.calculate_map_statistics()
+pandda.print_clustering_settings(   z_cutoff             = z_cutoff,
+                                    min_cluster_volume   = min_cluster_volume,
+                                    clustering_cutoff    = clustering_cutoff,
+                                    clustering_criterion = clustering_criterion,
+                                    clustering_metric    = clustering_metric,
+                                    clustering_method    = clustering_method  )
 
-if not pandda.has_z_maps():
-    pandda.normalise_maps_to_z_maps()
-    pandda.update_pandda_size(tag='After Creating Z-Maps')
+for d_handler in pandda.get_masked_datasets(mask_name='rejected - total', invert=True):
 
-if not pandda.has_modified_z_maps():
-    pandda.post_process_z_maps(local_mask_function=None)
-    pandda.update_pandda_size(tag='After Post-Processing Z-Maps')
+    if d_handler.raw_cluster_hits is not None:
+        print '{!s} - ALREADY PROCESSED!'.format(d_handler.d_tag)
+        continue
 
-# ============================================================================>
-#####
-# STORING FOR REUSE
-#####
-# Pickle all of the large arrays so they can be reloaded
-# ============================================================================>
+    pandda.log('===================================>>>', True)
+    pandda.log('Calculating Z-MAPs for Dataset {!s} ({!s}/{!s})'.format(d_handler.d_tag, d_handler.d_num+1, self.get_number_of_datasets()), True)
+
+    ##################################
+    # EXTRACT MAP VALUES             #
+    ##################################
+
+    s_map = pandda.get_map(d_handler=d_handler)
+
+    # Write the sampled map
+    pandda.write_array_to_map(  output_file = d_handler.get_mtz_filename().replace('.mtz','.sampled.ccp4'),
+                                map_data    = s_map)
+
+    ##################################
+    # CALCULATE Z-MAPS               #
+    ##################################
+
+    z_map = pandda.calculate_z_map(map_vals=s_map)
+
+    # Write z map
+    pandda.write_array_to_map(  output_file = d_handler.get_mtz_filename().replace('.mtz','.zmap.ccp4'),
+                                map_data    = z_map)
+
+    ##################################
+    # LOOK FOR CLUSTERS OF Z-SCORES  #
+    ##################################
+
+    pandda.cluster_high_z_values(  d_handler            = d_handler,
+                                   z_map                = z_map,
+                                   z_cutoff             = z_cutoff,
+                                   min_cluster_volume   = min_cluster_volume,
+                                   clustering_cutoff    = clustering_cutoff,
+                                   clustering_criterion = clustering_criterion,
+                                   clustering_metric    = clustering_metric,
+                                   clustering_method    = clustering_method)
+
+#    ##################################
+#    # POST-PROCESS Z-MAPS            #
+#    ##################################
+#
+#    mod_z_map, resamp_mod_z_map = pandda.process_z_map(z_map=z_map)
+#
+#    # Write map
+#    pandda.write_array_to_map(  output_file  = d_handler.get_mtz_filename().replace('.mtz','.processed.zvalues.ccp4'),
+#                                map_data     = flex.double(mod_z_map))
+#    # Write down-sampled map
+#    pandda.write_array_to_map(  output_file  = d_handler.get_mtz_filename().replace('.mtz','.resamp.processed.zvalues.ccp4'),
+#                                map_data     = flex.double(resamp_mod_z_map),
+#                                grid_size    = pandda.reference_grid().resampled_grid_size(),
+#                                grid_spacing = pandda.reference_grid().resampled_grid_spacing())
+
+
+cluster_total, cluster_num, all_dataset_clusters = pandda.collate_all_clusters()
 
 pandda.pickle_the_pandda()
-
 pandda.update_pandda_size(tag='After Processing')
-
-# ============================================================================>
-#####
-# MANUAL ANALYSES - TO BE INCORPORATED ------------------------------>>>
-#####
-# ============================================================================>
-
-from scitbx.array_family import flex
-from Giant.Stats.Cluster import cluster_data, combine_clusters
-
-# XXX Setting Analysis Variables XXX
-
-# Minimum size of cluster
-min_cluster_size = 2
-# Z cutoff for maps
-z_cutoff = 3
-# Cutoff for separation of clusters (sqrt((2x)**2 + (2y)**2 + (2z)**2))
-cluster_cutoff = 1.5 * numpy.sqrt(3*4*pandda.get_reference_grid().get_grid_spacing()**2)
-cluster_cutoff = 5
-# Clustering Methods
-cluster_criterion='distance'
-cluster_metric='euclidean'
-cluster_method='average'
-# Cutoff for how close the "discovered" points have to be to the centroid of the ligand to be correct
-max_peak_dist = 5
-
-output_cluster_nums_results = []
-output_cluster_nums_file = os.path.join(pandda.output_handler.get_dir('manual_analyses'), 'cluster_per_dataset.csv')
-
-output_cluster_summ_results = []
-output_cluster_summ_file = os.path.join(pandda.output_handler.get_dir('manual_analyses'), 'cluster_individual_summaries.csv')
-
-output_cluster_hits_results = []
-output_cluster_hits_file = os.path.join(pandda.output_handler.get_dir('manual_analyses'), 'cluster_roc_results.csv')
-
-dnum_to_xtal_dict = dict([(i, d.get_pdb_filename()[84:88]) for i, d in enumerate(pandda.get_all_datasets())])
-xtal_to_dnum_dict = dict([(d.get_pdb_filename()[84:88], i) for i, d in enumerate(pandda.get_all_datasets())])
-solution_file = os.path.join(pandda.output_handler.get_dir('root'), 'correct_hits.summary')
-solutions = [line.strip().split(', ') for line in open(solution_file, 'r').readlines()]
-
-correct_ligands = {}
-[correct_ligands.setdefault(xtal_to_dnum_dict[xtal],[]) for xtal, model, smile, x, y, z in solutions if xtal in xtal_to_dnum_dict.keys()]
-[correct_ligands[xtal_to_dnum_dict[xtal]].append([(int(x), int(y), int(z)), smile]) for xtal, model, smile, x, y, z in solutions if xtal in xtal_to_dnum_dict.keys()]
-
-# XXX -------------------------- XXX
 
 # ============================================================================>
 #####
@@ -248,32 +320,7 @@ correct_ligands = {}
 # TODO Create a `hit processor` class
 # ============================================================================>
 
-initial_results_dir = pandda.output_handler.get_dir('initial_hits')
-
-# ============================================================================>
-
-if 1:
-
-    print('===================================>>>')
-    print('Getting Clusters of Z-scores')
-
-    print('===================================>>>')
-    hits = pandda.cluster_modz_values(z_cutoff=z_cutoff, cluster_cutoff=cluster_cutoff,
-            cluster_criterion=cluster_criterion, cluster_metric=cluster_metric, cluster_method=cluster_method)
-
-    print('===================================>>>')
-    print('Clustering Cutoff: {!s}'.format(cluster_cutoff))
-
-    cluster_num = [(k, dnum_to_xtal_dict[k], len(hits[k])) for k in sorted(hits.keys()) if hits[k]]
-    print('Total Datasets with Clusters: {!s}'.format(len(cluster_num)))
-    cluster_total = sum([a[2] for a in cluster_num])
-    print('Total Clusters: {!s}'.format(cluster_total))
-
-    #print('\n'.join(map(str,cluster_num)))
-
-    # XXX Pulling out cluster nums for each dataset
-    output_cluster_nums_results = cluster_num
-    # XXX
+combined_cluster = pandda.process_z_value_clusters()
 
 # ============================================================================>
 #####
@@ -286,79 +333,29 @@ if 1:
 pandda.write_analysis_summary(output_file=None)
 
 # ============================================================================>
+#####
+# XXX XXX XXX Setting Analysis Variables XXX XXX XXX
+#####
+# ============================================================================>
 
-if 1:
+if testing:
 
-    print('===================================>>>')
-    print('Processing Clusters of Z-scores')
+    solution_file = os.path.join(pandda.output_handler.get_dir('root'), 'correct_hits.summary')
+    if not os.path.exists(solution_file):
+        print('CORRECT LIGANDS FILE DOES NOT EXIST!!!')
+        testing = False
+    else:
+        solutions = [line.strip().split(', ') for line in open(solution_file, 'r').readlines()]
 
-    # Use the new cluster objects
-    d_clusters = [cluster_data(hits[d_num]) if hits[d_num] else None for d_num in xrange(203)]
+        correct_ligands = {}
+        [correct_ligands.setdefault(xtal,[]) for xtal in [d.d_tag for d in pandda.get_all_datasets()]]
+        [correct_ligands[xtal].append([(int(x), int(y), int(z)), smile]) for xtal, model, smile, x, y, z in solutions if xtal in correct_ligands.keys()]
 
-    cluster_summaries = []
-    filtered_d_clusters = []
+# XXX XXX XXX -------------------------- XXX XXX XXX
 
-    for d_num, clust in enumerate(d_clusters):
+# ============================================================================>
 
-        if clust == None:
-            filtered_d_clusters.append(None)
-            continue
-
-        if 1:
-            # Check how far apart the clusters are spaced
-            dists = []
-            c_num = len(clust.get_centroids())
-            for cent_a in clust.get_centroids():
-                for cent_b in clust.get_centroids():
-                    if cent_a == cent_b: continue
-                    dists.append((flex.double(cent_a) - flex.double(cent_b)).norm()*pandda.get_reference_grid().get_grid_spacing())
-            if not dists: print 'Clusters, Dataset {:4}:'.format(d_num), '\tNum: {:4}'.format(c_num)
-            else:         print 'Clusters, Dataset {:4}:'.format(d_num), '\tNum: {:4}'.format(c_num), '\tMin Spacing: {:5.3}'.format(min(dists)), '\tMax Spacing: {:5.3}'.format(max(dists))
-
-        # Pull out a cluster summary
-        for c_num, c_key in enumerate(clust.get_keys()):
-            cluster_summaries.append([d_num, c_key] + clust.get_sizes([c_num]) + clust.get_means([c_num]) + clust.get_maxima([c_num]))
-
-        # Filter out the small clusters
-        new_clust = clust.create_new_cluster_from_mask(mask=[1 if s>=min_cluster_size else 0 for s in clust.get_sizes()])
-        filtered_d_clusters.append(new_clust)
-
-        if new_clust == None:
-            continue
-
-        # Link the maps to the output directory
-        hit_subdir = os.path.join(initial_results_dir, 'Dataset-{:04}'.format(d_num))
-        if not os.path.exists(hit_subdir):
-            os.mkdir(hit_subdir)
-            os.symlink(pandda.get_dataset(d_num).get_pdb_filename(), os.path.join(hit_subdir, 'initial_model.pdb'.format(d_num)))
-            os.symlink(pandda.get_dataset(d_num).get_mtz_filename(), os.path.join(hit_subdir, 'initial_model.mtz'.format(d_num)))
-
-        # Translate GP to array index
-        grid_indexer = pandda.get_reference_grid().get_grid_indexer()
-
-        # Create maps of the high z-value points (significant points)
-        highz_points = []; [highz_points.extend(pg) for pg in new_clust.get_points()]
-        highz_map_array = numpy.zeros(pandda.get_reference_grid().get_grid_size_1d(), dtype=int)
-        highz_map_array.put(map(grid_indexer, highz_points), range(1,len(highz_points)+1))
-        d_highz_map_file = os.path.join(hit_subdir, '{!s}-high_z_vals.ccp4'.format(dnum_to_xtal_dict[d_num]))
-        pandda.write_array_to_map(d_highz_map_file, flex.double(highz_map_array.tolist()))
-
-        # Create maps of the clusters (map values are how many points are in the cluster)
-        clust_map_array = numpy.zeros(pandda.get_reference_grid().get_grid_size_1d(), dtype=int)
-        clust_map_array.put(map(grid_indexer, new_clust.get_peaks()), new_clust.get_sizes())
-        d_cluster_map_file = os.path.join(hit_subdir, '{!s}-cluster_map.ccp4'.format(dnum_to_xtal_dict[d_num]))
-        pandda.write_array_to_map(d_cluster_map_file, flex.double(clust_map_array.tolist()))
-
-    # Combine all of the clusters into one cluster object - clusters will be marked by dataset
-    combined_cluster = combine_clusters(filtered_d_clusters)
-
-    # XXX hits/ROC information for the clusters
-    output_cluster_summ_results = cluster_summaries
-    # XXX
-
-    # TODO Look for common points in the datasets?
-
-if 1:
+if testing:
 
     # Iterate through the correct ligands and check that there is a cluster near them
     print('===================================>>>')
@@ -369,18 +366,18 @@ if 1:
     missed_glycols = 0
     minimum_dists = []
 
-    for d_num in sorted(correct_ligands.keys()):
-        print 'Checking for the ligands in Dataset {!s}'.format(d_num)
+    for d_tag in sorted(correct_ligands.keys()):
+        print 'Checking for the ligands in Dataset {!s}'.format(d_tag)
 
         # Get the list of ligands that we should be detecting
-        dataset_ligands = correct_ligands[d_num]
+        dataset_ligands = correct_ligands[d_tag]
 
         # Get the clusters of identified points for this dataset
-        clust = filtered_d_clusters[d_num]
+        clust = pandda.get_dataset(d_tag=d_tag).clustered_hits
 
         for loc_cart_tuple, smile in dataset_ligands:
 
-            loc_grid_tuple = tuple(flex.double(loc_cart_tuple)/pandda.get_reference_grid().get_grid_spacing())
+            loc_grid_tuple = tuple(flex.double(loc_cart_tuple)/pandda.reference_grid().grid_spacing())
             print '\tLooking for {!s} at {!s}'.format(smile, loc_grid_tuple)
 
             # Check to see if there are any identified points in this dataset
@@ -395,7 +392,7 @@ if 1:
             for cart_point in clust.get_peaks():
                 dists.append((flex.double(cart_point) - flex.double(loc_grid_tuple)).norm())
                 #print '\t\tHow about {!s}?'.format(cart_point)
-                if dists[-1] <  max_peak_dist/pandda.get_reference_grid().get_grid_spacing():
+                if dists[-1] <  max_peak_dist/pandda.reference_grid().grid_spacing():
                     if found_it==True:
                         pass
                     else:
@@ -413,7 +410,7 @@ if 1:
             if smile == 'OCCO':
                 pass
             else:
-                minimum_dists.append(min(dists)*pandda.get_reference_grid().get_grid_spacing())
+                minimum_dists.append(min(dists)*pandda.reference_grid().grid_spacing())
 
     print('----------------------------------->>>')
     print('MISSED DATASETS: {!s}'.format(missed_datasets))
@@ -423,7 +420,7 @@ if 1:
     print('MINIMUM DISTANCES TO LIGAND (A): \n{!s}'.format(map(int,minimum_dists)))
     print('----------------------------------->>>')
 
-if 1:
+if testing:
 
     print('===================================>>>')
     print('Sorting Clusters')
@@ -457,20 +454,19 @@ if 1:
         # Calculate ROC Curves etc - Iterate through clusters and check if near ligand
         for c_rank, c_index in enumerate(c_indices):
             # Pull out information to identify the cluster
-            d_num, c_num = combined_cluster.get_keys([c_index])[0]
+            d_tag, c_num = combined_cluster.get_keys([c_index])[0]
             c_centroid = combined_cluster.get_centroids([c_index])[0]
-            print 'Checking Dataset {:4}, Cluster {:4}, Rank: {:4}, Val: {:6.2f}'.format(d_num, c_num, c_rank, rank_vals[c_rank])
+            print 'Checking Dataset {:4}, Cluster {:4}, Rank: {:4}, Val: {:6.2f}'.format(d_tag, c_num, c_rank, rank_vals[c_rank])
 
             is_a_ligand = 0
             skip = False
 
             # Check if there is a ligand in the dataset
-            if d_num not in correct_ligands.keys():
-#                print '\t0 - No Ligand in this dataset'
+            if d_tag not in correct_ligands.keys():
                 pass
             else:
                 # Get the ligands present in the dataset
-                dataset_ligands = correct_ligands[d_num]
+                dataset_ligands = correct_ligands[d_tag]
 
                 dists = []
 
@@ -480,25 +476,25 @@ if 1:
                         continue
 
                     # Convert to grid index for distance comparison
-                    loc_grid_tuple = tuple(flex.double(loc_cart_tuple)/pandda.get_reference_grid().get_grid_spacing())
+                    loc_grid_tuple = tuple(flex.double(loc_cart_tuple)/pandda.reference_grid().grid_spacing())
                     # Calculate distance to ligand
                     dists.append((flex.double(loc_grid_tuple) - flex.double(c_centroid)).norm())
 
                     # Check if correct
-                    if dists[-1] < max_peak_dist/pandda.get_reference_grid().get_grid_spacing():
+                    if dists[-1] < max_peak_dist/pandda.reference_grid().grid_spacing():
                         is_a_ligand = 1
 
                     # If it's a ligand, check to see if it's been previously identified
                     if is_a_ligand:
-                        if (d_num, l_num) in identified_ligands:
-                            print '\t. - Ligand already found: Dataset {!s}'.format(d_num)
+                        if (d_tag, l_num) in identified_ligands:
+                            print '\t. - Ligand already found: Dataset {!s}'.format(d_tag)
                             skip = True
                         else:
-                            print "\t1 - Ligand found: Dataset {!s}".format(d_num)
-                            identified_ligands.append((d_num, l_num))
+                            print "\t1 - Ligand found: Dataset {!s}".format(d_tag)
+                            identified_ligands.append((d_tag, l_num))
 
             if not skip:
-                roc_testing.append([test_type, dnum_to_xtal_dict[d_num], d_num, c_num, is_a_ligand, c_rank, rank_vals[c_rank]])
+                roc_testing.append([test_type, d_tag, d_tag, c_num, is_a_ligand, c_rank, rank_vals[c_rank]])
 
         print 'Ligands Identified:', identified_ligands
 
@@ -535,7 +531,7 @@ if 0:
     print('===================================>>>')
     print('Getting Grid Points distributions')
 
-    grid_indexer = pandda.get_reference_grid().get_grid_indexer()
+    grid_indexer = pandda.reference_grid().grid_indexer()
 
     with open(os.path.join(analyses_dir,'point_dist.csv'), 'w') as fh:
         fh.write('grid_point, dataset, map_val\n')
@@ -553,7 +549,7 @@ if 0:
     print('===================================>>>')
     print('Writing Dataset Crystal Summaries')
 
-    data_summary = pandda.get_dataset_summary()
+    data_summary = pandda.get_dataset_observations()
 
     with open(os.path.join(analyses_dir,'dataset_xtal_summary.csv'), 'w') as fh:
         fh.write('res_low, res_high, a, b, c, alpha, beta, gamma, cell volume, rmsd to mean, rfree, rwork\n')
@@ -571,7 +567,7 @@ if 0:
     print('===================================>>>')
     print('Writing Dataset Map Summaries')
 
-    data_summary = pandda.get_dataset_summary()
+    data_summary = pandda.get_dataset_observations()
 
     with open(os.path.join(analyses_dir,'dataset_map_summary.csv'), 'w') as fh:
         fh.write('headers\n')
@@ -628,12 +624,7 @@ if 0:
 
 # ============================================================================>
 
-if 1:
-    print('===================================>>>')
-    print('...')
-
 pandda.exit()
-
 
 # # # # # # # # # # # # # # # # # # # #
 # # # # # # # # # # # # # # # # # # # #
@@ -647,11 +638,11 @@ pandda.exit()
 ###
 #### Unit Cell for periodicity - also an object called a non-crystallographic-unit-cell
 #### Get the size of the cartesian grid in angstroms
-###uc = uctbx.unit_cell('{!s} {!s} {!s} 90 90 90'.format(*pandda.get_reference_grid().get_cart_max()))
+###uc = uctbx.unit_cell('{!s} {!s} {!s} 90 90 90'.format(*pandda.reference_grid().get_cart_max()))
 ###
 #### Gridding object
 #### Get the size of the cartesian grid in grid points
-###gridding = maptbx.crystal_gridding(unit_cell=uc, pre_determined_n_real=pandda.get_reference_grid().get_grid_size())
+###gridding = maptbx.crystal_gridding(unit_cell=uc, pre_determined_n_real=pandda.reference_grid().get_grid_size())
 ###
 #### Get the data from the pandda
 ###z_map = pandda.get_z_maps()[7].as_dense_vector()

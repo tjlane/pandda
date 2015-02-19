@@ -106,11 +106,11 @@ class cluster_data(object):
 
         return cluster_data(dict([(self._cluster_keys[i], self._cluster_data[i]) for i, m in enumerate(mask) if m==1]))
 
-def combine_clusters(clusters, names=None):
+def combine_clusters(clusters, ids=None):
     """Combine multiple clusters into one object. Keys will be given the prefix in `names` if given, or integers - clusters can be None (these will be ignored)"""
 
-    if names: assert len(names)==len(clusters)
-    else: names = range(0,len(clusters))
+    if ids: assert len(ids)==len(clusters)
+    else: ids = range(0,len(clusters))
 
     new_keys = []
     new_data = []
@@ -118,7 +118,7 @@ def combine_clusters(clusters, names=None):
     for i_clust, old_cluster in enumerate(clusters):
         if old_cluster == None:
             continue
-        new_keys.extend([(names[i_clust], old_key) for old_key in old_cluster.get_keys()])
+        new_keys.extend([(ids[i_clust], old_key) for old_key in old_cluster.get_keys()])
         new_data.extend(old_cluster.get_data())
 
     return cluster_data(dict(zip(new_keys, new_data)))

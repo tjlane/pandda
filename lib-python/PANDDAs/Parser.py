@@ -20,8 +20,8 @@ def build_pandda_parser():
     # Data input arguments
     p.add_argument('--ref-pdb', metavar='FILE', default='./reference.pdb', help='PDB File for the APO Structure of the Protein')
     p.add_argument('--ref-mtz', metavar='FILE', default='./reference.mtz', help='Associated MTZ File for the Reference Structure')
-    p.add_argument('--data-dirs', metavar='DIR', default='./Processing/*', help='Directorys Containing Diffraction Data, PDB Files and Smile Strings')
-    p.add_argument('--pdb-style', metavar='STRING', default='*/refine.pdb', help='Naming style of the pdb files in --data-dir. Can contain wildcards. i.e. "*/refine.pdb"')
-    p.add_argument('--mtz-style', metavar='STRING', default=None, help='Naming style of the mtz files in --data-dir. Can contain wildcards. i.e. "*/refine.mtz". If None, looks for files named similarly to pdb_style')
+    p.add_argument('--data-dirs', metavar='DIR', required=True, help='Directorys Containing Diffraction Data, PDB Files and Smile Strings')
+    p.add_argument('--pdb-style', metavar='STRING', default='final.pdb', help='Naming style of the pdb files in --data-dir. Can contain wildcards. i.e. "*-refine.pdb"')
+    p.add_argument('--mtz-style', metavar='STRING', default=None, help='Naming style of the mtz files in --data-dir. Can contain wildcards. i.e. "*-refine.mtz". If None, looks for files named similarly to pdb_style')
 
     return p
