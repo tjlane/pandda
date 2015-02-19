@@ -1,4 +1,4 @@
-from numpy import math
+import numpy
 from scitbx.array_family import flex
 from libtbx.math_utils import ifloor, iceil
 
@@ -31,9 +31,9 @@ def create_cartesian_grid(min_carts, max_carts, grid_spacing):
     grid_point_volume = grid_spacing**3
 
     # Calculate the grid points in cartesian space
-    grid_points = flex.vec3_double([tuple([min_carts[i]+grid_spacing*grid_point[i] for i in [0,1,2]]) for grid_point in flex.nested_loop(grid_size)])
+    grid_points_cart = flex.vec3_double([tuple([min_carts[i]+grid_spacing*grid_point[i] for i in [0,1,2]]) for grid_point in flex.nested_loop(grid_size)])
 
-    return box_size, grid_size, grid_points
+    return box_size, grid_size, grid_points_cart
 
 def get_grid_points_within_distance_cutoff_of_origin(grid_spacing, distance_cutoff):
     """Find all points on isotropic grid within distance_cutoff of the origin"""
@@ -49,7 +49,7 @@ def get_grid_points_within_index_cutoff_of_origin(grid_index_cutoff):
     # Round the max grid index down to the nearest int - outer bound on the x,y,z coords
     outer_bound_box = int(grid_index_cutoff)
     # Calculate r/sqrt(3) - inner bound on x,y,z coords
-    inner_bound_box = grid_index_cutoff/math.sqrt(3)
+    inner_bound_box = grid_index_cutoff/numpy.math.sqrt(3)
     # Calculate r^2 - limiting sphere
     rad_sq = grid_index_cutoff**2
     # List of allowed grid indices
@@ -81,6 +81,17 @@ def get_grid_points_within_distance_cutoff_of_cart_sites(cart_sites, grid_spacin
 
     return get_grid_points_within_index_cutoff_of_grid_sites(grid_sites=grid_sites, max_grid_dist=max_grid_dist, min_grid_dist=min_grid_dist)
 
+def get_grid_points_within_distance_cutoff_of_cart_sites_2(cart_sites, grid_spacing, max_dist, min_dist=None):
+    """Find all points on isotropic grid within distance cutoff of cartesian sites"""
+
+    # Normalise the cutoff and the sites to make them grid-independent
+    max_grid_dist = (1.0*max_dist)/grid_spacing
+    if min_dist: min_grid_dist = (1.0*min_dist)/grid_spacing
+    else:        min_grid_dist = None
+    grid_sites = [tuple([1.0*c/grid_spacing for c in coords]) for coords in cart_sites]
+
+    return get_grid_points_within_index_cutoff_of_grid_sites_2(grid_sites=grid_sites, max_grid_dist=max_grid_dist, min_grid_dist=min_grid_dist)
+
 def get_grid_points_within_index_cutoff_of_grid_sites(grid_sites, max_grid_dist, min_grid_dist=None):
     """Find all points on a grid within a certain number of grid points of grid sites (not necessarily integer sites)"""
 
@@ -101,13 +112,13 @@ def get_grid_points_within_index_cutoff_of_grid_sites(grid_sites, max_grid_dist,
     # Round the max grid distance down to the nearest int - outer bound on the dx,dy,dz values
     outer_bound_box = int(max_grid_dist)
     # Calculate r/sqrt(3) - inner bound on dx, dy, dz values
-    inner_bound_box = max_grid_dist/math.sqrt(3)
+    inner_bound_box = max_grid_dist/numpy.math.sqrt(3)
     # Calculate r^2 - limiting sphere
     rad_sq = max_grid_dist**2
 
     # List of allowed grid indices
-    allowed_grid_indices = []
-    rejected_grid_indices = []
+    outer_indices = []
+    inner_indices = []
 
     # Iterate through and add valid points
     for gp in flex.nested_loop(min_grid, max_grid):
@@ -117,10 +128,10 @@ def get_grid_points_within_index_cutoff_of_grid_sites(grid_sites, max_grid_dist,
             if (dx > outer_bound_box) or (dy > outer_bound_box) or (dz > outer_bound_box):
                 continue
             elif (dx <= inner_bound_box) and (dy <= inner_bound_box) and (dz <= inner_bound_box):
-                allowed_grid_indices.append(gp)
+                outer_indices.append(gp)
                 break
             elif (dx**2 + dy**2 + dz**2) <= rad_sq:
-                allowed_grid_indices.append(gp)
+                outer_indices.append(gp)
                 break
 
     # Filter the grid points that are too close to the protein
@@ -128,30 +139,83 @@ def get_grid_points_within_index_cutoff_of_grid_sites(grid_sites, max_grid_dist,
         # Round the min grid distance up to the nearest int - outer bound on the dx,dy,dz values
         outer_bound_box = int(min_grid_dist) + 1
         # Calculate r/sqrt(3) - inner bound on dx, dy, dz values
-        inner_bound_box = min_grid_dist/math.sqrt(3)
+        inner_bound_box = min_grid_dist/numpy.math.sqrt(3)
         # Calculate r^2 - limiting sphere
         rad_sq = min_grid_dist**2
 
         # Iterate through and add valid points
-        for gp in allowed_grid_indices:
+        for gp in outer_indices:
             for site in grid_sites:
                 dx, dy, dz = [abs(p1-p2) for p1,p2 in zip(gp, site)]
 
                 if (dx > outer_bound_box) or (dy > outer_bound_box) or (dz > outer_bound_box):
                     continue
                 elif (dx <= inner_bound_box) and (dy <= inner_bound_box) and (dz <= inner_bound_box):
-                    rejected_grid_indices.append(gp)
+                    inner_indices.append(gp)
                     break
                 elif (dx**2 + dy**2 + dz**2) <= rad_sq:
-                    rejected_grid_indices.append(gp)
+                    inner_indices.append(gp)
                     break
 
     if min_grid_dist:
-        total_grid_indices = [gp for gp in allowed_grid_indices if gp not in rejected_grid_indices]
+        total_indices = [gp for gp in outer_indices if gp not in inner_indices]
     else:
-        total_grid_indices = allowed_grid_indices
+        total_indices = outer_indices
 
-    return total_grid_indices, allowed_grid_indices, rejected_grid_indices
+    return total_indices, outer_indices, inner_indices
+
+def get_grid_points_within_index_cutoff_of_grid_sites_2(grid_sites, max_grid_dist, min_grid_dist=None):
+    """Find all points on a grid within a certain number of grid points of grid sites (not necessarily integer sites)"""
+
+    # Find the size of the grid that we'll need
+    max_x = iceil(max([s[0] for s in grid_sites]) + max_grid_dist)
+    max_y = iceil(max([s[1] for s in grid_sites]) + max_grid_dist)
+    max_z = iceil(max([s[2] for s in grid_sites]) + max_grid_dist)
+    max_grid = (max_x+2, max_y+2, max_z+2)
+    print 'MAX GRID:', max_grid
+
+    # Round the grid sites to the nearest grid point
+    int_grid_sites = [tuple(map(int, site)) for site in grid_sites]
+
+    # Grid objects
+    grid_indexer = flex.grid(max_grid)
+    grid_size = flex.product(flex.int(max_grid))
+
+    # Masks
+    outer_mask = numpy.zeros(grid_size, dtype=int)
+    inner_mask = numpy.zeros(grid_size, dtype=int)
+
+    # Find all of the grid vectors within max_dist of grid sites
+    outer_grid_vectors = get_grid_points_within_index_cutoff_of_origin(grid_index_cutoff=max_grid_dist)
+    outer_indices = []
+    for site in int_grid_sites:
+        outer_indices.extend(combine_grid_point_and_grid_vectors(site, grid_vectors=outer_grid_vectors))
+    # Iterate through the grid and create binary masks
+    print 'OUTER LENGTH:', len(outer_indices)
+    a=[gp for gp in outer_indices]
+    print 'MAX GP:', max(a)
+    print 'MAX X:', max([x[0] for x in a])
+    print 'MAX Y:', max([x[1] for x in a])
+    print 'MAX Z:', max([x[2] for x in a])
+    a=[grid_indexer(gp) for gp in outer_indices]
+    print 'MAX INDEX:', max(a)
+    [outer_mask.put(i, 1) for i,gp in zip(a,outer_indices)]
+
+    if min_grid_dist:
+        # Find all of the grid vectors within min_dist of grid sites
+        inner_grid_vectors = get_grid_points_within_index_cutoff_of_origin(grid_index_cutoff=min_grid_dist)
+        inner_indices = []
+        for site in int_grid_sites:
+            inner_indices.extend(combine_grid_point_and_grid_vectors(site, grid_vectors=inner_grid_vectors))
+        # Iterate through the grid and create binary masks
+        [inner_mask.put(grid_indexer(gp), 1) for gp in inner_indices]
+
+    # Convert from the mask back to grid points
+    outer_indices = [gp for i, gp in enumerate(flex.nested_loop(max_grid)) if outer_mask[i]==1]
+    inner_indices = [gp for i, gp in enumerate(flex.nested_loop(max_grid)) if inner_mask[i]==1]
+    total_indices = [gp for i, gp in enumerate(flex.nested_loop(max_grid)) if (inner_mask[i]==0 and outer_mask[i]==1)]
+
+    return total_indices, outer_indices, inner_indices
 
 
 
