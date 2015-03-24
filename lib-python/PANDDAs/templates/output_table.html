@@ -38,7 +38,7 @@
               {% if row.success is defined %}<tr class={{['success','default','info','warning','danger'][row.success] }}>{% else %}<tr>{% endif %}
               <th scope="row">{{ row.heading }}</th>
               {% for column in row.columns -%}
-              <td class="text-{{ ['success','success','muted','muted','danger'][column.flag] }}"><span class="glyphicon glyphicon-{{ ['ok','ok','flag','flag','remove'][column.flag] }}" aria-hidden="true"></span>{{ column.message }}</td>
+              <td class="text-{{ ['success','success','muted','muted','danger'][column.flag] }}"><span class="glyphicon glyphicon-{{ ['ok','ok','flag','flag','remove'][column.flag] }}" aria-hidden="true"></span> {{ column.message }}</td>
               {% endfor -%}
               {% if row.success is defined %}<td><span class="label label-{{ ['success','default','info','warning','danger'][row.success] }}">{{ ['Complete','Complete','Information','Warning','Failed'][row.success] }}</span></td>{% endif -%}
             </tr>

@@ -2,8 +2,8 @@
 
 import os, sys
 
-from Bamboo.Analysis.Compare.Angles import calculate_dihedral_angle_rmsd_from_file
-from Bamboo.Analysis.Compare.Coords import calculate_rmsd, calculate_centroid_difference
+from Bamboo.Analysis.Angles import calculate_dihedral_angle_rmsd_from_file
+from Bamboo.Analysis.Coords import calculate_rmsd, calculate_centroid_difference
 
 class BambooTestError(Exception):
         pass

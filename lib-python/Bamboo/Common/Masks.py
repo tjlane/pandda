@@ -14,18 +14,6 @@ class mask_collection(object):
         assert len(entry_ids) == self._mask_length
         self._entry_ids = entry_ids
 
-    def set_mask_value(self, mask_name, entry_id, value):
-        """Set a particular entry in the mask `mask_name`, corresponding to `entry_id` to `value`"""
-        assert mask_name in self.masks.keys()
-        assert entry_id in self._entry_ids
-        self.masks[mask_name][self._entry_ids.index(entry_id)] = bool(value)
-
-    def get_mask_value(self, mask_name, entry_id):
-        """Set a particular entry in the mask `mask_name`, corresponding to `entry_id` to `value`"""
-        assert mask_name in self.masks.keys()
-        assert entry_id in self._entry_ids
-        return self.masks[mask_name][self._entry_ids.index(entry_id)]
-
     def add_mask(self, mask_name, mask):
         """Add a new mask"""
         assert len(mask) == self._mask_length
@@ -38,6 +26,18 @@ class mask_collection(object):
     def has_mask(self, mask_name):
         """Check if it has a single mask"""
         return mask_name in self.masks.keys()
+
+    def set_mask_value(self, mask_name, entry_id, value):
+        """Set a particular entry in the mask `mask_name`, corresponding to `entry_id` to `value`"""
+        assert mask_name in self.masks.keys()
+        assert entry_id in self._entry_ids
+        self.masks[mask_name][self._entry_ids.index(entry_id)] = bool(value)
+
+    def get_mask_value(self, mask_name, entry_id):
+        """Set a particular entry in the mask `mask_name`, corresponding to `entry_id` to `value`"""
+        assert mask_name in self.masks.keys()
+        assert entry_id in self._entry_ids
+        return self.masks[mask_name][self._entry_ids.index(entry_id)]
 
     def mask(self, mask_name, input_list, invert=False):
         """Mask `input_list` according to the mask `mask`"""

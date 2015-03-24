@@ -14,7 +14,7 @@ from libtbx.math_utils import ifloor, iceil
 from Giant.Xray.Miller.Utils import apply_symmetry_to_miller_array, check_miller_arrays_compatible_for_scaling
 from Giant.Xray.Miller.Utils import scale_miller_array_to_reference, scale_amplitude_arrays_via_intensities
 from Giant.Xray.Maps.Utils import get_fft_map_from_f_obs_and_structure, generate_p1_box_from_size
-from Giant.Xray.Maps.Grid import calculate_sampling_distance, get_bounding_box_for_structure, calculate_grid_size, create_cartesian_grid
+from Giant.Grid.Utils import calculate_sampling_distance, get_bounding_box_for_structure, calculate_grid_size, create_cartesian_grid
 from Giant.Xray.Structure.Select import get_calpha_sites
 from Giant.Stats.Moments import skew, kurtosis
 from Giant.Stats.Normalise import normalise_array_to_z_scores

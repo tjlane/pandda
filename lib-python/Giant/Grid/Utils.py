@@ -1,9 +1,51 @@
+from scipy import spatial
 import numpy
 from scitbx.array_family import flex
 from libtbx.math_utils import ifloor, iceil
 
-def calculate_sampling_distance(resolution, res_factor):
-    return resolution*res_factor
+class grid_partition(object):
+    def __init__(self, grid_size, grid_spacing, atomic_hierarchy):
+        """Partition a grid based on the nearest neighbour calpha atom for each grid site"""
+
+        # Save inputs
+        self.hierarchy = atomic_hierarchy
+        self.grid_size = grid_size
+        self.grid_spacing = grid_spacing
+        self.grid_indexer = flex.grid(grid_size)
+
+        # Calculate partition variables
+        atoms = [at for at in atomic_hierarchy.atoms_with_labels()]
+        self.grid_sites = list(flex.nested_loop(grid_size))
+        self.atom_sites_grid = numpy.array([a.xyz for a in atoms])/grid_spacing
+        self.atom_sites_cart = numpy.array([a.xyz for a in atoms])
+        self.atom_labels = [(a.chain_id, a.resid()) for a in atoms]
+
+        # Distances from grid sites to nearest atom site
+        self.nn_dists = None
+        # Index of nearest atom to grid sites
+        self.nn_groups = None
+        # Label of nearest atom to grid sites
+        self.nn_atom_labels = None
+
+    def partition_grid(self):
+        """Find the nearest neighbour for each grid point"""
+        tree = spatial.KDTree(data=self.atom_sites_grid)
+        self.nn_dists, self.nn_groups = tree.query(self.grid_sites)
+        self.nn_atom_labels = [self.atom_labels[i] for i in self.nn_groups]
+    def query_by_grid_indices(self, idxs):
+        """Return the atom label for a grid site index"""
+        if not self.nn_atom_labels: self.partition_grid()
+        return [self.nn_atom_labels[i] for i in idxs]
+    def query_by_grid_points(self, gps):
+        """Return the atom label for a grid point"""
+        if not self.nn_atom_labels: self.partition_grid()
+        return [self.nn_atom_labels[self.grid_indexer(g)] for g in gps]
+
+    def query_by_cart_points(self, sites_cart):
+        """Dynamically calculate the nearest atom site to the input points"""
+        tree = spatial.KDTree(data=self.atom_sites_cart)
+        nn_dists, nn_groups = tree.query(self.grid_sites)
+        return [self.atom_labels[i] for i in nn_groups]
 
 def get_bounding_box_for_structure(structure):
     return (structure.sites_cart().min(), structure.sites_cart().max())

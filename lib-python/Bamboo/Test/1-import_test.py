@@ -2,9 +2,9 @@
 
 from Bamboo.Misc.SoakParser import *
 from Bamboo.Misc.ModelHistory import *
-from Bamboo.Analysis.Compare.Coords import *
-from Bamboo.Analysis.Compare.Fragment import *
-from Bamboo.Analysis.Compare.Angles import *
+from Bamboo.Analysis.Coords import *
+from Bamboo.Analysis.Fragment import *
+from Bamboo.Analysis.Angles import *
 from Bamboo.Symmetry.Utils import *
 from Bamboo.Maps.Utils import *
 from Bamboo.Maps.Masking import *

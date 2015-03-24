@@ -6,7 +6,7 @@ from Bamboo.Common.Command import CommandManager
 from Bamboo.Utils.Constants import OutputChain
 from Bamboo.Utils.ProgramSelector import allowed_fitter_args
 #from Bamboo.Symmetry.Utils import map_structure_to_asu
-from Bamboo.Xray.Utils import create_cryst_line_from_mtz
+from Bamboo.Xray.Cryst import create_cryst_line_from_mtz
 from Bamboo.Wrappers.SymUtils import map_to_reference_using_symmetry
 from Bamboo.Wrappers.PdbUtils import merge_pdb_files, change_residue_chain_and_number
 

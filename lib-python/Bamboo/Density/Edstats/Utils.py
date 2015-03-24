@@ -6,7 +6,6 @@ import os, sys, tempfile
 
 from Bamboo.Common.Command import CommandManager
 from Bamboo.Utils.MTZ import mtzFile
-from Bamboo.Macro.Utils import get_residue_labels
 
 class edstatsSummary:
     """Class to process, store and present the output from edstats.pl"""
