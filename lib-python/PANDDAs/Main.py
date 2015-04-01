@@ -3,12 +3,12 @@ import copy, resource, gc
 import multiprocessing
 
 from scipy import spatial
-from scipy import stats as scipy_stats
 from scipy import cluster as scipy_cluster
 
 import numpy
 
-import iotbx.pdb as pdb_reader
+import iotbx.pdb
+import iotbx.mtz
 import mmtbx.f_model as model_handler
 #import iotbx.map_tools as map_tools
 
@@ -84,7 +84,6 @@ FILTER_GLOBAL_RMSD_CUTOFF = 1
 
 PANDDA_VERSION = 0.1
 
-# TODO MOVE/REMOVE TODO
 def structure_summary(hierarchy):
     """Return a summary of a structure"""
 
@@ -108,112 +107,70 @@ def structure_summary(hierarchy):
 
     return o_counts, s_dict
 
-# TODO MOVE/REMOVE TODO
-class structure_comparer(object):
-    def __init__(self, hierarchy):
-        """Object for summarising a structure and comparing it to others"""
-        self.hierarchy = hierarchy
+class dataset_handler_list(object):
+    """Class for grouping many dataset handlers together"""
 
-    def compare_all(self, other_hierarchy):
-        """Compare lots of things about the structures to check they're identical"""
+    def __init__(self):
+        self._datasets = []
+        self._masks = mask_collection()
 
-        sequence_diffs = self.compare_chain_sequences(other_hierarchy)
-        count_diffs = self.compare_overall_counts(other_hierarchy)
+    def __getitem__(self, idx):
+        if   isinstance(idx, int): return self.get(d_num = idx)
+        elif isinstance(idx, str): return self.get(d_tag = idx)
+        else: raise Exception('CANNOT INDEX EXCEPT BY int OR str. TYPE GIVEN: {!s}'.format(type(idx)))
 
-        return sequence_diffs + count_diffs
+    def __call__(self):
+        """Return all datasets"""
+        return self._datasets
 
-    def compare_chain_sequences(self, other_hierarchy):
-        """Extract the sequence for each chain and compare them"""
+    def all_masks(self):
+        """Return the mask object"""
+        return self._masks
 
-        # Extract sequences by chain
-        my_seqs = dict([(c.id, c.as_sequence()) for c in self.hierarchy.chains()])
-        other_seqs = dict([(c.id, c.as_sequence()) for c in other_hierarchy.chains()])
+    def all(self):
+        """Return all datasets"""
+        return self._datasets
+    def all_nums(self):
+        """Return the list of dataset ids"""
+        return [d.d_num for d in self.all()]
+    def all_tags(self):
+        """Return the list of dataset tags"""
+        return [d.d_tag for d in self.all()]
 
-        differences = []
+    def size(self, mask_name=None, invert=False):
+        """Return the number of datasets in the handler (with optional mask applied)"""
+        if mask_name:   return len(self.mask(mask_name=mask_name, invert=invert))
+        else:           return len(self.all())
 
-        # Compare the elements and counts thereof
-        uniq_sequences, diff_sequences = compare_dictionaries(my_seqs, other_seqs)
-        # Ignore the uniq chains - these are picked up by overall counts function
-        for diff_seq in diff_sequences:
-            print('DIFFERENT SEQUENCES: {!s}'.format(diff_seq))
-            differences.append(('different sequence',)+diff_seq)
+    def add(self, new_datasets):
+        """Add new datasets"""
 
-        return differences
+        for new_d in new_datasets:
+            # Check all added datasets are the right class
+            assert isinstance(new_d, dataset_handler), 'ADDED OBJECTS MUST BE OF TYPE: {!s}'.format(dataset_handler.__name__)
+            # Check all added dataset id tags are strs
+            assert isinstance(new_d.d_tag, str), 'DATASET TAG MUST BE str: {!s}'.format(type(new_d.d_tag))
+            assert new_d.d_tag not in self.all_tags(), 'DATASET TAG ALREADY EXISTS: {!s}'.format(new_d.d_tag)
+            # Check all added dataset id nums are ints
+            assert isinstance(new_d.d_num, int), 'DATASET NUM MUST BE int: {!s}'.format(type(new_d.d_num))
+            assert new_d.d_num not in self.all_nums(), 'DATASET NUM ALREADY EXISTS: {!s}'.format(new_d.d_num)
+            # No problems, add to list
+            self._datasets.append(new_d)
 
-    def compare_overall_counts(self, other_hierarchy):
-        """Compare the counts of many variables in one structure to those in another structure"""
+    def get(self, d_tag=None, d_num=None):
+        """Get a dataset by tag or num"""
 
-        # Extract counts
-        my_counts = self.hierarchy.overall_counts()
-        other_counts = other_hierarchy.overall_counts()
+        assert d_num or d_tag, 'No dataset NUM or TAG given!'
+        assert not (d_num and d_tag), 'BOTH dataset NUM and TAG given!'
+        if d_num: matching = [d for d in self.all() if d.d_num == d_num]
+        else:     matching = [d for d in self.all() if d.d_tag == d_tag]
+        if len(matching) == 0: raise Exception('NO MATCHING DATASET FOUND - DNUM: {!s}, DTAG: {!s}'.format(d_num, d_tag))
+        if len(matching) != 1: raise Exception('MORE THAN ONE MATCHING DATASET - DNUM: {!s}, DTAG: {!s}'.format(d_num, d_tag))
+        return matching[0]
 
-        differences = []
-
-        # Counts of different variables
-        count_vars = [  'n_models',
-#                        'n_empty_models',
-#                        'n_duplicate_model_ids',
-                        'n_chains',
-#                        'n_empty_chains',
-#                        'n_duplicate_chain_ids',
-#                        'n_chains_with_mix_of_proper_and_improper_alt_conf',
-#                        'n_explicit_chain_breaks',
-                        'n_residues',
-                        'n_residue_groups',
-#                        'n_empty_residue_groups',
-                        'n_atoms',
-#                        'n_empty_atom_groups',
-#                        'n_duplicate_atom_labels',
-#                        'n_anisou',
-#                        'n_alt_conf',
-#                        'n_alt_conf_none',
-#                        'n_alt_conf_pure',
-#                        'n_alt_conf_proper',
-#                        'n_alt_conf_improper'
-                                                ]
-
-        for var_name in count_vars:
-            if my_counts.__dict__[var_name] != other_counts.__dict__[var_name]:
-                print('COUNT DIFFERENCE: `{!s}`'.format(var_name))
-                differences.append(('count difference', var_name, my_counts.__dict__[var_name], other_counts.__dict__[var_name]))
-
-        # Compare the chain ids and numbers of each chain
-        uniq_chains, diff_chains = compare_dictionaries(my_counts.chain_ids, other_counts.chain_ids)
-        for uniq_ch in uniq_chains:
-            print('UNIQUE CHAIN: {!s}'.format(uniq_ch))
-            differences.append(('unique chain', )+uniq_ch)
-        for diff_ch in diff_chains:
-            print('DIFFERENT CHAIN COUNT: {!s}'.format(diff_ch))
-            differences.append(('different chain count',)+diff_ch)
-
-        # Compare the resnames and counts thereof
-        uniq_resnames, diff_resnames = compare_dictionaries(my_counts.resnames, other_counts.resnames)
-        for uniq_res in uniq_resnames:
-            print('UNIQUE RESIDUE: {!s}'.format(uniq_res))
-            differences.append(('unique residue', )+uniq_res)
-        for diff_res in diff_resnames:
-            print('DIFFERENT RESIDUE COUNT: {!s}'.format(diff_res))
-            differences.append(('different residue count',)+diff_res)
-
-        # Compare the residues classes and counts thereof
-        uniq_classes, diff_classes = compare_dictionaries(my_counts.resname_classes, other_counts.resname_classes)
-        for uniq_cl in uniq_classes:
-            print('UNIQUE RESIDUE CLASS: {!s}'.format(uniq_cl))
-            differences.append(('unique residue class', )+uniq_cl)
-        for diff_cl in diff_classes:
-            print('DIFFERENT RESIDUE CLASS COUNT: {!s}'.format(diff_cl))
-            differences.append(('different residue class count',)+diff_cl)
-
-        # Compare the elements and counts thereof
-        uniq_elems, diff_elems = compare_dictionaries(my_counts.element_charge_types, other_counts.element_charge_types)
-        for uniq_el in uniq_elems:
-            print('UNIQUE ELEMENT: {!s}'.format(uniq_el))
-            differences.append(('unique element', )+uniq_el)
-        for diff_el in diff_elems:
-            print('DIFFERENT ELEMENT COUNT: {!s}'.format(diff_el))
-            differences.append(('different element count',)+diff_el)
-
-        return differences
+    def mask(self, mask_name, invert=False):
+        """Retrieve a masked list of datasets"""
+        return self._masks.mask(mask_name=mask_name, input_list=self.all(), invert=invert)
 
 class dataset_handler(object):
     def __init__(self, dataset_number, pdb_filename, mtz_filename, dataset_tag=None):
@@ -228,7 +185,9 @@ class dataset_handler(object):
         if dataset_tag:
             self.d_tag = dataset_tag
         else:
-            self.d_tag = 'D{:05d}'.format(self.d_num)
+            # If d_num < 0 - mark as a reference dataset
+            if self.d_num < 0:  self.d_tag = 'REF{:05d}'.format(self.d_num)
+            else:               self.d_tag = 'D{:05d}'.format(self.d_num)
 
         # Output Directories
         self.output_handler = None
@@ -240,11 +199,11 @@ class dataset_handler(object):
         self._mtz_file = os.path.abspath(mtz_filename)
 
         # PDB Objects
-        self._structure = pdb_reader.hierarchy.input(file_name=self._pdb_file)
+        self._structure = self.new_structure()
 
         # MTZ Objects
         # TODO TODO TODO
-        self._mtz_data = 000000
+#        self._mtz_data = iotbx.mtz.object(self._mtz_file)
 
         ########################################################
 
@@ -300,7 +259,7 @@ class dataset_handler(object):
 
     def new_structure(self):
         """Generate a new copy of the input-hierarchy pair, from the pdb file"""
-        return pdb_reader.hierarchy.input(file_name=self._pdb_file)
+        return iotbx.pdb.hierarchy.input(file_name=self._pdb_file)
 
     def get_heavy_atom_sites(self):
         xray_structure = self.get_input().xray_structure_simple()
@@ -346,10 +305,6 @@ class dataset_handler(object):
 
     def get_structure_summary(self):
         return structure_summary(hierarchy=self.get_hierarchy())
-
-    def compare_structure(self):
-        """Return an object that can be used to compare structures"""
-        return structure_comparer(hierarchy=self.get_hierarchy())
 
     def transform_from_reference(self, points, method, point_mappings=None):
         """Use alignment to map from reference frame to our frame"""
@@ -482,7 +437,185 @@ class dataset_handler(object):
         # Shift and scale
         return (orig_map_vals+self._raw_map_offset)*self._raw_map_scale
 
+class reference_dataset_handler(dataset_handler):
+    _origin_shift = (0,0,0)
+
+    def set_origin_shift(self, origin_shift):
+        self._origin_shift = origin_shift
+    def get_origin_shift(self):
+        return self._origin_shift
+
+class identical_structure_ensemble(object):
+    """Class for collating and comparing multiple observations of the same structure"""
+
+    def __init__(self, ref_hierarchy):
+        """Initialise the comparison object"""
+
+        self.data = multiple_data_collection()
+        self.ref_hierarchy = ref_hierarchy
+
+        # Set the collection ids to the residue labels
+        residue_labels = [(rg.parent().id, rg.resid()) for rg in ref_hierarchy.residue_groups()]
+        self.data.set_collection_ids(residue_labels)
+        # List of just chain ids
+        chain_ids = [rg.parent().id for rg in ref_hierarchy.residue_groups()]
+        self.data.add_collection_info(info_name='chain ids', info_values=chain_ids)
+        # List of just residue ids
+        residue_ids = [rg.resid() for rg in ref_hierarchy.residue_groups()]
+        self.data.add_collection_info(info_name='residue ids', info_values=residue_ids)
+        # List of which residues are protein
+        is_protein = [rg.parent().is_protein() for rg in ref_hierarchy.residue_groups()]
+        self.data.add_collection_info(info_name='is protein', info_values=is_protein)
+        # List of which residues are in multiple conformations
+        has_conformers = [rg.have_conformers() for rg in ref_hierarchy.residue_groups()]
+        self.data.add_collection_info(info_name='has conformers', info_values=has_conformers)
+        # List of number of conformers per residue
+        num_conformers = [len(rg.conformers()) for rg in ref_hierarchy.residue_groups()]
+        self.data.add_collection_info(info_name='number of conformers', info_values=num_conformers)
+        # List of number of unique resnames for each residue - XXX I'm not sure when this can be more than one?
+        residue_names = [[s for s in rg.unique_resnames()] for rg in ref_hierarchy.residue_groups()]
+        self.data.add_collection_info(info_name='residue names', info_values=residue_names)
+        # List of residues types (amino, water, other, etc)
+        residue_types = [iotbx.pdb.common_residue_names_get_class(rg.unique_resnames()[0]) for rg in ref_hierarchy.residue_groups()]
+        self.data.add_collection_info(info_name='residue types', info_values=residue_types)
+        # List of atom ids for each residue
+        residue_atom_labels = [[a.id_str() for a in rg.atoms()] for rg in ref_hierarchy.residue_groups()]
+        self.data.add_collection_info(info_name='atom labels', info_values=residue_atom_labels)
+
+    def add_structures(self, new_hierarchies, hierarchy_ids=None, verbose=True):
+        """Add hierarchies to the analysis object - Iterate through the residues and extract values from across the datasets"""
+
+        # If no ids given, simply assign indexing values
+        if not hierarchy_ids: hierarchy_ids = range(1, len(new_hierarchies)+1)
+
+        # Report string to be returned
+        report_string = []
+
+        backbone_atom_names = [" CA ", " C  ", " O  ", " N  "]
+
+        # Extract the reference residue types
+        ref_residue_types = self.data.get_collection_info('residue types')
+        ref_residue_names = self.data.get_collection_info('residue names')
+        ref_chain_ids =     self.data.get_collection_info('chain ids')
+
+        print('===================================>>>')
+        print('Calculating B-factors for residues across the datasets')
+        print('===================================>>>')
+
+        # Atomic selection cache for the reference structure - should be the same across the structures
+        selection_cache = self.ref_hierarchy.atom_selection_cache()
+
+        # String of 1-letter codes for the protein
+        amino_sequence = ''
+        current_chain = ref_chain_ids[self.data.collection_ids[0]]
+
+        for res_id in self.data.collection_ids:
+
+            # Initialise a new object to hold the data for one residue
+            res_collection = data_collection()
+            res_collection.set_entry_ids(hierarchy_ids)
+
+            # Boolean mask for the selected residue
+            res_bool_selection = selection_cache.selection("chain '{!s}' and resid '{!s}'".format(*res_id))
+
+            # Information to collect for the residues
+            backbone_mean_bfactor = []
+            sidechain_mean_bfactor = []
+            total_mean_bfactor = []
+
+            # Switches for tracking and reporting new chains
+            if current_chain != ref_chain_ids[res_id]:
+                report_string.append('\rAnalysing Chain {!s}: {!s}'.format(current_chain, amino_sequence))
+                print(report_string[-1])
+                report_string.append('\rChain {!s} Analysed.'.format(current_chain))
+                print(report_string[-1])
+                # Reset sequence and update chain
+                amino_sequence = ''
+                current_chain = ref_chain_ids[res_id]
+
+            try:
+                res_class = iotbx.pdb.common_residue_names_get_class(ref_residue_names[res_id][0])
+                if res_class == 'common_amino_acid':
+                    amino_sequence += iotbx.pdb.amino_acid_codes.one_letter_given_three_letter[ref_residue_names[res_id][0]]
+                elif res_class == 'common_rna_dna':
+                    amino_sequence += '<DNA/RNA>'
+                elif res_class == 'ccp4_mon_lib_rna_dna':
+                    amino_sequence += '<DNA/RNA>'
+                elif res_class == 'common_water':
+                    amino_sequence += 'o'
+                elif res_class == 'common_small_molecule':
+                    amino_sequence += '<MOL>'
+                elif res_class == 'common_element':
+                    amino_sequence += 'i'
+                elif res_class == 'other':
+                    amino_sequence += 'X'
+                else:
+                    raise Exception()
+            except:
+                amino_sequence += '?'
+
+            if len(amino_sequence) >= 50:
+                report_string.append('\rAnalysing Chain {!s}: {!s}...'.format(current_chain, amino_sequence))
+                print(report_string[-1])
+                amino_sequence = ''
+            else:
+                print '\rAnalysing Chain {!s}: {!s}-->'.format(current_chain, amino_sequence),; sys.stdout.flush()
+
+            # Iterate through the hierarchies and extract values for this residue
+            for i_hierarchy in new_hierarchies:
+
+                # Select the atoms for this residue
+                new_root = i_hierarchy.select(res_bool_selection)
+
+                # Calculate the sidechain and backbone b-factors for amino acids
+                if ref_residue_types[res_id] == 'common_amino_acid':
+
+                    # Pull out the backbone atoms
+                    backbone_atoms = [at for at in new_root.atoms() if at.name in backbone_atom_names]
+                    if not backbone_atoms: backbone_mean_bfactor.append(numpy.nan)
+                    else:                  backbone_mean_bfactor.append(flex.mean(flex.double([at.b for at in backbone_atoms])))
+
+                    # Pull out the sidechain atoms
+                    sidechain_atoms = [at for at in new_root.atoms() if at.name not in backbone_atom_names]
+                    if not sidechain_atoms: sidechain_mean_bfactor.append(numpy.nan)
+                    else:                   sidechain_mean_bfactor.append(flex.mean(flex.double([at.b for at in sidechain_atoms])))
+
+                else:
+                    # If not an amino acid, just append None
+                    backbone_mean_bfactor.append(numpy.nan)
+                    sidechain_mean_bfactor.append(numpy.nan)
+
+                # Calculate the mean b-factor for the whole residue
+                total_atoms = [at for at in new_root.atoms()]
+                if not total_atoms: total_mean_bfactor.append(numpy.nan)
+                else:               total_mean_bfactor.append(flex.mean(flex.double([at.b for at in total_atoms])))
+
+            res_collection.add_data(data_name='backbone_mean_bfactor', data_values=backbone_mean_bfactor)
+            res_collection.add_data(data_name='sidechain_mean_bfactor', data_values=sidechain_mean_bfactor)
+            res_collection.add_data(data_name='total_mean_bfactor', data_values=total_mean_bfactor)
+
+            self.data.add_collection(collection_id=res_id, collection=res_collection)
+
+        report_string.append('\rAnalysing Chain {!s}: {!s}   '.format(current_chain, amino_sequence))
+        print(report_string[-1])
+        report_string.append('\rChain {!s} Analysed.'.format(current_chain))
+        print(report_string[-1])
+
+        return '\n'.join(report_string)
+
+class map_list(object):
+    def __init__(self, map_names):
+        for m in map_names:
+            self.__dict__[m] = None
+
 class multi_dataset_analyser(object):
+    """Class for the processing of datasets from a fragment soaking campaign"""
+    _structure_mask_names = STRUCTURE_MASK_NAMES
+    _crystal_mask_names   = CRYSTAL_MASK_NAMES
+    _reject_mask_names    = REJECT_MASK_NAMES
+    _flag_mask_names      = FLAG_MASK_NAMES
+    _all_mask_names = _structure_mask_names + _crystal_mask_names + _reject_mask_names + _flag_mask_names
+
     def __init__(self, args):
 #                    outdir='./pandda', datadir='./Processing', pdb_style='*/refine.pdb', mtz_style='*/refine.mtz',
 #                    ref_pdb='./reference.pdb', ref_mtz='./reference.mtz', run_mol_subst=False,
@@ -492,9 +625,6 @@ class multi_dataset_analyser(object):
         # arg_parse output object
         self.args = args
 
-        self.verbose = args.verbose
-
-        self._log = ''
         self._version = PANDDA_VERSION
 
         # ===============================================================================>
@@ -509,6 +639,7 @@ class multi_dataset_analyser(object):
 
         self.outdir = easy_directory(os.path.abspath(args.outdir))
         self.log_file = os.path.join(self.outdir, 'pandda.log')
+        self._log = ''
 
         # Set up the output folders and files
         self._run_directory_setup()
@@ -535,7 +666,7 @@ class multi_dataset_analyser(object):
         # File names
         self._input_files = []
         # Dataset Objects
-        self._datasets = []
+        self.datasets = dataset_handler_list()
         # Reference Objects
         self._ref_dataset_index = None
         self._ref_dataset = None
@@ -545,6 +676,16 @@ class multi_dataset_analyser(object):
         self._ref_origin_shift = None
 
         # Map Statistics
+        self.maps = map_list([
+                                'mean_map',
+                                'stds_map',
+                                'adj_stds_map',
+                                'skew_map',
+                                'kurt_map',
+                                'bimo_map'
+                            ])
+
+        # TODO OLD REMOVE
         self._mean_map = None
         self._stds_map = None
         self._adj_stds_map = None
@@ -556,25 +697,19 @@ class multi_dataset_analyser(object):
         # ANALYSIS OBJECTS
         # ===============================================================================>
 
-        # Masks for various stages of the pipeline
-        self._dataset_masks = mask_collection()
+        # Structure summary Object
+        self.ensemble_summary = None
+        # Dataset Summary Object
+        self.datasets_summary = None
 
-        # Lists of all of the possible masks
-        self._structure_mask_names = STRUCTURE_MASK_NAMES
-        self._crystal_mask_names   = CRYSTAL_MASK_NAMES
-        self._reject_mask_names    = REJECT_MASK_NAMES
-        self._flag_mask_names      = FLAG_MASK_NAMES
-        self._all_mask_names = self._structure_mask_names + self._crystal_mask_names + self._reject_mask_names + self._flag_mask_names
 
+
+        # TODO RENAME REMOVE
         # Map and Dataset statistics
-        self._dataset_observations = data_collection()
         self._map_observations = data_collection()
 
         # Summaries of detected points
         self._cluster_summary = data_collection()
-
-        # Structure summary object
-        self._residue_observations = multiple_data_collection()
 
         # Average Structure (and masks)
         self._average_calpha_sites = None
@@ -692,7 +827,7 @@ class multi_dataset_analyser(object):
 
         # Load the datasets
         if os.path.exists(self.pickle_handler.get_file('dataset_objs')):
-            self._datasets = self.unpickle(self.pickle_handler.get_file('dataset_objs'))
+            self.datasets = self.unpickle(self.pickle_handler.get_file('dataset_objs'))
             self.update_pandda_size(tag='After Unpickling Dataset Objects')
 
         # Load Statistical Maps
@@ -723,8 +858,8 @@ class multi_dataset_analyser(object):
 
         self.log('===================================>>>')
         self.log('Pickling Datasets')
-        if self._datasets:
-            self.pickle(pickle_file=self.pickle_handler.get_file('dataset_objs'), pickle_object=[d.get_pickle_copy() for d in self.get_all_datasets()])
+        if self.datasets:
+            self.pickle(pickle_file=self.pickle_handler.get_file('dataset_objs'), pickle_object=[d.get_pickle_copy() for d in self.datasets.all()])
 
         self.log('===================================>>>')
         self.log('Pickling Statistical Maps')
@@ -748,13 +883,12 @@ class multi_dataset_analyser(object):
         self.log('===================================>>>', True)
         self._finish_time = time.time()
         self.log('Runtime: {!s}'.format(time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(self._finish_time - self._init_time))))
-        sys.exit('PANDDA EXECUTED/TRANQUILISED.')
 
     def log(self, message, show=False):
         """Log message to file, and mirror to stdout if verbose or force_print"""
         if not isinstance(message, str):    message = str(message)
         # Print to stdout
-        if self.verbose or show:            print(message)
+        if self.args.verbose or show:       print(message)
         # Remove \r from message as this spoils the log (^Ms)
         message = message.replace('\r','')
         # Store in internal string
@@ -845,40 +979,44 @@ class multi_dataset_analyser(object):
         """Get the reference grid used to generate the points for sampling the maps"""
         return self._ref_grid
 
-    def get_dataset_masks(self):
-        """Get the mask object for the datasets"""
-        return self._dataset_masks
-
-    def get_added_files(self):
+    def new_files(self):
         """Get all of the files that were added"""
         return self._input_files
 
-    def get_dataset(self, d_num=None, d_tag=None):
-        """Get a dataset by dataset number or tag"""
-        assert d_num or d_tag, 'NO NUM or TAG given!'
-        assert not (d_num and d_tag), 'BOTH NUM and TAG given!'
-        if d_num:
-            matching = [d for d in self.get_all_datasets() if d.d_num == d_num]
-        else:
-            matching = [d for d in self.get_all_datasets() if d.d_tag == d_tag]
-        assert len(matching) == 1, 'MORE THAN ONE MATCHING DATASET FOR DNUM'
-        return matching[0]
+#    def get_dataset_masks(self):
+#        """Get the mask object for the datasets"""
+#        return self._dataset_masks
+#
+#    def get_dataset(self, d_num=None, d_tag=None):
+#        """Get a dataset by dataset number or tag"""
+#        assert d_num or d_tag, 'NO NUM or TAG given!'
+#        assert not (d_num and d_tag), 'BOTH NUM and TAG given!'
+#        if d_num:
+#            matching = [d for d in self.get_all_datasets() if d.d_num == d_num]
+#        else:
+#            matching = [d for d in self.get_all_datasets() if d.d_tag == d_tag]
+#        assert len(matching) == 1, 'MORE THAN ONE MATCHING DATASET FOR DNUM'
+#        return matching[0]
+#
+#    def get_all_datasets(self):
+#        """Return all datasets added"""
+#        return self._datasets
+#    def get_masked_datasets(self, mask_name, invert=False):
+#        """Use a custom mask to select datasets"""
+#        return self.get_dataset_masks().mask(mask_name=mask_name, input_list=self.datasets.all(), invert=invert)
+#
+#    def get_number_of_datasets(self, mask_name=None, invert=False):
+#        """Returns the number of datasets"""
+#        if mask_name:   return len(self.get_dataset_masks().mask(mask_name=mask_name, input_list=self.datasets.all(), invert=invert))
+#        else:           return len(self.datasets.all())
+#
+#    def get_residue_observations(self):
+#        """Distributions of different variables across the datasets"""
+#        return self._residue_observations
+#    def get_dataset_observations(self):
+#        """Distributions of different variables across the datasets"""
+#        return self._dataset_observations
 
-    def get_all_datasets(self):
-        """Return all datasets added"""
-        return self._datasets
-    def get_masked_datasets(self, mask_name, invert=False):
-        """Use a custom mask to select datasets"""
-        return self.get_dataset_masks().mask(mask_name=mask_name, input_list=self._datasets, invert=invert)
-
-    def get_number_of_datasets(self, mask_name=None, invert=False):
-        """Returns the number of datasets"""
-        if mask_name:   return len(self.get_dataset_masks().mask(mask_name=mask_name, input_list=self._datasets, invert=invert))
-        else:           return len(self._datasets)
-
-    def get_dataset_observations(self):
-        """Distributions of different variables across the datasets"""
-        return self._dataset_observations
     def get_map_observations(self):
         """Distributions of different map variables across the datasets"""
         return self._map_observations
@@ -886,9 +1024,6 @@ class multi_dataset_analyser(object):
         """Summaries of difference clusters across the datasets"""
         return self._cluster_summary
 
-    def get_residue_observations(self):
-        """Distributions of different variables across the datasets"""
-        return self._residue_observations
     def get_calpha_average_sites(self):
         return self._average_calpha_sites
     def get_calpha_deviation_masks(self):
@@ -920,22 +1055,23 @@ class multi_dataset_analyser(object):
         self.log('Initialising Dataset Masks.', True)
 
         # Set the dataset mask lengths and ids (dataset tags)
-        self.get_dataset_masks().set_mask_length(mask_length=self.get_number_of_datasets())
-        self.get_dataset_masks().set_entry_ids(entry_ids=[d.d_tag for d in self.get_all_datasets()])
+        self.datasets.all_masks().set_mask_length(mask_length=self.datasets.size())
+        self.datasets.all_masks().set_entry_ids(entry_ids=[d.d_tag for d in self.datasets.all()])
         # Initialise standard blank masks
         for mask_name in self._all_mask_names:
-            self.get_dataset_masks().add_mask(mask_name=mask_name, mask=[False]*self.get_number_of_datasets())
+            self.datasets.all_masks().add_mask(mask_name=mask_name, mask=[False]*self.datasets.size())
 
         self.log('===================================>>>', True)
         self.log('Initialising Dataset Observations.', True)
 
         # Set the dataset observations lengths
-        self.get_dataset_observations().set_data_length(self.get_number_of_datasets())
-        self.get_dataset_observations().set_entry_ids([d.d_tag for d in self.get_all_datasets()])
+        self.datasets_summary = data_collection()
+        self.datasets_summary.set_data_length(self.datasets.size())
+        self.datasets_summary.set_entry_ids([d.d_tag for d in self.datasets.all()])
 
         # Set the map observation lengths
-        self.get_map_observations().set_data_length(self.get_number_of_datasets())
-        self.get_map_observations().set_entry_ids([d.d_tag for d in self.get_all_datasets()])
+        self.get_map_observations().set_data_length(self.datasets.size())
+        self.get_map_observations().set_entry_ids([d.d_tag for d in self.datasets.all()])
 
         # Initialise blank data
         self.get_map_observations().add_empty_data(data_name='masked_map_mean')
@@ -950,8 +1086,8 @@ class multi_dataset_analyser(object):
         self.log('Initialising Timings.', True)
 
         # Set the dataset observations lengths
-        self.timings.set_data_length(self.get_number_of_datasets())
-        self.timings.set_entry_ids([d.d_tag for d in self.get_all_datasets()])
+        self.timings.set_data_length(self.datasets.size())
+        self.timings.set_entry_ids([d.d_tag for d in self.datasets.all()])
 
     def load_reference_dataset(self, ref_pdb, ref_mtz):
         """Set the reference dataset, to which all other datasets will be aligned and scaled"""
@@ -976,44 +1112,11 @@ class multi_dataset_analyser(object):
         if not os.path.exists(self.output_handler.get_file('reference_on_origin')):
             ref_hierarchy.write_pdb_file(self.output_handler.get_file('reference_on_origin'))
 
-        self._initialise_structure_analysis()
-
-    def _initialise_structure_analysis(self):
-        """Analyse the reference structure and pull out structural information/summaries"""
-
         self.log('===================================>>>', True)
-        self.log('Extracting Reference Structure Information', True)
+        self.log('Initialising Ensemble Summary', True)
 
-        # Extract the reference hierarchy
-        ref_hierarchy = self.reference_dataset().get_hierarchy()
-
-        # Set the collection ids to the residue labels
-        residue_labels = [(rg.parent().id, rg.resid()) for rg in ref_hierarchy.residue_groups()]
-        self.get_residue_observations().set_collection_ids(residue_labels)
-        # List of just chain ids
-        chain_ids = [rg.parent().id for rg in ref_hierarchy.residue_groups()]
-        self.get_residue_observations().add_collection_info(info_name='chain ids', info_values=chain_ids)
-        # List of just residue ids
-        residue_ids = [rg.resid() for rg in ref_hierarchy.residue_groups()]
-        self.get_residue_observations().add_collection_info(info_name='residue ids', info_values=residue_ids)
-        # List of which residues are protein
-        is_protein = [rg.parent().is_protein() for rg in ref_hierarchy.residue_groups()]
-        self.get_residue_observations().add_collection_info(info_name='is protein', info_values=is_protein)
-        # List of which residues are in multiple conformations
-        has_conformers = [rg.have_conformers() for rg in ref_hierarchy.residue_groups()]
-        self.get_residue_observations().add_collection_info(info_name='has conformers', info_values=has_conformers)
-        # List of number of conformers per residue
-        num_conformers = [len(rg.conformers()) for rg in ref_hierarchy.residue_groups()]
-        self.get_residue_observations().add_collection_info(info_name='number of conformers', info_values=num_conformers)
-        # List of number of unique resnames for each residue - XXX I'm not sure when this can be more than one?
-        residue_names = [[s for s in rg.unique_resnames()] for rg in ref_hierarchy.residue_groups()]
-        self.get_residue_observations().add_collection_info(info_name='residue names', info_values=residue_names)
-        # List of residues types (amino, water, other, etc)
-        residue_types = [pdb_reader.common_residue_names_get_class(rg.unique_resnames()[0]) for rg in ref_hierarchy.residue_groups()]
-        self.get_residue_observations().add_collection_info(info_name='residue types', info_values=residue_types)
-        # List of atom ids for each residue
-        residue_atom_labels = [[a.id_str() for a in rg.atoms()] for rg in ref_hierarchy.residue_groups()]
-        self.get_residue_observations().add_collection_info(info_name='atom labels', info_values=residue_atom_labels)
+        # Initialise the structural ensemble object
+        self.ensemble_summary = identical_structure_ensemble(ref_hierarchy=self.reference_dataset().new_structure().hierarchy)
 
     def load_reference_map_handler(self):
         """Load the reference map handlers"""
@@ -1060,7 +1163,7 @@ class multi_dataset_analyser(object):
         assert (flex.vec3_double(sorted(self.reference_dataset().get_input().atoms().extract_xyz())) -
                 flex.vec3_double(sorted(self.reference_dataset().get_hierarchy().atoms().extract_xyz()))).dot().norm() == 0.0, 'EH? Coordinates should be the same?'
 
-        self._ref_grid = grid_handler(verbose=self.verbose)
+        self._ref_grid = grid_handler(verbose=self.args.verbose)
         self._ref_grid.set_grid_spacing(spacing=grid_spacing)
         self._ref_grid.set_cart_extent(cart_min=tuple([s-buffer for s in sites_cart.min()]), cart_max=tuple([s+buffer for s in sites_cart.max()]))
         self._ref_grid.create_cartesian_grid(expand_to_origin=expand_to_origin)
@@ -1079,7 +1182,7 @@ class multi_dataset_analyser(object):
         self.reference_grid().partition().partition_grid()
 
         t2 = time.time()
-        print('-> GRID PARTITIONING > Time Taken: {!s} seconds'.format(int(t2-t1)))
+        print('> GRID PARTITIONING > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
     def mask_reference_grid(self, d_handler):
         """Create masks for the reference grid based on distances from atoms in the reference structure"""
@@ -1152,7 +1255,7 @@ class multi_dataset_analyser(object):
             mtz_style = pdb_style.replace('.pdb','.mtz')
 
         # Datasets that are already added
-        already_added  = [(d.get_pdb_filename(), d.get_mtz_filename()) for d in self.get_all_datasets()]
+        already_added  = [(d.get_pdb_filename(), d.get_mtz_filename()) for d in self.datasets.all()]
         new_files = []
 
         for dir in sorted(glob.glob(self.data_dirs)):
@@ -1222,17 +1325,17 @@ class multi_dataset_analyser(object):
             return dataset_handler(**arg_dict)
 
         # TODO Change this so datasets can be added dynamically
-        assert self._datasets == []
+        assert self.datasets.all() == []
 
         # Generate arg_list for loading
-        arg_list = [{'dataset_number':d_num, 'pdb_filename':pdb, 'mtz_filename':mtz, 'dataset_tag':tag} for d_num, (pdb, mtz, tag) in enumerate(self.get_added_files())]
+        arg_list = [{'dataset_number':d_num, 'pdb_filename':pdb, 'mtz_filename':mtz, 'dataset_tag':tag} for d_num, (pdb, mtz, tag) in enumerate(self.new_files())]
 
         start = time.time()
         self.log('===================================>>>', True)
         print 'Loading Datasets... (using {!s} cores)'.format(self.args.cpus)
         loaded_datasets = easy_mp.pool_map(fixed_func=map_func, args=arg_list, processes=self.args.cpus)
         finish = time.time()
-        print('-> Time Taken: {!s} seconds'.format(int(finish-start)))
+        print('> Time Taken: {!s} seconds'.format(int(finish-start)))
 
         lig_style = self.args.lig_style.strip('/')
 
@@ -1261,13 +1364,17 @@ class multi_dataset_analyser(object):
 
             # Output images
             d_handler.output_handler.add_dir(dir_name='output_images', dir_tag='images', top_dir_tag='root')
-            d_handler.output_handler.add_file(file_name='{!s}-s_map_dist.png'.format(d_handler.d_tag), file_tag='s_map_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-d_map_dist.png'.format(d_handler.d_tag), file_tag='d_map_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-d_mean_map_dist.png'.format(d_handler.d_tag), file_tag='d_mean_map_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-obsv_map_dist.png'.format(d_handler.d_tag), file_tag='s_map_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-diff_map_dist.png'.format(d_handler.d_tag), file_tag='d_map_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-diff_mean_map_dist.png'.format(d_handler.d_tag), file_tag='d_mean_map_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_naive.png'.format(d_handler.d_tag), file_tag='z_map_naive_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_naive_normalised.png'.format(d_handler.d_tag), file_tag='z_map_naive_normalised_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_corrected.png'.format(d_handler.d_tag), file_tag='z_map_corrected_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_corrected_normalised.png'.format(d_handler.d_tag), file_tag='z_map_corrected_normalised_png', dir_tag='images')
+
+            d_handler.output_handler.add_file(file_name='{!s}-uncertainty-qqplot.png'.format(d_handler.d_tag), file_tag='unc_qqplot_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-mean-v-obs-sorted-qqplot.png'.format(d_handler.d_tag), file_tag='obs_qqplot_sorted_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-mean-v-obs-unsorted-plot.png'.format(d_handler.d_tag), file_tag='obs_qqplot_unsorted_png', dir_tag='images')
 
             # Z-map mask for the structure
             d_handler.output_handler.add_file(file_name='{!s}-high_z_mask.ccp4'.format(d_handler.d_tag), file_tag='high_z_mask')
@@ -1300,7 +1407,7 @@ class multi_dataset_analyser(object):
                     if not os.path.exists(out_path):
                         os.symlink(os.path.relpath(lig, d_handler.output_handler.get_dir('ligand')), out_path)
 
-        self._datasets.extend(loaded_datasets)
+        self.datasets.add(loaded_datasets)
         self.log('{!s} Datasets Loaded.          '.format(len(loaded_datasets), True))
 
     def select_reference_dataset(self, method='resolution'):
@@ -1308,16 +1415,17 @@ class multi_dataset_analyser(object):
 
         assert method in ['resolution','rfree'], 'METHOD FOR SELECTING THE REFERENCE DATASET NOT RECOGNISED: {!s}'.format(method)
 
+        self.log('===================================>>>', True)
+        self.log('Selecting Reference Dataset by: {!s}'.format(method), True)
         if method == 'rfree':
-            r_frees = [d.get_input().get_r_rfree_sigma().r_free for d in self.get_all_datasets()]
+            r_frees = [d.get_input().get_r_rfree_sigma().r_free for d in self.datasets.all()]
             self._ref_dataset_index = r_frees.index(min(r_frees))
         elif method == 'resolution':
-            resolns = [d.get_resolution() for d in self.get_all_datasets()]
+            resolns = [d.get_resolution() for d in self.datasets.all()]
             self._ref_dataset_index = resolns.index(min(resolns))
 
-        reference = self.get_all_datasets()[self._ref_dataset_index]
+        reference = self.datasets.all()[self._ref_dataset_index]
         assert reference.d_num == self._ref_dataset_index, 'INDEX DOES NOT MATCH DNUM'
-        self.log('===================================>>>', True)
         self.log('Reference Selected: Dataset {!s}'.format(self._ref_dataset_index+1), True)
         self.log('Resolution: {!s}, RFree: {!s}'.format(reference.get_resolution(), reference.get_input().get_r_rfree_sigma().r_free), True)
         return reference.get_pdb_filename(), reference.get_mtz_filename()
@@ -1326,11 +1434,11 @@ class multi_dataset_analyser(object):
         """Iterate through the datasets, and scale the reflections to the reference"""
 
         self.log('===================================>>>', True)
-        for d_handler in self.get_masked_datasets(mask_name='rejected - total', invert=True):
-            print '\rScaling Dataset {!s}'.format(d_handler.d_tag),; sys.stdout.flush()
+        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
+            print '\rScaling Dataset {!s}          '.format(d_handler.d_tag),; sys.stdout.flush()
             # Scale new data to the reference dataset
             d_handler.scale_fobs_to_reference(ref_miller=self.reference_dataset().get_fobs_miller_array())
-        self.log('\rDatasets Scaled.          ', True)
+        self.log('\rDatasets Scaled.               ', True)
 
     def align_datasets(self, method, sites='calpha'):
         """Align each structure the reference structure"""
@@ -1344,8 +1452,8 @@ class multi_dataset_analyser(object):
         t1 = time.time()
 
         self.log('===================================>>>', True)
-        for d_handler in self.get_masked_datasets(mask_name='rejected - total', invert=True):
-            print '\rAligning Dataset {!s}'.format(d_handler.d_tag),; sys.stdout.flush()
+        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
+            print '\rAligning Dataset {!s}          '.format(d_handler.d_tag),; sys.stdout.flush()
 
             # Align to reference structure to get mapping transform
             d_handler.align_to_reference(ref_handler=self.reference_dataset(), sites=sites, method=method)
@@ -1377,30 +1485,30 @@ class multi_dataset_analyser(object):
                 # Raise error if the reference has already been set and it's not this dataset
                 elif self._ref_dataset_index != d_handler.d_num:
                     raise Exception('ALIGNED OBJECT EQUAL TO UNALIGNED OBJECT - THIS IS MOST UNLIKELY')
-        self.log('\rDatasets Aligned.          ', True)
+        self.log('\rDatasets Aligned.               ', True)
 
         t2 = time.time()
-        print('-> STRUCTURE ALIGNMENT > Time Taken: {!s} seconds'.format(int(t2-t1)))
+        print('> STRUCTURE ALIGNMENT > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
-    def collect_dataset_variation_data(self):
+    def analyse_dataset_variability_1(self):
         """Go through all of the datasets and collect lots of different characteristics of the datasets for identifying odd datasets"""
 
         self.log('===================================>>>', True)
-        self.log('Collecting Dataset/Crystal Variation Data', True)
+        self.log('Collecting Dataset/Crystal Variation Data - 1', True)
         self.log('===================================>>>')
 
         self.log('Extracting Resolutions')
-        self.get_dataset_observations().add_data(data_name='high_res_limit', data_values=[d.get_fobs_miller_array().d_min() for d in self.get_all_datasets()])
-        self.get_dataset_observations().add_data(data_name='low_res_limit', data_values=[d.get_fobs_miller_array().d_max_min()[0] for d in self.get_all_datasets()])
+        self.datasets_summary.add_data(data_name='high_res_limit', data_values=[d.get_fobs_miller_array().d_min() for d in self.datasets.all()])
+        self.datasets_summary.add_data(data_name='low_res_limit', data_values=[d.get_fobs_miller_array().d_max_min()[0] for d in self.datasets.all()])
         self.log('Extracting Unit Cell Sizes')
-        self.get_dataset_observations().add_data(data_name='cell_params', data_values=[d.get_fobs_miller_array().unit_cell().parameters() for d in self.get_all_datasets()])
+        self.datasets_summary.add_data(data_name='cell_params', data_values=[d.get_fobs_miller_array().unit_cell().parameters() for d in self.datasets.all()])
         self.log('Extracting Unit Cell Volume')
-        self.get_dataset_observations().add_data(data_name='cell_volume', data_values=[d.get_fobs_miller_array().unit_cell().volume() for d in self.get_all_datasets()])
+        self.datasets_summary.add_data(data_name='cell_volume', data_values=[d.get_fobs_miller_array().unit_cell().volume() for d in self.datasets.all()])
         self.log('Extracting R-work, R-free')
-        self.get_dataset_observations().add_data(data_name='rfree', data_values=[d.get_input().get_r_rfree_sigma().r_free for d in self.get_all_datasets()])
-        self.get_dataset_observations().add_data(data_name='rwork', data_values=[d.get_input().get_r_rfree_sigma().r_work for d in self.get_all_datasets()])
+        self.datasets_summary.add_data(data_name='rfree', data_values=[d.get_input().get_r_rfree_sigma().r_free for d in self.datasets.all()])
+        self.datasets_summary.add_data(data_name='rwork', data_values=[d.get_input().get_r_rfree_sigma().r_work for d in self.datasets.all()])
         self.log('Calculating Variation in Correlations between Diffraction Data')
-        self.get_dataset_observations().add_data(data_name='correlation_to_unscaled_data', data_values=[d.get_scaled_fobs_miller_array().correlation(d.get_fobs_miller_array()).coefficient() if d.get_scaled_fobs_miller_array() else numpy.nan for d in self.get_all_datasets()])
+        self.datasets_summary.add_data(data_name='correlation_to_unscaled_data', data_values=[d.get_scaled_fobs_miller_array().correlation(d.get_fobs_miller_array()).coefficient() if d.get_scaled_fobs_miller_array() else numpy.nan for d in self.datasets.all()])
 
     def filter_datasets_1(self):
         """Filter out the datasets which contain different protein models (i.e. protein length, sequence, etc)"""
@@ -1414,62 +1522,62 @@ class multi_dataset_analyser(object):
         ref_counts, ref_dict = self.reference_dataset().get_structure_summary()
 
         # Check that the same protein structure is present in each dataset
-        for d_handler in self.get_masked_datasets(mask_name='rejected - total', invert=True):
+        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
 
             my_counts, my_dict = d_handler.get_structure_summary()
 
-            print '\rFiltering Dataset {!s}'.format(d_handler.d_tag),; sys.stdout.flush()
+            print '\rFiltering Dataset {!s}          '.format(d_handler.d_tag),; sys.stdout.flush()
             # Check the number of chains
             if my_counts.n_chains != ref_counts.n_chains:
-                self.log('\rRejecting Dataset: {!s}'.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
                 self.log('Different Number of Chains')
                 self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_chains, d_handler.d_tag, my_counts.n_chains))
                 self.log('===================================>>>')
-                self.get_dataset_masks().set_mask_value(mask_name='bad structure - chain counts', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad structure - chain counts', entry_id=d_handler.d_tag, value=True)
             # Check the ids of the chains
             elif my_counts.chain_ids != ref_counts.chain_ids:
-                self.log('\rRejecting Dataset: {!s}'.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
                 self.log('Different Chain IDs')
                 self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.chain_ids, d_handler.d_tag, my_counts.chain_ids))
                 print('===================================>>>')
-                self.get_dataset_masks().set_mask_value(mask_name='bad structure - chain ids', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad structure - chain ids', entry_id=d_handler.d_tag, value=True)
             # Check the sequences of the chains
             elif my_dict['chain_sequences'] != ref_dict['chain_sequences']:
-                self.log('\rRejecting Dataset: {!s}'.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
                 self.log('Different Sequences')
                 for chain_id in ref_dict['chain_sequences'].keys():
                     self.log('Chain {!s}: Reference - {!s}'.format(chain_id, ref_dict['chain_sequences'][chain_id]))
                     self.log('Chain {!s}: {:>9s} - {!s}'.format(chain_id, my_dict['chain_sequences'][chain_id]))
                 print('===================================>>>')
-                self.get_dataset_masks().set_mask_value(mask_name='bad structure - chain sequences', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad structure - chain sequences', entry_id=d_handler.d_tag, value=True)
             # Check the number of residues - TODO not sure it can ever get here... remove?
             elif my_counts.n_residues != ref_counts.n_residues:
-                self.log('\rRejecting Dataset: {!s}'.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
                 self.log('Different Number of Residues')
                 self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_residues, d_handler.d_tag, my_counts.n_residues))
                 print('===================================>>>')
-                self.get_dataset_masks().set_mask_value(mask_name='bad structure - residue counts', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad structure - residue counts', entry_id=d_handler.d_tag, value=True)
             # Check the number of atoms
             elif my_counts.n_atoms != ref_counts.n_atoms:
-                self.log('\rRejecting Dataset: {!s}'.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
                 self.log('Different Number of Atoms')
                 self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_atoms, d_handler.d_tag, my_counts.n_atoms))
                 print('===================================>>>')
-                self.get_dataset_masks().set_mask_value(mask_name='bad structure - atom counts', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad structure - atom counts', entry_id=d_handler.d_tag, value=True)
             else:
                 pass
 
         # Combine structure_masks
-        structure_reject_mask = self.get_dataset_masks().combine_masks(self._structure_mask_names)
-        self.get_dataset_masks().add_mask(mask_name='rejected - structure', mask=structure_reject_mask)
+        structure_reject_mask = self.datasets.all_masks().combine_masks(self._structure_mask_names)
+        self.datasets.all_masks().add_mask(mask_name='rejected - structure', mask=structure_reject_mask)
 
         # Update the combined masks
-        combined_reject_mask = self.get_dataset_masks().combine_masks(self._reject_mask_names)
-        self.get_dataset_masks().add_mask(mask_name='rejected - total', mask=combined_reject_mask)
+        combined_reject_mask = self.datasets.all_masks().combine_masks(self._reject_mask_names)
+        self.datasets.all_masks().add_mask(mask_name='rejected - total', mask=combined_reject_mask)
 
-        self.log('\rDatasets Filtered.          ', True)
-        self.log('Rejected Datasets (Structure): {!s}'.format(sum(self.get_dataset_masks().get_mask(mask_name='rejected - structure'))), True)
-        self.log('Rejected Datasets (Total):     {!s}'.format(sum(self.get_dataset_masks().get_mask(mask_name='rejected - total'))), True)
+        self.log('\rDatasets Filtered.               ', True)
+        self.log('Rejected Datasets (Structure): {!s}'.format(sum(self.datasets.all_masks().get_mask(mask_name='rejected - structure'))), True)
+        self.log('Rejected Datasets (Total):     {!s}'.format(sum(self.datasets.all_masks().get_mask(mask_name='rejected - total'))), True)
 
     def filter_datasets_2(self):
         """Filter out the non-isomorphous datasets"""
@@ -1481,48 +1589,46 @@ class multi_dataset_analyser(object):
         self.log('===================================>>>', True)
 
         # Check that each dataset is similar enough to be compared
-        for d_handler in self.get_masked_datasets(mask_name='rejected - total', invert=True):
+        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
 
-            #d_handler.comparison_differences = self.reference_dataset().compare_structure().compare_all(d_handler.get_hierarchy())
-
-            print '\rFiltering Dataset {!s}'.format(d_handler.d_tag),; sys.stdout.flush()
+            print '\rFiltering Dataset {!s}          '.format(d_handler.d_tag),; sys.stdout.flush()
             # Check that it correlates well with itself before and after scaling
             if d_handler.get_scaled_fobs_miller_array().correlation(d_handler.get_fobs_miller_array()).coefficient() < FILTER_SCALING_CORRELATION_CUTOFF:
-                self.log('\rRejecting Dataset: {!s}'.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
                 self.log('Low correlation between scaled and unscaled data')
                 self.log('Scaled-Unscaled Correlation: {!s}'.format(d_handler.get_scaled_fobs_miller_array().correlation(d_handler.get_fobs_miller_array()).coefficient()))
                 self.log('===================================>>>')
-                self.get_dataset_masks().set_mask_value(mask_name='bad crystal - data correlation', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad crystal - data correlation', entry_id=d_handler.d_tag, value=True)
             # Check the resolution of the dataset
             elif d_handler.get_resolution() > self.get_cut_resolution():
-                self.log('\rRejecting Dataset: {!s}'.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
                 self.log('Does not meet high-resolution cutoff')
                 self.log('Cut Resolution: {!s}'.format(self.get_cut_resolution()))
                 self.log('Map Resolution: {!s}'.format(d_handler.get_resolution()))
                 self.log('===================================>>>')
-                self.get_dataset_masks().set_mask_value(mask_name='bad crystal - resolution', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad crystal - resolution', entry_id=d_handler.d_tag, value=True)
             # Check the deviation from the average sites
             elif d_handler.get_calpha_sites().rms_difference(d_handler.transform_from_reference(points=self.reference_dataset().get_calpha_sites(), method='global')) > FILTER_GLOBAL_RMSD_CUTOFF:
-                self.log('\rRejecting Dataset: {!s}'.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
                 self.log('C-alpha RMSD is too large')
                 self.log('Aligned (Calpha) RMSD: {!s}'.format(d_handler.get_calpha_sites().rms_difference(d_handler.transform_from_reference(points=self.reference_dataset().get_calpha_sites(), method='global'))))
                 self.log('===================================>>>')
-                self.get_dataset_masks().set_mask_value(mask_name='bad crystal - isomorphous structure', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad crystal - isomorphous structure', entry_id=d_handler.d_tag, value=True)
             else:
                 pass
 
         # Combine crystal masks
-        crystal_reject_mask = self.get_dataset_masks().combine_masks(self._crystal_mask_names)
-        self.get_dataset_masks().add_mask(mask_name='rejected - crystal', mask=crystal_reject_mask)
+        crystal_reject_mask = self.datasets.all_masks().combine_masks(self._crystal_mask_names)
+        self.datasets.all_masks().add_mask(mask_name='rejected - crystal', mask=crystal_reject_mask)
 
         # Combine all of the masks
-        combined_reject_mask = self.get_dataset_masks().combine_masks(self._reject_mask_names)
-        self.get_dataset_masks().add_mask(mask_name='rejected - total', mask=combined_reject_mask)
+        combined_reject_mask = self.datasets.all_masks().combine_masks(self._reject_mask_names)
+        self.datasets.all_masks().add_mask(mask_name='rejected - total', mask=combined_reject_mask)
 
-        self.log('\rDatasets Filtered.          ', True)
-        self.log('Rejected Datasets (Structure): {!s}'.format(sum(self.get_dataset_masks().get_mask(mask_name='rejected - structure'))), True)
-        self.log('Rejected Datasets (Crystal):   {!s}'.format(sum(self.get_dataset_masks().get_mask(mask_name='rejected - crystal'))), True)
-        self.log('Rejected Datasets (Total):     {!s}'.format(sum(self.get_dataset_masks().get_mask(mask_name='rejected - total'))), True)
+        self.log('\rDatasets Filtered.               ', True)
+        self.log('Rejected Datasets (Structure): {!s}'.format(sum(self.datasets.all_masks().get_mask(mask_name='rejected - structure'))), True)
+        self.log('Rejected Datasets (Crystal):   {!s}'.format(sum(self.datasets.all_masks().get_mask(mask_name='rejected - crystal'))), True)
+        self.log('Rejected Datasets (Total):     {!s}'.format(sum(self.datasets.all_masks().get_mask(mask_name='rejected - total'))), True)
 
     def calculate_mean_structure_and_protein_masks(self, deviation_cutoff):
         """Calculate the average of all of the structures, and create masks for each protein where residues deviate from the mean by more than `deviation_cutoff`"""
@@ -1534,7 +1640,7 @@ class multi_dataset_analyser(object):
         # TODO Make this reject points until consensus
 
         # Pull all c-alpha sites for each structure
-        all_sites = numpy.array([d.transform_to_reference(points=d.get_calpha_sites(), method='global') for d in self.get_masked_datasets(mask_name='rejected - total', invert=True)])
+        all_sites = numpy.array([d.transform_to_reference(points=d.get_calpha_sites(), method='global') for d in self.datasets.mask(mask_name='rejected - total', invert=True)])
         # Calculate the mean x,y,z for each c-alpha
         mean_sites = numpy.mean(all_sites, axis=0)
         # Differences from the mean
@@ -1554,116 +1660,38 @@ class multi_dataset_analyser(object):
         self._average_calpha_sites = flex.vec3_double(mean_sites)
         self._residue_deviation_masks = residue_deviation_masks
 
+    def analyse_dataset_variability_2(self):
+        """Go through all of the datasets and collect lots of different characteristics of the datasets for identifying odd datasets"""
+
+        self.log('===================================>>>', True)
+        self.log('Collecting Dataset/Crystal Variation Data - 2', True)
+        self.log('===================================>>>')
+
         # Now calculate the variation in the structure, from the reference
         self.log('Calculating Variation in RMSD (Calphas) to Reference Structure')
-        rmsds = numpy.array([numpy.nan]*self.get_number_of_datasets())
-        [rmsds.put(d.d_num, d.get_calpha_sites().rms_difference(d.transform_from_reference(points=self.get_calpha_average_sites(), method='global'))) for d in self.get_masked_datasets(mask_name='rejected - total', invert=True)]
-        self.get_dataset_observations().add_data(data_name='rmsd_to_mean', data_values=rmsds.tolist())
+        rmsds = numpy.array([numpy.nan]*self.datasets.size())
+        for d in self.datasets.mask(mask_name='rejected - total', invert=True):
+            rmsds.put(d.d_num, d.get_calpha_sites().rms_difference(d.transform_from_reference(points=self.get_calpha_average_sites(), method='global')))
+        self.datasets_summary.add_data(data_name='rmsd_to_mean', data_values=rmsds.tolist())
 
-    def collect_structure_variation_data(self):
+    def analyse_structure_variability_1(self):
         """Go through all of the datasets and collect lots of different structural characteristics of the datasets for identifying odd datasets"""
 
         self.log('===================================>>>', True)
-        self.log('Calculating Structure Variation Data', True)
-
-        backbone_atom_names = [" CA ", " C  ", " O  ", " N  "]
+        self.log('Populating Ensemble Summary', True)
 
         # Extract the hierarchy for each of the datasets
-        hierarchies = [d.get_hierarchy() for d in self.get_masked_datasets(mask_name='rejected - total', invert=True)]
+        hierarchies = [d.get_hierarchy() for d in self.datasets.mask(mask_name='rejected - total', invert=True)]
+        hierarchy_ids = [d.d_tag for d in self.datasets.mask(mask_name='rejected - total', invert=True)]
 
-        # Extract the reference residue types
-        ref_residue_types = self.get_residue_observations().get_collection_info('residue types')
-        ref_residue_names = self.get_residue_observations().get_collection_info('residue names')
-        ref_chain_ids = self.get_residue_observations().get_collection_info('chain ids')
-
-        self.log('===================================>>>', True)
-        self.log('Calculating B-factors for residues across the datasets', True)
-        self.log('===================================>>>')
-
-        # Atomic selection cache for the reference structure - should be the same across the structures
-        selection_cache = self.reference_dataset().get_hierarchy().atom_selection_cache()
-
-        # String of 1-letter codes for the protein
-        amino_sequence = ''
-        current_chain = ref_chain_ids[self.get_residue_observations().collection_ids[0]]
-
-        for res_id in self.get_residue_observations().collection_ids:
-            """Iterate through the residues and extract values from across the datasets"""
-
-            res_collection = data_collection()
-            res_collection.set_entry_ids([d.d_tag for d in self.get_masked_datasets(mask_name='rejected - total', invert=True)])
-
-            # Boolean mask for the selected residue
-            res_bool_selection = selection_cache.selection("chain '{!s}' and resid '{!s}'".format(*res_id))
-
-            # Information to collect for the residues
-            backbone_mean_bfactor = []
-            sidechain_mean_bfactor = []
-            total_mean_bfactor = []
-
-            if current_chain != ref_chain_ids[res_id]:
-                self.log('\rAnalysing Chain {!s}: {!s}-->'.format(current_chain, amino_sequence))
-                self.log('Chain {!s} Analysed.'.format(current_chain), True)
-                # Reset sequence and update chain
-                amino_sequence = ''
-                current_chain = ref_chain_ids[res_id]
-
-            try:
-                amino_sequence += pdb_reader.amino_acid_codes.one_letter_given_three_letter[ref_residue_names[res_id][0]]
-            except:
-                amino_sequence += 'x'
-
-            if len(amino_sequence) % 50 == 0:
-                self.log('\rAnalysing Chain {!s}: {!s}...'.format(current_chain, amino_sequence))
-                amino_sequence = ''
-            else:
-                print '\rAnalysing Chain {!s}: {!s}-->'.format(current_chain, amino_sequence),; sys.stdout.flush()
-
-
-            # Iterate through the hierarchies and extract values for this residue
-            for d_hierarchy in hierarchies:
-
-                # Select the atoms for this residue
-                new_root = d_hierarchy.select(res_bool_selection)
-
-                # Calculate the sidechain and backbone b-factors for amino acids
-                if ref_residue_types[res_id] == 'common_amino_acid':
-
-                    # Pull out the backbone atoms
-                    backbone_atoms = [at for at in new_root.atoms() if at.name in backbone_atom_names]
-                    if not backbone_atoms: backbone_mean_bfactor.append(numpy.nan)
-                    else:                  backbone_mean_bfactor.append(flex.mean(flex.double([at.b for at in backbone_atoms])))
-
-                    # Pull out the sidechain atoms
-                    sidechain_atoms = [at for at in new_root.atoms() if at.name not in backbone_atom_names]
-                    if not sidechain_atoms: sidechain_mean_bfactor.append(numpy.nan)
-                    else:                   sidechain_mean_bfactor.append(flex.mean(flex.double([at.b for at in sidechain_atoms])))
-
-                else:
-                    # If not an amino acid, just append None
-                    backbone_mean_bfactor.append(numpy.nan)
-                    sidechain_mean_bfactor.append(numpy.nan)
-
-                # Calculate the mean b-factor for the whole residue
-                total_atoms = [at for at in new_root.atoms()]
-                if not total_atoms: total_mean_bfactor.append(numpy.nan)
-                else:               total_mean_bfactor.append(flex.mean(flex.double([at.b for at in total_atoms])))
-
-            res_collection.add_data(data_name='backbone_mean_bfactor', data_values=backbone_mean_bfactor)
-            res_collection.add_data(data_name='sidechain_mean_bfactor', data_values=sidechain_mean_bfactor)
-            res_collection.add_data(data_name='total_mean_bfactor', data_values=total_mean_bfactor)
-
-            self.get_residue_observations().add_collection(collection_id=res_id, collection=res_collection)
-
-        self.log('\rAnalysing Chain {!s}: {!s}-->'.format(current_chain, amino_sequence))
-        self.log('Chain {!s} Analysed.'.format(current_chain), True)
+        self.log(self.ensemble_summary.add_structures(new_hierarchies=hierarchies, hierarchy_ids=hierarchy_ids))
 
     def load_all_map_handlers(self):
         """Load the objects for getting map values - these can't be pickled so they have to be loaded each time"""
 
         self.log('===================================>>>', True)
-        for d_handler in self.get_masked_datasets(mask_name='rejected - total', invert=True):
-            print '\rLoading Map Handlers {!s} ({!s}/{!s}) '.format(d_handler.d_tag, d_handler.d_num+1, self.get_number_of_datasets()),; sys.stdout.flush()
+        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
+            print '\rLoading Map Handlers {!s} ({!s}/{!s})          '.format(d_handler.d_tag, d_handler.d_num+1, self.datasets.size()),; sys.stdout.flush()
             # Create maps
             d_handler.create_fft_map(map_type=self.get_obs_map_type(), res_factor=self.get_res_factor(), d_min=self.get_cut_resolution())
 #            d_handler.create_fft_map(map_type=self.get_diff_map_type(), res_factor=self.get_res_factor(), d_min=self.get_cut_resolution())
@@ -1679,7 +1707,7 @@ class multi_dataset_analyser(object):
             # Create map handlers
             d_handler.create_map_handler(map_type=self.get_obs_map_type())
 #            d_handler.create_map_handler(map_type=self.get_diff_map_type())
-        self.log('\rMap Handlers Loaded.                         ', True)
+        self.log('\rMap Handlers Loaded.                              ', True)
 
         self.update_pandda_size(tag='After Loading Map Handlers')
 
@@ -1698,12 +1726,12 @@ class multi_dataset_analyser(object):
 
         self.log('===================================>>>')
 
-        for d_handler in self.get_masked_datasets(mask_name='rejected - total', invert=True):
+        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
             # Retrieve associated files
             pdb = d_handler.get_pdb_filename()
             mtz = d_handler.get_mtz_filename()
 
-            print '\rAnalysing Maps for Dataset {!s} ({!s}/{!s}) '.format(d_handler.d_tag, d_handler.d_num+1, self.get_number_of_datasets()),; sys.stdout.flush()
+            print '\rAnalysing Maps for Dataset {!s} ({!s}/{!s})          '.format(d_handler.d_tag, d_handler.d_num+1, self.datasets.size()),; sys.stdout.flush()
 
             # Extract the map values at the transformed grid points
             masked_cart_new = d_handler.transform_from_reference(points=masked_cart_ref, method=self.get_alignment_method(), point_mappings=masked_cart_mappings)
@@ -1728,7 +1756,7 @@ class multi_dataset_analyser(object):
 
         print ''
         self.log('===================================>>>', True)
-        self.log('Maps Values Loaded: {!s} Datasets'.format(self.get_number_of_datasets(mask_name='rejected - total', invert=True)), True)
+        self.log('Maps Values Loaded: {!s} Datasets'.format(self.datasets.size(mask_name='rejected - total', invert=True)), True)
 
         self.update_pandda_size(tag='After Loading Maps')
 
@@ -1749,10 +1777,10 @@ class multi_dataset_analyser(object):
         assert len(masked_idxs) == len(masked_cart_ref)
 
         # All dataset handlers for analysing
-        all_d_handlers = self.get_masked_datasets(mask_name='rejected - total', invert=True)
+        all_d_handlers = self.datasets.mask(mask_name='rejected - total', invert=True)
 
         # Chunk the points into groups - Compromise between cpu time and memory usage - ~200 dataset -> chunksize of 5000
-        chunk_size = 1000*int(2000/self.get_number_of_datasets(mask_name='rejected - total', invert=True))
+        chunk_size = 1000*int(2000/self.datasets.size(mask_name='rejected - total', invert=True))
         chunked_cart = [masked_cart_ref[i:i + chunk_size] for i in range(0, len(masked_cart_ref), chunk_size)]
         chunked_mapping = [masked_cart_mappings[i:i + chunk_size] for i in range(0, len(masked_cart_mappings), chunk_size)]
         chunk_num = len(chunked_cart)
@@ -1774,7 +1802,7 @@ class multi_dataset_analyser(object):
             point_means.extend([numpy.mean(map_vals.tolist()) for map_vals in p_map_vals.T])
 
         t2 = time.time()
-        print('-> MEAN MAP CALCULATION > Time Taken: {!s} seconds'.format(int(t2-t1)))
+        print('> MEAN MAP CALCULATION > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
         # Calculate Mean Maps
         mean_map_vals = numpy.zeros(self.reference_grid().grid_size_1d())
@@ -1788,6 +1816,9 @@ class multi_dataset_analyser(object):
     def calculate_map_uncertainties(self):
         """Calculate the uncertainty in each of the different maps"""
 
+        # Section of q-q plot to calculate slope over (-q_cut -> +q_cut)
+        q_cut = 1.5
+
         # Mask grid points and select those near to the protein
         masked_gps = self.reference_grid().global_mask().inner_mask()
         masked_idxs = self.reference_grid().global_mask().inner_mask_indices()
@@ -1797,20 +1828,30 @@ class multi_dataset_analyser(object):
 
         # Extract the mean map values
         masked_mean_vals = self.get_mean_map().select(masked_idxs)
+        sorted_mean_vals = sorted(masked_mean_vals)
 
         # Extract the theoretical quantiles that we would expect if these values were from a normal distribution
-        expected_vals = normal_distribution().quantiles(len(masked_idxs))
+        expected_diff_vals = normal_distribution().quantiles(len(masked_idxs))
         # Select the points in the middle of the distribution
-        middle_indices = (expected_vals < 1.5).iselection().intersection((expected_vals > -1.5).iselection())
-        middle_expected_vals = expected_vals.select(middle_indices)
+        middle_indices = (expected_diff_vals < q_cut).iselection().intersection((expected_diff_vals > -1*q_cut).iselection())
+        middle_expected_diff_vals = expected_diff_vals.select(middle_indices)
 
-        map_uncertainties = []
+        try:
+            import matplotlib
+            # Setup so that we can write without a display connected
+            matplotlib.use('Agg')
+            from matplotlib import pyplot
+            output_graphs = True
+        except:
+            self.log('===================================>>>')
+            self.log('>> COULD NOT IMPORT MATPLOTLIB. CANNOT GENERATE GRAPHS.', True)
+            output_graphs = False
 
         self.log('===================================>>>')
 
-        for d_handler in self.get_masked_datasets(mask_name='rejected - total', invert=True):
+        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
 
-            print '\rCalculating Map Uncertainty for Dataset {!s} ({!s}/{!s}) '.format(d_handler.d_tag, d_handler.d_num+1, self.get_number_of_datasets()),; sys.stdout.flush()
+            print '\rCalculating Map Uncertainty for Dataset {!s} ({!s}/{!s})          '.format(d_handler.d_tag, d_handler.d_num+1, self.datasets.size()),; sys.stdout.flush()
 
             # Extract the map values at the transformed grid points - FOR THE DIFFERENCE MAP
             masked_cart_new = d_handler.transform_from_reference(points=masked_cart_ref, method=self.get_alignment_method(), point_mappings=masked_cart_mappings)
@@ -1819,17 +1860,64 @@ class multi_dataset_analyser(object):
             # Subtract the mean map from the observed map
             diff_mean_map_vals = masked_map_vals - masked_mean_vals
 
-            # Sort the map values and select the middle indices
-            middle_observed_vals = flex.double(sorted(diff_mean_map_vals)).select(middle_indices)
-            fit_coeffs = numpy.polyfit(x=middle_expected_vals, y=middle_observed_vals, deg=1)
+            # Sort the map values
+            sorted_observed_vals = sorted(masked_map_vals)
+            sorted_observed_diff_vals = sorted(diff_mean_map_vals)
+
+            # Select the middle indices
+            middle_observed_diff_vals = flex.double(sorted_observed_diff_vals).select(middle_indices)
+            # Calculate the slope of the centre of the graph
+            fit_coeffs = numpy.polyfit(x=middle_expected_diff_vals, y=middle_observed_diff_vals, deg=1)
+            map_off = fit_coeffs[1]
+            map_unc = fit_coeffs[0]
 
             # Save the uncertainty
-            d_handler.set_map_uncertainty(sigma=fit_coeffs[0])
-            print '-> UNCERTAINTY: {!s}'.format(fit_coeffs.round(3).tolist()[0])
+            d_handler.set_map_uncertainty(sigma=map_unc)
+#            print '> UNCERTAINTY: {!s}'.format(fit_coeffs.round(3).tolist()[0])
+            self.get_map_observations().set_data_value(data_name='masked_map_uncertainty', entry_id=d_handler.d_tag, value=map_unc)
 
-            map_uncertainties.append(fit_coeffs[0])
+            if output_graphs:
 
-            self.get_map_observations().set_data_value(data_name='masked_map_uncertainty', entry_id=d_handler.d_tag, value=fit_coeffs[0])
+                fig = pyplot.figure()
+                pyplot.title('UNSORTED MEAN v OBS SCATTER PLOT')
+                pyplot.plot([-3, 10], [-3, 10], 'b--')
+                pyplot.plot(masked_mean_vals, masked_map_vals, 'go')
+                pyplot.xlabel('MEAN MAP VALUES')
+                pyplot.ylabel('OBSV MAP VALUES')
+                pyplot.savefig(d_handler.output_handler.get_file('obs_qqplot_unsorted_png'))
+                pyplot.close(fig)
+
+                fig = pyplot.figure()
+                pyplot.title('SORTED MEAN v OBS Q-Q PLOT')
+                pyplot.plot([-3, 10], [-3, 10], 'b--')
+                pyplot.plot(sorted_mean_vals, sorted_observed_vals, 'go-')
+                pyplot.xlabel('SORTED MEAN MAP VALUES')
+                pyplot.ylabel('SORTED OBSV MAP VALUES')
+                pyplot.savefig(d_handler.output_handler.get_file('obs_qqplot_sorted_png'))
+                pyplot.close(fig)
+
+                fig = pyplot.figure()
+                pyplot.title('DIFF-MEAN-MAP Q-Q PLOT')
+                pyplot.plot([map_off-5*map_unc, map_off+5*map_unc], [-5, 5], 'b--')
+                pyplot.plot([-1, 1], [q_cut, q_cut], 'k-.')
+                pyplot.plot([-1, 1], [-q_cut, -q_cut], 'k-.')
+                pyplot.plot(sorted_observed_diff_vals, expected_diff_vals, 'go-')
+                pyplot.xlabel('DIFF-MEAN-MAP QUANTILES')
+                pyplot.ylabel('THEORETICAL QUANTILES')
+                pyplot.savefig(d_handler.output_handler.get_file('unc_qqplot_png'))
+                pyplot.close(fig)
+
+        self.log('\rMap Uncertainties Calculated.                                         ', True)
+
+        try:
+            from ascii_graph import Pyasciigraph
+            g=Pyasciigraph()
+            graph_data = [(d.d_tag, round(d.get_map_uncertainty(),3)) for d in self.datasets.mask(mask_name='rejected - total', invert=True)]
+            for l in g.graph(label='Sorted Map Uncertainties (Ascending Order)', data=graph_data, sort=1):
+                print(l)
+        except ImportError:
+            print('IMPORT ERROR (ascii_graph) - CANNOT GENERATE UNCERTAINTY GRAPH')
+            pass
 
     def calculate_map_statistics(self):
         """Take the sampled maps and calculate statistics for each grid point across the datasets"""
@@ -1848,11 +1936,11 @@ class multi_dataset_analyser(object):
         assert len(masked_idxs) == len(masked_cart_ref)
 
         # All dataset handlers for analysing
-        all_d_handlers = self.get_masked_datasets(mask_name='rejected - total', invert=True)
+        all_d_handlers = self.datasets.mask(mask_name='rejected - total', invert=True)
         d_uncertainties = [d.get_map_uncertainty() for d in all_d_handlers]
 
         # Chunk the points into groups - Compromise between cpu time and memory usage - ~200 dataset -> chunksize of 5000
-        chunk_size = 1000*int(2000/self.get_number_of_datasets(mask_name='rejected - total', invert=True))
+        chunk_size = 1000*int(2000/self.datasets.size(mask_name='rejected - total', invert=True))
         chunked_cart = [masked_cart_ref[i:i + chunk_size] for i in range(0, len(masked_cart_ref), chunk_size)]
         chunked_mapping = [masked_cart_mappings[i:i + chunk_size] for i in range(0, len(masked_cart_mappings), chunk_size)]
         chunk_num = len(chunked_cart)
@@ -1889,7 +1977,7 @@ class multi_dataset_analyser(object):
             assert i+1 == len(approx_sigmas), 'LIST INDEX DOES NOT MATCH LIST LENGTH'
 
         t2 = time.time()
-        print('-> MAP POINT ANALYSIS > Time Taken: {!s} seconds'.format(int(t2-t1)))
+        print('> MAP POINT ANALYSIS > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
         # Calculate Stds Maps - Set the background to be tiny but non-zero so we can still divide by it
         stds_map_vals = 1e-18*numpy.ones(self.reference_grid().grid_size_1d())
@@ -1932,6 +2020,17 @@ class multi_dataset_analyser(object):
         self._skew_map = skew_map_vals
         self._kurt_map = kurt_map_vals
         self._bimo_map = bimo_map_vals
+
+    def collect_map_statistics(self):
+        """Collect map statistics from the datasets"""
+
+        for d_handler in self.datasets.all():
+
+            if d_handler.z_map_stats:
+                self.get_map_observations().set_data_value(data_name='z_map_mean', entry_id=d_handler.d_tag, value=d_handler.z_map_stats['z_map_mean'])
+                self.get_map_observations().set_data_value(data_name='z_map_std', entry_id=d_handler.d_tag, value=d_handler.z_map_stats['z_map_std'])
+                self.get_map_observations().set_data_value(data_name='z_map_skew', entry_id=d_handler.d_tag, value=d_handler.z_map_stats['z_map_skew'])
+                self.get_map_observations().set_data_value(data_name='z_map_kurtosis', entry_id=d_handler.d_tag, value=d_handler.z_map_stats['z_map_kurtosis'])
 
     def get_map(self, d_handler, map_type):
         """Extract the map values for the masked grid"""
@@ -2019,17 +2118,6 @@ class multi_dataset_analyser(object):
 #
 #        return mod_z_map.as_dense_vector(), flex.double(resamp_mod_z_map)
 
-    def collect_map_statistics(self):
-        """Collect map statistics from the datasets"""
-
-        for d_handler in self.get_all_datasets():
-
-            if d_handler.z_map_stats:
-                self.get_map_observations().set_data_value(data_name='z_map_mean', entry_id=d_handler.d_tag, value=d_handler.z_map_stats['z_map_mean'])
-                self.get_map_observations().set_data_value(data_name='z_map_std', entry_id=d_handler.d_tag, value=d_handler.z_map_stats['z_map_std'])
-                self.get_map_observations().set_data_value(data_name='z_map_skew', entry_id=d_handler.d_tag, value=d_handler.z_map_stats['z_map_skew'])
-                self.get_map_observations().set_data_value(data_name='z_map_kurtosis', entry_id=d_handler.d_tag, value=d_handler.z_map_stats['z_map_kurtosis'])
-
     def print_clustering_settings(self, z_cutoff,
                                         min_cluster_volume,
                                         clustering_cutoff,
@@ -2100,7 +2188,7 @@ class multi_dataset_analyser(object):
             self.log('Dataset {!s}: Too many points to cluster: {!s} Points.'.format(d_handler.d_tag, len(d_selected_points)), True)
             d_handler.raw_cluster_hits = {}
             # This dataset is too noisy to analyse - flag!
-            self.get_dataset_masks().set_mask_value(mask_name='noisy zmap', entry_id=d_handler.d_tag, value=True)
+            self.datasets.all_masks().set_mask_value(mask_name='noisy zmap', entry_id=d_handler.d_tag, value=True)
 
             # Link datasets to the initial results directory
             hit_subdir = os.path.join(self.output_handler.get_dir('interesting_datasets'), 'X-Dataset-{!s}'.format(d_handler.d_tag))
@@ -2125,7 +2213,7 @@ class multi_dataset_analyser(object):
                 clusts = list(scipy_cluster.hierarchy.fclusterdata(X=point_array, t=grid_clustering_cutoff, criterion=clustering_criterion, metric=clustering_metric, method=clustering_method))
                 t2 = time.time()
                 if t2-t1 > 30.0:
-                    print('-> Clustering > Time Taken: {!s} seconds'.format(int(t2-t1)))
+                    print('> Clustering > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
                 # Get the number of clusters
                 clust_num = max(clusts)
@@ -2170,9 +2258,9 @@ class multi_dataset_analyser(object):
         self.log('Collating Clusters', True)
 
         # List of points to be returned
-        all_dataset_clusters = dict([(d.d_tag, []) for d in self.get_all_datasets()])
+        all_dataset_clusters = dict([(d.d_tag, []) for d in self.datasets.all()])
 
-        for d_handler in self.get_all_datasets():
+        for d_handler in self.datasets.all():
 
             if d_handler.raw_cluster_hits:
                 all_dataset_clusters[d_handler.d_tag] = d_handler.raw_cluster_hits
@@ -2203,14 +2291,14 @@ class multi_dataset_analyser(object):
         # All cluster objects
         all_clusters = []
 
-        for d_handler in self.get_masked_datasets(mask_name='rejected - total', invert=True):
+        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
 
             # Check to see if there are any clustered points
             if not d_handler.raw_cluster_hits:
                 continue
 
             # This dataset is interesting!
-            self.get_dataset_masks().set_mask_value(mask_name='interesting', entry_id=d_handler.d_tag, value=True)
+            self.datasets.all_masks().set_mask_value(mask_name='interesting', entry_id=d_handler.d_tag, value=True)
 
             print('===================================>>>')
             print('Processing Clusters in Dataset {!s}'.format(d_handler.d_tag))
@@ -2280,7 +2368,7 @@ class multi_dataset_analyser(object):
         # Get template to be filled in
         template = PANDDA_HTML_ENV.get_template('load_pandda_maps.pml')
 
-        for d_handler in self.get_all_datasets():
+        for d_handler in self.datasets.all():
 
             with open(d_handler.output_handler.get_file(file_tag='pymol_script'), 'w') as out_pml:
                 out_pml.write(template.render({'file_dict':d_handler.output_handler.output_files}))
@@ -2292,7 +2380,7 @@ class multi_dataset_analyser(object):
         template = PANDDA_HTML_ENV.get_template('output_table.html')
         # XXX 0=success, 1=none, 2=info, 3=warning, 4=failure
 
-        dataset_observations = self.get_dataset_observations()
+        d_summary = self.datasets_summary
 
         # Construct the data object to populate the template
         output_data = {'PANDDA_TOP' : PANDDA_TOP}
@@ -2303,53 +2391,53 @@ class multi_dataset_analyser(object):
         output_data['table']['column_headings'] = ['Data Quality', 'Identical Structure', 'Model Quality', 'RMSD to Reference', 'Overall', 'Interesting Areas']
         output_data['table']['rows'] = []
         # Add the datasets as rows
-        for d in self.get_all_datasets():
+        for d in self.datasets.all():
 
-            rmsd = round(dataset_observations.get_data_value(data_name='rmsd_to_mean', entry_id=d.d_tag), 3)
-            rfree = round(dataset_observations.get_data_value(data_name='rfree', entry_id=d.d_tag), 3)
-            rwork = round(dataset_observations.get_data_value(data_name='rwork', entry_id=d.d_tag), 3)
+            rmsd = round(d_summary.get_data_value(data_name='rmsd_to_mean', entry_id=d.d_tag), 3)
+            rfree = round(d_summary.get_data_value(data_name='rfree', entry_id=d.d_tag), 3)
+            rwork = round(d_summary.get_data_value(data_name='rwork', entry_id=d.d_tag), 3)
 
             columns = []
             overall_success = [0]
             # ------------------------------>>>
             # Test for Data Quality
             # ------------------------------>>>
-            if self.get_dataset_masks().get_mask_value(mask_name='bad crystal - data quality', entry_id=d.d_tag) == True:
+            if self.datasets.all_masks().get_mask_value(mask_name='bad crystal - data quality', entry_id=d.d_tag) == True:
                 columns.append({'flag':4,'message':'R-Merge: {!s}'.format(None)})
             else:
                 columns.append({'flag':0,'message':'OK'})
             # ------------------------------>>>
             # Test for Identical Structures
             # ------------------------------>>>
-            if self.get_dataset_masks().get_mask_value(mask_name='bad structure - non-identical structures', entry_id=d.d_tag) == True:
+            if self.datasets.all_masks().get_mask_value(mask_name='bad structure - non-identical structures', entry_id=d.d_tag) == True:
                 columns.append({'flag':4,'message':''})
             else:
                 columns.append({'flag':0,'message':'OK'})
             # ------------------------------>>>
             # Test for Refinement Success - some test on r-free
             # ------------------------------>>>
-            if self.get_dataset_masks().get_mask_value(mask_name='bad crystal - rfree', entry_id=d.d_tag) == True:
+            if self.datasets.all_masks().get_mask_value(mask_name='bad crystal - rfree', entry_id=d.d_tag) == True:
                 columns.append({'flag':4,'message':'Free: {!s}'.format(rfree)})
             else:
                 columns.append({'flag':0,'message':'Free: {!s}'.format(rfree)})
             # ------------------------------>>>
             # Test for Structure movement
             # ------------------------------>>>
-            if self.get_dataset_masks().get_mask_value(mask_name='bad crystal - isomorphous structure', entry_id=d.d_tag) == True:
+            if self.datasets.all_masks().get_mask_value(mask_name='bad crystal - isomorphous structure', entry_id=d.d_tag) == True:
                 columns.append({'flag':4,'message':'RMSD: {!s}'.format(rmsd)})
             else:
                 columns.append({'flag':0,'message':'RMSD: {!s}'.format(rmsd)})
             # ------------------------------>>>
             # Test for Structure movement
             # ------------------------------>>>
-            if self.get_dataset_masks().get_mask_value(mask_name='rejected - total', entry_id=d.d_tag) == True:
+            if self.datasets.all_masks().get_mask_value(mask_name='rejected - total', entry_id=d.d_tag) == True:
                 columns.append({'flag':4,'message':'Rejected'.format(rmsd)})
             else:
                 columns.append({'flag':0,'message':'Analysed'.format(rmsd)})
             # ------------------------------>>>
             # Test for if it's interesting
             # ------------------------------>>>
-            if self.get_dataset_masks().get_mask_value(mask_name='interesting', entry_id=d.d_tag) == True:
+            if self.datasets.all_masks().get_mask_value(mask_name='interesting', entry_id=d.d_tag) == True:
                 columns.append({'flag':0,'message':'Clusters Found'})
             else:
                 columns.append({'flag':1,'message':''})
@@ -2427,15 +2515,15 @@ class multi_dataset_analyser(object):
         self.log('=> Crystal Variation')
 
         # Dataset Crystal Summary
-        data_summary = self.get_dataset_observations()
+        d_summary = self.datasets_summary
 
-        high_res = data_summary.get_data(data_name='high_res_limit')
-        low_res = data_summary.get_data(data_name='low_res_limit')
-        rfree = data_summary.get_data(data_name='rfree')
-        rwork = data_summary.get_data(data_name='rwork')
-        rmsds = data_summary.get_data(data_name='rmsd_to_mean')
-        a,b,c,alpha,beta,gamma = zip(*data_summary.get_data(data_name='cell_params'))
-        vols = data_summary.get_data(data_name='cell_volume')
+        high_res = d_summary.get_data(data_name='high_res_limit')
+        low_res = d_summary.get_data(data_name='low_res_limit')
+        rfree = d_summary.get_data(data_name='rfree')
+        rwork = d_summary.get_data(data_name='rwork')
+        rmsds = d_summary.get_data(data_name='rmsd_to_mean')
+        a,b,c,alpha,beta,gamma = zip(*d_summary.get_data(data_name='cell_params'))
+        vols = d_summary.get_data(data_name='cell_volume')
 
         ########################################################
 
@@ -2659,20 +2747,20 @@ class multi_dataset_analyser(object):
         self.log('===================================>>>')
         self.log('Writing Dataset Crystal Summaries')
 
-        data_summary = self.get_dataset_observations()
+        d_summary = self.datasets_summary
 
         with open(self.output_handler.get_file('dataset_summaries'), 'w') as fh:
             fh.write('dataset_id, res_high, res_low, rfree, rwork, rmsd to mean, a, b, c, alpha, beta, gamma, cell volume\n')
             # Write out parameters for each dataset
-            for d_handler in self.get_all_datasets():
+            for d_handler in self.datasets.all():
                 out_list = [  d_handler.d_tag,
-                              data_summary.get_data_value(data_name='high_res_limit', entry_id=d_handler.d_tag),
-                              data_summary.get_data_value(data_name='low_res_limit', entry_id=d_handler.d_tag),
-                              data_summary.get_data_value(data_name='rfree', entry_id=d_handler.d_tag),
-                              data_summary.get_data_value(data_name='rwork', entry_id=d_handler.d_tag),
-                              data_summary.get_data_value(data_name='rmsd_to_mean', entry_id=d_handler.d_tag)  ] + \
-                           list(data_summary.get_data_value(data_name='cell_params', entry_id=d_handler.d_tag)) + \
-                           [  data_summary.get_data_value(data_name='cell_volume', entry_id=d_handler.d_tag)  ]
+                              d_summary.get_data_value(data_name='high_res_limit', entry_id=d_handler.d_tag),
+                              d_summary.get_data_value(data_name='low_res_limit', entry_id=d_handler.d_tag),
+                              d_summary.get_data_value(data_name='rfree', entry_id=d_handler.d_tag),
+                              d_summary.get_data_value(data_name='rwork', entry_id=d_handler.d_tag),
+                              d_summary.get_data_value(data_name='rmsd_to_mean', entry_id=d_handler.d_tag)  ] + \
+                           list(d_summary.get_data_value(data_name='cell_params', entry_id=d_handler.d_tag)) + \
+                           [  d_summary.get_data_value(data_name='cell_volume', entry_id=d_handler.d_tag)  ]
                 out_line = ', '.join(map(str,out_list)) + '\n'
                 fh.write(out_line)
 
@@ -2684,7 +2772,7 @@ class multi_dataset_analyser(object):
         with open(self.output_handler.get_file('map_summaries'), 'w') as fh:
             fh.write('dataset_id, masked_map_mean, masked_map_std, masked_map_uncertainty, z_map_mean, z_map_std, z_map_skew, z_map_kurtosis\n')
             # Write out parameters for each dataset
-            for d_handler in self.get_masked_datasets(mask_name='rejected - total', invert=True):
+            for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
                 out_list = [  d_handler.d_tag,
                               map_summary.get_data_value(data_name='masked_map_mean', entry_id=d_handler.d_tag),
                               map_summary.get_data_value(data_name='masked_map_std', entry_id=d_handler.d_tag),
@@ -2741,7 +2829,7 @@ class multi_dataset_analyser(object):
         with open(output_filename, 'w') as fh:
 
             fh.write('grid_point, dataset_tag, dataset_num, map_val\n')
-            for d_handler in self.get_masked_datasets(mask_name='rejected - total', invert=True):
+            for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
                 # Extract map values
                 cart_points_d = d_handler.transform_from_reference(points=cart_points_ref, method=self.get_alignment_method(), point_mapping=self.reference_dataset().find_nearest_calpha(cart_points_ref))
                 map_vals = d_handler.get_cart_values(points=cart_points_d, map_type=map_type)
@@ -3001,7 +3089,7 @@ class atomic_mask(object):
         self._outer_mask_points = [gp for idx, gp in enumerate(flex.nested_loop(self._grid_size)) if self._outer_mask_binary[idx]==1]
 
         t2 = time.time()
-        print('-> OUTER MASK > Time Taken: {!s} seconds'.format(int(t2-t1)))
+        print('> OUTER MASK > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
         # Calculate the masked indices defined by min distance from protein atoms
         self._inner_mask_indices = maptbx.grid_indices_around_sites(unit_cell=unit_cell,
@@ -3015,7 +3103,7 @@ class atomic_mask(object):
         self._inner_mask_points = [gp for idx, gp in enumerate(flex.nested_loop(self._grid_size)) if self._inner_mask_binary[idx]==1]
 
         t3 = time.time()
-        print('-> INNER MASK > Time Taken: {!s} seconds'.format(int(t3-t2)))
+        print('> INNER MASK > Time Taken: {!s} seconds'.format(int(t3-t2)))
 
         # Calculate the combination of these masks
         total_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), int)
@@ -3028,7 +3116,7 @@ class atomic_mask(object):
         self._total_mask_points = [gp for idx, gp in enumerate(flex.nested_loop(self._grid_size)) if self._total_mask_binary[idx]==1]
 
         t4 = time.time()
-        print('-> TOTAL MASK > Time Taken: {!s} seconds'.format(int(t4-t3)))
+        print('> TOTAL MASK > Time Taken: {!s} seconds'.format(int(t4-t3)))
 
     def total_mask(self):
         """Return the grid points allowed by the mask - combination of max_dist (allowed) and min_dist (rejected)"""
@@ -3074,7 +3162,7 @@ class atomic_mask(object):
                             'Total Mask Size (1D): {!s}'.format(self.total_size()),
                             'Outer Mask Size (1D): {!s}'.format(self.outer_size()),
                             'Inner Mask Size (1D): {!s}'.format(self.inner_size()),
-                            'Masked Grid Min/Max: {!s}'.format(min(self.extent()))
+                            'Masked Grid Min/Max: {!s}'.format(self.extent())
                         ])
 
 # TODO Move to Giant.Grid.Masks
