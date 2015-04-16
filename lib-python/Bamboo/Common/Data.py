@@ -1,4 +1,5 @@
 
+from scipy import stats as scipy_stats
 import numpy
 
 class data_collection(object):

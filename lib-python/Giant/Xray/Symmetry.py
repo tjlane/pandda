@@ -1,21 +1,71 @@
 import os
 
+import scipy
+
 from scitbx.array_family import flex
 
-import iotbx
+import iotbx.pdb
+from cctbx import crystal
 
-def generate_adjacent_symmetry_copies(ref_hierarchy, crystal_symmetry, buffer_thickness=0):
+def generate_adjacent_symmetry_copies(ref_hierarchy, crystal_symmetry, buffer_thickness=0, method=2):
     """Find symmetry copies of the protein in contact with the asu and generate these copies"""
 
-    sym_ops_mat, contacts_out = get_symmetry_operations_to_generate_crystal_contacts(ref_hierarchy=ref_hierarchy,
-                                                                                     crystal_symmetry=crystal_symmetry,
-                                                                                     buffer_thickness=buffer_thickness)
+    if method == 1:
+        sym_ops_mat, contacts_out = get_symmetry_operations_to_generate_crystal_contacts(ref_hierarchy=ref_hierarchy,
+                                                                                         crystal_symmetry=crystal_symmetry,
+                                                                                         buffer_thickness=buffer_thickness)
+    elif method == 2:
+        sym_ops_mat = get_symmetry_operations_to_generate_crystal_contacts_2(ref_hierarchy=ref_hierarchy,
+                                                                           crystal_symmetry=crystal_symmetry,
+                                                                           buffer_thickness=buffer_thickness)
+        contacts_out = None
 
     sym_hierarchies, chain_mappings = generate_crystal_copies_from_operations(ref_hierarchy=ref_hierarchy,
                                                                               crystal_symmetry=crystal_symmetry,
                                                                               sym_ops_mat=sym_ops_mat)
 
     return sym_ops_mat, contacts_out, sym_hierarchies, chain_mappings
+
+def get_symmetry_operations_to_generate_crystal_contacts_2(ref_hierarchy, crystal_symmetry, buffer_thickness):
+    """Use an alternate method to identify the symmetry operations required to generate crystal contacts"""
+
+    # Extract the xray structure from the reference hierarchy
+    ref_struc = ref_hierarchy.extract_xray_structure(crystal_symmetry=crystal_symmetry)
+    ref_atoms = ref_hierarchy.atoms()
+
+    # Extract the mappings that will tell us the adjacent symmetry copies
+    asu_mappings = ref_struc.asu_mappings(buffer_thickness=buffer_thickness)
+    uc = asu_mappings.unit_cell()
+    # Symmetry operations for each atom
+    mappings = asu_mappings.mappings()
+
+    # There should be one mappings list per atom
+    assert len(ref_struc.scatterers()) == len(mappings)
+
+    # Get all atom pairs within distance_cutoff distance
+    pair_generator = crystal.neighbors_fast_pair_generator(
+        asu_mappings,
+        distance_cutoff=buffer_thickness)
+    n_contacts = 0
+    sym_operations = []
+    for pair in pair_generator:
+      # obtain rt_mx_ji - symmetry operator that should be applied to j-th atom
+      # to transfer it to i-th atom
+      rt_mx_i = asu_mappings.get_rt_mx_i(pair)
+      rt_mx_j = asu_mappings.get_rt_mx_j(pair)
+      rt_mx_ji = rt_mx_i.inverse().multiply(rt_mx_j)
+      # if it is not a unit matrix, that is symmetry related pair of atoms
+      if not rt_mx_ji.is_unit_mx():
+        if rt_mx_ji not in sym_operations:
+          sym_operations.append(rt_mx_ji)
+#        print pair.i_seq, pair.j_seq, rt_mx_ji, atoms[pair.i_seq].id_str(),
+#        print atoms[pair.j_seq].id_str(), "dist=",pair.dist_sq**.5
+        n_contacts += 1
+#    print n_contacts
+#    for m in sym_operations:
+#      print m
+
+    return sym_operations
 
 def get_symmetry_operations_to_generate_crystal_contacts(ref_hierarchy, crystal_symmetry, buffer_thickness):
     """Extract symmetry operations to generate symmetry copies of the protein that form crystal contacts"""
@@ -46,7 +96,7 @@ def get_symmetry_operations_to_generate_crystal_contacts(ref_hierarchy, crystal_
     # Different symmetry operations that map to symmetry neighbours
     uniq_sym_op_xyz = sorted(list(set([m[1].as_xyz() for m in filtered_mappings])))
 
-    # Returned list of symmatry contacts, and operations
+    # Returned list of symmetry contacts, and operations
     sym_ops_out = []
     contacts_out = []
 
@@ -132,30 +182,34 @@ def combine_hierarchies(list_of_hierarchies):
 
     return top_h
 
-#if __name__=='__main__':
-#
-#    from PANDDAs.Main import dataset_handler
-#
-#    d=dataset_handler(-1, './reference.pdb', './reference.mtz')
-#
-#    i = d.get_input()
-#    h = d.get_hierarchy()
-#
-#    sym_ops, contact_mappings, sym_hierarchies, chain_mappings = generate_adjacent_symmetry_copies(    ref_hierarchy=h,
-#                                                                                                       crystal_symmetry=i.crystal_symmetry(),
-#                                                                                                       buffer_thickness=5)
-#
-#    print 'CHAIN MAPPINGS:'
-#    for ch in chain_mappings.keys():
-#        print '\tCHAIN {!s} maps to {!s}'.format(ch, chain_mappings[ch])
-#    print 'SYMMETRY HEIRARCHIES:'
-#    for x in sym_hierarchies:
-#        print '\t',x
-#
-#    combined_sym_hierarchy = combine_hierarchies(sym_hierarchies)
-#
-#    output_file = './reference-symmetry-contacts.pdb'
-#
-#    assert not os.path.exists(output_file)
-#    combined_sym_hierarchy.write_pdb_file(output_file)
-#
+if __name__=='__main__':
+
+    input_file = './reference.pdb'
+
+    inp = iotbx.pdb.input(input_file)
+    hie = inp.construct_hierarchy()
+
+    for method in [1,2]:
+        sym_ops, contact_mappings, sym_hierarchies, chain_mappings = generate_adjacent_symmetry_copies(    ref_hierarchy=hie,
+                                                                                                           crystal_symmetry=inp.crystal_symmetry(),
+                                                                                                           buffer_thickness=50,
+                                                                                                           method=method)
+
+        print 'CHAIN MAPPINGS:'
+        for ch in chain_mappings.keys():
+            print '\tCHAIN {!s} maps to {!s}'.format(ch, chain_mappings[ch])
+        print 'SYMMETRY HEIRARCHIES:'
+        for x in sym_hierarchies:
+            print '\t',x
+        print 'SYMMETRY OPERATIONS:'
+        for x in sorted(sym_ops, key=lambda m: str(m)):
+            print '\t',x
+        print '{!s} SYMMETRY COPIES GENERATED'.format(len(sym_hierarchies))
+
+        combined_sym_hierarchy = combine_hierarchies(sym_hierarchies)
+
+        output_file = input_file.replace('.pdb', '-contacts-method{!s}.pdb'.format(method))
+
+        assert not os.path.exists(output_file)
+        combined_sym_hierarchy.write_pdb_file(output_file)
+

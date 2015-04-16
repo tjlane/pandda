@@ -1,12 +1,15 @@
 import os, sys, glob, time, re
 
+from scipy import spatial
 import numpy
 
+from libtbx import easy_mp
+from libtbx.math_utils import ifloor, iceil
 from scitbx.array_family import flex
 
 from cctbx import crystal
 
-
+from Giant.Grid.Utils import create_cartesian_grid
 
 class grid_handler(object):
     def __init__(self, verbose=True):
@@ -199,3 +202,84 @@ class grid_handler(object):
 
         return self.grid_size()
 
+class grid_partition(object):
+    def __init__(self, grid_size, grid_spacing, atomic_hierarchy):
+        """Partition a grid based on the nearest neighbour calpha atom for each grid site"""
+
+        # Save inputs
+        self.hierarchy = atomic_hierarchy
+        self.grid_size = grid_size
+        self.grid_spacing = grid_spacing
+        self.grid_indexer = flex.grid(grid_size)
+
+        # Calculate partition variables
+        atoms = [at for at in atomic_hierarchy.atoms_with_labels()]
+        self.grid_sites = list(flex.nested_loop(grid_size))
+        self.atom_sites_grid = numpy.array([a.xyz for a in atoms])/grid_spacing
+        self.atom_sites_cart = numpy.array([a.xyz for a in atoms])
+        self.atom_labels = [(a.chain_id, a.resid()) for a in atoms]
+
+        # Distances from grid sites to nearest atom site
+        self.nn_dists = None
+        # Index of nearest atom to grid sites
+        self.nn_groups = None
+        # Label of nearest atom to grid sites
+        self.nn_atom_labels = None
+
+    def partition_grid(self, cpus=1):
+        """Find the nearest neighbour for each grid point"""
+
+#        tree = spatial.KDTree(data=self.atom_sites_grid)
+#        self.nn_dists, self.nn_groups = tree.query(self.grid_sites)
+#        self.nn_atom_labels = [self.atom_labels[i] for i in self.nn_groups]
+
+        def find_sites(sites_dict):
+            ref_sites   = sites_dict['ref']
+            query_sites = sites_dict['query']
+            tree = spatial.KDTree(data=ref_sites)
+            nn_dists, nn_groups = tree.query(query_sites)
+            return {'nn_dists':nn_dists, 'nn_groups':nn_groups}
+
+        assert isinstance(cpus, int)
+        assert cpus > 0
+
+        # Points that define neighbourhoods
+        ref_sites = self.atom_sites_grid
+        # Sites that we are partitioning
+        query_sites = self.grid_sites
+
+        if cpus == 1:
+            output = [find_sites({'ref':ref_sites, 'query':query_sites})]
+        else:
+            # Chunk the points into groups
+            chunk_size = iceil(1.0*len(query_sites)/cpus)
+            chunked_points = [query_sites[i:i + chunk_size] for i in range(0, len(query_sites), chunk_size)]
+            assert sum([len(a) for a in chunked_points]) == len(query_sites)
+            assert len(chunked_points) == cpus
+
+            # Map to cpus
+            arg_list = [{'ref':ref_sites, 'query':chunk} for chunk in chunked_points]
+            output = easy_mp.pool_map(fixed_func=find_sites, args=arg_list, processes=cpus)
+
+        assert len(output) == cpus, '{!s} != {!s}'.format(len(output), cpus)
+
+        self.nn_dists = [];  [self.nn_dists.extend(t['nn_dists']) for t in output]
+        assert len(query_sites) == len(self.nn_dists)
+        self.nn_groups = []; [self.nn_groups.extend(t['nn_groups']) for t in output]
+        assert len(query_sites) == len(self.nn_groups)
+        self.nn_atom_labels = [self.atom_labels[i] for i in self.nn_groups]
+
+    def query_by_grid_indices(self, idxs):
+        """Return the atom label for a grid site index"""
+        if not self.nn_atom_labels: self.partition_grid()
+        return [self.nn_atom_labels[i] for i in idxs]
+    def query_by_grid_points(self, gps):
+        """Return the atom label for a grid point"""
+        if not self.nn_atom_labels: self.partition_grid()
+        return [self.nn_atom_labels[self.grid_indexer(g)] for g in gps]
+
+    def query_by_cart_points(self, sites_cart):
+        """Dynamically calculate the nearest atom site to the input points"""
+        tree = spatial.KDTree(data=self.atom_sites_cart)
+        nn_dists, nn_groups = tree.query(self.grid_sites)
+        return [self.atom_labels[i] for i in nn_groups]

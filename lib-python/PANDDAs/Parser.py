@@ -25,10 +25,11 @@ def build_pandda_parser():
     p.add_argument('--res-jump', metavar='FLOAT', default=0.1, help='Increment in resolution cutoff between analyses')
 
     p.add_argument('--z-cut', metavar='FLOAT', default=2, help='Z-cutoff when looking for bound Z-blobs')
-    p.add_argument('--min-blob-size', metavar='FLOAT', default=10, help='Minimum Z-blob volume (A)')
+    p.add_argument('--min-blob-size', metavar='FLOAT', default=15, help='Minimum Z-blob volume (A^3)')
 
     # Add command arguments
     p.add_argument('--verbose', action='store_true', default=True, help='Set Verboseness')
+    p.add_argument('--testing', action='store_true', default=False, help='Set Testingness')
 
     # Add Computer Settings
     p.add_argument('--max-memory', '-rmax', metavar='N', default=25, type=int, help='Maximum Amount of Memory to Use (GB) - Will fail if uses above this')

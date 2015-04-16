@@ -1,4 +1,6 @@
 
+unset normalize_ccp4_maps
+
 # Load the aligned pdb structure
 load {{ file_dict['aligned_structure'] }}, aligned_structure
 
