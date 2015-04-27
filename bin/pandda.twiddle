@@ -1,0 +1,120 @@
+#!/usr/bin/env pandda.python
+
+import os, sys, copy
+
+import scipy
+
+from libtbx import phil, easy_pickle
+from iotbx import pdb
+
+from PANDDAs.Phil import pandda_twiddle_def
+
+def parse_input():        
+
+    args = copy.copy(sys.argv)
+
+    # Read in the master phil
+    master_phil = phil.parse(pandda_twiddle_def)
+    cmd_interpr = master_phil.command_line_argument_interpreter(home_scope="twiddle")
+
+    # Look for any eff files in the args
+    eff_files = [f for f in args if (f.endswith('.eff') and os.path.isfile(f))]
+    # Remove them from the original lists
+    [args.remove(f) for f in eff_files]
+    # Parse the 'eff' files - these should contain phils
+    eff_sources = [phil.parse(open(f, 'r').read()) for f in eff_files]
+    
+    # Look for cmd line arguments
+    cmd_line_args = [a for a in args if (('=' in a) and not os.path.exists(a))]
+    # Remove them from the original lists
+    [args.remove(a) for a in cmd_line_args]
+    
+    # Add any pdb files to the command list 
+    ipdbs = [a for a in args if (a.endswith('.pdb') and os.path.exists(a))]
+    opdbs = [a for a in args if (a.endswith('.pdb') and not os.path.exists(a))]
+    pkles = [a for a in args if (a.endswith('.pickle') and os.path.exists(a))]
+    # Remove them from the original lists
+    [args.remove(a) for a in ipdbs+opdbs+pkles]
+
+    ipdbs = ['input={!s}'.format(a) for a in ipdbs]
+    opdbs = ['output={!s}'.format(a) for a in opdbs]
+    pkles = ['pickle={!s}'.format(a) for a in pkles]
+    
+    print '============================'
+
+    print 'effs',eff_files
+
+    print 'cmds',cmd_line_args
+
+    print 'ipdbs',ipdbs
+    print 'opdbs',opdbs
+    print 'pkles',pkles
+    
+    print '============================'
+
+    # Parse these arguments
+    cmd_sources = [cmd_interpr.process(arg=a) for a in cmd_line_args+ipdbs+opdbs+pkles]
+
+    # Combine the phils
+    working_phil = master_phil.fetch(
+                                    sources=eff_sources+cmd_sources
+                                    )
+
+    return master_phil, working_phil, args
+
+
+if __name__ == '__main__':
+    
+    workdir = os.getcwd()
+
+    master_phil, working_phil, unused_args = parse_input()
+
+    print '============================'
+    print 'ARGS:'
+    print '============================'
+    print working_phil.as_str()
+    print '============================'
+
+    args = working_phil.extract().twiddle
+
+    if args.dataset_pickle:
+        assert os.path.exists(args.dataset_pickle), 'PICKLE DOES NOT EXIST: {!s}'.format(args.dataset_pickle)
+    else:
+        # Find the dataset pickle
+        raise Exception('PLEASE PROVIDE DATASET PICKLE')
+
+    if args.file.input:
+        assert os.path.exists(args.file.input), 'FILE DOES NOT EXIST: {!s}'.format(args.file.input)
+    else:
+        # Find the dataset pickle
+        raise Exception('PLEASE PROVIDE INPUT FILE')
+
+    # Create output file if needed
+    if not args.file.output:
+        args.file.output = args.file.input.replace('.pdb','') + '.morphed.{!s}.pdb'.format(args.direction)
+    assert not os.path.exists(args.file.output), 'FILE ALREADY EXISTS: {!s}'.format(args.file.output)
+
+    print 'TRANSFORMING: {!s}'.format(args.file.input)
+    print 'USING DATASET FROM: {!s}'.format(args.dataset_pickle)
+    print 'WRITING FILE TO: {!s}'.format(args.file.output)
+
+    # Load the dataset handler from the pickle
+    d_handler = easy_pickle.load(args.dataset_pickle)
+    
+    # Load the ligand to be twiddled
+    hier = pdb.hierarchy.input(args.file.input).hierarchy
+    
+    if args.direction == 'toref':
+        trans_points = d_handler.transform_to_reference(    points=hier.atoms().extract_xyz(), 
+                                                            method='global')
+    elif args.direction == 'fromref':
+        trans_points = d_handler.transform_from_reference(  points=hier.atoms().extract_xyz(), 
+                                                            method='global')
+
+    # Create new hierarchy and write out
+    new_hier = hier.deep_copy()
+    new_hier.atoms().set_xyz(trans_points)
+    new_hier.write_pdb_file(args.file.output)
+
+    quit()
+

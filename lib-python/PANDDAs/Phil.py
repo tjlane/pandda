@@ -1,6 +1,7 @@
 
 pandda_phil_def = """
-    pandda{
+    pandda
+    {
         input
             .help = "File names"
         {
@@ -35,8 +36,13 @@ pandda_phil_def = """
             .help = "High Level control of algorithm"
         {
             dry_run = False
+                .help = "Setup pandda, print working arguments, and exit"
                 .type = bool
             recalculate_statistical_maps = False
+                .help = "Recalculate all of the statistical maps? (Time-consuming)"
+                .type = bool
+            reprocess_all_datasets = False
+                .help = "Recalculate and process all dataset z-maps (For different contour levels, etc)"
                 .type = bool
         }
         params
@@ -45,7 +51,7 @@ pandda_phil_def = """
             alignment
                 .help = "Settings to control the alignment of the structures"
             {
-                method = *global local
+                method = global *local
                     .type = choice
                 rmsd_cutoff = 1.0
                     .help = "Reject datasets that have a calpha rmsd of greater than this to the reference"
@@ -54,17 +60,35 @@ pandda_phil_def = """
             maps
                 .help = "Settings to control the generation of the dataset maps"
             {
-                map_type = 2FOFC FOFC
+                maps_to_analyse = *2FOFC FOFC
                     .type = choice
-                ampl_label = FWT DELFWT *2FOFCWT FOFCWT
+                ampl_label = FWT *2FOFCWT DELFWT FOFCWT
                     .type = choice
-                phas_label = PHWT PHDELWT *PH2FOFCWT PHFOFCWT
+                phas_label = PHWT *PH2FOFCWT PHDELWT PHFOFCWT
                     .type = choice
-                scaling = volume
-                    .type = str
+                not_used_obs_ampl_label = FWT *2FOFCWT
+                    .type = choice
+                not_used_obs_phas_label = PHWT *PH2FOFCWT
+                    .type = choice
+                not_used_diff_ampl_label = DELFWT *FOFCWT
+                    .type = choice
+                not_used_diff_phas_label = PHDELWT *PHFOFCWT
+                    .type = choice
+                scaling = none *sigma volume
+                    .type = choice
                 resolution_factor = 0.33
                     .type = float
                 border_padding = 5
+                    .type = float
+            }
+            masks
+                .help = "Parameters to control the masking of grid points around the protein"
+            {
+                inner_mask = 1.8
+                    .help = "Points are masked with this distance of protein atoms"
+                    .type = float
+                outer_mask = 5
+                    .help = "Points are masked outside this distance of protein atoms"
                     .type = float
             }
             analysis
@@ -89,7 +113,7 @@ pandda_phil_def = """
             blob_search
                 .help = "Settings to control the finding of blobs"
             {
-                contour_level = 3
+                contour_level = 2.5
                     .help = 'Contour level when looking for blobs'
                     .type = float
                 min_blob_volume = 10.0
@@ -98,6 +122,9 @@ pandda_phil_def = """
                 min_blob_z_peak = 3.0
                     .help = 'Blob Z-peak filter for detecting blobs'
                     .type = float
+                blobs_to_image = 2
+                    .help = 'Maximum number of blobs to image per dataset'
+                    .type = int
                 clustering
                     .help = "Settings to control the clustering of blob points"
                 {
@@ -129,4 +156,21 @@ pandda_phil_def = """
     }
 """
 
+pandda_twiddle_def = """
+    twiddle
+    {
+        direction = toref *fromref
+            .type = choice
+        file
+        {
+            input  = None
+                .type = path
+            output = None
+                .type = path
+        }
+        dataset_pickle = ./pickles/dataset.pickle
+            .type = path
+    }
+
+"""
 

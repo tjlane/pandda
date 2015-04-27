@@ -1,4 +1,4 @@
-#!/home/npearce/bin/Developer/cctbx/cctbx_build/bin/cctbx.python
+#!/usr/bin/env pandda.python
 
 import os, sys, glob, time
 import numpy
@@ -11,6 +11,7 @@ from Giant.Xray.Symmetry import combine_hierarchies, generate_adjacent_symmetry_
 from Giant.Grid.Masks import spherical_mask, atomic_mask, non_symmetrical_atomic_mask
 
 from Giant.Stats.Cluster import cluster_data
+from Giant.Utils import status_bar
 
 from PANDDAs.Main import multi_dataset_analyser
 
@@ -58,8 +59,12 @@ def pandda_main(args):
 
         input_files = pandda.build_input_list()
 
+        if pandda.args.method.dry_run:
+            pandda.exit()
+            return pandda, None
+
         if (not pandda.datasets.all()) and (not input_files):
-            # No datasets loaded - exit
+            pandda.exit()
             raise SystemExit('NO DATASETS LOADED')
 
         elif input_files:
@@ -100,7 +105,7 @@ def pandda_main(args):
             # Scale and align the datasets to the reference
             pandda.scale_datasets(  ampl_label=pandda.params.maps.ampl_label,
                                     phas_label=pandda.params.maps.phas_label    )
-            pandda.align_datasets(method=pandda.params.alignment.method)
+            pandda.align_datasets(  method=pandda.params.alignment.method   )
     #        pandda.generate_crystal_contacts()
 
         else:
@@ -144,6 +149,7 @@ def pandda_main(args):
 
         # Analyse the structural variation in the datasets
         pandda.analyse_structure_variability_1()
+        pandda.analyse_structure_variability_2()
 
         # ============================================================================>
         #####
@@ -281,6 +287,9 @@ def pandda_main(args):
         # Truncate the data to a particular resolution
         pandda.truncate_scaled_data()
 
+        # Load the reference map so that we can scale the individual maps to this
+        pandda.load_reference_map()
+
         # Need to load all to calculate statistical maps
         pandda.load_and_morph_maps()
 
@@ -346,6 +355,7 @@ def pandda_main(args):
 
         # Minimum size of cluster
         min_cluster_volume   = pandda.params.blob_search.min_blob_volume
+        min_cluster_z_peak   = pandda.params.blob_search.min_blob_z_peak
         # Z cutoff for maps
         z_cutoff             = pandda.params.blob_search.contour_level
         # Clustering Methods
@@ -366,6 +376,7 @@ def pandda_main(args):
 
         pandda.print_clustering_settings(   z_cutoff             = z_cutoff,
                                             min_cluster_volume   = min_cluster_volume,
+                                            min_cluster_z_peak   = min_cluster_z_peak,
                                             clustering_cutoff    = clustering_cutoff,
                                             clustering_criterion = clustering_criterion,
                                             clustering_metric    = clustering_metric,
@@ -381,6 +392,20 @@ def pandda_main(args):
         pandda.log('GLOBAL TOTAL MASK: {!s}'.format(len(pandda.reference_grid().global_mask().total_mask())))
         pandda.log('SYMMETRY INNER MASK: {!s}'.format(len(pandda.reference_grid().symmetry_mask().inner_mask())))
         pandda.log('COMBINED MASK: {!s}'.format(len(combined_point_mask)))
+        # TODO TODO TODO
+
+        # TODO TODO TODO - MOVE?
+        # Calculate centre of mass of the reference dataset
+        pandda.log('===================================>>>', True)
+        pandda.log('Calculating Reference Structure Centre of Mass', True)
+
+        # Should be in the reference frame
+        ref_structure = pandda.reference_dataset().get_hierarchy()
+        backbone_atoms = ref_structure.select(ref_structure.atom_selection_cache().selection('pepnames and (name CA or name C or name O or name N)')).atoms()
+        backbone_sites = backbone_atoms.extract_xyz()
+        backbone_wghts = flex.double([1]*len(backbone_sites))
+
+        centre_of_mass = backbone_sites.mean_weighted(weights=backbone_wghts)
         # TODO TODO TODO
 
         # Time the processing of the dataset maps
@@ -525,17 +550,25 @@ def pandda_main(args):
                 # LOOK FOR CLUSTERS OF Z-SCORES  #
                 ##################################
 
-                d_handler.raw_cluster_hits = pandda.cluster_high_z_values(
+                raw_cluster_hits = pandda.cluster_high_z_values(
                                                 d_handler            = d_handler,
                                                 z_map                = z_map,
                                                 z_cutoff             = z_cutoff,
                                                 point_mask           = combined_point_mask,
                                                 min_cluster_volume   = min_cluster_volume,
+                                                min_cluster_z_peak   = min_cluster_z_peak,
                                                 clustering_cutoff    = clustering_cutoff,
                                                 clustering_criterion = clustering_criterion,
                                                 clustering_metric    = clustering_metric,
                                                 clustering_method    = clustering_method
                                             )
+
+                ################################
+                # FILTER CLUSTERS OF Z-SCORES  #
+                ################################
+                
+
+                d_handler.raw_cluster_hits = raw_cluster_hits
 
             # Create cluster object from the clustered points
             if d_handler.raw_cluster_hits:
@@ -553,8 +586,15 @@ def pandda_main(args):
                 pandda.log('Imaging blobs in Dataset {!s}'.format(d_handler.d_tag), True)
 
                 sorted_blob_indices = d_handler.clustered_hits.sort(sorting_function=max)
+                blob_num = len(sorted_blob_indices)
 
                 for blob_rank, blob_grid_peak in enumerate(d_handler.clustered_hits.get_centroids(indices=sorted_blob_indices)):
+
+                    # Only produce a certain number of images
+                    if blob_rank == pandda.params.blob_search.blobs_to_image:
+                        break
+
+                    status_bar(n=blob_rank, n_max=blob_num)
 
                     blob_cart_peak = [g*pandda.reference_grid().grid_spacing() for g in blob_grid_peak]
 
@@ -564,8 +604,10 @@ def pandda_main(args):
                                         d_handler = d_handler,
                                         point_no  = blob_rank+1,
                                         point     = blob_cart_peak,
-                                        towards   = [10,10,10]
+                                        towards   = centre_of_mass
                                     )
+
+                status_bar(n=blob_num, n_max=blob_num)
 
         #    ##################################
         #    # POST-PROCESS Z-MAPS            #
@@ -859,12 +901,14 @@ def test_pandda_results(pandda):
 
                 fig = pyplot.figure()
                 pyplot.title('ROC CURVE FOR {!s}'.format(test_type))
-                pyplot.plot(roc['VALS'], roc['SENS'], 'ko-')
-                pyplot.plot(roc['VALS'], roc['SPEC'], 'ro-')
-                pyplot.plot(roc['VALS'], roc['PREC'], 'go-')
-                pyplot.plot(roc['VALS'], roc['ACC'],  'bo-')
+                pyplot.plot(roc['VALS'], roc['SENS'], marker='o', linestyle='-', color='k', label='Sensitivity')
+                pyplot.plot(roc['VALS'], roc['SPEC'], marker='o', linestyle='-', color='r', label='Specificity')
+                pyplot.plot(roc['VALS'], roc['PREC'], marker='o', linestyle='-', color='g', label='Precision')
+                pyplot.plot(roc['VALS'], roc['ACC'],  marker='o', linestyle='-', color='b', label='Accuracy')
                 pyplot.xlabel('SCORE CUTOFF ({!s})'.format(test_type))
                 pyplot.ylabel('ROC RESPONSE')
+#                pyplot.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
+                pyplot.legend()
                 # Apply tight layout to prevent overlaps
                 pyplot.tight_layout()
                 # Save
@@ -873,7 +917,7 @@ def test_pandda_results(pandda):
 
                 fig = pyplot.figure()
                 pyplot.title('ROC CURVE FOR {!s}'.format(test_type))
-                pyplot.plot(roc['FPR'], roc['TPR'],  'go-')
+                pyplot.plot(roc['FPR'], roc['TPR'], marker='o', linestyle='-', color='g')
                 pyplot.xlabel('FPR')
                 pyplot.ylabel('TPR')
                 # Apply tight layout to prevent overlaps
@@ -967,6 +1011,16 @@ def process_args_2(args=None):
 # ============================================================================>
 
 if __name__ == '__main__':
+
+    current_user = os.getlogin()
+
+    print('===================================>>>')
+    if current_user in ['rtalon']:
+        from insults import get_insult
+        print '{!s}: {!s}'.format(current_user,get_insult())
+    else:
+        print 'Hi {!s}. Welcome to PANDDAs.'.format(current_user)    
+    print('===================================>>>')
 
     pandda, err = pandda_main(args=None)
 

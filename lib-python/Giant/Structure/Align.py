@@ -2,6 +2,9 @@
 from scitbx.math import superpose
 from scitbx.array_family import flex
 
+import iotbx.pdb
+import mmtbx.alignment
+
 def perform_flexible_alignment(mov_hierarchy, ref_hierarchy, cutoff_radius=10):
     """Perform a flexible alignment on the two hierarchies. Will return a list of alignment metrics, one for each residue."""
 
@@ -35,12 +38,12 @@ def perform_flexible_alignment(mov_hierarchy, ref_hierarchy, cutoff_radius=10):
         nearby_resids = sorted(list(set([at.resid() for at in nearby_ats])))
 
         # Build a list of atom indices where a backbone atom is within range - for the reference structure
-        ref_selected_idxs = flex.size_t([idx for rid in nearby_resids for idx in ref_cache.sel_resid(rid).iselection()])
-        # Get the atoms and sites for these for the
+        ref_selected_idxs = flex.size_t(sorted([idx for rid in nearby_resids for idx in ref_cache.sel_resid(rid).iselection()]))
+        # Get the atoms and sites for these atoms
         ref_selected_ats = ref_hierarchy.select(ref_selected_idxs).atoms()
 
         # Build a list of atom indices where a backbone atom is within range - for the moving structure
-        mov_selected_idxs = flex.size_t([idx for rid in nearby_resids for idx in ref_cache.sel_resid(rid).iselection()])
+        mov_selected_idxs = flex.size_t(sorted([idx for rid in nearby_resids for idx in ref_cache.sel_resid(rid).iselection()]))
         # Get the atoms and sites for these for the
         mov_selected_ats = mov_hierarchy.select(mov_selected_idxs).atoms()
 
@@ -58,3 +61,75 @@ def perform_flexible_alignment(mov_hierarchy, ref_hierarchy, cutoff_radius=10):
         output_fits[(calpha_at.chain_id, calpha_at.resid())] = res_rt
 
     return output_fits
+
+def extract_sites_for_alignment(chain_obj):
+    """Extract sequence and sites of c-alphas - adapted from mmtbx.command_line.super"""
+
+    seq = []
+    sites = flex.vec3_double()
+    use_sites = flex.bool()
+    for resi in chain_obj.conformers()[0].residues():
+        if (   iotbx.pdb.common_residue_names_get_class(name=resi.resname) != "common_amino_acid"):
+            continue
+        resn = resi.resname
+        single = iotbx.pdb.amino_acid_codes.one_letter_given_three_letter[resn]
+        seq.append(single)
+        use = False
+        xyz = (0,0,0)
+        for atom in resi.atoms():
+            if (atom.name == " CA "):
+              xyz = atom.xyz
+              use = True
+              break
+        sites.append(xyz)
+        use_sites.append(use)
+    return "".join(seq), sites, use_sites
+
+def align_chains(mov_chain, ref_chain):
+    """Takes two chains and aligns them - return rt_mx"""
+
+    mov_seq, mov_sites, mov_flags = extract_sites_for_alignment(mov_chain)
+    ref_seq, ref_sites, ref_flags = extract_sites_for_alignment(ref_chain)
+
+    align_obj = mmtbx.alignment.align(
+        seq_a=ref_seq,
+        seq_b=mov_seq,
+        gap_opening_penalty = 20,
+        gap_extension_penalty = 2,
+        similarity_function = 'blosum50',
+        style = 'local')
+
+    # Extract the alignment
+    alignment = align_obj.extract_alignment()
+    # List of matches - '|' for exact match, '*' for good match
+    matches = alignment.matches()
+    equal = matches.count("|")
+    similar = matches.count("*")
+    total = len(alignment.a) - alignment.a.count("-")
+    alignment.pretty_print(
+        matches=matches,
+        block_size=50,
+        n_block=1,
+        top_name="fixed",
+        bottom_name="moving")
+
+    # Create list of selected sites
+    ref_sites_sel = flex.vec3_double()
+    mov_sites_sel = flex.vec3_double()
+    for ia,ib,m in zip(alignment.i_seqs_a, alignment.i_seqs_b, matches):
+        if (m not in ["|", "*"]): continue
+        # Check that the sites are flagged to be used
+        if (ref_flags[ia] and mov_flags[ib]):
+            # Append sites to list to align
+            ref_sites_sel.append(ref_sites[ia])
+            mov_sites_sel.append(mov_sites[ib])
+
+    if (ref_sites_sel.size() == 0):
+      raise Exception("No matching C-alpha atoms.")
+
+    # Create LSQ
+    lsq_fit = superpose.least_squares_fit(
+        reference_sites = ref_sites_sel,
+        other_sites     = mov_sites_sel)
+
+    return lsq_fit

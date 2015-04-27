@@ -21,7 +21,9 @@ import cctbx.miller
 
 from cctbx import maptbx
 from cctbx import crystal
-from scitbx import sparse
+
+import scitbx.sparse
+import scitbx.matrix
 
 from scitbx.array_family import flex
 from scitbx.math import superpose, basic_statistics
@@ -235,10 +237,16 @@ class dataset_handler(object):
 
         ########################################################
 
-        # Scaled structure factors
+        # Unscaled structure factors
         self.unscaled_sfs = None
+        # Scaled structure factors
         self.scaled_sfs = None
+        # Truncated structure factors
+        self.tr_scaled_sfs = None
+
+        # Native Map (in own unit cell)
         self.native_map = None
+        # Morpher Map (reference grid)
         self.morphed_map = None
 
         # Initialise other variables
@@ -418,6 +426,13 @@ class reference_dataset_handler(dataset_handler):
         self._origin_shift = origin_shift
     def get_origin_shift(self):
         return self._origin_shift
+
+    def set_map_scale(self, map_mean, map_rms):
+        """Record the map mean and rms values"""
+        self._map_mean = map_mean
+        self._map_rms  = map_rms
+    def get_map_scale(self):
+        return (self._map_mean, self._map_rms)
 
 class identical_structure_ensemble(object):
     """Class for collating and comparing multiple observations of the same structure"""
@@ -609,8 +624,6 @@ class multi_dataset_analyser(object):
                         'bimo_map'
                     ]
 
-    phil = {}
-
     def __init__(self, args=None):
 #                    outdir='./pandda', datadir='./Processing', pdb_style='*/refine.pdb', mtz_style='*/refine.mtz',
 #                    ref_pdb='./reference.pdb', ref_mtz='./reference.mtz', run_mol_subst=False,
@@ -619,13 +632,28 @@ class multi_dataset_analyser(object):
 
         # Allow the program to pull from the command line if no arguments are given
         if args == None:
-            args = sys.argv
+            args = sys.argv[1:]
 
-        # Process the input arguments and convert to phil
-        self.cmds = args
-        self.master_phil, self.working_phil, self.unused_args = self.process_input_args(args)
-        self.args = self.working_phil.extract().pandda
-        self.params = self.args.params
+        # ===============================================================================>
+        # PROCESS INPUT ARGUMENTS
+        # ===============================================================================>
+
+        # Read in the master phil
+        self.master_phil = phil.parse(pandda_phil_def)
+
+        # Show defaults and exit
+        if '--show-defaults' in args:
+            print '\n# PANDDA DEFAULTS\n'
+            self.master_phil.show()
+            sys.exit()
+        else:
+            # Process the input arguments and convert to phil
+            self.cmds = args
+            self.working_phil, self.unused_args = self.process_input_args(master_phil=self.master_phil, args=args)
+            # Pull out the python object of the arguments (at the `pandda` level)
+            self.args = self.working_phil.extract().pandda
+            # Most of the variables are contained withing the params object - create a shortcut to save typing
+            self.params = self.args.params
 
         # Validate the processed parameters
         self._validate_parameters()
@@ -710,12 +738,12 @@ class multi_dataset_analyser(object):
         # Set up the pickled object filenames
         self._run_pickle_setup()
 
-        if os.path.exists(self.pickle_handler.get_file('dataset_objs')):
+        if os.path.exists(self.pickle_handler.get_file('dataset_list')):
             self._new_pandda = False
         else:
             self._new_pandda = True
 
-    def process_input_args(self, args):
+    def process_input_args(self, master_phil, args):
         """Process the input arguments"""
 
         # Copy the args so that we can remove items from the list without affecting sys.argv etc
@@ -724,8 +752,7 @@ class multi_dataset_analyser(object):
         assert isinstance(args, list), 'INPUT ARGUMENTS MUST BE A LIST'
         assert len(args) != 0, 'NO INPUT ARGUMENTS GIVEN'
 
-        # Read in the master phil
-        master_phil = phil.parse(pandda_phil_def)
+        # Build an interpreter from the master phil
         cmd_interpr = master_phil.command_line_argument_interpreter(home_scope="pandda")
 
         # Look for any eff files in the args
@@ -747,7 +774,7 @@ class multi_dataset_analyser(object):
                                         sources=eff_sources+cmd_sources
                                         )
 
-        return master_phil, working_phil, args
+        return working_phil, args
 
     def run_pandda_init(self):
         """Set up the pandda"""
@@ -777,6 +804,17 @@ class multi_dataset_analyser(object):
             self.log('\n'.join(self.unused_args), True)
 
         # ===============================================================================>
+        # PRINT SOME HELPFUL INFORMATION
+        # ===============================================================================>
+
+        self.log('===================================>>>', True)
+        self.log('RUNNING FROM: {!s}'.format(sys.argv[0]), True)
+        self.log('===================================>>>', True)
+        self.log('READING INPUT FROM : {!s}'.format(self.data_dirs), True)
+        self.log('===================================>>>', True)
+        self.log('WRITING OUTPUT TO: {!s}'.format(self.outdir), True)
+
+        # ===============================================================================>
         # REPOPULATE PANDDA FROM PREVIOUS RUNS
         # ===============================================================================>
 
@@ -787,9 +825,6 @@ class multi_dataset_analyser(object):
 
         # Load any objects from previous runs
         self.load_pickled_objects()
-
-        # Get the size of the empty pandda
-        self.update_pandda_size(tag='Initialised Pandda')
 
         # ===============================================================================>
         # LOOK FOR MATPLOTLIB TO SEE IF WE CAN GENERATE GRAPHS
@@ -816,6 +851,10 @@ class multi_dataset_analyser(object):
         self._init_time = time.time()
         self.log('===================================>>>', True)
         self.log('Analysis Started: {!s}'.format(time.strftime("%a, %d %b %Y %H:%M:%S", time.gmtime(self._init_time))), True)
+
+        # Get the size of the empty pandda
+        self.log('===================================>>>', True)
+        self.update_pandda_size(tag='Initialised Pandda')
 
     def _validate_parameters(self):
         """Validate and preprocess the loaded parameters"""
@@ -887,9 +926,10 @@ class multi_dataset_analyser(object):
         self.pickle_handler = output_file_object(rootdir=self.output_handler.get_dir('pickle'))
         # Pickled Reference Objects
         self.pickle_handler.add_file(file_name='reference_grid.pickle', file_tag='reference_grid')
+        self.pickle_handler.add_file(file_name='reference_dataset.pickle', file_tag='reference_dataset')
         # Pickled Datasets
         self.pickle_handler.add_file(file_name='dataset_masks.pickle', file_tag='dataset_masks')
-        self.pickle_handler.add_file(file_name='dataset_objs.pickle', file_tag='dataset_objs')
+        self.pickle_handler.add_file(file_name='dataset_list.pickle', file_tag='dataset_list')
         # Pickled Information
         self.pickle_handler.add_file(file_name='dataset_observations.pickle', file_tag='dataset_observations')
         self.pickle_handler.add_file(file_name='map_observations.pickle', file_tag='map_observations')
@@ -902,24 +942,42 @@ class multi_dataset_analyser(object):
         self.pickle_handler.add_file(file_name='bimo_map.pickle', file_tag='bimo_map')
 
         # Pickled SELF
-        self.pickle_handler.add_file(file_name='my_pandda_dict.pickle', file_tag='my_pandda_dict')
+        self.pickle_handler.add_file(file_name='my_pandda.pickle', file_tag='my_pandda')
 
     def load_pickled_objects(self):
         """Loads any pickled objects it finds"""
 
         self.log('===================================>>>', True)
         self.log('Looking for Pickled Files in Input Directory: {!s}'.format(os.path.relpath(self.pickle_handler.get_dir('root'))), True)
+
+        # Record whether any pickled objects are loaded
+        pickles_found = False
+
         # Load Reference Grid
         if os.path.exists(self.pickle_handler.get_file('reference_grid')):
+            pickles_found = True
             self.set_reference_grid(self.unpickle(self.pickle_handler.get_file('reference_grid')))
 
+        # Load Reference Dataset
+        if os.path.exists(self.pickle_handler.get_file('reference_dataset')):
+            pickles_found = True
+            self.set_reference_dataset(self.unpickle(self.pickle_handler.get_file('reference_dataset')))
+
         # Load the datasets
-        if os.path.exists(self.pickle_handler.get_file('dataset_objs')):
-            self.datasets.add(self.unpickle(self.pickle_handler.get_file('dataset_objs')))
+        if os.path.exists(self.pickle_handler.get_file('dataset_list')):
+            pickles_found = True
+            # Unpickle the list of the pickled datasets from the directory structure
+            pickled_dataset_list = self.unpickle(self.pickle_handler.get_file('dataset_list'))
+            # Check they all exist - should be relative to the outdirectory
+            for filename in pickled_dataset_list:
+                assert os.path.isfile(os.path.join(self.outdir, filename)), 'File does not exist: {!s}'.format(filename)
+            # Unpickle the datasets and add them to the dataset handler list
+            self.datasets.add([self.unpickle(os.path.join(self.outdir,f)) for f in pickled_dataset_list])
             self.update_pandda_size(tag='After Unpickling Dataset Objects')
 
         # Load Statistical Maps
         if os.path.exists(self.pickle_handler.get_file('mean_map')):
+            pickles_found = True
             self.stat_maps.mean_map = self.unpickle(self.pickle_handler.get_file('mean_map'))
         if os.path.exists(self.pickle_handler.get_file('stds_map')):
             self.stat_maps.stds_map = self.unpickle(self.pickle_handler.get_file('stds_map'))
@@ -933,49 +991,89 @@ class multi_dataset_analyser(object):
             self.stat_maps.bimo_map = self.unpickle(self.pickle_handler.get_file('bimo_map'))
             self.update_pandda_size(tag='After Unpickling Statistical Maps')
 
+        if not pickles_found:
+            self.log('No Pickles Found', True)
+
     def pickle_the_pandda(self, components=[], all=False):
         """Pickles it's major components for quick loading..."""
 
         if all == True:
             self.log('===================================>>>', True)
-            self.log('Pickling the PanDDA', True)
+            self.log('Pickling the Pandda', True)
         elif not components:
             self.log('===================================>>>', True)
             self.log('Pickling NOTHING', True)
             return
         else:
             self.log('===================================>>>', True)
-            self.log('Selective Pickling: {!s}'.format(', '.join(components)), True)
+            self.log('Selective Pickling: {!s}'.format(', '.join(components).upper()), True)
 
         if all or ('grid' in components):
             self.log('===================================>>>')
-            self.log('Pickling Reference Grid')
-            if self._ref_grid is not None:
-                self.pickle(pickle_file=self.pickle_handler.get_file('reference_grid'), pickle_object=self.reference_grid(), force=False)
+            if self.reference_grid() is not None:
+                self.log('Pickling Reference Grid')
+                self.pickle(pickle_file   = self.pickle_handler.get_file('reference_grid'),
+                            pickle_object = self.reference_grid(),
+                            overwrite = False)
+            else:
+                self.log('No Reference Grid to Pickle')
 
         if all or ('datasets' in components):
             self.log('===================================>>>')
-            self.log('Pickling Datasets')
-            if self.datasets:
-                self.pickle(pickle_file=self.pickle_handler.get_file('dataset_objs'), pickle_object=[d.get_pickle_copy() for d in self.datasets.all()], force=True)
+
+            if self.reference_dataset():
+                self.log('Pickling Reference Dataset')
+
+                self.pickle(pickle_file   = self.pickle_handler.get_file('reference_dataset'),
+                            pickle_object = self.reference_dataset().get_pickle_copy(),
+                            overwrite = True)
+
+            if self.datasets.all():
+                self.log('Pickling Datasets')
+
+                # Pickle the list of locations of the dataset pickles
+                self.pickle(pickle_file   = self.pickle_handler.get_file('dataset_list'),
+                            pickle_object = [os.path.relpath(d.output_handler.get_file('dataset_pickle'), start=self.outdir) for d in self.datasets.all()],
+                            overwrite = True)
+
+                # Pickle the actual datasets (individual pickle files)
+                # Need to get a 'pickle_copy' as some of the dataset handler may not be pickleable
+                for d_handler in self.datasets.all():
+                    self.pickle(pickle_file   = d_handler.output_handler.get_file('dataset_pickle'),
+                                pickle_object = d_handler.get_pickle_copy(),
+                                overwrite = True)
+            else:
+                self.log('No Datasets to Pickle')
 
         if all or ('statistical_maps' in components):
             self.log('===================================>>>')
             self.log('Pickling Statistical Maps')
             if self.stat_maps.mean_map is not None:
-                self.pickle(pickle_file=self.pickle_handler.get_file('mean_map'), pickle_object=self.stat_maps.mean_map, force=True)
+                self.pickle(pickle_file   = self.pickle_handler.get_file('mean_map'),
+                            pickle_object = self.stat_maps.mean_map,
+                            overwrite = False)
             if self.stat_maps.stds_map is not None:
-                self.pickle(pickle_file=self.pickle_handler.get_file('stds_map'), pickle_object=self.stat_maps.stds_map, force=True)
+                self.pickle(pickle_file   = self.pickle_handler.get_file('stds_map'),
+                            pickle_object = self.stat_maps.stds_map,
+                            overwrite = False)
             if self.stat_maps.adj_stds_map is not None:
-                self.pickle(pickle_file=self.pickle_handler.get_file('adj_stds_map'), pickle_object=self.stat_maps.adj_stds_map, force=True)
+                self.pickle(pickle_file   = self.pickle_handler.get_file('adj_stds_map'),
+                            pickle_object = self.stat_maps.adj_stds_map,
+                            overwrite = False)
             if self.stat_maps.skew_map is not None:
-                self.pickle(pickle_file=self.pickle_handler.get_file('skew_map'), pickle_object=self.stat_maps.skew_map, force=True)
+                self.pickle(pickle_file   = self.pickle_handler.get_file('skew_map'),
+                            pickle_object = self.stat_maps.skew_map,
+                            overwrite = False)
             if self.stat_maps.kurt_map is not None:
-                self.pickle(pickle_file=self.pickle_handler.get_file('kurt_map'), pickle_object=self.stat_maps.kurt_map, force=True)
+                self.pickle(pickle_file   = self.pickle_handler.get_file('kurt_map'),
+                            pickle_object = self.stat_maps.kurt_map,
+                            overwrite = False)
             if self.stat_maps.bimo_map is not None:
-                self.pickle(pickle_file=self.pickle_handler.get_file('bimo_map'), pickle_object=self.stat_maps.bimo_map, force=True)
+                self.pickle(pickle_file   = self.pickle_handler.get_file('bimo_map'),
+                            pickle_object = self.stat_maps.bimo_map,
+                            overwrite = False)
 
-    def exit(self):
+    def exit(self, error=False):
         """Exit the PANDDA, record runtime etc..."""
         self.log('===================================>>>', True)
         self.log('...FINISHED!...', True)
@@ -983,19 +1081,19 @@ class multi_dataset_analyser(object):
         self._finish_time = time.time()
         self.log('Runtime: {!s}'.format(time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(self._finish_time - self._init_time))))
 
-        # Pickle myself
-        self.log('===================================>>>', True)
-        self.log('Pickling the PANDDA Results')
-        pandda_dict =  {
-                        'combined_clusters' : self.process_z_value_clusters()
-                    }
-        self.pickle(pickle_file=self.pickle_handler.get_file('my_pandda_dict'), pickle_object=pandda_dict, force=True)
+        try:
+            # Pickle myself
+            self.log('===================================>>>', True)
+            self.log('Pickling the PANDDA Results')
+            self.pickle(pickle_file=self.pickle_handler.get_file('my_pandda'), pickle_object=self, overwrite=True)
+        except:
+            self.log('FAILED TO PICKLE MYSELF')
 
-    def log(self, message, show=False):
-        """Log message to file, and mirror to stdout if verbose or force_print"""
+    def log(self, message, show=False, hide=False):
+        """Log message to file, and mirror to stdout if verbose or force_print (hide overrules show)"""
         if not isinstance(message, str):    message = str(message)
         # Print to stdout
-        if show or self.args.settings.verbose:
+        if (not hide) and (show or self.args.settings.verbose):
             print(message)
         # Remove \r from message as this spoils the log (^Ms)
         message = message.replace('\r','')
@@ -1119,7 +1217,7 @@ class multi_dataset_analyser(object):
         self.log('===================================>>>', True)
         self.log('Loading Reference Dataset: {!s}'.format(ref_mtz), True)
 
-        self._ref_dataset = dataset_handler(dataset_number=-1, pdb_filename=ref_pdb, mtz_filename=ref_mtz, dataset_tag='reference')
+        self.set_reference_dataset(reference_dataset_handler(dataset_number=-1, pdb_filename=ref_pdb, mtz_filename=ref_mtz, dataset_tag='reference'))
 
         if not os.path.exists(self.output_handler.get_file('reference_structure')):
             rel_symlink(orig=ref_pdb, link=self.output_handler.get_file('reference_structure'))
@@ -1415,6 +1513,11 @@ class multi_dataset_analyser(object):
             d_handler.output_handler.add_dir(dir_name='blobs', dir_tag='blobs', top_dir_tag='root')
             d_handler.output_handler.add_file(file_name='blob_{!s}_{!s}.png', file_tag='ccp4mg_png', dir_tag='blobs')
 
+            # Pickled objects
+            d_handler.output_handler.add_dir(dir_name='pickles', dir_tag='pickles', top_dir_tag='root')
+            d_handler.output_handler.add_file(file_name='dataset.pickle', file_tag='dataset_pickle', dir_tag='pickles')
+
+
             # Link the input files to the output folder
             if not os.path.exists(d_handler.output_handler.get_file('input_structure')):
                 os.symlink(d_handler.get_pdb_filename(), d_handler.output_handler.get_file('input_structure'))
@@ -1553,8 +1656,6 @@ class multi_dataset_analyser(object):
             # Set the scaled structure factors
             d_handler.unscaled_sfs = unscaled_sfs
             d_handler.scaled_sfs = scaled_sfs
-            # At the moment save the 'truncated' sfs as the whole list
-            d_handler.tr_scaled_sfs = scaled_sfs
 
         self.log('\rDatasets Scaled.               ', True)
 
@@ -1855,15 +1956,159 @@ class multi_dataset_analyser(object):
         hierarchies = [d.get_hierarchy() for d in self.datasets.mask(mask_name='rejected - total', invert=True)]
         hierarchy_ids = [d.d_tag for d in self.datasets.mask(mask_name='rejected - total', invert=True)]
 
-        self.log(self.ensemble_summary.add_structures(new_hierarchies=hierarchies, hierarchy_ids=hierarchy_ids))
+        # Add structures to the ensemble summary (auto-processes them)
+        ensemble_log = self.ensemble_summary.add_structures(new_hierarchies=hierarchies, hierarchy_ids=hierarchy_ids)
+        # This will already have been printed to stdout, so hide it.
+        self.log(ensemble_log, hide=True)
+
+    def analyse_structure_variability_2(self):
+        """Look at all of the rotation matrices for the local alignments and calculate the rms between neighbours"""
+
+        assert self.params.alignment.method in ['global', 'local']
+
+        if self.params.alignment.method == 'global':
+            self.log('GLOBAL ALIGNMENT SELECTED - NOT ANALYSING ROTATION MATRICES')
+            return
+
+        try:
+            import matplotlib
+            matplotlib.interactive(0)
+            from matplotlib import pyplot
+            output_graphs = True
+        except:
+            output_graphs = False
+
+        rot_identity = scitbx.matrix.identity(3)
+
+        # Select datasets to analyse
+        used_datasets = self.datasets.mask(mask_name='rejected - total', invert=True)
+
+        # Reference c_alpha labels
+        ref_c_alpha_labels = sorted(used_datasets[0].get_local_alignment_transforms().keys())
+
+        # Array to hold the output data
+        num_datasets = len(used_datasets)
+        num_pairs =  len(ref_c_alpha_labels)-1
+        output_diffs = numpy.zeros((num_datasets, num_pairs, 2))
+
+        # Iterate through the datasets and pull out the alignment matrices
+        for d_num, d_handler in enumerate(used_datasets):
+
+            alignments = d_handler.get_local_alignment_transforms()
+            alignment_keys = sorted(alignments.keys())
+
+            assert alignment_keys == ref_c_alpha_labels
+
+            # Iterate through adjacent pairs of matrices
+            for i in range(0, num_pairs):
+
+                # Label and lsq fit for the current calpha
+                calpha_1 = alignment_keys[i]
+                assert calpha_1 == ref_c_alpha_labels[i]
+                rt_1 = alignments[calpha_1].rt()
+                # And for the next calpha
+                calpha_2 = alignment_keys[i+1]
+                assert calpha_2 == ref_c_alpha_labels[i+1]
+                rt_2 = alignments[calpha_2].rt()
+
+                # Calculate the mapping from one frame to the other
+                rt_1_2 = rt_1 * rt_2.inverse()
+                # Calculate the angle of the rotation matrix
+                theta_rad = scitbx.math.math.acos((rt_1_2.r.trace()-1)/2.0)
+                theta_deg = theta_rad * 180.0/scitbx.math.math.pi
+                # Calculate the length of the shift
+                t_shift =  rt_1_2.t.norm_sq()**0.5
+
+                # Append to the array
+                output_diffs[d_num, i, :] = theta_deg, t_shift
+
+        # Directory to write the output to
+        var_out_dir = self.output_handler.get_dir('analyses')
+
+        # Write out graphs
+        if output_graphs:
+
+            # Create labels
+            labels = ['']*num_pairs
+            for i in range(0, num_pairs, 5)+[num_pairs-1]:
+                labels[i] = i+1
+            # Clear the last n before the last one
+            n = 4
+            labels[-1-n:-1] = ['']*n
+
+            # BOX PLOT OF ROTATION AND TRANSLATION SHIFTS
+            fig = pyplot.figure()
+            pyplot.title('ROTATION-TRANSLATION MATRIX VARIATION')
+            # ADJACENT ANGLE VARIATION
+            pyplot.subplot(2, 1, 1)
+            pyplot.boxplot(x=output_diffs[:,:,0], notch=True, sym='.', widths=0.5, whis=[5,95], whiskerprops={'ls':'-'}, flierprops={'ms':1}, labels=labels) # whis='range'
+            pyplot.xlabel('C-ALPHA')
+            pyplot.ylabel('ANGLE CHANGE')
+            # ADJACENT SHIFT VARIATION
+            pyplot.subplot(2, 1, 2)
+            pyplot.boxplot(x=output_diffs[:,:,1], notch=True, sym='.', widths=0.5, whis=[5,95], whiskerprops={'ls':'-'}, flierprops={'ms':1}, labels=labels) # whis='range'
+            pyplot.xlabel('C-ALPHA')
+            pyplot.ylabel('TRANSLATION CHANGE')
+            # Apply tight layout to prevent overlaps
+            pyplot.tight_layout()
+            # Save both
+            pyplot.savefig(os.path.join(var_out_dir, 'calpha_rt_variation.png'), format='png')
+            pyplot.close(fig)
+
+        # Write out to file
+        numpy.savetxt(  fname = os.path.join(var_out_dir, 'calpha_rt_r_variation.csv'), X=output_diffs[:,:,0],
+                        delimiter=',', newline='\n' )
+        numpy.savetxt(  fname = os.path.join(var_out_dir, 'calpha_rt_t_variation.csv'), X=output_diffs[:,:,1],
+                        delimiter=',', newline='\n' )
+
+        # Do some other stuff...
 
     def truncate_scaled_data(self, truncation_stuff=None):
         """Truncate data at the same indices across all the datasets"""
 
         # Create maps for all of the datasets (including the reference dataset)
-        for d_handler in self.datasets.mask(mask_name='selected for analysis'):
-            continue
-            d_handler.tr_scaled_sfs = None
+        for d_handler in [self.reference_dataset()]+self.datasets.mask(mask_name='selected for analysis'):
+            # At the moment save the 'truncated' sfs as the whole list
+            # TODO
+            d_handler.tr_scaled_sfs = d_handler.unscaled_sfs
+
+    def load_reference_map(self):
+        """Load the reference map, and calculate some map statistics"""
+
+        ref_handler = self.reference_dataset()
+
+        # Take the scaled diffraction data for the dataset and create fft
+        fft_map = ref_handler.tr_scaled_sfs.fft_map( resolution_factor = self.params.maps.resolution_factor,
+                                                     #TODO MAKE D_MIN CUT AT MILLER INDEX INSTEAD OF ABSOLUTE
+                                                     d_min = self.get_cut_resolution(),
+                                                     symmetry_flags = maptbx.use_space_group_symmetry )
+
+        # Scale the map
+        if self.params.maps.scaling == 'none':
+            pass
+        elif self.params.maps.scaling == 'sigma':
+            fft_map.apply_sigma_scaling()
+        elif self.params.maps.scaling == 'volume':
+            fft_map.apply_volume_scaling()
+
+        # Save the map for future use (only part that's pickleable)
+        ref_handler.native_map  = fft_map.real_map()
+        ref_handler.unit_cell   = fft_map.unit_cell()
+        ref_handler.space_group = fft_map.space_group()
+
+        # Create map handler and map to the reference frame
+        native_map_handler = map_handler(map_data=ref_handler.native_map, unit_cell=ref_handler.unit_cell)
+
+        # Extract the points for the morphed maps (in the reference frame)
+        masked_gps = self.reference_grid().global_mask().outer_mask()
+        masked_cart_ref = flex.vec3_double(masked_gps)*self.reference_grid().grid_spacing()
+
+        # Sample the map at the masked points
+        masked_vals_ref = native_map_handler.get_cart_values(masked_cart_ref)
+
+        # Record the Mean and RMS values of these map values so that the other datasets can be scaled to the same
+        ref_handler.set_map_scale(map_mean = masked_vals_ref.min_max_mean().mean,
+                                  map_rms  = masked_vals_ref.standard_deviation_of_the_sample()  )
 
     def load_and_morph_maps(self, overwrite=False, delete_native_map=True):
         """Create map from miller arrays. Transform map into the reference frame by sampling at the given points."""
@@ -1878,6 +2123,9 @@ class multi_dataset_analyser(object):
         masked_cart_ref = flex.vec3_double(masked_gps)*self.reference_grid().grid_spacing()
         # Mapping of grid points to rotation matrix keys (residue CA labels)
         masked_cart_mappings = self.reference_grid().partition().query_by_grid_indices(masked_idxs)
+
+        # Get the reference handler so that we can scale to the reference map
+        ref_map_mean, ref_map_rms = self.reference_dataset().get_map_scale()
 
         # Create maps for all of the datasets (including the reference dataset)
         for d_handler in self.datasets.mask(mask_name='selected for analysis'):
@@ -1894,11 +2142,9 @@ class multi_dataset_analyser(object):
                 pass
             else:
                 # Take the scaled diffraction data for each dataset and create fft
-                fft_map = d_handler.unscaled_sfs.fft_map( resolution_factor=self.params.maps.resolution_factor,
-                #TODO MAKE D_MIN CUT AT MILLER INDEX INSTEAD OF ABSOLUTE
-                                                        d_min=self.get_cut_resolution(),
-                                                        symmetry_flags=maptbx.use_space_group_symmetry
-                                                    )
+                fft_map = d_handler.tr_scaled_sfs.fft_map(  resolution_factor=self.params.maps.resolution_factor,
+                                                            d_min=self.get_cut_resolution(),
+                                                            symmetry_flags=maptbx.use_space_group_symmetry  )
 
                 # Scale the map
                 if self.params.maps.scaling == 'none':
@@ -1930,16 +2176,16 @@ class multi_dataset_analyser(object):
             # Sample the map at these points
             masked_vals_d = native_map_handler.get_cart_values(masked_cart_d)
 
-            # Normalise map
-            map_mean = numpy.mean(masked_vals_d)
-            map_stdv = numpy.std(masked_vals_d)
-            masked_vals_d = (masked_vals_d - map_mean)/map_stdv
+            # Normalise map - Scale it to the same scale as the reference dataset on the same points
+            d_map_mean = masked_vals_d.min_max_mean().mean
+            d_map_rms  = masked_vals_d.standard_deviation_of_the_sample()
+            masked_vals_d = (masked_vals_d - d_map_mean)*(ref_map_rms/d_map_rms) + ref_map_mean
             # Record map means
-            self.get_map_observations().set_data_value(data_name='masked_map_mean', entry_id=d_handler.d_tag, value=map_mean)
-            self.get_map_observations().set_data_value(data_name='masked_map_std', entry_id=d_handler.d_tag, value=map_stdv)
+            self.get_map_observations().set_data_value(data_name='masked_map_mean', entry_id=d_handler.d_tag, value=d_map_mean)
+            self.get_map_observations().set_data_value(data_name='masked_map_std',  entry_id=d_handler.d_tag, value=d_map_rms)
 
             # Calculate the sparse vector of the masked map values
-            morphed_map_sparse = sparse.vector(self.reference_grid().grid_size_1d(), dict(zip(masked_idxs, masked_vals_d)))
+            morphed_map_sparse = scitbx.sparse.vector(self.reference_grid().grid_size_1d(), dict(zip(masked_idxs, masked_vals_d)))
             morphed_map        = morphed_map_sparse.as_dense_vector()
 
             # Reshape into right shape of the grid
@@ -1959,7 +2205,7 @@ class multi_dataset_analyser(object):
                 # Collect
                 gc.collect()
 
-        self.log('\rMaps Values Loaded: {!s} Datasets'.format(self.datasets.size(mask_name='selected for analysis')), True)
+        self.log('\rMap Values Loaded: {!s} Datasets          '.format(self.datasets.size(mask_name='selected for analysis')), True)
 
         self.update_pandda_size(tag='After Loading Maps')
 
@@ -1988,7 +2234,7 @@ class multi_dataset_analyser(object):
 
         # Calculate the mean map across the datasets
         for chunk_idx, chunk in enumerate(chunked_indices):
-            status_bar(n=chunk_idx-1, n_max=chunk_num)
+            status_bar(n=chunk_idx, n_max=chunk_num)
             p_map_vals = numpy.array([dh.morphed_map.select(chunk) for dh in all_d_handlers])
 
             if chunk_idx+1 < chunk_num:
@@ -1998,7 +2244,7 @@ class multi_dataset_analyser(object):
             p_map_means = numpy.mean(p_map_vals, axis=0)
             point_means.extend(p_map_means.tolist())
 
-        status_bar(n=chunk_idx, n_max=chunk_num)
+        status_bar(n=chunk_num, n_max=chunk_num)
         assert len(point_means) == len(masked_idxs)
 
         t2 = time.time()
@@ -2323,7 +2569,7 @@ class multi_dataset_analyser(object):
         # Calculate the statistics of the map values across the datasets
         # Calculate the mean map across the datasets
         for chunk_idx, chunk in enumerate(chunked_indices):
-            status_bar(n=chunk_idx-1, n_max=chunk_num)
+            status_bar(n=chunk_idx, n_max=chunk_num)
             p_map_vals = numpy.array([dh.morphed_map.select(chunk) for dh in all_d_handlers])
 
             if chunk_idx+1 < chunk_num:
@@ -2342,7 +2588,7 @@ class multi_dataset_analyser(object):
 
             assert i+1 == len(approx_sigmas), 'LIST INDEX DOES NOT MATCH LIST LENGTH'
 
-        status_bar(n=chunk_idx, n_max=chunk_num)
+        status_bar(n=chunk_num, n_max=chunk_num)
         assert len(masked_point_statistics) == len(masked_idxs)
         assert len(masked_point_adj_sigmas) == len(masked_idxs)
 
@@ -2524,7 +2770,7 @@ class multi_dataset_analyser(object):
 
         if sparse:
             # Calculate the sparse vector of the masked map values
-            return sparse.vector(self.reference_grid().grid_size_1d(),
+            return scitbx.sparse.vector(self.reference_grid().grid_size_1d(),
                                  dict(zip(self.reference_grid().global_mask().outer_mask_indices(),
                                           z_map_vals.select(self.reference_grid().global_mask().outer_mask_indices()))))
         else:
@@ -2572,6 +2818,7 @@ class multi_dataset_analyser(object):
 
     def print_clustering_settings(self, z_cutoff,
                                         min_cluster_volume,
+                                        min_cluster_z_peak,
                                         clustering_cutoff,
                                         clustering_criterion,
                                         clustering_metric,
@@ -2592,6 +2839,7 @@ class multi_dataset_analyser(object):
         self.log('===================================>>>', True)
         self.log('Minimum Cluster Size:        {!s}'.format(min_cluster_size), True)
         self.log('Minimum Cluster Volume:      {!s}'.format(min_cluster_volume), True)
+        self.log('Minimum Cluster Z-Peak:      {!s}'.format(min_cluster_z_peak), True)
         self.log('===================================>>>', True)
 
     def cluster_high_z_values(self, d_handler,
@@ -2599,6 +2847,7 @@ class multi_dataset_analyser(object):
                                     z_cutoff,
                                     point_mask,
                                     min_cluster_volume,
+                                    min_cluster_z_peak,
                                     clustering_cutoff,
                                     clustering_criterion,
                                     clustering_metric,
@@ -2678,13 +2927,18 @@ class multi_dataset_analyser(object):
 
             # Filter out small clusters - get numbers of clusters satisfying the minimum cluster size
             large_clusters = [c_num for c_num in range(1,clust_num+1) if len(clust_dict[c_num]) >= min_cluster_size]
-            # Pull out the data for these filtered clusters and renumber them
-            clust_dict = dict([(new_c_idx+1, clust_dict[old_c_num]) for new_c_idx, old_c_num in enumerate(large_clusters)])
-            # Calculate the new number of clusters
-            clust_num = len(large_clusters)
+            # Filter out weak clusters - get numbers of clusters satisfying the minimum z_peak value
+            strong_clusters = [c_num for c_num in large_clusters if max([c[1] for c in clust_dict[c_num]]) >= min_cluster_z_peak]
 
-            if clust_num == 0:
+            # Calculate the new number of clusters
+            clust_num = len(strong_clusters)
+            # Pull out the data for these filtered clusters and renumber them
+            clust_dict = dict([(new_c_idx+1, clust_dict[old_c_num]) for new_c_idx, old_c_num in enumerate(strong_clusters)])
+
+            if len(large_clusters) == 0:
                 self.log('===> No Clusters found - Minimum cluster size not reached.', True)
+            elif len(strong_clusters) == 0:
+                self.log('===> No Clusters found - Minimum cluster peak not reached.', True)
             else:
                 # Check that the clusters are numbered properly
                 assert clust_num == max(clust_dict.keys())
@@ -2828,8 +3082,6 @@ class multi_dataset_analyser(object):
             view_script = script.format(point_no, view_no)
             view_image  = image.format(point_no, view_no)
 
-            print view_no, view_script, view_image
-
             ccp4mg_script = template.render({
                                                 'view'  :{
                                                                 'camera_centre' : [-1*c for c in point],
@@ -2848,7 +3100,7 @@ class multi_dataset_analyser(object):
                                                                 'path'    : d_handler.output_handler.get_file('z_map_corrected_normalised'),
                                                                 'name'    : 'diff_map',
                                                             #    'neg-contour' : -3,
-                                                                'pos-contour' : [3,4,5,6,7]
+                                                                'pos-contour' : [2,3,4,5]
                                                             }
                                             })
 
@@ -2858,7 +3110,7 @@ class multi_dataset_analyser(object):
 
             # Make the images
             c = CommandManager('ccp4mg')
-            c.SetArguments(['-norestore','-picture', view_script, '-R', view_image, '-RO', """'{"size":"1000x1000"}'""", '-quit'])
+            c.SetArguments(['-norestore','-picture', view_script, '-R', view_image, '-RO', """'{"size":"1500x1500"}'""", '-quit'])
             c.Run()
 
             if not os.path.exists(view_image):
@@ -2994,7 +3246,7 @@ class multi_dataset_analyser(object):
             return [v for v in vals if v is not numpy.nan]
 
         # Get the output directory to write the graphs into
-        out_dir = self.output_handler.get_dir('analyses')
+        img_out_dir = self.output_handler.get_dir('analyses')
 
         n_bins = 30
 
@@ -3036,7 +3288,7 @@ class multi_dataset_analyser(object):
         # Apply tight layout to prevent overlaps
         pyplot.tight_layout()
         # Save both
-        pyplot.savefig(os.path.join(out_dir, 'd_resolutions.png'))
+        pyplot.savefig(os.path.join(img_out_dir, 'd_resolutions.png'))
         pyplot.close(fig)
 
         # R-FACTORS
@@ -3055,7 +3307,7 @@ class multi_dataset_analyser(object):
         # Apply tight layout to prevent overlaps
         pyplot.tight_layout()
         # Save both
-        pyplot.savefig(os.path.join(out_dir, 'd_rfactors.png'))
+        pyplot.savefig(os.path.join(img_out_dir, 'd_rfactors.png'))
         pyplot.close(fig)
 
         # RMSDs
@@ -3067,7 +3319,7 @@ class multi_dataset_analyser(object):
         # Apply tight layout to prevent overlaps
         pyplot.tight_layout()
         # Save
-        pyplot.savefig(os.path.join(out_dir, 'd_rmsd_to_mean.png'))
+        pyplot.savefig(os.path.join(img_out_dir, 'd_rmsd_to_mean.png'))
         pyplot.close(fig)
 
         # CELL PARAMS
@@ -3102,7 +3354,7 @@ class multi_dataset_analyser(object):
         # Apply tight layout to prevent overlaps
         pyplot.tight_layout()
         # Save both
-        pyplot.savefig(os.path.join(out_dir, 'd_cell_param.png'))
+        pyplot.savefig(os.path.join(img_out_dir, 'd_cell_param.png'))
         pyplot.close(fig)
 
         # CELL VOLUME
@@ -3114,7 +3366,7 @@ class multi_dataset_analyser(object):
         # Apply tight layout to prevent overlaps
         pyplot.tight_layout()
         # Save
-        pyplot.savefig(os.path.join(out_dir, 'd_cell_volume.png'))
+        pyplot.savefig(os.path.join(img_out_dir, 'd_cell_volume.png'))
         pyplot.close(fig)
 
         ########################################################
@@ -3133,13 +3385,13 @@ class multi_dataset_analyser(object):
         fig = pyplot.figure()
         pyplot.title('STATISTICAL MAP VALUES')
         # MEAN MAP
-        pyplot.hist(x=list(mean_map_vals), bins=n_bins)
+        pyplot.hist(x=mean_map_vals, bins=n_bins)
         pyplot.xlabel('MEAN MAP DISTRIBUTION')
         pyplot.ylabel('COUNT')
         # Apply tight layout to prevent overlaps
         pyplot.tight_layout()
         # Save
-        pyplot.savefig(os.path.join(out_dir, 'mean_map_vals.png'))
+        pyplot.savefig(os.path.join(img_out_dir, 'mean_map_vals.png'))
         pyplot.close(fig)
 
         # STATISTICAL MAP VALUES
@@ -3147,18 +3399,35 @@ class multi_dataset_analyser(object):
         pyplot.title('STATISTICAL MAP VALUES')
         # STANDARD DEVIATION MAPS
         pyplot.subplot(2, 1, 1)
-        pyplot.hist(x=list(stds_map_vals), bins=n_bins)
+        pyplot.hist(x=stds_map_vals, bins=n_bins)
         pyplot.xlabel('STDS MAP DISTRIBUTION')
         pyplot.ylabel('COUNT')
         # STANDARD DEVIATION MAPS
         pyplot.subplot(2, 1, 2)
-        pyplot.hist(x=list(ajsd_map_vals), bins=n_bins)
+        pyplot.hist(x=ajsd_map_vals, bins=n_bins)
         pyplot.xlabel('ADJUSTED STDS MAP DISTRIBUTION')
         pyplot.ylabel('COUNT')
         # Apply tight layout to prevent overlaps
         pyplot.tight_layout()
         # Save both
-        pyplot.savefig(os.path.join(out_dir, 'stds_map_vals.png'))
+        pyplot.savefig(os.path.join(img_out_dir, 'stds_map_vals.png'))
+        pyplot.close(fig)
+
+        # MAP RESOLUTION V UNCERTAINTY
+        fig = pyplot.figure()
+        pyplot.title('RAW v ADJUSTED STDS')
+        pyplot.scatter(x=stds_map_vals, y=ajsd_map_vals)
+        # Plot straight line between the min and max values
+        min_val = min(stds_map_vals+ajsd_map_vals)
+        max_val = max(stds_map_vals+ajsd_map_vals)
+        pyplot.plot([min_val, max_val], [min_val, max_val], 'b--')
+        # Axis labels
+        pyplot.xlabel('RAW STDS')
+        pyplot.ylabel('ADJUSTED STDS')
+        # Apply tight layout to prevent overlaps
+        pyplot.tight_layout()
+        # Save
+        pyplot.savefig(os.path.join(img_out_dir, 'std_v_adj_std_scatter.png'))
         pyplot.close(fig)
 
         ########################################################
@@ -3188,7 +3457,7 @@ class multi_dataset_analyser(object):
             # Apply tight layout to prevent overlaps
             pyplot.tight_layout()
             # Save
-            pyplot.savefig(os.path.join(out_dir, 'd_map_uncertainties.png'))
+            pyplot.savefig(os.path.join(img_out_dir, 'd_map_uncertainties.png'))
             pyplot.close(fig)
 
             ########################################################
@@ -3204,7 +3473,7 @@ class multi_dataset_analyser(object):
             # Apply tight layout to prevent overlaps
             pyplot.tight_layout()
             # Save
-            pyplot.savefig(os.path.join(out_dir, 'resolution_v_uncertainty.png'))
+            pyplot.savefig(os.path.join(img_out_dir, 'resolution_v_uncertainty.png'))
             pyplot.close(fig)
 
             # MAP RESOLUTION V UNCERTAINTY
@@ -3216,7 +3485,7 @@ class multi_dataset_analyser(object):
             # Apply tight layout to prevent overlaps
             pyplot.tight_layout()
             # Save
-            pyplot.savefig(os.path.join(out_dir, 'resolution_v_rfree.png'))
+            pyplot.savefig(os.path.join(img_out_dir, 'resolution_v_rfree.png'))
             pyplot.close(fig)
 
             # RFREE V UNCERTAINTY
@@ -3228,7 +3497,7 @@ class multi_dataset_analyser(object):
             # Apply tight layout to prevent overlaps
             pyplot.tight_layout()
             # Save
-            pyplot.savefig(os.path.join(out_dir, 'rfree_v_uncertainty.png'))
+            pyplot.savefig(os.path.join(img_out_dir, 'rfree_v_uncertainty.png'))
             pyplot.close(fig)
 
         # Check to see if any map values have been added
@@ -3253,7 +3522,7 @@ class multi_dataset_analyser(object):
             # Apply tight layout to prevent overlaps
             pyplot.tight_layout()
             # Save both
-            pyplot.savefig(os.path.join(out_dir, 'z_map_statistics.png'))
+            pyplot.savefig(os.path.join(img_out_dir, 'z_map_statistics.png'))
             pyplot.close(fig)
 
             # Z-MAP SKEW V UNCERTAINTY
@@ -3265,7 +3534,7 @@ class multi_dataset_analyser(object):
             # Apply tight layout to prevent overlaps
             pyplot.tight_layout()
             # Save
-            pyplot.savefig(os.path.join(out_dir, 'z_map_skew_v_kurtosis.png'))
+            pyplot.savefig(os.path.join(img_out_dir, 'z_map_skew_v_kurtosis.png'))
             pyplot.close(fig)
 
     def write_summary_csvs(self):
@@ -3410,9 +3679,9 @@ class multi_dataset_analyser(object):
         self.log('> Writing Map: {!s}'.format(output_file))
         write_1d_array_as_p1_map(file_name=output_file, map_data=map_data, grid_size=grid_size, grid_spacing=grid_spacing)
 
-    def pickle(self, pickle_file, pickle_object, force=True):
+    def pickle(self, pickle_file, pickle_object, overwrite=True):
         """Takes an object and pickles it"""
-        if os.path.exists(pickle_file) and not force:
+        if os.path.exists(pickle_file) and not overwrite:
             self.log('NOT PICKLING: {!s}'.format(pickle_file))
         else:
             self.log('Pickling Object: {!s}'.format(pickle_file))

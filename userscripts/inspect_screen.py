@@ -80,6 +80,10 @@ def load_new_set(hit_idx):
     set_last_map_contour_level(3)
     set_map_displayed(z, 1)
 
+    d = handle_read_ccp4_map(os.path.join(dataset_dir, '{!s}-mean_diff.ccp4'.format(d_tag)), 1)
+    set_last_map_contour_level_by_sigma(3)
+    set_map_displayed(d, 0)
+
     set_rotation_centre(*current_hit['ref_peak_coords'])
 
     ########################################################

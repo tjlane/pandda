@@ -66,6 +66,7 @@ MapDisp(
 #    clip_mode = 'ON',
     surface_style = 'surface_solid_chickenwire',
     contour_level = {{ contour }},
+    contour_scale = 'absolute',
     colour = 'blue',
 )
 {% endfor %}
@@ -93,6 +94,7 @@ MapDisp(
 #    clip_mode = 'ON',
     surface_style = 'surface_solid_chickenwire',
     contour_level = {{ contour }},
+    contour_scale = 'absolute',
     colour = 'green',
 )
 {% endfor %}
@@ -107,6 +109,7 @@ MapDisp(
 #    clip_mode = 'ON',
     surface_style = 'surface_solid_chickenwire',
     contour_level = {{ diff_map['neg-contour'] }},
+    contour_scale = 'absolute',
     colour = 'red',
 )
 {% endfor %}

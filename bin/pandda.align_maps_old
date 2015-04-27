@@ -1,0 +1,106 @@
+#!/usr/bin/env pandda.python
+
+import os, sys, copy
+
+import iotbx.pdb
+import iotbx.ccp4_map
+
+import cctbx.maptbx
+import cctbx.sgtbx
+
+import libtbx.phil
+from libtbx.utils import Sorry
+from scitbx.array_family import flex
+
+from Giant.Structure.Align import align_chains
+
+master_params = libtbx.phil.parse("""
+align {
+    reference = None
+        .type = str
+    moving {
+        pdb = None
+            .type = str
+        map = None
+            .type = str
+    }
+    output {
+        pdb_suffix = '.aligned.pdb'
+            .type = str
+        map_suffix = '.aligned.map'
+            .type = str
+        pdb_prefix = None
+            .type = str
+        map_prefix = None
+            .type = str
+    }
+}
+""")
+
+def run(args):
+    # Process input arguments
+    phil_objects = []
+    argument_interpreter = master_params.command_line_argument_interpreter(home_scope="align")
+
+    for arg in args:
+        try: 
+            command_line_params = argument_interpreter.process(arg=arg)
+        except KeyboardInterrupt: 
+            raise
+        except Exception: 
+            raise Sorry("Unknown file or keyword: %s" % arg)
+        else: 
+            phil_objects.append(command_line_params)
+
+    # Extract Scope object
+    working_params = master_params.fetch(sources=phil_objects)
+    params = working_params.extract().align
+
+    # Read in the reference structure
+    ref_inp = iotbx.pdb.hierarchy.input(params.reference)
+    ref_chain = [c for c in ref_inp.hierarchy.chains()][0]
+
+    # Read in the moving structure
+    mov_inp = iotbx.pdb.hierarchy.input(params.moving.pdb)
+    mov_map = iotbx.ccp4_map.map_reader(params.moving.map)
+
+    # Check the output file style
+    if not params.output.pdb_prefix: params.output.pdb_prefix = params.moving.pdb
+    if not params.output.map_prefix: params.output.map_prefix = params.moving.map
+    
+    # Build up a list of rotation matrices and write out transformed maps
+    for mov_chain in mov_inp.hierarchy.chains():
+        if not mov_chain.is_protein():
+            continue
+        
+        # Align to the reference chain
+        lsq = align_chains(mov_chain=mov_chain, ref_chain=ref_chain)
+        # Extract the rotation matrix
+        rt = lsq.rt()
+        # FOR SOME REASON NEED TO TRANSFORM THE MAP WITH THE INVERSE
+        map_rt = rt.inverse()
+#        map_rt = rt
+
+        # Transform the entire structure and write out
+        mov_copy = mov_inp.hierarchy.deep_copy()
+        mov_copy.atoms().set_xyz(rt*mov_copy.atoms().extract_xyz())
+        mov_copy.write_pdb_file(params.output.pdb_prefix + '.chain{!s}'.format(mov_chain.id) + params.output.pdb_suffix)
+
+        # Transform the map
+        rot_map_data = cctbx.maptbx.rotate_translate_map(   unit_cell = mov_map.unit_cell(),
+                                                            map_data  = mov_map.data.as_double(),
+                                                            rotation_matrix    = map_rt.r,
+                                                            translation_vector = map_rt.t)
+        # Write out the map
+        iotbx.ccp4_map.write_ccp4_map(  file_name = params.output.map_prefix + '.chain{!s}'.format(mov_chain.id) + params.output.map_suffix,
+                                        unit_cell = mov_map.unit_cell(),
+#                                        space_group = mov_inp.input.crystal_symmetry().space_group(),
+                                        space_group = cctbx.sgtbx.space_group_info("P1").group(),
+                                        map_data = rot_map_data,
+                                        labels = flex.std_string(['rotated map. aligned on - chain {!s}'.format(mov_chain.id)])  )
+
+if __name__ == '__main__':
+    
+    run(args=sys.argv[1:])
+
+
