@@ -4,8 +4,8 @@ import multiprocessing
 
 import math
 
-from scipy import spatial
-from scipy import cluster as scipy_cluster
+import scipy.spatial
+import scipy.cluster
 
 import numpy
 
@@ -50,11 +50,11 @@ from Giant.Stats.Tests import test_significance_of_group_of_z_values, convert_pv
 from Giant.Stats.Utils import resample_ordered_list_of_values, calculate_minimum_redundancy
 from Giant.Stats.Ospina import estimate_true_underlying_sd
 
-from Giant.Stats.Cluster import cluster_data, combine_clusters
+from Giant.Stats.Cluster import cluster_data, combine_clusters, find_connected_groups
 
 from Giant.Structure.Align import perform_flexible_alignment
 
-from Giant.Utils import status_bar
+from Giant.Utils import status_bar, rel_symlink
 
 from PANDDAs.HTML import PANDDA_HTML_ENV
 from PANDDAs.Phil import pandda_phil_def
@@ -74,7 +74,8 @@ STRUCTURE_MASK_NAMES = [    'bad structure - chain counts',
                             'bad structure - chain sequences',
                             'bad structure - residue counts',
                             'bad structure - atom counts',
-                            'bad structure - non-identical structures'  ]
+                            'bad structure - non-identical structures',
+                            'bad structure - different space group'    ]
 CRYSTAL_MASK_NAMES   = [    'bad crystal - isomorphous crystal',
                             'bad crystal - isomorphous structure',
                             'bad crystal - space group',
@@ -93,15 +94,6 @@ FILTER_SCALING_CORRELATION_CUTOFF = 0.7
 FILTER_GLOBAL_RMSD_CUTOFF = 1
 
 PANDDA_VERSION = 0.1
-
-def rel_symlink(orig, link):
-    """Make a relative symlink from link to orig"""
-    assert os.path.exists(orig), 'FILE DOES NOT EXIST: {!s}'.format(orig)
-    assert not os.path.exists(link), 'LINK ALREADY EXISTS: {!s}'.format(link)
-    orig = os.path.abspath(orig)
-    link = os.path.abspath(link)
-    assert not link.endswith('/'), 'LINK CANNOT END WITH /'
-    os.symlink(os.path.relpath(orig, start=os.path.dirname(link)), link)
 
 def map_handler(map_data, unit_cell):
     """Map handler for easy sampling of map"""
@@ -138,6 +130,26 @@ def structure_summary(hierarchy):
         s_dict['chain_is_protein'][chain.id] = chain.is_protein()
 
     return o_counts, s_dict
+
+def align_dataset_to_reference(d_handler, ref_handler, method):
+    """Calculate the rotation and translation needed to align one structure to another"""
+
+    assert method in ['both','local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
+
+    if method == 'global' or method == 'both':
+        my_sites = d_handler.get_calpha_sites()
+        ref_sites = ref_handler.get_calpha_sites()
+        assert len(my_sites) == len(ref_sites)
+        global_rt_transform = superpose.least_squares_fit(reference_sites=ref_sites, other_sites=my_sites)
+    else:
+        global_rt_transform = None
+
+    if method == 'local' or method == 'both':
+        local_rt_transforms = perform_flexible_alignment(mov_hierarchy=d_handler.get_hierarchy(), ref_hierarchy=ref_handler.get_hierarchy())
+    else:
+        local_rt_transforms = None
+
+    return global_rt_transform, local_rt_transforms
 
 class dataset_handler_list(object):
     """Class for grouping many dataset handlers together"""
@@ -205,7 +217,7 @@ class dataset_handler_list(object):
         return self._masks.mask(mask_name=mask_name, input_list=self.all(), invert=invert)
 
 class dataset_handler(object):
-    def __init__(self, dataset_number, pdb_filename, mtz_filename, dataset_tag=None):
+    def __init__(self, dataset_number, pdb_filename, mtz_filename, dataset_tag=None, name_prefix=''):
         """Create a dataset object to allow common functions to be applied easily to a number of datasets"""
 
         assert os.path.exists(pdb_filename), 'PDB file does not exist!'
@@ -221,7 +233,7 @@ class dataset_handler(object):
             if self.d_num < 0:  self.d_tag = 'REF{:05d}'.format(self.d_num)
             else:               self.d_tag = 'D{:05d}'.format(self.d_num)
         # Store a name for the dataset
-        self.d_name = 'Dataset-{!s}'.format(self.d_tag)
+        self.d_name = name_prefix + '{!s}'.format(self.d_tag)
 
         # Output Directories
         self.output_handler = None
@@ -269,8 +281,7 @@ class dataset_handler(object):
         ########################################################
 
         # Map of the clusters in the dataset
-        self.raw_cluster_hits = None
-        self.clustered_hits = None
+        self.hit_clusters = None
 
         # MANUAL VARIABLES - ONLY TO BE ACCESSED DURING TESTING
         self.number_of_sig_points = 0
@@ -313,8 +324,14 @@ class dataset_handler(object):
     def get_backbone_sites(self):
         xray_structure = self.get_input().xray_structure_simple()
         return xray_structure.sites_cart().select(xray_structure.backbone_selection())
+
+    def set_global_alignment(self, alignment):
+        self._global_rt_transform = alignment
     def get_global_alignment_transform(self):
         return self._global_rt_transform
+
+    def set_local_alignments(self, alignment):
+        self._local_rt_transforms = alignment
     def get_local_alignment_transforms(self):
         return self._local_rt_transforms
 
@@ -329,23 +346,6 @@ class dataset_handler(object):
 
     def get_structure_summary(self):
         return structure_summary(hierarchy=self.get_hierarchy())
-
-    def align_to_reference(self, ref_handler, method, sites='calpha'):
-        """Calculate the rotation and translation needed to align one structure to another"""
-        assert sites in ['calpha','backbone']
-        assert method in ['both','local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
-
-        if method == 'global' or method == 'both':
-            if sites == 'calpha':
-                my_sites = self.get_calpha_sites()
-                ref_sites = ref_handler.get_calpha_sites()
-            elif sites == 'backbone':
-                my_sites = self.get_backbone_sites()
-                ref_sites = ref_handler.get_backbone_sites()
-            assert len(my_sites) == len(ref_sites)
-            self._global_rt_transform = superpose.least_squares_fit(reference_sites=ref_sites, other_sites=my_sites)
-        if method == 'local' or method == 'both':
-            self._local_rt_transforms = perform_flexible_alignment(mov_hierarchy=self.get_hierarchy(), ref_hierarchy=ref_handler.get_hierarchy())
 
     def transform_from_reference(self, points, method, point_mappings=None):
         """Use alignment to map from reference frame to our frame"""
@@ -414,7 +414,7 @@ class dataset_handler(object):
         calpha_hierarchy = self.get_hierarchy().select(self.get_hierarchy().atom_selection_cache().selection('pepnames and name CA'))
         atom_sites, atom_labels = zip(*[(a.xyz, (a.chain_id, a.resid())) for a in calpha_hierarchy.atoms_with_labels()])
 
-        tree = spatial.KDTree(data=atom_sites)
+        tree = scipy.spatial.KDTree(data=atom_sites)
         nn_dists, nn_groups = tree.query(points)
         return [atom_labels[i] for i in nn_groups]
 
@@ -424,7 +424,7 @@ class reference_dataset_handler(dataset_handler):
 
     def set_origin_shift(self, origin_shift):
         self._origin_shift = origin_shift
-    def get_origin_shift(self):
+    def origin_shift(self):
         return self._origin_shift
 
     def set_map_scale(self, map_mean, map_rms):
@@ -699,8 +699,6 @@ class multi_dataset_analyser(object):
         self._ref_dataset = None
         self._ref_grid = None
         self._ref_map = None
-        # Distance to displace the reference model by so that its bounding box sits on the origin
-        self._ref_origin_shift = None
 
         # Map Statistics
         self.stat_maps = map_list(self._map_names)
@@ -1136,11 +1134,6 @@ class multi_dataset_analyser(object):
         return self._cut_resolution
 # XXX MAYBE KEEP THESE
 
-    def set_reference_origin_shift(self, origin_shift):
-        self._ref_origin_shift = origin_shift
-    def get_reference_origin_shift(self):
-        return self._ref_origin_shift
-
     def set_reference_dataset(self, dataset):
         """Set a reference dataset created externally"""
         self._ref_dataset = dataset
@@ -1225,11 +1218,12 @@ class multi_dataset_analyser(object):
             rel_symlink(orig=ref_mtz, link=self.output_handler.get_file('reference_dataset'))
 
         # Calculate the shift required to move the reference structure into the positive quadrant
-        self.set_reference_origin_shift(tuple(flex.double(3, self.params.maps.border_padding) - flex.double(self.reference_dataset().get_input().atoms().extract_xyz().min())))
-        self.log('Origin Shift for reference structure: {!s}'.format(tuple([round(s,3) for s in self.get_reference_origin_shift()])))
+        total_border_padding = self.params.maps.padding + self.params.masks.outer_mask
+        self.reference_dataset().set_origin_shift(tuple(flex.double(3, total_border_padding) - flex.double(self.reference_dataset().get_input().atoms().extract_xyz().min())))
+        self.log('Origin Shift for reference structure: {!s}'.format(tuple([round(s,3) for s in self.reference_dataset().origin_shift()])))
         # Shift the reference structure by this amount so that it is aligned with the reference grid
         ref_hierarchy = self.reference_dataset().get_hierarchy()
-        ref_hierarchy.atoms().set_xyz(ref_hierarchy.atoms().extract_xyz() + self.get_reference_origin_shift())
+        ref_hierarchy.atoms().set_xyz(ref_hierarchy.atoms().extract_xyz() + self.reference_dataset().origin_shift())
 
         if not os.path.exists(self.output_handler.get_file('reference_on_origin')):
             ref_hierarchy.write_pdb_file(self.output_handler.get_file('reference_on_origin'))
@@ -1440,19 +1434,19 @@ class multi_dataset_analyser(object):
     def load_new_datasets(self):
         """Read in maps for the input datasets"""
 
-        def map_func(arg_dict):
+        def load_map_func(arg_dict):
             return dataset_handler(**arg_dict)
 
         # TODO Change this so datasets can be added dynamically
         assert self.datasets.all() == []
 
         # Generate arg_list for loading
-        arg_list = [{'dataset_number':d_num, 'pdb_filename':pdb, 'mtz_filename':mtz, 'dataset_tag':tag} for d_num, (pdb, mtz, tag) in enumerate(self.new_files())]
+        arg_list = [{'dataset_number':d_num, 'pdb_filename':pdb, 'mtz_filename':mtz, 'dataset_tag':tag, 'name_prefix':self.args.output.dataset_prefix} for d_num, (pdb, mtz, tag) in enumerate(self.new_files())]
 
         start = time.time()
         self.log('===================================>>>', True)
         print 'Loading Datasets... (using {!s} cores)'.format(self.args.settings.cpus)
-        loaded_datasets = easy_mp.pool_map(fixed_func=map_func, args=arg_list, processes=self.args.settings.cpus)
+        loaded_datasets = easy_mp.pool_map(fixed_func=load_map_func, args=arg_list, processes=self.args.settings.cpus)
         finish = time.time()
         print('> Time Taken: {!s} seconds'.format(int(finish-start)))
 
@@ -1516,7 +1510,6 @@ class multi_dataset_analyser(object):
             # Pickled objects
             d_handler.output_handler.add_dir(dir_name='pickles', dir_tag='pickles', top_dir_tag='root')
             d_handler.output_handler.add_file(file_name='dataset.pickle', file_tag='dataset_pickle', dir_tag='pickles')
-
 
             # Link the input files to the output folder
             if not os.path.exists(d_handler.output_handler.get_file('input_structure')):
@@ -1662,23 +1655,46 @@ class multi_dataset_analyser(object):
         t2 = time.time()
         print('> DIFFRACTION DATA SCALING > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
-    def align_datasets(self, method, sites='calpha'):
+    def align_datasets(self, method):
         """Align each structure the reference structure"""
 
-        assert sites in ['calpha','backbone']
+        def align_map_func(align_dict):
+            global_mx, local_mxs = align_dataset_to_reference(
+                                            d_handler   = align_dict['d_handler'],
+                                            ref_handler = align_dict['r_handler'],
+                                            method      = align_dict['method']   )
+            return (align_dict['d_handler'].d_tag, (global_mx, local_mxs))
+
         assert method in ['local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
 
         # If local alignment has been chosen, also do a global alignment
         if method == 'local': method = 'both'
 
-        t1 = time.time()
-
+        # Align the datasets using multiple cores if possible
         self.log('===================================>>>', True)
-        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
-            print '\rAligning Dataset {!s}          '.format(d_handler.d_tag),; sys.stdout.flush()
+        print 'Generating Alignments (using {!s} cores)'.format(self.args.settings.cpus)
+        start = time.time()
+        arg_list = [{'r_handler':self.reference_dataset(), 'd_handler':d_handler, 'method':method} for d_handler in self.datasets.all()]
+        alignment_transforms = easy_mp.pool_map(fixed_func=align_map_func, args=arg_list, processes=self.args.settings.cpus)
+        alignment_transforms = dict(alignment_transforms)
+        finish = time.time()
+        print('> Time Taken: {!s} seconds'.format(int(finish-start)))
 
-            # Align to reference structure to get mapping transform
-            d_handler.align_to_reference(ref_handler=self.reference_dataset(), sites=sites, method=method)
+        # Post-process the alignments (write out aligned structures etc)
+        t1 = time.time()
+        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
+            print '\rAligning Structures: Dataset {!s}          '.format(d_handler.d_tag),; sys.stdout.flush()
+
+#            # Align to reference structure to get mapping transform
+#            d_handler.align_to_reference(ref_handler=self.reference_dataset(), method=method)
+
+            global_mx, local_mxs = alignment_transforms[d_handler.d_tag]
+
+            # Store the alignments in the dataset handler
+            d_handler.set_global_alignment(alignment=global_mx)
+            d_handler.set_local_alignments(alignment=local_mxs)
+
+            assert d_handler.get_global_alignment_transform()
 
             # Create a copy to transform
             aligned_struc = d_handler.get_hierarchy().deep_copy()
@@ -1709,7 +1725,7 @@ class multi_dataset_analyser(object):
                 # Raise error if the reference has already been set and it's not this dataset
                 elif self._ref_dataset_index != d_handler.d_num:
                     raise Exception('ALIGNED OBJECT EQUAL TO UNALIGNED OBJECT - THIS IS MOST UNLIKELY')
-        self.log('\rDatasets Aligned.               ', True)
+        self.log('\rDatasets Aligned.                               ', True)
 
         t2 = time.time()
         print('> STRUCTURE ALIGNMENT > Time Taken: {!s} seconds'.format(int(t2-t1)))
@@ -1765,8 +1781,23 @@ class multi_dataset_analyser(object):
             my_counts, my_dict = d_handler.get_structure_summary()
 
             print '\rFiltering Dataset {!s}          '.format(d_handler.d_tag),; sys.stdout.flush()
+            # Check the space group of the dataset
+            if d_handler.input().crystal_symmetry().space_group().info().symbol_and_number() != ref_handler.input().crystal_symmetry().space_group().info().symbol_and_number():
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
+                self.log('Different Space Group')
+                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_handler.input().crystal_symmetry().space_group().info().symbol_and_number(),
+                                                        d_handler.d_tag, d_handler.input().crystal_symmetry().space_group().info().symbol_and_number()))
+                self.log('===================================>>>')
+                self.datasets.all_masks().set_mask_value(mask_name='bad structure - different space group', entry_id=d_handler.d_tag, value=True)
+            # Check that the hierarchies are identical
+            if not d_handler.hierarchy().is_similar_hierarchy(ref_handler.hierarchy()):
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
+                self.log('Non-Identical Hierarchy')
+                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_chains, d_handler.d_tag, my_counts.n_chains))
+                self.log('===================================>>>')
+                self.datasets.all_masks().set_mask_value(mask_name='bad structure - non-identical structures', entry_id=d_handler.d_tag, value=True)
             # Check the number of chains
-            if my_counts.n_chains != ref_counts.n_chains:
+            elif my_counts.n_chains != ref_counts.n_chains:
                 self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
                 self.log('Different Number of Chains')
                 self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_chains, d_handler.d_tag, my_counts.n_chains))
@@ -2846,8 +2877,6 @@ class multi_dataset_analyser(object):
                                     z_map,
                                     z_cutoff,
                                     point_mask,
-                                    min_cluster_volume,
-                                    min_cluster_z_peak,
                                     clustering_cutoff,
                                     clustering_criterion,
                                     clustering_metric,
@@ -2861,102 +2890,344 @@ class multi_dataset_analyser(object):
 
         # Translate between grid coords and grid index
         grid_indexer = self.reference_grid().grid_indexer()
-
         # Scale the cutoff (Angstroms) into grid units
         grid_clustering_cutoff = clustering_cutoff/self.reference_grid().grid_spacing()
 
-        # Calculate the approximate minimum volume for the cluster size
-        min_cluster_size = int(min_cluster_volume/(self.reference_grid().grid_spacing()**3))
-
-        # List of points in this dataset - TODO Revisit using global outer mask - is this the right mask?
+        # Look for z-clusters on the mask
         d_selected_points = [(gp, z_map[grid_indexer(gp)]) for gp in point_mask if z_map[grid_indexer(gp)] >= z_cutoff]
         d_handler.number_of_sig_points = len(d_selected_points)
-
-        # Write the output mask if points found
-        if d_selected_points:
-            # Create maps of the high z-value points (significant points)
-            highz_points = zip(*d_selected_points)[0]
-            highz_map_array = numpy.zeros(self.reference_grid().grid_size_1d(), dtype=int)
-            highz_map_array.put(map(self.reference_grid().grid_indexer(), highz_points), [1]*len(highz_points))
-            self.write_array_to_map(d_handler.output_handler.get_file('high_z_mask'), flex.double(highz_map_array.tolist()))
 
         # No Cluster points found
         if not d_selected_points:
             self.log('Dataset {!s}: No Clusters Found'.format(d_handler.d_tag), True)
+            return 0, {}
         # Can't cluster if there are too many points
         elif len(d_selected_points) > 10000:
             self.log('Dataset {!s}: Too many points to cluster: {!s} Points.'.format(d_handler.d_tag, len(d_selected_points)), True)
+            num_clusters = -1
+            hit_clusters = {}
             # This dataset is too noisy to analyse - flag!
             self.datasets.all_masks().set_mask_value(mask_name='noisy zmap', entry_id=d_handler.d_tag, value=True)
-
-            # Link datasets to the initial results directory
+            # Link datasets to the noisy results directory
             noisy_dir = os.path.join(self.output_handler.get_dir('noisy_datasets'), d_handler.d_name)
             if not os.path.exists(noisy_dir):
                 rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=noisy_dir)
-
         # Cluster points if we have found them
         else:
-            self.log('===================================>>>', True)
             self.log('Dataset {!s}: Clustering {!s} Point(s).'.format(d_handler.d_tag, len(d_selected_points)), True)
             # Points found for this cluster!
             if len(d_selected_points) == 1:
                 # Only 1 point - 1 cluster! - edge case where we can't do clustering
-                clust_num = 1
+                num_clusters = 1
                 # Dictionary of results
-                clust_dict = {1: d_selected_points}
+                hit_clusters = {1: d_selected_points}
             else:
                 # Extract only the coordinates and form an array
                 point_array = numpy.array([tup[0] for tup in d_selected_points])
                 # Cluster the extracted points
                 t1 = time.time()
-                clusts = list(scipy_cluster.hierarchy.fclusterdata(X=point_array, t=grid_clustering_cutoff, criterion=clustering_criterion, metric=clustering_metric, method=clustering_method))
+                clusts = list(scipy.cluster.hierarchy.fclusterdata( X=point_array,
+                                                                    t=grid_clustering_cutoff,
+                                                                    criterion=clustering_criterion,
+                                                                    metric=clustering_metric,
+                                                                    method=clustering_method    )   )
                 t2 = time.time()
                 if t2-t1 > 30.0:
-                    print('> Clustering > Time Taken: {!s} seconds'.format(int(t2-t1)))
+                    self.log('> Clustering > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
                 # Get the number of clusters
-                clust_num = max(clusts)
+                num_clusters = max(clusts)
                 # Initialise dictionary to hold the points for the different clusters (under the new indexing)
-                clust_dict = dict([(i+1, []) for i in range(clust_num)])
+                hit_clusters = dict([(i+1, []) for i in range(num_clusters)])
                 # Populate the clusters according to the clustering
-                [clust_dict[c_idx].append(d_selected_points[p_idx]) for p_idx, c_idx in enumerate(clusts)]
+                [hit_clusters[c_idx].append(d_selected_points[p_idx]) for p_idx, c_idx in enumerate(clusts)]
 
             # Check that the clusters are numbered properly
-            assert clust_num == max(clust_dict.keys())
-            assert clust_num == len(clust_dict.keys())
+            assert num_clusters == max(hit_clusters.keys())
+            assert num_clusters == len(hit_clusters.keys())
 
-            # Filter out small clusters - get numbers of clusters satisfying the minimum cluster size
-            large_clusters = [c_num for c_num in range(1,clust_num+1) if len(clust_dict[c_num]) >= min_cluster_size]
-            # Filter out weak clusters - get numbers of clusters satisfying the minimum z_peak value
-            strong_clusters = [c_num for c_num in large_clusters if max([c[1] for c in clust_dict[c_num]]) >= min_cluster_z_peak]
+        return num_clusters, hit_clusters
 
-            # Calculate the new number of clusters
-            clust_num = len(strong_clusters)
-            # Pull out the data for these filtered clusters and renumber them
-            clust_dict = dict([(new_c_idx+1, clust_dict[old_c_num]) for new_c_idx, old_c_num in enumerate(strong_clusters)])
+    def filter_z_clusters_1(self, hit_clusters,
+                                  min_cluster_volume,
+                                  min_cluster_z_peak    ):
+        """Filter the z-clusters on a variety of criteria (size, peak value)"""
 
-            if len(large_clusters) == 0:
-                self.log('===> No Clusters found - Minimum cluster size not reached.', True)
-            elif len(strong_clusters) == 0:
-                self.log('===> No Clusters found - Minimum cluster peak not reached.', True)
+        self.log('===================================>>>')
+        self.log('FILTERING (STEP 1): Filtering by blob size and peak value')
+
+        # Calculate the approximate minimum volume for the cluster size
+        min_cluster_size = int(min_cluster_volume/(self.reference_grid().grid_spacing()**3))
+
+        # Filter out small clusters - get numbers of clusters satisfying the minimum cluster size
+        large_clusters = [c_num for c_num in range(1,len(hit_clusters)+1) if len(hit_clusters[c_num]) >= min_cluster_size]
+        if len(large_clusters) == 0:
+            return 0, {}
+
+        # Filter out weak clusters - get numbers of clusters satisfying the minimum z_peak value
+        strong_clusters = [c_num for c_num in large_clusters if max([c[1] for c in hit_clusters[c_num]]) >= min_cluster_z_peak]
+        if len(strong_clusters) == 0:
+            return 0, {}
+
+        # Renumber the filtered clusters
+        filtered_hit_clusters = dict([(new_c_idx+1, hit_clusters[old_c_num]) for new_c_idx, old_c_num in enumerate(strong_clusters)])
+        # Check that the clusters are numbered properly
+        num_clusters = len(strong_clusters)
+        assert num_clusters == max(filtered_hit_clusters.keys())
+        assert num_clusters == len(filtered_hit_clusters.keys())
+
+        self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(hit_clusters), len(filtered_hit_clusters)))
+
+        return num_clusters, filtered_hit_clusters
+
+    def filter_z_clusters_2(self, hit_clusters,
+                                  grid_spacing,
+                                  grid_origin_cart,
+                                  ref_structure,
+                                  min_contact_dist=6    ):
+        """Find and remove clusters more than a minimum distance from the protein"""
+
+        # min_contact_dist - blobs are rejected if they are more than this distance from the protein
+
+        self.log('===================================>>>')
+        self.log('FILTERING (STEP 2): Filtering by minimum distance from protein')
+
+        # Extract the protein sites
+        cache = ref_structure.atom_selection_cache()
+        protein_bool = cache.selection('pepnames')
+        ref_sites_cart = ref_structure.select(protein_bool).atoms().extract_xyz()
+
+        # Save time - calculate the square of the contact distance
+        min_contact_dist_sq = min_contact_dist**2
+
+        # Remove any clusters that are more than min_contact_dist from the protein
+        filtered_c_keys = []
+        for c_key in sorted(hit_clusters.keys()):
+            # Extract points in cluster
+            cluster_points_cart = (flex.vec3_double([c[0] for c in hit_clusters[c_key]]) * grid_spacing) - grid_origin_cart
+            # Calculate minimum distance to protein
+            for r_site_cart in ref_sites_cart:
+                diff_vecs_cart = cluster_points_cart - r_site_cart
+                # Keep key if minimum distance is less than min_contact_dist
+                if min(diff_vecs_cart.dot()) < min_contact_dist_sq:
+                    filtered_c_keys.append(c_key)
+                    break
+
+            # XXX PRINT XXX
+            if filtered_c_keys and (filtered_c_keys[-1] == c_key):
+                print 'KEEPING CLUSTER:', c_key
             else:
-                # Check that the clusters are numbered properly
-                assert clust_num == max(clust_dict.keys())
-                assert clust_num == len(clust_dict.keys())
+                print 'REJECTING CLUSTER:', c_key, '\t', cluster_points_cart[0]
 
-                # Add clustered points to the dataset handler
-                self.log('===> {!s} Cluster(s) found.'.format(clust_num), True)
+        # Check if all clusters have been rejected
+        if not filtered_c_keys:
+            num_clusters = 0
+            filtered_hit_clusters = {}
+        else:
+            # Renumber the filtered clusters
+            filtered_hit_clusters = dict([(new_c_idx+1, hit_clusters[old_c_key]) for new_c_idx, old_c_key in enumerate(filtered_c_keys)])
+            # Check that the clusters are numbered properly
+            num_clusters = len(filtered_c_keys)
+            assert num_clusters == max(filtered_hit_clusters.keys())
+            assert num_clusters == len(filtered_hit_clusters.keys())
 
-                # Create a link to the interesting directories in the initial results directory
-                hit_dir = os.path.join(self.output_handler.get_dir('interesting_datasets'), d_handler.d_name)
-                if not os.path.exists(hit_dir):
-                    rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=hit_dir)
+        self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(hit_clusters), len(filtered_hit_clusters)))
 
-                # Return a positive result
-                return clust_dict
+        return num_clusters, filtered_hit_clusters
 
-        # Return empty - catchall if it makes it to the end of the function
-        return {}
+    def filter_z_clusters_3(self, hit_clusters,
+                                  grid_spacing,
+                                  grid_origin_cart,
+                                  ref_unit_cell,
+                                  ref_sym_ops,
+                                  ref_structure,
+                                  max_contact_dist=8  ):
+        """Find and remove symmetry equivalent clusters"""
+
+        # max_contact_dist - a point contacts an atom if the atoms is within this distance of it
+
+        if len(hit_clusters) == 1:
+            return 1, hit_clusters
+        else:
+            self.log('===================================>>>')
+            self.log('FILTERING (STEP 3): Filtering symmetry equivalent clusters')
+
+        # Extract the protein sites
+        cache = ref_structure.atom_selection_cache()
+        protein_bool = cache.selection('pepnames')
+        ref_sites_cart = ref_structure.select(protein_bool).atoms().extract_xyz()
+
+        # Save time - calculate the square of the contact distance
+        max_contact_dist_sq = max_contact_dist**2
+        # Minimum distance between cart points to be equiv (due to sampling on grid)
+        dist_cut_sq = 1.05 * 3 * grid_spacing * grid_spacing
+
+        # Pull out the labels for the clusters
+        cluster_keys = sorted(hit_clusters.keys())
+
+        # Cartesianise and fractionalise the points in each of the clusters
+        points_frac = {}
+        points_cart = {}
+        for c_key in cluster_keys:
+            # Calculate the cartesian coordinates of the grid points (and apply reference shift)
+            points_cart[c_key] = (flex.vec3_double([c[0] for c in hit_clusters[c_key]]) * grid_spacing) - grid_origin_cart
+            # Fractionalise them to the unit cell of the reference structure
+            points_frac[c_key] = ref_unit_cell.fractionalize(points_cart[c_key])
+
+        # Matrix for whether they are near to each other
+        equiv_sites = numpy.zeros([len(ref_sym_ops), len(cluster_keys), len(cluster_keys)], dtype=int)
+
+        # Apply the symmetry operations to each cluster to see if it is near to other clusters
+        for i_sym_op, sym_op in enumerate(ref_sym_ops):
+            # Transformed clusters under this symmetry operation
+            trans_points_frac = dict([(c_key, sym_op.as_rational().as_float() * points_frac[c_key]) for c_key in cluster_keys])
+            # Loop through clusters
+            for i_clust_1, c_key_1 in enumerate(cluster_keys):
+                # Extract points for the un-transformed points
+                ref_points = points_frac[c_key_1]
+                # Loop through clusters again
+                for i_clust_2, c_key_2 in enumerate(cluster_keys):
+                    # Comparing cluster to itself - skip
+                    if i_clust_1 == i_clust_2:
+                        # These are cleary equivalent
+                        equivalent = True
+                    else:
+                        # Start by assuming the clusters are not related
+                        equivalent = False
+                        # Extract locations for the transformed points
+                        query_points = trans_points_frac[c_key_2]
+                        # Loop through and see if the clusters overlap
+                        for qp in query_points:
+                            # Brute force - calculate the distance from all to all
+                            diffs_frac = ref_points - qp
+                            # Convert back to cartesian
+                            diffs_cart = ref_unit_cell.orthogonalize(diffs_frac)
+                            # Check if any are closer than the minimum required
+                            if min(diffs_cart.dot()) < dist_cut_sq:
+                                equivalent = True
+                                break
+                    # If the clusters overlap, they are equivalent
+                    if equivalent:
+                        equiv_sites[(i_sym_op, i_clust_1, i_clust_2)] = 1
+
+        # Condense the cluster equivalence - take max over the symmetry operations and group by connected paths
+        sym_cluster_groups = find_connected_groups(connection_matrix=equiv_sites.max(axis=0))
+        # Number of unique clusters
+        num_uniq_clusters = max(sym_cluster_groups)
+        sym_cluster_zip = zip(sym_cluster_groups, cluster_keys)
+
+        # Keys of clusters to keep
+        clusters_to_keep = []
+        # Iterate through the equivalent clusters and find the closest one to the protein
+        for n_clust in range(1, num_uniq_clusters+1):
+            # Extract the keys for the clusterss in this group
+            clust_c_keys = [c[1] for c in sym_cluster_zip if c[0] == n_clust]
+            # Save the number of contacts between the cluster and the protein
+            c_contacts = []
+            # Calculate the number of contacts each cluster has with the protein
+            for c_key in clust_c_keys:
+                # Initialise contact counter
+                contacts = 0
+                # Get the cartesian points for the cluster
+                c_points_cart = points_cart[c_key]
+                # Again, use the brute force all-v-all method
+                for rp in ref_sites_cart:
+                    diffs_cart = c_points_cart - rp
+                    # Check to see if site closer to cluster than minimum
+                    if min(diffs_cart.dot()) < max_contact_dist_sq:
+                        contacts += 1
+                # Record the number of contacts
+                c_contacts.append(contacts)
+                print 'CLUSTER', c_key, 'CONTACTS', contacts
+
+            print 'CLUSTER CONTACTS', c_contacts
+
+            # Find the cluster with the most contacts
+            max_contacts = max(c_contacts)
+
+            if max_contacts == 0:
+                raise Exception('MAX CONTACTS IS 0!')
+            else:
+                clusters_to_keep.append(clust_c_keys[c_contacts.index(max_contacts)])
+                print 'KEEPING', clusters_to_keep[-1], 'FROM', clust_c_keys
+
+        assert len(clusters_to_keep) == num_uniq_clusters, 'NUMBER OF BLOBS AND BLOBS TO BE RETURNED NOT THE SAME'
+
+        # Select and renumber the filtered clusters to be returned
+        filtered_num_clusters = num_uniq_clusters
+        filtered_hit_clusters = dict([(new_c_idx+1, hit_clusters[old_c_key]) for new_c_idx, old_c_key in enumerate(clusters_to_keep)])
+
+        self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(hit_clusters), len(filtered_hit_clusters)))
+
+        return filtered_num_clusters, filtered_hit_clusters
+
+    def group_clusters(self, hit_clusters,
+                             grid_spacing,
+                             separation_cutoff=5   ):
+        """Join clusters that are separated by less than max_separation"""
+
+        if len(hit_clusters) == 1:
+            return 1, hit_clusters
+        else:
+            self.log('===================================>>>')
+            self.log('GROUPING: Grouping Nearby Clusters')
+
+        # Minimum distance between grid points to be joined (squared)
+        grid_spacing_cutoff_sq = (separation_cutoff/grid_spacing)**2
+
+        # Record which clusters are to be joined
+        connect_array = numpy.zeros((len(hit_clusters),len(hit_clusters)), dtype=int)
+
+        cluster_keys = sorted(hit_clusters.keys())
+
+        for i_clust_1, c_key_1 in enumerate(cluster_keys):
+            # Extract grid points for cluster 1
+            c_gp_1 = flex.vec3_double([c[0] for c in hit_clusters[c_key_1]])
+            for i_clust_2, c_key_2 in enumerate(cluster_keys):
+                # Skip if this is the same blob
+                if i_clust_1 == i_clust_2:
+                    connect_array[(i_clust_1, i_clust_2)] = 1
+                    continue
+                # Extract grid points for cluster 2
+                c_gp_2 = flex.vec3_double([c[0] for c in hit_clusters[c_key_1]])
+                # Extract the minimum separation of the grid points
+                min_dist_sq = min([min((c_gp_2 - gp).dot()) for gp in c_gp_1])
+                # Check to see if they should be joined
+                if min_dist_sq < grid_spacing_cutoff_sq:
+                    connect_array[(i_clust_1, i_clust_2)] = 1
+
+        # Find which clusters to join
+        cluster_groupings = find_connected_groups(connection_matrix=connect_array)
+        num_groups = max(cluster_groupings)
+        grouped_zip = zip(cluster_groupings, cluster_keys)
+
+        print 'COMBINING', len(hit_clusters), 'GROUPS INTO', num_groups, 'GROUPS'
+
+        # Output cluster dict
+        grouped_clusters = {}
+
+        # Iterate through the groups of clusters and combine each group into one cluster
+        for n_group in range(1, num_groups+1):
+            # Extract the keys for the clusters in this group
+            group_c_keys = [c[1] for c in grouped_zip if c[0] == n_group]
+            # Extract points for these clusters
+            group_points = []; [group_points.extend(hit_clusters[c_key]) for c_key in group_c_keys]
+            # Combine all of the points into a new cluster
+            grouped_clusters[n_group] = group_points
+
+            print 'THIS SHOULD BE A TUPLE PAIR', grouped_clusters[n_group][0]
+
+        assert len(grouped_clusters) == num_groups
+
+        print 'ORIG CLUSTERS', map(len, hit_clusters.values())
+        print 'NEW CLUSTERS', map(len, grouped_clusters.values())
+
+        print 'ORIG TOTAL', sum(map(len, hit_clusters.values()))
+        print 'NEW TOTAL', sum(map(len, grouped_clusters.values()))
+
+        self.log('Grouped {!s} Clusters together to form {!s} Clusters'.format(len(hit_clusters), len(grouped_clusters)))
+
+        return num_groups, grouped_clusters
 
     def collate_all_clusters(self):
         """Collate clusters from all of the datasets"""
@@ -2968,8 +3239,8 @@ class multi_dataset_analyser(object):
         all_dataset_clusters = dict([(d.d_tag, []) for d in self.datasets.all()])
 
         for d_handler in self.datasets.all():
-            if d_handler.raw_cluster_hits:
-                all_dataset_clusters[d_handler.d_tag] = d_handler.raw_cluster_hits
+            if d_handler.hit_clusters:
+                all_dataset_clusters[d_handler.d_tag] = d_handler.hit_clusters.raw_data
 
         # Print Cluster Summaries
         cluster_num = [(k, len(all_dataset_clusters[k])) for k in sorted(all_dataset_clusters.keys()) if all_dataset_clusters[k]]
@@ -2993,13 +3264,15 @@ class multi_dataset_analyser(object):
         for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
 
             # Check to see if there are any clustered points
-            if not d_handler.raw_cluster_hits:
+            if not d_handler.hit_clusters:
                 continue
 
             # This dataset is interesting!
             self.datasets.all_masks().set_mask_value(mask_name='interesting', entry_id=d_handler.d_tag, value=True)
 
-            cluster_obj = d_handler.clustered_hits
+            # Pull out the cluster object
+            cluster_obj = d_handler.hit_clusters
+
             # Add to list of all clusters
             cluster_ids.append(d_handler.d_tag)
             all_clusters.append(cluster_obj)

@@ -31,6 +31,8 @@ pandda_phil_def = """
         {
             outdir = './pandda'
                 .type = path
+            dataset_prefix = ''
+                .type = str
         }
         method
             .help = "High Level control of algorithm"
@@ -78,16 +80,17 @@ pandda_phil_def = """
                     .type = choice
                 resolution_factor = 0.33
                     .type = float
-                border_padding = 5
+                padding = 3
+                    .help = "Padding around the edge of the maps"
                     .type = float
             }
             masks
                 .help = "Parameters to control the masking of grid points around the protein"
             {
                 inner_mask = 1.8
-                    .help = "Points are masked with this distance of protein atoms"
+                    .help = "Points are masked within this distance of protein atoms"
                     .type = float
-                outer_mask = 5
+                outer_mask = 6
                     .help = "Points are masked outside this distance of protein atoms"
                     .type = float
             }

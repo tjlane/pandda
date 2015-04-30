@@ -1,3 +1,4 @@
+import scipy.spatial
 import numpy
 
 class single_cluster(object):
@@ -147,4 +148,25 @@ def combine_clusters(clusters, ids=None):
         new_data.extend(old_cluster.get_data())
 
     return cluster_data(dict(zip(new_keys, new_data)))
+
+def find_connected_groups(connection_matrix):
+    """Take a matrix of connected elements and output groups"""
+
+    assert not set(connection_matrix.flatten()).difference(set([0,1])), 'CONNECTION MATRIX MUST CONSIST OF 1s AND 0s ONLY'
+    assert connection_matrix.ndim == 2, 'CONNECTION MATRIX MUST BE OF DIMENSION 2'
+    assert connection_matrix.shape[0] > 1, 'MATRIX MUST BE LARGER THAN 1x1'
+    assert connection_matrix.shape[0] == connection_matrix.shape[1], 'CONNECTION MATRIX MUST BE SQUARE'
+
+    # Make it symmetrical - if 1 is connected to 2, 2 is connected to 1
+    sym_connection_matrix = ((connection_matrix + connection_matrix.T) != 0).astype(int)
+    # Convert from a connection array to a distance array (0 for connected, 1 for unconnected)
+    dist_mx = 1 - sym_connection_matrix
+    # Convert to condensed distance matrix
+    cd_dist_mx = scipy.spatial.distance.squareform(dist_mx)
+    # Calculate the linkage matrix
+    l = scipy.cluster.hierarchy.linkage(cd_dist_mx, method='single', metric='euclidean')
+    # Cluster with very low cutoff
+    connected_groups = scipy.cluster.hierarchy.fcluster(Z=l, t=0.01).tolist()
+
+    return connected_groups
 

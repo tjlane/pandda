@@ -6,7 +6,7 @@ execfile("/home/npearce/bin/PANDDAs/bin/pandda.analyse")
 
 input_args = [
 "testing=True",
-"cpus=7",
+"cpus=8",
 "verbose=True",
 #
 #"data_dirs='/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak/ProcessedFragmentSoak/BAZ2BA-x52*/1-apo'",
@@ -17,9 +17,10 @@ input_args = [
 #
 "lig_style='../2-ligand/*.cif'",
 #
-"outdir=/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak/pandda-2.5-global",
-"alignment.method=global",
+"outdir=/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak/pandda-2.5-local-test-mapalign",
+"alignment.method=local",
 "contour_level=2.5",
+"resolution_factor=0.33",
 #
 "maps.ampl_label=FWT",
 "maps.phas_label=PHWT"

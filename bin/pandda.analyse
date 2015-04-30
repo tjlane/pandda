@@ -11,9 +11,10 @@ from Giant.Xray.Symmetry import combine_hierarchies, generate_adjacent_symmetry_
 from Giant.Grid.Masks import spherical_mask, atomic_mask, non_symmetrical_atomic_mask
 
 from Giant.Stats.Cluster import cluster_data
-from Giant.Utils import status_bar
+from Giant.Utils import status_bar, rel_symlink
 
 from PANDDAs.Main import multi_dataset_analyser
+from PANDDAs import welcome
 
 def pandda_main(args):
     """Run the PANDDA algorithm, using supplied args object"""
@@ -115,16 +116,15 @@ def pandda_main(args):
 
         # XXX XXX XXX XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXX XXX XXX
         # Use symmetry operations to create the symmetry mates of the reference structure
-        sym_ops, sym_op_contacts, sym_hierarchies, chain_mappings = generate_adjacent_symmetry_copies(ref_hierarchy    = pandda.reference_dataset().new_structure().hierarchy,
-                                                                                                      crystal_symmetry = pandda.reference_dataset().get_input().crystal_symmetry(),
-                                                                                                      buffer_thickness = pandda.params.maps.border_padding+5,
-                                                                                                      method=2)
+        sym_ops, sym_hierarchies, chain_mappings = generate_adjacent_symmetry_copies(   ref_hierarchy    = pandda.reference_dataset().new_structure().hierarchy,
+                                                                                        crystal_symmetry = pandda.reference_dataset().get_input().crystal_symmetry(),
+                                                                                        buffer_thickness = pandda.params.masks.outer_mask+5    )
         # Record the symmetry operations that generate the crystal contacts
         pandda.crystal_contact_generators = sym_ops
 
         # Create a combined hierarchy of the crystal contacts
         symmetry_root = combine_hierarchies(sym_hierarchies)
-        symmetry_root.atoms().set_xyz(symmetry_root.atoms().extract_xyz() + pandda.get_reference_origin_shift())
+        symmetry_root.atoms().set_xyz(symmetry_root.atoms().extract_xyz() + pandda.reference_dataset().origin_shift())
 
         # Write out the symmetry sites
         if not os.path.exists(pandda.output_handler.get_file('reference_symmetry')):
@@ -148,8 +148,8 @@ def pandda_main(args):
         pandda.analyse_dataset_variability_2()
 
         # Analyse the structural variation in the datasets
-        pandda.analyse_structure_variability_1()
-        pandda.analyse_structure_variability_2()
+#        pandda.analyse_structure_variability_1()
+#        pandda.analyse_structure_variability_2()
 
         # ============================================================================>
         #####
@@ -183,7 +183,7 @@ def pandda_main(args):
         if pandda.reference_grid() is None:
             pandda.create_reference_grid(   grid_spacing     = pandda.params.maps.resolution_factor*pandda.get_cut_resolution(),
                                             expand_to_origin = False,
-                                            buffer           = pandda.params.maps.border_padding    )
+                                            buffer           = pandda.params.masks.outer_mask+pandda.params.maps.padding    )
 
         # ============================================================================>
         #####
@@ -211,8 +211,8 @@ def pandda_main(args):
             global_mask = atomic_mask(  cart_sites   = pro_sites_cart,
                                         grid_size    = pandda.reference_grid().grid_size(),
                                         unit_cell    = pandda.reference_grid().fake_unit_cell(),
-                                        max_dist     = pandda.params.maps.border_padding,
-                                        min_dist     = 1.8 )
+                                        max_dist     = pandda.params.masks.outer_mask,
+                                        min_dist     = pandda.params.masks.inner_mask )
             pandda.reference_grid().set_global_mask(global_mask)
 
         if pandda.reference_grid().symmetry_mask() is None:
@@ -226,8 +226,8 @@ def pandda_main(args):
                                                           grid_spacing = pandda.reference_grid().grid_spacing(),
                                                           grid_size  = pandda.reference_grid().grid_size(),
                                                           unit_cell  = pandda.reference_grid().fake_unit_cell(),
-                                                          max_dist   = pandda.params.maps.border_padding,
-                                                          min_dist   = 1.8 )
+                                                          max_dist   = pandda.params.masks.outer_mask,
+                                                          min_dist   = pandda.params.masks.inner_mask )
             pandda.reference_grid().set_symmetry_mask(symmetry_mask)
 
         # Print the summaries
@@ -412,8 +412,18 @@ def pandda_main(args):
         t_start = time.time()
 
         for d_handler in pandda.datasets.mask(mask_name='selected for analysis'):
+            
+            ################################################
+            # AUTOGENERATE SCRIPTS FOR VIEWING THE DATASET #
+            ################################################
 
-            if d_handler.raw_cluster_hits is None:
+            pandda.write_pymol_scripts(d_handler=d_handler)
+            
+            #############################################
+            # CALCULATE Z-MAPS AND LOOK FOR LARGE BLOBS #
+            #############################################
+
+            if 1 or (d_handler.hit_clusters is None):
 
                 pandda.log('===================================>>>', True)
                 pandda.log('Calculating Z-MAPs for Dataset {!s} ({!s}/{!s})'.format(d_handler.d_tag, d_handler.d_num+1, pandda.datasets.size()), True)
@@ -550,45 +560,105 @@ def pandda_main(args):
                 # LOOK FOR CLUSTERS OF Z-SCORES  #
                 ##################################
 
-                raw_cluster_hits = pandda.cluster_high_z_values(
-                                                d_handler            = d_handler,
-                                                z_map                = z_map,
-                                                z_cutoff             = z_cutoff,
-                                                point_mask           = combined_point_mask,
-                                                min_cluster_volume   = min_cluster_volume,
-                                                min_cluster_z_peak   = min_cluster_z_peak,
-                                                clustering_cutoff    = clustering_cutoff,
-                                                clustering_criterion = clustering_criterion,
-                                                clustering_metric    = clustering_metric,
-                                                clustering_method    = clustering_method
-                                            )
+                num_clusters, raw_hit_clusters = pandda.cluster_high_z_values(
+                                                            d_handler            = d_handler,
+                                                            z_map                = z_map,
+                                                            z_cutoff             = z_cutoff,
+                                                            point_mask           = combined_point_mask,
+                                                            clustering_cutoff    = clustering_cutoff,
+                                                            clustering_criterion = clustering_criterion,
+                                                            clustering_metric    = clustering_metric,
+                                                            clustering_method    = clustering_method
+                                                         )
+
+                if num_clusters == 0:
+                    # Nothing more to do with this dataset at the moment
+                    continue
+                elif num_clusters == -1:
+                    # This dataset is too noisy to analyse - flag!
+                    pandda.datasets.all_masks().set_mask_value(mask_name='noisy zmap', entry_id=d_handler.d_tag, value=True)
+                    # Link datasets to the noisy results directory
+                    noisy_dir = os.path.join(pandda.output_handler.get_dir('noisy_datasets'), d_handler.d_name)
+                    if not os.path.exists(noisy_dir):
+                        rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=noisy_dir)
+                    # Nothing more to do with this dataset at the moment
+                    continue
 
                 ################################
                 # FILTER CLUSTERS OF Z-SCORES  #
                 ################################
+
+                # Filter the clusters by size and peak height
+                num_clusters, filtered_hit_clusters = pandda.filter_z_clusters_1(
+                                                            hit_clusters       = raw_hit_clusters,
+                                                            min_cluster_volume = min_cluster_volume,
+                                                            min_cluster_z_peak = min_cluster_z_peak     )
+
+                if num_clusters == 0:
+                    pandda.log('===> No Clusters found - Minimum cluster peak/size not reached.', True)
+                    # Nothing more to do with this dataset at the moment
+                    continue
+
+                # Filter the clusters by distance from protein
+                num_clusters, filtered_hit_clusters = pandda.filter_z_clusters_2(
+                                                            hit_clusters     = filtered_hit_clusters,
+                                                            grid_spacing     = pandda.reference_grid().grid_spacing(), 
+                                                            grid_origin_cart = pandda.reference_dataset().origin_shift(),
+                                                            ref_structure    = pandda.reference_dataset().new_structure().hierarchy     )
+
+                if num_clusters == 0:
+                    pandda.log('===> No Clusters found - Clusters too far from protein.', True)
+                    # Nothing more to do with this dataset at the moment
+                    continue
+
+                # Filter the clusters by symmetry equivalence
+                num_clusters, filtered_hit_clusters = pandda.filter_z_clusters_3(
+                                                            hit_clusters     = filtered_hit_clusters,
+                                                            grid_spacing     = pandda.reference_grid().grid_spacing(), 
+                                                            grid_origin_cart = pandda.reference_dataset().origin_shift(),
+                                                            ref_unit_cell    = pandda.reference_dataset().unit_cell,
+                                                            ref_sym_ops      = pandda.crystal_contact_generators,
+                                                            ref_structure    = pandda.reference_dataset().new_structure().hierarchy     )
                 
+                pandda.log('===> {!s} Cluster(s) found.'.format(num_clusters), True)
+                assert num_clusters > 0, 'NUMBER OF CLUSTERS AFTER FILTERING == 0!'
+                
+                # Create a link to the interesting directories in the initial results directory
+                hit_dir = os.path.join(pandda.output_handler.get_dir('interesting_datasets'), d_handler.d_name)
+                if not os.path.exists(hit_dir):
+                    rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=hit_dir)
 
-                d_handler.raw_cluster_hits = raw_cluster_hits
+                ##############################
+                # PRINT MAP OF THE CLUSTERS  #
+                ##############################
 
-            # Create cluster object from the clustered points
-            if d_handler.raw_cluster_hits:
-                d_handler.clustered_hits = cluster_data(d_handler.raw_cluster_hits)
+                highz_points = []; [highz_points.extend(zip(*v)[0]) for v in filtered_hit_clusters.values()]
+                highz_map_array = numpy.zeros(pandda.reference_grid().grid_size_1d(), dtype=int)
+                highz_map_array.put(map(pandda.reference_grid().grid_indexer(), highz_points), [1]*len(highz_points))
+                pandda.write_array_to_map(d_handler.output_handler.get_file('high_z_mask'), flex.double(highz_map_array.tolist()))
+                
+                ##################################
+                # GROUP NEARBY CLUSTERS TOGETHER #
+                ##################################
 
-            ################################################
-            # AUTOGENERATE SCRIPTS FOR VIEWING THE DATASET #
-            ################################################
+                num_clusters, grouped_hit_clusters = pandda.group_clusters( hit_clusters = filtered_hit_clusters,
+                                                                            grid_spacing = pandda.reference_grid().grid_spacing()   )
 
-            pandda.write_pymol_scripts(d_handler=d_handler)
+                # Create cluster object from the clustered points
+                d_handler.hit_clusters = cluster_data(grouped_hit_clusters)
 
-            if d_handler.raw_cluster_hits:
+                time.sleep(5)
+
+            # Image Blobs in the datasets using ccp4mg
+            if d_handler.hit_clusters:
 
                 pandda.log('===================================>>>', True)
                 pandda.log('Imaging blobs in Dataset {!s}'.format(d_handler.d_tag), True)
 
-                sorted_blob_indices = d_handler.clustered_hits.sort(sorting_function=max)
+                sorted_blob_indices = d_handler.hit_clusters.sort(sorting_function=max)
                 blob_num = len(sorted_blob_indices)
 
-                for blob_rank, blob_grid_peak in enumerate(d_handler.clustered_hits.get_centroids(indices=sorted_blob_indices)):
+                for blob_rank, blob_grid_peak in enumerate(d_handler.hit_clusters.get_centroids(indices=sorted_blob_indices)):
 
                     # Only produce a certain number of images
                     if blob_rank == pandda.params.blob_search.blobs_to_image:
@@ -736,13 +806,26 @@ def test_pandda_results(pandda):
             dataset_ligands = correct_ligands[d_tag]
 
             # Get the clusters of identified points for this dataset
-            clust = pandda.datasets.get(d_tag=d_tag).clustered_hits
+            clust = pandda.datasets.get(d_tag=d_tag).hit_clusters
 
             # Go through the ligands in the dataset
             for loc_cart_tuple, smile in dataset_ligands:
 
                 loc_grid_tuple = tuple(flex.double(loc_cart_tuple)/pandda.reference_grid().grid_spacing())
                 pandda.log('\tLooking for {!s} at {!s}'.format(smile, loc_grid_tuple))
+
+                # TODO 
+                # TODO 
+                # TODO 
+                # TODO 
+                # TODO 
+                # TODO 
+                print 'NOT TAKING ACCOUNT OF THE ORIGIN SHIFT'
+                # TODO 
+                # TODO 
+                # TODO 
+                # TODO 
+                # TODO 
 
                 # Check to see if there are any identified points in this dataset
                 if clust==None:
@@ -1012,15 +1095,7 @@ def process_args_2(args=None):
 
 if __name__ == '__main__':
 
-    current_user = os.getlogin()
-
-    print('===================================>>>')
-    if current_user in ['rtalon']:
-        from insults import get_insult
-        print '{!s}: {!s}'.format(current_user,get_insult())
-    else:
-        print 'Hi {!s}. Welcome to PANDDAs.'.format(current_user)    
-    print('===================================>>>')
+    welcome(os.getlogin())
 
     pandda, err = pandda_main(args=None)
 

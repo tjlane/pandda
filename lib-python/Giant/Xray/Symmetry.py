@@ -10,23 +10,17 @@ from cctbx import crystal
 def generate_adjacent_symmetry_copies(ref_hierarchy, crystal_symmetry, buffer_thickness=0, method=2):
     """Find symmetry copies of the protein in contact with the asu and generate these copies"""
 
-    if method == 1:
-        sym_ops_mat, contacts_out = get_symmetry_operations_to_generate_crystal_contacts(ref_hierarchy=ref_hierarchy,
-                                                                                         crystal_symmetry=crystal_symmetry,
-                                                                                         buffer_thickness=buffer_thickness)
-    elif method == 2:
-        sym_ops_mat = get_symmetry_operations_to_generate_crystal_contacts_2(ref_hierarchy=ref_hierarchy,
-                                                                           crystal_symmetry=crystal_symmetry,
-                                                                           buffer_thickness=buffer_thickness)
-        contacts_out = None
+    sym_ops_mat = get_symmetry_operations_to_generate_crystal_contacts( ref_hierarchy=ref_hierarchy,
+                                                                        crystal_symmetry=crystal_symmetry,
+                                                                        buffer_thickness=buffer_thickness   )
 
     sym_hierarchies, chain_mappings = generate_crystal_copies_from_operations(ref_hierarchy=ref_hierarchy,
                                                                               crystal_symmetry=crystal_symmetry,
                                                                               sym_ops_mat=sym_ops_mat)
 
-    return sym_ops_mat, contacts_out, sym_hierarchies, chain_mappings
+    return sym_ops_mat, sym_hierarchies, chain_mappings
 
-def get_symmetry_operations_to_generate_crystal_contacts_2(ref_hierarchy, crystal_symmetry, buffer_thickness):
+def get_symmetry_operations_to_generate_crystal_contacts(ref_hierarchy, crystal_symmetry, buffer_thickness):
     """Use an alternate method to identify the symmetry operations required to generate crystal contacts"""
 
     # Extract the xray structure from the reference hierarchy
@@ -66,56 +60,6 @@ def get_symmetry_operations_to_generate_crystal_contacts_2(ref_hierarchy, crysta
 #      print m
 
     return sym_operations
-
-def get_symmetry_operations_to_generate_crystal_contacts(ref_hierarchy, crystal_symmetry, buffer_thickness):
-    """Extract symmetry operations to generate symmetry copies of the protein that form crystal contacts"""
-
-    # Extract the xray structure from the reference hierarchy
-    ref_struc = ref_hierarchy.extract_xray_structure(crystal_symmetry=crystal_symmetry)
-
-    # Extract the mappings that will tell us the adjacent symmetry copies
-    asu_mappings = ref_struc.asu_mappings(buffer_thickness=buffer_thickness)
-    uc = asu_mappings.unit_cell()
-    # Symmetry operations for each atom
-    mappings = asu_mappings.mappings()
-
-    # There should be one mappings list per atom
-    assert len(ref_struc.scatterers()) == len(mappings)
-
-    # Filter out the non-identity transformations
-    filtered_mappings = []
-    for at, m in zip(ref_struc.scatterers(), mappings):
-        for site_map in m:
-            rt_mx = asu_mappings.get_rt_mx(site_map)
-            if rt_mx.as_xyz() == 'x,y,z':
-                assert site_map.mapped_site() == uc.orthogonalize(at.site), 'SYMMETRY OPERATION IS NOT THE IDENTITY'
-            else:
-                filtered_mappings.append(  ( at,
-                                             rt_mx  ) )
-
-    # Different symmetry operations that map to symmetry neighbours
-    uniq_sym_op_xyz = sorted(list(set([m[1].as_xyz() for m in filtered_mappings])))
-
-    # Returned list of symmetry contacts, and operations
-    sym_ops_out = []
-    contacts_out = []
-
-    for sym_op_xyz in uniq_sym_op_xyz:
-
-        # Select atom mappings with this sym op
-        contacts, sym_op_maps = zip(*[x for x in filtered_mappings if x[1].as_xyz()==sym_op_xyz])
-
-        uniq_sym_ops = list(set([x.as_xyz() for x in sym_op_maps]))
-
-        assert len(uniq_sym_ops) == 1, 'MORE THAN ONE UNIQUE SYMMETRY OPERATION PRESENT FOR SAME OPERATION?!'
-#        print 'NEW OPERATION'
-#        print '\n'.join(uniq_sym_ops)
-#        print 'SIZE OF CONTACT AREA:', len(sym_op_maps)
-
-        sym_ops_out.append(sym_op_maps[0])
-        contacts_out.append(contacts)
-
-    return sym_ops_out, contacts_out
 
 def generate_crystal_copies_from_operations(ref_hierarchy, crystal_symmetry, sym_ops_mat):
     """Take a list of symmetry operations and apply them to reference hierarchy"""

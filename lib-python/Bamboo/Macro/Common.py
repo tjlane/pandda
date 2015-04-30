@@ -54,4 +54,4 @@ def extract_compound_smiles(pdbin, find_boring_compounds=False):
 
     [c.getSmiles() for c in cpds]
 
-    return [c.smile for c in cpds]
+    return [c.smile for c in cpds if c.smile]
