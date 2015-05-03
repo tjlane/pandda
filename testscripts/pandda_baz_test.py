@@ -17,7 +17,7 @@ input_args = [
 #
 "lig_style='../2-ligand/*.cif'",
 #
-"outdir=/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak/pandda-2.5-local-test-mapalign",
+"outdir=/home/npearce/Analyses/FragmentSoaks/BAZ2BA-Feb13-Soak/pandda-2.5-local-test",
 "alignment.method=local",
 "contour_level=2.5",
 "resolution_factor=0.33",

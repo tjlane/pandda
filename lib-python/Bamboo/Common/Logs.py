@@ -1,6 +1,22 @@
 #! /usr/local/python/python2.7.3-64bit/bin/python
 
-import os, datetime
+import os, sys, datetime
+
+class Log(object):
+    def __init__(self, log_file, stdout=sys.stdout):
+        """Log Object for writing to logs...?"""
+        # File that the log will be written to
+        self.log_file = log_file
+        self.stdout = stdout
+    def show(self, message, newline=True):
+        if newline:
+            self.stdout.write(message+'\n')
+        else:
+            self.stdout.write(message)
+    def write(self, message, mode='a'):
+        open(self.log_file, mode).write(message)
+    def read_all(self):
+        return open(self.log_file, 'r').read()
 
 class ligandRecord(object):
 

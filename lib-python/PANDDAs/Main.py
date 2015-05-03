@@ -34,6 +34,7 @@ from libtbx.math_utils import ifloor, iceil
 #from iotbx.reflection_file_utils import extract_miller_array_from_file
 
 from Bamboo.Common import compare_dictionaries
+from Bamboo.Common.Logs import Log
 from Bamboo.Common.File import output_file_object, easy_directory
 from Bamboo.Common.Data import data_collection, multiple_data_collection
 from Bamboo.Common.Masks import mask_collection
@@ -95,6 +96,346 @@ FILTER_GLOBAL_RMSD_CUTOFF = 1
 
 PANDDA_VERSION = 0.1
 
+class HolderList(object):
+    """Class for grouping many holders together"""
+    _holder_class = None
+
+    def __init__(self, *args):
+        self._holder_list = []
+        self._masks = mask_collection()
+        # Allow for subclassing
+        self.__class_init__(args)
+
+    def __class_init__(self, args):
+        pass
+
+    def __getitem__(self, idx):
+        if   isinstance(idx, int): return self.get(num=idx)
+        elif isinstance(idx, str): return self.get(tag=idx)
+        else: raise Exception('CANNOT INDEX EXCEPT BY int OR str. TYPE GIVEN: {!s}'.format(type(idx)))
+
+    def __call__(self):
+        """Return all holders"""
+        return self.all()
+
+    def all(self):
+        """Return all holders"""
+        return self._holder_list
+    def all_nums(self):
+        """Return the list of holder ids"""
+        return [h.num for h in self.all()]
+    def all_tags(self):
+        """Return the list of holder tags"""
+        return [h.tag for h in self.all()]
+
+    def all_masks(self):
+        """Return the mask object"""
+        return self._masks
+    def mask(self, mask_name, invert=False):
+        """Retrieve a masked list of datasets"""
+        return self._masks.mask(mask_name=mask_name, input_list=self.all(), invert=invert)
+
+    def size(self, mask_name=None, invert=False):
+        """Return the number of holders in the list (with optional mask applied)"""
+        if mask_name:   return len(self.mask(mask_name=mask_name, invert=invert))
+        else:           return len(self.all())
+
+    def add(self, new_holders):
+        """Add new datasets"""
+
+        for new_h in new_holders:
+            # Check all added datasets are the right class
+            if self._holder_class:
+                assert isinstance(new_h, self._holder_class), 'OBJECTS MUST BE OF TYPE: {!s}\n(ADDED OF TYPE: {!s})'.format(self._holder_class, type(new_h))
+            # Check all added dataset id tags are strs
+            assert isinstance(new_h.tag, str), 'TAG MUST BE str. Type given: {!s}'.format(type(new_h.tag))
+            assert new_h.tag not in self.all_tags(), 'HOLDER WITH TAG ALREADY EXISTS: {!s}'.format(new_h.tag)
+            # Check all added dataset id nums are ints
+            assert isinstance(new_h.num, int), 'NUM MUST BE int. Type given: {!s}'.format(type(new_h.num))
+            assert new_h.num not in self.all_nums(), 'HOLDER WITH NUM ALREADY EXISTS: {!s}'.format(new_h.num)
+            # No problems, add to list
+            self._holder_list.append(new_h)
+
+    def get(self, tag=None, num=None):
+        """Get a dataset by tag or num"""
+
+        assert [num, tag].count(None) == 1, 'Must give EITHER num OR tag'
+        if num: matching = [m for m in self.all() if m.num == num]
+        else:   matching = [m for m in self.all() if m.tag == tag]
+        if len(matching) == 0: raise Exception('NO MATCHING HOLDER FOUND - NUM: {!s}, TAG: {!s}'.format(num, tag))
+        if len(matching) != 1: raise Exception('MORE THAN ONE MATCHING HOLDER FOUND - NUM: {!s}, TAG: {!s}'.format(num, tag))
+        return matching[0]
+
+class DatasetHandler(object):
+    def __init__(self, dataset_number, pdb_filename, mtz_filename, dataset_tag=None, name_prefix=''):
+        """Create a dataset object to allow common functions to be applied easily to a number of datasets"""
+
+        assert os.path.exists(pdb_filename), 'PDB file does not exist!'
+        assert os.path.exists(mtz_filename), 'MTZ file does not exist!'
+
+        # Store dataset number
+        self.num = dataset_number
+        # Store the tag for the dataset
+        if dataset_tag:
+            self.tag = dataset_tag
+        else:
+            # If num < 0 - mark as a reference dataset
+            if self.num < 0:  self.tag = 'REF{:05d}'.format(self.num)
+            else:             self.tag = 'D{:05d}'.format(self.num)
+        # Store a name for the dataset
+        self.name = name_prefix + '{!s}'.format(self.tag)
+
+        # Output Directories
+        self.output_handler = None
+
+        ########################################################
+
+        # Store filenames
+        self._pdb_file = os.path.abspath(pdb_filename)
+        self._mtz_file = os.path.abspath(mtz_filename)
+
+        # PDB Objects
+        self._structure = self.new_structure()
+
+        ########################################################
+
+        # Unscaled structure factors
+        self.unscaled_sfs = None
+        # Scaled structure factors
+        self.scaled_sfs = None
+        # Truncated structure factors
+        self.tr_scaled_sfs = None
+
+        # TODO REMOVE TODO
+        # Native Map (in own unit cell)
+        self.native_map = None
+        # Morpher Map (reference grid)
+        self.morphed_map = None
+        # TODO REMOVE TODO
+
+        # Initialise other variables
+        self.unit_cell = None
+        self.space_group = None
+
+        # Single matrix - global alignment
+        self._global_rt_transform = None
+        # Multiple matrices - local alignment
+        self._local_rt_transforms = None
+
+        ########################################################
+
+        # TODO REMOVE TODO
+        # Map uncertainties
+        self._map_uncertainty = None
+
+        # Z-Map statistics
+        self.z_map_stats = {}
+        # TODO REMOVE TODO
+
+        ########################################################
+
+        # Map of the clusters in the dataset
+        self.hit_clusters = None
+
+        # MANUAL VARIABLES - ONLY TO BE ACCESSED DURING TESTING
+        self.number_of_sig_points = 0
+
+        ########################################################
+
+    def initialise_output_directory(self, outputdir):
+        """Initialise a dataset output directory"""
+        # Create a file and directory organiser
+        self.output_handler = output_file_object(rootdir=easy_directory(outputdir))
+
+    def pdb_filename(self):
+        return self._pdb_file
+    def mtz_filename(self):
+        return self._mtz_file
+
+    def input(self):
+        return self._structure.input
+    def hierarchy(self):
+        return self._structure.hierarchy
+
+    def new_structure(self):
+        """Generate a new copy of the input-hierarchy pair, from the pdb file"""
+        return iotbx.pdb.hierarchy.input(file_name=self._pdb_file)
+
+    def reflection_data(self):
+        """Return an object containing the reflection data"""
+        return iotbx.mtz.object(self._mtz_file)
+
+    def get_heavy_atom_sites(self):
+        xray_structure = self.input().xray_structure_simple()
+        return xray_structure.sites_cart().select(xray_structure.heavy_selection())
+    def get_calpha_sites(self):
+        xray_structure = self.input().xray_structure_simple()
+        return xray_structure.sites_cart().select(xray_structure.backbone_selection(atom_names=['CA']))
+    def get_backbone_sites(self):
+        xray_structure = self.input().xray_structure_simple()
+        return xray_structure.sites_cart().select(xray_structure.backbone_selection())
+
+    def set_global_alignment(self, alignment):
+        self._global_rt_transform = alignment
+    def global_alignment_transform(self):
+        return self._global_rt_transform
+
+    def set_local_alignments(self, alignment):
+        self._local_rt_transforms = alignment
+    def local_alignment_transforms(self):
+        return self._local_rt_transforms
+
+    # TODO STORE IN THE MAP_DATA_OBJ ALONG WITH THE MAP TODO
+    def set_map_uncertainty(self, sigma):
+        self._map_uncertainty = sigma
+    def map_uncertainty(self):
+        return self._map_uncertainty
+    # TODO STORE IN THE MAP_DATA_OBJ ALONG WITH THE MAP TODO
+
+    # TODO REMOVE TODO
+    def get_map_uncertainty(self):
+        return self._map_uncertainty
+    # TODO REMOVE TODO
+
+    def get_pickle_copy(self):
+        """Get copy of self that can be pickled - some cctbx objects cannot be pickled..."""
+        return self
+
+    def get_structure_summary(self):
+        return structure_summary(hierarchy=self.hierarchy())
+
+    def transform_from_reference(self, points, method, point_mappings=None):
+        """Use alignment to map from reference frame to our frame"""
+        assert method in ['local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
+        if method == 'global':
+            # Simple - use one rt to transform all of the points
+            return self.global_alignment_transform().rt().inverse() * points
+        elif method == 'local':
+            # Use point mappings to tell us which residue rt to use for each point
+            assert point_mappings, 'NO MAPPINGS GIVEN BETWEEN POINTS AND RTS'
+            assert len(points) == len(point_mappings), 'POINT MAPPINGS NOT THE SAME LENGTH AS POINTS'
+
+            # Get the set of labels to transform in groups
+            lab_set = sorted(list(set(point_mappings)))
+            all_idxs = []
+            # Initialise output array
+            rt_points = numpy.zeros(len(points), dtype=[('x',float),('y',float),('z',float)])
+            for r_lab in lab_set:
+                # Extract the idxs and points of points with this label in the mapping
+                lab_idxs, lab_points = zip(*[(i, points[i]) for i, i_lab in enumerate(point_mappings) if r_lab==i_lab])
+                # Transform all of these points at once
+                lab_rt_points = self.local_alignment_transforms()[r_lab].rt().inverse() * flex.vec3_double(lab_points)
+                # Populate the array at the appropriate place
+                rt_points.put(lab_idxs, lab_rt_points)
+                all_idxs.extend(lab_idxs)
+
+            assert len(list(set(all_idxs))) == len(points)
+
+            return flex.vec3_double(rt_points)
+
+    def transform_to_reference(self, points, method, point_mappings=None):
+        """Use alignment to map to reference frame from our frame"""
+        assert method in ['local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
+        if method == 'global':
+            # Simple - use one rt to transform all of the points
+            return self.global_alignment_transform().rt() * points
+        elif method == 'local':
+            if not point_mappings:
+                # Use point mappings to tell us which residue rt to use for each point
+                point_mappings = self.find_nearest_calpha(points)
+
+            # Get the set of labels to transform in groups
+            lab_set = sorted(list(set(point_mappings)))
+            all_idxs = []
+            # Initialise output array
+            rt_points = numpy.zeros(len(points), dtype=[('x',float),('y',float),('z',float)])
+            for r_lab in lab_set:
+                # Extract the idxs and points of points with this label in the mapping
+                lab_idxs, lab_points = zip(*[(i, points[i]) for i, i_lab in enumerate(point_mappings) if r_lab==i_lab])
+                # Transform all of these points at once
+                lab_rt_points = self.local_alignment_transforms()[r_lab].rt() * flex.vec3_double(lab_points)
+                # Populate the array at the appropriate place
+                rt_points.put(lab_idxs, lab_rt_points)
+                all_idxs.extend(lab_idxs)
+
+            assert len(list(set(all_idxs))) == len(points)
+
+            # Initial brute force method
+            #rt_points = [self.local_alignment_transforms()[r_lab].rt() * p for r_lab, p in zip(point_mappings, points)]
+
+            return flex.vec3_double(rt_points)
+
+    def find_nearest_calpha(self, points):
+        """Returns the labels of the nearest calpha for each of the given points"""
+
+        calpha_hierarchy = self.hierarchy().select(self.hierarchy().atom_selection_cache().selection('pepnames and name CA'))
+        atom_sites, atom_labels = zip(*[(a.xyz, (a.chain_id, a.resid())) for a in calpha_hierarchy.atoms_with_labels()])
+
+        tree = scipy.spatial.KDTree(data=atom_sites)
+        nn_dists, nn_groups = tree.query(points)
+        return [atom_labels[i] for i in nn_groups]
+
+class ReferenceDatasetHandler(DatasetHandler):
+    _origin_shift = (0,0,0)
+    _binning = None
+
+    def set_origin_shift(self, origin_shift):
+        self._origin_shift = origin_shift
+    def origin_shift(self):
+        return self._origin_shift
+
+    def set_map_scale(self, map_mean, map_rms):
+        """Record the map mean and rms values"""
+        self._map_mean = map_mean
+        self._map_rms  = map_rms
+    def map_scale(self):
+        return (self._map_mean, self._map_rms)
+
+class DatasetHandlerList(HolderList):
+    """Class for grouping many dataset handlers together"""
+    _holder_class = DatasetHandler
+
+    def __custom_init__(self, *args):
+        print args
+
+class MapHolder(object):
+    parent = None
+    """Class to hold map values and meta data"""
+    def __init__(self, num, tag, map, unit_cell, meta, parent_dataset=None):
+        assert isinstance(num, int), 'Num must be int. Type given: {!s}'.format(type(num))
+        self.num = num
+        assert isinstance(tag, str), 'Tag must be str. Type given: {!s}'.format(type(tag))
+        self.tag = tag
+        assert isinstance(map, flex.double), 'Map data must be flex.double. Type given: {!s}'.format(type(map))
+        self.map = map
+        assert isinstance(unit_cell, cctbx.uctbx.unit_cell), 'Unit cell must be of type unit_cell. Type given: {!s}'.format(type(unit_cell))
+        self.unit_cell = unit_cell
+        assert isinstance(meta, dict), 'Meta must be dict. Type given: {!s}'.format(type(meta))
+        self.meta = meta
+        if parent_dataset:
+            assert isinstance(parent_dataset, DatasetHandler), 'parent_dataset must be of type DatasetHandler. Type given: {!s}'.format(type(parent_dataset))
+            self.parent = parent_dataset
+
+class MapHolderList(HolderList):
+    """Class for grouping many MapHolder objects together"""
+
+    def __custom_init__(self, *args):
+        print args
+
+class MapList(object):
+    _initialized = False
+    _map_names = []
+    def __init__(self, map_names=[]):
+        assert self._map_names+map_names, 'No Map Names defined'
+        for m in self._map_names+map_names:
+            self.__dict__[m] = None
+        self._initialized = True
+
+    def __setattr__(self, name, value):
+        if self._initialized and (not hasattr(self, name)):
+            raise AttributeError('Cannot set new attributes after initialisation: {!s}'.format(name))
+        object.__setattr__(self, name, value)
+
 def map_handler(map_data, unit_cell):
     """Map handler for easy sampling of map"""
 
@@ -145,294 +486,11 @@ def align_dataset_to_reference(d_handler, ref_handler, method):
         global_rt_transform = None
 
     if method == 'local' or method == 'both':
-        local_rt_transforms = perform_flexible_alignment(mov_hierarchy=d_handler.get_hierarchy(), ref_hierarchy=ref_handler.get_hierarchy())
+        local_rt_transforms = perform_flexible_alignment(mov_hierarchy=d_handler.hierarchy(), ref_hierarchy=ref_handler.hierarchy())
     else:
         local_rt_transforms = None
 
     return global_rt_transform, local_rt_transforms
-
-class dataset_handler_list(object):
-    """Class for grouping many dataset handlers together"""
-
-    def __init__(self):
-        self._datasets = []
-        self._masks = mask_collection()
-
-    def __getitem__(self, idx):
-        if   isinstance(idx, int): return self.get(d_num = idx)
-        elif isinstance(idx, str): return self.get(d_tag = idx)
-        else: raise Exception('CANNOT INDEX EXCEPT BY int OR str. TYPE GIVEN: {!s}'.format(type(idx)))
-
-    def __call__(self):
-        """Return all datasets"""
-        return self._datasets
-
-    def all_masks(self):
-        """Return the mask object"""
-        return self._masks
-
-    def all(self):
-        """Return all datasets"""
-        return self._datasets
-    def all_nums(self):
-        """Return the list of dataset ids"""
-        return [d.d_num for d in self.all()]
-    def all_tags(self):
-        """Return the list of dataset tags"""
-        return [d.d_tag for d in self.all()]
-
-    def size(self, mask_name=None, invert=False):
-        """Return the number of datasets in the handler (with optional mask applied)"""
-        if mask_name:   return len(self.mask(mask_name=mask_name, invert=invert))
-        else:           return len(self.all())
-
-    def add(self, new_datasets):
-        """Add new datasets"""
-
-        for new_d in new_datasets:
-            # Check all added datasets are the right class
-            assert isinstance(new_d, dataset_handler), 'ADDED OBJECTS MUST BE OF TYPE: {!s}'.format(dataset_handler.__name__)
-            # Check all added dataset id tags are strs
-            assert isinstance(new_d.d_tag, str), 'DATASET TAG MUST BE str. Type given: {!s}'.format(type(new_d.d_tag))
-            assert new_d.d_tag not in self.all_tags(), 'DATASET TAG ALREADY EXISTS: {!s}'.format(new_d.d_tag)
-            # Check all added dataset id nums are ints
-            assert isinstance(new_d.d_num, int), 'DATASET NUM MUST BE int: {!s}'.format(type(new_d.d_num))
-            assert new_d.d_num not in self.all_nums(), 'DATASET NUM ALREADY EXISTS: {!s}'.format(new_d.d_num)
-            # No problems, add to list
-            self._datasets.append(new_d)
-
-    def get(self, d_tag=None, d_num=None):
-        """Get a dataset by tag or num"""
-
-        assert d_num or d_tag, 'No dataset NUM or TAG given!'
-        assert not (d_num and d_tag), 'BOTH dataset NUM and TAG given!'
-        if d_num: matching = [d for d in self.all() if d.d_num == d_num]
-        else:     matching = [d for d in self.all() if d.d_tag == d_tag]
-        if len(matching) == 0: raise Exception('NO MATCHING DATASET FOUND - DNUM: {!s}, DTAG: {!s}'.format(d_num, d_tag))
-        if len(matching) != 1: raise Exception('MORE THAN ONE MATCHING DATASET - DNUM: {!s}, DTAG: {!s}'.format(d_num, d_tag))
-        return matching[0]
-
-    def mask(self, mask_name, invert=False):
-        """Retrieve a masked list of datasets"""
-        return self._masks.mask(mask_name=mask_name, input_list=self.all(), invert=invert)
-
-class dataset_handler(object):
-    def __init__(self, dataset_number, pdb_filename, mtz_filename, dataset_tag=None, name_prefix=''):
-        """Create a dataset object to allow common functions to be applied easily to a number of datasets"""
-
-        assert os.path.exists(pdb_filename), 'PDB file does not exist!'
-        assert os.path.exists(mtz_filename), 'MTZ file does not exist!'
-
-        # Store dataset number
-        self.d_num = dataset_number
-        # Store the tag for the dataset
-        if dataset_tag:
-            self.d_tag = dataset_tag
-        else:
-            # If d_num < 0 - mark as a reference dataset
-            if self.d_num < 0:  self.d_tag = 'REF{:05d}'.format(self.d_num)
-            else:               self.d_tag = 'D{:05d}'.format(self.d_num)
-        # Store a name for the dataset
-        self.d_name = name_prefix + '{!s}'.format(self.d_tag)
-
-        # Output Directories
-        self.output_handler = None
-
-        ########################################################
-
-        # Store filenames
-        self._pdb_file = os.path.abspath(pdb_filename)
-        self._mtz_file = os.path.abspath(mtz_filename)
-
-        # PDB Objects
-        self._structure = self.new_structure()
-
-        ########################################################
-
-        # Unscaled structure factors
-        self.unscaled_sfs = None
-        # Scaled structure factors
-        self.scaled_sfs = None
-        # Truncated structure factors
-        self.tr_scaled_sfs = None
-
-        # Native Map (in own unit cell)
-        self.native_map = None
-        # Morpher Map (reference grid)
-        self.morphed_map = None
-
-        # Initialise other variables
-        self.unit_cell = None
-        self.space_group = None
-
-        # Single matrix - global alignment
-        self._global_rt_transform = None
-        # Multiple matrices - local alignment
-        self._local_rt_transforms = None
-
-        ########################################################
-
-        # Map uncertainties
-        self._map_uncertainty = None
-
-        # Z-Map statistics
-        self.z_map_stats = {}
-
-        ########################################################
-
-        # Map of the clusters in the dataset
-        self.hit_clusters = None
-
-        # MANUAL VARIABLES - ONLY TO BE ACCESSED DURING TESTING
-        self.number_of_sig_points = 0
-
-        ########################################################
-
-    def initialise_output_directory(self, outputdir):
-        """Initialise a dataset output directory"""
-        # Create a file and directory organiser
-        self.output_handler = output_file_object(rootdir=easy_directory(outputdir))
-
-    def get_pdb_filename(self):
-        return self._pdb_file
-    def get_mtz_filename(self):
-        return self._mtz_file
-
-    def get_input(self):
-        return self._structure.input
-    def get_hierarchy(self):
-        return self._structure.hierarchy
-
-    def new_structure(self):
-        """Generate a new copy of the input-hierarchy pair, from the pdb file"""
-        return iotbx.pdb.hierarchy.input(file_name=self._pdb_file)
-
-    def reflection_data(self):
-        """Return an object containing the reflection data"""
-        return iotbx.mtz.object(self._mtz_file)
-
-    def get_resolution(self):
-        # TODO REMOVE - POINTLESS WRAPPER TODO
-        return self.reflection_data().max_min_resolution()[1]
-
-    def get_heavy_atom_sites(self):
-        xray_structure = self.get_input().xray_structure_simple()
-        return xray_structure.sites_cart().select(xray_structure.heavy_selection())
-    def get_calpha_sites(self):
-        xray_structure = self.get_input().xray_structure_simple()
-        return xray_structure.sites_cart().select(xray_structure.backbone_selection(atom_names=['CA']))
-    def get_backbone_sites(self):
-        xray_structure = self.get_input().xray_structure_simple()
-        return xray_structure.sites_cart().select(xray_structure.backbone_selection())
-
-    def set_global_alignment(self, alignment):
-        self._global_rt_transform = alignment
-    def get_global_alignment_transform(self):
-        return self._global_rt_transform
-
-    def set_local_alignments(self, alignment):
-        self._local_rt_transforms = alignment
-    def get_local_alignment_transforms(self):
-        return self._local_rt_transforms
-
-    def set_map_uncertainty(self, sigma):
-        self._map_uncertainty = sigma
-    def get_map_uncertainty(self):
-        return self._map_uncertainty
-
-    def get_pickle_copy(self):
-        """Get copy of self that can be pickled - some cctbx objects cannot be pickled..."""
-        return self
-
-    def get_structure_summary(self):
-        return structure_summary(hierarchy=self.get_hierarchy())
-
-    def transform_from_reference(self, points, method, point_mappings=None):
-        """Use alignment to map from reference frame to our frame"""
-        assert method in ['local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
-        if method == 'global':
-            # Simple - use one rt to transform all of the points
-            return self.get_global_alignment_transform().rt().inverse() * points
-        elif method == 'local':
-            # Use point mappings to tell us which residue rt to use for each point
-            assert point_mappings, 'NO MAPPINGS GIVEN BETWEEN POINTS AND RTS'
-            assert len(points) == len(point_mappings), 'POINT MAPPINGS NOT THE SAME LENGTH AS POINTS'
-
-            # Get the set of labels to transform in groups
-            lab_set = sorted(list(set(point_mappings)))
-            all_idxs = []
-            # Initialise output array
-            rt_points = numpy.zeros(len(points), dtype=[('x',float),('y',float),('z',float)])
-            for r_lab in lab_set:
-                # Extract the idxs and points of points with this label in the mapping
-                lab_idxs, lab_points = zip(*[(i, points[i]) for i, i_lab in enumerate(point_mappings) if r_lab==i_lab])
-                # Transform all of these points at once
-                lab_rt_points = self.get_local_alignment_transforms()[r_lab].rt().inverse() * flex.vec3_double(lab_points)
-                # Populate the array at the appropriate place
-                rt_points.put(lab_idxs, lab_rt_points)
-                all_idxs.extend(lab_idxs)
-
-            assert len(list(set(all_idxs))) == len(points)
-
-            return flex.vec3_double(rt_points)
-
-    def transform_to_reference(self, points, method, point_mappings=None):
-        """Use alignment to map to reference frame from our frame"""
-        assert method in ['local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
-        if method == 'global':
-            # Simple - use one rt to transform all of the points
-            return self.get_global_alignment_transform().rt() * points
-        elif method == 'local':
-            if not point_mappings:
-                # Use point mappings to tell us which residue rt to use for each point
-                point_mappings = self.find_nearest_calpha(points)
-
-            # Get the set of labels to transform in groups
-            lab_set = sorted(list(set(point_mappings)))
-            all_idxs = []
-            # Initialise output array
-            rt_points = numpy.zeros(len(points), dtype=[('x',float),('y',float),('z',float)])
-            for r_lab in lab_set:
-                # Extract the idxs and points of points with this label in the mapping
-                lab_idxs, lab_points = zip(*[(i, points[i]) for i, i_lab in enumerate(point_mappings) if r_lab==i_lab])
-                # Transform all of these points at once
-                lab_rt_points = self.get_local_alignment_transforms()[r_lab].rt() * flex.vec3_double(lab_points)
-                # Populate the array at the appropriate place
-                rt_points.put(lab_idxs, lab_rt_points)
-                all_idxs.extend(lab_idxs)
-
-            assert len(list(set(all_idxs))) == len(points)
-
-            # Initial brute force method
-            #rt_points = [self.get_local_alignment_transforms()[r_lab].rt() * p for r_lab, p in zip(point_mappings, points)]
-
-            return flex.vec3_double(rt_points)
-
-    def find_nearest_calpha(self, points):
-        """Returns the labels of the nearest calpha for each of the given points"""
-
-        calpha_hierarchy = self.get_hierarchy().select(self.get_hierarchy().atom_selection_cache().selection('pepnames and name CA'))
-        atom_sites, atom_labels = zip(*[(a.xyz, (a.chain_id, a.resid())) for a in calpha_hierarchy.atoms_with_labels()])
-
-        tree = scipy.spatial.KDTree(data=atom_sites)
-        nn_dists, nn_groups = tree.query(points)
-        return [atom_labels[i] for i in nn_groups]
-
-class reference_dataset_handler(dataset_handler):
-    _origin_shift = (0,0,0)
-    _binning = None
-
-    def set_origin_shift(self, origin_shift):
-        self._origin_shift = origin_shift
-    def origin_shift(self):
-        return self._origin_shift
-
-    def set_map_scale(self, map_mean, map_rms):
-        """Record the map mean and rms values"""
-        self._map_mean = map_mean
-        self._map_rms  = map_rms
-    def get_map_scale(self):
-        return (self._map_mean, self._map_rms)
 
 class identical_structure_ensemble(object):
     """Class for collating and comparing multiple observations of the same structure"""
@@ -592,19 +650,194 @@ class identical_structure_ensemble(object):
 
         return '\n'.join(report_string)
 
-class map_list(object):
-    _initialized = False
-    def __init__(self, map_names):
-        for m in map_names:
-            self.__dict__[m] = None
-        self._initialized = True
+class PanddaStatMapList(MapList):
+    _map_names =    [   'mean_map',
+                        'stds_map',
+                        'adj_stds_map',
+                        'skew_map',
+                        'kurt_map',
+                        'bimo_map'
+                    ]
 
-    def __setattr__(self, name, value):
-        if self._initialized and (not hasattr(self, name)):
-            raise AttributeError('Cannot set new attributes after initialisation: {!s}'.format(name))
-        object.__setattr__(self, name, value)
+class PanddaMapAnalyser(object):
+    """Class to hold dataset maps, statistical maps and meta data for a set of related maps. Also holds functions for analysing the maps."""
 
-class multi_dataset_analyser(object):
+    def __init__(self, dataset_maps, meta, statistical_maps=None, parent=None):
+        assert isinstance(meta, dict), 'meta must be of type dict. Type given: {!s}'.format(type(meta))
+        assert meta['resolution']
+        assert meta['grid_size']
+        assert meta['grid_size_1d']
+        self.meta = meta
+        assert isinstance(dataset_maps, MapHolderList), 'dataset_maps must be stored in a MapHolderList. Type given: {!s}'.format(type(dataset_maps))
+        self.dataset_maps = dataset_maps
+        if statistical_maps:
+            assert isinstance(statistical_maps, PanddaStatMapList), 'statistical_maps must be of type MapList. Type given: {!s}'.format(type(statistical_maps))
+            self.statistical_maps = statistical_maps
+        else:
+            self.statistical_maps = PanddaStatMapList()
+        if parent:
+            assert isinstance(parent, PanddaMultiDatasetAnalyser), 'Parent must be of type PanddaMultiDatasetAnalyser. Type given: {!s}'.format(type(parent))
+            self.parent = parent
+        else:
+            self.parent = None
+
+    def validate_maps(self):
+        """Check that all of the added maps are the same size etc..."""
+
+        for mh in self.dataset_maps.all():
+            print 'Checking Map {!s}'.format(mh.name)
+
+    def calculate_mean_map(self, masked_idxs=None):
+        """Calculate the mean map from all of the different observations"""
+
+        if not masked_idxs: masked_idxs = range(0, self.meta['grid_size_1d'])
+        else:               assert max(masked_idxs) < self.meta['grid_size_1d'], 'masked_idxs out of range of map'
+
+        # Chunk the points into groups - Compromise between cpu time and memory usage - ~200 dataset -> chunksize of 5000
+        chunk_size = 1000*int(2000/self.dataset_maps.size())
+        chunked_indices = [masked_idxs[i:i + chunk_size] for i in range(0, len(masked_idxs), chunk_size)]
+        num_chunks = len(chunked_indices)
+
+        self.log('Iterating through {!s} points in {!s} chunks'.format(len(masked_idxs), num_chunks), True)
+        t1 = time.time()
+
+        # Calculate Mean Maps
+        mean_map_vals = numpy.zeros(self.meta['grid_size_1d'])
+        # Calculate the mean map across the datasets
+        for i_chunk, chunk_idxs in enumerate(chunked_indices):
+            status_bar(n=i_chunk, n_max=num_chunks)
+            p_map_vals = numpy.array([mh.map.select(chunk_idxs) for mh in self.dataset_maps.all()])
+            # Check that the output values are the expected dimensions
+            if i_chunk+1 < num_chunks:
+                assert len(p_map_vals) == self.dataset_maps.size()
+                assert len(p_map_vals.T) == chunk_size
+            # Calculate the mean of this chunk
+            p_map_means = numpy.mean(p_map_vals, axis=0)
+            mean_map_vals.put(chunk_idxs, p_map_means)
+
+        status_bar(n=num_chunks, n_max=num_chunks)
+
+        t2 = time.time()
+        print('> MEAN MAP CALCULATION > Time Taken: {!s} seconds'.format(int(t2-t1)))
+
+        mean_map_vals = flex.double(mean_map_vals.tolist())
+
+        if self.parent:
+            mean_map_file = self.parent.output_handler.get_file('mean_map')
+            self.parent.write_array_to_map(output_file=mean_map_file, map_data=mean_map_vals)
+
+        self.statistical_maps.mean_map = mean_map_vals
+        return mean_map_vals
+
+    def calculate_map_uncertainties(self, masked_idxs=None):
+        """Calculate the uncertainty in each of the different maps"""
+
+        try:
+            import matplotlib
+            matplotlib.interactive(0)
+            from matplotlib import pyplot
+            output_graphs = True
+        except:
+            output_graphs = False
+
+        if not masked_idxs: masked_idxs = range(0, self.meta['grid_size_1d'])
+        else:               assert max(masked_idxs) < self.meta['grid_size_1d'], 'masked_idxs out of range of map'
+
+        # Section of q-q plot to calculate slope over (-q_cut -> +q_cut)
+        q_cut = 1.5
+        # Extract the mean map values
+        masked_mean_vals = self.statistical_maps.mean_map.select(masked_idxs)
+        # ...and sort them
+        sorted_mean_vals = sorted(masked_mean_vals)
+        # Extract the theoretical quantiles that we would expect if these values were from a normal distribution
+        expected_diff_vals = normal_distribution().quantiles(len(masked_idxs))
+        # Select the points in the middle of the distribution
+        middle_indices = (expected_diff_vals < q_cut).iselection().intersection((expected_diff_vals > -1*q_cut).iselection())
+        middle_expected_diff_vals = expected_diff_vals.select(middle_indices)
+
+        self.log('===================================>>>')
+
+        for mh in self.dataset_maps.all():
+
+            if mh.meta['map_uncertainty']:
+                print '\rSKIPPING Dataset {!s} ({!s}/{!s})                                 '.format(mh.tag, mh.num+1, self.dataset_maps.size()),; sys.stdout.flush()
+                continue
+            else:
+                print '\rCalculating Map Uncertainty for Dataset {!s} ({!s}/{!s})          '.format(mh.tag, mh.num+1, self.dataset_maps.size()),; sys.stdout.flush()
+
+            # Extract the map values as the masked indices
+            masked_map_vals = mh.map.select(masked_idxs)
+            # Subtract the mean map from the observed map
+            diff_mean_map_vals = masked_map_vals - masked_mean_vals
+            # Sort the map values for both the masked map and the deviations from the mean map
+            sorted_observed_vals = sorted(masked_map_vals)
+            sorted_observed_diff_vals = sorted(diff_mean_map_vals)
+            # Select the middle indices
+            middle_observed_diff_vals = flex.double(sorted_observed_diff_vals).select(middle_indices)
+            # Calculate the slope of the centre of the graph
+            fit_coeffs = numpy.polyfit(x=middle_expected_diff_vals, y=middle_observed_diff_vals, deg=1)
+            map_unc, map_off = fit_coeffs[0:2]
+
+            # Save the uncertainty
+            mh.meta['map_uncertainty'] = map_unc
+            print '> UNCERTAINTY: {!s}'.format(fit_coeffs.round(3).tolist()[0])
+
+            if output_graphs and mh.parent:
+
+                fig = pyplot.figure()
+                pyplot.title('UNSORTED MEAN v OBS SCATTER PLOT')
+                pyplot.plot([-3, 10], [-3, 10], 'b--')
+                pyplot.plot(masked_mean_vals, masked_map_vals, 'go')
+                pyplot.xlabel('MEAN MAP VALUES')
+                pyplot.ylabel('OBSV MAP VALUES')
+                # Apply tight layout to prevent overlaps
+                pyplot.tight_layout()
+                # Save
+                pyplot.savefig(mh.parent.output_handler.get_file('obs_qqplot_unsorted_png'))
+                pyplot.close(fig)
+
+                fig = pyplot.figure()
+                pyplot.title('SORTED MEAN v OBS Q-Q PLOT')
+                pyplot.plot([-3, 10], [-3, 10], 'b--')
+                pyplot.plot(sorted_mean_vals, sorted_observed_vals, 'go-')
+                pyplot.xlabel('SORTED MEAN MAP VALUES')
+                pyplot.ylabel('SORTED OBSV MAP VALUES')
+                # Apply tight layout to prevent overlaps
+                pyplot.tight_layout()
+                # Save
+                pyplot.savefig(mh.parent.output_handler.get_file('obs_qqplot_sorted_png'))
+                pyplot.close(fig)
+
+                fig = pyplot.figure()
+                pyplot.title('DIFF-MEAN-MAP Q-Q PLOT')
+                pyplot.plot([map_off-5*map_unc, map_off+5*map_unc], [-5, 5], 'b--')
+                pyplot.plot([-1, 1], [q_cut, q_cut], 'k-.')
+                pyplot.plot([-1, 1], [-q_cut, -q_cut], 'k-.')
+                pyplot.plot(sorted_observed_diff_vals, expected_diff_vals, 'go-')
+                pyplot.xlabel('DIFF-MEAN-MAP QUANTILES')
+                pyplot.ylabel('THEORETICAL QUANTILES')
+                # Apply tight layout to prevent overlaps
+                pyplot.tight_layout()
+                # Save
+                pyplot.savefig(mh.parent.output_handler.get_file('unc_qqplot_png'))
+                pyplot.close(fig)
+
+        self.log('\rMap Uncertainties Calculated.                                         ', True)
+
+        try:
+            from ascii_graph import Pyasciigraph
+            g=Pyasciigraph()
+            graph_data = [(mh.tag, round(mh.meta['map_uncertainty'],3)) for mh in self.dataset_maps.all()]
+            for l in g.graph(label='Sorted Map Uncertainties (Ascending Order)', data=graph_data, sort=1):
+                print(l)
+        except ImportError:
+            print('IMPORT ERROR (ascii_graph) - CANNOT GENERATE UNCERTAINTY GRAPH')
+            pass
+
+    def calculate_statistical_maps(self):
+        pass
+
+class PanddaMultiDatasetAnalyser(object):
     """Class for the processing of datasets from a fragment soaking campaign"""
 
     _version = PANDDA_VERSION
@@ -615,14 +848,6 @@ class multi_dataset_analyser(object):
     _flag_mask_names      = FLAG_MASK_NAMES
     _custom_mask_names    = ['selected for analysis']
     _all_mask_names = _structure_mask_names + _crystal_mask_names + _reject_mask_names + _flag_mask_names + _custom_mask_names
-
-    _map_names =    [   'mean_map',
-                        'stds_map',
-                        'adj_stds_map',
-                        'skew_map',
-                        'kurt_map',
-                        'bimo_map'
-                    ]
 
     def __init__(self, args=None):
 #                    outdir='./pandda', datadir='./Processing', pdb_style='*/refine.pdb', mtz_style='*/refine.mtz',
@@ -670,8 +895,7 @@ class multi_dataset_analyser(object):
 
         self.outdir = easy_directory(os.path.abspath(self.args.output.outdir))
 
-        self.log_file = os.path.join(self.outdir, 'pandda.log')
-        self._log = ''
+        self._log = Log(log_file=os.path.join(self.outdir, 'pandda.log'))
 
         # Set up the output folders and files
         self._run_directory_setup()
@@ -693,7 +917,7 @@ class multi_dataset_analyser(object):
         # File names
         self._input_files = []
         # Dataset Objects
-        self.datasets = dataset_handler_list()
+        self.datasets = DatasetHandlerList()
         # Reference Objects
         self._ref_dataset_index = None
         self._ref_dataset = None
@@ -701,7 +925,7 @@ class multi_dataset_analyser(object):
         self._ref_map = None
 
         # Map Statistics
-        self.stat_maps = map_list(self._map_names)
+        self.stat_maps = PanddaStatMapList()
 
         # ===============================================================================>
         # ANALYSIS OBJECTS
@@ -1092,16 +1316,14 @@ class multi_dataset_analyser(object):
         if not isinstance(message, str):    message = str(message)
         # Print to stdout
         if (not hide) and (show or self.args.settings.verbose):
-            print(message)
+            self._log.show(message)
         # Remove \r from message as this spoils the log (^Ms)
         message = message.replace('\r','')
-        # Store in internal string
-        self._log = self._log + message + '\n'
         # Write to file
-        open(self.log_file, 'a').write(message+'\n')
+        self._log.write(message=message+'\n', mode='a')
 
     def print_log(self):
-        print(self._log)
+        self._log.show(self._log.read_all())
 
     def get_pandda_size(self):
         """Returns the history of the memory consumption of the PANDDA"""
@@ -1171,7 +1393,7 @@ class multi_dataset_analyser(object):
 
         # Set the dataset mask lengths and ids (dataset tags)
         self.datasets.all_masks().set_mask_length(mask_length=self.datasets.size())
-        self.datasets.all_masks().set_entry_ids(entry_ids=[d.d_tag for d in self.datasets.all()])
+        self.datasets.all_masks().set_entry_ids(entry_ids=[d.tag for d in self.datasets.all()])
         # Initialise standard blank masks
         for mask_name in self._all_mask_names:
             self.datasets.all_masks().add_mask(mask_name=mask_name, mask=[False]*self.datasets.size())
@@ -1182,11 +1404,11 @@ class multi_dataset_analyser(object):
         # Set the dataset observations lengths
         self.datasets_summary = data_collection()
         self.datasets_summary.set_data_length(self.datasets.size())
-        self.datasets_summary.set_entry_ids([d.d_tag for d in self.datasets.all()])
+        self.datasets_summary.set_entry_ids([d.tag for d in self.datasets.all()])
 
         # Set the map observation lengths
         self.get_map_observations().set_data_length(self.datasets.size())
-        self.get_map_observations().set_entry_ids([d.d_tag for d in self.datasets.all()])
+        self.get_map_observations().set_entry_ids([d.tag for d in self.datasets.all()])
 
         # Initialise blank data
         self.get_map_observations().add_empty_data(data_name='masked_map_mean')
@@ -1202,7 +1424,7 @@ class multi_dataset_analyser(object):
 
         # Set the dataset observations lengths
         self.timings.set_data_length(self.datasets.size())
-        self.timings.set_entry_ids([d.d_tag for d in self.datasets.all()])
+        self.timings.set_entry_ids([d.tag for d in self.datasets.all()])
 
     def load_reference_dataset(self, ref_pdb, ref_mtz):
         """Set the reference dataset, to which all other datasets will be aligned and scaled"""
@@ -1210,7 +1432,7 @@ class multi_dataset_analyser(object):
         self.log('===================================>>>', True)
         self.log('Loading Reference Dataset: {!s}'.format(ref_mtz), True)
 
-        self.set_reference_dataset(reference_dataset_handler(dataset_number=-1, pdb_filename=ref_pdb, mtz_filename=ref_mtz, dataset_tag='reference'))
+        self.set_reference_dataset(ReferenceDatasetHandler(dataset_number=-1, pdb_filename=ref_pdb, mtz_filename=ref_mtz, dataset_tag='reference'))
 
         if not os.path.exists(self.output_handler.get_file('reference_structure')):
             rel_symlink(orig=ref_pdb, link=self.output_handler.get_file('reference_structure'))
@@ -1219,10 +1441,10 @@ class multi_dataset_analyser(object):
 
         # Calculate the shift required to move the reference structure into the positive quadrant
         total_border_padding = self.params.maps.padding + self.params.masks.outer_mask
-        self.reference_dataset().set_origin_shift(tuple(flex.double(3, total_border_padding) - flex.double(self.reference_dataset().get_input().atoms().extract_xyz().min())))
+        self.reference_dataset().set_origin_shift(tuple(flex.double(3, total_border_padding) - flex.double(self.reference_dataset().input().atoms().extract_xyz().min())))
         self.log('Origin Shift for reference structure: {!s}'.format(tuple([round(s,3) for s in self.reference_dataset().origin_shift()])))
         # Shift the reference structure by this amount so that it is aligned with the reference grid
-        ref_hierarchy = self.reference_dataset().get_hierarchy()
+        ref_hierarchy = self.reference_dataset().hierarchy()
         ref_hierarchy.atoms().set_xyz(ref_hierarchy.atoms().extract_xyz() + self.reference_dataset().origin_shift())
 
         if not os.path.exists(self.output_handler.get_file('reference_on_origin')):
@@ -1242,10 +1464,10 @@ class multi_dataset_analyser(object):
         self.log('===================================>>>', True)
         self.log('Creating Reference Grid', True)
 
-        sites_cart = self.reference_dataset().get_input().atoms().extract_xyz()
+        sites_cart = self.reference_dataset().input().atoms().extract_xyz()
 
-        assert (flex.vec3_double(sorted(self.reference_dataset().get_input().atoms().extract_xyz())) -
-                flex.vec3_double(sorted(self.reference_dataset().get_hierarchy().atoms().extract_xyz()))).dot().norm() == 0.0, 'EH? Coordinates should be the same?'
+        assert (flex.vec3_double(sorted(self.reference_dataset().input().atoms().extract_xyz())) -
+                flex.vec3_double(sorted(self.reference_dataset().hierarchy().atoms().extract_xyz()))).dot().norm() == 0.0, 'EH? Coordinates should be the same?'
 
         self._ref_grid = grid_handler(verbose=self.args.settings.verbose)
         self._ref_grid.set_grid_spacing(spacing=grid_spacing)
@@ -1257,7 +1479,7 @@ class multi_dataset_analyser(object):
         self.log('Partitioning Reference Grid', True)
 
         # Pull out the calphas
-        calpha_hierarchy = self.reference_dataset().get_hierarchy().select(self.reference_dataset().get_hierarchy().atom_selection_cache().selection('pepnames and name CA'))
+        calpha_hierarchy = self.reference_dataset().hierarchy().select(self.reference_dataset().hierarchy().atom_selection_cache().selection('pepnames and name CA'))
 
         if 1 or self.params.alignment.method == 'local':
             t1 = time.time()
@@ -1341,7 +1563,7 @@ class multi_dataset_analyser(object):
             mtz_style = pdb_style.replace('.pdb','.mtz')
 
         # Datasets that are already added
-        already_added  = [(d.get_pdb_filename(), d.get_mtz_filename()) for d in self.datasets.all()]
+        already_added  = [(d.pdb_filename(), d.mtz_filename()) for d in self.datasets.all()]
         new_files = []
         empty_directories = []
 
@@ -1435,13 +1657,13 @@ class multi_dataset_analyser(object):
         """Read in maps for the input datasets"""
 
         def load_map_func(arg_dict):
-            return dataset_handler(**arg_dict)
+            return DatasetHandler(**arg_dict)
 
         # TODO Change this so datasets can be added dynamically
         assert self.datasets.all() == []
 
         # Generate arg_list for loading
-        arg_list = [{'dataset_number':d_num, 'pdb_filename':pdb, 'mtz_filename':mtz, 'dataset_tag':tag, 'name_prefix':self.args.output.dataset_prefix} for d_num, (pdb, mtz, tag) in enumerate(self.new_files())]
+        arg_list = [{'dataset_number':dnum, 'pdb_filename':pdb, 'mtz_filename':mtz, 'dataset_tag':dtag, 'name_prefix':self.args.output.dataset_prefix} for dnum, (pdb, mtz, dtag) in enumerate(self.new_files())]
 
         start = time.time()
         self.log('===================================>>>', True)
@@ -1453,50 +1675,50 @@ class multi_dataset_analyser(object):
         lig_style = self.args.input.lig_style.strip('/')
 
         for d_handler in loaded_datasets:
-            d_handler.initialise_output_directory(outputdir=os.path.join(self.output_handler.get_dir('processed_datasets'), d_handler.d_name))
+            d_handler.initialise_output_directory(outputdir=os.path.join(self.output_handler.get_dir('processed_datasets'), d_handler.name))
             # These will be links to the input files
-            d_handler.output_handler.add_file(file_name='{!s}-input.pdb'.format(d_handler.d_tag), file_tag='input_structure')
-            d_handler.output_handler.add_file(file_name='{!s}-input.mtz'.format(d_handler.d_tag), file_tag='input_data')
+            d_handler.output_handler.add_file(file_name='{!s}-input.pdb'.format(d_handler.tag), file_tag='input_structure')
+            d_handler.output_handler.add_file(file_name='{!s}-input.mtz'.format(d_handler.tag), file_tag='input_data')
             # Add links to the ligand files if they've been found
             d_handler.output_handler.add_dir(dir_name='ligand_files', dir_tag='ligand', top_dir_tag='root')
-            d_handler.output_handler.add_file(file_name='{!s}-ligand.pdb'.format(d_handler.d_tag), file_tag='ligand_coordinates')
-            d_handler.output_handler.add_file(file_name='{!s}-ligand.cif'.format(d_handler.d_tag), file_tag='ligand_restraints')
-            d_handler.output_handler.add_file(file_name='{!s}-ligand.png'.format(d_handler.d_tag), file_tag='ligand_image')
+            d_handler.output_handler.add_file(file_name='{!s}-ligand.pdb'.format(d_handler.tag), file_tag='ligand_coordinates')
+            d_handler.output_handler.add_file(file_name='{!s}-ligand.cif'.format(d_handler.tag), file_tag='ligand_restraints')
+            d_handler.output_handler.add_file(file_name='{!s}-ligand.png'.format(d_handler.tag), file_tag='ligand_image')
             # Aligned structure (created maps will be aligned to this structure)
-            d_handler.output_handler.add_file(file_name='{!s}-aligned.pdb'.format(d_handler.d_tag), file_tag='aligned_structure')
+            d_handler.output_handler.add_file(file_name='{!s}-aligned.pdb'.format(d_handler.tag), file_tag='aligned_structure')
             # Sampled map for the aligned structure
-            d_handler.output_handler.add_file(file_name='{!s}-observed.ccp4'.format(d_handler.d_tag), file_tag='sampled_map')
-            d_handler.output_handler.add_file(file_name='{!s}-difference.ccp4'.format(d_handler.d_tag), file_tag='difference_map')
+            d_handler.output_handler.add_file(file_name='{!s}-observed.ccp4'.format(d_handler.tag), file_tag='sampled_map')
+            d_handler.output_handler.add_file(file_name='{!s}-difference.ccp4'.format(d_handler.tag), file_tag='difference_map')
             # Difference from the mean map for the aligned structure
-            d_handler.output_handler.add_file(file_name='{!s}-mean_diff.ccp4'.format(d_handler.d_tag), file_tag='mean_diff_map')
+            d_handler.output_handler.add_file(file_name='{!s}-mean_diff.ccp4'.format(d_handler.tag), file_tag='mean_diff_map')
             # Z-map for the structure
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_naive.ccp4'.format(d_handler.d_tag), file_tag='z_map_naive')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_naive_normalised.ccp4'.format(d_handler.d_tag), file_tag='z_map_naive_normalised')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_adjusted.ccp4'.format(d_handler.d_tag), file_tag='z_map_corrected')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_adjusted_normalised.ccp4'.format(d_handler.d_tag), file_tag='z_map_corrected_normalised')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_naive.ccp4'.format(d_handler.tag), file_tag='z_map_naive')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_naive_normalised.ccp4'.format(d_handler.tag), file_tag='z_map_naive_normalised')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_adjusted.ccp4'.format(d_handler.tag), file_tag='z_map_corrected')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_adjusted_normalised.ccp4'.format(d_handler.tag), file_tag='z_map_corrected_normalised')
 
             # Output images
             d_handler.output_handler.add_dir(dir_name='output_images', dir_tag='images', top_dir_tag='root')
-            d_handler.output_handler.add_file(file_name='{!s}-obsv_map_dist.png'.format(d_handler.d_tag), file_tag='s_map_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-diff_map_dist.png'.format(d_handler.d_tag), file_tag='d_map_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-diff_mean_map_dist.png'.format(d_handler.d_tag), file_tag='d_mean_map_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_naive.png'.format(d_handler.d_tag), file_tag='z_map_naive_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_naive_normalised.png'.format(d_handler.d_tag), file_tag='z_map_naive_normalised_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_adjusted.png'.format(d_handler.d_tag), file_tag='z_map_corrected_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_adjusted_normalised.png'.format(d_handler.d_tag), file_tag='z_map_corrected_normalised_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-obsv_map_dist.png'.format(d_handler.tag), file_tag='s_map_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-diff_map_dist.png'.format(d_handler.tag), file_tag='d_map_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-diff_mean_map_dist.png'.format(d_handler.tag), file_tag='d_mean_map_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_naive.png'.format(d_handler.tag), file_tag='z_map_naive_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_naive_normalised.png'.format(d_handler.tag), file_tag='z_map_naive_normalised_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_adjusted.png'.format(d_handler.tag), file_tag='z_map_corrected_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_adjusted_normalised.png'.format(d_handler.tag), file_tag='z_map_corrected_normalised_png', dir_tag='images')
 
-            d_handler.output_handler.add_file(file_name='{!s}-uncertainty-qqplot.png'.format(d_handler.d_tag), file_tag='unc_qqplot_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-mean-v-obs-sorted-qqplot.png'.format(d_handler.d_tag), file_tag='obs_qqplot_sorted_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-mean-v-obs-unsorted-plot.png'.format(d_handler.d_tag), file_tag='obs_qqplot_unsorted_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-uncertainty-qqplot.png'.format(d_handler.tag), file_tag='unc_qqplot_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-mean-v-obs-sorted-qqplot.png'.format(d_handler.tag), file_tag='obs_qqplot_sorted_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-mean-v-obs-unsorted-plot.png'.format(d_handler.tag), file_tag='obs_qqplot_unsorted_png', dir_tag='images')
 
             # Z-map mask for the structure
-            d_handler.output_handler.add_file(file_name='{!s}-high_z_mask.ccp4'.format(d_handler.d_tag), file_tag='high_z_mask')
+            d_handler.output_handler.add_file(file_name='{!s}-high_z_mask.ccp4'.format(d_handler.tag), file_tag='high_z_mask')
 
             # Edstats Scores
-            d_handler.output_handler.add_file(file_name='{!s}-edstats.scores'.format(d_handler.d_tag), file_tag='edstats_scores')
+            d_handler.output_handler.add_file(file_name='{!s}-edstats.scores'.format(d_handler.tag), file_tag='edstats_scores')
 
             # Analysis files
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_peaks.csv'.format(d_handler.d_tag), file_tag='z_peaks_csv')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_peaks.csv'.format(d_handler.tag), file_tag='z_peaks_csv')
 
             # Scripts
             d_handler.output_handler.add_dir(dir_name='scripts', dir_tag='scripts', top_dir_tag='root')
@@ -1513,12 +1735,12 @@ class multi_dataset_analyser(object):
 
             # Link the input files to the output folder
             if not os.path.exists(d_handler.output_handler.get_file('input_structure')):
-                os.symlink(d_handler.get_pdb_filename(), d_handler.output_handler.get_file('input_structure'))
+                os.symlink(d_handler.pdb_filename(), d_handler.output_handler.get_file('input_structure'))
             if not os.path.exists(d_handler.output_handler.get_file('input_data')):
-                os.symlink(d_handler.get_mtz_filename(), d_handler.output_handler.get_file('input_data'))
+                os.symlink(d_handler.mtz_filename(), d_handler.output_handler.get_file('input_data'))
 
             # Search for ligand files and link them to the output ligands folder
-            lig_glob  = os.path.join(os.path.dirname(d_handler.get_pdb_filename()), lig_style)
+            lig_glob  = os.path.join(os.path.dirname(d_handler.pdb_filename()), lig_style)
             lig_files = glob.glob(lig_glob)
 
             for lig_file in lig_files:
@@ -1547,28 +1769,28 @@ class multi_dataset_analyser(object):
             self.log('Selecting Reference Dataset by: {!s}'.format(method), True)
             if method == 'rfree':
                 # Get RFrees of datasets (set to dummy value of 999 if resolution is too high so that it is not selected)
-                r_frees = [d.get_input().get_r_rfree_sigma().r_free if (d.get_resolution() < min_resolution) else 999 for d in self.datasets.all()]
+                r_frees = [d.input().get_r_rfree_sigma().r_free if (d.reflection_data().max_min_resolution()[1] < min_resolution) else 999 for d in self.datasets.all()]
                 if len(resolns) == 0: raise Exception('NO DATASETS BELOW RESOLUTION CUTOFF {!s}A - CANNOT SELECT REFERENCE DATASET'.format(min_resolution))
                 self._ref_dataset_index = r_frees.index(min(r_frees))
             elif method == 'resolution':
                 # Get Resolutions of datasets (set to dummy value of 999 if r-free is too high so that it is not selected)
-                resolns = [d.get_resolution() if (d.get_input().get_r_rfree_sigma().r_free < max_rfree) else 999 for d in self.datasets.all()]
+                resolns = [d.reflection_data().max_min_resolution()[1] if (d.input().get_r_rfree_sigma().r_free < max_rfree) else 999 for d in self.datasets.all()]
                 if len(resolns) == 0: raise Exception('NO DATASETS BELOW RFREE CUTOFF {!s} - CANNOT SELECT REFERENCE DATASET'.format(max_rfree))
                 self._ref_dataset_index = resolns.index(min(resolns))
 
             reference = self.datasets.all()[self._ref_dataset_index]
-            assert reference.d_num == self._ref_dataset_index, 'INDEX DOES NOT MATCH DNUM'
+            assert reference.num == self._ref_dataset_index, 'INDEX DOES NOT MATCH DNUM'
             self.log('Reference Selected: Dataset {!s}'.format(self._ref_dataset_index+1), True)
-            self.log('Resolution: {!s}, RFree: {!s}'.format(reference.get_resolution(), reference.get_input().get_r_rfree_sigma().r_free), True)
+            self.log('Resolution: {!s}, RFree: {!s}'.format(reference.reflection_data().max_min_resolution()[1], reference.input().get_r_rfree_sigma().r_free), True)
 
-            return reference.get_pdb_filename(), reference.get_mtz_filename()
+            return reference.pdb_filename(), reference.mtz_filename()
 
 #    def scale_datasets(self):
 #        """Iterate through the datasets, and scale the reflections to the reference"""
 #
 #        self.log('===================================>>>', True)
 #        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
-#            print '\rScaling Dataset {!s}          '.format(d_handler.d_tag),; sys.stdout.flush()
+#            print '\rScaling Dataset {!s}          '.format(d_handler.tag),; sys.stdout.flush()
 #
 #            # Scale new data to the reference dataset
 #            d_handler.scale_fobs_to_reference(ref_miller=self.reference_dataset().get_fobs_miller_array())
@@ -1618,10 +1840,10 @@ class multi_dataset_analyser(object):
         for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
 
             if d_handler.scaled_sfs != None:
-                print '\rAlready Scaled: Dataset {!s}          '.format(d_handler.d_tag),; sys.stdout.flush()
+                print '\rAlready Scaled: Dataset {!s}          '.format(d_handler.tag),; sys.stdout.flush()
                 continue
             else:
-                print '\rScaling: Dataset {!s}                 '.format(d_handler.d_tag),; sys.stdout.flush()
+                print '\rScaling: Dataset {!s}                 '.format(d_handler.tag),; sys.stdout.flush()
 
             # Get reflection data object
             refl_data = d_handler.reflection_data()
@@ -1663,7 +1885,7 @@ class multi_dataset_analyser(object):
                                             d_handler   = align_dict['d_handler'],
                                             ref_handler = align_dict['r_handler'],
                                             method      = align_dict['method']   )
-            return (align_dict['d_handler'].d_tag, (global_mx, local_mxs))
+            return (align_dict['d_handler'].tag, (global_mx, local_mxs))
 
         assert method in ['local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
 
@@ -1683,47 +1905,47 @@ class multi_dataset_analyser(object):
         # Post-process the alignments (write out aligned structures etc)
         t1 = time.time()
         for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
-            print '\rAligning Structures: Dataset {!s}          '.format(d_handler.d_tag),; sys.stdout.flush()
+            print '\rAligning Structures: Dataset {!s}          '.format(d_handler.tag),; sys.stdout.flush()
 
 #            # Align to reference structure to get mapping transform
 #            d_handler.align_to_reference(ref_handler=self.reference_dataset(), method=method)
 
-            global_mx, local_mxs = alignment_transforms[d_handler.d_tag]
+            global_mx, local_mxs = alignment_transforms[d_handler.tag]
 
             # Store the alignments in the dataset handler
             d_handler.set_global_alignment(alignment=global_mx)
             d_handler.set_local_alignments(alignment=local_mxs)
 
-            assert d_handler.get_global_alignment_transform()
+            assert d_handler.global_alignment_transform()
 
             # Create a copy to transform
-            aligned_struc = d_handler.get_hierarchy().deep_copy()
+            aligned_struc = d_handler.hierarchy().deep_copy()
 
             # Always do a global alignment
-            aligned_struc.atoms().set_xyz(d_handler.transform_to_reference(points=d_handler.get_hierarchy().atoms().extract_xyz(), method='global'))
+            aligned_struc.atoms().set_xyz(d_handler.transform_to_reference(points=d_handler.hierarchy().atoms().extract_xyz(), method='global'))
             # Also write out into the aligned_structures folder
-            aligned_struc.write_pdb_file(file_name=os.path.join(self.output_handler.get_dir('aligned_structures'), '{!s}-global-aligned.pdb'.format(d_handler.d_tag)))
+            aligned_struc.write_pdb_file(file_name=os.path.join(self.output_handler.get_dir('aligned_structures'), '{!s}-global-aligned.pdb'.format(d_handler.tag)))
 
             if method == 'both':
                 # Write out the aligned structure from the local alignments
-                aligned_struc.atoms().set_xyz(d_handler.transform_to_reference(points=d_handler.get_hierarchy().atoms().extract_xyz(), method='local'))
+                aligned_struc.atoms().set_xyz(d_handler.transform_to_reference(points=d_handler.hierarchy().atoms().extract_xyz(), method='local'))
                 # Also write out into the aligned_structures folder
-                aligned_struc.write_pdb_file(file_name=os.path.join(self.output_handler.get_dir('aligned_structures'), '{!s}-local-aligned.pdb'.format(d_handler.d_tag)))
+                aligned_struc.write_pdb_file(file_name=os.path.join(self.output_handler.get_dir('aligned_structures'), '{!s}-local-aligned.pdb'.format(d_handler.tag)))
 
             # Write out next to the original files (if global, global, if local, local)
             aligned_struc.write_pdb_file(file_name=d_handler.output_handler.get_file('aligned_structure'))
 
             # Align to the reference to find the alignment rmsd
-            mapped_ref_sites = d_handler.transform_from_reference(points=self.reference_dataset().get_hierarchy().atoms().extract_xyz(), method='global')
-            alignment_rmsd = d_handler.get_hierarchy().atoms().extract_xyz().rms_difference(mapped_ref_sites)
+            mapped_ref_sites = d_handler.transform_from_reference(points=self.reference_dataset().hierarchy().atoms().extract_xyz(), method='global')
+            alignment_rmsd = d_handler.hierarchy().atoms().extract_xyz().rms_difference(mapped_ref_sites)
             # Check to see if this is the reference dataset
             if alignment_rmsd == 0.0:
                 # This must be the reference! Set the dataset number if it's not already set
                 if self._ref_dataset_index == None:
-                    self._ref_dataset_index = d_handler.d_num
-                    print 'REFERENCE FOUND! {!s}                          '.format(d_handler.d_tag)
+                    self._ref_dataset_index = d_handler.num
+                    print 'REFERENCE FOUND! {!s}                          '.format(d_handler.tag)
                 # Raise error if the reference has already been set and it's not this dataset
-                elif self._ref_dataset_index != d_handler.d_num:
+                elif self._ref_dataset_index != d_handler.num:
                     raise Exception('ALIGNED OBJECT EQUAL TO UNALIGNED OBJECT - THIS IS MOST UNLIKELY')
         self.log('\rDatasets Aligned.                               ', True)
 
@@ -1754,10 +1976,10 @@ class multi_dataset_analyser(object):
                                         )
         self.log('Extracting R-work, R-free')
         self.datasets_summary.add_data( data_name='rfree',
-                                        data_values=[d.get_input().get_r_rfree_sigma().r_free for d in self.datasets.all()]
+                                        data_values=[d.input().get_r_rfree_sigma().r_free for d in self.datasets.all()]
                                         )
         self.datasets_summary.add_data( data_name='rwork',
-                                        data_values=[d.get_input().get_r_rfree_sigma().r_work for d in self.datasets.all()]
+                                        data_values=[d.input().get_r_rfree_sigma().r_work for d in self.datasets.all()]
                                         )
         self.log('Calculating Variation in Correlations between Diffraction Data')
         self.datasets_summary.add_data( data_name='correlation_to_unscaled_data',
@@ -1774,65 +1996,66 @@ class multi_dataset_analyser(object):
         self.log('===================================>>>', True)
 
         ref_counts, ref_dict = self.reference_dataset().get_structure_summary()
+        ref_handler = self.reference_dataset()
 
         # Check that the same protein structure is present in each dataset - THIS MASK SHOULD INCLUDE ALL DATASETS AT FIRST
         for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
 
             my_counts, my_dict = d_handler.get_structure_summary()
 
-            print '\rFiltering Dataset {!s}          '.format(d_handler.d_tag),; sys.stdout.flush()
+            print '\rFiltering Dataset {!s}          '.format(d_handler.tag),; sys.stdout.flush()
             # Check the space group of the dataset
             if d_handler.input().crystal_symmetry().space_group().info().symbol_and_number() != ref_handler.input().crystal_symmetry().space_group().info().symbol_and_number():
-                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('Different Space Group')
                 self.log('Reference: {!s}, {!s}: {!s}'.format(ref_handler.input().crystal_symmetry().space_group().info().symbol_and_number(),
-                                                        d_handler.d_tag, d_handler.input().crystal_symmetry().space_group().info().symbol_and_number()))
+                                                        d_handler.tag, d_handler.input().crystal_symmetry().space_group().info().symbol_and_number()))
                 self.log('===================================>>>')
-                self.datasets.all_masks().set_mask_value(mask_name='bad structure - different space group', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad structure - different space group', entry_id=d_handler.tag, value=True)
             # Check that the hierarchies are identical
             if not d_handler.hierarchy().is_similar_hierarchy(ref_handler.hierarchy()):
-                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('Non-Identical Hierarchy')
-                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_chains, d_handler.d_tag, my_counts.n_chains))
+                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_chains, d_handler.tag, my_counts.n_chains))
                 self.log('===================================>>>')
-                self.datasets.all_masks().set_mask_value(mask_name='bad structure - non-identical structures', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad structure - non-identical structures', entry_id=d_handler.tag, value=True)
             # Check the number of chains
             elif my_counts.n_chains != ref_counts.n_chains:
-                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('Different Number of Chains')
-                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_chains, d_handler.d_tag, my_counts.n_chains))
+                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_chains, d_handler.tag, my_counts.n_chains))
                 self.log('===================================>>>')
-                self.datasets.all_masks().set_mask_value(mask_name='bad structure - chain counts', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad structure - chain counts', entry_id=d_handler.tag, value=True)
             # Check the ids of the chains
             elif my_counts.chain_ids != ref_counts.chain_ids:
-                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('Different Chain IDs')
-                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.chain_ids, d_handler.d_tag, my_counts.chain_ids))
+                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.chain_ids, d_handler.tag, my_counts.chain_ids))
                 print('===================================>>>')
-                self.datasets.all_masks().set_mask_value(mask_name='bad structure - chain ids', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad structure - chain ids', entry_id=d_handler.tag, value=True)
             # Check the sequences of the chains
             elif my_dict['chain_sequences'] != ref_dict['chain_sequences']:
-                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('Different Sequences')
                 for chain_id in ref_dict['chain_sequences'].keys():
                     self.log('Chain {!s}: Reference - {!s}'.format(chain_id, ref_dict['chain_sequences'][chain_id]))
                     self.log('Chain {!s}: {:>9s} - {!s}'.format(chain_id, my_dict['chain_sequences'][chain_id]))
                 print('===================================>>>')
-                self.datasets.all_masks().set_mask_value(mask_name='bad structure - chain sequences', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad structure - chain sequences', entry_id=d_handler.tag, value=True)
             # Check the number of residues - TODO not sure it can ever get here... remove?
             elif my_counts.n_residues != ref_counts.n_residues:
-                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('Different Number of Residues')
-                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_residues, d_handler.d_tag, my_counts.n_residues))
+                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_residues, d_handler.tag, my_counts.n_residues))
                 print('===================================>>>')
-                self.datasets.all_masks().set_mask_value(mask_name='bad structure - residue counts', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad structure - residue counts', entry_id=d_handler.tag, value=True)
             # Check the number of atoms
             elif my_counts.n_atoms != ref_counts.n_atoms:
-                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('Different Number of Atoms')
-                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_atoms, d_handler.d_tag, my_counts.n_atoms))
+                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_atoms, d_handler.tag, my_counts.n_atoms))
                 print('===================================>>>')
-                self.datasets.all_masks().set_mask_value(mask_name='bad structure - atom counts', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad structure - atom counts', entry_id=d_handler.tag, value=True)
             else:
                 pass
 
@@ -1850,7 +2073,7 @@ class multi_dataset_analyser(object):
 
         # Link all rejected datasets into the rejected directory
         for d_handler in self.datasets.mask(mask_name='rejected - total'):
-            reject_dir = os.path.join(self.output_handler.get_dir('rejected_datasets'), d_handler.d_name)
+            reject_dir = os.path.join(self.output_handler.get_dir('rejected_datasets'), d_handler.name)
             if not os.path.exists(reject_dir):
                 rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=reject_dir)
 
@@ -1866,21 +2089,21 @@ class multi_dataset_analyser(object):
         # Check that each dataset is similar enough to be compared
         for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
 
-            print '\rFiltering Dataset {!s}          '.format(d_handler.d_tag),; sys.stdout.flush()
+            print '\rFiltering Dataset {!s}          '.format(d_handler.tag),; sys.stdout.flush()
             # Check that it correlates well with itself before and after scaling
             if d_handler.scaled_sfs.amplitudes().correlation(d_handler.unscaled_sfs.amplitudes()).coefficient() < FILTER_SCALING_CORRELATION_CUTOFF:
-                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('Low correlation between scaled and unscaled data')
                 self.log('Scaled-Unscaled Correlation: {!s}'.format(d_handler.scaled_sfs.amplitudes().correlation(d_handler.unscaled_sfs.amplitudes()).coefficient()))
                 self.log('===================================>>>')
-                self.datasets.all_masks().set_mask_value(mask_name='bad crystal - data correlation', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad crystal - data correlation', entry_id=d_handler.tag, value=True)
             # Check the deviation from the average sites
             elif d_handler.get_calpha_sites().rms_difference(d_handler.transform_from_reference(points=self.reference_dataset().get_calpha_sites(), method='global')) > FILTER_GLOBAL_RMSD_CUTOFF:
-                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('C-alpha RMSD is too large')
                 self.log('Aligned (Calpha) RMSD: {!s}'.format(d_handler.get_calpha_sites().rms_difference(d_handler.transform_from_reference(points=self.reference_dataset().get_calpha_sites(), method='global'))))
                 self.log('===================================>>>')
-                self.datasets.all_masks().set_mask_value(mask_name='bad crystal - isomorphous structure', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='bad crystal - isomorphous structure', entry_id=d_handler.tag, value=True)
             else:
                 pass
 
@@ -1899,7 +2122,7 @@ class multi_dataset_analyser(object):
 
         # Link all rejected datasets into the rejected directory
         for d_handler in self.datasets.mask(mask_name='rejected - total'):
-            reject_dir = os.path.join(self.output_handler.get_dir('rejected_datasets'), d_handler.d_name)
+            reject_dir = os.path.join(self.output_handler.get_dir('rejected_datasets'), d_handler.name)
             if not os.path.exists(reject_dir):
                 rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=reject_dir)
 
@@ -1913,18 +2136,18 @@ class multi_dataset_analyser(object):
         # Select from the datasets that haven't been rejected
         for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
 
-            print '\rFiltering Dataset {!s}          '.format(d_handler.d_tag),; sys.stdout.flush()
+            print '\rFiltering Dataset {!s}          '.format(d_handler.tag),; sys.stdout.flush()
 
             # Check the resolution of the dataset
-            if d_handler.get_resolution() > resolution:
-                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.d_tag))
+            if d_handler.reflection_data().max_min_resolution()[1] > resolution:
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('Does not meet high-resolution cutoff')
                 self.log('Cut Resolution: {!s}'.format(resolution))
-                self.log('Map Resolution: {!s}'.format(d_handler.get_resolution()))
+                self.log('Map Resolution: {!s}'.format(d_handler.reflection_data().max_min_resolution()[1]))
                 self.log('===================================>>>')
-                self.datasets.all_masks().set_mask_value(mask_name='selected for analysis', entry_id=d_handler.d_tag, value=False)
+                self.datasets.all_masks().set_mask_value(mask_name='selected for analysis', entry_id=d_handler.tag, value=False)
             else:
-                self.datasets.all_masks().set_mask_value(mask_name='selected for analysis', entry_id=d_handler.d_tag, value=True)
+                self.datasets.all_masks().set_mask_value(mask_name='selected for analysis', entry_id=d_handler.tag, value=True)
 
         self.log('\rDatasets Filtered.               ', True)
         self.log('{!s} datasets selected for analysis at {!s}A'.format(sum(self.datasets.all_masks().get_mask(mask_name='selected for analysis')), resolution), True)
@@ -1974,7 +2197,7 @@ class multi_dataset_analyser(object):
         self.log('Calculating Variation in RMSD (Calphas) to Reference Structure')
         rmsds = numpy.array([numpy.nan]*self.datasets.size())
         for d in self.datasets.mask(mask_name='rejected - total', invert=True):
-            rmsds.put(d.d_num, d.get_calpha_sites().rms_difference(d.transform_from_reference(points=self.get_calpha_average_sites(), method='global')))
+            rmsds.put(d.num, d.get_calpha_sites().rms_difference(d.transform_from_reference(points=self.get_calpha_average_sites(), method='global')))
         self.datasets_summary.add_data(data_name='rmsd_to_mean', data_values=rmsds.tolist())
 
     def analyse_structure_variability_1(self):
@@ -1984,8 +2207,8 @@ class multi_dataset_analyser(object):
         self.log('Populating Ensemble Summary', True)
 
         # Extract the hierarchy for each of the datasets
-        hierarchies = [d.get_hierarchy() for d in self.datasets.mask(mask_name='rejected - total', invert=True)]
-        hierarchy_ids = [d.d_tag for d in self.datasets.mask(mask_name='rejected - total', invert=True)]
+        hierarchies = [d.hierarchy() for d in self.datasets.mask(mask_name='rejected - total', invert=True)]
+        hierarchy_ids = [d.tag for d in self.datasets.mask(mask_name='rejected - total', invert=True)]
 
         # Add structures to the ensemble summary (auto-processes them)
         ensemble_log = self.ensemble_summary.add_structures(new_hierarchies=hierarchies, hierarchy_ids=hierarchy_ids)
@@ -2015,7 +2238,7 @@ class multi_dataset_analyser(object):
         used_datasets = self.datasets.mask(mask_name='rejected - total', invert=True)
 
         # Reference c_alpha labels
-        ref_c_alpha_labels = sorted(used_datasets[0].get_local_alignment_transforms().keys())
+        ref_c_alpha_labels = sorted(used_datasets[0].local_alignment_transforms().keys())
 
         # Array to hold the output data
         num_datasets = len(used_datasets)
@@ -2025,7 +2248,7 @@ class multi_dataset_analyser(object):
         # Iterate through the datasets and pull out the alignment matrices
         for d_num, d_handler in enumerate(used_datasets):
 
-            alignments = d_handler.get_local_alignment_transforms()
+            alignments = d_handler.local_alignment_transforms()
             alignment_keys = sorted(alignments.keys())
 
             assert alignment_keys == ref_c_alpha_labels
@@ -2156,7 +2379,7 @@ class multi_dataset_analyser(object):
         masked_cart_mappings = self.reference_grid().partition().query_by_grid_indices(masked_idxs)
 
         # Get the reference handler so that we can scale to the reference map
-        ref_map_mean, ref_map_rms = self.reference_dataset().get_map_scale()
+        ref_map_mean, ref_map_rms = self.reference_dataset().map_scale()
 
         # Create maps for all of the datasets (including the reference dataset)
         for d_handler in self.datasets.mask(mask_name='selected for analysis'):
@@ -2165,7 +2388,7 @@ class multi_dataset_analyser(object):
             #     CALCULATE NATIVE MAP     #
             ################################
 
-            print '\rLoading Maps for Dataset {!s} ({!s}/{!s})          '.format(d_handler.d_tag, d_handler.d_num+1, self.datasets.size()),; sys.stdout.flush()
+            print '\rLoading Maps for Dataset {!s} ({!s}/{!s})          '.format(d_handler.tag, d_handler.num+1, self.datasets.size()),; sys.stdout.flush()
 
             if d_handler.morphed_map:
                 continue
@@ -2212,8 +2435,8 @@ class multi_dataset_analyser(object):
             d_map_rms  = masked_vals_d.standard_deviation_of_the_sample()
             masked_vals_d = (masked_vals_d - d_map_mean)*(ref_map_rms/d_map_rms) + ref_map_mean
             # Record map means
-            self.get_map_observations().set_data_value(data_name='masked_map_mean', entry_id=d_handler.d_tag, value=d_map_mean)
-            self.get_map_observations().set_data_value(data_name='masked_map_std',  entry_id=d_handler.d_tag, value=d_map_rms)
+            self.get_map_observations().set_data_value(data_name='masked_map_mean', entry_id=d_handler.tag, value=d_map_mean)
+            self.get_map_observations().set_data_value(data_name='masked_map_std',  entry_id=d_handler.tag, value=d_map_rms)
 
             # Calculate the sparse vector of the masked map values
             morphed_map_sparse = scitbx.sparse.vector(self.reference_grid().grid_size_1d(), dict(zip(masked_idxs, masked_vals_d)))
@@ -2240,80 +2463,124 @@ class multi_dataset_analyser(object):
 
         self.update_pandda_size(tag='After Loading Maps')
 
-    def calculate_mean_map(self):
-        """Calculate the mean map from all of the different observations"""
+    def new_load_and_morph_maps(self, overwrite=False, delete_native_map=True):
+        """Create map from miller arrays. Transform map into the reference frame by sampling at the given points."""
 
-        # Create statistics objects for each grid point
         self.log('===================================>>>', True)
-        self.log('Calculating Mean Map', True)
+        self.log('Loading Electron Density Maps', True)
+        self.log('===================================>>>')
 
-        # All dataset handlers for analysing
-        all_d_handlers = self.datasets.mask(mask_name='selected for analysis')
-
-        # Get masked points in reference dataset
+        # Extract the points for the morphed maps (in the reference frame)
+        masked_gps = self.reference_grid().global_mask().outer_mask()
         masked_idxs = self.reference_grid().global_mask().outer_mask_indices()
+        masked_cart_ref = flex.vec3_double(masked_gps)*self.reference_grid().grid_spacing()
+        # Mapping of grid points to rotation matrix keys (residue CA labels)
+        masked_cart_mappings = self.reference_grid().partition().query_by_grid_indices(masked_idxs)
 
-        # Chunk the points into groups - Compromise between cpu time and memory usage - ~200 dataset -> chunksize of 5000
-        chunk_size = 1000*int(2000/len(all_d_handlers))
-        chunked_indices = [masked_idxs[i:i + chunk_size] for i in range(0, len(masked_idxs), chunk_size)]
-        chunk_num = len(chunked_indices)
+        # Get the reference handler so that we can scale to the reference map
+        ref_map_mean, ref_map_rms = self.reference_dataset().map_scale()
 
-        self.log('Iterating through {!s} points in {!s} chunks'.format(len(masked_idxs), chunk_num), True)
-        t1 = time.time()
+        # Create maps for all of the datasets (including the reference dataset)
+        for d_handler in self.datasets.mask(mask_name='selected for analysis'):
 
-        point_means = []
+            ################################
+            #     CALCULATE NATIVE MAP     #
+            ################################
 
-        # Calculate the mean map across the datasets
-        for chunk_idx, chunk in enumerate(chunked_indices):
-            status_bar(n=chunk_idx, n_max=chunk_num)
-            p_map_vals = numpy.array([dh.morphed_map.select(chunk) for dh in all_d_handlers])
+            print '\rLoading Maps for Dataset {!s} ({!s}/{!s})          '.format(d_handler.tag, d_handler.num+1, self.datasets.size()),; sys.stdout.flush()
 
-            if chunk_idx+1 < chunk_num:
-                assert len(p_map_vals) == len(all_d_handlers)
-                assert len(p_map_vals.T) == chunk_size
+            if d_handler.morphed_map:
+                continue
+            elif d_handler.native_map and (not overwrite):
+                pass
+            else:
+                # Take the scaled diffraction data for each dataset and create fft
+                fft_map = d_handler.tr_scaled_sfs.fft_map(  resolution_factor=self.params.maps.resolution_factor,
+                                                            d_min=self.get_cut_resolution(),
+                                                            symmetry_flags=maptbx.use_space_group_symmetry  )
 
-            p_map_means = numpy.mean(p_map_vals, axis=0)
-            point_means.extend(p_map_means.tolist())
+                # Scale the map
+                if self.params.maps.scaling == 'none':
+                    pass
+                elif self.params.maps.scaling == 'sigma':
+                    fft_map.apply_sigma_scaling()
+                elif self.params.maps.scaling == 'volume':
+                    fft_map.apply_volume_scaling()
 
-        status_bar(n=chunk_num, n_max=chunk_num)
-        assert len(point_means) == len(masked_idxs)
+                # Save the map for future use (only part that's pickleable)
+                d_handler.native_map  = fft_map.real_map()
+                d_handler.unit_cell   = fft_map.unit_cell()
+                d_handler.space_group = fft_map.space_group()
 
-        t2 = time.time()
-        print('> MEAN MAP CALCULATION > Time Taken: {!s} seconds'.format(int(t2-t1)))
+                # TODO PICKLE THE NATIVE MAP
 
-        # Calculate Mean Maps
-        mean_map_vals = numpy.zeros(self.reference_grid().grid_size_1d())
-        mean_map_vals.put(masked_idxs, point_means)
-        mean_map_vals = flex.double(mean_map_vals.tolist())
-        mean_map_file = self.output_handler.get_file('mean_map')
-        self.write_array_to_map(output_file=mean_map_file, map_data=mean_map_vals)
+            #################################
+            # MORPH MAPS TO REFERENCE FRAME #
+            #################################
 
-        self.stat_maps.mean_map = mean_map_vals
+            assert d_handler.native_map is not None, 'NO MORPHED MAP'
+            if not overwrite:   assert d_handler.morphed_map is None, 'MORPHED MAP ALREADY EXISTS'
 
-#    def old_calculate_mean_map(self):
+            # Create map handler and map to the reference frame
+            native_map_handler = map_handler(map_data=d_handler.native_map, unit_cell=d_handler.unit_cell)
+
+            # Transform Coordinates
+            masked_cart_d = d_handler.transform_from_reference(points=masked_cart_ref, method=self.params.alignment.method, point_mappings=masked_cart_mappings)
+            # Sample the map at these points
+            masked_vals_d = native_map_handler.get_cart_values(masked_cart_d)
+
+            # Normalise map - Scale it to the same scale as the reference dataset on the same points
+            d_map_mean = masked_vals_d.min_max_mean().mean
+            d_map_rms  = masked_vals_d.standard_deviation_of_the_sample()
+            masked_vals_d = (masked_vals_d - d_map_mean)*(ref_map_rms/d_map_rms) + ref_map_mean
+            # Record map means
+            self.get_map_observations().set_data_value(data_name='masked_map_mean', entry_id=d_handler.tag, value=d_map_mean)
+            self.get_map_observations().set_data_value(data_name='masked_map_std',  entry_id=d_handler.tag, value=d_map_rms)
+
+            # Calculate the sparse vector of the masked map values
+            morphed_map_sparse = scitbx.sparse.vector(self.reference_grid().grid_size_1d(), dict(zip(masked_idxs, masked_vals_d)))
+            morphed_map        = morphed_map_sparse.as_dense_vector()
+
+            # Reshape into right shape of the grid
+            grid_shape = self.reference_grid().grid_size()
+            morphed_map.reshape(flex.grid(grid_shape))
+
+#            # Write out the morphed map
+#            self.write_array_to_map(output_file=d_handler.output_handler.get_file('sampled_map'),
+#                                    map_data=morphed_map)
+
+            # Save to the dataset handler
+            d_handler.morphed_map = morphed_map
+
+            # Delete the native map to save space
+            if delete_native_map:
+                d_handler.native_map = None
+                # Collect
+                gc.collect()
+
+        self.log('\rMap Values Loaded: {!s} Datasets          '.format(self.datasets.size(mask_name='selected for analysis')), True)
+
+        self.update_pandda_size(tag='After Loading Maps')
+
+        return XXXX
+
+#    def calculate_mean_map(self):
 #        """Calculate the mean map from all of the different observations"""
 #
 #        # Create statistics objects for each grid point
 #        self.log('===================================>>>', True)
 #        self.log('Calculating Mean Map', True)
 #
-#        # Get masked points in reference dataset
-#        masked_gps = self.reference_grid().global_mask().outer_mask()
-#        masked_idxs = self.reference_grid().global_mask().outer_mask_indices()
-#        masked_cart_ref = flex.vec3_double(masked_gps)*self.reference_grid().grid_spacing()
-#        # Mapping of grid points to rotation matrix keys (residue CA labels)
-#        masked_cart_mappings = self.reference_grid().partition().query_by_grid_indices(masked_idxs)
-#
-#        assert len(masked_idxs) == len(masked_cart_ref)
-#
 #        # All dataset handlers for analysing
-#        all_d_handlers = self.datasets.mask(mask_name='rejected - total', invert=True)
+#        all_d_handlers = self.datasets.mask(mask_name='selected for analysis')
+#
+#        # Get masked points in reference dataset
+#        masked_idxs = self.reference_grid().global_mask().outer_mask_indices()
 #
 #        # Chunk the points into groups - Compromise between cpu time and memory usage - ~200 dataset -> chunksize of 5000
-#        chunk_size = 1000*int(2000/self.datasets.size(mask_name='rejected - total', invert=True))
-#        chunked_cart = [masked_cart_ref[i:i + chunk_size] for i in range(0, len(masked_cart_ref), chunk_size)]
-#        chunked_mapping = [masked_cart_mappings[i:i + chunk_size] for i in range(0, len(masked_cart_mappings), chunk_size)]
-#        chunk_num = len(chunked_cart)
+#        chunk_size = 1000*int(2000/len(all_d_handlers))
+#        chunked_indices = [masked_idxs[i:i + chunk_size] for i in range(0, len(masked_idxs), chunk_size)]
+#        chunk_num = len(chunked_indices)
 #
 #        self.log('Iterating through {!s} points in {!s} chunks'.format(len(masked_idxs), chunk_num), True)
 #        t1 = time.time()
@@ -2321,15 +2588,19 @@ class multi_dataset_analyser(object):
 #        point_means = []
 #
 #        # Calculate the mean map across the datasets
-#        for chunk_idx, ref_coord_chunk in enumerate(chunked_cart):
+#        for chunk_idx, chunk in enumerate(chunked_indices):
 #            status_bar(n=chunk_idx, n_max=chunk_num)
-#            p_map_vals = numpy.array([dh.get_cart_values(points=dh.transform_from_reference(points=flex.vec3_double(ref_coord_chunk), method=self.get_alignment_method(), point_mappings=chunked_mapping[chunk_idx]), map_type=self.get_obs_map_type()) for dh in all_d_handlers])
+#            p_map_vals = numpy.array([dh.morphed_map.select(chunk) for dh in all_d_handlers])
 #
 #            if chunk_idx+1 < chunk_num:
 #                assert len(p_map_vals) == len(all_d_handlers)
 #                assert len(p_map_vals.T) == chunk_size
 #
-#            point_means.extend([numpy.mean(map_vals.tolist()) for map_vals in p_map_vals.T])
+#            p_map_means = numpy.mean(p_map_vals, axis=0)
+#            point_means.extend(p_map_means.tolist())
+#
+#        status_bar(n=chunk_num, n_max=chunk_num)
+#        assert len(point_means) == len(masked_idxs)
 #
 #        t2 = time.time()
 #        print('> MEAN MAP CALCULATION > Time Taken: {!s} seconds'.format(int(t2-t1)))
@@ -2342,130 +2613,24 @@ class multi_dataset_analyser(object):
 #        self.write_array_to_map(output_file=mean_map_file, map_data=mean_map_vals)
 #
 #        self.stat_maps.mean_map = mean_map_vals
-
-    def calculate_map_uncertainties(self):
-        """Calculate the uncertainty in each of the different maps"""
-
-        try:
-            import matplotlib
-            matplotlib.interactive(0)
-            from matplotlib import pyplot
-            output_graphs = True
-        except:
-            output_graphs = False
-
-        # Section of q-q plot to calculate slope over (-q_cut -> +q_cut)
-        q_cut = 1.5
-
-        # Mask grid points and select those near to the protein
-        masked_idxs = self.reference_grid().global_mask().inner_mask_indices()
-
-        # Extract the mean map values
-        masked_mean_vals = self.stat_maps.mean_map.select(masked_idxs)
-        sorted_mean_vals = sorted(masked_mean_vals)
-
-        # Extract the theoretical quantiles that we would expect if these values were from a normal distribution
-        expected_diff_vals = normal_distribution().quantiles(len(masked_idxs))
-        # Select the points in the middle of the distribution
-        middle_indices = (expected_diff_vals < q_cut).iselection().intersection((expected_diff_vals > -1*q_cut).iselection())
-        middle_expected_diff_vals = expected_diff_vals.select(middle_indices)
-
-        self.log('===================================>>>')
-
-        for d_handler in self.datasets.mask(mask_name='selected for analysis'):
-
-            if d_handler.get_map_uncertainty() != None:
-                self.get_map_observations().set_data_value(data_name='masked_map_uncertainty', entry_id=d_handler.d_tag, value=d_handler.get_map_uncertainty())
-                continue
-
-            print '\rCalculating Map Uncertainty for Dataset {!s} ({!s}/{!s})          '.format(d_handler.d_tag, d_handler.d_num+1, self.datasets.size()),; sys.stdout.flush()
-
-            # Extract the map values at the transformed grid points - FOR THE DIFFERENCE MAP
-            masked_map_vals = d_handler.morphed_map.select(masked_idxs)
-
-            # Subtract the mean map from the observed map
-            diff_mean_map_vals = masked_map_vals - masked_mean_vals
-
-            # Sort the map values
-            sorted_observed_vals = sorted(masked_map_vals)
-            sorted_observed_diff_vals = sorted(diff_mean_map_vals)
-
-            # Select the middle indices
-            middle_observed_diff_vals = flex.double(sorted_observed_diff_vals).select(middle_indices)
-            # Calculate the slope of the centre of the graph
-            fit_coeffs = numpy.polyfit(x=middle_expected_diff_vals, y=middle_observed_diff_vals, deg=1)
-            map_off = fit_coeffs[1]
-            map_unc = fit_coeffs[0]
-
-            # Save the uncertainty
-            d_handler.set_map_uncertainty(sigma=map_unc)
-#            print '> UNCERTAINTY: {!s}'.format(fit_coeffs.round(3).tolist()[0])
-            self.get_map_observations().set_data_value(data_name='masked_map_uncertainty', entry_id=d_handler.d_tag, value=d_handler.get_map_uncertainty())
-
-            if output_graphs:
-
-                fig = pyplot.figure()
-                pyplot.title('UNSORTED MEAN v OBS SCATTER PLOT')
-                pyplot.plot([-3, 10], [-3, 10], 'b--')
-                pyplot.plot(masked_mean_vals, masked_map_vals, 'go')
-                pyplot.xlabel('MEAN MAP VALUES')
-                pyplot.ylabel('OBSV MAP VALUES')
-                # Apply tight layout to prevent overlaps
-                pyplot.tight_layout()
-                # Save
-                pyplot.savefig(d_handler.output_handler.get_file('obs_qqplot_unsorted_png'))
-                pyplot.close(fig)
-
-                fig = pyplot.figure()
-                pyplot.title('SORTED MEAN v OBS Q-Q PLOT')
-                pyplot.plot([-3, 10], [-3, 10], 'b--')
-                pyplot.plot(sorted_mean_vals, sorted_observed_vals, 'go-')
-                pyplot.xlabel('SORTED MEAN MAP VALUES')
-                pyplot.ylabel('SORTED OBSV MAP VALUES')
-                # Apply tight layout to prevent overlaps
-                pyplot.tight_layout()
-                # Save
-                pyplot.savefig(d_handler.output_handler.get_file('obs_qqplot_sorted_png'))
-                pyplot.close(fig)
-
-                fig = pyplot.figure()
-                pyplot.title('DIFF-MEAN-MAP Q-Q PLOT')
-                pyplot.plot([map_off-5*map_unc, map_off+5*map_unc], [-5, 5], 'b--')
-                pyplot.plot([-1, 1], [q_cut, q_cut], 'k-.')
-                pyplot.plot([-1, 1], [-q_cut, -q_cut], 'k-.')
-                pyplot.plot(sorted_observed_diff_vals, expected_diff_vals, 'go-')
-                pyplot.xlabel('DIFF-MEAN-MAP QUANTILES')
-                pyplot.ylabel('THEORETICAL QUANTILES')
-                # Apply tight layout to prevent overlaps
-                pyplot.tight_layout()
-                # Save
-                pyplot.savefig(d_handler.output_handler.get_file('unc_qqplot_png'))
-                pyplot.close(fig)
-
-        self.log('\rMap Uncertainties Calculated.                                         ', True)
-
-        try:
-            from ascii_graph import Pyasciigraph
-            g=Pyasciigraph()
-            graph_data = [(d.d_tag, round(d.get_map_uncertainty(),3)) for d in self.datasets.mask(mask_name='selected for analysis')]
-            for l in g.graph(label='Sorted Map Uncertainties (Ascending Order)', data=graph_data, sort=1):
-                print(l)
-        except ImportError:
-            print('IMPORT ERROR (ascii_graph) - CANNOT GENERATE UNCERTAINTY GRAPH')
-            pass
-
-#    def old_calculate_map_uncertainties(self):
+#        return mean_map_vals
+#
+#    def calculate_map_uncertainties(self):
 #        """Calculate the uncertainty in each of the different maps"""
+#
+#        try:
+#            import matplotlib
+#            matplotlib.interactive(0)
+#            from matplotlib import pyplot
+#            output_graphs = True
+#        except:
+#            output_graphs = False
 #
 #        # Section of q-q plot to calculate slope over (-q_cut -> +q_cut)
 #        q_cut = 1.5
 #
 #        # Mask grid points and select those near to the protein
-#        masked_gps = self.reference_grid().global_mask().inner_mask()
 #        masked_idxs = self.reference_grid().global_mask().inner_mask_indices()
-#        masked_cart_ref = flex.vec3_double(masked_gps)*self.reference_grid().grid_spacing()
-#        # Mapping of grid points to rotation matrix keys (residue CA labels)
-#        masked_cart_mappings = self.reference_grid().partition().query_by_grid_indices(masked_idxs)
 #
 #        # Extract the mean map values
 #        masked_mean_vals = self.stat_maps.mean_map.select(masked_idxs)
@@ -2477,25 +2642,18 @@ class multi_dataset_analyser(object):
 #        middle_indices = (expected_diff_vals < q_cut).iselection().intersection((expected_diff_vals > -1*q_cut).iselection())
 #        middle_expected_diff_vals = expected_diff_vals.select(middle_indices)
 #
-#        try:
-#            import matplotlib
-#            # Setup so that we can write without a display connected
-#            matplotlib.interactive(0)
-#            default_backend, validate_function = matplotlib.defaultParams['backend']
-#            from matplotlib import pyplot
-#            output_graphs = True
-#        except:
-#            output_graphs = False
-#
 #        self.log('===================================>>>')
 #
-#        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
+#        for d_handler in self.datasets.mask(mask_name='selected for analysis'):
 #
-#            print '\rCalculating Map Uncertainty for Dataset {!s} ({!s}/{!s})          '.format(d_handler.d_tag, d_handler.d_num+1, self.datasets.size()),; sys.stdout.flush()
+#            if d_handler.get_map_uncertainty() != None:
+#                self.get_map_observations().set_data_value(data_name='masked_map_uncertainty', entry_id=d_handler.tag, value=d_handler.get_map_uncertainty())
+#                continue
+#
+#            print '\rCalculating Map Uncertainty for Dataset {!s} ({!s}/{!s})          '.format(d_handler.tag, d_handler.num+1, self.datasets.size()),; sys.stdout.flush()
 #
 #            # Extract the map values at the transformed grid points - FOR THE DIFFERENCE MAP
-#            masked_cart_new = d_handler.transform_from_reference(points=masked_cart_ref, method=self.get_alignment_method(), point_mappings=masked_cart_mappings)
-#            masked_map_vals = d_handler.get_cart_values(points=masked_cart_new, map_type=self.get_obs_map_type())
+#            masked_map_vals = d_handler.morphed_map.select(masked_idxs)
 #
 #            # Subtract the mean map from the observed map
 #            diff_mean_map_vals = masked_map_vals - masked_mean_vals
@@ -2514,7 +2672,7 @@ class multi_dataset_analyser(object):
 #            # Save the uncertainty
 #            d_handler.set_map_uncertainty(sigma=map_unc)
 ##            print '> UNCERTAINTY: {!s}'.format(fit_coeffs.round(3).tolist()[0])
-#            self.get_map_observations().set_data_value(data_name='masked_map_uncertainty', entry_id=d_handler.d_tag, value=map_unc)
+#            self.get_map_observations().set_data_value(data_name='masked_map_uncertainty', entry_id=d_handler.tag, value=d_handler.get_map_uncertainty())
 #
 #            if output_graphs:
 #
@@ -2561,7 +2719,7 @@ class multi_dataset_analyser(object):
 #        try:
 #            from ascii_graph import Pyasciigraph
 #            g=Pyasciigraph()
-#            graph_data = [(d.d_tag, round(d.get_map_uncertainty(),3)) for d in self.datasets.mask(mask_name='rejected - total', invert=True)]
+#            graph_data = [(d.tag, round(d.get_map_uncertainty(),3)) for d in self.datasets.mask(mask_name='selected for analysis')]
 #            for l in g.graph(label='Sorted Map Uncertainties (Ascending Order)', data=graph_data, sort=1):
 #                print(l)
 #        except ImportError:
@@ -2668,118 +2826,16 @@ class multi_dataset_analyser(object):
         self.stat_maps.kurt_map     = kurt_map_vals
         self.stat_maps.bimo_map     = bimo_map_vals
 
-#    def old_calculate_map_statistics(self):
-#        """Take the sampled maps and calculate statistics for each grid point across the datasets"""
-#
-#        # Create statistics objects for each grid point
-#        self.log('===================================>>>', True)
-#        self.log('Calculating Statistics of Grid Points', True)
-#
-#        # Get masked points in reference dataset
-#        masked_gps = self.reference_grid().global_mask().outer_mask()
-#        masked_idxs = self.reference_grid().global_mask().outer_mask_indices()
-#        masked_cart_ref = flex.vec3_double(masked_gps)*self.reference_grid().grid_spacing()
-#        # Mapping of grid points to rotation matrix keys (residue CA labels)
-#        masked_cart_mappings = self.reference_grid().partition().query_by_grid_indices(masked_idxs)
-#
-#        assert len(masked_idxs) == len(masked_cart_ref)
-#
-#        # All dataset handlers for analysing
-#        all_d_handlers = self.datasets.mask(mask_name='rejected - total', invert=True)
-#        d_uncertainties = [d.get_map_uncertainty() for d in all_d_handlers]
-#
-#        # Chunk the points into groups - Compromise between cpu time and memory usage - ~200 dataset -> chunksize of 5000
-#        chunk_size = 1000*int(2000/self.datasets.size(mask_name='rejected - total', invert=True))
-#        chunked_cart = [masked_cart_ref[i:i + chunk_size] for i in range(0, len(masked_cart_ref), chunk_size)]
-#        chunked_mapping = [masked_cart_mappings[i:i + chunk_size] for i in range(0, len(masked_cart_mappings), chunk_size)]
-#        chunk_num = len(chunked_cart)
-#
-#        self.log('Iterating through {!s} points in {!s} chunks'.format(len(masked_idxs), chunk_num), True)
-#        t1 = time.time()
-#
-#        # Statistics objects for each of the points we're interested in
-#        masked_point_statistics = []
-#        masked_point_adj_sigmas = []
-#
-#        # Starting guess for the underlying sigma is raw_std/guess_factor
-#        guess_factor = 0.001
-#
-#        # Calculate the statistics of the map values across the datasets
-#        for chunk_idx, ref_coord_chunk in enumerate(chunked_cart):
-#            status_bar(n=chunk_idx, n_max=chunk_num)
-#            p_map_vals = numpy.array([dh.get_cart_values(points=dh.transform_from_reference(points=flex.vec3_double(ref_coord_chunk), method=self.get_alignment_method(), point_mappings=chunked_mapping[chunk_idx]), map_type=self.get_obs_map_type()) for dh in all_d_handlers])
-#
-#            if chunk_idx+1 < chunk_num:
-#                assert len(p_map_vals) == len(all_d_handlers)
-#                assert len(p_map_vals.T) == chunk_size
-#
-#            point_stats = [basic_statistics(flex.double(map_vals.tolist())) for map_vals in p_map_vals.T]
-#
-#            # Iterate through and, using the uncertainties of the maps, calculate the underlying standard deviation of the map values
-#            approx_sigmas = [bs.bias_corrected_standard_deviation for bs in point_stats]
-#            adjusted_sigmas = [estimate_true_underlying_sd(obs_vals=map_vals.tolist(), obs_error=d_uncertainties, est_sigma=approx_sigmas[i]*guess_factor) for i, map_vals in enumerate(p_map_vals.T)]
-#
-#            # Extend the complete lists
-#            masked_point_statistics.extend(point_stats)
-#            masked_point_adj_sigmas.extend(adjusted_sigmas)
-#
-#            assert i+1 == len(approx_sigmas), 'LIST INDEX DOES NOT MATCH LIST LENGTH'
-#
-#        t2 = time.time()
-#        print('> MAP POINT ANALYSIS > Time Taken: {!s} seconds'.format(int(t2-t1)))
-#
-#        # Calculate Stds Maps - Set the background to be tiny but non-zero so we can still divide by it
-#        stds_map_vals = 1e-18*numpy.ones(self.reference_grid().grid_size_1d())
-#        stds_map_vals.put(masked_idxs, [bs.bias_corrected_standard_deviation for bs in masked_point_statistics])
-#        stds_map_vals = flex.double(stds_map_vals.tolist())
-#        stds_map_file = self.output_handler.get_file('stds_map')
-#        self.write_array_to_map(output_file=stds_map_file, map_data=stds_map_vals)
-#
-#        # Calculate ADJUSTED Stds Maps - Set the background to be tiny but non-zero so we can still divide by it
-#        adj_stds_map_vals = 1e-18*numpy.ones(self.reference_grid().grid_size_1d())
-#        adj_stds_map_vals.put(masked_idxs, masked_point_adj_sigmas)
-#        adj_stds_map_vals = flex.double(adj_stds_map_vals.tolist())
-#        adj_stds_map_file = self.output_handler.get_file('stds_adj_map')
-#        self.write_array_to_map(output_file=adj_stds_map_file, map_data=adj_stds_map_vals)
-#
-#        # Calculate Skew Maps
-#        skew_map_vals = numpy.zeros(self.reference_grid().grid_size_1d())
-#        skew_map_vals.put(masked_idxs, [bs.skew for bs in masked_point_statistics])
-#        skew_map_vals = flex.double(skew_map_vals.tolist())
-#        skew_map_file = self.output_handler.get_file('skew_map')
-#        self.write_array_to_map(output_file=skew_map_file, map_data=skew_map_vals)
-#
-#        # Calculate Kurtosis Maps
-#        kurt_map_vals = numpy.zeros(self.reference_grid().grid_size_1d())
-#        kurt_map_vals.put(masked_idxs, [bs.kurtosis for bs in masked_point_statistics])
-#        kurt_map_vals = flex.double(kurt_map_vals.tolist())
-#        kurt_map_file = self.output_handler.get_file('kurt_map')
-#        self.write_array_to_map(output_file=kurt_map_file, map_data=kurt_map_vals)
-#
-#        # Calculate Bimodality Maps
-#        bimo_map_vals = numpy.zeros(self.reference_grid().grid_size_1d())
-#        bimo_map_vals.put(masked_idxs, [(bs.skew**2 + 1)/bs.kurtosis for bs in masked_point_statistics])
-#        bimo_map_vals = flex.double(bimo_map_vals.tolist())
-#        bimo_map_file = self.output_handler.get_file('bimo_map')
-#        self.write_array_to_map(output_file=bimo_map_file, map_data=bimo_map_vals)
-#
-#        # Store map vals
-#        self.stat_maps.stds_map     = stds_map_vals
-#        self.stat_maps.adj_stds_map = adj_stds_map_vals
-#        self.stat_maps.skew_map     = skew_map_vals
-#        self.stat_maps.kurt_map     = kurt_map_vals
-#        self.stat_maps.bimo_map     = bimo_map_vals
-
     def collect_map_statistics(self):
         """Collect map statistics from the datasets"""
 
         for d_handler in self.datasets.all():
 
             if d_handler.z_map_stats:
-                self.get_map_observations().set_data_value(data_name='z_map_mean', entry_id=d_handler.d_tag, value=d_handler.z_map_stats['z_map_mean'])
-                self.get_map_observations().set_data_value(data_name='z_map_std', entry_id=d_handler.d_tag, value=d_handler.z_map_stats['z_map_std'])
-                self.get_map_observations().set_data_value(data_name='z_map_skew', entry_id=d_handler.d_tag, value=d_handler.z_map_stats['z_map_skew'])
-                self.get_map_observations().set_data_value(data_name='z_map_kurtosis', entry_id=d_handler.d_tag, value=d_handler.z_map_stats['z_map_kurtosis'])
+                self.get_map_observations().set_data_value(data_name='z_map_mean', entry_id=d_handler.tag, value=d_handler.z_map_stats['z_map_mean'])
+                self.get_map_observations().set_data_value(data_name='z_map_std', entry_id=d_handler.tag, value=d_handler.z_map_stats['z_map_std'])
+                self.get_map_observations().set_data_value(data_name='z_map_skew', entry_id=d_handler.tag, value=d_handler.z_map_stats['z_map_skew'])
+                self.get_map_observations().set_data_value(data_name='z_map_kurtosis', entry_id=d_handler.tag, value=d_handler.z_map_stats['z_map_kurtosis'])
 
     def calculate_z_map(self, map_vals, method='naive', map_uncertainty=None, sparse=False):
         """Takes a flex.double map and calculates the z-map relative to the mean and std map"""
@@ -2899,22 +2955,22 @@ class multi_dataset_analyser(object):
 
         # No Cluster points found
         if not d_selected_points:
-            self.log('Dataset {!s}: No Clusters Found'.format(d_handler.d_tag), True)
+            self.log('Dataset {!s}: No Clusters Found'.format(d_handler.tag), True)
             return 0, {}
         # Can't cluster if there are too many points
         elif len(d_selected_points) > 10000:
-            self.log('Dataset {!s}: Too many points to cluster: {!s} Points.'.format(d_handler.d_tag, len(d_selected_points)), True)
+            self.log('Dataset {!s}: Too many points to cluster: {!s} Points.'.format(d_handler.tag, len(d_selected_points)), True)
             num_clusters = -1
             hit_clusters = {}
             # This dataset is too noisy to analyse - flag!
-            self.datasets.all_masks().set_mask_value(mask_name='noisy zmap', entry_id=d_handler.d_tag, value=True)
+            self.datasets.all_masks().set_mask_value(mask_name='noisy zmap', entry_id=d_handler.tag, value=True)
             # Link datasets to the noisy results directory
-            noisy_dir = os.path.join(self.output_handler.get_dir('noisy_datasets'), d_handler.d_name)
+            noisy_dir = os.path.join(self.output_handler.get_dir('noisy_datasets'), d_handler.name)
             if not os.path.exists(noisy_dir):
                 rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=noisy_dir)
         # Cluster points if we have found them
         else:
-            self.log('Dataset {!s}: Clustering {!s} Point(s).'.format(d_handler.d_tag, len(d_selected_points)), True)
+            self.log('Dataset {!s}: Clustering {!s} Point(s).'.format(d_handler.tag, len(d_selected_points)), True)
             # Points found for this cluster!
             if len(d_selected_points) == 1:
                 # Only 1 point - 1 cluster! - edge case where we can't do clustering
@@ -3236,11 +3292,11 @@ class multi_dataset_analyser(object):
         self.log('Collating Clusters', False)
 
         # List of points to be returned
-        all_dataset_clusters = dict([(d.d_tag, []) for d in self.datasets.all()])
+        all_dataset_clusters = dict([(d.tag, []) for d in self.datasets.all()])
 
         for d_handler in self.datasets.all():
             if d_handler.hit_clusters:
-                all_dataset_clusters[d_handler.d_tag] = d_handler.hit_clusters.raw_data
+                all_dataset_clusters[d_handler.tag] = d_handler.hit_clusters.raw_data
 
         # Print Cluster Summaries
         cluster_num = [(k, len(all_dataset_clusters[k])) for k in sorted(all_dataset_clusters.keys()) if all_dataset_clusters[k]]
@@ -3268,13 +3324,13 @@ class multi_dataset_analyser(object):
                 continue
 
             # This dataset is interesting!
-            self.datasets.all_masks().set_mask_value(mask_name='interesting', entry_id=d_handler.d_tag, value=True)
+            self.datasets.all_masks().set_mask_value(mask_name='interesting', entry_id=d_handler.tag, value=True)
 
             # Pull out the cluster object
             cluster_obj = d_handler.hit_clusters
 
             # Add to list of all clusters
-            cluster_ids.append(d_handler.d_tag)
+            cluster_ids.append(d_handler.tag)
             all_clusters.append(cluster_obj)
 
             ########################################################
@@ -3286,8 +3342,8 @@ class multi_dataset_analyser(object):
 #                for cent_b in cluster_obj.get_centroids():
 #                    if cent_a == cent_b: continue
 #                    dists.append((flex.double(cent_a) - flex.double(cent_b)).norm()*self.reference_grid().grid_spacing())
-#            if not dists: print 'Clusters, Dataset {!s}:'.format(d_handler.d_tag), '\tNum: {:4}'.format(total_c_num), '\tMin Spacing: {!s:>5} A'.format('--.--'), '\tMax Spacing: {!s:>5} A'.format('--.--')
-#            else:         print 'Clusters, Dataset {!s}:'.format(d_handler.d_tag), '\tNum: {:4}'.format(total_c_num), '\tMin Spacing: {:5.3} A'.format(min(dists)), '\tMax Spacing: {:5.3} A'.format(max(dists))
+#            if not dists: print 'Clusters, Dataset {!s}:'.format(d_handler.tag), '\tNum: {:4}'.format(total_c_num), '\tMin Spacing: {!s:>5} A'.format('--.--'), '\tMax Spacing: {!s:>5} A'.format('--.--')
+#            else:         print 'Clusters, Dataset {!s}:'.format(d_handler.tag), '\tNum: {:4}'.format(total_c_num), '\tMin Spacing: {:5.3} A'.format(min(dists)), '\tMax Spacing: {:5.3} A'.format(max(dists))
 
             ########################################################
 
@@ -3308,7 +3364,7 @@ class multi_dataset_analyser(object):
 
             # Pull out the cluster summaries
             for c_num, c_key in enumerate(cluster_obj.get_keys()):
-                cluster_summaries.append([d_handler.d_tag, c_key] + cluster_obj.get_sizes([c_num]) + cluster_obj.get_means([c_num]) + cluster_obj.get_maxima([c_num]))
+                cluster_summaries.append([d_handler.tag, c_key] + cluster_obj.get_sizes([c_num]) + cluster_obj.get_means([c_num]) + cluster_obj.get_maxima([c_num]))
 
         # Fill out the cluster summary data
         self.get_cluster_summary().set_data_length(len(cluster_summaries))
@@ -3410,51 +3466,51 @@ class multi_dataset_analyser(object):
         # Add the datasets as rows
         for d in self.datasets.all():
 
-            rmsd = round(d_summary.get_data_value(data_name='rmsd_to_mean', entry_id=d.d_tag), 3)
-            rfree = round(d_summary.get_data_value(data_name='rfree', entry_id=d.d_tag), 3)
-            rwork = round(d_summary.get_data_value(data_name='rwork', entry_id=d.d_tag), 3)
+            rmsd = round(d_summary.get_data_value(data_name='rmsd_to_mean', entry_id=d.tag), 3)
+            rfree = round(d_summary.get_data_value(data_name='rfree', entry_id=d.tag), 3)
+            rwork = round(d_summary.get_data_value(data_name='rwork', entry_id=d.tag), 3)
 
             columns = []
             overall_success = [0]
             # ------------------------------>>>
             # Test for Data Quality
             # ------------------------------>>>
-            if self.datasets.all_masks().get_mask_value(mask_name='rejected - crystal', entry_id=d.d_tag) == True:
+            if self.datasets.all_masks().get_mask_value(mask_name='rejected - crystal', entry_id=d.tag) == True:
                 columns.append({'flag':4,'message':'Rejected'.format(None)})
             else:
                 columns.append({'flag':0,'message':'OK'})
             # ------------------------------>>>
             # Test for Identical Structures
             # ------------------------------>>>
-            if self.datasets.all_masks().get_mask_value(mask_name='rejected - structure', entry_id=d.d_tag) == True:
+            if self.datasets.all_masks().get_mask_value(mask_name='rejected - structure', entry_id=d.tag) == True:
                 columns.append({'flag':4,'message':'Rejected'})
             else:
                 columns.append({'flag':0,'message':'OK'})
             # ------------------------------>>>
             # Test for Refinement Success - some test on r-free
             # ------------------------------>>>
-            if self.datasets.all_masks().get_mask_value(mask_name='bad crystal - rfree', entry_id=d.d_tag) == True:
+            if self.datasets.all_masks().get_mask_value(mask_name='bad crystal - rfree', entry_id=d.tag) == True:
                 columns.append({'flag':4,'message':'Free: {!s}'.format(rfree)})
             else:
                 columns.append({'flag':0,'message':'Free: {!s}'.format(rfree)})
             # ------------------------------>>>
             # Test for Structure movement
             # ------------------------------>>>
-            if self.datasets.all_masks().get_mask_value(mask_name='bad crystal - isomorphous structure', entry_id=d.d_tag) == True:
+            if self.datasets.all_masks().get_mask_value(mask_name='bad crystal - isomorphous structure', entry_id=d.tag) == True:
                 columns.append({'flag':4,'message':'RMSD: {!s}'.format(rmsd)})
             else:
                 columns.append({'flag':0,'message':'RMSD: {!s}'.format(rmsd)})
             # ------------------------------>>>
             # Test for Structure movement
             # ------------------------------>>>
-            if self.datasets.all_masks().get_mask_value(mask_name='selected for analysis', entry_id=d.d_tag) == True:
+            if self.datasets.all_masks().get_mask_value(mask_name='selected for analysis', entry_id=d.tag) == True:
                 columns.append({'flag':0,'message':'Analysed'.format(rmsd)})
             else:
                 columns.append({'flag':4,'message':'Rejected'.format(rmsd)})
             # ------------------------------>>>
             # Test for if it's interesting
             # ------------------------------>>>
-            if self.datasets.all_masks().get_mask_value(mask_name='interesting', entry_id=d.d_tag) == True:
+            if self.datasets.all_masks().get_mask_value(mask_name='interesting', entry_id=d.tag) == True:
                 columns.append({'flag':0,'message':'Clusters Found'})
             else:
                 columns.append({'flag':1,'message':''})
@@ -3462,7 +3518,7 @@ class multi_dataset_analyser(object):
             # Find largest error
             overall_success = max([c['flag'] for c in columns])
 
-            output_data['table']['rows'].append({'heading':'Dataset {!s}'.format(d.d_tag),
+            output_data['table']['rows'].append({'heading':'Dataset {!s}'.format(d.tag),
                                                  'success':overall_success,
                                                  'columns':columns})
 
@@ -3822,14 +3878,14 @@ class multi_dataset_analyser(object):
             fh.write('dataset_id, res_high, res_low, rfree, rwork, rmsd to mean, a, b, c, alpha, beta, gamma, cell volume\n')
             # Write out parameters for each dataset
             for d_handler in self.datasets.all():
-                out_list = [  d_handler.d_tag,
-                              d_summary.get_data_value(data_name='high_res_limit', entry_id=d_handler.d_tag),
-                              d_summary.get_data_value(data_name='low_res_limit', entry_id=d_handler.d_tag),
-                              d_summary.get_data_value(data_name='rfree', entry_id=d_handler.d_tag),
-                              d_summary.get_data_value(data_name='rwork', entry_id=d_handler.d_tag),
-                              d_summary.get_data_value(data_name='rmsd_to_mean', entry_id=d_handler.d_tag)  ] + \
-                           list(d_summary.get_data_value(data_name='cell_params', entry_id=d_handler.d_tag)) + \
-                           [  d_summary.get_data_value(data_name='cell_volume', entry_id=d_handler.d_tag)  ]
+                out_list = [  d_handler.tag,
+                              d_summary.get_data_value(data_name='high_res_limit', entry_id=d_handler.tag),
+                              d_summary.get_data_value(data_name='low_res_limit', entry_id=d_handler.tag),
+                              d_summary.get_data_value(data_name='rfree', entry_id=d_handler.tag),
+                              d_summary.get_data_value(data_name='rwork', entry_id=d_handler.tag),
+                              d_summary.get_data_value(data_name='rmsd_to_mean', entry_id=d_handler.tag)  ] + \
+                           list(d_summary.get_data_value(data_name='cell_params', entry_id=d_handler.tag)) + \
+                           [  d_summary.get_data_value(data_name='cell_volume', entry_id=d_handler.tag)  ]
                 out_line = ', '.join(map(str,out_list)) + '\n'
                 fh.write(out_line)
 
@@ -3842,14 +3898,14 @@ class multi_dataset_analyser(object):
             fh.write('dataset_id, masked_map_mean, masked_map_std, masked_map_uncertainty, z_map_mean, z_map_std, z_map_skew, z_map_kurtosis\n')
             # Write out parameters for each dataset
             for d_handler in self.datasets.mask(mask_name='selected for analysis'):
-                out_list = [  d_handler.d_tag,
-                              map_summary.get_data_value(data_name='masked_map_mean', entry_id=d_handler.d_tag),
-                              map_summary.get_data_value(data_name='masked_map_std', entry_id=d_handler.d_tag),
-                              map_summary.get_data_value(data_name='masked_map_uncertainty', entry_id=d_handler.d_tag),
-                              map_summary.get_data_value(data_name='z_map_mean', entry_id=d_handler.d_tag),
-                              map_summary.get_data_value(data_name='z_map_std', entry_id=d_handler.d_tag),
-                              map_summary.get_data_value(data_name='z_map_skew', entry_id=d_handler.d_tag),
-                              map_summary.get_data_value(data_name='z_map_kurtosis', entry_id=d_handler.d_tag)  ]
+                out_list = [  d_handler.tag,
+                              map_summary.get_data_value(data_name='masked_map_mean', entry_id=d_handler.tag),
+                              map_summary.get_data_value(data_name='masked_map_std', entry_id=d_handler.tag),
+                              map_summary.get_data_value(data_name='masked_map_uncertainty', entry_id=d_handler.tag),
+                              map_summary.get_data_value(data_name='z_map_mean', entry_id=d_handler.tag),
+                              map_summary.get_data_value(data_name='z_map_std', entry_id=d_handler.tag),
+                              map_summary.get_data_value(data_name='z_map_skew', entry_id=d_handler.tag),
+                              map_summary.get_data_value(data_name='z_map_kurtosis', entry_id=d_handler.tag)  ]
 
                 out_line = ', '.join(map(str,out_list)) + '\n'
                 fh.write(out_line)
@@ -3890,7 +3946,7 @@ class multi_dataset_analyser(object):
             # Extract the label of the cluster
             d_tag, c_num = cluster.get_keys([c_index])[0]
             # Pull out the d_handler for the dataset
-            d_handler = self.datasets.get(d_tag=d_tag)
+            d_handler = self.datasets.get(tag=d_tag)
 
             # Extract the location of the blob in the reference frame
             grid_ref = cluster.get_peaks([c_index])[0]
@@ -3908,7 +3964,7 @@ class multi_dataset_analyser(object):
             cluster_size_val = cluster.get_sizes([c_index])[0]
 
             # Combine into columns for the output
-            cols_to_write = [d_tag, c_rank+1, cluster_peak_val, cluster_size_val] + list(cart_nat) + list(cart_ref) + [d_handler.get_pdb_filename(), d_handler.get_mtz_filename()]
+            cols_to_write = [d_tag, c_rank+1, cluster_peak_val, cluster_size_val] + list(cart_nat) + list(cart_ref) + [d_handler.pdb_filename(), d_handler.mtz_filename()]
             output_list.append(cols_to_write)
 
         # Form the headers, and write
@@ -3938,8 +3994,8 @@ class multi_dataset_analyser(object):
             for d_handler in self.datasets.mask(mask_name='selected for analysis'):
                 map_vals = [d_handler.morphed_map[g] for g in grid_points]
                 # Create list of tags for zipping
-                d_tags = [d_handler.d_tag]*len(grid_points)
-                d_nums = [d_handler.d_num]*len(grid_points)
+                d_tags = [d_handler.tag]*len(grid_points)
+                d_nums = [d_handler.num]*len(grid_points)
                 # Format and write
                 out_list = [', '.join(map(str,tup)) for tup in zip(grid_points_str, d_tags, d_nums, map_vals)]
                 out_line = '\n'.join(map(str,out_list)) + '\n'

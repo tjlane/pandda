@@ -31,7 +31,7 @@ pandda_phil_def = """
         {
             outdir = './pandda'
                 .type = path
-            dataset_prefix = ''
+            dataset_prefix = 'Dataset-'
                 .type = str
         }
         method
@@ -100,18 +100,18 @@ pandda_phil_def = """
                 max_rfree = 0.4
                     .help = 'Maximum allowed rfree for a structure (datasets above this are rejected)'
                     .type = float
-                high_res_lower_limit = 3.0
+                max_datasets = 1000
+                    .help = 'Maximum number of datasets to process at once'
+                    .type = int
+                high_res_lower_limit = 2.0
                     .help = 'Lowest resolution limit (datasets below this are rejected)'
                     .type = float
                 high_res_upper_limit = 0.0
                     .help = 'Highest resolution limit (maps are never calulcated above this limit)'
                     .type = float
-                high_res_increment = 0.1
+                high_res_increment = None
                     .help = 'Increment of resolution shell for map analysis'
                     .type = float
-                max_datasets = 1000
-                    .help = 'Maximum number of datasets to process at once'
-                    .type = int
             }
             blob_search
                 .help = "Settings to control the finding of blobs"

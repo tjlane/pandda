@@ -13,7 +13,7 @@ from Giant.Grid.Masks import spherical_mask, atomic_mask, non_symmetrical_atomic
 from Giant.Stats.Cluster import cluster_data
 from Giant.Utils import status_bar, rel_symlink
 
-from PANDDAs.Main import multi_dataset_analyser
+from PANDDAs.Main import PanddaMultiDatasetAnalyser
 from PANDDAs import welcome
 
 def pandda_main(args):
@@ -35,7 +35,7 @@ def pandda_main(args):
         #####
         # ============================================================================>
 
-        pandda = multi_dataset_analyser(args)
+        pandda = PanddaMultiDatasetAnalyser(args)
 
         # ============================================================================>
         #####
@@ -47,7 +47,7 @@ def pandda_main(args):
         # MOVE THIS INTO INIT FUNCTION AND POPULATE FROM THE ARG PARSER
         pandda.set_low_resolution(pandda.params.analysis.high_res_lower_limit)
         pandda.set_high_resolution(pandda.params.analysis.high_res_upper_limit)
-        pandda.set_cut_resolution(2)
+        pandda.set_cut_resolution(pandda.params.analysis.high_res_lower_limit)
         # XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX
 
         pandda.run_pandda_init()
@@ -117,7 +117,7 @@ def pandda_main(args):
         # XXX XXX XXX XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXX XXX XXX
         # Use symmetry operations to create the symmetry mates of the reference structure
         sym_ops, sym_hierarchies, chain_mappings = generate_adjacent_symmetry_copies(   ref_hierarchy    = pandda.reference_dataset().new_structure().hierarchy,
-                                                                                        crystal_symmetry = pandda.reference_dataset().get_input().crystal_symmetry(),
+                                                                                        crystal_symmetry = pandda.reference_dataset().input().crystal_symmetry(),
                                                                                         buffer_thickness = pandda.params.masks.outer_mask+5    )
         # Record the symmetry operations that generate the crystal contacts
         pandda.crystal_contact_generators = sym_ops
@@ -205,8 +205,8 @@ def pandda_main(args):
             pandda.log('===================================>>>')
             pandda.log('Generating Protein Mask')
             # Select the masking atoms from the reference structure
-            cache = pandda.reference_dataset().get_hierarchy().atom_selection_cache()
-            pro_sites_cart = pandda.reference_dataset().get_hierarchy().select(cache.selection('pepnames and not element H')).atoms().extract_xyz()
+            cache = pandda.reference_dataset().hierarchy().atom_selection_cache()
+            pro_sites_cart = pandda.reference_dataset().hierarchy().select(cache.selection('pepnames and not element H')).atoms().extract_xyz()
             # Generate the main protein mask
             global_mask = atomic_mask(  cart_sites   = pro_sites_cart,
                                         grid_size    = pandda.reference_grid().grid_size(),
@@ -400,7 +400,7 @@ def pandda_main(args):
         pandda.log('Calculating Reference Structure Centre of Mass', True)
 
         # Should be in the reference frame
-        ref_structure = pandda.reference_dataset().get_hierarchy()
+        ref_structure = pandda.reference_dataset().hierarchy()
         backbone_atoms = ref_structure.select(ref_structure.atom_selection_cache().selection('pepnames and (name CA or name C or name O or name N)')).atoms()
         backbone_sites = backbone_atoms.extract_xyz()
         backbone_wghts = flex.double([1]*len(backbone_sites))
@@ -426,7 +426,7 @@ def pandda_main(args):
             if 1 or (d_handler.hit_clusters is None):
 
                 pandda.log('===================================>>>', True)
-                pandda.log('Calculating Z-MAPs for Dataset {!s} ({!s}/{!s})'.format(d_handler.d_tag, d_handler.d_num+1, pandda.datasets.size()), True)
+                pandda.log('Calculating Z-MAPs for Dataset {!s} ({!s}/{!s})'.format(d_handler.tag, d_handler.num+1, pandda.datasets.size()), True)
 
                 ##################################
                 # EXTRACT MAP VALUES             #
@@ -576,9 +576,9 @@ def pandda_main(args):
                     continue
                 elif num_clusters == -1:
                     # This dataset is too noisy to analyse - flag!
-                    pandda.datasets.all_masks().set_mask_value(mask_name='noisy zmap', entry_id=d_handler.d_tag, value=True)
+                    pandda.datasets.all_masks().set_mask_value(mask_name='noisy zmap', entry_id=d_handler.tag, value=True)
                     # Link datasets to the noisy results directory
-                    noisy_dir = os.path.join(pandda.output_handler.get_dir('noisy_datasets'), d_handler.d_name)
+                    noisy_dir = os.path.join(pandda.output_handler.get_dir('noisy_datasets'), d_handler.name)
                     if not os.path.exists(noisy_dir):
                         rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=noisy_dir)
                     # Nothing more to do with this dataset at the moment
@@ -624,7 +624,7 @@ def pandda_main(args):
                 assert num_clusters > 0, 'NUMBER OF CLUSTERS AFTER FILTERING == 0!'
                 
                 # Create a link to the interesting directories in the initial results directory
-                hit_dir = os.path.join(pandda.output_handler.get_dir('interesting_datasets'), d_handler.d_name)
+                hit_dir = os.path.join(pandda.output_handler.get_dir('interesting_datasets'), d_handler.name)
                 if not os.path.exists(hit_dir):
                     rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=hit_dir)
 
@@ -653,7 +653,7 @@ def pandda_main(args):
             if d_handler.hit_clusters:
 
                 pandda.log('===================================>>>', True)
-                pandda.log('Imaging blobs in Dataset {!s}'.format(d_handler.d_tag), True)
+                pandda.log('Imaging blobs in Dataset {!s}'.format(d_handler.tag), True)
 
                 sorted_blob_indices = d_handler.hit_clusters.sort(sorting_function=max)
                 blob_num = len(sorted_blob_indices)
@@ -743,8 +743,8 @@ def pandda_main(args):
         pandda.write_summary_csvs()
         pandda.write_summary_graphs()
 
-        if pandda.args.settings.testing:
-            test_pandda_results(pandda)
+#        if pandda.args.settings.testing:
+#            test_pandda_results(pandda)
 
         pandda.exit()
 
@@ -757,257 +757,10 @@ def pandda_main(args):
 
     return pandda, None
 
-def test_pandda_results(pandda):
+def run_custom_analyses(pandda):
     """If a list of hits is available, test to see whether the pandda identified them"""
 
-    from Giant.Stats.Utils import calculate_roc_vals
-
-    # Cutoff for how close the "discovered" points have to be to the centroid of the ligand to be correct
-    max_peak_dist = 5
-
     try:
-
-        # ============================================================================>
-        #####
-        # Extract list of correct hits
-        #####
-        # ============================================================================>
-
-        solution_file = os.path.join(pandda.output_handler.get_dir('root'), '../correct_hits.summary')
-        if not os.path.exists(solution_file):
-            print('!!!        NOT PERFORMING TESTING       !!!')
-            print('!!! CORRECT LIGANDS FILE DOES NOT EXIST !!!')
-            print('!!!        NOT PERFORMING TESTING       !!!')
-            return
-
-        solutions = [line.strip().split(', ') for line in open(solution_file, 'r').readlines()]
-        correct_ligands = {}
-        [correct_ligands.setdefault(xtal,[]) for xtal in [d.d_tag for d in pandda.datasets.all()]]
-        [correct_ligands[xtal].append([(float(x), float(y), float(z)), smile]) for xtal, model, smile, x, y, z in solutions if xtal in correct_ligands.keys()]
-
-        # ============================================================================>
-
-        combined_cluster = pandda.process_z_value_clusters()
-
-        # Iterate through the correct ligands and check that there is a cluster near them
-        pandda.log('===================================>>>')
-        pandda.log('TRAINING - Checking Hits have been identified')
-
-        missed_datasets = 0
-        missed_ligands = 0
-        missed_glycols = 0
-        minimum_dists = []
-
-        # Go through the datasets with ligands in them
-        for d_tag in sorted(correct_ligands.keys()):
-            pandda.log('Checking for the ligands in Dataset {!s}'.format(d_tag))
-
-            # Get the list of ligands that we should be detecting
-            dataset_ligands = correct_ligands[d_tag]
-
-            # Get the clusters of identified points for this dataset
-            clust = pandda.datasets.get(d_tag=d_tag).hit_clusters
-
-            # Go through the ligands in the dataset
-            for loc_cart_tuple, smile in dataset_ligands:
-
-                loc_grid_tuple = tuple(flex.double(loc_cart_tuple)/pandda.reference_grid().grid_spacing())
-                pandda.log('\tLooking for {!s} at {!s}'.format(smile, loc_grid_tuple))
-
-                # TODO 
-                # TODO 
-                # TODO 
-                # TODO 
-                # TODO 
-                # TODO 
-                print 'NOT TAKING ACCOUNT OF THE ORIGIN SHIFT'
-                # TODO 
-                # TODO 
-                # TODO 
-                # TODO 
-                # TODO 
-
-                # Check to see if there are any identified points in this dataset
-                if clust==None:
-                    pandda.log("\t\tTHIS DATASET WASN'T IDENTIFIED AS INTERESTING - MISSED IT")
-                    missed_datasets += 1
-                    continue
-
-                # Calculate the distances between ligands and the identified clusters
-                dists = []
-                found_it = False
-
-                # Iterate through the clusters in this dataset
-                for clust_points in clust.get_points():
-                    # Iterate through the points in this cluster
-                    for grid_point in clust_points:
-                        dists.append((flex.double(grid_point) - flex.double(loc_grid_tuple)).norm())
-                        #print '\t\tHow about {!s}?'.format(grid_point)
-                        if dists[-1] <  max_peak_dist/pandda.reference_grid().grid_spacing():
-                            pandda.log('\t\t\tFOUND IT!')
-                            found_it = True
-                            break
-                    if found_it == True:
-                        break
-
-                # Check to see if the ligands has been found
-                if not found_it:
-                    pandda.log('\t\t\tMISSED IT...')
-                    if smile == 'OCCO':
-                        missed_glycols += 1
-                    else:
-                        missed_ligands += 1
-
-                if smile == 'OCCO':
-                    pass
-                else:
-                    minimum_dists.append(min(dists)*pandda.reference_grid().grid_spacing())
-
-        pandda.log('----------------------------------->>>')
-        pandda.log('MISSED DATASETS: {!s}'.format(missed_datasets))
-        pandda.log('MISSED LIGANDS: {!s}'.format(missed_ligands))
-        pandda.log('MISSED GLYCOLS: {!s}'.format(missed_glycols))
-        pandda.log('----------------------------------->>>')
-        pandda.log('MINIMUM DISTANCES TO LIGAND (A): \n{!s}'.format(map(int,minimum_dists)))
-        pandda.log('----------------------------------->>>')
-
-        pandda.log('===================================>>>')
-        pandda.log('Sorting Clusters')
-
-        # Sort the clusters by size
-        size_sorted_indices = combined_cluster.sort(sorting_data='sizes', sorting_function=None, decreasing=True)
-        # Sort the clusters by mean
-        mean_sorted_indices = combined_cluster.sort(sorting_data='values', sorting_function=numpy.mean, decreasing=True)
-        # Sort the clusters by max
-        max_sorted_indices = combined_cluster.sort(sorting_data='values', sorting_function=max, decreasing=True)
-
-        pandda.log('===================================>>>')
-        pandda.log('TRAINING - Calculating ROC Curves')
-
-        COMBINED_ROC_RESULTS = {}
-
-        for test_num, (c_indices, rank_vals) in enumerate([(size_sorted_indices, combined_cluster.get_sizes(size_sorted_indices)),
-                                                           (mean_sorted_indices, combined_cluster.get_means(mean_sorted_indices)),
-                                                           (max_sorted_indices,  combined_cluster.get_maxima(max_sorted_indices))]):
-
-            test_type = ['c_size','z_mean','z_peak'][test_num]
-
-#           if test_type != 'z_peak':
-#               print('Skipping test: {!s}'.format(test_type))
-#               continue
-
-            # Output ROC information
-            ROC_OUTPUT = []
-
-            pandda.log('===================================>>>')
-            pandda.log('Ranking by: {!s}'.format(test_type))
-            pandda.log('===================================>>>')
-
-            # List to see when a ligand is identified - avoids multiple identifications
-            identified_ligands = []
-            identified_idx = 1
-
-            # Calculate ROC Curves etc - Iterate through clusters and check if near ligand
-            for c_rank, c_index in enumerate(c_indices):
-                # Pull out information to identify the cluster
-                d_tag, c_num = combined_cluster.get_keys([c_index])[0]
-                #c_centroid = combined_cluster.get_centroids([c_index])[0]
-                pandda.log('Checking Dataset {:4}, Cluster {:4}, Rank: {:4}, Val: {:6.2f}'.format(d_tag, c_num, c_rank, rank_vals[c_rank]))
-
-                # Reset
-                is_a_ligand = 0
-                skip = False
-
-                # Check if there is a ligand in the dataset
-                if d_tag not in correct_ligands.keys():
-                    pass
-                else:
-                    # Get the ligands present in the dataset
-                    dataset_ligands = correct_ligands[d_tag]
-                    dists = []
-
-                    for l_num, (loc_cart_tuple, smile) in enumerate(dataset_ligands):
-                        # Don't bother for Glycols
-                        if smile == 'OCCO':
-                            continue
-
-                        # Convert to grid index for distance comparison
-                        loc_grid_tuple = tuple(flex.double(loc_cart_tuple)/pandda.reference_grid().grid_spacing())
-
-                        # Iterate through and see if this overlaps with the ligand
-                        for c_point in combined_cluster.get_points([c_index])[0]:
-                            # Calculate distance to ligand
-                            dists.append((flex.double(loc_grid_tuple) - flex.double(c_point)).norm())
-                            # Check if correct
-                            if dists[-1] < max_peak_dist/pandda.reference_grid().grid_spacing():
-                                is_a_ligand = 1
-                                break
-
-                        # If it's a ligand, check to see if it's been previously identified
-                        if is_a_ligand:
-                            if (d_tag, l_num) in identified_ligands:
-                                pandda.log('\t. - Ligand already found: Dataset {!s}'.format(d_tag))
-                                skip = True
-                            else:
-                                pandda.log("\t{!s} - Ligand found: Dataset {!s}".format(identified_idx, d_tag))
-                                identified_idx += 1
-                                identified_ligands.append((d_tag, l_num))
-
-                if not skip:
-                    ROC_OUTPUT.append({'d_tag': d_tag, 'c_num': c_num, 'is_a_ligand': is_a_ligand, 'rank': c_rank, 'val': rank_vals[c_rank]})
-
-            # Calculate the ROC Curve
-            correct_class = [t['is_a_ligand'] for t in ROC_OUTPUT]
-            rank_vals     = [t['val'] for t in ROC_OUTPUT]
-            ROC_RESULTS = calculate_roc_vals(correct_class=correct_class, rank_vals=rank_vals)
-            COMBINED_ROC_RESULTS[test_type] = ROC_RESULTS
-
-            pandda.log('Ligands Identified: {!s}'.format([l[0] for l in identified_ligands]))
-
-        # Load plotting
-        try:
-            import matplotlib
-            # Setup so that we can write without a display connected
-            matplotlib.interactive(0)
-            default_backend, validate_function = matplotlib.defaultParams['backend']
-            from matplotlib import pyplot
-            output_graphs = True
-        except:
-            output_graphs = False
-
-        # OUTPUT ROC CURVE
-        if output_graphs:
-
-            for test_type in COMBINED_ROC_RESULTS.keys():
-
-                roc = COMBINED_ROC_RESULTS[test_type]
-
-                fig = pyplot.figure()
-                pyplot.title('ROC CURVE FOR {!s}'.format(test_type))
-                pyplot.plot(roc['VALS'], roc['SENS'], marker='o', linestyle='-', color='k', label='Sensitivity')
-                pyplot.plot(roc['VALS'], roc['SPEC'], marker='o', linestyle='-', color='r', label='Specificity')
-                pyplot.plot(roc['VALS'], roc['PREC'], marker='o', linestyle='-', color='g', label='Precision')
-                pyplot.plot(roc['VALS'], roc['ACC'],  marker='o', linestyle='-', color='b', label='Accuracy')
-                pyplot.xlabel('SCORE CUTOFF ({!s})'.format(test_type))
-                pyplot.ylabel('ROC RESPONSE')
-#                pyplot.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
-                pyplot.legend()
-                # Apply tight layout to prevent overlaps
-                pyplot.tight_layout()
-                # Save
-                pyplot.savefig(os.path.join(pandda.output_handler.get_dir('analyses'), 'roc-cutoff-{!s}.png'.format(test_type)))
-                pyplot.close(fig)
-
-                fig = pyplot.figure()
-                pyplot.title('ROC CURVE FOR {!s}'.format(test_type))
-                pyplot.plot(roc['FPR'], roc['TPR'], marker='o', linestyle='-', color='g')
-                pyplot.xlabel('FPR')
-                pyplot.ylabel('TPR')
-                # Apply tight layout to prevent overlaps
-                pyplot.tight_layout()
-                # Save
-                pyplot.savefig(os.path.join(pandda.output_handler.get_dir('analyses'), 'roc-tpr-fpr-{!s}.png'.format(test_type)))
-                pyplot.close(fig)
 
         # ============================================================================>
         # ======================================>
@@ -1063,29 +816,10 @@ def test_pandda_results(pandda):
         # ============================================================================>
 
     except:
-        pandda.log('FAILURE DURING TESTING', True)
+        pandda.log('FAILURE DURING CUSTOM ANALYSES', True)
         raise
 
     return 0
-
-# ============================================================================>
-#
-#   GENERATE ARGS
-#
-# ============================================================================>
-
-def process_args_2(args=None):
-
-    from PANDDAs.Parser import build_pandda_parser
-
-    pandda_arg_parser = build_pandda_parser()
-
-    if args:
-        pandda_args = pandda_arg_parser.parse_args(args)
-    else:
-        pandda_args = pandda_arg_parser.parse_args()
-
-    return pandda_args
 
 # ============================================================================>
 #
