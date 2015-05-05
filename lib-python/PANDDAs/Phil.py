@@ -103,13 +103,13 @@ pandda_phil_def = """
                 max_datasets = 1000
                     .help = 'Maximum number of datasets to process at once'
                     .type = int
-                high_res_lower_limit = 2.0
+                high_res_lower_limit = 3.0
                     .help = 'Lowest resolution limit (datasets below this are rejected)'
                     .type = float
                 high_res_upper_limit = 0.0
                     .help = 'Highest resolution limit (maps are never calulcated above this limit)'
                     .type = float
-                high_res_increment = None
+                high_res_increment = 0.2
                     .help = 'Increment of resolution shell for map analysis'
                     .type = float
             }

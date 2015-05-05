@@ -13,7 +13,7 @@ from Giant.Grid.Masks import spherical_mask, atomic_mask, non_symmetrical_atomic
 from Giant.Stats.Cluster import cluster_data
 from Giant.Utils import status_bar, rel_symlink
 
-from PANDDAs.Main import PanddaMultiDatasetAnalyser
+from PANDDAs.Main import PanddaMultiDatasetAnalyser, PanddaMapAnalyser
 from PANDDAs import welcome
 
 def pandda_main(args):
@@ -47,7 +47,7 @@ def pandda_main(args):
         # MOVE THIS INTO INIT FUNCTION AND POPULATE FROM THE ARG PARSER
         pandda.set_low_resolution(pandda.params.analysis.high_res_lower_limit)
         pandda.set_high_resolution(pandda.params.analysis.high_res_upper_limit)
-        pandda.set_cut_resolution(pandda.params.analysis.high_res_lower_limit)
+        pandda.set_cut_resolution(0)
         # XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX
 
         pandda.run_pandda_init()
@@ -163,10 +163,6 @@ def pandda_main(args):
         pandda.set_high_resolution(  max(   pandda.get_high_resolution(),
                                             min(pandda.datasets_summary.get_data('high_res_limit'))   )   )
 
-        # TODO POTENTIALLY MOVE THIS ...
-        pandda.set_cut_resolution(   min(   pandda.get_low_resolution(),
-                                            pandda.get_cut_resolution()   )   )
-
         pandda.log('===================================>>>')
         pandda.log('UPDATED RESOLUTION LIMITS')
         pandda.log('LOW RESOLUTION:  {!s}'.format(pandda.get_low_resolution()))
@@ -181,7 +177,7 @@ def pandda_main(args):
         # ============================================================================>
 
         if pandda.reference_grid() is None:
-            pandda.create_reference_grid(   grid_spacing     = pandda.params.maps.resolution_factor*pandda.get_cut_resolution(),
+            pandda.create_reference_grid(   grid_spacing     = pandda.params.maps.resolution_factor*pandda.get_high_resolution(),
                                             expand_to_origin = False,
                                             buffer           = pandda.params.masks.outer_mask+pandda.params.maps.padding    )
 
@@ -253,135 +249,12 @@ def pandda_main(args):
 
         pandda.pickle_the_pandda(components=['grid'])
         pandda.update_pandda_size(tag='After Creating Grid')
-
+        
         # ============================================================================>
-        #####
-        # Local Map Handler Objects and Extract Map Values
-        #####
         # ============================================================================>
-
-#        # DON'T ACTUALLY NEED THESE...
-#        pandda.load_reference_map_handler()
-#        pandda.extract_reference_map_values()
-
-# XXX        # ============================================================================>
-# XXX        #####
-# XXX        # PUT IN THE RESOLUTION LOOP HERE!
-# XXX        #####
-# XXX        # ============================================================================>
-# XXX        # BUT DO WE STILL USE THE SAME GRID? - YES SO THAT WE CAN COMPARE THE GRIDS
-# XXX
-# XXX
-# XXX   for blah in blah:
-# XXX       loop_over_resolution()
-
-        # Select datasets based on resolution - this builds the 'selected for analysis' mask
-        pandda.filter_datasets_3(resolution=pandda.get_cut_resolution())
-
         # ============================================================================>
-        #####
-        # Scale the Maps, Calculate Statistical Maps
-        #####
         # ============================================================================>
-
-        # Truncate the data to a particular resolution
-        pandda.truncate_scaled_data()
-
-        # Load the reference map so that we can scale the individual maps to this
-        pandda.load_reference_map()
-
-        # Need to load all to calculate statistical maps
-        pandda.load_and_morph_maps()
-
-        # Only need to calculate mean if requested
-        if (not pandda.stat_maps.mean_map) or pandda.args.method.recalculate_statistical_maps:
-            pandda.calculate_mean_map()
-
-        # Calculate the uncertainty of all loaded maps (needs the mean map to have been calculated)
-        pandda.calculate_map_uncertainties()
-
-        # Only need to calculate map statistics if requested
-        if (not pandda.stat_maps.adj_stds_map) or pandda.args.method.recalculate_statistical_maps:
-            pandda.calculate_map_statistics()
-
-        # TODO TODO TODO
-        # TODO IMPLEMENT - Collect all of the map statistics from the different dataset_handlers
-        # So that the data_collections can be populated independently of when the uncertainties etc were calculated
-        #pandda.analyse_dataset_variability_3()
-        # TODO TODO TODO
-
         # ============================================================================>
-        #####
-        # STORING FOR REUSE
-        #####
-        # Pickle all of the large arrays so they can be reloaded
-        # ============================================================================>
-
-        pandda.pickle_the_pandda(all=True)
-        pandda.update_pandda_size(tag='After Pre-processing')
-
-        # ============================================================================>
-        #####
-        # Write out Grid Point Distributions for interesting grid points (high modality, etc...)
-        #####
-        # ============================================================================>
-
-        # TODO TODO TODO
-        # TODO TODO TODO
-
-        # ============================================================================>
-        #####
-        # Write Grid Point Distributions - Standard Function, just to provide an output
-        #####
-        # ============================================================================>
-
-        try:
-            from libtbx.math_utils import iceil
-            grid_size = pandda.reference_grid().grid_size()
-            num_points = min(10, min(grid_size))
-            assert num_points != 0
-            grid_points = zip(*[range(0, s, iceil(s/num_points)) for s in grid_size])
-            pandda.write_grid_point_distributions(  grid_points     = grid_points,
-                                                    output_filename = None          )
-        except:
-            print('UNIMPORTANT: FAILED TO WRITE AUTOMATIC DISTRIBUTION OF GRID POINTS')
-            raise
-
-        # ============================================================================>
-        #####
-        # Manual Settings
-        #####
-        # ============================================================================>
-
-        # Minimum size of cluster
-        min_cluster_volume   = pandda.params.blob_search.min_blob_volume
-        min_cluster_z_peak   = pandda.params.blob_search.min_blob_z_peak
-        # Z cutoff for maps
-        z_cutoff             = pandda.params.blob_search.contour_level
-        # Clustering Methods
-        clustering_criterion = pandda.params.blob_search.clustering.criterion
-        clustering_metric    = pandda.params.blob_search.clustering.metric
-        clustering_method    = pandda.params.blob_search.clustering.linkage
-        # Cutoff for separation of clusters (sqrt((2x)**2 + (2y)**2 + (2z)**2)) -- allows diagonal grid points to connect
-        clustering_cutoff = 1.1 * numpy.math.sqrt(3) * pandda.reference_grid().grid_spacing()
-
-        # ============================================================================>
-        #####
-        # DATA PROCESSING
-        #####
-        # Calculate the moments of the distributions at the grid points
-        # Use the means and the stds to convert the maps to z-maps
-        # Use the local mask to look for groups of significant z-values
-        # ============================================================================>
-
-        pandda.print_clustering_settings(   z_cutoff             = z_cutoff,
-                                            min_cluster_volume   = min_cluster_volume,
-                                            min_cluster_z_peak   = min_cluster_z_peak,
-                                            clustering_cutoff    = clustering_cutoff,
-                                            clustering_criterion = clustering_criterion,
-                                            clustering_metric    = clustering_metric,
-                                            clustering_method    = clustering_method  )
-
         # TODO TODO TODO - MOVE?
         # Combine the symmetry mask and the atomic mask to create the mask for clustering
         pandda.log('===================================>>>', True)
@@ -407,298 +280,558 @@ def pandda_main(args):
 
         centre_of_mass = backbone_sites.mean_weighted(weights=backbone_wghts)
         # TODO TODO TODO
-
-        # Time the processing of the dataset maps
-        t_start = time.time()
-
-        for d_handler in pandda.datasets.mask(mask_name='selected for analysis'):
-            
-            ################################################
-            # AUTOGENERATE SCRIPTS FOR VIEWING THE DATASET #
-            ################################################
-
-            pandda.write_pymol_scripts(d_handler=d_handler)
-            
-            #############################################
-            # CALCULATE Z-MAPS AND LOOK FOR LARGE BLOBS #
-            #############################################
-
-            if 1 or (d_handler.hit_clusters is None):
-
-                pandda.log('===================================>>>', True)
-                pandda.log('Calculating Z-MAPs for Dataset {!s} ({!s}/{!s})'.format(d_handler.tag, d_handler.num+1, pandda.datasets.size()), True)
-
-                ##################################
-                # EXTRACT MAP VALUES             #
-                ##################################
-
-                s_map = d_handler.morphed_map
-                assert s_map is not None, 'NO MAP FOUND'
-
-                # Write the sampled map
-                if not os.path.exists(d_handler.output_handler.get_file('sampled_map')):
-                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('sampled_map'),
-                                                map_data    = s_map)
-
-                # Write distribution of the map values
-                if not os.path.exists(d_handler.output_handler.get_file('s_map_png')):
-                    pandda.write_map_value_distribution(map_vals=s_map,
-                                                        grid_indices=pandda.reference_grid().global_mask().outer_mask_indices(),
-                                                        output_file = d_handler.output_handler.get_file('s_map_png'))
-
-                ##################################
-                # CALCULATE MEAN-DIFF MAPS       #
-                ##################################
-
-                d_map = d_handler.morphed_map - pandda.stat_maps.mean_map
-
-                # Write the map
-                if not os.path.exists(d_handler.output_handler.get_file('mean_diff_map')):
-                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('mean_diff_map'),
-                                                map_data    = d_map)
-
-                # Write distribution of the map values
-                if not os.path.exists(d_handler.output_handler.get_file('d_mean_map_png')):
-                    pandda.write_map_value_distribution(map_vals=d_map,
-                                                        grid_indices=pandda.reference_grid().global_mask().outer_mask_indices(),
-                                                        output_file = d_handler.output_handler.get_file('d_mean_map_png'))
-
-                ##################################
-                # CALCULATE Z-MAPS               #
-                ##################################
-
-                ###################################################################
-                # NAIVE Z-MAP - NOT USING UNCERTAINTY ESTIMATION OR ADJUSTED STDS #
-                ###################################################################
-
-                z_map_naive = pandda.calculate_z_map(map_vals=s_map, method='naive')
-
-                # Write z map
-                if not os.path.exists(d_handler.output_handler.get_file('z_map_naive')):
-                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_naive'),
-                                                map_data    = z_map_naive)
-
-                # Write distribution of the map values
-                if not os.path.exists(d_handler.output_handler.get_file('z_map_naive_png')):
-                    pandda.write_map_value_distribution(map_vals = z_map_naive,
-                                                        grid_indices = pandda.reference_grid().global_mask().outer_mask_indices(),
-                                                        output_file = d_handler.output_handler.get_file('z_map_naive_png'),
-                                                        plot_normal = True)
-
-                ##################################
-
-                # Normalise this map to N(0,1)
-                z_map_naive_masked = [z_map_naive[i] for i in pandda.reference_grid().global_mask().outer_mask_indices()]
-                z_map_naive_normalised = (z_map_naive - numpy.mean(z_map_naive_masked)) / numpy.std(z_map_naive_masked)
-
-                # Write z map
-                if not os.path.exists(d_handler.output_handler.get_file('z_map_naive_normalised')):
-                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_naive_normalised'),
-                                                map_data    = z_map_naive_normalised)
-
-                # Write distribution of the map values
-                if not os.path.exists(d_handler.output_handler.get_file('z_map_naive_normalised_png')):
-                    pandda.write_map_value_distribution(map_vals = z_map_naive_normalised,
-                                                        grid_indices = pandda.reference_grid().global_mask().outer_mask_indices(),
-                                                        output_file = d_handler.output_handler.get_file('z_map_naive_normalised_png'),
-                                                        plot_normal = True)
-
-                ##################################
-                # ADJUSTED+UNCERTAINTY Z-MAP     #
-                ##################################
-
-                z_map_corrected = pandda.calculate_z_map(map_vals=s_map, method='adjusted+uncertainty', map_uncertainty=d_handler.get_map_uncertainty())
-
-                # Write z map
-                if not os.path.exists(d_handler.output_handler.get_file('z_map_corrected')):
-                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_corrected'),
-                                                map_data    = z_map_corrected)
-
-                # Write distribution of the map values
-                if not os.path.exists(d_handler.output_handler.get_file('z_map_corrected_png')):
-                    pandda.write_map_value_distribution(map_vals = z_map_corrected,
-                                                        grid_indices = pandda.reference_grid().global_mask().outer_mask_indices(),
-                                                        output_file = d_handler.output_handler.get_file('z_map_corrected_png'),
-                                                        plot_normal = True)
-
-                ##################################
-
-                # Normalise this map to N(0,1)
-                z_map_corrected_masked = [z_map_corrected[i] for i in pandda.reference_grid().global_mask().outer_mask_indices()]
-                z_map_corrected_normalised = (z_map_corrected - numpy.mean(z_map_corrected_masked)) / numpy.std(z_map_corrected_masked)
-
-                # Write z map
-                if not os.path.exists(d_handler.output_handler.get_file('z_map_corrected_normalised')):
-                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_corrected_normalised'),
-                                                map_data    = z_map_corrected_normalised)
-
-                # Write distribution of the map values
-                if not os.path.exists(d_handler.output_handler.get_file('z_map_corrected_normalised_png')):
-                    pandda.write_map_value_distribution(map_vals = z_map_corrected_normalised,
-                                                        grid_indices = pandda.reference_grid().global_mask().outer_mask_indices(),
-                                                        output_file = d_handler.output_handler.get_file('z_map_corrected_normalised_png'),
-                                                        plot_normal = True)
-
-                ##########################################
-                # ANALYSE Z-MAP FOR STATISTICAL VALIDITY #
-                ##########################################
-
-                z_map_stats = basic_statistics(flex.double([z_map_corrected[i] for i in pandda.reference_grid().global_mask().outer_mask_indices()]))
-
-                d_handler.z_map_stats['z_map_mean']     = z_map_stats.mean
-                d_handler.z_map_stats['z_map_std']      = z_map_stats.bias_corrected_standard_deviation
-                d_handler.z_map_stats['z_map_skew']     = z_map_stats.skew
-                d_handler.z_map_stats['z_map_kurtosis'] = z_map_stats.kurtosis
-
-                #################################################
-                # XXX WHICH MAP TO DO THE BLOB SEARCHING ON XXX #
-                #################################################
-
-                z_map = z_map_corrected_normalised
-
-                ##################################
-                # LOOK FOR CLUSTERS OF Z-SCORES  #
-                ##################################
-
-                num_clusters, raw_hit_clusters = pandda.cluster_high_z_values(
-                                                            d_handler            = d_handler,
-                                                            z_map                = z_map,
-                                                            z_cutoff             = z_cutoff,
-                                                            point_mask           = combined_point_mask,
-                                                            clustering_cutoff    = clustering_cutoff,
-                                                            clustering_criterion = clustering_criterion,
-                                                            clustering_metric    = clustering_metric,
-                                                            clustering_method    = clustering_method
-                                                         )
-
-                if num_clusters == 0:
-                    # Nothing more to do with this dataset at the moment
-                    continue
-                elif num_clusters == -1:
-                    # This dataset is too noisy to analyse - flag!
-                    pandda.datasets.all_masks().set_mask_value(mask_name='noisy zmap', entry_id=d_handler.tag, value=True)
-                    # Link datasets to the noisy results directory
-                    noisy_dir = os.path.join(pandda.output_handler.get_dir('noisy_datasets'), d_handler.name)
-                    if not os.path.exists(noisy_dir):
-                        rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=noisy_dir)
-                    # Nothing more to do with this dataset at the moment
-                    continue
-
-                ################################
-                # FILTER CLUSTERS OF Z-SCORES  #
-                ################################
-
-                # Filter the clusters by size and peak height
-                num_clusters, filtered_hit_clusters = pandda.filter_z_clusters_1(
-                                                            hit_clusters       = raw_hit_clusters,
-                                                            min_cluster_volume = min_cluster_volume,
-                                                            min_cluster_z_peak = min_cluster_z_peak     )
-
-                if num_clusters == 0:
-                    pandda.log('===> No Clusters found - Minimum cluster peak/size not reached.', True)
-                    # Nothing more to do with this dataset at the moment
-                    continue
-
-                # Filter the clusters by distance from protein
-                num_clusters, filtered_hit_clusters = pandda.filter_z_clusters_2(
-                                                            hit_clusters     = filtered_hit_clusters,
-                                                            grid_spacing     = pandda.reference_grid().grid_spacing(), 
-                                                            grid_origin_cart = pandda.reference_dataset().origin_shift(),
-                                                            ref_structure    = pandda.reference_dataset().new_structure().hierarchy     )
-
-                if num_clusters == 0:
-                    pandda.log('===> No Clusters found - Clusters too far from protein.', True)
-                    # Nothing more to do with this dataset at the moment
-                    continue
-
-                # Filter the clusters by symmetry equivalence
-                num_clusters, filtered_hit_clusters = pandda.filter_z_clusters_3(
-                                                            hit_clusters     = filtered_hit_clusters,
-                                                            grid_spacing     = pandda.reference_grid().grid_spacing(), 
-                                                            grid_origin_cart = pandda.reference_dataset().origin_shift(),
-                                                            ref_unit_cell    = pandda.reference_dataset().unit_cell,
-                                                            ref_sym_ops      = pandda.crystal_contact_generators,
-                                                            ref_structure    = pandda.reference_dataset().new_structure().hierarchy     )
-                
-                pandda.log('===> {!s} Cluster(s) found.'.format(num_clusters), True)
-                assert num_clusters > 0, 'NUMBER OF CLUSTERS AFTER FILTERING == 0!'
-                
-                # Create a link to the interesting directories in the initial results directory
-                hit_dir = os.path.join(pandda.output_handler.get_dir('interesting_datasets'), d_handler.name)
-                if not os.path.exists(hit_dir):
-                    rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=hit_dir)
-
-                ##############################
-                # PRINT MAP OF THE CLUSTERS  #
-                ##############################
-
-                highz_points = []; [highz_points.extend(zip(*v)[0]) for v in filtered_hit_clusters.values()]
-                highz_map_array = numpy.zeros(pandda.reference_grid().grid_size_1d(), dtype=int)
-                highz_map_array.put(map(pandda.reference_grid().grid_indexer(), highz_points), [1]*len(highz_points))
-                pandda.write_array_to_map(d_handler.output_handler.get_file('high_z_mask'), flex.double(highz_map_array.tolist()))
-                
-                ##################################
-                # GROUP NEARBY CLUSTERS TOGETHER #
-                ##################################
-
-                num_clusters, grouped_hit_clusters = pandda.group_clusters( hit_clusters = filtered_hit_clusters,
-                                                                            grid_spacing = pandda.reference_grid().grid_spacing()   )
-
-                # Create cluster object from the clustered points
-                d_handler.hit_clusters = cluster_data(grouped_hit_clusters)
-
-                time.sleep(5)
-
-            # Image Blobs in the datasets using ccp4mg
-            if d_handler.hit_clusters:
-
-                pandda.log('===================================>>>', True)
-                pandda.log('Imaging blobs in Dataset {!s}'.format(d_handler.tag), True)
-
-                sorted_blob_indices = d_handler.hit_clusters.sort(sorting_function=max)
-                blob_num = len(sorted_blob_indices)
-
-                for blob_rank, blob_grid_peak in enumerate(d_handler.hit_clusters.get_centroids(indices=sorted_blob_indices)):
-
-                    # Only produce a certain number of images
-                    if blob_rank == pandda.params.blob_search.blobs_to_image:
-                        break
-
-                    status_bar(n=blob_rank, n_max=blob_num)
-
-                    blob_cart_peak = [g*pandda.reference_grid().grid_spacing() for g in blob_grid_peak]
-
-                    # Make images of the blob
-                    pandda.image_blob(  script    = d_handler.output_handler.get_file('ccp4mg_script'),
-                                        image     = d_handler.output_handler.get_file('ccp4mg_png'),
-                                        d_handler = d_handler,
-                                        point_no  = blob_rank+1,
-                                        point     = blob_cart_peak,
-                                        towards   = centre_of_mass
-                                    )
-
-                status_bar(n=blob_num, n_max=blob_num)
-
-        #    ##################################
-        #    # POST-PROCESS Z-MAPS            #
-        #    ##################################
-        #
-        #    mod_z_map, resamp_mod_z_map = pandda.process_z_map(z_map=z_map)
-        #
-        #    # Write map
-        #    pandda.write_array_to_map(  output_file  = d_handler.get_mtz_filename().replace('.mtz','.processed.zvalues.ccp4'),
-        #                                map_data     = flex.double(mod_z_map))
-        #    # Write down-sampled map
-        #    pandda.write_array_to_map(  output_file  = d_handler.get_mtz_filename().replace('.mtz','.resamp.processed.zvalues.ccp4'),
-        #                                map_data     = flex.double(resamp_mod_z_map),
-        #                                grid_size    = pandda.reference_grid().resampled_grid_size(),
-        #                                grid_spacing = pandda.reference_grid().resampled_grid_spacing())
-
+        # ============================================================================>
+        # ============================================================================>
+        # ============================================================================>
+        # ============================================================================>
         # ============================================================================>
 
-        t_end = time.time()
-        pandda.log('===================================>>>', True)
-        pandda.log('Map Processing Time: {!s}'.format(time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(t_end - t_start))), True)
+        # ============================================================================>
+        #####
+        # LOOP OVER RESOLUTION LIMITS OF DATASETS AND CALCULALTE Z-MAPS
+        #####
+        # ============================================================================>
+        # BUT DO WE STILL USE THE SAME GRID? - YES SO THAT WE CAN COMPARE THE GRIDS
+
+        if not pandda.params.analysis.high_res_increment:
+            # No variable cutoff - select all 
+            res_limits = [pandda.get_low_resolution()]  # i.e. [2]
+        else:
+            min_limit = round(pandda.get_high_resolution(), 1) - 0.1    # i.e. 1
+            max_limit = round(pandda.get_low_resolution(), 1) + 0.1     # i.e. 3
+            shell_width = pandda.params.analysis.high_res_increment
+            res_limits = numpy.arange(min_limit, max_limit, shell_width).tolist()
+            
+            pandda.log('===================================>>>', True)
+            pandda.log('{!s}'.format(res_limits), True)
+
+        # Initially analyse all datasets from high_shell_limit -> cut_resolution
+        high_shell_limit=0
+        resolution_check = {}
+
+        # Iterate through and calculate statistical maps at different resolutions
+        for cut_resolution in res_limits:
+        
+            pandda.set_cut_resolution(cut_resolution)
+
+            pandda.log('===================================>>>', True)
+            pandda.log('Analysing Datasets from {!s}A -> {!s}A'.format(high_shell_limit, cut_resolution), True)
+
+            # Get the total number of datasets with resolution above the cutoff
+            pandda.log('Selecting Building Mask', True)
+            building_mask_name, building_mask = pandda.select_for_building_distributions(high_res_cutoff = cut_resolution)
+            pandda.log('Selecting Analysis Mask', True)
+            analysis_mask_name, analysis_mask = pandda.select_for_analysis( high_res_large_cutoff = cut_resolution, 
+                                                                            high_res_small_cutoff = high_shell_limit   )
+
+            pandda.log('===================================>>>', True)
+            pandda.log('Analysing Datasets from {!s}A -> {!s}A'.format(high_shell_limit, cut_resolution), True)
+            pandda.log('===================================>>>', True)
+            pandda.log('BUILDING MASK NAME: {!s}'.format(building_mask_name), True) 
+            pandda.log('Building Distributions using {!s} Datasets'.format(sum(building_mask)), True)
+            pandda.log('===================================>>>', True)
+            pandda.log('ANALYSIS MASK NAME: {!s}'.format(analysis_mask_name), True)
+            pandda.log('Calculating Z-Maps for {!s} Datasets'.format(sum(analysis_mask)), True)
+
+            time.sleep(5)
+
+            if sum(building_mask) < 50:
+                pandda.log('NOT ENOUGH DATASETS TO CALCULATE DISTRIBUTIONS -> MOVING TO NEXT SHELL', True)
+                # Don't have enough to construct robust distributions
+                continue
+            else:
+                pandda.log('ENOUGH DATASETS -> PROCESSING THIS SHELL', True)
+                # Have enough to generate robust distributions - reset upper limit for next run
+                high_shell_limit = cut_resolution
+
+            if sum(analysis_mask) == 0:
+                pandda.log('NO DATASETS TO ANALYSE @ {!s}'.format(cut_resolution))
+                continue
+
+#            # Select datasets based on resolution - this builds the 'selected for analysis' mask
+#            pandda.filter_datasets_3(resolution=cut_resolution)
+
+            pandda.log('===================================>>>', True)
+            pandda.log('Loading Maps for {!s} Datasets at {!s}A'.format(pandda.datasets.size(mask_name=building_mask_name), cut_resolution), True)
+
+            # ============================================================================>
+            #####
+            # FFT and Scale Maps
+            #####
+            # ============================================================================>
+
+            # Truncate the data to a particular resolution
+            pandda.truncate_scaled_data(mask_name=building_mask_name)
+
+            # Load the reference map so that we can scale the individual maps to this
+            ref_map_holder = pandda.load_reference_map( map_resolution = cut_resolution )
+
+            # TODO CHECK FOR PICKLED STATISTICAL MAP OBJECTS
+#            if os.path.exists(pandda.pickle_handler.get_file('stat_map').format(cut_resolution)):
+#                ...
+
+            # Need to load all to calculate statistical maps
+            map_holder_list = pandda.load_and_morph_maps(   mask_name      = building_mask_name,
+                                                            map_resolution = cut_resolution,
+                                                            ref_map_holder = ref_map_holder     )
+            
+            # Create an object to hold all of the maps, and can be used to calculate the mean maps, etc...
+            map_analyser = PanddaMapAnalyser(   dataset_maps     = map_holder_list,
+                                                meta             = {'resolution'   : cut_resolution,
+                                                                    'grid_size'    : pandda.reference_grid().grid_size(),
+                                                                    'grid_size_1d' : pandda.reference_grid().grid_size_1d()
+                                                                    },
+                                                statistical_maps = None,
+                                                parent           = pandda )
+    
+            # Add the analysis mask to the map analyser        
+            map_analyser.dataset_maps.all_masks().add_mask(mask_name=analysis_mask_name, mask=[False]*map_analyser.dataset_maps.size())
+            for dh in pandda.datasets.mask(mask_name=analysis_mask_name):
+                map_analyser.dataset_maps.all_masks().set_mask_value(mask_name=analysis_mask_name, entry_id=dh.tag, value=True)
+
+            # ============================================================================>
+            #####
+            # Calculate Statistical Maps
+            #####
+            # ============================================================================>
+
+            pandda.log('===================================>>>', True)
+            pandda.log('Analysing Maps for {!s} Datasets at {!s}A'.format(pandda.datasets.size(mask_name=building_mask_name), cut_resolution), True)
+
+            # Calculate the mean map
+            if (not map_analyser.statistical_maps.mean_map) or pandda.args.method.recalculate_statistical_maps:
+                mean_map = map_analyser.calculate_mean_map(masked_idxs=pandda.reference_grid().global_mask().outer_mask_indices())
+
+            # Calculate the uncertainty of all loaded maps (needs the mean map to have been calculated)
+            map_uncties = map_analyser.calculate_map_uncertainties(masked_idxs=pandda.reference_grid().global_mask().inner_mask_indices())
+            
+            try:
+                from ascii_graph import Pyasciigraph
+                g=Pyasciigraph()
+                graph_data = [(mh.tag, round(mh.meta['map_uncertainty'],3)) for mh in map_analyser.dataset_maps.all()]
+                for l in g.graph(label='Sorted Map Uncertainties (Ascending Order)', data=graph_data, sort=1):
+                    print(l)
+            except ImportError:
+                print('IMPORT ERROR (ascii_graph) - CANNOT GENERATE UNCERTAINTY GRAPH')
+                pass
+
+            # Calculate the statistics of the maps
+            if (not map_analyser.statistical_maps.sadj_map) or pandda.args.method.recalculate_statistical_maps:
+                map_analyser.calculate_statistical_maps(masked_idxs=pandda.reference_grid().global_mask().outer_mask_indices())
+
+            # TODO TODO TODO
+            # TODO IMPLEMENT - Collect all of the map statistics from the different dataset_handlers
+            # So that the data_collections can be populated independently of when the uncertainties etc were calculated
+            #pandda.analyse_dataset_variability_3()
+            # TODO TODO TODO
+
+            # ============================================================================>
+            #####
+            # STORING FOR REUSE
+            #####
+            # Pickle all of the large arrays so they can be reloaded
+            # ============================================================================>
+
+            pandda.pickle_the_pandda(all=True)
+            pandda.update_pandda_size(tag='After Pre-processing')
+
+            # ============================================================================>
+            #####
+            # Write out Grid Point Distributions for interesting grid points (high modality, etc...)
+            #####
+            # ============================================================================>
+
+            # TODO TODO TODO
+            # TODO TODO TODO
+
+            # ============================================================================>
+            #####
+            # Write Grid Point Distributions - Standard Function, just to provide an output
+            #####
+            # ============================================================================>
+
+            try:
+                from libtbx.math_utils import iceil
+                grid_size = pandda.reference_grid().grid_size()
+                num_points = min(10, min(grid_size))
+                grid_points = zip(*[range(0, s, iceil(s/num_points)) for s in grid_size])
+                pandda.write_grid_point_distributions(  grid_points     = grid_points,
+                                                        map_analyser    = map_analyser,
+                                                        output_filename = None          )
+            except:
+                print('UNIMPORTANT: FAILED TO WRITE AUTOMATIC DISTRIBUTION OF GRID POINTS')
+                raise
+
+            # ============================================================================>
+            #####
+            # Manual Settings
+            #####
+            # ============================================================================>
+
+            # Minimum size of cluster
+            min_cluster_volume   = pandda.params.blob_search.min_blob_volume
+            min_cluster_z_peak   = pandda.params.blob_search.min_blob_z_peak
+            # Z cutoff for maps
+            z_cutoff             = pandda.params.blob_search.contour_level
+            # Clustering Methods
+            clustering_criterion = pandda.params.blob_search.clustering.criterion
+            clustering_metric    = pandda.params.blob_search.clustering.metric
+            clustering_method    = pandda.params.blob_search.clustering.linkage
+            # Cutoff for separation of clusters (sqrt((2x)**2 + (2y)**2 + (2z)**2)) -- allows diagonal grid points to connect
+            clustering_cutoff = 1.1 * numpy.math.sqrt(3) * pandda.reference_grid().grid_spacing()
+
+            # ============================================================================>
+            #####
+            # DATA PROCESSING
+            #####
+            # Calculate the moments of the distributions at the grid points
+            # Use the means and the stds to convert the maps to z-maps
+            # Use the local mask to look for groups of significant z-values
+            # ============================================================================>
+
+            pandda.print_clustering_settings(   z_cutoff             = z_cutoff,
+                                                min_cluster_volume   = min_cluster_volume,
+                                                min_cluster_z_peak   = min_cluster_z_peak,
+                                                clustering_cutoff    = clustering_cutoff,
+                                                clustering_criterion = clustering_criterion,
+                                                clustering_metric    = clustering_metric,
+                                                clustering_method    = clustering_method  )
+
+            # Time the processing of the dataset maps
+            t_start = time.time()
+            
+            pandda.log('===================================>>>', True)
+            pandda.log('Calculating Z-Maps for {!s} Datasets at {!s}A'.format(pandda.datasets.size(mask_name=analysis_mask_name), cut_resolution), True)
+
+            for i_dh, d_handler in enumerate(pandda.datasets.mask(mask_name=analysis_mask_name)):
+
+                ####################################################################
+                # CHECK THAT THIS IS THE FIRST TIME THIS DATASET IS BEING ANALYSED #
+                ####################################################################
+
+                assert d_handler.tag not in resolution_check, 'DATASET ALREADY ANALYSED AT DIFFERENT RESOLUTION: NOW {!s}, THEN {!s}'.format(cut_resolution, resolution_check[d_handler.tag])
+                resolution_check[d_handler.tag] = cut_resolution
+                    
+                # Create a file that says what resolution this was processed at
+                link_dir = os.path.join(pandda.output_handler.get_dir('resolutions'), '{!s}-{!s}'.format(d_handler.name, cut_resolution))
+                if not os.path.exists(link_dir):
+                    rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=link_dir)
+
+                # Make this a function and add more to it...
+                text_file = d_handler.output_handler.get_file('dataset_info')
+                with open(text_file, 'a') as fh:
+                    fh.write('PROCESSED AT {!s}A\n'.format(cut_resolution))
+               
+                # Flag that this dataset is being analysed 
+                pandda.datasets.all_masks().set_mask_value(mask_name='analysed', entry_id=d_handler.tag, value=True)
+                
+                # Extract the map for this dataset    
+                m_handler = map_analyser.dataset_maps.get(tag=d_handler.tag)
+                # Link the dataset handler to the child map holder
+                d_handler.child = m_handler
+                
+                ################################################
+                # AUTOGENERATE SCRIPTS FOR VIEWING THE DATASET #
+                ################################################
+
+                pandda.write_pymol_scripts(d_handler=d_handler)
+                
+                #############################################
+                # CALCULATE Z-MAPS AND LOOK FOR LARGE BLOBS #
+                #############################################
+
+                if 1 or (d_handler.hit_clusters is None):
+
+                    pandda.log('===================================>>>', True)
+                    pandda.log('Calculating Z-MAPs for Dataset {!s} ({!s}/{!s})'.format(d_handler.tag, i_dh+1, pandda.datasets.size(mask_name=analysis_mask_name)), True)
+
+                    ##################################
+                    # EXTRACT MAP VALUES             #
+                    ##################################
+
+                    s_map = m_handler.map
+    #                s_map = d_handler.morphed_map
+                    assert s_map is not None, 'NO MAP FOUND'
+
+                    # Write the sampled map
+                    if not os.path.exists(d_handler.output_handler.get_file('sampled_map')):
+                        pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('sampled_map'),
+                                                    map_data    = s_map)
+
+                    # Write distribution of the map values
+                    if not os.path.exists(d_handler.output_handler.get_file('s_map_png')):
+                        pandda.write_map_value_distribution(map_vals     = s_map,
+                                                            grid_indices = pandda.reference_grid().global_mask().outer_mask_indices(),
+                                                            output_file  = d_handler.output_handler.get_file('s_map_png'))
+
+                    ##################################
+                    # CALCULATE MEAN-DIFF MAPS       #
+                    ##################################
+
+                    d_map = s_map - map_analyser.statistical_maps.mean_map
+    #                d_map = d_handler.morphed_map - pandda.stat_maps.mean_map
+
+                    # Write the map
+                    if not os.path.exists(d_handler.output_handler.get_file('mean_diff_map')):
+                        pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('mean_diff_map'),
+                                                    map_data    = d_map)
+
+                    # Write distribution of the map values
+                    if not os.path.exists(d_handler.output_handler.get_file('d_mean_map_png')):
+                        pandda.write_map_value_distribution(map_vals     = d_map,
+                                                            grid_indices = pandda.reference_grid().global_mask().outer_mask_indices(),
+                                                            output_file  = d_handler.output_handler.get_file('d_mean_map_png'))
+
+                    ##################################
+                    # CALCULATE Z-MAPS               #
+                    ##################################
+
+                    ###################################################################
+                    # NAIVE Z-MAP - NOT USING UNCERTAINTY ESTIMATION OR ADJUSTED STDS #
+                    ###################################################################
+
+                    z_map_naive = map_analyser.calculate_z_map(tag=d_handler.tag, method='naive')
+    #                z_map_naive = pandda.calculate_z_map(map_vals=s_map, method='naive')
+
+                    # Write z map
+                    if not os.path.exists(d_handler.output_handler.get_file('z_map_naive')):
+                        pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_naive'),
+                                                    map_data    = z_map_naive)
+
+                    # Write distribution of the map values
+                    if not os.path.exists(d_handler.output_handler.get_file('z_map_naive_png')):
+                        pandda.write_map_value_distribution(map_vals     = z_map_naive,
+                                                            grid_indices = pandda.reference_grid().global_mask().outer_mask_indices(),
+                                                            output_file  = d_handler.output_handler.get_file('z_map_naive_png'),
+                                                            plot_normal  = True)
+
+                    ##################################
+
+                    # Normalise this map to N(0,1)
+                    z_map_naive_masked = [z_map_naive[i] for i in pandda.reference_grid().global_mask().outer_mask_indices()]
+                    z_map_naive_normalised = (z_map_naive - numpy.mean(z_map_naive_masked)) / numpy.std(z_map_naive_masked)
+
+                    # Write z map
+                    if not os.path.exists(d_handler.output_handler.get_file('z_map_naive_normalised')):
+                        pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_naive_normalised'),
+                                                    map_data    = z_map_naive_normalised)
+
+                    # Write distribution of the map values
+                    if not os.path.exists(d_handler.output_handler.get_file('z_map_naive_normalised_png')):
+                        pandda.write_map_value_distribution(map_vals     = z_map_naive_normalised,
+                                                            grid_indices = pandda.reference_grid().global_mask().outer_mask_indices(),
+                                                            output_file  = d_handler.output_handler.get_file('z_map_naive_normalised_png'),
+                                                            plot_normal  = True)
+
+                    ##################################
+                    # ADJUSTED+UNCERTAINTY Z-MAP     #
+                    ##################################
+
+                    z_map_corrected = map_analyser.calculate_z_map(tag=d_handler.tag, method='adjusted+uncertainty')
+    #                z_map_corrected = pandda.calculate_z_map(map_vals=s_map, method='adjusted+uncertainty', map_uncertainty=d_handler.get_map_uncertainty())
+
+                    # Write z map
+                    if not os.path.exists(d_handler.output_handler.get_file('z_map_corrected')):
+                        pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_corrected'),
+                                                    map_data    = z_map_corrected)
+
+                    # Write distribution of the map values
+                    if not os.path.exists(d_handler.output_handler.get_file('z_map_corrected_png')):
+                        pandda.write_map_value_distribution(map_vals     = z_map_corrected,
+                                                            grid_indices = pandda.reference_grid().global_mask().outer_mask_indices(),
+                                                            output_file  = d_handler.output_handler.get_file('z_map_corrected_png'),
+                                                            plot_normal  = True)
+
+                    ##################################
+
+                    # Normalise this map to N(0,1)
+                    z_map_corrected_masked = [z_map_corrected[i] for i in pandda.reference_grid().global_mask().outer_mask_indices()]
+                    z_map_corrected_normalised = (z_map_corrected - numpy.mean(z_map_corrected_masked)) / numpy.std(z_map_corrected_masked)
+
+                    # Write z map
+                    if not os.path.exists(d_handler.output_handler.get_file('z_map_corrected_normalised')):
+                        pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_corrected_normalised'),
+                                                    map_data    = z_map_corrected_normalised)
+
+                    # Write distribution of the map values
+                    if not os.path.exists(d_handler.output_handler.get_file('z_map_corrected_normalised_png')):
+                        pandda.write_map_value_distribution(map_vals     = z_map_corrected_normalised,
+                                                            grid_indices = pandda.reference_grid().global_mask().outer_mask_indices(),
+                                                            output_file  = d_handler.output_handler.get_file('z_map_corrected_normalised_png'),
+                                                            plot_normal  = True)
+
+                    ##########################################
+                    # ANALYSE Z-MAP FOR STATISTICAL VALIDITY #
+                    ##########################################
+
+                    z_map_stats = basic_statistics(flex.double([z_map_corrected[i] for i in pandda.reference_grid().global_mask().outer_mask_indices()]))
+
+                    m_handler.z_map_stats = {}
+                    m_handler.z_map_stats['z_map_mean'] = z_map_stats.mean
+                    m_handler.z_map_stats['z_map_std']  = z_map_stats.bias_corrected_standard_deviation
+                    m_handler.z_map_stats['z_map_skew'] = z_map_stats.skew
+                    m_handler.z_map_stats['z_map_kurt'] = z_map_stats.kurtosis
+                
+                    pandda.get_map_observations().set_data_value(data_name='z_map_mean', entry_id=m_handler.tag, value=m_handler.z_map_stats['z_map_mean'])
+                    pandda.get_map_observations().set_data_value(data_name='z_map_std', entry_id=m_handler.tag, value=m_handler.z_map_stats['z_map_std'])
+                    pandda.get_map_observations().set_data_value(data_name='z_map_skew', entry_id=m_handler.tag, value=m_handler.z_map_stats['z_map_skew'])
+                    pandda.get_map_observations().set_data_value(data_name='z_map_kurt', entry_id=m_handler.tag, value=m_handler.z_map_stats['z_map_kurt'])
+
+                    #################################################
+                    # XXX WHICH MAP TO DO THE BLOB SEARCHING ON XXX #
+                    #################################################
+
+                    z_map = z_map_corrected_normalised
+
+                    ##################################
+                    # LOOK FOR CLUSTERS OF Z-SCORES  #
+                    ##################################
+
+                    num_clusters, raw_hit_clusters = pandda.cluster_high_z_values(
+                                                                d_handler            = d_handler,
+                                                                z_map                = z_map,
+                                                                z_cutoff             = z_cutoff,
+                                                                point_mask           = combined_point_mask,
+                                                                clustering_cutoff    = clustering_cutoff,
+                                                                clustering_criterion = clustering_criterion,
+                                                                clustering_metric    = clustering_metric,
+                                                                clustering_method    = clustering_method
+                                                             )
+
+                    if num_clusters == 0:
+                        # Nothing more to do with this dataset at the moment
+                        continue
+                    elif num_clusters == -1:
+                        # This dataset is too noisy to analyse - flag!
+                        pandda.datasets.all_masks().set_mask_value(mask_name='noisy zmap', entry_id=d_handler.tag, value=True)
+                        # Link datasets to the noisy results directory
+                        noisy_dir = os.path.join(pandda.output_handler.get_dir('noisy_datasets'), d_handler.name)
+                        if not os.path.exists(noisy_dir):
+                            rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=noisy_dir)
+                        # Nothing more to do with this dataset at the moment
+                        continue
+
+                    ################################
+                    # FILTER CLUSTERS OF Z-SCORES  #
+                    ################################
+
+                    # Filter the clusters by size and peak height
+                    num_clusters, filtered_hit_clusters = pandda.filter_z_clusters_1(
+                                                                hit_clusters       = raw_hit_clusters,
+                                                                min_cluster_volume = min_cluster_volume,
+                                                                min_cluster_z_peak = min_cluster_z_peak     )
+
+                    if num_clusters == 0:
+                        pandda.log('===> No Clusters found - Minimum cluster peak/size not reached.', True)
+                        # Nothing more to do with this dataset at the moment
+                        continue
+
+                    # Filter the clusters by distance from protein
+                    num_clusters, filtered_hit_clusters = pandda.filter_z_clusters_2(
+                                                                hit_clusters     = filtered_hit_clusters,
+                                                                grid_spacing     = pandda.reference_grid().grid_spacing(), 
+                                                                grid_origin_cart = pandda.reference_dataset().origin_shift(),
+                                                                ref_structure    = pandda.reference_dataset().new_structure().hierarchy     )
+
+                    if num_clusters == 0:
+                        pandda.log('===> No Clusters found - Clusters too far from protein.', True)
+                        # Nothing more to do with this dataset at the moment
+                        continue
+
+                    # Filter the clusters by symmetry equivalence
+                    num_clusters, filtered_hit_clusters = pandda.filter_z_clusters_3(
+                                                                hit_clusters     = filtered_hit_clusters,
+                                                                grid_spacing     = pandda.reference_grid().grid_spacing(), 
+                                                                grid_origin_cart = pandda.reference_dataset().origin_shift(),
+                                                                ref_unit_cell    = pandda.reference_dataset().unit_cell,
+                                                                ref_sym_ops      = pandda.crystal_contact_generators,
+                                                                ref_structure    = pandda.reference_dataset().new_structure().hierarchy     )
+                    
+                    pandda.log('===> {!s} Cluster(s) found.'.format(num_clusters), True)
+                    assert num_clusters > 0, 'NUMBER OF CLUSTERS AFTER FILTERING == 0!'
+                    
+                    # Create a link to the interesting directories in the initial results directory
+                    hit_dir = os.path.join(pandda.output_handler.get_dir('interesting_datasets'), d_handler.name)
+                    if not os.path.exists(hit_dir):
+                        rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=hit_dir)
+
+                    ##############################
+                    # PRINT MAP OF THE CLUSTERS  #
+                    ##############################
+
+                    highz_points = []; [highz_points.extend(zip(*v)[0]) for v in filtered_hit_clusters.values()]
+                    highz_map_array = numpy.zeros(pandda.reference_grid().grid_size_1d(), dtype=int)
+                    highz_map_array.put(map(pandda.reference_grid().grid_indexer(), highz_points), [1]*len(highz_points))
+                    pandda.write_array_to_map(d_handler.output_handler.get_file('high_z_mask'), flex.double(highz_map_array.tolist()))
+                    
+                    ##################################
+                    # GROUP NEARBY CLUSTERS TOGETHER #
+                    ##################################
+
+                    num_clusters, grouped_hit_clusters = pandda.group_clusters( hit_clusters = filtered_hit_clusters,
+                                                                                grid_spacing = pandda.reference_grid().grid_spacing()   )
+
+                    # Create cluster object from the clustered points
+                    d_handler.hit_clusters = cluster_data(grouped_hit_clusters)
+
+                # Image Blobs in the datasets using ccp4mg
+                if d_handler.hit_clusters:
+
+                    pandda.log('===================================>>>', True)
+                    pandda.log('Imaging blobs in Dataset {!s}'.format(d_handler.tag), True)
+
+                    sorted_blob_indices = d_handler.hit_clusters.sort(sorting_function=max)
+                    blob_num = len(sorted_blob_indices)
+
+                    for blob_rank, blob_grid_peak in enumerate(d_handler.hit_clusters.get_centroids(indices=sorted_blob_indices)):
+
+                        # Only produce a certain number of images
+                        if blob_rank == pandda.params.blob_search.blobs_to_image:
+                            break
+
+                        status_bar(n=blob_rank, n_max=blob_num)
+
+                        blob_cart_peak = [g*pandda.reference_grid().grid_spacing() for g in blob_grid_peak]
+
+                        # Make images of the blob
+                        pandda.image_blob(  script    = d_handler.output_handler.get_file('ccp4mg_script'),
+                                            image     = d_handler.output_handler.get_file('ccp4mg_png'),
+                                            d_handler = d_handler,
+                                            point_no  = blob_rank+1,
+                                            point     = blob_cart_peak,
+                                            towards   = centre_of_mass
+                                        )
+
+                    status_bar(n=blob_num, n_max=blob_num)
+
+            #    ##################################
+            #    # POST-PROCESS Z-MAPS            #
+            #    ##################################
+            #
+            #    mod_z_map, resamp_mod_z_map = pandda.process_z_map(z_map=z_map)
+            #
+            #    # Write map
+            #    pandda.write_array_to_map(  output_file  = d_handler.get_mtz_filename().replace('.mtz','.processed.zvalues.ccp4'),
+            #                                map_data     = flex.double(mod_z_map))
+            #    # Write down-sampled map
+            #    pandda.write_array_to_map(  output_file  = d_handler.get_mtz_filename().replace('.mtz','.resamp.processed.zvalues.ccp4'),
+            #                                map_data     = flex.double(resamp_mod_z_map),
+            #                                grid_size    = pandda.reference_grid().resampled_grid_size(),
+            #                                grid_spacing = pandda.reference_grid().resampled_grid_spacing())
+
+            # ============================================================================>
+            
+            pandda.write_map_analyser_summary(map_analyser=map_analyser, analysis_mask_name=analysis_mask_name)
+        
+            t_end = time.time()
+            pandda.log('===================================>>>', True)
+            pandda.log('{!s}A Map Processing Time: {!s}'.format(cut_resolution, time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(t_end - t_start))), True)
+            
+        # ============================================================================>
+        #####
+        # XXX END LOOP HERE
+        #####
+        # ============================================================================>
 
         pandda.pickle_the_pandda(components=['datasets'])
         pandda.update_pandda_size(tag='After Processing')
@@ -726,9 +859,9 @@ def pandda_main(args):
 
         # Write a combined file of all of the result hits
         pandda.write_ranked_cluster_csv(
-                                cluster=combined_cluster,
-                                sorted_indices=combined_cluster.sort(sorting_data='values', sorting_function=max, decreasing=True),
-                                outfile=pandda.output_handler.get_file('blob_summaries')
+                                cluster        = combined_cluster,
+                                sorted_indices = combined_cluster.sort(sorting_data='values', sorting_function=max, decreasing=True),
+                                outfile        = pandda.output_handler.get_file('blob_summaries')
                                 )
 
         # ============================================================================>
@@ -737,14 +870,14 @@ def pandda_main(args):
         #####
         # ============================================================================>
 
-        pandda.collect_map_statistics()
-
         pandda.write_analysis_summary()
         pandda.write_summary_csvs()
         pandda.write_summary_graphs()
 
 #        if pandda.args.settings.testing:
 #            test_pandda_results(pandda)
+
+        print(resolution_check)
 
         pandda.exit()
 
