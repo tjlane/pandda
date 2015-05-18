@@ -20,7 +20,7 @@ def write(fh, mes):
     fh.write(mes+'\n')
     print mes
 
-def test_pandda_results(summary_files, pandda, output_dir='./validation_output'):
+def test_pandda_results(summary_files, pandda, ignores=[], output_dir='./validation_output'):
     """If a list of hits is available, test to see whether the pandda identified them"""
 
     output_dir = easy_directory(output_dir)
@@ -42,11 +42,8 @@ def test_pandda_results(summary_files, pandda, output_dir='./validation_output')
         #####
         # ============================================================================>
 
-        ignores = ['OCCO']
-        
         write(out_fh,'===================================>>>')
         write(out_fh,'LOADING CORRECT LIGANDS FROM FILE')
-        write(out_fh,'===================================>>>')
 
         # Dictionary of  "correct" sites per xtal - populate with empty list for each crystal
         correct_sites = {}; [correct_sites.setdefault(xtal,[]) for xtal in [d.tag for d in pandda.datasets.all()]]
@@ -61,6 +58,15 @@ def test_pandda_results(summary_files, pandda, output_dir='./validation_output')
                     continue
                 else:
                     correct_sites[xtal].append([(float(x), float(y), float(z)), label, info])
+
+        num_search_ligands = sum(map(len,correct_sites.values()))
+
+        write(out_fh,'===================================>>>')
+        write(out_fh,'LOOKING FOR {!s} LIGANDS'.format(num_search_ligands))
+        
+        if num_search_ligands == 0:
+            write(out_fh,'NO LIGANDS TO LOOK FOR: EXITING.')
+            sys.exit()
 
         # ============================================================================>
 
@@ -186,10 +192,13 @@ def test_pandda_results(summary_files, pandda, output_dir='./validation_output')
                 if d_tag not in correct_sites.keys():
                     pass
                 else:
+
                     # Get the ligands present in the dataset
                     dataset_ligands = correct_sites[d_tag]
 
                     for l_num, (site_cart_native, label, info) in enumerate(dataset_ligands):
+                        # Mark whether this ligand has been found
+                        ligand_found = 0
 
                         # Map to reference frame            
                         if d_handler.local_alignment_transforms():
@@ -205,16 +214,17 @@ def test_pandda_results(summary_files, pandda, output_dir='./validation_output')
                             dist = (flex.double(site_grid_ref) - flex.double(c_point)).norm()
                             # Check if correct
                             if dist < max_dist_grid:
-                                is_a_ligand = 1
+                                ligand_found = 1
                                 break
 
                         # If it's a ligand, check to see if it's been previously identified
-                        if is_a_ligand:
+                        if ligand_found:
                             if (d_tag, l_num) in identified_ligands:
                                 write(out_fh,'\t. - Ligand already found: Dataset {!s}'.format(d_tag))
                                 print 'THIS SHOULDN\'T HAPPEN!!!!'
                                 skip = True
                             else:
+                                is_a_ligand = 1
                                 write(out_fh,"\t{!s} - Ligand found: Dataset {!s}".format(identified_idx, d_tag))
                                 identified_idx += 1
                                 identified_ligands.append((d_tag, l_num))
@@ -378,7 +388,10 @@ if __name__ == '__main__':
     elif len(potential_panddas) != 1:
         sys.exit('MORE THAN ONE PANDDA SUPPLIED')
 
+    print 'IGNORING MOLECULES'
+    ignores = [a[7:].replace('\'','').replace('\"','') for a in sys.argv if a.startswith('ignore=')]
+
     pandda = potential_panddas[0]
 
     print 'RUNNING TESTING'
-    test_pandda_results(summary_files=summary_files, pandda=pandda)
+    test_pandda_results(summary_files=summary_files, pandda=pandda, ignores=ignores)

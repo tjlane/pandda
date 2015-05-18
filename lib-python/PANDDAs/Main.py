@@ -3,6 +3,7 @@ from __future__ import print_function
 import os, sys, glob, time, re
 import copy, resource, gc
 import multiprocessing
+import warnings
 
 import math
 
@@ -90,7 +91,8 @@ REJECT_MASK_NAMES    = [    'rejected - total',
                             'rejected - structure',
                             'rejected - unknown'  ]
 FLAG_MASK_NAMES      = [    'noisy zmap',
-                            'interesting'  ]
+                            'interesting',
+                            'analysed'  ]
 
 # SET FILTERING CONSTANTS
 FILTER_SCALING_CORRELATION_CUTOFF = 0.7
@@ -683,6 +685,10 @@ class PanddaMapAnalyser(object):
         if not masked_idxs: masked_idxs = range(0, self.meta['grid_size_1d'])
         else:               assert max(masked_idxs) < self.meta['grid_size_1d'], 'masked_idxs out of range of map'
 
+        # Create statistics objects for each grid point
+        self.log('===================================>>>', True)
+        self.log('Calculating Mean Map', True)
+
         # Chunk the points into groups - Compromise between cpu time and memory usage - ~200 dataset -> chunksize of 5000
         chunk_size = 1000*int(2000/self.dataset_maps.size())
         chunked_indices = [masked_idxs[i:i + chunk_size] for i in range(0, len(masked_idxs), chunk_size)]
@@ -707,7 +713,7 @@ class PanddaMapAnalyser(object):
         status_bar(n=num_chunks, n_max=num_chunks)
 
         t2 = time.time()
-        print('> MEAN MAP CALCULATION > Time Taken: {!s} seconds'.format(int(t2-t1)))
+        self.log('> MEAN MAP CALCULATION > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
         self.statistical_maps.mean_map = flex.double(mean_map_vals.tolist())
 
@@ -740,6 +746,7 @@ class PanddaMapAnalyser(object):
         middle_expected_diff_vals = expected_diff_vals.select(middle_indices)
 
         self.log('===================================>>>')
+        t1 = time.time()
 
         for i_mh, mh in enumerate(self.dataset_maps.all()):
 
@@ -764,7 +771,7 @@ class PanddaMapAnalyser(object):
 
             # Save the uncertainty
             mh.meta['map_uncertainty'] = map_unc
-            print('> UNCERTAINTY: {!s}'.format(fit_coeffs.round(3).tolist()[0]))
+#            print('> UNCERTAINTY: {!s}'.format(fit_coeffs.round(3).tolist()[0]))
 
             if output_graphs and mh.parent:
 
@@ -808,14 +815,38 @@ class PanddaMapAnalyser(object):
 
         self.log('\rMap Uncertainties Calculated.                                         ', True)
 
+        t2 = time.time()
+        self.log('> MAP UNCERTAINTY CALCULATION > Time Taken: {!s} seconds'.format(int(t2-t1)))
+
         return [mh.meta['map_uncertainty'] for mh in self.dataset_maps.all()]
 
-    def calculate_statistical_maps(self, masked_idxs=None):
+    def calculate_statistical_maps(self, masked_idxs=None, cpus=1, ignore_warnings=True):
         """Take the sampled maps and calculate statistics for each grid point across the datasets"""
+
+        def map_statistics_map_func(arg_dict):
+            map_vals          = arg_dict['map_vals']
+            map_uncertainties = arg_dict['map_uncertainties']
+            # Starting guess for the underlying sigma is raw_std/guess_factor
+            guess_factor = 0.001
+            # Calculate statistics from extracted map values
+            stats_obj = basic_statistics(flex.double(map_vals.tolist()))
+            # Calculate Standard Deviation of the map values
+            stdv  = stats_obj.bias_corrected_standard_deviation
+            # Calculate the adjusted standard deviation
+            sadj = estimate_true_underlying_sd(obs_vals=map_vals.tolist(), obs_error=map_uncertainties, est_sigma=stdv*guess_factor)
+            # Calculate other statistics
+            skew = stats_obj.skew
+            kurt = stats_obj.kurtosis
+            bimo = (skew**2 + 1)/kurt
+            return (stdv, sadj, skew, kurt, bimo)
 
         # Create statistics objects for each grid point
         self.log('===================================>>>', True)
-        self.log('Calculating Statistics of Grid Points', True)
+        self.log('Calculating Statistics of Grid Points (using {!s} cores)'.format(cpus), True)
+
+        if ignore_warnings:
+            self.log('Suppressing Numpy Iteration Warnings... (Nothing to worry about)')
+            warnings.simplefilter('ignore', category=RuntimeWarning)
 
         if not masked_idxs: masked_idxs = range(0, self.meta['grid_size_1d'])
         else:               assert max(masked_idxs) < self.meta['grid_size_1d'], 'masked_idxs out of range of map'
@@ -833,10 +864,6 @@ class PanddaMapAnalyser(object):
 
         # Statistics objects for each of the points we're interested in
         masked_point_statistics = []
-        masked_point_adj_sigmas = []
-
-        # Starting guess for the underlying sigma is raw_std/guess_factor
-        guess_factor = 0.001
 
         # Calculate the statistics of the map values across the datasets
         for i_chunk, chunk_idxs in enumerate(chunked_indices):
@@ -846,50 +873,48 @@ class PanddaMapAnalyser(object):
             if i_chunk+1 < num_chunks:
                 assert len(p_map_vals) == self.dataset_maps.size()
                 assert len(p_map_vals.T) == chunk_size
-            # Calculate statistics from extracted map values
-            point_stats = [basic_statistics(flex.double(map_vals.tolist())) for map_vals in p_map_vals.T]
-            # Iterate through and, using the uncertainties of the maps, calculate the underlying standard deviation of the map values
-            approx_sigmas = [bs.bias_corrected_standard_deviation for bs in point_stats]
-            adjusted_sigmas = [estimate_true_underlying_sd(obs_vals=map_vals.tolist(), obs_error=all_uncertainties, est_sigma=approx_sigmas[i]*guess_factor) for i, map_vals in enumerate(p_map_vals.T)]
-            # Extend the complete lists
-            masked_point_statistics.extend(point_stats)
-            masked_point_adj_sigmas.extend(adjusted_sigmas)
-            assert i+1 == len(approx_sigmas), 'LIST INDEX DOES NOT MATCH LIST LENGTH'
+            if cpus > 1:
+                # Generate arg_list for analysis
+                arg_list = [{'map_vals':map_vals, 'map_uncertainties':all_uncertainties} for map_vals in p_map_vals.T]
+                point_statistics = easy_mp.pool_map(fixed_func=map_statistics_map_func, args=arg_list, processes=cpus)
+            else:
+                point_statistics = [map_statistics_map_func({'map_vals':map_vals, 'map_uncertainties':all_uncertainties}) for map_vals in p_map_vals.T]
+
+            masked_point_statistics.extend(point_statistics)
 
         status_bar(n=num_chunks, n_max=num_chunks)
         assert len(masked_point_statistics) == len(masked_idxs)
-        assert len(masked_point_adj_sigmas) == len(masked_idxs)
 
         t2 = time.time()
-        print('> MAP POINT ANALYSIS > Time Taken: {!s} seconds'.format(int(t2-t1)))
+        self.log('> MAP POINT ANALYSIS > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
         # Calculate Stds Maps - Set the background to be tiny but non-zero so we can still divide by it
         stds_map_vals = 1e-18*numpy.ones(self.meta['grid_size_1d'])
-        stds_map_vals.put(masked_idxs, [bs.bias_corrected_standard_deviation for bs in masked_point_statistics])
+        stds_map_vals.put(masked_idxs, [ps[0] for ps in masked_point_statistics])
         stds_map_vals = flex.double(stds_map_vals.tolist())
         self.statistical_maps.stds_map = stds_map_vals
 
         # Calculate ADJUSTED Stds Maps - Set the background to be tiny but non-zero so we can still divide by it
         sadj_map_vals = 1e-18*numpy.ones(self.meta['grid_size_1d'])
-        sadj_map_vals.put(masked_idxs, masked_point_adj_sigmas)
+        sadj_map_vals.put(masked_idxs, [ps[1] for ps in masked_point_statistics])
         sadj_map_vals = flex.double(sadj_map_vals.tolist())
         self.statistical_maps.sadj_map = sadj_map_vals
 
         # Calculate Skew Maps
         skew_map_vals = numpy.zeros(self.meta['grid_size_1d'])
-        skew_map_vals.put(masked_idxs, [bs.skew for bs in masked_point_statistics])
+        skew_map_vals.put(masked_idxs, [ps[2] for ps in masked_point_statistics])
         skew_map_vals = flex.double(skew_map_vals.tolist())
         self.statistical_maps.skew_map = skew_map_vals
 
         # Calculate Kurtosis Maps
         kurt_map_vals = numpy.zeros(self.meta['grid_size_1d'])
-        kurt_map_vals.put(masked_idxs, [bs.kurtosis for bs in masked_point_statistics])
+        kurt_map_vals.put(masked_idxs, [ps[3] for ps in masked_point_statistics])
         kurt_map_vals = flex.double(kurt_map_vals.tolist())
         self.statistical_maps.kurt_map = kurt_map_vals
 
         # Calculate Bimodality Maps
         bimo_map_vals = numpy.zeros(self.meta['grid_size_1d'])
-        bimo_map_vals.put(masked_idxs, [(bs.skew**2 + 1)/bs.kurtosis for bs in masked_point_statistics])
+        bimo_map_vals.put(masked_idxs, [ps[4] for ps in masked_point_statistics])
         bimo_map_vals = flex.double(bimo_map_vals.tolist())
         self.statistical_maps.bimo_map = bimo_map_vals
 
@@ -926,7 +951,7 @@ class PanddaMultiDatasetAnalyser(object):
     _crystal_mask_names   = CRYSTAL_MASK_NAMES
     _reject_mask_names    = REJECT_MASK_NAMES
     _flag_mask_names      = FLAG_MASK_NAMES
-    _custom_mask_names    = ['analysed']
+    _custom_mask_names    = []
     _all_mask_names = _structure_mask_names + _crystal_mask_names + _reject_mask_names + _flag_mask_names + _custom_mask_names
 
     def __init__(self, args=None):
@@ -1297,7 +1322,7 @@ class PanddaMultiDatasetAnalyser(object):
         if not pickles_found:
             self.log('No Pickles Found', True)
 
-    def pickle_the_pandda(self, components=[], all=False):
+    def pickle_the_pandda(self, components=[], all=False, datasets=None):
         """Pickles it's major components for quick loading..."""
 
         if all == True:
@@ -1331,17 +1356,14 @@ class PanddaMultiDatasetAnalyser(object):
                             pickle_object = self.reference_dataset().get_pickle_copy(),
                             overwrite = True)
 
-            if self.datasets.all():
+            # If no datasets given, pickle them all
+            if not datasets:
+                datasets = self.datasets.all()
+            # Pickle the datasets (individual pickle files)
+            if datasets:
                 self.log('Pickling Datasets')
-
-                # Pickle the list of locations of the dataset pickles
-                self.pickle(pickle_file   = self.pickle_handler.get_file('dataset_list'),
-                            pickle_object = [os.path.relpath(d.output_handler.get_file('dataset_pickle'), start=self.outdir) for d in self.datasets.all()],
-                            overwrite = True)
-
-                # Pickle the actual datasets (individual pickle files)
                 # Need to get a 'pickle_copy' as some of the dataset handler may not be pickleable
-                for d_handler in self.datasets.all():
+                for d_handler in datasets:
                     self.pickle(pickle_file   = d_handler.output_handler.get_file('dataset_pickle'),
                                 pickle_object = d_handler.get_pickle_copy(),
                                 overwrite = True)
@@ -1389,6 +1411,11 @@ class PanddaMultiDatasetAnalyser(object):
             self.log('===================================>>>', True)
             self.log('Pickling the PANDDA Results')
             self.pickle(pickle_file=self.pickle_handler.get_file('my_pandda'), pickle_object=self, overwrite=True)
+
+            # Pickle the list of locations of the dataset pickles
+            self.pickle(pickle_file   = self.pickle_handler.get_file('dataset_list'),
+                        pickle_object = [os.path.relpath(d.output_handler.get_file('dataset_pickle'), start=self.outdir) for d in self.datasets.all()],
+                        overwrite = True)
         except:
             self.log('FAILED TO PICKLE MYSELF')
 
@@ -1492,9 +1519,10 @@ class PanddaMultiDatasetAnalyser(object):
         self.get_map_observations().set_entry_ids([d.tag for d in self.datasets.all()])
 
         # Initialise blank data
-        self.get_map_observations().add_empty_data(data_name='masked_map_mean')
-        self.get_map_observations().add_empty_data(data_name='masked_map_std')
-        self.get_map_observations().add_empty_data(data_name='masked_map_uncertainty')
+        self.get_map_observations().add_empty_data(data_name='raw_masked_map_mean')
+        self.get_map_observations().add_empty_data(data_name='raw_masked_map_rms')
+        self.get_map_observations().add_empty_data(data_name='map_uncertainty')
+        self.get_map_observations().add_empty_data(data_name='analysed_resolution')
         self.get_map_observations().add_empty_data(data_name='z_map_mean')
         self.get_map_observations().add_empty_data(data_name='z_map_std')
         self.get_map_observations().add_empty_data(data_name='z_map_skew')
@@ -1672,21 +1700,33 @@ class PanddaMultiDatasetAnalyser(object):
 
                 # Do regex matching on the file pairs
                 if '*' in pdb_style:
+                    pdb_base = os.path.basename(new_pdb)
                     pdb_regex = pdb_style.replace('*', '(.*)')
-                    pdb_tag = re.findall(pdb_regex, os.path.basename(pdb_files[0]))
-                    assert len(pdb_tag) == 1, 'MORE THAN ONE PDB TAG FOUND'
+                    pdb_tag = re.findall(pdb_regex, pdb_base)
+                    assert pdb_tag, 'NO PDB TAG FOUND: {!s} -> {!s}'.format(pdb_regex, pdb_base)
+                    if isinstance(pdb_tag[0], tuple):
+                        self.log('More than one PDB TAG found - choosing the first one of {!s}'.format(pdb_tag[0]))
+                        pdb_tag = list(pdb_tag[0])[0:1]
                 else: pdb_regex = pdb_tag = None
 
                 if '*' in mtz_style:
+                    mtz_base = os.path.basename(new_mtz)
                     mtz_regex = mtz_style.replace('*', '(.*)')
-                    mtz_tag = re.findall(mtz_regex, os.path.basename(mtz_files[0]))
-                    assert len(mtz_tag) == 1, 'MORE THAN ONE MTZ TAG FOUND'
+                    mtz_tag = re.findall(mtz_regex, mtz_base)
+                    assert mtz_tag, 'NO MTZ TAG FOUND: {!s} -> {!s}'.format(mtz_regex, mtz_base)
+                    if isinstance(mtz_tag[0], tuple):
+                        self.log('More than one MTZ TAG found - choosing the first one of {!s}'.format(mtz_tag[0]))
+                        mtz_tag = list(mtz_tag[0])[0:1]
                 else: mtz_regex = mtz_tag = None
 
                 if '*' in dir_style:
+                    dir_base = os.path.dirname(pdb_files[0])
                     dir_regex = dir_style.replace('*', '(.*)')
-                    dir_tag = re.findall(dir_regex, os.path.dirname(pdb_files[0]))
-                    assert len(dir_tag) == 1, 'MORE THAN ONE DIR TAG FOUND'
+                    dir_tag = re.findall(dir_regex, dir_base)
+                    assert dir_tag, 'NO DIR TAG FOUND: {!s} -> {!s}'.format(dir_regex, dir_base)
+                    if isinstance(dir_tag[0], tuple):
+                        self.log('More than one DIR TAG found - choosing the first one of {!s}'.format(dir_tag[0]))
+                        dir_tag = list(dir_tag[0])[0:1]
                 else: dir_regex = dir_tag = None
 
                 if pdb_tag and mtz_tag: assert pdb_tag == mtz_tag, 'PDB-MTZ TAGS ARE NOT IDENTICAL'
@@ -1737,7 +1777,7 @@ class PanddaMultiDatasetAnalyser(object):
     def load_new_datasets(self):
         """Read in maps for the input datasets"""
 
-        def load_map_func(arg_dict):
+        def load_dataset_map_func(arg_dict):
             return DatasetHandler(**arg_dict)
 
         # TODO Change this so datasets can be added dynamically
@@ -1749,7 +1789,7 @@ class PanddaMultiDatasetAnalyser(object):
         start = time.time()
         self.log('===================================>>>', True)
         print('Loading Datasets... (using {!s} cores)'.format(self.args.settings.cpus))
-        loaded_datasets = easy_mp.pool_map(fixed_func=load_map_func, args=arg_list, processes=self.args.settings.cpus)
+        loaded_datasets = easy_mp.pool_map(fixed_func=load_dataset_map_func, args=arg_list, processes=self.args.settings.cpus)
         finish = time.time()
         print('> Time Taken: {!s} seconds'.format(int(finish-start)))
 
@@ -1789,6 +1829,7 @@ class PanddaMultiDatasetAnalyser(object):
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_naive_normalised.png'.format(d_handler.tag), file_tag='z_map_naive_normalised_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_adjusted.png'.format(d_handler.tag), file_tag='z_map_corrected_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_adjusted_normalised.png'.format(d_handler.tag), file_tag='z_map_corrected_normalised_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_qq_plot.png'.format(d_handler.tag), file_tag='z_map_qq_plot_png', dir_tag='images')
 
             d_handler.output_handler.add_file(file_name='{!s}-uncertainty-qqplot.png'.format(d_handler.tag), file_tag='unc_qqplot_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-mean-v-obs-sorted-qqplot.png'.format(d_handler.tag), file_tag='obs_qqplot_sorted_png', dir_tag='images')
@@ -1867,17 +1908,6 @@ class PanddaMultiDatasetAnalyser(object):
             self.log('Resolution: {!s}, RFree: {!s}'.format(reference.reflection_data().max_min_resolution()[1], reference.input().get_r_rfree_sigma().r_free), True)
 
             return reference.pdb_filename(), reference.mtz_filename()
-
-#    def scale_datasets(self):
-#        """Iterate through the datasets, and scale the reflections to the reference"""
-#
-#        self.log('===================================>>>', True)
-#        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
-#            print '\rScaling Dataset {!s}          '.format(d_handler.tag),; sys.stdout.flush()
-#
-#            # Scale new data to the reference dataset
-#            d_handler.scale_fobs_to_reference(ref_miller=self.reference_dataset().get_fobs_miller_array())
-#        self.log('\rDatasets Scaled.               ', True)
 
     def scale_datasets(self, ampl_label, phas_label):
         """Extract amplitudes and phases for creating map"""
@@ -1963,12 +1993,12 @@ class PanddaMultiDatasetAnalyser(object):
     def align_datasets(self, method):
         """Align each structure the reference structure"""
 
-        def align_map_func(align_dict):
+        def align_map_func(arg_dict):
             global_mx, local_mxs = align_dataset_to_reference(
-                                            d_handler   = align_dict['d_handler'],
-                                            ref_handler = align_dict['r_handler'],
-                                            method      = align_dict['method']   )
-            return (align_dict['d_handler'].tag, (global_mx, local_mxs))
+                                            d_handler   = arg_dict['d_handler'],
+                                            ref_handler = arg_dict['r_handler'],
+                                            method      = arg_dict['method']   )
+            return (arg_dict['d_handler'].tag, (global_mx, local_mxs))
 
         assert method in ['local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
 
@@ -1979,7 +2009,7 @@ class PanddaMultiDatasetAnalyser(object):
         self.log('===================================>>>', True)
         print('Generating Alignments (using {!s} cores)'.format(self.args.settings.cpus))
         start = time.time()
-        arg_list = [{'r_handler':self.reference_dataset(), 'd_handler':d_handler, 'method':method} for d_handler in self.datasets.all()]
+        arg_list = [{'r_handler':self.reference_dataset(), 'd_handler':d_handler, 'method':method} for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True)]
         alignment_transforms = easy_mp.pool_map(fixed_func=align_map_func, args=arg_list, processes=self.args.settings.cpus)
         alignment_transforms = dict(alignment_transforms)
         finish = time.time()
@@ -2044,30 +2074,23 @@ class PanddaMultiDatasetAnalyser(object):
 
         self.log('Extracting Resolutions')
         self.datasets_summary.add_data( data_name='high_res_limit',
-                                        data_values=[d.unscaled_sfs.d_min() if d.unscaled_sfs else numpy.nan for d in self.datasets.all()]
-                                        )
+                                        data_values=[d.unscaled_sfs.d_min() if d.unscaled_sfs else numpy.nan for d in self.datasets.all()]      )
         self.datasets_summary.add_data( data_name='low_res_limit',
-                                        data_values=[d.unscaled_sfs.d_max_min()[0] if d.unscaled_sfs else numpy.nan for d in self.datasets.all()]
-                                        )
+                                        data_values=[d.unscaled_sfs.d_max_min()[0] if d.unscaled_sfs else numpy.nan for d in self.datasets.all()]       )
         self.log('Extracting Unit Cell Sizes')
         self.datasets_summary.add_data( data_name='cell_params',
-                                        data_values=[d.unscaled_sfs.unit_cell().parameters() if d.unscaled_sfs else [numpy.nan]*6 for d in self.datasets.all()]
-                                        )
+                                        data_values=[d.unscaled_sfs.unit_cell().parameters() if d.unscaled_sfs else [numpy.nan]*6 for d in self.datasets.all()]     )
         self.log('Extracting Unit Cell Volume')
         self.datasets_summary.add_data( data_name='cell_volume',
-                                        data_values=[d.unscaled_sfs.unit_cell().volume() if d.unscaled_sfs else numpy.nan for d in self.datasets.all()]
-                                        )
+                                        data_values=[d.unscaled_sfs.unit_cell().volume() if d.unscaled_sfs else numpy.nan for d in self.datasets.all()]     )
         self.log('Extracting R-work, R-free')
         self.datasets_summary.add_data( data_name='rfree',
-                                        data_values=[d.input().get_r_rfree_sigma().r_free for d in self.datasets.all()]
-                                        )
+                                        data_values=[d.input().get_r_rfree_sigma().r_free for d in self.datasets.all()]     )
         self.datasets_summary.add_data( data_name='rwork',
-                                        data_values=[d.input().get_r_rfree_sigma().r_work for d in self.datasets.all()]
-                                        )
+                                        data_values=[d.input().get_r_rfree_sigma().r_work for d in self.datasets.all()]     )
         self.log('Calculating Variation in Correlations between Diffraction Data')
         self.datasets_summary.add_data( data_name='correlation_to_unscaled_data',
-                                        data_values=[d.scaled_sfs.amplitudes().correlation(d.unscaled_sfs.amplitudes()).coefficient() if d.scaled_sfs else numpy.nan for d in self.datasets.all()]
-                                        )
+                                        data_values=[d.scaled_sfs.amplitudes().correlation(d.unscaled_sfs.amplitudes()).coefficient() if d.scaled_sfs else numpy.nan for d in self.datasets.all()]      )
 
     def filter_datasets_1(self):
         """Filter out the datasets which contain different protein models (i.e. protein length, sequence, etc)"""
@@ -2174,7 +2197,13 @@ class PanddaMultiDatasetAnalyser(object):
 
             print('\rFiltering Dataset {!s}          '.format(d_handler.tag), end=''); sys.stdout.flush()
             # Check that it correlates well with itself before and after scaling
-            if d_handler.scaled_sfs.amplitudes().correlation(d_handler.unscaled_sfs.amplitudes()).coefficient() < FILTER_SCALING_CORRELATION_CUTOFF:
+            if d_handler.input().get_r_rfree_sigma().r_free > self.params.analysis.max_rfree:
+                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
+                self.log('RFree is higher than cutoff: {!s}'.format(self.params.analysis.max_rfree))
+                self.log('High RFree: {!s}'.format(d_handler.input().get_r_rfree_sigma().r_free))
+                self.log('===================================>>>')
+                self.datasets.all_masks().set_mask_value(mask_name='bad crystal - rfree', entry_id=d_handler.tag, value=True)
+            elif d_handler.scaled_sfs.amplitudes().correlation(d_handler.unscaled_sfs.amplitudes()).coefficient() < FILTER_SCALING_CORRELATION_CUTOFF:
                 self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('Low correlation between scaled and unscaled data')
                 self.log('Scaled-Unscaled Correlation: {!s}'.format(d_handler.scaled_sfs.amplitudes().correlation(d_handler.unscaled_sfs.amplitudes()).coefficient()))
@@ -2219,7 +2248,7 @@ class PanddaMultiDatasetAnalyser(object):
         for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
             # Check the resolution of the dataset
             if d_handler.reflection_data().max_min_resolution()[1] > high_res_cutoff:
-                self.log('Rejecting Dataset: {!s}: ({!s} > {!s})'.format(d_handler.tag, d_handler.reflection_data().max_min_resolution()[1], high_res_cutoff))
+#                self.log('Rejecting Dataset: {!s}: ({!s} > {!s}) - resolution too low'.format(d_handler.tag, d_handler.reflection_data().max_min_resolution()[1], high_res_cutoff))
                 self.datasets.all_masks().set_mask_value(mask_name=building_mask_name, entry_id=d_handler.tag, value=False)
             else:
                 self.datasets.all_masks().set_mask_value(mask_name=building_mask_name, entry_id=d_handler.tag, value=True)
@@ -2237,10 +2266,10 @@ class PanddaMultiDatasetAnalyser(object):
         for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
             # Check the resolution of the dataset
             if d_handler.reflection_data().max_min_resolution()[1] > high_res_large_cutoff:
-                self.log('Rejecting Dataset: {!s}: ({!s} > {!s})'.format(d_handler.tag, d_handler.reflection_data().max_min_resolution()[1], high_res_large_cutoff))
+#                self.log('Rejecting Dataset: {!s}: ({!s} > {!s}) - resolution too low'.format(d_handler.tag, d_handler.reflection_data().max_min_resolution()[1], high_res_large_cutoff))
                 self.datasets.all_masks().set_mask_value(mask_name=analysis_mask_name, entry_id=d_handler.tag, value=False)
             elif d_handler.reflection_data().max_min_resolution()[1] < high_res_small_cutoff:
-                self.log('Rejecting Dataset: {!s}: ({!s} < {!s})'.format(d_handler.tag, d_handler.reflection_data().max_min_resolution()[1], high_res_small_cutoff))
+#                self.log('Rejecting Dataset: {!s}: ({!s} < {!s}) - resolution too high'.format(d_handler.tag, d_handler.reflection_data().max_min_resolution()[1], high_res_small_cutoff))
                 self.datasets.all_masks().set_mask_value(mask_name=analysis_mask_name, entry_id=d_handler.tag, value=False)
             else:
                 self.datasets.all_masks().set_mask_value(mask_name=analysis_mask_name, entry_id=d_handler.tag, value=True)
@@ -2436,16 +2465,39 @@ class PanddaMultiDatasetAnalyser(object):
 
         # Do some other stuff...
 
-    def truncate_scaled_data(self, mask_name, truncation_stuff=None):
+    def truncate_scaled_data(self, dataset_handlers, truncation_stuff=None):
         """Truncate data at the same indices across all the datasets"""
 
+        self.log('===================================>>>', True)
+        self.log('Truncating Reflection Data', True)
+
+        # Calculate which reflections are present in all datasets
+        common_set = self.reference_dataset().unscaled_sfs.set()
+        self.log('Number of Reflections in Reference Dataset: {!s}'.format(common_set.size()))
         # Create maps for all of the datasets (including the reference dataset)
-        for d_handler in [self.reference_dataset()]+self.datasets.mask(mask_name=mask_name):
+        for i_dh, d_handler in enumerate(dataset_handlers):
+            common_set = common_set.common_set(d_handler.unscaled_sfs, assert_is_similar_symmetry=False)
+#            self.log('After Dataset {!s} - Remaining Common Reflections: {!s}'.format(i_dh+1, common_set.size()))
+
+        self.log('===================================>>>', True)
+        self.log('Number of Common Reflections between Datasets: {!s}'.format(common_set.size()))
+        self.log('After Truncation - Reflections per dataset: {!s}'.format(common_set.size()))
+
+        # Create maps for all of the datasets (including the reference dataset)
+        for d_handler in [self.reference_dataset()]+dataset_handlers:
             # At the moment save the 'truncated' sfs as the whole list
             # TODO
-            d_handler.tr_scaled_sfs = d_handler.unscaled_sfs
+            d_handler.tr_scaled_sfs = d_handler.unscaled_sfs.common_set(common_set, assert_is_similar_symmetry=False)
 
-    def load_reference_map(self, map_resolution):
+        reslns = [d.tr_scaled_sfs.d_min() for d in dataset_handlers]
+        min_res = min(reslns)
+        max_res = max(reslns)
+
+        self.log('After Truncation - Resolution Range: {!s}-{!s}'.format(min_res, max_res))
+
+        # TODO WRITE HISTOGRAMS OF RESOLUTIONS?!
+
+    def load_reference_map(self, map_resolution=0):
         """Load the reference map, and calculate some map statistics"""
 
         # Reference dataset handler
@@ -2453,7 +2505,6 @@ class PanddaMultiDatasetAnalyser(object):
 
         # Take the scaled diffraction data for the dataset and create fft
         fft_map = ref_handler.tr_scaled_sfs.fft_map( resolution_factor = self.params.maps.resolution_factor,
-                                                     #TODO MAKE D_MIN CUT AT MILLER INDEX INSTEAD OF ABSOLUTE
                                                      d_min = map_resolution,
                                                      symmetry_flags = maptbx.use_space_group_symmetry )
 
@@ -2493,115 +2544,81 @@ class PanddaMultiDatasetAnalyser(object):
                                     unit_cell   = fft_map.unit_cell(),
                                     space_group = fft_map.space_group(),
                                     meta        = {  'resolution'      : map_resolution,
-                                                        'masked_map_vals' : masked_vals_ref,
-                                                        'masked_map_gps'  : masked_gps,
-                                                        'map_mean'        : map_mean,
-                                                        'map_rms'         : map_rms   },
+                                                     'masked_map_vals' : masked_vals_ref,
+                                                     'masked_map_gps'  : masked_gps,
+                                                     'map_mean'        : map_mean,
+                                                     'map_rms'         : map_rms   },
                                     parent      = ref_handler    )
 
         return ref_map_holder
 
-    def old_load_and_morph_maps(self, overwrite=False, delete_native_map=True):
+    def load_and_morph_maps(self, dataset_handlers, ref_map_holder, map_resolution=0):
         """Create map from miller arrays. Transform map into the reference frame by sampling at the given points."""
 
-        self.log('===================================>>>', True)
-        self.log('Loading Electron Density Maps', True)
-        self.log('===================================>>>')
+        def load_maps_map_func(arg_dict):
+            """Function to allow maps to be loaded in parallel"""
 
-        # Extract the points for the morphed maps (in the reference frame)
-        masked_gps = self.reference_grid().global_mask().outer_mask()
-        masked_idxs = self.reference_grid().global_mask().outer_mask_indices()
-        masked_cart_ref = flex.vec3_double(masked_gps)*self.reference_grid().grid_spacing()
-        # Mapping of grid points to rotation matrix keys (residue CA labels)
-        masked_cart_mappings = self.reference_grid().partition().query_by_grid_indices(masked_idxs)
+            d_handler            = arg_dict['d_handler']
+            grid                 = arg_dict['grid']
+            params               = arg_dict['params']
+            map_resolution       = arg_dict['map_resolution']
+            ref_map_holder       = arg_dict['ref_map_holder']
+            masked_cart_ref      = arg_dict['masked_cart_ref']
+            masked_cart_mappings = arg_dict['masked_cart_mappings']
 
-        # Get the reference handler so that we can scale to the reference map
-        ref_map_mean, ref_map_rms = self.reference_dataset().map_scale()
+            print('\rLoading Maps for Dataset {!s}'.format(d_handler.tag), end=''); sys.stdout.flush()
 
-        # Create maps for all of the datasets (including the reference dataset)
-        for d_handler in self.datasets.mask(mask_name='selected for analysis'):
+            # Take the scaled diffraction data for each dataset and create fft
+            fft_map = d_handler.tr_scaled_sfs.fft_map(  resolution_factor = params.maps.resolution_factor,
+                                                        d_min             = map_resolution,
+                                                        symmetry_flags    = maptbx.use_space_group_symmetry  )
 
-            ################################
-            #     CALCULATE NATIVE MAP     #
-            ################################
-
-            print('\rLoading Maps for Dataset {!s} ({!s}/{!s})          '.format(d_handler.tag, d_handler.num+1, self.datasets.size()), end=''); sys.stdout.flush()
-
-            if d_handler.morphed_map:
-                continue
-            elif d_handler.native_map and (not overwrite):
-                pass
-            else:
-                # Take the scaled diffraction data for each dataset and create fft
-                fft_map = d_handler.tr_scaled_sfs.fft_map(  resolution_factor=self.params.maps.resolution_factor,
-                                                            d_min=self.get_cut_resolution(),
-                                                            symmetry_flags=maptbx.use_space_group_symmetry  )
-
-                # Scale the map
-                if self.params.maps.scaling == 'none':
-                    pass
-                elif self.params.maps.scaling == 'sigma':
-                    fft_map.apply_sigma_scaling()
-                elif self.params.maps.scaling == 'volume':
-                    fft_map.apply_volume_scaling()
-
-                # Save the map for future use (only part that's pickleable)
-                d_handler.native_map  = fft_map.real_map()
-                d_handler.unit_cell   = fft_map.unit_cell()
-                d_handler.space_group = fft_map.space_group()
-
-                # TODO PICKLE THE NATIVE MAP
+            # Scale the map
+            if   params.maps.scaling == 'none':   pass
+            elif params.maps.scaling == 'sigma':  fft_map.apply_sigma_scaling()
+            elif params.maps.scaling == 'volume': fft_map.apply_volume_scaling()
 
             #################################
             # MORPH MAPS TO REFERENCE FRAME #
             #################################
 
-            assert d_handler.native_map is not None, 'NO MORPHED MAP'
-            if not overwrite:   assert d_handler.morphed_map is None, 'MORPHED MAP ALREADY EXISTS'
-
             # Create map handler and map to the reference frame
-            native_map_handler = map_handler(map_data=d_handler.native_map, unit_cell=d_handler.unit_cell)
+            native_map_handler = map_handler(   map_data  = fft_map.real_map(),
+                                                unit_cell = fft_map.unit_cell() )
 
             # Transform Coordinates
-            masked_cart_d = d_handler.transform_from_reference(points=masked_cart_ref, method=self.params.alignment.method, point_mappings=masked_cart_mappings)
+            masked_cart_d = d_handler.transform_from_reference(points=masked_cart_ref, method=params.alignment.method, point_mappings=masked_cart_mappings)
             # Sample the map at these points
             masked_vals_d = native_map_handler.get_cart_values(masked_cart_d)
 
             # Normalise map - Scale it to the same scale as the reference dataset on the same points
             d_map_mean = masked_vals_d.min_max_mean().mean
             d_map_rms  = masked_vals_d.standard_deviation_of_the_sample()
-            masked_vals_d = (masked_vals_d - d_map_mean)*(ref_map_rms/d_map_rms) + ref_map_mean
-            # Record map means
-            self.get_map_observations().set_data_value(data_name='masked_map_mean', entry_id=d_handler.tag, value=d_map_mean)
-            self.get_map_observations().set_data_value(data_name='masked_map_std',  entry_id=d_handler.tag, value=d_map_rms)
+            masked_vals_d = (masked_vals_d - d_map_mean)*(ref_map_holder.meta['map_rms']/d_map_rms) + ref_map_holder.meta['map_mean']
 
             # Calculate the sparse vector of the masked map values
-            morphed_map_sparse = scitbx.sparse.vector(self.reference_grid().grid_size_1d(), dict(zip(masked_idxs, masked_vals_d)))
+            morphed_map_sparse = scitbx.sparse.vector(grid.size_1d(), dict(zip(masked_idxs, masked_vals_d)))
             morphed_map        = morphed_map_sparse.as_dense_vector()
 
             # Reshape into right shape of the grid
-            grid_shape = self.reference_grid().grid_size()
-            morphed_map.reshape(flex.grid(grid_shape))
+            morphed_map.reshape(grid)
 
-            # Save to the dataset handler
-            d_handler.morphed_map = morphed_map
+            # Create map holder
+            map_holder = MapHolder( num         = d_handler.num,
+                                    tag         = d_handler.tag,
+                                    map         = morphed_map,
+                                    # Change these for the 'fake' grid unit_cell and a P1 space_group
+                                    unit_cell   = fft_map.unit_cell(),
+                                    space_group = fft_map.space_group(),
+                                    meta        = {'resolution'   : map_resolution,
+                                                   'raw_masked_map_mean' : d_map_mean,
+                                                   'raw_masked_map_rms'  : d_map_rms },
+                                    parent      = None  )
 
-            # Delete the native map to save space
-            if delete_native_map:
-                d_handler.native_map = None
-                # Collect
-                gc.collect()
-
-        self.log('\rMap Values Loaded: {!s} Datasets          '.format(self.datasets.size(mask_name='selected for analysis')), True)
-
-        self.update_pandda_size(tag='After Loading Maps')
-
-    def load_and_morph_maps(self, mask_name, map_resolution, ref_map_holder):
-        """Create map from miller arrays. Transform map into the reference frame by sampling at the given points."""
+            return map_holder
 
         self.log('===================================>>>', True)
         self.log('Loading Electron Density Maps @ {!s}A'.format(map_resolution), True)
-        self.log('===================================>>>')
 
         # Create holder for the output map objects
         map_holder_list = MapHolderList()
@@ -2613,361 +2630,30 @@ class PanddaMultiDatasetAnalyser(object):
         # Mapping of grid points to rotation matrix keys (residue CA labels)
         masked_cart_mappings = self.reference_grid().partition().query_by_grid_indices(masked_idxs)
 
-        # Create maps for all of the datasets (including the reference dataset)
-        for i_dh, d_handler in enumerate(self.datasets.mask(mask_name=mask_name)):
-
-            ################################
-            #     CALCULATE NATIVE MAP     #
-            ################################
-
-            print('\rLoading Maps for Dataset {!s} ({!s}/{!s})          '.format(d_handler.tag, i_dh+1, self.datasets.size(mask_name=mask_name)), end=''); sys.stdout.flush()
-
-            # Take the scaled diffraction data for each dataset and create fft
-            fft_map = d_handler.tr_scaled_sfs.fft_map(  resolution_factor = self.params.maps.resolution_factor,
-                                                        d_min             = map_resolution,
-                                                        symmetry_flags    = maptbx.use_space_group_symmetry  )
-
-            # Scale the map
-            if self.params.maps.scaling == 'none':     pass
-            elif self.params.maps.scaling == 'sigma':  fft_map.apply_sigma_scaling()
-            elif self.params.maps.scaling == 'volume': fft_map.apply_volume_scaling()
-
-            #################################
-            # MORPH MAPS TO REFERENCE FRAME #
-            #################################
-
-            # Create map handler and map to the reference frame
-            native_map_handler = map_handler(   map_data  = fft_map.real_map(),
-                                                unit_cell = fft_map.unit_cell() )
-
-            # Transform Coordinates
-            masked_cart_d = d_handler.transform_from_reference(points=masked_cart_ref, method=self.params.alignment.method, point_mappings=masked_cart_mappings)
-            # Sample the map at these points
-            masked_vals_d = native_map_handler.get_cart_values(masked_cart_d)
-
-            # Normalise map - Scale it to the same scale as the reference dataset on the same points
-            d_map_mean = masked_vals_d.min_max_mean().mean
-            d_map_rms  = masked_vals_d.standard_deviation_of_the_sample()
-            masked_vals_d = (masked_vals_d - d_map_mean)*(ref_map_holder.meta['map_rms']/d_map_rms) + ref_map_holder.meta['map_mean']
-
-            # Calculate the sparse vector of the masked map values
-            morphed_map_sparse = scitbx.sparse.vector(self.reference_grid().grid_size_1d(), dict(zip(masked_idxs, masked_vals_d)))
-            morphed_map        = morphed_map_sparse.as_dense_vector()
-
-            # Reshape into right shape of the grid
-            grid_shape = self.reference_grid().grid_size()
-            morphed_map.reshape(flex.grid(grid_shape))
-
-            # Create map holder
-            map_holder = MapHolder( num         = d_handler.num,
-                                    tag         = d_handler.tag,
-                                    map         = morphed_map,
-                                    # Change these for the 'fake' grid unit_cell and a P1 space_group
-                                    unit_cell   = fft_map.unit_cell(),
-                                    space_group = fft_map.space_group(),
-                                    meta        = {'resolution': map_resolution},
-                                    parent      = d_handler  )
-
-            # Append to the map holder list
-            map_holder_list.add([map_holder])
+        # Load maps using multiple cores if possible
+        self.log('===================================>>>', True)
+        print('Loading Maps (using {!s} cores)'.format(self.args.settings.cpus))
+        start = time.time()
+        arg_list = [{   'd_handler':d_handler, 'params':self.params, 'map_resolution':map_resolution, \
+                        'grid':self.reference_grid().grid_indexer(), 'ref_map_holder':ref_map_holder, \
+                        'masked_cart_ref':masked_cart_ref, 'masked_cart_mappings':masked_cart_mappings      } for d_handler in dataset_handlers]
+        map_holders = easy_mp.pool_map(fixed_func=load_maps_map_func, args=arg_list, processes=self.args.settings.cpus, chunksize=10)
+        # Append to the map holder list
+        map_holder_list.add(map_holders)
+        # Go through and assign parents
+        for mh in map_holder_list.all():
+            mh.parent = self.datasets.get(tag=mh.tag)
 
         self.log('\rMap Values Loaded: {!s} Datasets          '.format(map_holder_list.size()), True)
+
+        finish = time.time()
+        print('\r> Time Taken: {!s} seconds'.format(int(finish-start)))
 
         # Set the mask lengths and entry ids
         map_holder_list.all_masks().set_mask_length(mask_length=map_holder_list.size())
         map_holder_list.all_masks().set_entry_ids(entry_ids=[mh.tag for mh in map_holder_list.all()])
 
-        self.update_pandda_size(tag='After Loading Maps')
-
         return map_holder_list
-
-#    def calculate_mean_map(self):
-#        """Calculate the mean map from all of the different observations"""
-#
-#        # Create statistics objects for each grid point
-#        self.log('===================================>>>', True)
-#        self.log('Calculating Mean Map', True)
-#
-#        # All dataset handlers for analysing
-#        all_d_handlers = self.datasets.mask(mask_name='selected for analysis')
-#
-#        # Get masked points in reference dataset
-#        masked_idxs = self.reference_grid().global_mask().outer_mask_indices()
-#
-#        # Chunk the points into groups - Compromise between cpu time and memory usage - ~200 dataset -> chunksize of 5000
-#        chunk_size = 1000*int(2000/len(all_d_handlers))
-#        chunked_indices = [masked_idxs[i:i + chunk_size] for i in range(0, len(masked_idxs), chunk_size)]
-#        chunk_num = len(chunked_indices)
-#
-#        self.log('Iterating through {!s} points in {!s} chunks'.format(len(masked_idxs), chunk_num), True)
-#        t1 = time.time()
-#
-#        point_means = []
-#
-#        # Calculate the mean map across the datasets
-#        for chunk_idx, chunk in enumerate(chunked_indices):
-#            status_bar(n=chunk_idx, n_max=chunk_num)
-#            p_map_vals = numpy.array([dh.morphed_map.select(chunk) for dh in all_d_handlers])
-#
-#            if chunk_idx+1 < chunk_num:
-#                assert len(p_map_vals) == len(all_d_handlers)
-#                assert len(p_map_vals.T) == chunk_size
-#
-#            p_map_means = numpy.mean(p_map_vals, axis=0)
-#            point_means.extend(p_map_means.tolist())
-#
-#        status_bar(n=chunk_num, n_max=chunk_num)
-#        assert len(point_means) == len(masked_idxs)
-#
-#        t2 = time.time()
-#        print('> MEAN MAP CALCULATION > Time Taken: {!s} seconds'.format(int(t2-t1)))
-#
-#        # Calculate Mean Maps
-#        mean_map_vals = numpy.zeros(self.reference_grid().grid_size_1d())
-#        mean_map_vals.put(masked_idxs, point_means)
-#        mean_map_vals = flex.double(mean_map_vals.tolist())
-#        mean_map_file = self.output_handler.get_file('mean_map')
-#        self.write_array_to_map(output_file=mean_map_file, map_data=mean_map_vals)
-#
-#        self.stat_maps.mean_map = mean_map_vals
-#        return mean_map_vals
-#
-#    def calculate_map_uncertainties(self):
-#        """Calculate the uncertainty in each of the different maps"""
-#
-#        try:
-#            import matplotlib
-#            matplotlib.interactive(0)
-#            from matplotlib import pyplot
-#            output_graphs = True
-#        except:
-#            output_graphs = False
-#
-#        # Section of q-q plot to calculate slope over (-q_cut -> +q_cut)
-#        q_cut = 1.5
-#
-#        # Mask grid points and select those near to the protein
-#        masked_idxs = self.reference_grid().global_mask().inner_mask_indices()
-#
-#        # Extract the mean map values
-#        masked_mean_vals = self.stat_maps.mean_map.select(masked_idxs)
-#        sorted_mean_vals = sorted(masked_mean_vals)
-#
-#        # Extract the theoretical quantiles that we would expect if these values were from a normal distribution
-#        expected_diff_vals = normal_distribution().quantiles(len(masked_idxs))
-#        # Select the points in the middle of the distribution
-#        middle_indices = (expected_diff_vals < q_cut).iselection().intersection((expected_diff_vals > -1*q_cut).iselection())
-#        middle_expected_diff_vals = expected_diff_vals.select(middle_indices)
-#
-#        self.log('===================================>>>')
-#
-#        for d_handler in self.datasets.mask(mask_name='selected for analysis'):
-#
-#            if d_handler.get_map_uncertainty() != None:
-#                self.get_map_observations().set_data_value(data_name='masked_map_uncertainty', entry_id=d_handler.tag, value=d_handler.get_map_uncertainty())
-#                continue
-#
-#            print '\rCalculating Map Uncertainty for Dataset {!s} ({!s}/{!s})          '.format(d_handler.tag, d_handler.num+1, self.datasets.size()),; sys.stdout.flush()
-#
-#            # Extract the map values at the transformed grid points - FOR THE DIFFERENCE MAP
-#            masked_map_vals = d_handler.morphed_map.select(masked_idxs)
-#
-#            # Subtract the mean map from the observed map
-#            diff_mean_map_vals = masked_map_vals - masked_mean_vals
-#
-#            # Sort the map values
-#            sorted_observed_vals = sorted(masked_map_vals)
-#            sorted_observed_diff_vals = sorted(diff_mean_map_vals)
-#
-#            # Select the middle indices
-#            middle_observed_diff_vals = flex.double(sorted_observed_diff_vals).select(middle_indices)
-#            # Calculate the slope of the centre of the graph
-#            fit_coeffs = numpy.polyfit(x=middle_expected_diff_vals, y=middle_observed_diff_vals, deg=1)
-#            map_off = fit_coeffs[1]
-#            map_unc = fit_coeffs[0]
-#
-#            # Save the uncertainty
-#            d_handler.set_map_uncertainty(sigma=map_unc)
-##            print '> UNCERTAINTY: {!s}'.format(fit_coeffs.round(3).tolist()[0])
-#            self.get_map_observations().set_data_value(data_name='masked_map_uncertainty', entry_id=d_handler.tag, value=d_handler.get_map_uncertainty())
-#
-#            if output_graphs:
-#
-#                fig = pyplot.figure()
-#                pyplot.title('UNSORTED MEAN v OBS SCATTER PLOT')
-#                pyplot.plot([-3, 10], [-3, 10], 'b--')
-#                pyplot.plot(masked_mean_vals, masked_map_vals, 'go')
-#                pyplot.xlabel('MEAN MAP VALUES')
-#                pyplot.ylabel('OBSV MAP VALUES')
-#                # Apply tight layout to prevent overlaps
-#                pyplot.tight_layout()
-#                # Save
-#                pyplot.savefig(d_handler.output_handler.get_file('obs_qqplot_unsorted_png'))
-#                pyplot.close(fig)
-#
-#                fig = pyplot.figure()
-#                pyplot.title('SORTED MEAN v OBS Q-Q PLOT')
-#                pyplot.plot([-3, 10], [-3, 10], 'b--')
-#                pyplot.plot(sorted_mean_vals, sorted_observed_vals, 'go-')
-#                pyplot.xlabel('SORTED MEAN MAP VALUES')
-#                pyplot.ylabel('SORTED OBSV MAP VALUES')
-#                # Apply tight layout to prevent overlaps
-#                pyplot.tight_layout()
-#                # Save
-#                pyplot.savefig(d_handler.output_handler.get_file('obs_qqplot_sorted_png'))
-#                pyplot.close(fig)
-#
-#                fig = pyplot.figure()
-#                pyplot.title('DIFF-MEAN-MAP Q-Q PLOT')
-#                pyplot.plot([map_off-5*map_unc, map_off+5*map_unc], [-5, 5], 'b--')
-#                pyplot.plot([-1, 1], [q_cut, q_cut], 'k-.')
-#                pyplot.plot([-1, 1], [-q_cut, -q_cut], 'k-.')
-#                pyplot.plot(sorted_observed_diff_vals, expected_diff_vals, 'go-')
-#                pyplot.xlabel('DIFF-MEAN-MAP QUANTILES')
-#                pyplot.ylabel('THEORETICAL QUANTILES')
-#                # Apply tight layout to prevent overlaps
-#                pyplot.tight_layout()
-#                # Save
-#                pyplot.savefig(d_handler.output_handler.get_file('unc_qqplot_png'))
-#                pyplot.close(fig)
-#
-#        self.log('\rMap Uncertainties Calculated.                                         ', True)
-#
-#        try:
-#            from ascii_graph import Pyasciigraph
-#            g=Pyasciigraph()
-#            graph_data = [(d.tag, round(d.get_map_uncertainty(),3)) for d in self.datasets.mask(mask_name='selected for analysis')]
-#            for l in g.graph(label='Sorted Map Uncertainties (Ascending Order)', data=graph_data, sort=1):
-#                print(l)
-#        except ImportError:
-#            print('IMPORT ERROR (ascii_graph) - CANNOT GENERATE UNCERTAINTY GRAPH')
-#            pass
-#
-#    def calculate_statistical_maps(self):
-#        """Take the sampled maps and calculate statistics for each grid point across the datasets"""
-#
-#        # Create statistics objects for each grid point
-#        self.log('===================================>>>', True)
-#        self.log('Calculating Statistics of Grid Points', True)
-#
-#        # Get masked points in reference dataset
-#        masked_idxs = self.reference_grid().global_mask().outer_mask_indices()
-#
-#        # All dataset handlers for analysing
-#        all_d_handlers = self.datasets.mask(mask_name='selected for analysis')
-#        d_uncertainties = [d.get_map_uncertainty() for d in all_d_handlers]
-#
-#        # Chunk the points into groups - Compromise between cpu time and memory usage - ~200 dataset -> chunksize of 5000
-#        chunk_size = 1000*int(2000/len(all_d_handlers))
-#        chunked_indices = [masked_idxs[i:i + chunk_size] for i in range(0, len(masked_idxs), chunk_size)]
-#        chunk_num = len(chunked_indices)
-#
-#        self.log('Iterating through {!s} points in {!s} chunks'.format(len(masked_idxs), chunk_num), True)
-#        t1 = time.time()
-#
-#        # Statistics objects for each of the points we're interested in
-#        masked_point_statistics = []
-#        masked_point_adj_sigmas = []
-#
-#        # Starting guess for the underlying sigma is raw_std/guess_factor
-#        guess_factor = 0.001
-#
-#        # Calculate the statistics of the map values across the datasets
-#        # Calculate the mean map across the datasets
-#        for chunk_idx, chunk in enumerate(chunked_indices):
-#            status_bar(n=chunk_idx, n_max=chunk_num)
-#            p_map_vals = numpy.array([dh.morphed_map.select(chunk) for dh in all_d_handlers])
-#
-#            if chunk_idx+1 < chunk_num:
-#                assert len(p_map_vals) == len(all_d_handlers)
-#                assert len(p_map_vals.T) == chunk_size
-#
-#            point_stats = [basic_statistics(flex.double(map_vals.tolist())) for map_vals in p_map_vals.T]
-#
-#            # Iterate through and, using the uncertainties of the maps, calculate the underlying standard deviation of the map values
-#            approx_sigmas = [bs.bias_corrected_standard_deviation for bs in point_stats]
-#            adjusted_sigmas = [estimate_true_underlying_sd(obs_vals=map_vals.tolist(), obs_error=d_uncertainties, est_sigma=approx_sigmas[i]*guess_factor) for i, map_vals in enumerate(p_map_vals.T)]
-#
-#            # Extend the complete lists
-#            masked_point_statistics.extend(point_stats)
-#            masked_point_adj_sigmas.extend(adjusted_sigmas)
-#
-#            assert i+1 == len(approx_sigmas), 'LIST INDEX DOES NOT MATCH LIST LENGTH'
-#
-#        status_bar(n=chunk_num, n_max=chunk_num)
-#        assert len(masked_point_statistics) == len(masked_idxs)
-#        assert len(masked_point_adj_sigmas) == len(masked_idxs)
-#
-#        t2 = time.time()
-#        print('> MAP POINT ANALYSIS > Time Taken: {!s} seconds'.format(int(t2-t1)))
-#
-#        # Calculate Stds Maps - Set the background to be tiny but non-zero so we can still divide by it
-#        stds_map_vals = 1e-18*numpy.ones(self.reference_grid().grid_size_1d())
-#        stds_map_vals.put(masked_idxs, [bs.bias_corrected_standard_deviation for bs in masked_point_statistics])
-#        stds_map_vals = flex.double(stds_map_vals.tolist())
-#        stds_map_file = self.output_handler.get_file('stds_map')
-#        self.write_array_to_map(output_file=stds_map_file, map_data=stds_map_vals)
-#
-#        # Calculate ADJUSTED Stds Maps - Set the background to be tiny but non-zero so we can still divide by it
-#        sadj_map_vals = 1e-18*numpy.ones(self.reference_grid().grid_size_1d())
-#        sadj_map_vals.put(masked_idxs, masked_point_adj_sigmas)
-#        sadj_map_vals = flex.double(sadj_map_vals.tolist())
-#        sadj_map_file = self.output_handler.get_file('sadj_map')
-#        self.write_array_to_map(output_file=sadj_map_file, map_data=sadj_map_vals)
-#
-#        # Calculate Skew Maps
-#        skew_map_vals = numpy.zeros(self.reference_grid().grid_size_1d())
-#        skew_map_vals.put(masked_idxs, [bs.skew for bs in masked_point_statistics])
-#        skew_map_vals = flex.double(skew_map_vals.tolist())
-#        skew_map_file = self.output_handler.get_file('skew_map')
-#        self.write_array_to_map(output_file=skew_map_file, map_data=skew_map_vals)
-#
-#        # Calculate Kurtosis Maps
-#        kurt_map_vals = numpy.zeros(self.reference_grid().grid_size_1d())
-#        kurt_map_vals.put(masked_idxs, [bs.kurtosis for bs in masked_point_statistics])
-#        kurt_map_vals = flex.double(kurt_map_vals.tolist())
-#        kurt_map_file = self.output_handler.get_file('kurt_map')
-#        self.write_array_to_map(output_file=kurt_map_file, map_data=kurt_map_vals)
-#
-#        # Calculate Bimodality Maps
-#        bimo_map_vals = numpy.zeros(self.reference_grid().grid_size_1d())
-#        bimo_map_vals.put(masked_idxs, [(bs.skew**2 + 1)/bs.kurtosis for bs in masked_point_statistics])
-#        bimo_map_vals = flex.double(bimo_map_vals.tolist())
-#        bimo_map_file = self.output_handler.get_file('bimo_map')
-#        self.write_array_to_map(output_file=bimo_map_file, map_data=bimo_map_vals)
-#
-#        # Store map vals
-#        self.stat_maps.stds_map     = stds_map_vals
-#        self.stat_maps.sadj_map = sadj_map_vals
-#        self.stat_maps.skew_map     = skew_map_vals
-#        self.stat_maps.kurt_map     = kurt_map_vals
-#        self.stat_maps.bimo_map     = bimo_map_vals
-
-#    def calculate_z_map(self, map_vals, method='naive', map_uncertainty=None, sparse=False):
-#        """Takes a flex.double map and calculates the z-map relative to the mean and std map"""
-#
-#        # STANDARD METHOD USES THE RAW STANDARD DEVIATION OF THE MAP VALUES
-#        # ADJUSTED METHOD USED THE UNCERTAINTY CORRECTED STANDARD DEVIATION
-#        assert method in ['naive','adjusted','adjusted+uncertainty']
-#        if method == 'adjusted+uncertainty': assert map_uncertainty, 'UNCERTAINTY REQUIRED TO USE ADJUSTED METHOD'
-#
-#        assert map_vals.size() == self.reference_grid().grid_size_1d()
-#
-#        # Calculate Z-values
-#        if method == 'naive':
-#            z_map_vals = (map_vals - self.stat_maps.mean_map)/self.stat_maps.stds_map
-#        elif method == 'adjusted':
-#            z_map_vals = (map_vals - self.stat_maps.mean_map)/self.stat_maps.sadj_map
-#        elif method == 'adjusted+uncertainty':
-#            z_map_vals = (map_vals - self.stat_maps.mean_map)/flex.sqrt(self.stat_maps.sadj_map**2 + map_uncertainty**2)
-#
-#        if sparse:
-#            # Calculate the sparse vector of the masked map values
-#            return scitbx.sparse.vector(self.reference_grid().grid_size_1d(),
-#                                 dict(zip(self.reference_grid().global_mask().outer_mask_indices(),
-#                                          z_map_vals.select(self.reference_grid().global_mask().outer_mask_indices()))))
-#        else:
-#            return z_map_vals
 
 #    def process_z_map(self, z_map, local_mask_function=None):
 #        """Process the z_maps, looking for groups of high z-values"""
@@ -3429,9 +3115,6 @@ class PanddaMultiDatasetAnalyser(object):
             if not d_handler.hit_clusters:
                 continue
 
-            # This dataset is interesting!
-            self.datasets.all_masks().set_mask_value(mask_name='interesting', entry_id=d_handler.tag, value=True)
-
             # Pull out the cluster object
             cluster_obj = d_handler.hit_clusters
 
@@ -3596,9 +3279,9 @@ class PanddaMultiDatasetAnalyser(object):
             # Test for Refinement Success - some test on r-free
             # ------------------------------>>>
             if self.datasets.all_masks().get_mask_value(mask_name='bad crystal - rfree', entry_id=d.tag) == True:
-                columns.append({'flag':4,'message':'Free: {!s}'.format(rfree)})
+                columns.append({'flag':4,'message':'RFree: {!s}'.format(rfree)})
             else:
-                columns.append({'flag':0,'message':'Free: {!s}'.format(rfree)})
+                columns.append({'flag':0,'message':'RFree: {!s}'.format(rfree)})
             # ------------------------------>>>
             # Test for Structure movement
             # ------------------------------>>>
@@ -3631,7 +3314,7 @@ class PanddaMultiDatasetAnalyser(object):
         with open(self.output_handler.get_file(file_tag='summary_table'), 'w') as out_html:
             out_html.write(template.render(output_data))
 
-    def write_map_value_distribution(self, map_vals, grid_indices, output_file, plot_normal=False):
+    def write_map_value_distribution(self, map_vals, output_file, plot_indices=None, plot_normal=False):
         """Write out the value distribution for a map"""
 
         try:
@@ -3641,7 +3324,10 @@ class PanddaMultiDatasetAnalyser(object):
         except:
             return
 
-        plot_vals = [map_vals[i] for i in grid_indices]
+        if plot_indices:
+            plot_vals = [map_vals[i] for i in plot_indices]
+        else:
+            plot_vals = list(map_vals)
 
         fig = pyplot.figure()
         pyplot.title('MAP VALUE DISTRIBUTION')
@@ -3657,9 +3343,37 @@ class PanddaMultiDatasetAnalyser(object):
             obs_x = numpy.linspace(-5,5,101)
             obs_y = [nd_o.pdf(x) for x in obs_x]
             pyplot.plot(obs_x, obs_y, c='g', ls='-', marker='o')
-
         pyplot.xlabel('MAP VALUE')
         pyplot.ylabel('DENSITY')
+        # Apply tight layout to prevent overlaps
+        pyplot.tight_layout()
+        # Save
+        pyplot.savefig(output_file)
+        pyplot.close(fig)
+
+    def write_qq_plot_against_normal(self, map_vals, output_file, plot_indices=None):
+        """Plot the values in map_vals against those expected from a normal distribution"""
+
+        try:
+            import matplotlib
+            matplotlib.interactive(0)
+            from matplotlib import pyplot
+        except:
+            return
+
+        if plot_indices:
+            plot_vals = [map_vals[i] for i in plot_indices]
+        else:
+            plot_vals = list(map_vals)
+
+        expected_vals = normal_distribution().quantiles(len(plot_vals))
+
+        fig = pyplot.figure()
+        pyplot.title('OBS v THEORETICAL Q-Q PLOT')
+        pyplot.plot([min(expected_vals)-1, max(expected_vals)+1], [min(expected_vals)-1, max(expected_vals)+1], 'b--')
+        pyplot.plot(sorted(plot_vals), expected_vals, 'go-')
+        pyplot.xlabel('OBSERVED QUANTILES')
+        pyplot.ylabel('THEORETICAL QUANTILES')
         # Apply tight layout to prevent overlaps
         pyplot.tight_layout()
         # Save
@@ -3715,7 +3429,7 @@ class PanddaMultiDatasetAnalyser(object):
         masked_idxs = self.reference_grid().global_mask().outer_mask_indices()
         mean_map_vals = list(map_analyser.statistical_maps.mean_map.select(masked_idxs))
         stds_map_vals = list(map_analyser.statistical_maps.stds_map.select(masked_idxs))
-        ajsd_map_vals = list(map_analyser.statistical_maps.sadj_map.select(masked_idxs))
+        sadj_map_vals = list(map_analyser.statistical_maps.sadj_map.select(masked_idxs))
 
         # Dataset Variables
         map_uncties = [mh.meta['map_uncertainty']   for mh in map_analyser.dataset_maps.all()]
@@ -3726,9 +3440,9 @@ class PanddaMultiDatasetAnalyser(object):
 
         d_summary = self.datasets_summary
         high_res = [d_summary.get_data_value(data_name='high_res_limit', entry_id=mh.tag) for mh in map_analyser.dataset_maps.all()]
-        low_res = [d_summary.get_data_value(data_name='low_res_limit', entry_id=mh.tag) for mh in map_analyser.dataset_maps.all()]
-        rfree = [d_summary.get_data_value(data_name='rfree', entry_id=mh.tag) for mh in map_analyser.dataset_maps.all()]
-        rwork = [d_summary.get_data_value(data_name='rwork', entry_id=mh.tag) for mh in map_analyser.dataset_maps.all()]
+        low_res =  [d_summary.get_data_value(data_name='low_res_limit',  entry_id=mh.tag) for mh in map_analyser.dataset_maps.all()]
+        rfree =    [d_summary.get_data_value(data_name='rfree',          entry_id=mh.tag) for mh in map_analyser.dataset_maps.all()]
+        rwork =    [d_summary.get_data_value(data_name='rwork',          entry_id=mh.tag) for mh in map_analyser.dataset_maps.all()]
 
         ########################################################
 
@@ -3757,7 +3471,7 @@ class PanddaMultiDatasetAnalyser(object):
         pyplot.ylabel('COUNT')
         # STANDARD DEVIATION MAPS
         pyplot.subplot(2, 1, 2)
-        pyplot.hist(x=ajsd_map_vals, bins=n_bins)
+        pyplot.hist(x=sadj_map_vals, bins=n_bins)
         pyplot.xlabel('ADJUSTED STDS MAP DISTRIBUTION')
         pyplot.ylabel('COUNT')
         # Apply tight layout to prevent overlaps
@@ -3769,10 +3483,10 @@ class PanddaMultiDatasetAnalyser(object):
         # STD Values v ADJ STD Values
         fig = pyplot.figure()
         pyplot.title('RAW v ADJUSTED STDS')
-        pyplot.scatter(x=stds_map_vals, y=ajsd_map_vals)
+        pyplot.scatter(x=stds_map_vals, y=sadj_map_vals)
         # Plot straight line between the min and max values
-        min_val = min(stds_map_vals+ajsd_map_vals)
-        max_val = max(stds_map_vals+ajsd_map_vals)
+        min_val = min(stds_map_vals+sadj_map_vals)
+        max_val = max(stds_map_vals+sadj_map_vals)
         pyplot.plot([min_val, max_val], [min_val, max_val], 'b--')
         # Axis labels
         pyplot.xlabel('RAW STDS')
@@ -3907,12 +3621,12 @@ class PanddaMultiDatasetAnalyser(object):
         d_summary = self.datasets_summary
 
         high_res = d_summary.get_data(data_name='high_res_limit')
-        low_res = d_summary.get_data(data_name='low_res_limit')
-        rfree = d_summary.get_data(data_name='rfree')
-        rwork = d_summary.get_data(data_name='rwork')
-        rmsds = d_summary.get_data(data_name='rmsd_to_mean')
+        low_res  = d_summary.get_data(data_name='low_res_limit')
+        rfree    = d_summary.get_data(data_name='rfree')
+        rwork    = d_summary.get_data(data_name='rwork')
+        rmsds    = d_summary.get_data(data_name='rmsd_to_mean')
         a,b,c,alpha,beta,gamma = zip(*d_summary.get_data(data_name='cell_params'))
-        vols = d_summary.get_data(data_name='cell_volume')
+        vols     = d_summary.get_data(data_name='cell_volume')
 
         ########################################################
 
@@ -4042,13 +3756,14 @@ class PanddaMultiDatasetAnalyser(object):
         map_summary = self.get_map_observations()
 
         with open(self.output_handler.get_file('map_summaries'), 'w') as fh:
-            fh.write('dataset_id, masked_map_mean, masked_map_std, masked_map_uncertainty, z_map_mean, z_map_std, z_map_skew, z_map_kurtosis\n')
+            fh.write('dataset_id, raw_masked_map_mean, raw_masked_map_rms, map_uncertainty, analysed_resolution, z_map_mean, z_map_std, z_map_skew, z_map_kurtosis\n')
             # Write out parameters for each dataset
-            for d_handler in self.datasets.mask(mask_name='selected for analysis'):
+            for d_handler in self.datasets.mask(mask_name='analysed'):
                 out_list = [  d_handler.tag,
-                              map_summary.get_data_value(data_name='masked_map_mean', entry_id=d_handler.tag),
-                              map_summary.get_data_value(data_name='masked_map_std', entry_id=d_handler.tag),
-                              map_summary.get_data_value(data_name='masked_map_uncertainty', entry_id=d_handler.tag),
+                              map_summary.get_data_value(data_name='raw_masked_map_mean', entry_id=d_handler.tag),
+                              map_summary.get_data_value(data_name='raw_masked_map_rms', entry_id=d_handler.tag),
+                              map_summary.get_data_value(data_name='map_uncertainty', entry_id=d_handler.tag),
+                              map_summary.get_data_value(data_name='analysed_resolution', entry_id=d_handler.tag),
                               map_summary.get_data_value(data_name='z_map_mean', entry_id=d_handler.tag),
                               map_summary.get_data_value(data_name='z_map_std', entry_id=d_handler.tag),
                               map_summary.get_data_value(data_name='z_map_skew', entry_id=d_handler.tag),

@@ -31,7 +31,7 @@ pandda_phil_def = """
         {
             outdir = './pandda'
                 .type = path
-            dataset_prefix = 'Dataset-'
+            dataset_prefix = ''
                 .type = str
         }
         method
@@ -79,6 +79,10 @@ pandda_phil_def = """
                 scaling = none *sigma volume
                     .type = choice
                 resolution_factor = 0.33
+                    .help = 'Sampling factor for fft-ing the maps'
+                    .type = float
+                grid_spacing = 0.75
+                    .help = 'Spacing of the grid points (fixed across resolutions)'
                     .type = float
                 padding = 3
                     .help = "Padding around the edge of the maps"
@@ -97,20 +101,23 @@ pandda_phil_def = """
             analysis
                 .help = "Settings to control the selection of datasets"
             {
-                max_rfree = 0.4
-                    .help = 'Maximum allowed rfree for a structure (datasets above this are rejected)'
-                    .type = float
-                max_datasets = 1000
-                    .help = 'Maximum number of datasets to process at once'
+                min_datasets = 50
+                    .help = 'Minimum number of datasets needed to build distributions'
                     .type = int
-                high_res_lower_limit = 3.0
+                max_datasets = 200
+                    .help = 'Maximum number of datasets used to build distributions'
+                    .type = int
+                high_res_increment = 0.05
+                    .help = 'Increment of resolution shell for map analysis'
+                    .type = float
+                high_res_lower_limit = 4.0
                     .help = 'Lowest resolution limit (datasets below this are rejected)'
                     .type = float
                 high_res_upper_limit = 0.0
                     .help = 'Highest resolution limit (maps are never calulcated above this limit)'
                     .type = float
-                high_res_increment = 0.2
-                    .help = 'Increment of resolution shell for map analysis'
+                max_rfree = 0.4
+                    .help = 'Maximum allowed rfree for a structure (datasets above this are rejected)'
                     .type = float
             }
             blob_search

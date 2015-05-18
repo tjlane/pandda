@@ -63,7 +63,10 @@ def load_new_set(hit_idx):
 
     d_tag = current_hit['dtag']
 
-    dataset_dir = os.path.join(work_dir, 'interesting_datasets/Dataset-{!s}'.format(d_tag))
+    dataset_dir = glob.glob(os.path.join(work_dir, 'interesting_datasets/*{!s}*'.format(d_tag)))
+    assert len(dataset_dir) == 1
+    dataset_dir = dataset_dir[0]
+
     lig_dir = os.path.join(dataset_dir, 'ligand_files')
     statmap_dir = os.path.join(work_dir, 'statistical_maps')
     ref_dir     = os.path.join(work_dir, 'reference')

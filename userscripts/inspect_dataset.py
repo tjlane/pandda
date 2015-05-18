@@ -9,7 +9,15 @@ except:
     pass
 
 dataset_dir = os.getcwd()
-d_tag = dataset_dir[dataset_dir.rfind('Dataset-'):].split('-')[1]
+
+base_dataset_dir = os.path.basename(dataset_dir)
+
+if '-' in base_dataset_dir:
+    d_tag = base_dataset_dir.split('-')[-1]
+else:
+    d_tag = base_dataset_dir
+
+print 'DTAG:', d_tag
 assert d_tag, d_tag
 
 ref_dir     = os.path.join(dataset_dir, '../../reference')
