@@ -1,0 +1,73 @@
+#!/usr/bin/env pandda.python
+
+import os, sys, shutil, copy
+
+from libtbx import phil
+from cctbx import sgtbx
+from scitbx.array_family import flex
+
+import iotbx.ccp4_map
+
+############################################################################
+
+master_phil_def = """
+input {
+    outdir = ./
+        .type = str
+    mean_map = None
+        .type = path
+    query_map = None
+        .type = path
+    outprefix = 'subtracted'
+        .type = str
+}
+"""
+# Read in the master phil
+master_phil = phil.parse(master_phil_def)
+# Show defaults and exit
+if '--show-defaults' in sys.argv:
+    print('\n# DEFAULTS\n')
+    master_phil.show()
+    sys.exit()
+# Copy the args so that we can remove items from the list without affecting sys.argv etc
+args = copy.copy(sys.argv[1:])
+# Build an interpreter from the master phil
+cmd_interpr = master_phil.command_line_argument_interpreter(home_scope="input")
+# Look for cmd line arguments
+cmd_line_args = [a for a in args if (('=' in a) and not os.path.exists(a))]
+# Remove them from the original lists
+[args.remove(a) for a in cmd_line_args]
+# Parse these arguments
+cmd_sources = [cmd_interpr.process(arg=a) for a in cmd_line_args]
+# Combine the phils
+working_phil = master_phil.fetch(sources=cmd_sources)
+
+# Pull out the python object of the arguments
+params = working_phil.extract().input
+
+############################################################################
+
+mean_map = iotbx.ccp4_map.map_reader(params.mean_map)
+query_map = iotbx.ccp4_map.map_reader(params.query_map)
+
+assert mean_map.data.all() == query_map.data.all()
+assert mean_map.data.size() == query_map.data.size()
+assert mean_map.unit_cell().is_similar_to(query_map.unit_cell())
+
+for lig_occ in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
+    
+    mean_occ = 1 - lig_occ
+    
+    print 'Subtracting {!s} * mean map'.format(mean_occ)
+
+    diff_data = (query_map.data - mean_occ*mean_map.data).as_double()
+#    diff_data.reshape(flex.grid(diff_data.all()))
+
+    outfile = params.outprefix + '-lig-occ-{!s}.ccp4'.format(lig_occ)
+    outpath = os.path.join(params.outdir, outfile) 
+
+    iotbx.ccp4_map.write_ccp4_map(  file_name = outpath,
+                                    unit_cell = query_map.unit_cell(),
+                                    space_group = sgtbx.space_group_info(number=query_map.space_group_number).group(),
+                                    map_data = diff_data,
+                                    labels = None)

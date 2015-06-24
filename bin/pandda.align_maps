@@ -37,6 +37,8 @@ align {
             .type = str
         map_prefix = None
             .type = str
+        out_dir = './'
+            .type = str
     }
 }
 """)
@@ -45,6 +47,10 @@ def run(args):
     # Process input arguments
     phil_objects = []
     argument_interpreter = master_params.command_line_argument_interpreter(home_scope="align")
+
+    if '--show-defaults' in args:
+        master_params.show()
+        sys.exit()
 
     for arg in args:
         try: 
@@ -64,18 +70,31 @@ def run(args):
     ref_inp = iotbx.pdb.hierarchy.input(params.reference)
     ref_chain = [c for c in ref_inp.hierarchy.chains()][0]
 
+    print 'ALIGNING TO CHAIN {!s} OF THE REFERENCE STRUCTURE'.format(ref_chain.id)
+
     # Read in the moving structure
     mov_inp = iotbx.pdb.hierarchy.input(params.moving.pdb)
     mov_map = iotbx.ccp4_map.map_reader(params.moving.map)
 
     # Check the output file style
-    if not params.output.pdb_prefix: params.output.pdb_prefix = params.moving.pdb
-    if not params.output.map_prefix: params.output.map_prefix = params.moving.map
+    if not params.output.pdb_prefix: params.output.pdb_prefix = os.path.basename(params.moving.pdb)
+    if not params.output.map_prefix: params.output.map_prefix = os.path.basename(params.moving.map)
     
     # Build up a list of rotation matrices and write out transformed maps
     for mov_chain in mov_inp.hierarchy.chains():
         if not mov_chain.is_protein():
             continue
+
+        # Generate output filenames        
+        output_pdb = os.path.join(params.output.out_dir, params.output.pdb_prefix + '.chain{!s}'.format(mov_chain.id) + params.output.pdb_suffix)
+        output_map = os.path.join(params.output.out_dir, params.output.map_prefix + '.chain{!s}'.format(mov_chain.id) + params.output.map_suffix)
+
+        if os.path.exists(output_pdb):
+            print('OUTPUT PDB ALREADY EXISTS: {!s}'.format(output_pdb))
+            sys.exit()
+        if os.path.exists(output_map):
+            print('OUTPUT MAP ALREADY EXISTS: {!s}'.format(output_map))
+            sys.exit()
         
         # Align to the reference chain
         lsq = align_chains(mov_chain=mov_chain, ref_chain=ref_chain)
@@ -85,35 +104,48 @@ def run(args):
         # Transform the entire structure and write out
         mov_copy = mov_inp.hierarchy.deep_copy()
         mov_copy.atoms().set_xyz(rt*mov_copy.atoms().extract_xyz())
-        mov_copy.write_pdb_file(params.output.pdb_prefix + '.chain{!s}'.format(mov_chain.id) + params.output.pdb_suffix)
+        mov_copy.write_pdb_file(output_pdb)
 
-        # New change map
-        fake_symm = generate_p1_box(ref_inp.hierarchy, buffer=10.0)
-        xray_structure = ref_inp.hierarchy.extract_xray_structure(crystal_symmetry=fake_symm)
-        f_calc = xray_structure.structure_factors(d_min=2).f_calc()
-        fake_map = f_calc.fft_map(resolution_factor=0.33)
+        rot_map_data = cctbx.maptbx.rotate_translate_map(
+            unit_cell=mov_map.unit_cell(),
+            map_data=mov_map.data.as_double(),
+            rotation_matrix=rt.inverse().r.elems,
+            translation_vector=rt.inverse().t.elems)
+        
+        iotbx.ccp4_map.write_ccp4_map(
+            file_name=output_map,
+            unit_cell=mov_map.unit_cell(),
+            space_group=cctbx.sgtbx.space_group_info(number=mov_map.space_group_number).group(),
+            map_data=rot_map_data,
+            labels = flex.std_string(['rotated map. aligned chain {!s} to chain {!s}.'.format(mov_chain.id, ref_chain.id)])  )
 
-        map_data_superposed = cctbx.maptbx.superpose_maps(
-            unit_cell_1        = mov_map.unit_cell(),
-            unit_cell_2        = fake_symm.unit_cell(),
-            map_data_1         = mov_map.data.as_double(),
-            n_real_2           = fake_map.n_real(),
-            rotation_matrix    = rt.inverse().r.elems,
-            translation_vector = rt.inverse().t.elems)
-
-        map_data_superposed = mask_grid(
-            xrs      = xray_structure,
-            buffer   = 10,
-            map_data = map_data_superposed,
-            n_real   = fake_map.n_real())
-
-        iotbx.map_tools.write_ccp4_map(
-            sites_cart=xray_structure.sites_cart(),
-            unit_cell=fake_symm.unit_cell(),
-            map_data=map_data_superposed,
-            n_real=fake_map.n_real(),
-            file_name=params.output.map_prefix + '.chain{!s}'.format(mov_chain.id) + params.output.map_suffix,
-            buffer=10)
+#        # New change map
+#        fake_symm = generate_p1_box(ref_inp.hierarchy, buffer=10.0)
+#        xray_structure = ref_inp.hierarchy.extract_xray_structure(crystal_symmetry=fake_symm)
+#        f_calc = xray_structure.structure_factors(d_min=2).f_calc()
+#        fake_map = f_calc.fft_map(resolution_factor=0.33)
+#
+#        map_data_superposed = cctbx.maptbx.superpose_maps(
+#            unit_cell_1        = mov_map.unit_cell(),
+#            unit_cell_2        = fake_symm.unit_cell(),
+#            map_data_1         = mov_map.data.as_double(),
+#            n_real_2           = fake_map.n_real(),
+#            rotation_matrix    = rt.inverse().r.elems,
+#            translation_vector = rt.inverse().t.elems)
+#
+#        map_data_superposed = mask_grid(
+#            xrs      = xray_structure,
+#            buffer   = 10,
+#            map_data = map_data_superposed,
+#            n_real   = fake_map.n_real())
+#
+#        iotbx.map_tools.write_ccp4_map(
+#            sites_cart=xray_structure.sites_cart(),
+#            unit_cell=fake_symm.unit_cell(),
+#            map_data=map_data_superposed,
+#            n_real=fake_map.n_real(),
+#            file_name=output_map,
+#            buffer=10)
 
 if __name__ == '__main__':
     

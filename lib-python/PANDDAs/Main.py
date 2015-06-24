@@ -137,7 +137,10 @@ class HolderList(object):
         return self._masks
     def mask(self, mask_name, invert=False):
         """Retrieve a masked list of datasets"""
-        return self._masks.mask(mask_name=mask_name, input_list=self.all(), invert=invert)
+        if not mask_name:
+            return self.all()
+        else:
+            return self._masks.mask(mask_name=mask_name, input_list=self.all(), invert=invert)
 
     def size(self, mask_name=None, invert=False):
         """Return the number of holders in the list (with optional mask applied)"""
@@ -387,9 +390,10 @@ class DatasetHandlerList(HolderList):
         print(args)
 
 class MapHolder(object):
+    child = None
     parent = None
     """Class to hold map values and meta data"""
-    def __init__(self, num, tag, map, unit_cell, space_group, meta, parent=None):
+    def __init__(self, num, tag, map, unit_cell, space_group, meta, parent=None, child=None):
         assert isinstance(num, int), 'Num must be int. Type given: {!s}'.format(type(num))
         self.num = num
         assert isinstance(tag, str), 'Tag must be str. Type given: {!s}'.format(type(tag))
@@ -400,31 +404,19 @@ class MapHolder(object):
         self.unit_cell = unit_cell
         assert isinstance(space_group, cctbx.sgtbx.ext.space_group), 'Space group must be of type space_group. Type given: {!s}'.format(type(space_group))
         self.space_group = space_group
-        assert isinstance(meta, dict), 'Meta must be dict. Type given: {!s}'.format(type(meta))
+        assert isinstance(meta, Meta), 'Meta must be dict. Type given: {!s}'.format(type(meta))
         self.meta = meta
         if parent:
-            assert isinstance(parent, DatasetHandler), 'parent must be of type DatasetHandler. Type given: {!s}'.format(type(parent))
+            assert isinstance(parent, DatasetHandler) or isinstance(parent, MapHolder), 'parent must be of type DatasetHandler or MapHolder. Type given: {!s}'.format(type(parent))
             self.parent = parent
+        if child:
+            self.child = child
 
 class MapHolderList(HolderList):
     """Class for grouping many MapHolder objects together"""
 
     def __custom_init__(self, *args):
         print(args)
-
-class MapList(object):
-    _initialized = False
-    _map_names = []
-    def __init__(self, map_names=[]):
-        assert self._map_names+map_names, 'No Map Names defined'
-        for m in self._map_names+map_names:
-            self.__dict__[m] = None
-        self._initialized = True
-
-    def __setattr__(self, name, value):
-        if self._initialized and (not hasattr(self, name)):
-            raise AttributeError('Cannot set new attributes after initialisation: {!s}'.format(name))
-        object.__setattr__(self, name, value)
 
 def map_handler(map_data, unit_cell):
     """Map handler for easy sampling of map"""
@@ -640,6 +632,35 @@ class identical_structure_ensemble(object):
 
         return '\n'.join(report_string)
 
+class Meta(object):
+    """Object for storing random data"""
+    def __init__(self, args=None):
+        if isinstance(args, dict):
+            for k in args:
+                self.__dict__[k] = args[k]
+        elif isinstance(args, list):
+            for l in args:
+                self.__dict__[l] = None
+        elif args is not None:
+            raise Exception('args must be dict or list')
+
+class MapList(object):
+    _initialized = False
+    _map_names = []
+    def __init__(self, map_names=[]):
+        assert self._map_names+map_names, 'No Map Names defined'
+        for m in self._map_names+map_names:
+            self.__dict__[m] = None
+        # Intialise meta dict
+        self.meta = Meta()
+        # Set initialised so attributes can't be added
+        self._initialized = True
+
+    def __setattr__(self, name, value):
+        if self._initialized and (not hasattr(self, name)):
+            raise AttributeError('Cannot set new attributes after initialisation: {!s}'.format(name))
+        object.__setattr__(self, name, value)
+
 class PanddaStatMapList(MapList):
     _map_names =    [   'mean_map',
                         'stds_map',
@@ -649,15 +670,31 @@ class PanddaStatMapList(MapList):
                         'bimo_map'
                     ]
 
+class PanddaMultipleStatMapList(object):
+    def __init__(self):
+        """Store lots of statistical maps"""
+        self.map_lists = {}
+    def get_resolutions(self):
+        return sorted(self.map_lists.keys())
+    def add(self, stat_map_list, resolution):
+        assert isinstance(resolution, float), 'Resolution of map must be of type float. Type given: {!s}'.format(type(resolution))
+        assert resolution not in self.map_lists.keys(), 'MAPS OF THIS RESOLUTION ALREADY ADDED'
+        assert isinstance(stat_map_list, PanddaStatMapList), 'stat_map_list must be of type PanddaMultipleStatMapList. Type given: {!s}'.format(type(stat_map_list))
+        self.map_lists[resolution] = stat_map_list
+    def get(self, resolution):
+        return self.map_lists[resolution]
+
 class PanddaMapAnalyser(object):
     """Class to hold dataset maps, statistical maps and meta data for a set of related maps. Also holds functions for analysing the maps."""
     output_handler = None
     def __init__(self, dataset_maps, meta, statistical_maps=None, parent=None):
-        assert isinstance(meta, dict), 'meta must be of type dict. Type given: {!s}'.format(type(meta))
-        assert meta['resolution']
-        assert meta['grid_size']
-        assert meta['grid_size_1d']
+        # Validate the meta
+        assert isinstance(meta, Meta), 'meta must be of type Meta. Type given: {!s}'.format(type(meta))
+        assert hasattr(meta, 'resolution')
+        assert hasattr(meta, 'grid_size')
+        assert hasattr(meta, 'grid_size_1d')
         self.meta = meta
+        # Validate the dataset maps
         assert isinstance(dataset_maps, MapHolderList), 'dataset_maps must be stored in a MapHolderList. Type given: {!s}'.format(type(dataset_maps))
         self.dataset_maps = dataset_maps
         if statistical_maps:
@@ -665,6 +702,8 @@ class PanddaMapAnalyser(object):
             self.statistical_maps = statistical_maps
         else:
             self.statistical_maps = PanddaStatMapList()
+            self.statistical_maps.meta = self.meta
+        # Validate the parent object (main pandda object)
         if parent:
             assert isinstance(parent, PanddaMultiDatasetAnalyser), 'parent must be of type PanddaMultiDatasetAnalyser. Type given: {!s}'.format(type(parent))
             self.parent = parent
@@ -679,18 +718,18 @@ class PanddaMapAnalyser(object):
         for mh in self.dataset_maps.all():
             print('Checking Map {!s}'.format(mh.name))
 
-    def calculate_mean_map(self, masked_idxs=None):
+    def calculate_mean_map(self, masked_idxs=None, mask_name=None):
         """Calculate the mean map from all of the different observations"""
 
-        if not masked_idxs: masked_idxs = range(0, self.meta['grid_size_1d'])
-        else:               assert max(masked_idxs) < self.meta['grid_size_1d'], 'masked_idxs out of range of map'
+        if not masked_idxs: masked_idxs = range(0, self.meta.grid_size_1d)
+        else:               assert max(masked_idxs) < self.meta.grid_size_1d, 'masked_idxs out of range of map'
 
         # Create statistics objects for each grid point
         self.log('===================================>>>', True)
         self.log('Calculating Mean Map', True)
 
         # Chunk the points into groups - Compromise between cpu time and memory usage - ~200 dataset -> chunksize of 5000
-        chunk_size = 1000*int(2000/self.dataset_maps.size())
+        chunk_size = 1000*int(2000/self.dataset_maps.size(mask_name=mask_name))
         chunked_indices = [masked_idxs[i:i + chunk_size] for i in range(0, len(masked_idxs), chunk_size)]
         num_chunks = len(chunked_indices)
 
@@ -698,14 +737,14 @@ class PanddaMapAnalyser(object):
         t1 = time.time()
 
         # Calculate Mean Maps
-        mean_map_vals = numpy.zeros(self.meta['grid_size_1d'])
+        mean_map_vals = numpy.zeros(self.meta.grid_size_1d)
         # Calculate the mean map across the datasets
         for i_chunk, chunk_idxs in enumerate(chunked_indices):
             status_bar(n=i_chunk, n_max=num_chunks)
-            p_map_vals = numpy.array([mh.map.select(chunk_idxs) for mh in self.dataset_maps.all()])
+            p_map_vals = numpy.array([mh.map.select(chunk_idxs) for mh in self.dataset_maps.mask(mask_name=mask_name)])
             # Check that the output values are the expected dimensions
             if i_chunk+1 < num_chunks:
-                assert len(p_map_vals) == self.dataset_maps.size()
+                assert len(p_map_vals) == self.dataset_maps.size(mask_name=mask_name)
                 assert len(p_map_vals.T) == chunk_size
             # Calculate the mean of this chunk
             p_map_means = numpy.mean(p_map_vals, axis=0)
@@ -719,19 +758,19 @@ class PanddaMapAnalyser(object):
 
         return self.statistical_maps.mean_map
 
-    def calculate_map_uncertainties(self, masked_idxs=None):
+    def calculate_map_uncertainties(self, masked_idxs=None, mask_name=None, output_graphs=True):
         """Calculate the uncertainty in each of the different maps"""
 
-        try:
-            import matplotlib
-            matplotlib.interactive(0)
-            from matplotlib import pyplot
-            output_graphs = True
-        except:
-            output_graphs = False
+        if output_graphs:
+            try:
+                import matplotlib
+                matplotlib.interactive(0)
+                from matplotlib import pyplot
+            except:
+                output_graphs = False
 
-        if not masked_idxs: masked_idxs = range(0, self.meta['grid_size_1d'])
-        else:               assert max(masked_idxs) < self.meta['grid_size_1d'], 'masked_idxs out of range of map'
+        if not masked_idxs: masked_idxs = range(0, self.meta.grid_size_1d)
+        else:               assert max(masked_idxs) < self.meta.grid_size_1d, 'masked_idxs out of range of map'
 
         # Section of q-q plot to calculate slope over (-q_cut -> +q_cut)
         q_cut = 1.5
@@ -748,13 +787,13 @@ class PanddaMapAnalyser(object):
         self.log('===================================>>>')
         t1 = time.time()
 
-        for i_mh, mh in enumerate(self.dataset_maps.all()):
+        for i_mh, mh in enumerate(self.dataset_maps.mask(mask_name=mask_name)):
 
-            if ('map_uncertainty' in mh.meta):
-                print('\rSKIPPING Dataset {!s} ({!s}/{!s})                                 '.format(mh.tag, i_mh+1, self.dataset_maps.size()), end=''); sys.stdout.flush()
+            if hasattr(mh.meta, 'map_uncertainty'):
+                print('\rSKIPPING Dataset {!s} ({!s}/{!s})                                 '.format(mh.tag, i_mh+1, self.dataset_maps.size(mask_name=mask_name)), end=''); sys.stdout.flush()
                 continue
             else:
-                print('\rCalculating Map Uncertainty for Dataset {!s} ({!s}/{!s})          '.format(mh.tag, i_mh+1, self.dataset_maps.size()), end=''); sys.stdout.flush()
+                print('\rCalculating Map Uncertainty for Dataset {!s} ({!s}/{!s})          '.format(mh.tag, i_mh+1, self.dataset_maps.size(mask_name=mask_name)), end=''); sys.stdout.flush()
 
             # Extract the map values as the masked indices
             masked_map_vals = mh.map.select(masked_idxs)
@@ -770,7 +809,7 @@ class PanddaMapAnalyser(object):
             map_unc, map_off = fit_coeffs[0:2]
 
             # Save the uncertainty
-            mh.meta['map_uncertainty'] = map_unc
+            mh.meta.map_uncertainty = map_unc
 #            print('> UNCERTAINTY: {!s}'.format(fit_coeffs.round(3).tolist()[0]))
 
             if output_graphs and mh.parent:
@@ -818,9 +857,9 @@ class PanddaMapAnalyser(object):
         t2 = time.time()
         self.log('> MAP UNCERTAINTY CALCULATION > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
-        return [mh.meta['map_uncertainty'] for mh in self.dataset_maps.all()]
+        return [mh.meta.map_uncertainty for mh in self.dataset_maps.mask(mask_name=mask_name)]
 
-    def calculate_statistical_maps(self, masked_idxs=None, cpus=1, ignore_warnings=True):
+    def calculate_statistical_maps(self, masked_idxs=None, mask_name=None, cpus=1, ignore_warnings=True):
         """Take the sampled maps and calculate statistics for each grid point across the datasets"""
 
         def map_statistics_map_func(arg_dict):
@@ -848,14 +887,14 @@ class PanddaMapAnalyser(object):
             self.log('Suppressing Numpy Iteration Warnings... (Nothing to worry about)')
             warnings.simplefilter('ignore', category=RuntimeWarning)
 
-        if not masked_idxs: masked_idxs = range(0, self.meta['grid_size_1d'])
-        else:               assert max(masked_idxs) < self.meta['grid_size_1d'], 'masked_idxs out of range of map'
+        if not masked_idxs: masked_idxs = range(0, self.meta.grid_size_1d)
+        else:               assert max(masked_idxs) < self.meta.grid_size_1d, 'masked_idxs out of range of map'
 
         # Extract the map uncertainties
-        all_uncertainties = [mh.meta['map_uncertainty'] for mh in self.dataset_maps.all()]
+        all_uncertainties = [mh.meta.map_uncertainty for mh in self.dataset_maps.mask(mask_name=mask_name)]
 
         # Chunk the points into groups - Compromise between cpu time and memory usage - ~200 dataset -> chunksize of 5000
-        chunk_size = 1000*int(2000/self.dataset_maps.size())
+        chunk_size = 1000*int(2000/self.dataset_maps.size(mask_name=mask_name))
         chunked_indices = [masked_idxs[i:i + chunk_size] for i in range(0, len(masked_idxs), chunk_size)]
         num_chunks = len(chunked_indices)
 
@@ -869,9 +908,9 @@ class PanddaMapAnalyser(object):
         for i_chunk, chunk_idxs in enumerate(chunked_indices):
             status_bar(n=i_chunk, n_max=num_chunks)
             # Select map values from each map
-            p_map_vals = numpy.array([mh.map.select(chunk_idxs) for mh in self.dataset_maps.all()])
+            p_map_vals = numpy.array([mh.map.select(chunk_idxs) for mh in self.dataset_maps.mask(mask_name=mask_name)])
             if i_chunk+1 < num_chunks:
-                assert len(p_map_vals) == self.dataset_maps.size()
+                assert len(p_map_vals) == self.dataset_maps.size(mask_name=mask_name)
                 assert len(p_map_vals.T) == chunk_size
             if cpus > 1:
                 # Generate arg_list for analysis
@@ -889,54 +928,60 @@ class PanddaMapAnalyser(object):
         self.log('> MAP POINT ANALYSIS > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
         # Calculate Stds Maps - Set the background to be tiny but non-zero so we can still divide by it
-        stds_map_vals = 1e-18*numpy.ones(self.meta['grid_size_1d'])
+        stds_map_vals = 1e-18*numpy.ones(self.meta.grid_size_1d)
         stds_map_vals.put(masked_idxs, [ps[0] for ps in masked_point_statistics])
         stds_map_vals = flex.double(stds_map_vals.tolist())
         self.statistical_maps.stds_map = stds_map_vals
 
         # Calculate ADJUSTED Stds Maps - Set the background to be tiny but non-zero so we can still divide by it
-        sadj_map_vals = 1e-18*numpy.ones(self.meta['grid_size_1d'])
+        sadj_map_vals = 1e-18*numpy.ones(self.meta.grid_size_1d)
         sadj_map_vals.put(masked_idxs, [ps[1] for ps in masked_point_statistics])
         sadj_map_vals = flex.double(sadj_map_vals.tolist())
         self.statistical_maps.sadj_map = sadj_map_vals
 
         # Calculate Skew Maps
-        skew_map_vals = numpy.zeros(self.meta['grid_size_1d'])
+        skew_map_vals = numpy.zeros(self.meta.grid_size_1d)
         skew_map_vals.put(masked_idxs, [ps[2] for ps in masked_point_statistics])
         skew_map_vals = flex.double(skew_map_vals.tolist())
         self.statistical_maps.skew_map = skew_map_vals
 
         # Calculate Kurtosis Maps
-        kurt_map_vals = numpy.zeros(self.meta['grid_size_1d'])
+        kurt_map_vals = numpy.zeros(self.meta.grid_size_1d)
         kurt_map_vals.put(masked_idxs, [ps[3] for ps in masked_point_statistics])
         kurt_map_vals = flex.double(kurt_map_vals.tolist())
         self.statistical_maps.kurt_map = kurt_map_vals
 
         # Calculate Bimodality Maps
-        bimo_map_vals = numpy.zeros(self.meta['grid_size_1d'])
+        bimo_map_vals = numpy.zeros(self.meta.grid_size_1d)
         bimo_map_vals.put(masked_idxs, [ps[4] for ps in masked_point_statistics])
         bimo_map_vals = flex.double(bimo_map_vals.tolist())
         self.statistical_maps.bimo_map = bimo_map_vals
 
         return self.statistical_maps
 
-    def calculate_z_map(self, tag, method):
+    def calculate_z_map(self, method, map=None, tag=None, uncertainty=None):
         """Calculate the z-map relative to the mean and std map"""
 
         # STANDARD METHOD USES THE RAW STANDARD DEVIATION OF THE MAP VALUES
         # ADJUSTED METHOD USED THE UNCERTAINTY CORRECTED STANDARD DEVIATION
         assert method in ['naive','adjusted','adjusted+uncertainty']
+        assert [tag, map].count(None) == 1, 'Must provide tag OR map'
 
-        # Get the holder
-        mh = self.dataset_maps.get(tag=tag)
+        if tag:
+            # Get the holder
+            mh = self.dataset_maps.get(tag=tag)
+            map = mh.map
+            if method == 'adjusted+uncertainty': uncertainty = mh.meta.map_uncertainty
+        else:
+            if method == 'adjusted+uncertainty': assert uncertainty is not None
 
         # Calculate Z-values
         if method == 'naive':
-            z_map_vals = (mh.map - self.statistical_maps.mean_map)/self.statistical_maps.stds_map
+            z_map_vals = (map - self.statistical_maps.mean_map)/self.statistical_maps.stds_map
 #        elif method == 'adjusted':
-#            z_map_vals = (mh.map - self.statistical_maps.mean_map)/self.statistical_maps.sadj_map
+#            z_map_vals = (map - self.statistical_maps.mean_map)/self.statistical_maps.sadj_map
         elif method == 'adjusted+uncertainty':
-            z_map_vals = (mh.map - self.statistical_maps.mean_map)/flex.sqrt(self.statistical_maps.sadj_map**2 + mh.meta['map_uncertainty']**2)
+            z_map_vals = (map - self.statistical_maps.mean_map)/flex.sqrt(self.statistical_maps.sadj_map**2 + uncertainty**2)
         else:
             raise Exception('method not found: {!s}'.format(method))
 
@@ -951,7 +996,7 @@ class PanddaMultiDatasetAnalyser(object):
     _crystal_mask_names   = CRYSTAL_MASK_NAMES
     _reject_mask_names    = REJECT_MASK_NAMES
     _flag_mask_names      = FLAG_MASK_NAMES
-    _custom_mask_names    = []
+    _custom_mask_names    = ['no_analyse', 'no_build']
     _all_mask_names = _structure_mask_names + _crystal_mask_names + _reject_mask_names + _flag_mask_names + _custom_mask_names
 
     def __init__(self, args=None):
@@ -976,14 +1021,14 @@ class PanddaMultiDatasetAnalyser(object):
             print('\n# PANDDA DEFAULTS\n')
             self.master_phil.show()
             sys.exit()
-        else:
-            # Process the input arguments and convert to phil
-            self.cmds = args
-            self.working_phil, self.unused_args = self.process_input_args(master_phil=self.master_phil, args=args)
-            # Pull out the python object of the arguments (at the `pandda` level)
-            self.args = self.working_phil.extract().pandda
-            # Most of the variables are contained withing the params object - create a shortcut to save typing
-            self.params = self.args.params
+
+        # Process the input arguments and convert to phil
+        self.cmds = args
+        self.working_phil, self.unused_args = self.process_input_args(master_phil=self.master_phil, args=args)
+        # Pull out the python object of the arguments (at the `pandda` level)
+        self.args = self.working_phil.extract().pandda
+        # Most of the variables are contained withing the params object - create a shortcut to save typing
+        self.params = self.args.params
 
         # Validate the processed parameters
         self._validate_parameters()
@@ -1023,14 +1068,18 @@ class PanddaMultiDatasetAnalyser(object):
         self._input_files = []
         # Dataset Objects
         self.datasets = DatasetHandlerList()
+
         # Reference Objects
         self._ref_dataset_index = None
         self._ref_dataset = None
         self._ref_grid = None
 
-#        # Map Statistics
-#        self.stat_maps = PanddaStatMapList()
-#
+        # Variables for storing loaded pickle data from previous runs
+        self.pickled_dataset_meta = None
+
+        # Map Statistics
+        self.stat_maps = PanddaMultipleStatMapList()
+
         # ===============================================================================>
         # ANALYSIS OBJECTS
         # ===============================================================================>
@@ -1039,12 +1088,8 @@ class PanddaMultiDatasetAnalyser(object):
         self.ensemble_summary = None
         # Dataset Summary Object
         self.datasets_summary = None
-
-
-
-        # TODO RENAME REMOVE
         # Map and Dataset statistics
-        self._map_observations = data_collection()
+        self.map_observations = data_collection()
 
         # Summaries of detected points
         self._cluster_summary = data_collection()
@@ -1064,7 +1109,7 @@ class PanddaMultiDatasetAnalyser(object):
         # Set up the pickled object filenames
         self._run_pickle_setup()
 
-        if os.path.exists(self.pickle_handler.get_file('dataset_list')):
+        if os.path.exists(self.pickle_handler.get_file('dataset_meta')):
             self._new_pandda = False
         else:
             self._new_pandda = True
@@ -1096,9 +1141,7 @@ class PanddaMultiDatasetAnalyser(object):
         cmd_sources = [cmd_interpr.process(arg=a) for a in cmd_line_args]
 
         # Combine the phils
-        working_phil = master_phil.fetch(
-                                        sources=eff_sources+cmd_sources
-                                        )
+        working_phil = master_phil.fetch(sources=eff_sources+cmd_sources)
 
         return working_phil, args
 
@@ -1156,18 +1199,21 @@ class PanddaMultiDatasetAnalyser(object):
         # LOOK FOR MATPLOTLIB TO SEE IF WE CAN GENERATE GRAPHS
         # ===============================================================================>
 
-        try:
-            import matplotlib
-            # Setup so that we can write without a display connected
-            matplotlib.interactive(0)
-            default_backend, validate_function = matplotlib.defaultParams['backend']
-            self.log('===================================>>>')
-            self.log('MATPLOTLIB LOADED. Using Backend: {!s}'.format(default_backend))
-            from matplotlib import pyplot
-            self.log('PYPLOT loaded successfully')
-        except:
-            self.log('===================================>>>', True)
-            self.log('>> COULD NOT IMPORT MATPLOTLIB. CANNOT GENERATE GRAPHS.', True)
+        if self.args.settings.plot_graphs:
+            try:
+                import matplotlib
+                # Setup so that we can write without a display connected
+                matplotlib.interactive(0)
+                default_backend, validate_function = matplotlib.defaultParams['backend']
+                self.log('===================================>>>')
+                self.log('MATPLOTLIB LOADED. Using Backend: {!s}'.format(default_backend))
+                from matplotlib import pyplot
+                assert not pyplot.isinteractive(), 'PYPLOT IS STILL IN INTERACTIVE MODE'
+                self.log('PYPLOT loaded successfully')
+            except:
+                self.log('===================================>>>', True)
+                self.log('>> COULD NOT IMPORT MATPLOTLIB. CANNOT GENERATE GRAPHS.', True)
+                self.args.settings.plot_graphs = False
 
         # ===============================================================================>
         # LOG THE START TIME
@@ -1257,17 +1303,12 @@ class PanddaMultiDatasetAnalyser(object):
         self.pickle_handler.add_file(file_name='reference_dataset.pickle', file_tag='reference_dataset')
         # Pickled Datasets
         self.pickle_handler.add_file(file_name='dataset_masks.pickle', file_tag='dataset_masks')
-        self.pickle_handler.add_file(file_name='dataset_list.pickle', file_tag='dataset_list')
+        self.pickle_handler.add_file(file_name='dataset_meta.pickle', file_tag='dataset_meta')
         # Pickled Information
         self.pickle_handler.add_file(file_name='dataset_observations.pickle', file_tag='dataset_observations')
         self.pickle_handler.add_file(file_name='map_observations.pickle', file_tag='map_observations')
         # Pickled Stats
-        self.pickle_handler.add_file(file_name='mean_map.pickle', file_tag='mean_map')
-        self.pickle_handler.add_file(file_name='stds_map.pickle', file_tag='stds_map')
-        self.pickle_handler.add_file(file_name='sadj_map.pickle', file_tag='sadj_map')
-        self.pickle_handler.add_file(file_name='skew_map.pickle', file_tag='skew_map')
-        self.pickle_handler.add_file(file_name='kurt_map.pickle', file_tag='kurt_map')
-        self.pickle_handler.add_file(file_name='bimo_map.pickle', file_tag='bimo_map')
+        self.pickle_handler.add_file(file_name='statistical_maps.pickle', file_tag='stat_maps')
 
         # Pickled SELF
         self.pickle_handler.add_file(file_name='my_pandda.pickle', file_tag='my_pandda')
@@ -1284,40 +1325,44 @@ class PanddaMultiDatasetAnalyser(object):
         # Load Reference Grid
         if os.path.exists(self.pickle_handler.get_file('reference_grid')):
             pickles_found = True
+            self.log('Loading reference grid')
             self.set_reference_grid(self.unpickle(self.pickle_handler.get_file('reference_grid')))
 
         # Load Reference Dataset
         if os.path.exists(self.pickle_handler.get_file('reference_dataset')):
             pickles_found = True
+            self.log('Loading reference dataset')
             self.set_reference_dataset(self.unpickle(self.pickle_handler.get_file('reference_dataset')))
 
         # Load the datasets
-        if os.path.exists(self.pickle_handler.get_file('dataset_list')):
+        if os.path.exists(self.pickle_handler.get_file('dataset_meta')):
             pickles_found = True
             # Unpickle the list of the pickled datasets from the directory structure
-            pickled_dataset_list = self.unpickle(self.pickle_handler.get_file('dataset_list'))
-            # Check they all exist - should be relative to the outdirectory
-            for filename in pickled_dataset_list:
-                assert os.path.isfile(os.path.join(self.outdir, filename)), 'File does not exist: {!s}'.format(filename)
-            # Unpickle the datasets and add them to the dataset handler list
-            self.datasets.add([self.unpickle(os.path.join(self.outdir,f)) for f in pickled_dataset_list])
-            self.update_pandda_size(tag='After Unpickling Dataset Objects')
+            self.log('Loading old dataset information (existing datasets)')
+            self.pickled_dataset_meta = self.unpickle(self.pickle_handler.get_file('dataset_meta'))
 
-#        # Load Statistical Maps
-#        if os.path.exists(self.pickle_handler.get_file('mean_map')):
-#            pickles_found = True
-#            self.stat_maps.mean_map = self.unpickle(self.pickle_handler.get_file('mean_map'))
-#        if os.path.exists(self.pickle_handler.get_file('stds_map')):
-#            self.stat_maps.stds_map = self.unpickle(self.pickle_handler.get_file('stds_map'))
-#        if os.path.exists(self.pickle_handler.get_file('sadj_map')):
-#            self.stat_maps.sadj_map = self.unpickle(self.pickle_handler.get_file('sadj_map'))
-#        if os.path.exists(self.pickle_handler.get_file('skew_map')):
-#            self.stat_maps.skew_map = self.unpickle(self.pickle_handler.get_file('skew_map'))
-#        if os.path.exists(self.pickle_handler.get_file('kurt_map')):
-#            self.stat_maps.kurt_map = self.unpickle(self.pickle_handler.get_file('kurt_map'))
-#        if os.path.exists(self.pickle_handler.get_file('bimo_map')):
-#            self.stat_maps.bimo_map = self.unpickle(self.pickle_handler.get_file('bimo_map'))
-#            self.update_pandda_size(tag='After Unpickling Statistical Maps')
+            if self.args.method.reload_existing_datasets:
+                # Extract the paths of the pickled dataset objects
+                pickled_dataset_list = self.pickled_dataset_meta.dataset_pickle_list
+                # Check they all exist - should be relative to the outdirectory
+                for filename in pickled_dataset_list:
+                    assert os.path.isfile(os.path.join(self.outdir, filename)), 'File does not exist: {!s}'.format(filename)
+                # Unpickle the datasets and add them to the dataset handler list
+                self.log('Reloading old datasets')
+                self.datasets.add([self.unpickle(os.path.join(self.outdir,f)) for f in pickled_dataset_list])
+                self.update_pandda_size(tag='After Unpickling Dataset Objects')
+            else:
+                self.log('Not reloading old datasets')
+        else:
+            # No datasets to load - this must be False
+            self.args.method.reload_existing_datasets = False
+            self.log('No old datasets found')
+
+        # Load Statistical Maps
+        if os.path.exists(self.pickle_handler.get_file('stat_maps')):
+            pickles_found = True
+            self.log('Loading old statistical maps')
+            self.stat_maps = self.unpickle(self.pickle_handler.get_file('stat_maps'))
 
         if not pickles_found:
             self.log('No Pickles Found', True)
@@ -1370,33 +1415,15 @@ class PanddaMultiDatasetAnalyser(object):
             else:
                 self.log('No Datasets to Pickle')
 
-#        if all or ('statistical_maps' in components):
-#            self.log('===================================>>>')
-#            self.log('Pickling Statistical Maps')
-#            if self.stat_maps.mean_map is not None:
-#                self.pickle(pickle_file   = self.pickle_handler.get_file('mean_map'),
-#                            pickle_object = self.stat_maps.mean_map,
-#                            overwrite = False)
-#            if self.stat_maps.stds_map is not None:
-#                self.pickle(pickle_file   = self.pickle_handler.get_file('stds_map'),
-#                            pickle_object = self.stat_maps.stds_map,
-#                            overwrite = False)
-#            if self.stat_maps.sadj_map is not None:
-#                self.pickle(pickle_file   = self.pickle_handler.get_file('sadj_map'),
-#                            pickle_object = self.stat_maps.sadj_map,
-#                            overwrite = False)
-#            if self.stat_maps.skew_map is not None:
-#                self.pickle(pickle_file   = self.pickle_handler.get_file('skew_map'),
-#                            pickle_object = self.stat_maps.skew_map,
-#                            overwrite = False)
-#            if self.stat_maps.kurt_map is not None:
-#                self.pickle(pickle_file   = self.pickle_handler.get_file('kurt_map'),
-#                            pickle_object = self.stat_maps.kurt_map,
-#                            overwrite = False)
-#            if self.stat_maps.bimo_map is not None:
-#                self.pickle(pickle_file   = self.pickle_handler.get_file('bimo_map'),
-#                            pickle_object = self.stat_maps.bimo_map,
-#                            overwrite = False)
+        if all or ('stat_maps' in components):
+            self.log('===================================>>>')
+            if self.stat_maps is not None:
+                self.log('Pickling Statistical Maps')
+                self.pickle(pickle_file   = self.pickle_handler.get_file('stat_maps'),
+                            pickle_object = self.stat_maps,
+                            overwrite = True)
+            else:
+                self.log('No Statistical Maps to Pickle')
 
     def exit(self, error=False):
         """Exit the PANDDA, record runtime etc..."""
@@ -1407,17 +1434,39 @@ class PanddaMultiDatasetAnalyser(object):
         self.log('Runtime: {!s}'.format(time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(self._finish_time - self._init_time))))
 
         try:
-            # Pickle myself
-            self.log('===================================>>>', True)
-            self.log('Pickling the PANDDA Results')
-            self.pickle(pickle_file=self.pickle_handler.get_file('my_pandda'), pickle_object=self, overwrite=True)
-
-            # Pickle the list of locations of the dataset pickles
-            self.pickle(pickle_file   = self.pickle_handler.get_file('dataset_list'),
-                        pickle_object = [os.path.relpath(d.output_handler.get_file('dataset_pickle'), start=self.outdir) for d in self.datasets.all()],
-                        overwrite = True)
+            if self.args.settings.pickling.full_pickle:
+                # Pickle myself
+                self.log('===================================>>>', True)
+                self.log('Pickling the PANDDA Results')
+                self.pickle(pickle_file=self.pickle_handler.get_file('my_pandda'), pickle_object=self, overwrite=True)
         except:
             self.log('FAILED TO PICKLE MYSELF')
+
+        try:
+            # Extract meta about the datasets
+            if self.pickled_dataset_meta and (not self.args.method.reload_existing_datasets):
+                # Combine the old meta with the new
+                self.log('Combining old dataset meta with new meta for pickle')
+                number_of_datasets  = self.pickled_dataset_meta.number_of_datasets  + self.datasets.size()
+                dataset_labels      = self.pickled_dataset_meta.dataset_labels      + [d.tag for d in self.datasets.all()]
+                dataset_pickle_list = self.pickled_dataset_meta.dataset_pickle_list + [os.path.relpath(d.output_handler.get_file('dataset_pickle'), start=self.outdir) for d in self.datasets.all()]
+            else:
+                # Don't need to consider the pickle as the datasets have been reloaded
+                self.log('Creating new meta for pickle')
+                number_of_datasets  = self.datasets.size()
+                dataset_labels      = [d.tag for d in self.datasets.all()]
+                dataset_pickle_list = [os.path.relpath(d.output_handler.get_file('dataset_pickle'), start=self.outdir) for d in self.datasets.all()]
+            # Create a dictionary to be stored
+            dataset_meta = Meta({'number_of_datasets'    : number_of_datasets,
+                                 'dataset_labels'        : dataset_labels,
+                                 'dataset_pickle_list'   : dataset_pickle_list
+                            })
+            # Pickle the list of locations of the dataset pickles
+            self.pickle(pickle_file   = self.pickle_handler.get_file('dataset_meta'),
+                        pickle_object = dataset_meta,
+                        overwrite = True)
+        except:
+            self.log('FAILED TO PICKLE META')
 
     def log(self, message, show=False, hide=False):
         """Log message to file, and mirror to stdout if verbose or force_print (hide overrules show)"""
@@ -1457,11 +1506,6 @@ class PanddaMultiDatasetAnalyser(object):
         self._low_resolution = res
     def get_low_resolution(self):
         return self._low_resolution
-
-    def set_cut_resolution(self, res):
-        self._cut_resolution = res
-    def get_cut_resolution(self):
-        return self._cut_resolution
 # XXX MAYBE KEEP THESE
 
     def set_reference_dataset(self, dataset):
@@ -1481,9 +1525,6 @@ class PanddaMultiDatasetAnalyser(object):
         """Get all of the files that were added on this run"""
         return self._input_files
 
-    def get_map_observations(self):
-        """Distributions of different map variables across the datasets"""
-        return self._map_observations
     def get_cluster_summary(self):
         """Summaries of difference clusters across the datasets"""
         return self._cluster_summary
@@ -1506,6 +1547,36 @@ class PanddaMultiDatasetAnalyser(object):
         for mask_name in self._all_mask_names:
             self.datasets.all_masks().add_mask(mask_name=mask_name, mask=[False]*self.datasets.size())
 
+        # Initialise masks for datasets that shouldn't be analysed
+        if self.params.analysis.no_analyse:
+            no_analyse_tags = self.params.analysis.no_analyse.split(',')
+            self.log('Not analysing {!s} Datasets: {!s}'.format(len(no_analyse_tags), ', '.join(no_analyse_tags)))
+            for tag in no_analyse_tags:
+                assert tag in self.datasets.all_tags(), 'Dataset with tag {!s} not present in dataset list: \n{!s}'.format(tag, self.datasets.all_tags())
+            no_analyse_mask = [True if d.tag in no_analyse_tags else False for d in self.datasets.all()]
+            self.datasets.all_masks().add_mask(mask_name='no_analyse', mask=no_analyse_mask)
+
+        # Initialise mask for datasets that shouldn't be used for building
+        if self.params.analysis.no_build:
+            no_build_tags = self.params.analysis.no_build.split(',')
+            self.log('Not building distributions from {!s} Datasets: {!s}'.format(len(no_build_tags), ', '.join(no_build_tags)))
+            for tag in no_build_tags:
+                assert tag in self.datasets.all_tags(), 'Dataset with tag {!s} not present in dataset list: \n{!s}'.format(tag, self.datasets.all_tags())
+            no_build_mask = [True if d.tag in no_build_tags else False for d in self.datasets.all()]
+            self.datasets.all_masks().add_mask(mask_name='no_build', mask=no_build_mask)
+
+        # Initialise mask for datasets that have been previously pickled
+        self.datasets.all_masks().add_mask(mask_name='old datasets', mask=[False]*self.datasets.size())
+
+        if self.pickled_dataset_meta and self.args.method.reload_existing_datasets:
+            for tag in self.pickled_dataset_meta.dataset_tags:
+                self.datasets.all_masks().set_mask_value(mask_name='old datasets', entry_id=tag, value=True)
+            self.log('Considering {!s} datasets as "New Datasets"'.format(self.datasets.size(mask_name='old datasets', invert=True)))
+            self.log('Considering {!s} datasets as "Old Datasets"'.format(self.datasets.size(mask_name='old datasets')))
+        else:
+            self.log('Considering all {!s} datasets as "New Datasets"'.format(self.datasets.size(mask_name='old datasets', invert=True)))
+            assert self.datasets.size(mask_name='old datasets', invert=True) == self.datasets.size(), 'Total datasets should be same as total new datasets'
+
         self.log('===================================>>>', True)
         self.log('Initialising Dataset Observations.', True)
 
@@ -1515,18 +1586,18 @@ class PanddaMultiDatasetAnalyser(object):
         self.datasets_summary.set_entry_ids([d.tag for d in self.datasets.all()])
 
         # Set the map observation lengths
-        self.get_map_observations().set_data_length(self.datasets.size())
-        self.get_map_observations().set_entry_ids([d.tag for d in self.datasets.all()])
+        self.map_observations.set_data_length(self.datasets.size())
+        self.map_observations.set_entry_ids([d.tag for d in self.datasets.all()])
 
         # Initialise blank data
-        self.get_map_observations().add_empty_data(data_name='raw_masked_map_mean')
-        self.get_map_observations().add_empty_data(data_name='raw_masked_map_rms')
-        self.get_map_observations().add_empty_data(data_name='map_uncertainty')
-        self.get_map_observations().add_empty_data(data_name='analysed_resolution')
-        self.get_map_observations().add_empty_data(data_name='z_map_mean')
-        self.get_map_observations().add_empty_data(data_name='z_map_std')
-        self.get_map_observations().add_empty_data(data_name='z_map_skew')
-        self.get_map_observations().add_empty_data(data_name='z_map_kurt')
+        self.map_observations.add_empty_data(data_name='raw_masked_map_mean')
+        self.map_observations.add_empty_data(data_name='raw_masked_map_rms')
+        self.map_observations.add_empty_data(data_name='map_uncertainty')
+        self.map_observations.add_empty_data(data_name='analysed_resolution')
+        self.map_observations.add_empty_data(data_name='z_map_mean')
+        self.map_observations.add_empty_data(data_name='z_map_std')
+        self.map_observations.add_empty_data(data_name='z_map_skew')
+        self.map_observations.add_empty_data(data_name='z_map_kurt')
 
         self.log('===================================>>>', True)
         self.log('Initialising Timings.', True)
@@ -1669,10 +1740,10 @@ class PanddaMultiDatasetAnalyser(object):
         if self.args.input.mtz_style:
             mtz_style = self.args.input.mtz_style.lstrip('/')
         else:
+            assert pdb_style.endswith('.pdb'), 'pdb_style does not end in .pdb'
             mtz_style = pdb_style.replace('.pdb','.mtz')
 
         # Datasets that are already added
-        already_added  = [(d.pdb_filename(), d.mtz_filename()) for d in self.datasets.all()]
         new_files = []
         empty_directories = []
 
@@ -1684,8 +1755,10 @@ class PanddaMultiDatasetAnalyser(object):
                 empty_directories.append(dir)
             elif not pdb_files:
                 print('NO PDB IN DIRECTORY: {!s}'.format(dir))
+                empty_directories.append(dir)
             elif not mtz_files:
                 print('NO MTZ IN DIRECTORY: {!s}'.format(dir))
+                empty_directories.append(dir)
             else:
                 assert len(pdb_files) == 1, 'More than one matching PDB file found: {!s}'.format(os.path.join(dir, pdb_style))
                 assert len(mtz_files) == 1, 'More than one matching MTZ file found: {!s}'.format(os.path.join(dir, mtz_style))
@@ -1693,10 +1766,6 @@ class PanddaMultiDatasetAnalyser(object):
                 new_pdb = pdb_files[0]
                 new_mtz = mtz_files[0]
                 dataset_tag = [None]
-
-                if (os.path.abspath(new_pdb), os.path.abspath(new_mtz)) in already_added:
-                    self.log('ALREADY ADDED (SKIPPING): {!s}'.format(dir))
-                    continue
 
                 # Do regex matching on the file pairs
                 if '*' in pdb_style:
@@ -1739,32 +1808,64 @@ class PanddaMultiDatasetAnalyser(object):
 
                 new_files.append(pdb_files+mtz_files+dataset_tag)
 
+        # Filter out the already added files
+        if self.pickled_dataset_meta:
+            filtered_new_files = []
+            for i, (pdb, mtz, tag) in enumerate(new_files):
+                if tag in self.pickled_dataset_meta.dataset_labels:
+                    self.log('Dataset with this tag has already been loaded: {!s} - Not loading'.format(tag))
+                else:
+                    filtered_new_files.append(new_files[i])
+        else:
+            filtered_new_files = new_files
+
+        # Filter out manually labelled datasets to ignore
+        if self.params.analysis.ignore_datasets:
+            ignore_tags = self.params.analysis.ignore_datasets.split(',')
+            self.log('Ignoring {!s} Datasets: {!s}'.format(len(ignore_tags), ', '.join(ignore_tags)))
+            re_filtered_new_files = []
+            for i, (pdb, mtz, tag) in enumerate(filtered_new_files):
+                if tag in ignore_tags:
+                    self.log('Ignoring Dataset: {!s}'.format(tag))
+                else:
+                    re_filtered_new_files.append(filtered_new_files[i])
+            filtered_new_files = re_filtered_new_files
+
         # Get the list of already linked empty_directories
         empty_dir_prefix = 'Dir_'
         link_old_empty_dirs = glob.glob(os.path.join(self.output_handler.get_dir('empty_directories'),'*'))
         real_old_empty_dirs = [os.path.realpath(p) for p in link_old_empty_dirs]
-
         # Pull out the highest current idx
-        high_idx = max([0]+[int(os.path.basename(v).strip(empty_dir_prefix)) for v in link_old_empty_dirs])
-        assert high_idx == len(link_old_empty_dirs), 'Numbering of empty directories is not consecutive'
-
+        emp_num_i = 0
+        emp_num_offset = max([0]+[int(os.path.basename(v).strip(empty_dir_prefix)) for v in link_old_empty_dirs])
+        assert emp_num_offset == len(link_old_empty_dirs), 'Numbering of empty directories is not consecutive'
         # Link the empty directories into the same directory
         for dir in empty_directories:
             # Already linked
-            if dir in real_old_empty_dirs:
+            if os.path.realpath(dir) in real_old_empty_dirs:
                 continue
             # Increment counter
-            high_idx += 1
+            emp_num_i += 1
             # Create new dir
-            empty_dir = os.path.join(self.output_handler.get_dir('empty_directories'), empty_dir_prefix+'{:05d}'.format(high_idx))
+            empty_dir = os.path.join(self.output_handler.get_dir('empty_directories'), empty_dir_prefix+'{:05d}'.format(emp_num_i+emp_num_offset))
             if not os.path.exists(empty_dir):
                 os.symlink(dir, empty_dir)
             else:
                 raise Exception('THIS DIRECTORY SHOULD NOT EXIST: {!s}'.format(empty_dir))
 
-        self.log('{!s} EMPTY DIRECTORIES FOUND'.format(high_idx), True)
+        # Record number of empty datasets
+        self.log('===================================>>>', True)
+        self.log('{!s} EMPTY DIRECTORIES FOUND (TOTAL)'.format(emp_num_i+emp_num_offset), True)
+        self.log('{!s} EMPTY DIRECTORIES FOUND (NEW)'.format(emp_num_i), True)
 
-        return new_files
+        # Record total number of datasets, and total number of new datasets
+        if self.pickled_dataset_meta: num_old = self.pickled_dataset_meta.number_of_datasets
+        else:                         num_old = 0
+        self.log('===================================>>>', True)
+        self.log('{!s} DATASETS FOUND (TOTAL)'.format(len(filtered_new_files)+num_old), True)
+        self.log('{!s} DATASETS FOUND (NEW)'.format(len(filtered_new_files)), True)
+
+        return filtered_new_files
 
     def add_new_files(self, input_files):
         """Add (pdb, mtz) file pairs to the datasets to be processed"""
@@ -1780,11 +1881,20 @@ class PanddaMultiDatasetAnalyser(object):
         def load_dataset_map_func(arg_dict):
             return DatasetHandler(**arg_dict)
 
-        # TODO Change this so datasets can be added dynamically
-        assert self.datasets.all() == []
+        if not self.datasets.all() and self.is_new_pandda():
+            self.log('Adding First Datasets to Pandda')
+        else:
+            self.log('Adding more datasets')
+            self.log('N already loaded')
+            self.log('tags: X -> X')
+            self.log('nums: Y -> Y')
+
+        # Counting offset for dataset index
+        if self.pickled_dataset_meta: n_offset = self.pickled_dataset_meta.number_of_datasets
+        else:                         n_offset = 0
 
         # Generate arg_list for loading
-        arg_list = [{'dataset_number':dnum, 'pdb_filename':pdb, 'mtz_filename':mtz, 'dataset_tag':dtag, 'name_prefix':self.args.output.dataset_prefix} for dnum, (pdb, mtz, dtag) in enumerate(self.new_files())]
+        arg_list = [{'dataset_number':dnum+n_offset, 'pdb_filename':pdb, 'mtz_filename':mtz, 'dataset_tag':dtag, 'name_prefix':self.args.output.dataset_prefix} for dnum, (pdb, mtz, dtag) in enumerate(self.new_files())]
 
         start = time.time()
         self.log('===================================>>>', True)
@@ -1796,6 +1906,7 @@ class PanddaMultiDatasetAnalyser(object):
         lig_style = self.args.input.lig_style.strip('/')
 
         for d_handler in loaded_datasets:
+            # Create a file manager object
             d_handler.initialise_output_directory(outputdir=os.path.join(self.output_handler.get_dir('processed_datasets'), d_handler.name))
             # These will be links to the input files
             d_handler.output_handler.add_file(file_name='{!s}-input.pdb'.format(d_handler.tag), file_tag='input_structure')
@@ -1877,7 +1988,8 @@ class PanddaMultiDatasetAnalyser(object):
                         os.symlink(lig, out_path)
 
         self.datasets.add(loaded_datasets)
-        self.log('{!s} Datasets Loaded.          '.format(len(loaded_datasets), True))
+        self.log('{!s} Datasets Loaded (New).          '.format(len(loaded_datasets), True))
+        self.log('{!s} Datasets Loaded (Total).        '.format(self.datasets.size(), True))
 
     def select_reference_dataset(self, method='resolution', max_rfree=0.4, min_resolution=5):
         """Select dataset to act as the reference - scaling, aligning etc"""
@@ -2238,42 +2350,58 @@ class PanddaMultiDatasetAnalyser(object):
             if not os.path.exists(reject_dir):
                 rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=reject_dir)
 
-    def select_for_building_distributions(self, high_res_cutoff):
+    def select_for_building_distributions(self, high_res_cutoff, building_mask_name):
         """Select all datasets with resolution better than high_res_cutoff"""
 
-        # Create mask name and create empty mask
-        building_mask_name = 'selected for building @ {!s}A'.format(high_res_cutoff)
+        # Create empty mask
         self.datasets.all_masks().add_mask(mask_name=building_mask_name, mask=[False]*self.datasets.size())
+        total_build = 0
         # Select from the datasets that haven't been rejected
         for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
             # Check the resolution of the dataset
             if d_handler.reflection_data().max_min_resolution()[1] > high_res_cutoff:
 #                self.log('Rejecting Dataset: {!s}: ({!s} > {!s}) - resolution too low'.format(d_handler.tag, d_handler.reflection_data().max_min_resolution()[1], high_res_cutoff))
-                self.datasets.all_masks().set_mask_value(mask_name=building_mask_name, entry_id=d_handler.tag, value=False)
+                continue
+            # Check to see if this has been excluded from building
+            elif self.datasets.all_masks().get_mask_value(mask_name='no_build', entry_id=d_handler.tag) == True:
+                self.log('Rejecting Dataset {!s}: Excluded from building'.format(d_handler.tag))
+                continue
             else:
                 self.datasets.all_masks().set_mask_value(mask_name=building_mask_name, entry_id=d_handler.tag, value=True)
-        return building_mask_name, self.datasets.all_masks().get_mask(building_mask_name)
+                # Check to see if the number of datasets to use in building has been reached
+                total_build += 1
+                if total_build >= self.params.analysis.max_datasets:
+                    self.log('Maximum number of datasets for building reached: {!s}={!s}'.format(total_build, self.params.analysis.max_datasets))
+                    break
+        return self.datasets.all_masks().get_mask(building_mask_name)
 
-    def select_for_analysis(self, high_res_large_cutoff, high_res_small_cutoff):
+    def select_for_analysis(self, high_res_large_cutoff, high_res_small_cutoff, analysis_mask_name):
         """Select all datasets with resolution between high and low limits"""
 
         assert high_res_large_cutoff > high_res_small_cutoff, '{!s} must be larger than {!s}'.format(high_res_large_cutoff, high_res_small_cutoff)
 
-        # Create mask name and empty mask
-        analysis_mask_name = 'selected for analysis @ {!s}A'.format(high_res_large_cutoff)
+        # Create empty mask
         self.datasets.all_masks().add_mask(mask_name=analysis_mask_name, mask=[False]*self.datasets.size())
         # Select from the datasets that haven't been rejected
         for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
-            # Check the resolution of the dataset
+            # Check the resolution of the dataset (is not too low)
             if d_handler.reflection_data().max_min_resolution()[1] > high_res_large_cutoff:
 #                self.log('Rejecting Dataset: {!s}: ({!s} > {!s}) - resolution too low'.format(d_handler.tag, d_handler.reflection_data().max_min_resolution()[1], high_res_large_cutoff))
-                self.datasets.all_masks().set_mask_value(mask_name=analysis_mask_name, entry_id=d_handler.tag, value=False)
+                continue
+            # Check the resolution of the dataset (is not too high)
             elif d_handler.reflection_data().max_min_resolution()[1] < high_res_small_cutoff:
 #                self.log('Rejecting Dataset: {!s}: ({!s} < {!s}) - resolution too high'.format(d_handler.tag, d_handler.reflection_data().max_min_resolution()[1], high_res_small_cutoff))
-                self.datasets.all_masks().set_mask_value(mask_name=analysis_mask_name, entry_id=d_handler.tag, value=False)
+                continue
+            # Check to see if this has been excluded from building
+            elif self.datasets.all_masks().get_mask_value(mask_name='no_analyse', entry_id=d_handler.tag) == True:
+                self.log('Rejecting Dataset {!s}: Excluded from analysis'.format(d_handler.tag))
+                continue
+            elif (not self.args.method.reprocess_existing_datasets) and self.datasets.all_masks().get_mask_value(mask_name='old datasets', entry_id=d_handler.tag):
+                self.log('Rejecting Dataset {!s}: Already Processed (Old Dataset)'.format(d_handler.tag))
+                continue
             else:
                 self.datasets.all_masks().set_mask_value(mask_name=analysis_mask_name, entry_id=d_handler.tag, value=True)
-        return analysis_mask_name, self.datasets.all_masks().get_mask(analysis_mask_name)
+        return self.datasets.all_masks().get_mask(analysis_mask_name)
 
 #    def filter_datasets_3(self, resolution):
 #        """Select datasets based on resolution"""
@@ -2344,8 +2472,9 @@ class PanddaMultiDatasetAnalyser(object):
         # Now calculate the variation in the structure, from the reference
         self.log('Calculating Variation in RMSD (Calphas) to Reference Structure')
         rmsds = numpy.array([numpy.nan]*self.datasets.size())
-        for d in self.datasets.mask(mask_name='rejected - total', invert=True):
-            rmsds.put(d.num, d.get_calpha_sites().rms_difference(d.transform_from_reference(points=self.get_calpha_average_sites(), method='global')))
+        for i, d in enumerate(self.datasets.all()):
+            if not self.datasets.all_masks().get_mask_value(mask_name='rejected - total', entry_id=d.tag):
+                rmsds.put(i, d.get_calpha_sites().rms_difference(d.transform_from_reference(points=self.get_calpha_average_sites(), method='global')))
         self.datasets_summary.add_data(data_name='rmsd_to_mean', data_values=rmsds.tolist())
 
     def analyse_structure_variability_1(self):
@@ -2372,13 +2501,10 @@ class PanddaMultiDatasetAnalyser(object):
             self.log('GLOBAL ALIGNMENT SELECTED - NOT ANALYSING ROTATION MATRICES')
             return
 
-        try:
+        if self.args.settings.plot_graphs:
             import matplotlib
             matplotlib.interactive(0)
             from matplotlib import pyplot
-            output_graphs = True
-        except:
-            output_graphs = False
 
         rot_identity = scitbx.matrix.identity(3)
 
@@ -2428,7 +2554,7 @@ class PanddaMultiDatasetAnalyser(object):
         var_out_dir = self.output_handler.get_dir('analyses')
 
         # Write out graphs
-        if output_graphs:
+        if self.args.settings.plot_graphs:
 
             # Create labels
             labels = ['']*num_pairs
@@ -2473,14 +2599,15 @@ class PanddaMultiDatasetAnalyser(object):
 
         # Calculate which reflections are present in all datasets
         common_set = self.reference_dataset().unscaled_sfs.set()
-        self.log('Number of Reflections in Reference Dataset: {!s}'.format(common_set.size()))
+        ref_size = common_set.size()
+        self.log('Number of Reflections in Reference Dataset: {!s}'.format(ref_size))
         # Create maps for all of the datasets (including the reference dataset)
         for i_dh, d_handler in enumerate(dataset_handlers):
             common_set = common_set.common_set(d_handler.unscaled_sfs, assert_is_similar_symmetry=False)
 #            self.log('After Dataset {!s} - Remaining Common Reflections: {!s}'.format(i_dh+1, common_set.size()))
 
         self.log('===================================>>>', True)
-        self.log('Number of Common Reflections between Datasets: {!s}'.format(common_set.size()))
+        self.log('Number of Common Reflections between Datasets: {!s} ({!s}% of reference)'.format(common_set.size(), int(100.0*common_set.size()/ref_size)))
         self.log('After Truncation - Reflections per dataset: {!s}'.format(common_set.size()))
 
         # Create maps for all of the datasets (including the reference dataset)
@@ -2543,11 +2670,12 @@ class PanddaMultiDatasetAnalyser(object):
                                     # Change these for the 'fake' grid unit_cell and a P1 space_group
                                     unit_cell   = fft_map.unit_cell(),
                                     space_group = fft_map.space_group(),
-                                    meta        = {  'resolution'      : map_resolution,
-                                                     'masked_map_vals' : masked_vals_ref,
-                                                     'masked_map_gps'  : masked_gps,
-                                                     'map_mean'        : map_mean,
-                                                     'map_rms'         : map_rms   },
+                                    meta        = Meta({'type'            : 'reference observed map',
+                                                        'resolution'      : map_resolution,
+                                                        'masked_map_vals' : masked_vals_ref,
+                                                        'masked_map_gps'  : masked_gps,
+                                                        'map_mean'        : map_mean,
+                                                        'map_rms'         : map_rms   }),
                                     parent      = ref_handler    )
 
         return ref_map_holder
@@ -2594,7 +2722,7 @@ class PanddaMultiDatasetAnalyser(object):
             # Normalise map - Scale it to the same scale as the reference dataset on the same points
             d_map_mean = masked_vals_d.min_max_mean().mean
             d_map_rms  = masked_vals_d.standard_deviation_of_the_sample()
-            masked_vals_d = (masked_vals_d - d_map_mean)*(ref_map_holder.meta['map_rms']/d_map_rms) + ref_map_holder.meta['map_mean']
+            masked_vals_d = (masked_vals_d - d_map_mean)*(ref_map_holder.meta.map_rms/d_map_rms) + ref_map_holder.meta.map_mean
 
             # Calculate the sparse vector of the masked map values
             morphed_map_sparse = scitbx.sparse.vector(grid.size_1d(), dict(zip(masked_idxs, masked_vals_d)))
@@ -2610,9 +2738,10 @@ class PanddaMultiDatasetAnalyser(object):
                                     # Change these for the 'fake' grid unit_cell and a P1 space_group
                                     unit_cell   = fft_map.unit_cell(),
                                     space_group = fft_map.space_group(),
-                                    meta        = {'resolution'   : map_resolution,
-                                                   'raw_masked_map_mean' : d_map_mean,
-                                                   'raw_masked_map_rms'  : d_map_rms },
+                                    meta        = Meta({'type'                : 'observed map',
+                                                        'resolution'          : map_resolution,
+                                                        'raw_masked_map_mean' : d_map_mean,
+                                                        'raw_masked_map_rms'  : d_map_rms }),
                                     parent      = None  )
 
             return map_holder
@@ -3037,7 +3166,7 @@ class PanddaMultiDatasetAnalyser(object):
                     connect_array[(i_clust_1, i_clust_2)] = 1
                     continue
                 # Extract grid points for cluster 2
-                c_gp_2 = flex.vec3_double([c[0] for c in hit_clusters[c_key_1]])
+                c_gp_2 = flex.vec3_double([c[0] for c in hit_clusters[c_key_2]])
                 # Extract the minimum separation of the grid points
                 min_dist_sq = min([min((c_gp_2 - gp).dot()) for gp in c_gp_1])
                 # Check to see if they should be joined
@@ -3317,11 +3446,11 @@ class PanddaMultiDatasetAnalyser(object):
     def write_map_value_distribution(self, map_vals, output_file, plot_indices=None, plot_normal=False):
         """Write out the value distribution for a map"""
 
-        try:
+        if self.args.settings.plot_graphs:
             import matplotlib
             matplotlib.interactive(0)
             from matplotlib import pyplot
-        except:
+        else:
             return
 
         if plot_indices:
@@ -3354,11 +3483,11 @@ class PanddaMultiDatasetAnalyser(object):
     def write_qq_plot_against_normal(self, map_vals, output_file, plot_indices=None):
         """Plot the values in map_vals against those expected from a normal distribution"""
 
-        try:
+        if self.args.settings.plot_graphs:
             import matplotlib
             matplotlib.interactive(0)
             from matplotlib import pyplot
-        except:
+        else:
             return
 
         if plot_indices:
@@ -3383,25 +3512,25 @@ class PanddaMultiDatasetAnalyser(object):
     def write_map_analyser_summary(self, map_analyser, analysis_mask_name):
         """Write statistical maps for a map_analyser object"""
 
-        try:
+        if self.args.settings.plot_graphs:
             import matplotlib
             matplotlib.interactive(0)
             from matplotlib import pyplot
-            assert not pyplot.isinteractive(), 'PYPLOT IS STILL IN INTERACTIVE MODE'
-        except:
+        else:
             return
 
         def filter_nans(vals):
             return [v for v in vals if v is not numpy.nan]
 
         # Get the output directory to write the graphs into
-        img_out_dir = self.output_handler.get_dir('analyses')
+        img_out_dir = os.path.join(self.output_handler.get_dir('analyses'), '{!s}A Maps'.format(map_analyser.meta.resolution))
+        if not os.path.exists(img_out_dir): os.mkdir(img_out_dir)
 
         n_bins = 30
 
         ########################################################
 
-        map_res = map_analyser.meta['resolution']
+        map_res = map_analyser.meta.resolution
 
         self.log('===================================>>>')
         self.log('=> Writing Summary of Analysis @ {!s}A'.format(map_res))
@@ -3432,7 +3561,7 @@ class PanddaMultiDatasetAnalyser(object):
         sadj_map_vals = list(map_analyser.statistical_maps.sadj_map.select(masked_idxs))
 
         # Dataset Variables
-        map_uncties = [mh.meta['map_uncertainty']   for mh in map_analyser.dataset_maps.all()]
+        map_uncties = [mh.meta.map_uncertainty for mh in map_analyser.dataset_maps.all()]
         z_map_mean  = [mh.z_map_stats['z_map_mean'] for mh in map_analyser.dataset_maps.mask(mask_name=analysis_mask_name)]
         z_map_std   = [mh.z_map_stats['z_map_std']  for mh in map_analyser.dataset_maps.mask(mask_name=analysis_mask_name)]
         z_map_skew  = [mh.z_map_stats['z_map_skew'] for mh in map_analyser.dataset_maps.mask(mask_name=analysis_mask_name)]
@@ -3592,12 +3721,11 @@ class PanddaMultiDatasetAnalyser(object):
     def write_summary_graphs(self):
         """Write out graphs of dataset variables"""
 
-        try:
+        if self.args.settings.plot_graphs:
             import matplotlib
             matplotlib.interactive(0)
             from matplotlib import pyplot
-            assert not pyplot.isinteractive(), 'PYPLOT IS STILL IN INTERACTIVE MODE'
-        except:
+        else:
             return
 
         def filter_nans(vals):
@@ -3753,7 +3881,7 @@ class PanddaMultiDatasetAnalyser(object):
         self.log('===================================>>>')
         self.log('Writing Dataset Map Summaries')
 
-        map_summary = self.get_map_observations()
+        map_summary = self.map_observations
 
         with open(self.output_handler.get_file('map_summaries'), 'w') as fh:
             fh.write('dataset_id, raw_masked_map_mean, raw_masked_map_rms, map_uncertainty, analysed_resolution, z_map_mean, z_map_std, z_map_skew, z_map_kurtosis\n')

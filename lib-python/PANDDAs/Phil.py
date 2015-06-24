@@ -40,11 +40,14 @@ pandda_phil_def = """
             dry_run = False
                 .help = "Setup pandda, print working arguments, and exit"
                 .type = bool
-            recalculate_statistical_maps = False
-                .help = "Recalculate all of the statistical maps? (Time-consuming)"
+            reload_existing_datasets = False
+                .help = "Reload existing datasets? (Time-consuming) - if False, will only load new datasets (unprocessed datasets)"
                 .type = bool
-            reprocess_all_datasets = False
-                .help = "Recalculate and process all dataset z-maps (For different contour levels, etc)"
+            recalculate_statistical_maps = False
+                .help = "Recalculate all of the statistical maps? (Time-consuming) - if False, looks for existing statistical maps and uses those (reverts to True if none are found)"
+                .type = bool
+            reprocess_existing_datasets = False
+                .help = "Reprocess existing datasets? (Time-consuming) - if False, will only calculate z-maps for new datasets (unprocessed datasets)"
                 .type = bool
         }
         params
@@ -101,10 +104,10 @@ pandda_phil_def = """
             analysis
                 .help = "Settings to control the selection of datasets"
             {
-                min_datasets = 50
+                min_datasets = 40
                     .help = 'Minimum number of datasets needed to build distributions'
                     .type = int
-                max_datasets = 200
+                max_datasets = 100
                     .help = 'Maximum number of datasets used to build distributions'
                     .type = int
                 high_res_increment = 0.05
@@ -116,9 +119,21 @@ pandda_phil_def = """
                 high_res_upper_limit = 0.0
                     .help = 'Highest resolution limit (maps are never calulcated above this limit)'
                     .type = float
+                dynamic_res_limits = True
+                    .help = 'Allow the limits to change depending on the dataset resolution ranges'
+                    .type = bool
                 max_rfree = 0.4
                     .help = 'Maximum allowed rfree for a structure (datasets above this are rejected)'
                     .type = float
+                no_analyse = None
+                    .help = 'Don\'t analyse these datasets, only use them to build the distributions - comma separated list of dataset tags'
+                    .type = str
+                no_build = None
+                    .help = 'Don\'t use these datasets to build the distributions, only analyse them - comma separated list of dataset tags'
+                    .type = str
+                ignore_datasets = None
+                    .help = 'Reject these datasets, don\'t even load them - comma separated list of dataset tags'
+                    .type = str
             }
             blob_search
                 .help = "Settings to control the finding of blobs"
@@ -162,6 +177,16 @@ pandda_phil_def = """
             testing = False
                 .help = "Validate hits against a known list of ligands"
                 .type = bool
+            plot_graphs = True
+                .help = "Output graphs using matplotlib"
+                .type = bool
+            pickling
+                .help = "Pickle Settings"
+            {
+                full_pickle = False
+                    .help = "Pickle the entire PANDDA object for reloading - takes a lot of space"
+                    .type = bool
+            }
         }
     }
 """
