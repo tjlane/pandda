@@ -71,14 +71,6 @@ pandda_phil_def = """
                     .type = choice
                 phas_label = PHWT *PH2FOFCWT PHDELWT PHFOFCWT
                     .type = choice
-                not_used_obs_ampl_label = FWT *2FOFCWT
-                    .type = choice
-                not_used_obs_phas_label = PHWT *PH2FOFCWT
-                    .type = choice
-                not_used_diff_ampl_label = DELFWT *FOFCWT
-                    .type = choice
-                not_used_diff_phas_label = PHDELWT *PHFOFCWT
-                    .type = choice
                 scaling = none *sigma volume
                     .type = choice
                 resolution_factor = 0.33
@@ -180,6 +172,13 @@ pandda_phil_def = """
             plot_graphs = True
                 .help = "Output graphs using matplotlib"
                 .type = bool
+            developer
+                .help = "Development Settings (Not needed by most users)"
+            {
+                write_all_z_maps = False
+                    .help = "Output all possible types of Z-maps (Takes a lot of space on disk)"
+                    .type = bool
+            }
             pickling
                 .help = "Pickle Settings"
             {

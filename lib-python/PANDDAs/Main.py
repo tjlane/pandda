@@ -276,18 +276,6 @@ class DatasetHandler(object):
     def local_alignment_transforms(self):
         return self._local_rt_transforms
 
-    # TODO STORE IN THE MAP_DATA_OBJ ALONG WITH THE MAP TODO
-    def set_map_uncertainty(self, sigma):
-        self._map_uncertainty = sigma
-    def map_uncertainty(self):
-        return self._map_uncertainty
-    # TODO STORE IN THE MAP_DATA_OBJ ALONG WITH THE MAP TODO
-
-    # TODO REMOVE TODO
-    def get_map_uncertainty(self):
-        return self._map_uncertainty
-    # TODO REMOVE TODO
-
     def get_pickle_copy(self):
         """Get copy of self that can be pickled - some cctbx objects cannot be pickled..."""
         return self

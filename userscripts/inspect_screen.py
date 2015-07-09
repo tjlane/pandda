@@ -13,7 +13,10 @@ def load_z_blob_coordinates(z_peak_file):
 
     z_map_peaks  = open(z_peak_file, 'r').read().split('\n')
 
-    headers = z_map_peaks.pop(0)
+    if z_map_peaks[0] == 'dtag, rank, blob_peak, blob_size, x, y, z, refx, refy, refz, pdb, mtz':
+        headers = z_map_peaks.pop(0)
+    else:
+        headers = 'dtag, rank, blob_peak, blob_size, x, y, z, refx, refy, refz, pdb, mtz'
 
     assert headers == 'dtag, rank, blob_peak, blob_size, x, y, z, refx, refy, refz, pdb, mtz'
 
@@ -22,6 +25,10 @@ def load_z_blob_coordinates(z_peak_file):
     ranked_list = []
 
     for i,x in enumerate(z_map_peaks):
+
+        if x == ['']:
+            print 'BLANK ROW'
+            continue
 
         dtag =            x[0]
         rank =            int(x[1])

@@ -683,7 +683,7 @@ def pandda_main(args):
 
                 z_map_naive = map_analyser.calculate_z_map(tag=d_handler.tag, method='naive')
                 # Write z map
-                if not os.path.exists(d_handler.output_handler.get_file('z_map_naive')):
+                if pandda.args.settings.developer.write_all_z_maps and (not os.path.exists(d_handler.output_handler.get_file('z_map_naive'))):
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_naive'),
                                                 map_data    = z_map_naive)
                 # Write distribution of the map values
@@ -698,7 +698,7 @@ def pandda_main(args):
                 z_map_naive_masked = [z_map_naive[i] for i in pandda.reference_grid().global_mask().outer_mask_indices()]
                 z_map_naive_normalised = (z_map_naive - numpy.mean(z_map_naive_masked)) / numpy.std(z_map_naive_masked)
                 # Write z map
-                if not os.path.exists(d_handler.output_handler.get_file('z_map_naive_normalised')):
+                if pandda.args.settings.developer.write_all_z_maps and (not os.path.exists(d_handler.output_handler.get_file('z_map_naive_normalised'))):
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_naive_normalised'),
                                                 map_data    = z_map_naive_normalised)
                 # Write distribution of the map values
@@ -712,7 +712,7 @@ def pandda_main(args):
                 ##################################
                 z_map_corrected = map_analyser.calculate_z_map(tag=d_handler.tag, method='adjusted+uncertainty')
                 # Write z map
-                if not os.path.exists(d_handler.output_handler.get_file('z_map_corrected')):
+                if pandda.args.settings.developer.write_all_z_maps and (not os.path.exists(d_handler.output_handler.get_file('z_map_corrected'))):
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_corrected'),
                                                 map_data    = z_map_corrected)
                 # Write distribution of the map values
@@ -726,7 +726,7 @@ def pandda_main(args):
                 ##################################
                 z_map_corrected_masked = [z_map_corrected[i] for i in pandda.reference_grid().global_mask().outer_mask_indices()]
                 z_map_corrected_normalised = (z_map_corrected - numpy.mean(z_map_corrected_masked)) / numpy.std(z_map_corrected_masked)
-                # Write z map
+                # Write z map (always want to be writing this map)
                 if not os.path.exists(d_handler.output_handler.get_file('z_map_corrected_normalised')):
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_corrected_normalised'),
                                                 map_data    = z_map_corrected_normalised)
