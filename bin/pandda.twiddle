@@ -91,7 +91,9 @@ if __name__ == '__main__':
 
     # Create output file if needed
     if not args.file.output:
-        args.file.output = args.file.input.replace('.pdb','') + '.morphed.{!s}.pdb'.format(args.direction)
+        args.file.output = os.path.splitext(os.path.basename(args.file.input))[0] + '.{!s}.pdb'
+        if args.direction == 'toref':   args.file.output = args.file.output.format('ref')
+        else:                           args.file.output = args.file.output.format('native')
     assert not os.path.exists(args.file.output), 'FILE ALREADY EXISTS: {!s}'.format(args.file.output)
 
     print 'TRANSFORMING: {!s}'.format(args.file.input)

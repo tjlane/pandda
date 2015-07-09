@@ -3,10 +3,11 @@
 import os, sys, shutil, copy
 
 from libtbx import phil
-from cctbx import sgtbx
+from cctbx import sgtbx, maptbx
 from scitbx.array_family import flex
 
 import iotbx.ccp4_map
+import iotbx.map_tools
 
 ############################################################################
 
@@ -54,7 +55,11 @@ assert mean_map.data.all() == query_map.data.all()
 assert mean_map.data.size() == query_map.data.size()
 assert mean_map.unit_cell().is_similar_to(query_map.unit_cell())
 
-for lig_occ in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
+print 'ALL', mean_map.data.all() 
+print 'ORIGIN', mean_map.data.origin()
+print 'FOCUS', mean_map.data.focus()
+
+for lig_occ in [0.05, 0.10, 0.20, 0.30, 0.50, 0.75, 1.00]:
     
     mean_occ = 1 - lig_occ
     
@@ -65,9 +70,24 @@ for lig_occ in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
 
     outfile = params.outprefix + '-lig-occ-{!s}.ccp4'.format(lig_occ)
     outpath = os.path.join(params.outdir, outfile) 
+   
+    # "Un-pad" the map
+    gridding_first = mean_map.data.origin()
+    gridding_last = tuple(flex.int(query_map.data.all())-2)
+    diff_data = maptbx.copy(diff_data, first=gridding_first, last=gridding_last)
+ 
+    # Reducing the size of the grid by 1 seems to be neccessary                                
+    iotbx.map_tools.write_ccp4_map( sites_cart = None, 
+                                    unit_cell = query_map.unit_cell(), 
+                                    map_data = diff_data, 
+                                    n_real = diff_data.all(), 
+                                    file_name = outpath, 
+                                    buffer=0 )
 
-    iotbx.ccp4_map.write_ccp4_map(  file_name = outpath,
-                                    unit_cell = query_map.unit_cell(),
-                                    space_group = sgtbx.space_group_info(number=query_map.space_group_number).group(),
-                                    map_data = diff_data,
-                                    labels = None)
+#    iotbx.ccp4_map.write_ccp4_map(  file_name = outpath,
+#                                    unit_cell = query_map.unit_cell(),
+#                                    space_group = sgtbx.space_group_info(number=query_map.space_group_number).group(),
+#                                    gridding_first = gridding_first,
+#                                    gridding_last = gridding_last,
+#                                    map_data = diff_data,
+#                                    labels = None )

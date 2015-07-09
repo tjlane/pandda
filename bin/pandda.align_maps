@@ -76,9 +76,14 @@ def run(args):
     mov_inp = iotbx.pdb.hierarchy.input(params.moving.pdb)
     mov_map = iotbx.ccp4_map.map_reader(params.moving.map)
 
+    # Unpad the input map
+    gridding_first = mov_map.data.origin()
+    gridding_last = tuple(flex.int(mov_map.data.all())-2)
+    mov_data = cctbx.maptbx.copy(mov_map.data.as_double(), first=gridding_first, last=gridding_last)
+
     # Check the output file style
-    if not params.output.pdb_prefix: params.output.pdb_prefix = os.path.basename(params.moving.pdb)
-    if not params.output.map_prefix: params.output.map_prefix = os.path.basename(params.moving.map)
+    if not params.output.pdb_prefix: params.output.pdb_prefix = os.path.splitext(os.path.basename(params.moving.pdb))[0]
+    if not params.output.map_prefix: params.output.map_prefix = os.path.splitext(os.path.basename(params.moving.map))[0]
     
     # Build up a list of rotation matrices and write out transformed maps
     for mov_chain in mov_inp.hierarchy.chains():
@@ -108,7 +113,8 @@ def run(args):
 
         rot_map_data = cctbx.maptbx.rotate_translate_map(
             unit_cell=mov_map.unit_cell(),
-            map_data=mov_map.data.as_double(),
+#            map_data=mov_map.data.as_double(),
+            map_data=mov_data,
             rotation_matrix=rt.inverse().r.elems,
             translation_vector=rt.inverse().t.elems)
         

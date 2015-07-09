@@ -8,7 +8,9 @@ from libtbx import phil
 
 master_phil_def = """
 input {
-    outdir = ./
+    outdir = ./merged
+        .type = str
+    pandda_dir = ./
         .type = str
 }
 """
@@ -35,20 +37,26 @@ working_phil = master_phil.fetch(sources=cmd_sources)
 # Pull out the python object of the arguments
 params = working_phil.extract().input
 
+# Create output directory
+if not os.path.exists(params.outdir):   os.mkdir(params.outdir)
+# Check input directory
+assert os.path.exists(params.pandda_dir)
+
+files_to_merge = [a for a in args if (a.endswith('.pdb') and os.path.exists(a))]
+
 ############################################################################
 
-files_to_merge = [f for f in args if f.endswith('.pdb')]
 print '\n'.join(files_to_merge)
 
-tags = list(set([f.split('-')[0] for f in files_to_merge]))
+tags = list(set([os.path.basename(f).split('-')[0] for f in files_to_merge]))
 
 for tag in tags:
 
-    tag_files = [f for f in files_to_merge if f.startswith(tag)]
+    tag_files = [f for f in files_to_merge if os.path.basename(f).startswith(tag)]
 
     print tag, '-', len(tag_files), 'files'
     
-    in_f = '../interesting_datasets/*{!s}*/*{!s}*-input.pdb'.format(tag,tag)
+    in_f = os.path.join(params.pandda_dir, 'interesting_datasets/*{!s}*/*{!s}*-input.pdb'.format(tag,tag))
     temp_files = []
 
     for i, lig_f in enumerate(tag_files):

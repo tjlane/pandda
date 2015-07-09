@@ -1,19 +1,61 @@
 #!/usr/bin/env pandda.python
 
-import os, sys
+import os, sys, copy
 
-files_to_twiddle = sys.argv[1:]
+from libtbx import phil
+
+############################################################################
+
+master_phil_def = """
+input {
+    outdir = ./twiddle
+        .type = str
+    pandda_dir = ./
+        .type = str
+}
+"""
+# Read in the master phil
+master_phil = phil.parse(master_phil_def)
+# Show defaults and exit
+if '--show-defaults' in sys.argv:
+    print('\n# DEFAULTS\n')
+    master_phil.show()
+    sys.exit()
+# Copy the args so that we can remove items from the list without affecting sys.argv etc
+args = copy.copy(sys.argv[1:])
+# Build an interpreter from the master phil
+cmd_interpr = master_phil.command_line_argument_interpreter(home_scope="input")
+# Look for cmd line arguments
+cmd_line_args = [a for a in args if (('=' in a) and not os.path.exists(a))]
+# Remove them from the original lists
+[args.remove(a) for a in cmd_line_args]
+# Parse these arguments
+cmd_sources = [cmd_interpr.process(arg=a) for a in cmd_line_args]
+# Combine the phils
+working_phil = master_phil.fetch(sources=cmd_sources)
+
+# Pull out the python object of the arguments
+params = working_phil.extract().input
+
+# Create output directory
+if not os.path.exists(params.outdir):   os.mkdir(params.outdir)
+# Check input directory
+assert os.path.exists(params.pandda_dir)
+
+files_to_twiddle = [a for a in args if (a.endswith('.pdb') and os.path.exists(a))]
+
+############################################################################
 
 print '\n'.join(files_to_twiddle)
 
+for fin in files_to_twiddle:
 
-for f in files_to_twiddle:
-
-    tag = f.split('-')[0]
-    print f
+    tag = os.path.basename(fin).split('-')[0]
+    fout = os.path.join(params.outdir, '{!s}.native.pdb'.format(os.path.splitext(os.path.basename(fin))[0]))
+    print fin
     print tag
 
-    comm = 'pandda.twiddle {!s} ../interesting_datasets/*{!s}*/pickles/dataset.pickle'.format(f,tag)
+    comm = 'pandda.twiddle input={!s} output={!s} ../interesting_datasets/*{!s}*/pickles/dataset.pickle'.format(fin, fout, tag)
 
     print comm
 
