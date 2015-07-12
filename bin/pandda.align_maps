@@ -94,9 +94,9 @@ def run(args):
         output_pdb = os.path.join(params.output.out_dir, params.output.pdb_prefix + '.chain{!s}'.format(mov_chain.id) + params.output.pdb_suffix)
         output_map = os.path.join(params.output.out_dir, params.output.map_prefix + '.chain{!s}'.format(mov_chain.id) + params.output.map_suffix)
 
-        if os.path.exists(output_pdb):
-            print('OUTPUT PDB ALREADY EXISTS: {!s}'.format(output_pdb))
-            sys.exit()
+#        if os.path.exists(output_pdb):
+#            print('OUTPUT PDB ALREADY EXISTS: {!s}'.format(output_pdb))
+#            sys.exit()
         if os.path.exists(output_map):
             print('OUTPUT MAP ALREADY EXISTS: {!s}'.format(output_map))
             sys.exit()

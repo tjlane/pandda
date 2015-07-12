@@ -76,7 +76,7 @@ pandda_phil_def = """
                 resolution_factor = 0.33
                     .help = 'Sampling factor for fft-ing the maps'
                     .type = float
-                grid_spacing = 0.75
+                grid_spacing = 0.5
                     .help = 'Spacing of the grid points (fixed across resolutions)'
                     .type = float
                 padding = 3
@@ -99,7 +99,7 @@ pandda_phil_def = """
                 min_datasets = 40
                     .help = 'Minimum number of datasets needed to build distributions'
                     .type = int
-                max_datasets = 100
+                max_datasets = 75
                     .help = 'Maximum number of datasets used to build distributions'
                     .type = int
                 high_res_increment = 0.05
@@ -155,6 +155,19 @@ pandda_phil_def = """
                         .type = choice
                         .optional = False
                 }
+            }
+            occupancy_estimation
+                .help = "Parameters to control the estimation of feature occupancies"
+            {
+                min_occ = 0.0
+                    .type = float
+                    .help = 'Minimum occupancy estimate'
+                max_occ = 1.0
+                    .type = float
+                    .help = 'Maximum occupancy estimate'
+                occ_increment = 0.01
+                    .type = float
+                    .help = 'Resolution of occupancy estimation'
             }
         }
         settings

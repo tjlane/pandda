@@ -1,34 +1,6 @@
 import scipy.spatial
 import numpy
 
-class single_cluster(object):
-    def __init__(self, points, values):
-        self.points = points
-        self.values = values
-
-    def peak(self):
-        return self.point(self.values.index(max(self.values)))
-
-    def centroid(self):
-        return tuple(numpy.mean(self.points, axis=0).tolist())
-
-class cluster_list(object):
-    def __init__(self, input_dict):
-        """
-        Object for processing the clusters of points on a grid.
-        Takes a dictionary as input of the form:
-            {cluster_number/name: [(3d_point_tuple, value), ...], ...}
-
-        """
-
-        self.clusters = []
-        self.keys = sorted(input_dict.keys())
-        # Translate from key to index
-        self._key_dict = dict([(key, i) for i, key in enumerate(self.keys)])
-
-        for key in self.keys:
-            self.clusters.append(single_cluster(*zip(*input_dict[key])))
-
 class cluster_data(object):
     def __init__(self, input_dict):
         """

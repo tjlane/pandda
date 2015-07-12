@@ -6,9 +6,11 @@ import numpy
 from scitbx.array_family import flex
 from scitbx.math import basic_statistics
 
+from Giant.Xray.Maps.Occupancy import calculate_occupancy_subtracted_map, calculate_occupancy_correlations
 from Giant.Xray.Symmetry import combine_hierarchies, generate_adjacent_symmetry_copies
 
 from Giant.Grid.Masks import spherical_mask, atomic_mask, non_symmetrical_atomic_mask
+from Giant.Grid.Utils import get_grid_points_within_index_cutoff_of_grid_sites
 
 from Giant.Stats.Cluster import cluster_data
 from Giant.Utils import status_bar, rel_symlink
@@ -649,21 +651,20 @@ def pandda_main(args):
                 # EXTRACT MAP VALUES             #
                 ##################################
 
-                s_map = m_handler.map
-                assert s_map is not None, 'NO MAP FOUND'
+                assert m_handler.map is not None, 'NO MAP FOUND'
                 # Write the sampled map
                 if not os.path.exists(d_handler.output_handler.get_file('sampled_map')):
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('sampled_map'),
-                                                map_data    = s_map)
+                                                map_data    = m_handler.map)
                 # Write distribution of the map values
                 if not os.path.exists(d_handler.output_handler.get_file('s_map_png')):
-                    pandda.write_map_value_distribution(map_vals     = s_map.select(pandda.reference_grid().global_mask().outer_mask_indices()),
+                    pandda.write_map_value_distribution(map_vals     = m_handler.map.select(pandda.reference_grid().global_mask().outer_mask_indices()),
                                                         output_file  = d_handler.output_handler.get_file('s_map_png'))
 
                 ##################################
                 # CALCULATE MEAN-DIFF MAPS       #
                 ##################################
-                d_map = s_map - map_analyser.statistical_maps.mean_map
+                d_map = m_handler.map - map_analyser.statistical_maps.mean_map
                 # Write the map
                 if not os.path.exists(d_handler.output_handler.get_file('mean_diff_map')):
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('mean_diff_map'),
@@ -721,9 +722,9 @@ def pandda_main(args):
                                                         output_file  = d_handler.output_handler.get_file('z_map_corrected_png'),
                                                         plot_normal  = True)
 
-                ##################################
-                # Normalise this map to N(0,1)   #
-                ##################################
+                # ============================================================================>
+                # Normalise this map to N(0,1)
+                # ============================================================================>
                 z_map_corrected_masked = [z_map_corrected[i] for i in pandda.reference_grid().global_mask().outer_mask_indices()]
                 z_map_corrected_normalised = (z_map_corrected - numpy.mean(z_map_corrected_masked)) / numpy.std(z_map_corrected_masked)
                 # Write z map (always want to be writing this map)
@@ -740,9 +741,9 @@ def pandda_main(args):
                     pandda.write_qq_plot_against_normal(map_vals     = z_map_corrected_normalised.select(pandda.reference_grid().global_mask().outer_mask_indices()),
                                                         output_file  = d_handler.output_handler.get_file('z_map_qq_plot_png'))
 
-                ##########################################
-                # ANALYSE Z-MAP FOR STATISTICAL VALIDITY #
-                ##########################################
+                # ============================================================================>
+                # ANALYSE Z-MAP FOR STATISTICAL VALIDITY
+                # ============================================================================>
                 # Calculate and store statistics of z-maps
                 z_map_stats = basic_statistics(flex.double([z_map_corrected[i] for i in pandda.reference_grid().global_mask().outer_mask_indices()]))
                 m_handler.z_map_stats = {}
@@ -761,14 +762,18 @@ def pandda_main(args):
                 pandda.map_observations.set_data_value(data_name='map_uncertainty',     entry_id=d_handler.tag, value=m_handler.meta.map_uncertainty)
                 pandda.map_observations.set_data_value(data_name='analysed_resolution', entry_id=d_handler.tag, value=m_handler.meta.resolution)
 
-                #################################################
-                # XXX WHICH MAP TO DO THE BLOB SEARCHING ON XXX #
-                #################################################
+                # ============================================================================>
+                # XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX
+                # XXX  WHICH MAP TO DO THE BLOB SEARCHING ON  XXX
+                # XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX
+                # ============================================================================>
+                
                 z_map = z_map_corrected_normalised
 
-                ##################################
-                #         STORE THE Z MAP        #
-                ##################################
+                # ============================================================================>
+                # STORE THE Z MAP        
+                # ============================================================================>
+
                 z_map_holder = MapHolder(   num         = m_handler.num,
                                             tag         = m_handler.tag,
                                             map         = z_map,
@@ -783,9 +788,11 @@ def pandda_main(args):
                 # Link the dataset handler to the child map holder
                 d_handler.child = m_handler
 
-                ##################################
-                # LOOK FOR CLUSTERS OF Z-SCORES  #
-                ##################################
+                # ============================================================================>
+                #####
+                # LOOK FOR CLUSTERS OF Z-SCORES  
+                #####
+                # ============================================================================>
 
                 num_clusters, raw_hit_clusters = pandda.cluster_high_z_values(
                                                             d_handler            = d_handler,
@@ -812,9 +819,11 @@ def pandda_main(args):
                     # Nothing more to do with this dataset at the moment
                     continue
 
-                ################################
-                # FILTER CLUSTERS OF Z-SCORES  #
-                ################################
+                # ============================================================================>
+                #####
+                # FILTER CLUSTERS OF Z-SCORES  
+                #####
+                # ============================================================================>
 
                 # Filter the clusters by size and peak height
                 num_clusters, filtered_hit_clusters = pandda.filter_z_clusters_1(
@@ -827,7 +836,9 @@ def pandda_main(args):
                     # Nothing more to do with this dataset at the moment
                     continue
 
+                # ============================================================================>
                 # Filter the clusters by distance from protein
+                # ============================================================================>
                 num_clusters, filtered_hit_clusters = pandda.filter_z_clusters_2(
                                                             hit_clusters     = filtered_hit_clusters,
                                                             grid_spacing     = pandda.reference_grid().grid_spacing(), 
@@ -839,12 +850,16 @@ def pandda_main(args):
                     # Nothing more to do with this dataset at the moment
                     continue
                 
+                # ============================================================================>
                 # GROUP NEARBY CLUSTERS TOGETHER
+                # ============================================================================>
                 num_clusters, filtered_hit_clusters = pandda.group_clusters( hit_clusters = filtered_hit_clusters,
                                                                              grid_spacing = pandda.reference_grid().grid_spacing()   )
 
 
+                # ============================================================================>
                 # Filter the clusters by symmetry equivalence
+                # ============================================================================>
                 num_clusters, filtered_hit_clusters = pandda.filter_z_clusters_3(
                                                             hit_clusters     = filtered_hit_clusters,
                                                             grid_spacing     = pandda.reference_grid().grid_spacing(), 
@@ -864,17 +879,96 @@ def pandda_main(args):
                 # Flag the dataset as interesting 
                 pandda.datasets.all_masks().set_mask_value(mask_name='interesting', entry_id=d_handler.tag, value=True)
 
-                ##############################
+                # ============================================================================>
                 # PRINT MAP OF THE CLUSTERS  #
-                ##############################
+                # ============================================================================>
                 highz_points = []; [highz_points.extend(zip(*v)[0]) for v in filtered_hit_clusters.values()]
                 highz_map_array = numpy.zeros(pandda.reference_grid().grid_size_1d(), dtype=int)
                 highz_map_array.put(map(pandda.reference_grid().grid_indexer(), highz_points), [1]*len(highz_points))
                 pandda.write_array_to_map(d_handler.output_handler.get_file('high_z_mask'), flex.double(highz_map_array.tolist()))
                 
+                # ============================================================================>
                 # Create cluster object from the clustered points
+                # ============================================================================>
                 d_handler.hit_clusters = cluster_data(filtered_hit_clusters)
 
+                # ============================================================================>
+                # Estimate the occupancy of the detected features 
+                # ============================================================================>
+                # Extract sites for this cluster and estimate the occupancy of the event
+                for event_idx, event_sites in enumerate(d_handler.hit_clusters.get_points()):
+                    pandda.log('===================================>>>', True)
+                    # Get the label for the cluster
+                    event_key = d_handler.hit_clusters.get_keys()[event_idx]
+                    # Expand the sites to include the surrounding region (Only take 2nd return arguement of 'max' sites)
+                    expanded_sites = get_grid_points_within_index_cutoff_of_grid_sites(event_sites, max_grid_dist=3)[1]
+                    pandda.log('=> Event sites ({!s} points) expanded to {!s} points'.format(len(event_sites), len(expanded_sites)))
+                    # Use the outer mask to provide a reference point for the correlation to the mean map
+                    reference_sites = pandda.reference_grid().global_mask().outer_mask()
+                    # Calculate the correlation with the mean map as different amounts of the mean map are subtracted
+                    event_occs, event_corrs, global_corrs, corr_discrep = calculate_occupancy_correlations(
+                        ref_map          = map_analyser.statistical_maps.mean_map,
+                        query_map        = m_handler.map,
+                        feature_region   = expanded_sites,
+                        reference_region = reference_sites,
+                        min_occ          = pandda.params.occupancy_estimation.min_occ,
+                        max_occ          = pandda.params.occupancy_estimation.max_occ,
+                        occ_increment    = pandda.params.occupancy_estimation.occ_increment,
+                        verbose          = False)
+                    
+                    # Extract the maximum discrepancy as an estimation of the event occupancy
+                    max_corr_discrep = max(corr_discrep)
+                    event_occ_est = event_occs[corr_discrep.index(max_corr_discrep)]
+                    pandda.log('=> Event occupancy estimated as {!s}'.format(event_occ_est))
+
+                    # ============================================================================>
+                    # Calculate occupancy maps at this occupancy
+                    # ============================================================================>
+                    event_occ_map = calculate_occupancy_subtracted_map(
+                        ref_map      = map_analyser.statistical_maps.mean_map, 
+                        query_map    = m_handler.map,
+                        subtract_occ = 1.0-event_occ_est)
+                    # Write out this array
+                    pandda.write_array_to_map(d_handler.output_handler.get_file('occupancy_map').format(event_key, event_occ_est), event_occ_map)
+
+                    # ============================================================================>
+                    # Write out the graph of the occupancy correlations
+                    # ============================================================================>
+                    if pandda.args.settings.plot_graphs:
+                        import matplotlib
+                        matplotlib.interactive(0)
+                        from matplotlib import pyplot
+                        # 2 subplots sharing x-axis
+                        fig, (axis_1_1, axis_2_1) = pyplot.subplots(2, sharex=True)
+                        # 1st Plot
+                        line_1_1, = axis_1_1.plot(event_occs, global_corrs, 'g--', label='GLOBAL')
+                        line_1_2, = axis_1_1.plot(event_occs, event_corrs, 'k--', label='EVENT')
+                        axis_1_1.set_xlabel('EVENT OCCUPANCY')
+                        axis_1_1.set_ylabel('MEAN-MAP CORRELATIONS', color='k')
+                        axis_1_1.set_ylim((-1, 1))
+                        # 2nd Plot
+                        line_2_1, = axis_2_1.plot(event_occs, corr_discrep, 'b-', label='DISCREP')
+                        axis_2_1.set_ylabel('CORRELATION DIFFERENCE', color='b')
+                        # Plot line at the maximum
+                        line_2_2, = axis_2_1.plot([event_occ_est,event_occ_est],[-1,1], 'k-')
+                        text_2_1 = axis_2_1.text(0.02+event_occ_est, 0.0, str(event_occ_est))
+                        # Joint legend
+                        axis_1_1.legend(handles=[line_1_1, line_1_2, line_2_1], loc=4)
+                        # Title
+                        axis_1_1.set_title('MAP QUALITY V LIGAND OCCUPANCY')
+                        # Remove spacing between subplots
+                        fig.subplots_adjust(hspace=0)
+                        pyplot.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible=False)
+                        pyplot.setp([axis_2_1.get_xticklabels()], visible=True)
+                        # Apply tight layout to prevent overlaps
+                        #pyplot.tight_layout()
+                        # Save
+                        pyplot.savefig(d_handler.output_handler.get_file('occ_corr_png').format(event_key))
+                        pyplot.close(fig)
+
+# XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+# TODO REIMPLEMENT THIS IF IT CAN BE DONE SO THAT IT LOOKS NICE
+#
 #                # Image Blobs in the datasets using ccp4mg
 #                if d_handler.hit_clusters:
 #
@@ -904,7 +998,11 @@ def pandda_main(args):
 #                                        )
 #
 #                    status_bar(n=blob_num, n_max=blob_num)
+# XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
+            # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+            # TODO REIMPLEMENT THIS IF WE CAN MAKE IT RUN EVEN VAGUELY QUICKLY
+            #
             #    ##################################
             #    # POST-PROCESS Z-MAPS            #
             #    ##################################
@@ -919,6 +1017,7 @@ def pandda_main(args):
             #                                map_data     = flex.double(resamp_mod_z_map),
             #                                grid_size    = pandda.reference_grid().resampled_grid_size(),
             #                                grid_spacing = pandda.reference_grid().resampled_grid_spacing())
+            # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
             # ============================================================================>
             
@@ -929,7 +1028,7 @@ def pandda_main(args):
             # ============================================================================>
 
             pandda.pickle_the_pandda(components=['datasets'], datasets=pandda.datasets.mask(mask_name=analysis_mask_name))
-            pandda.update_pandda_size(tag='After Finding Clusters @ {!s}'.format(cut_resolution))
+            pandda.update_pandda_size(tag='After Finding Clusters @ {!s}A'.format(cut_resolution))
 
             # ============================================================================>
             #####
@@ -942,6 +1041,8 @@ def pandda_main(args):
             t_end = time.time()
             pandda.log('===================================>>>', True)
             pandda.log('{!s}A Map Processing Time: {!s}'.format(cut_resolution, time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(t_end - t_start))), True)
+            pandda.log('@{!s}A:\t {!s}/{!s} Datasets Analysed'.format(cut_resolution, pandda.datasets.size(mask_name=analysis_mask_name), pandda.datasets.size(mask_name='rejected - total', invert=True)))
+            pandda.log('Total:\t {!s}/{!s} Datasets Analysed'.format(pandda.datasets.size(mask_name='analysed'), pandda.datasets.size(mask_name='rejected - total', invert=True)))
             
             # ============================================================================>
             #####
@@ -974,14 +1075,14 @@ def pandda_main(args):
 
         cluster_total, cluster_num, all_dataset_clusters = pandda.collate_all_clusters()
 
-        # Print a summary of the number of identified clusters
-        pandda.log('===================================>>>', True)
-        pandda.log('Total Datasets with Clusters: {!s}'.format(len(cluster_num)), True)
-        pandda.log('Total Clusters: {!s}'.format(cluster_total), True)
         # Print some slightly less important information
         pandda.log('===================================>>>', False)
         for d_tag, cluster_count in cluster_num:
             pandda.log('Dataset {!s}: {!s} Clusters'.format(d_tag, cluster_count), False)
+        # Print a summary of the number of identified clusters
+        pandda.log('===================================>>>', True)
+        pandda.log('Total Datasets with Clusters: {!s}'.format(len(cluster_num)), True)
+        pandda.log('Total Clusters: {!s}'.format(cluster_total), True)
 
         combined_cluster = pandda.process_z_value_clusters()
 
@@ -992,6 +1093,9 @@ def pandda_main(args):
                                 outfile        = pandda.output_handler.get_file('blob_summaries')
                                 )
 
+        # Cluster results by site
+        # TODO Add site_definition object to pickles so that we can retain site information between runs
+        
         # ============================================================================>
         #####
         # SUMMARIES ------------------------------>>>

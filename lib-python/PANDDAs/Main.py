@@ -36,7 +36,7 @@ from libtbx.math_utils import ifloor, iceil
 
 #from iotbx.reflection_file_utils import extract_miller_array_from_file
 
-from Bamboo.Common import compare_dictionaries
+from Bamboo.Common import Meta
 from Bamboo.Common.Logs import Log
 from Bamboo.Common.File import output_file_object, easy_directory
 from Bamboo.Common.Data import data_collection, multiple_data_collection
@@ -620,17 +620,17 @@ class identical_structure_ensemble(object):
 
         return '\n'.join(report_string)
 
-class Meta(object):
-    """Object for storing random data"""
-    def __init__(self, args=None):
-        if isinstance(args, dict):
-            for k in args:
-                self.__dict__[k] = args[k]
-        elif isinstance(args, list):
-            for l in args:
-                self.__dict__[l] = None
-        elif args is not None:
-            raise Exception('args must be dict or list')
+#class Meta(object):
+#    """Object for storing random data"""
+#    def __init__(self, args=None):
+#        if isinstance(args, dict):
+#            for k in args:
+#                self.__dict__[k] = args[k]
+#        elif isinstance(args, list):
+#            for l in args:
+#                self.__dict__[l] = None
+#        elif args is not None:
+#            raise Exception('args must be dict or list')
 
 class MapList(object):
     _initialized = False
@@ -743,6 +743,8 @@ class PanddaMapAnalyser(object):
         self.log('> MEAN MAP CALCULATION > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
         self.statistical_maps.mean_map = flex.double(mean_map_vals.tolist())
+        # Reshape the array to be the shape of the map
+        self.statistical_maps.mean_map.reshape(flex.grid(self.meta.grid_size))
 
         return self.statistical_maps.mean_map
 
@@ -920,30 +922,40 @@ class PanddaMapAnalyser(object):
         stds_map_vals.put(masked_idxs, [ps[0] for ps in masked_point_statistics])
         stds_map_vals = flex.double(stds_map_vals.tolist())
         self.statistical_maps.stds_map = stds_map_vals
+        # Reshape the array to be the shape of the map
+        self.statistical_maps.stds_map.reshape(flex.grid(self.meta.grid_size))
 
         # Calculate ADJUSTED Stds Maps - Set the background to be tiny but non-zero so we can still divide by it
         sadj_map_vals = 1e-18*numpy.ones(self.meta.grid_size_1d)
         sadj_map_vals.put(masked_idxs, [ps[1] for ps in masked_point_statistics])
         sadj_map_vals = flex.double(sadj_map_vals.tolist())
         self.statistical_maps.sadj_map = sadj_map_vals
+        # Reshape the array to be the shape of the map
+        self.statistical_maps.sadj_map.reshape(flex.grid(self.meta.grid_size))
 
         # Calculate Skew Maps
         skew_map_vals = numpy.zeros(self.meta.grid_size_1d)
         skew_map_vals.put(masked_idxs, [ps[2] for ps in masked_point_statistics])
         skew_map_vals = flex.double(skew_map_vals.tolist())
         self.statistical_maps.skew_map = skew_map_vals
+        # Reshape the array to be the shape of the map
+        self.statistical_maps.skew_map.reshape(flex.grid(self.meta.grid_size))
 
         # Calculate Kurtosis Maps
         kurt_map_vals = numpy.zeros(self.meta.grid_size_1d)
         kurt_map_vals.put(masked_idxs, [ps[3] for ps in masked_point_statistics])
         kurt_map_vals = flex.double(kurt_map_vals.tolist())
         self.statistical_maps.kurt_map = kurt_map_vals
+        # Reshape the array to be the shape of the map
+        self.statistical_maps.kurt_map.reshape(flex.grid(self.meta.grid_size))
 
         # Calculate Bimodality Maps
         bimo_map_vals = numpy.zeros(self.meta.grid_size_1d)
         bimo_map_vals.put(masked_idxs, [ps[4] for ps in masked_point_statistics])
         bimo_map_vals = flex.double(bimo_map_vals.tolist())
         self.statistical_maps.bimo_map = bimo_map_vals
+        # Reshape the array to be the shape of the map
+        self.statistical_maps.bimo_map.reshape(flex.grid(self.meta.grid_size))
 
         return self.statistical_maps
 
@@ -1148,7 +1160,7 @@ class PanddaMultiDatasetAnalyser(object):
         with open(self.output_handler.get_file('pandda_settings'), 'w') as out_file:
             out_file.write( '\n'.join([ '# ' + 'Arguments',
                                         '# ',
-                                        '# ' + '\n# '.join(self.cmds),
+                                        '# ' + ' '.join(self.cmds),
                                         '',
                                         '# Used Settings:',
                                         '',
@@ -1235,8 +1247,9 @@ class PanddaMultiDatasetAnalyser(object):
         # Create a file and directory organiser
         self.output_handler = output_file_object(rootdir=self.outdir)
 
-        # Input parameters
-        self.output_handler.add_file(file_name='pandda.eff', file_tag='pandda_settings', dir_tag='root')
+        # ===============================================================================>
+        # Global Directories that do not change from run to run
+        # ===============================================================================>
 
         # Somewhere to flag the empty directories (failed pre-processing)
         self.output_handler.add_dir(dir_name='empty_directories', dir_tag='empty_directories', top_dir_tag='root')
@@ -1252,6 +1265,19 @@ class PanddaMultiDatasetAnalyser(object):
         self.output_handler.add_dir(dir_name='resolutions', dir_tag='resolutions', top_dir_tag='root')
         # Somewhere to store all of the aligned structures
         self.output_handler.add_dir(dir_name='aligned_structures', dir_tag='aligned_structures', top_dir_tag='root')
+
+        # ===============================================================================>
+        # New directories that will be created for each run (so that data is not overwritten)
+        # ===============================================================================>
+
+#        # Create a label for this run of the program
+#        run_label = '{!s}'.format(time.strftime("%Y-%m-%d-%H:%M", time.localtime()))
+#        # Top folder for this run
+#        self.output_handler.add_dir(dir_name='ANALYSIS-{!s}'.format(run_label), dir_tag='run_directory', top_dir_tag='root')
+
+        # Input parameters
+        self.output_handler.add_file(file_name='pandda.eff', file_tag='pandda_settings', dir_tag='root')
+
         # Somewhere to store the analyses/summaries - for me to plot graphs
         self.output_handler.add_dir(dir_name='analyses', dir_tag='analyses', top_dir_tag='root')
         self.output_handler.add_file(file_name='map_summaries.csv', file_tag='map_summaries', dir_tag='analyses')
@@ -1265,12 +1291,20 @@ class PanddaMultiDatasetAnalyser(object):
         # Somewhere to store the pickled objects
         self.output_handler.add_dir(dir_name='pickled_panddas', dir_tag='pickle', top_dir_tag='root')
 
+        # ===============================================================================>
+        # Reference Structure Files (should only be needed once for writing and then only for reloading)
+        # ===============================================================================>
+
         # Reference Structure and Dataset
         self.output_handler.add_dir(dir_name='reference', dir_tag='reference', top_dir_tag='root')
         self.output_handler.add_file(file_name='reference.pdb', file_tag='reference_structure', dir_tag='reference')
         self.output_handler.add_file(file_name='reference.mtz', file_tag='reference_dataset', dir_tag='reference')
         self.output_handler.add_file(file_name='reference.shifted.pdb', file_tag='reference_on_origin', dir_tag='reference')
         self.output_handler.add_file(file_name='reference.symmetry.pdb', file_tag='reference_symmetry', dir_tag='reference')
+
+        # ===============================================================================>
+        # Standard template files that will be populated when needed
+        # ===============================================================================>
 
         # Statistical Maps
         self.output_handler.add_dir(dir_name='statistical_maps', dir_tag='statistical_maps', top_dir_tag='root')
@@ -1313,20 +1347,20 @@ class PanddaMultiDatasetAnalyser(object):
         # Load Reference Grid
         if os.path.exists(self.pickle_handler.get_file('reference_grid')):
             pickles_found = True
-            self.log('Loading reference grid')
+            self.log('===> Loading reference grid')
             self.set_reference_grid(self.unpickle(self.pickle_handler.get_file('reference_grid')))
 
         # Load Reference Dataset
         if os.path.exists(self.pickle_handler.get_file('reference_dataset')):
             pickles_found = True
-            self.log('Loading reference dataset')
+            self.log('===> Loading reference dataset')
             self.set_reference_dataset(self.unpickle(self.pickle_handler.get_file('reference_dataset')))
 
         # Load the datasets
         if os.path.exists(self.pickle_handler.get_file('dataset_meta')):
             pickles_found = True
             # Unpickle the list of the pickled datasets from the directory structure
-            self.log('Loading old dataset information (existing datasets)')
+            self.log('===> Loading old dataset information (existing datasets)')
             self.pickled_dataset_meta = self.unpickle(self.pickle_handler.get_file('dataset_meta'))
 
             if self.args.method.reload_existing_datasets:
@@ -1336,24 +1370,24 @@ class PanddaMultiDatasetAnalyser(object):
                 for filename in pickled_dataset_list:
                     assert os.path.isfile(os.path.join(self.outdir, filename)), 'File does not exist: {!s}'.format(filename)
                 # Unpickle the datasets and add them to the dataset handler list
-                self.log('Reloading old datasets')
+                self.log('===> Reloading old datasets')
                 self.datasets.add([self.unpickle(os.path.join(self.outdir,f)) for f in pickled_dataset_list])
                 self.update_pandda_size(tag='After Unpickling Dataset Objects')
             else:
-                self.log('Not reloading old datasets')
+                self.log('===> Not reloading old datasets')
         else:
             # No datasets to load - this must be False
             self.args.method.reload_existing_datasets = False
-            self.log('No old datasets found')
+            self.log('===> No old datasets found')
 
         # Load Statistical Maps
         if os.path.exists(self.pickle_handler.get_file('stat_maps')):
             pickles_found = True
-            self.log('Loading old statistical maps')
+            self.log('===> Loading old statistical maps')
             self.stat_maps = self.unpickle(self.pickle_handler.get_file('stat_maps'))
 
         if not pickles_found:
-            self.log('No Pickles Found', True)
+            self.log('===> No Pickles Found', True)
 
     def pickle_the_pandda(self, components=[], all=False, datasets=None):
         """Pickles it's major components for quick loading..."""
@@ -1873,7 +1907,8 @@ class PanddaMultiDatasetAnalyser(object):
             self.log('Adding First Datasets to Pandda')
         else:
             self.log('Adding more datasets')
-            self.log('N already loaded')
+            self.log('{!s} already loaded'.format(self.datasets.size()))
+            self.log('{!s} not loaded'.format(self.pickled_dataset_meta.number_of_datasets - self.datasets.size()))
             self.log('tags: X -> X')
             self.log('nums: Y -> Y')
 
@@ -1910,7 +1945,6 @@ class PanddaMultiDatasetAnalyser(object):
             d_handler.output_handler.add_file(file_name='{!s}-aligned.pdb'.format(d_handler.tag), file_tag='aligned_structure')
             # Sampled map for the aligned structure
             d_handler.output_handler.add_file(file_name='{!s}-observed.ccp4'.format(d_handler.tag), file_tag='sampled_map')
-            d_handler.output_handler.add_file(file_name='{!s}-difference.ccp4'.format(d_handler.tag), file_tag='difference_map')
             # Difference from the mean map for the aligned structure
             d_handler.output_handler.add_file(file_name='{!s}-mean_diff.ccp4'.format(d_handler.tag), file_tag='mean_diff_map')
             # Z-map for the structure
@@ -1918,24 +1952,28 @@ class PanddaMultiDatasetAnalyser(object):
             d_handler.output_handler.add_file(file_name='{!s}-z_map_naive_normalised.ccp4'.format(d_handler.tag), file_tag='z_map_naive_normalised')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_adjusted.ccp4'.format(d_handler.tag), file_tag='z_map_corrected')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_adjusted_normalised.ccp4'.format(d_handler.tag), file_tag='z_map_corrected_normalised')
+            # Z-map mask for the structure
+            d_handler.output_handler.add_file(file_name='{!s}-high_z_mask.ccp4'.format(d_handler.tag), file_tag='high_z_mask')
+            # Output template for the occupancy subtracted maps (with {!s} string remaining for occupancy)
+            d_handler.output_handler.add_file(file_name='{!s}-event_{!s}_occupancy_{!s}_map.ccp4'.format(d_handler.tag, '{!s}', '{!s}'), file_tag='occupancy_map')
 
             # Output images
             d_handler.output_handler.add_dir(dir_name='output_images', dir_tag='images', top_dir_tag='root')
+            # Smapled map
             d_handler.output_handler.add_file(file_name='{!s}-obsv_map_dist.png'.format(d_handler.tag), file_tag='s_map_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-diff_map_dist.png'.format(d_handler.tag), file_tag='d_map_png', dir_tag='images')
+            # Differences from the mean
             d_handler.output_handler.add_file(file_name='{!s}-diff_mean_map_dist.png'.format(d_handler.tag), file_tag='d_mean_map_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_naive.png'.format(d_handler.tag), file_tag='z_map_naive_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_naive_normalised.png'.format(d_handler.tag), file_tag='z_map_naive_normalised_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_adjusted.png'.format(d_handler.tag), file_tag='z_map_corrected_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_adjusted_normalised.png'.format(d_handler.tag), file_tag='z_map_corrected_normalised_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_qq_plot.png'.format(d_handler.tag), file_tag='z_map_qq_plot_png', dir_tag='images')
-
+            # Correlations for different occupancies
+            d_handler.output_handler.add_file(file_name='{!s}-event_{!s}_occupancy_correlation.png'.format(d_handler.tag, '{!s}'), file_tag='occ_corr_png', dir_tag='images')
+            # Statistical Plots
             d_handler.output_handler.add_file(file_name='{!s}-uncertainty-qqplot.png'.format(d_handler.tag), file_tag='unc_qqplot_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-mean-v-obs-sorted-qqplot.png'.format(d_handler.tag), file_tag='obs_qqplot_sorted_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-mean-v-obs-unsorted-plot.png'.format(d_handler.tag), file_tag='obs_qqplot_unsorted_png', dir_tag='images')
-
-            # Z-map mask for the structure
-            d_handler.output_handler.add_file(file_name='{!s}-high_z_mask.ccp4'.format(d_handler.tag), file_tag='high_z_mask')
 
             # Edstats Scores
             d_handler.output_handler.add_file(file_name='{!s}-edstats.scores'.format(d_handler.tag), file_tag='edstats_scores')
@@ -2754,7 +2792,7 @@ class PanddaMultiDatasetAnalyser(object):
         arg_list = [{   'd_handler':d_handler, 'params':self.params, 'map_resolution':map_resolution, \
                         'grid':self.reference_grid().grid_indexer(), 'ref_map_holder':ref_map_holder, \
                         'masked_cart_ref':masked_cart_ref, 'masked_cart_mappings':masked_cart_mappings      } for d_handler in dataset_handlers]
-        map_holders = easy_mp.pool_map(fixed_func=load_maps_map_func, args=arg_list, processes=self.args.settings.cpus, chunksize=10)
+        map_holders = easy_mp.pool_map(fixed_func=load_maps_map_func, args=arg_list, processes=self.args.settings.cpus, chunksize=3)
         # Append to the map holder list
         map_holder_list.add(map_holders)
         # Go through and assign parents
@@ -3942,11 +3980,11 @@ class PanddaMultiDatasetAnalyser(object):
             cluster_size_val = cluster.get_sizes([c_index])[0]
 
             # Combine into columns for the output
-            cols_to_write = [d_tag, c_rank+1, cluster_peak_val, cluster_size_val] + list(cart_nat) + list(cart_ref) + [d_handler.pdb_filename(), d_handler.mtz_filename()]
+            cols_to_write = [d_tag, c_rank+1, c_num, cluster_peak_val, cluster_size_val] + list(cart_nat) + list(cart_ref) + [d_handler.pdb_filename(), d_handler.mtz_filename()]
             output_list.append(cols_to_write)
 
         # Form the headers, and write
-        headers = 'dtag, rank, blob_peak, blob_size, x, y, z, refx, refy, refz, pdb, mtz'
+        headers = 'dtag, rank, event, blob_peak, blob_size, x, y, z, refx, refy, refz, pdb, mtz'
         string_to_write = '\n'.join([headers] + [', '.join(map(str, l)) for l in output_list])
         with open(outfile, 'w') as fh:
             fh.write(string_to_write)

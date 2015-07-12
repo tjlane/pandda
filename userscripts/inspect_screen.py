@@ -13,12 +13,12 @@ def load_z_blob_coordinates(z_peak_file):
 
     z_map_peaks  = open(z_peak_file, 'r').read().split('\n')
 
-    if z_map_peaks[0] == 'dtag, rank, blob_peak, blob_size, x, y, z, refx, refy, refz, pdb, mtz':
+    if z_map_peaks[0] == 'dtag, rank, event, blob_peak, blob_size, x, y, z, refx, refy, refz, pdb, mtz':
         headers = z_map_peaks.pop(0)
     else:
-        headers = 'dtag, rank, blob_peak, blob_size, x, y, z, refx, refy, refz, pdb, mtz'
+        headers = 'dtag, rank, event, blob_peak, blob_size, x, y, z, refx, refy, refz, pdb, mtz'
 
-    assert headers == 'dtag, rank, blob_peak, blob_size, x, y, z, refx, refy, refz, pdb, mtz'
+    assert headers == 'dtag, rank, event, blob_peak, blob_size, x, y, z, refx, refy, refz, pdb, mtz'
 
     z_map_peaks  = [z.split(',') for z in z_map_peaks]
 
@@ -32,16 +32,18 @@ def load_z_blob_coordinates(z_peak_file):
 
         dtag =            x[0]
         rank =            int(x[1])
-        peak_val =        float(x[2])
-        peak_size =       float(x[3])
-        peak_coords =     map(float,x[4:7])
-        ref_peak_coords = map(float,x[7:10])
+        event =           int(x[2])
+        peak_val =        float(x[3])
+        peak_size =       float(x[4])
+        peak_coords =     map(float,x[5:8])
+        ref_peak_coords = map(float,x[8:11])
 
         assert rank == i+1, 'RANKED LIST IN WRONG ORDER'
 
         hit_dict = {
                     'dtag' : dtag,
                     'rank' : rank,
+                    'event': event,
                     'peak_val' : peak_val,
                     'peak_size': peak_size,
                     'peak_coords' : peak_coords,
@@ -84,7 +86,7 @@ def load_new_set(hit_idx):
 
     s = handle_read_ccp4_map(os.path.join(dataset_dir, '{!s}-observed.ccp4'.format(d_tag)), 0)
     set_last_map_contour_level(1)
-    set_map_displayed(s, 1)
+    set_map_displayed(s, 0)
 
     z = handle_read_ccp4_map(os.path.join(dataset_dir, '{!s}-z_map_adjusted_normalised.ccp4'.format(d_tag)), 1)
     set_last_map_contour_level(3)
@@ -93,6 +95,11 @@ def load_new_set(hit_idx):
     d = handle_read_ccp4_map(os.path.join(dataset_dir, '{!s}-mean_diff.ccp4'.format(d_tag)), 1)
     set_last_map_contour_level_by_sigma(3)
     set_map_displayed(d, 0)
+
+    occ_map = glob.glob(os.path.join(dataset_dir, '{!s}-event_{!s}_occupancy_*_map.ccp4'.format(d_tag, current_hit['event'])))[0]
+    o = handle_read_ccp4_map(occ_map, 0)
+    set_last_map_contour_level_by_sigma(1)
+    set_map_displayed(o, 1)
 
     set_rotation_centre(*current_hit['ref_peak_coords'])
 
@@ -110,7 +117,8 @@ def load_new_set(hit_idx):
 
     ########################################################
 
-    set_scrollable_map(z)
+    set_scrollable_map(o)
+    set_imol_refinement_map(o)
 
     ########################################################
 
@@ -122,7 +130,7 @@ def load_new_set(hit_idx):
     if (len(lig_pdbs) == 1) and (len(lig_cifs) == 1):
         l = handle_read_draw_molecule_and_move_molecule_here(lig_pdbs[0])
         l_dict = read_cif_dictionary(lig_cifs[0])
-        set_mol_displayed(l, 0)
+        set_mol_displayed(l, 1)
 
     print '======================>'
     print '======================>'

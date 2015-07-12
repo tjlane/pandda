@@ -30,7 +30,7 @@ p = read_pdb(os.path.join(dataset_dir, '{!s}-aligned.pdb'.format(d_tag)))
 
 s = handle_read_ccp4_map(os.path.join(dataset_dir, '{!s}-observed.ccp4'.format(d_tag)), 0)
 set_last_map_contour_level(1)
-set_map_displayed(s, 1)
+set_map_displayed(s, 0)
 
 z = handle_read_ccp4_map(os.path.join(dataset_dir, '{!s}-z_map_adjusted_normalised.ccp4'.format(d_tag)), 1)
 set_last_map_contour_level(3)
@@ -39,6 +39,12 @@ set_map_displayed(z, 1)
 d = handle_read_ccp4_map(os.path.join(dataset_dir, '{!s}-mean_diff.ccp4'.format(d_tag)), 1)
 set_last_map_contour_level_by_sigma(3)
 set_map_displayed(d, 0)
+
+occ_maps = glob.glob(os.path.join(dataset_dir, '{!s}-occupancy-*.ccp4'.format(d_tag)))
+for o_map in occ_maps:
+    o = handle_read_ccp4_map(o_map, 0)
+    set_last_map_contour_level_by_sigma(1)
+    set_map_displayed(o, 1)
 
 ########################################################
 

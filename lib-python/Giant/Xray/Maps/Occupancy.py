@@ -54,7 +54,7 @@ def calculate_occupancy_correlations(ref_map, query_map, feature_region, min_occ
     # Ensure last value is 1.0
     if all_feature_occs[-1] != max_occ:
         all_feature_occs = numpy.arange(min_occ, max_occ+occ_increment, occ_increment)
-        all_feature_occs[-1] = 1.0
+        all_feature_occs[-1] = max_occ
 
     # Iterate through different amounts of reference map subtraction to estimate feature occupancy
     for i_occ, feature_occ in enumerate(all_feature_occs):
@@ -76,6 +76,8 @@ def calculate_occupancy_correlations(ref_map, query_map, feature_region, min_occ
         feature_region_corr     = flex.linear_correlation(feature_region_vals_diff, feature_region_vals_ref, subtract_mean=False)
         reference_region_corr   = flex.linear_correlation(reference_region_vals_diff, reference_region_vals_ref, subtract_mean=False)
         correlation_discrepancy = reference_region_corr.coefficient() - feature_region_corr.coefficient()
+
+        if verbose: print 'OCCUPANCY DISCREPANCY: {!s}'.format(correlation_discrepancy)
 
         return_vals.append((feature_occ, feature_region_corr.coefficient(), reference_region_corr.coefficient(), correlation_discrepancy))
 
