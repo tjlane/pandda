@@ -96,7 +96,6 @@ FLAG_MASK_NAMES      = [    'noisy zmap',
 
 # SET FILTERING CONSTANTS
 FILTER_SCALING_CORRELATION_CUTOFF = 0.7
-FILTER_GLOBAL_RMSD_CUTOFF = 1
 
 PANDDA_VERSION = 0.1
 
@@ -1199,7 +1198,7 @@ class PanddaMultiDatasetAnalyser(object):
         # LOOK FOR MATPLOTLIB TO SEE IF WE CAN GENERATE GRAPHS
         # ===============================================================================>
 
-        if self.args.settings.plot_graphs:
+        if self.args.output.plot_graphs:
             try:
                 import matplotlib
                 # Setup so that we can write without a display connected
@@ -1213,7 +1212,7 @@ class PanddaMultiDatasetAnalyser(object):
             except:
                 self.log('===================================>>>', True)
                 self.log('>> COULD NOT IMPORT MATPLOTLIB. CANNOT GENERATE GRAPHS.', True)
-                self.args.settings.plot_graphs = False
+                self.args.output.plot_graphs = False
 
         # ===============================================================================>
         # LOG THE START TIME
@@ -1573,8 +1572,6 @@ class PanddaMultiDatasetAnalyser(object):
         if self.params.analysis.no_analyse:
             no_analyse_tags = self.params.analysis.no_analyse.split(',')
             self.log('Not analysing {!s} Datasets: {!s}'.format(len(no_analyse_tags), ', '.join(no_analyse_tags)))
-            for tag in no_analyse_tags:
-                assert tag in self.datasets.all_tags(), 'Dataset with tag {!s} not present in dataset list: \n{!s}'.format(tag, self.datasets.all_tags())
             no_analyse_mask = [True if d.tag in no_analyse_tags else False for d in self.datasets.all()]
             self.datasets.all_masks().add_mask(mask_name='no_analyse', mask=no_analyse_mask)
 
@@ -1582,8 +1579,6 @@ class PanddaMultiDatasetAnalyser(object):
         if self.params.analysis.no_build:
             no_build_tags = self.params.analysis.no_build.split(',')
             self.log('Not building distributions from {!s} Datasets: {!s}'.format(len(no_build_tags), ', '.join(no_build_tags)))
-            for tag in no_build_tags:
-                assert tag in self.datasets.all_tags(), 'Dataset with tag {!s} not present in dataset list: \n{!s}'.format(tag, self.datasets.all_tags())
             no_build_mask = [True if d.tag in no_build_tags else False for d in self.datasets.all()]
             self.datasets.all_masks().add_mask(mask_name='no_build', mask=no_build_mask)
 
@@ -1956,6 +1951,9 @@ class PanddaMultiDatasetAnalyser(object):
             d_handler.output_handler.add_file(file_name='{!s}-high_z_mask.ccp4'.format(d_handler.tag), file_tag='high_z_mask')
             # Output template for the occupancy subtracted maps (with {!s} string remaining for occupancy)
             d_handler.output_handler.add_file(file_name='{!s}-event_{!s}_occupancy_{!s}_map.ccp4'.format(d_handler.tag, '{!s}', '{!s}'), file_tag='occupancy_map')
+
+            # Fitted structures when modelled with pandda.inspect
+            d_handler.output_handler.add_dir(dir_name='modelled_structures', dir_tag='models', top_dir_tag='root')
 
             # Output images
             d_handler.output_handler.add_dir(dir_name='output_images', dir_tag='images', top_dir_tag='root')
@@ -2335,20 +2333,20 @@ class PanddaMultiDatasetAnalyser(object):
 
             print('\rFiltering Dataset {!s}          '.format(d_handler.tag), end=''); sys.stdout.flush()
             # Check that it correlates well with itself before and after scaling
-            if d_handler.input().get_r_rfree_sigma().r_free > self.params.analysis.max_rfree:
+            if d_handler.input().get_r_rfree_sigma().r_free > self.params.filtering.max_rfree:
                 self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
-                self.log('RFree is higher than cutoff: {!s}'.format(self.params.analysis.max_rfree))
+                self.log('RFree is higher than cutoff: {!s}'.format(self.params.filtering.max_rfree))
                 self.log('High RFree: {!s}'.format(d_handler.input().get_r_rfree_sigma().r_free))
                 self.log('===================================>>>')
                 self.datasets.all_masks().set_mask_value(mask_name='bad crystal - rfree', entry_id=d_handler.tag, value=True)
-            elif d_handler.scaled_sfs.amplitudes().correlation(d_handler.unscaled_sfs.amplitudes()).coefficient() < FILTER_SCALING_CORRELATION_CUTOFF:
+            elif d_handler.scaled_sfs.amplitudes().correlation(d_handler.unscaled_sfs.amplitudes()).coefficient() < self.params.filtering.min_correlation_to_reflection_data:
                 self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('Low correlation between scaled and unscaled data')
                 self.log('Scaled-Unscaled Correlation: {!s}'.format(d_handler.scaled_sfs.amplitudes().correlation(d_handler.unscaled_sfs.amplitudes()).coefficient()))
                 self.log('===================================>>>')
                 self.datasets.all_masks().set_mask_value(mask_name='bad crystal - data correlation', entry_id=d_handler.tag, value=True)
             # Check the deviation from the average sites
-            elif d_handler.get_calpha_sites().rms_difference(d_handler.transform_from_reference(points=self.reference_dataset().get_calpha_sites(), method='global')) > FILTER_GLOBAL_RMSD_CUTOFF:
+            elif d_handler.get_calpha_sites().rms_difference(d_handler.transform_from_reference(points=self.reference_dataset().get_calpha_sites(), method='global')) > self.params.filtering.max_rmsd_to_reference:
                 self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('C-alpha RMSD is too large')
                 self.log('Aligned (Calpha) RMSD: {!s}'.format(d_handler.get_calpha_sites().rms_difference(d_handler.transform_from_reference(points=self.reference_dataset().get_calpha_sites(), method='global'))))
@@ -2396,8 +2394,8 @@ class PanddaMultiDatasetAnalyser(object):
                 self.datasets.all_masks().set_mask_value(mask_name=building_mask_name, entry_id=d_handler.tag, value=True)
                 # Check to see if the number of datasets to use in building has been reached
                 total_build += 1
-                if total_build >= self.params.analysis.max_datasets:
-                    self.log('Maximum number of datasets for building reached: {!s}={!s}'.format(total_build, self.params.analysis.max_datasets))
+                if total_build >= self.params.analysis.max_build_datasets:
+                    self.log('Maximum number of datasets for building reached: {!s}={!s}'.format(total_build, self.params.analysis.max_build_datasets))
                     break
         return self.datasets.all_masks().get_mask(building_mask_name)
 
@@ -2527,7 +2525,7 @@ class PanddaMultiDatasetAnalyser(object):
             self.log('GLOBAL ALIGNMENT SELECTED - NOT ANALYSING ROTATION MATRICES')
             return
 
-        if self.args.settings.plot_graphs:
+        if self.args.output.plot_graphs:
             import matplotlib
             matplotlib.interactive(0)
             from matplotlib import pyplot
@@ -2580,7 +2578,7 @@ class PanddaMultiDatasetAnalyser(object):
         var_out_dir = self.output_handler.get_dir('analyses')
 
         # Write out graphs
-        if self.args.settings.plot_graphs:
+        if self.args.output.plot_graphs:
 
             # Create labels
             labels = ['']*num_pairs
@@ -3472,7 +3470,7 @@ class PanddaMultiDatasetAnalyser(object):
     def write_map_value_distribution(self, map_vals, output_file, plot_indices=None, plot_normal=False):
         """Write out the value distribution for a map"""
 
-        if self.args.settings.plot_graphs:
+        if self.args.output.plot_graphs:
             import matplotlib
             matplotlib.interactive(0)
             from matplotlib import pyplot
@@ -3509,7 +3507,7 @@ class PanddaMultiDatasetAnalyser(object):
     def write_qq_plot_against_normal(self, map_vals, output_file, plot_indices=None):
         """Plot the values in map_vals against those expected from a normal distribution"""
 
-        if self.args.settings.plot_graphs:
+        if self.args.output.plot_graphs:
             import matplotlib
             matplotlib.interactive(0)
             from matplotlib import pyplot
@@ -3538,7 +3536,7 @@ class PanddaMultiDatasetAnalyser(object):
     def write_map_analyser_summary(self, map_analyser, analysis_mask_name):
         """Write statistical maps for a map_analyser object"""
 
-        if self.args.settings.plot_graphs:
+        if self.args.output.plot_graphs:
             import matplotlib
             matplotlib.interactive(0)
             from matplotlib import pyplot
@@ -3747,7 +3745,7 @@ class PanddaMultiDatasetAnalyser(object):
     def write_summary_graphs(self):
         """Write out graphs of dataset variables"""
 
-        if self.args.settings.plot_graphs:
+        if self.args.output.plot_graphs:
             import matplotlib
             matplotlib.interactive(0)
             from matplotlib import pyplot

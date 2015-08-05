@@ -1,0 +1,105 @@
+#!/usr/bin/env pandda.python
+
+import os, sys, copy
+
+import scipy
+
+import iotbx.pdb
+import libtbx.phil
+import libtbx.easy_pickle
+
+from PANDDAs.Phil import pandda_twiddle_def
+
+def parse_input(args):        
+
+    # Read in the master phil
+    master_phil = libtbx.phil.parse(pandda_twiddle_def)
+    
+    if '--show-defaults' in args:
+        master_phil.show()
+        sys.exit()
+    # Copy the args so that we can remove items from the list without affecting args etc
+    args = copy.copy(args)
+    # Construct interpreter
+    cmd_interpr = master_phil.command_line_argument_interpreter(home_scope="twiddle")
+    # Process input arguments
+    phil_objects = []
+    for arg in args:
+        try: 
+            # Custom rules for modifying arguments
+            if ('=' not in arg) and arg.endswith('.pdb') and os.path.exists(arg):
+                arg = 'input='+arg
+            elif ('=' not in arg) and arg.endswith('.pdb') and (not os.path.exists(arg)):
+                arg = 'output='+arg
+            elif ('=' not in arg) and arg.endswith('.pickle') and os.path.exists(arg):
+                arg = 'pickle='+arg
+            # Attempt to process arg
+            cmd_line_args = cmd_interpr.process(arg=arg)
+        except KeyboardInterrupt:
+            raise
+        except Exception:
+            raise Sorry("Unknown file or keyword: %s" % arg)
+        else:
+            phil_objects.append(cmd_line_args)
+
+    # Extract Scope object
+    working_phil = master_phil.fetch(sources=phil_objects)
+    return working_phil
+
+def run(args):
+    # Parse input
+    working_phil = parse_input(args)
+    # Extract parameters
+    params = working_phil.extract().twiddle
+
+    print '============================'
+    print 'ARGS:'
+    print '============================'
+    print working_phil.as_str()
+    print '============================'
+
+    if params.dataset_pickle:
+        assert os.path.exists(params.dataset_pickle), 'PICKLE DOES NOT EXIST: {!s}'.format(params.dataset_pickle)
+    else:
+        # Find the dataset pickle
+        raise Exception('PLEASE PROVIDE DATASET PICKLE')
+
+    if params.file.input:
+        assert os.path.exists(params.file.input), 'FILE DOES NOT EXIST: {!s}'.format(params.file.input)
+    else:
+        # Find the dataset pickle
+        raise Exception('PLEASE PROVIDE INPUT FILE')
+
+    # Create output file if needed
+    if not params.file.output:
+        params.file.output = os.path.splitext(os.path.basename(params.file.input))[0] + '.{!s}.pdb'
+        if params.direction == 'toref':   params.file.output = params.file.output.format('ref')
+        else:                           params.file.output = params.file.output.format('native')
+    assert not os.path.exists(params.file.output), 'FILE ALREADY EXISTS: {!s}'.format(params.file.output)
+
+    print 'TRANSFORMING: {!s}'.format(params.file.input)
+    print 'USING DATASET FROM: {!s}'.format(params.dataset_pickle)
+    print 'WRITING FILE TO: {!s}'.format(params.file.output)
+
+    # Load the dataset handler from the pickle
+    d_handler = easy_pickle.load(params.dataset_pickle)
+    
+    # Load the ligand to be twiddled
+    hier = pdb.hierarchy.input(params.file.input).hierarchy
+    
+    if params.direction == 'toref':
+        trans_points = d_handler.transform_to_reference(    points=hier.atoms().extract_xyz(), 
+                                                            method='global')
+    elif params.direction == 'fromref':
+        trans_points = d_handler.transform_from_reference(  points=hier.atoms().extract_xyz(), 
+                                                            method='global')
+
+    # Create new hierarchy and write out
+    new_hier = hier.deep_copy()
+    new_hier.atoms().set_xyz(trans_points)
+    new_hier.write_pdb_file(params.file.output)
+
+    return
+
+if __name__ == '__main__':
+    run(args=sys.argv[1:])

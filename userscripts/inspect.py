@@ -1,4 +1,4 @@
-import os, sys, glob
+import os, sys, glob, copy
 
 try:
     set_nomenclature_errors_on_read("ignore")
@@ -13,12 +13,8 @@ def load_z_blob_coordinates(z_peak_file):
 
     z_map_peaks  = open(z_peak_file, 'r').read().split('\n')
 
-    if z_map_peaks[0] == 'dtag, rank, event, blob_peak, blob_size, x, y, z, refx, refy, refz, pdb, mtz':
+    if z_map_peaks[0].startswith('dtag'):
         headers = z_map_peaks.pop(0)
-    else:
-        headers = 'dtag, rank, event, blob_peak, blob_size, x, y, z, refx, refy, refz, pdb, mtz'
-
-    assert headers == 'dtag, rank, event, blob_peak, blob_size, x, y, z, refx, refy, refz, pdb, mtz'
 
     z_map_peaks  = [z.split(',') for z in z_map_peaks]
 
@@ -54,19 +50,60 @@ def load_z_blob_coordinates(z_peak_file):
 
     return ranked_list
 
-def close_all():
+def save_all_models():
+    """Save the models to the dataset modelled_structures directory"""
 
+    global model_dir
+    global p
+
+    # Find the next available index for the fitted structure
+    fitted_outputs = sorted(glob.glob(os.path.join(model_dir, 'fitted-v*')))
+    if fitted_outputs:
+        last_idx = int(fitted_outputs[-1][-4:])
+        new_fitted = 'fitted-v{:04d}.pdb'.format(last_idx+1)
+    else:
+        new_fitted = 'fitted-v0001.pdb'
+    new_fitted = os.path.join(model_dir, new_fitted)
+    # Save the fitted model to this file
+    write_pdb_file(p, new_fitted)
+    print '======================>'
+    print '======================>'
+    print '======================>'
+    print 'SAVED PROTEIN MOL {!s} TO {!s}'.format(p, new_fitted)
+    print '======================>'
+    print '======================>'
+    print '======================>'
+
+    # Save the pdb file to the output
+    fitted_link = os.path.join(model_dir, 'fitted-current.pdb')
+    if os.path.exists(fitted_link):
+        assert os.path.islink(fitted_link), 'FILE IS NOT A LINK'
+        # Delete the symbolic link
+        os.unlink(fitted_link)
+    print 'Linking {!s} -> {!s}'.format(new_fitted, fitted_link)
+    # Create new link the most recent file
+    os.symlink(os.path.basename(new_fitted), fitted_link)
+
+def close_all():
     for mol in molecule_number_list():
         close_molecule(mol)
+
+def merge_ligand_with_protein():
+
+    global p, l
+
+    try:
+        merge_molecules(p, [l])
+    except err:
+        print err
 
 def load_new_set(hit_idx):
 
     ##################
     global work_dir
+    global model_dir
     global hit_list
     ##################
-
-    close_all()
 
     current_hit = hit_list[hit_idx]
 
@@ -76,13 +113,22 @@ def load_new_set(hit_idx):
     assert len(dataset_dir) == 1
     dataset_dir = dataset_dir[0]
 
-    lig_dir = os.path.join(dataset_dir, 'ligand_files')
     statmap_dir = os.path.join(work_dir, 'statistical_maps')
     ref_dir     = os.path.join(work_dir, 'reference')
 
+    lig_dir = os.path.join(dataset_dir, 'ligand_files')
+    model_dir   = os.path.join(dataset_dir, 'modelled_structures')
+    if not os.path.exists(model_dir): os.mkdir(model_dir)
+
+    # The most recent model of the protein in the pandda maps
+    fitted_model = os.path.join(model_dir, 'fitted-current.pdb')
+
     ########################################################
 
-    p = read_pdb(os.path.join(dataset_dir, '{!s}-aligned.pdb'.format(d_tag)))
+    if os.path.exists(fitted_model):
+        p = read_pdb(fitted_model)
+    else:
+        p = read_pdb(os.path.join(dataset_dir, '{!s}-aligned.pdb'.format(d_tag)))
 
     s = handle_read_ccp4_map(os.path.join(dataset_dir, '{!s}-observed.ccp4'.format(d_tag)), 0)
     set_last_map_contour_level(1)
@@ -96,10 +142,13 @@ def load_new_set(hit_idx):
     set_last_map_contour_level_by_sigma(3)
     set_map_displayed(d, 0)
 
-    occ_map = glob.glob(os.path.join(dataset_dir, '{!s}-event_{!s}_occupancy_*_map.ccp4'.format(d_tag, current_hit['event'])))[0]
-    o = handle_read_ccp4_map(occ_map, 0)
-    set_last_map_contour_level_by_sigma(1)
-    set_map_displayed(o, 1)
+    try:
+        occ_map = glob.glob(os.path.join(dataset_dir, '{!s}-event_{!s}_occupancy_*_map.ccp4'.format(d_tag, current_hit['event'])))[0]
+        o = handle_read_ccp4_map(occ_map, 0)
+        set_last_map_contour_level_by_sigma(1)
+        set_map_displayed(o, 1)
+    except:
+        o = z
 
     set_rotation_centre(*current_hit['ref_peak_coords'])
 
@@ -110,10 +159,10 @@ def load_new_set(hit_idx):
     r = read_pdb(os.path.join(ref_dir, 'reference.symmetry.pdb'))
     set_mol_displayed(r, 0)
 
-    mean = handle_read_ccp4_map(os.path.join(statmap_dir, 'mean_map.ccp4'), 0)
-    set_map_colour(mean, 0.5, 0.5, 0.5)
-    set_last_map_contour_level(1)
-    set_map_displayed(mean, 1)
+#    mean = handle_read_ccp4_map(os.path.join(statmap_dir, 'mean_map.ccp4'), 0)
+#    set_map_colour(mean, 0.5, 0.5, 0.5)
+#    set_last_map_contour_level(1)
+#    set_map_displayed(mean, 1)
 
     ########################################################
 
@@ -131,6 +180,8 @@ def load_new_set(hit_idx):
         l = handle_read_draw_molecule_and_move_molecule_here(lig_pdbs[0])
         l_dict = read_cif_dictionary(lig_cifs[0])
         set_mol_displayed(l, 1)
+    else:
+        l = None
 
     print '======================>'
     print '======================>'
@@ -140,39 +191,23 @@ def load_new_set(hit_idx):
     print '======================>'
     print '======================>'
     print '======================>'
-
-    return [p, s, z]
-
-def print_results():
-
-    ##################
-    global d_results
-    ##################
-
-    print '======================>'
-    print '======================>'
-    print '======================>'
-    print d_results
+    print 'HIT {!s} of {!s}'.format(hit_idx+1, len(hit_list))
     print '======================>'
     print '======================>'
     print '======================>'
 
-def key_mark_interesting():
+    return p, l
 
-    global d_results
-    global hit_idx
-    global hit_list
+def key_binding_modelled_next():
 
-    d_results[hit_idx] = hit_list[hit_idx]
-
-    print '======================>'
-    print 'DATASET {!s} MARKED AS INTERESTING AT {!s}'.format(hit_list[hit_idx]['dtag'], hit_list[hit_idx][ref_peak_coords])
-    print '======================>'
+    save_all_models()
+    key_binding_next()
 
 def key_binding_next():
 
     global hit_idx
     global hit_list
+    global p, l
 
     hit_idx += 1
 
@@ -185,11 +220,13 @@ def key_binding_next():
         print '======================>'
         print 'MOVING TO NEXT HIT: {!s}'.format(hit_idx+1)
         print '======================>'
-        load_new_set(hit_idx)
+        close_all()
+        p, l = load_new_set(hit_idx)
 
 def key_binding_prev():
 
     global hit_idx
+    global p, l
 
     hit_idx -= 1
 
@@ -202,47 +239,80 @@ def key_binding_prev():
         print '======================>'
         print 'MOVING TO PREV HIT: {!s}'.format(hit_idx+1)
         print '======================>'
-        load_new_set(hit_idx)
+        close_all()
+        p, l = load_new_set(hit_idx)
 
 try:
-    add_key_binding("next blob", "s", lambda: key_binding_next())
+    add_key_binding("next blob", "s", lambda: key_binding_modelled_next())
     add_key_binding("prev blob", "a", lambda: key_binding_prev())
-    add_key_binding("mark_interesting", "v", lambda: key_mark_interesting())
+    add_key_binding("skip blob", "v", lambda: key_binding_next())
+
+    add_key_binding("merge ligand with protein", "m", lambda: merge_ligand_with_protein())
 
     add_key_binding("print results", "b", lambda: print_results())
-except:
-    pass
+except err:
+    print err
 
 ################################
 
 #global work_dir
 #global hit_list
 #global hit_idx
+#global p, l
 
 work_dir = os.getcwd()
 
-# FIND THE NEXT OUTPUT FILE
-out_idx = 1
-out_template = 'coot_reviews_{:04d}.csv'
+#######################################################################################
 
-results_file = os.path.join(work_dir, out_template.format(out_idx))
-while os.path.exists(results_file):
-    if out_idx > 9999:  break
-    out_idx += 1
-    results_file = os.path.join(work_dir, out_template.format(out_idx))
+# Process args
+cut_idx = [i for i,a in enumerate(sys.argv) if a.endswith('inspect.py')]
+assert len(cut_idx) == 1
+args = copy.copy(sys.argv)[cut_idx[0]+1:]
 
-print '======================>'
-print 'WRITING OUTPUT TO:'
-print '======================>'
-print results_file
-print '======================>'
+# Select datasets to view, or all
+dataset_selection = [a for a in args if a.startswith('d=')]
+if dataset_selection:
+    dataset_selection = dataset_selection[0][2:].split(',')
+    print 'ONLY SELECTING DATASETS: {!s}'.format(dataset_selection)
+else:
+    dataset_selection = None
+
+#######################################################################################
+
+## FIND THE NEXT OUTPUT FILE
+#out_idx = 1
+#out_template = 'coot_reviews_{:04d}.csv'
+#
+#results_file = os.path.join(work_dir, out_template.format(out_idx))
+#while os.path.exists(results_file):
+#    if out_idx > 9999:  break
+#    out_idx += 1
+#    results_file = os.path.join(work_dir, out_template.format(out_idx))
+#
+#print '======================>'
+#print 'WRITING OUTPUT TO:'
+#print '======================>'
+#print results_file
+#print '======================>'
 
 hit_list = load_z_blob_coordinates(os.path.join(work_dir, 'analyses', 'blob_site_summaries.csv'))
 hit_idx = 0
 
+#######################################################################################
+
+# If a selection has been given, filter out these datasets
+if dataset_selection:
+    print '{!s} HITS BEFORE FILTERING'.format(len(hit_list))
+    hit_list = [h for h in hit_list if h['dtag'] in dataset_selection]
+    print '{!s} HITS AFTER FILTERING'.format(len(hit_list))
+else:
+    print '{!s} HITS LOADED'.format(len(hit_list))
+
+#######################################################################################
+
 d_results = {}
 
-load_new_set(hit_idx)
+p,l = load_new_set(hit_idx)
 
 #http://strucbio.biologie.uni-konstanz.de/ccp4wiki/index.php/Ncs_rotamer_differences.py
 

@@ -53,16 +53,19 @@ def pandda_main(args):
         if (not pandda.datasets.all()) and (not input_files):
             pandda.exit()
             raise SystemExit('NO DATASETS LOADED')
+        # Check to see if we're reusing statistical maps
+        if (not pandda.args.method.recalculate_statistical_maps) and pandda.stat_maps.get_resolutions():
+            pandda.log('===================================>>>', True)
+            pandda.log('REUSING STATISTICAL MAPS AT: {!s}'.format(pandda.stat_maps.get_resolutions()), True)
         # Check that enough datasets have been found
-        if pandda.datasets.size() + len(input_files) < pandda.params.analysis.min_datasets:
+        elif pandda.datasets.size() + len(input_files) < pandda.params.analysis.min_build_datasets:
             pandda.log('===================================>>>', True)
             pandda.log('NOT ENOUGH DATASETS TO BUILD DISTRIBUTIONS!', True)
-            pandda.log('Number loaded ({!s}) is less than the {!s} needed.'.format(pandda.datasets.size()+len(input_files), pandda.params.analysis.min_datasets), True)
-            pandda.log('This value is defined by pandda.params.analysis.min_datasets', True)
+            pandda.log('Number loaded ({!s}) is less than the {!s} needed.'.format(pandda.datasets.size()+len(input_files), pandda.params.analysis.min_build_datasets), True)
+            pandda.log('This value is defined by pandda.params.analysis.min_build_datasets', True)
             raise SystemExit('NOT ENOUGH DATASETS LOADED')
         # If dry_run, exit after initial search
-        if pandda.args.method.dry_run:
-            pandda.exit()
+        if pandda.args.settings.dry_run:
             return pandda, None
         # Load and process input files
         if input_files:
@@ -107,11 +110,14 @@ def pandda_main(args):
         # ============================================================================>
         # Check that enough VALID datasets have been found
         # ============================================================================>
-        if pandda.datasets.size(mask_name='rejected - total', invert=True) < pandda.params.analysis.min_datasets:
+        if (not pandda.args.method.recalculate_statistical_maps) and pandda.stat_maps.get_resolutions():
+            # Using existing maps - don't need to check
+            pass
+        elif pandda.datasets.size(mask_name='rejected - total', invert=True) < pandda.params.analysis.min_build_datasets:
             pandda.log('===================================>>>', True)
             pandda.log('NOT ENOUGH (NON-REJECTED) DATASETS TO BUILD DISTRIBUTIONS!', True)
-            pandda.log('Number loaded ({!s}) is less than the {!s} needed.'.format(pandda.datasets.size(mask_name='rejected - total', invert=True), pandda.params.analysis.min_datasets), True)
-            pandda.log('This value is defined by pandda.params.analysis.min_datasets', True)
+            pandda.log('Number loaded ({!s}) is less than the {!s} needed.'.format(pandda.datasets.size(mask_name='rejected - total', invert=True), pandda.params.analysis.min_build_datasets), True)
+            pandda.log('This value is defined by pandda.params.analysis.min_build_datasets', True)
             raise SystemExit('NOT ENOUGH DATASETS LOADED')
         # ============================================================================>
         # Create neighbouring symmetry copies of the reference structures
@@ -378,9 +384,9 @@ def pandda_main(args):
                 building_mask = pandda.select_for_building_distributions(high_res_cutoff = cut_resolution,
                                                                          building_mask_name = building_mask_name)
                 # Check that we have enough datasets to build distributions
-                if sum(building_mask) < pandda.params.analysis.min_datasets:
+                if sum(building_mask) < pandda.params.analysis.min_build_datasets:
                     # Don't have enough to construct robust distributions
-                    pandda.log('NOT ENOUGH DATASETS TO CALCULATE DISTRIBUTIONS ({!s}<{!s})'.format(sum(building_mask),pandda.params.analysis.min_datasets), True)
+                    pandda.log('NOT ENOUGH DATASETS TO CALCULATE DISTRIBUTIONS ({!s}<{!s})'.format(sum(building_mask),pandda.params.analysis.min_build_datasets), True)
                     continue
                 else:
                     # Have enough to generate robust distributions
@@ -684,7 +690,7 @@ def pandda_main(args):
 
                 z_map_naive = map_analyser.calculate_z_map(tag=d_handler.tag, method='naive')
                 # Write z map
-                if pandda.args.settings.developer.write_all_z_maps and (not os.path.exists(d_handler.output_handler.get_file('z_map_naive'))):
+                if pandda.args.settings.developer.write_all_z_map_types and (not os.path.exists(d_handler.output_handler.get_file('z_map_naive'))):
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_naive'),
                                                 map_data    = z_map_naive)
                 # Write distribution of the map values
@@ -699,7 +705,7 @@ def pandda_main(args):
                 z_map_naive_masked = [z_map_naive[i] for i in pandda.reference_grid().global_mask().outer_mask_indices()]
                 z_map_naive_normalised = (z_map_naive - numpy.mean(z_map_naive_masked)) / numpy.std(z_map_naive_masked)
                 # Write z map
-                if pandda.args.settings.developer.write_all_z_maps and (not os.path.exists(d_handler.output_handler.get_file('z_map_naive_normalised'))):
+                if pandda.args.settings.developer.write_all_z_map_types and (not os.path.exists(d_handler.output_handler.get_file('z_map_naive_normalised'))):
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_naive_normalised'),
                                                 map_data    = z_map_naive_normalised)
                 # Write distribution of the map values
@@ -713,7 +719,7 @@ def pandda_main(args):
                 ##################################
                 z_map_corrected = map_analyser.calculate_z_map(tag=d_handler.tag, method='adjusted+uncertainty')
                 # Write z map
-                if pandda.args.settings.developer.write_all_z_maps and (not os.path.exists(d_handler.output_handler.get_file('z_map_corrected'))):
+                if pandda.args.settings.developer.write_all_z_map_types and (not os.path.exists(d_handler.output_handler.get_file('z_map_corrected'))):
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_corrected'),
                                                 map_data    = z_map_corrected)
                 # Write distribution of the map values
@@ -934,7 +940,7 @@ def pandda_main(args):
                     # ============================================================================>
                     # Write out the graph of the occupancy correlations
                     # ============================================================================>
-                    if pandda.args.settings.plot_graphs:
+                    if pandda.args.output.plot_graphs:
                         import matplotlib
                         matplotlib.interactive(0)
                         from matplotlib import pyplot
@@ -1106,7 +1112,7 @@ def pandda_main(args):
         pandda.write_summary_csvs()
         pandda.write_summary_graphs()
 
-#        if pandda.args.settings.testing:
+#        if pandda.args.settings.developer.validate_output:
 #            test_pandda_results(pandda)
 
         try:

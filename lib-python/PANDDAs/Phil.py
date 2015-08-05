@@ -32,14 +32,15 @@ pandda_phil_def = """
             outdir = './pandda'
                 .type = path
             dataset_prefix = ''
+                .help = "Prefix to be attached to each dataset name"
                 .type = str
+            plot_graphs = True
+                .help = "Output graphs using matplotlib"
+                .type = bool
         }
         method
             .help = "High Level control of algorithm"
         {
-            dry_run = False
-                .help = "Setup pandda, print working arguments, and exit"
-                .type = bool
             reload_existing_datasets = False
                 .help = "Reload existing datasets? (Time-consuming) - if False, will only load new datasets (unprocessed datasets)"
                 .type = bool
@@ -58,8 +59,18 @@ pandda_phil_def = """
             {
                 method = global *local
                     .type = choice
-                rmsd_cutoff = 1.0
+            }
+            filtering
+                .help = "Settings to control when datasets are rejected from the analysis"
+            {
+                min_correlation_to_reflection_data = 0.5
+                    .help = "Reject datasets that have a correlation less than this to the reference reflection data "
+                    .type = float
+                max_rmsd_to_reference = 1.0
                     .help = "Reject datasets that have a calpha rmsd of greater than this to the reference"
+                    .type = float
+                max_rfree = 0.4
+                    .help = 'Maximum allowed rfree for a structure (datasets above this are rejected)'
                     .type = float
             }
             maps
@@ -77,10 +88,10 @@ pandda_phil_def = """
                     .help = 'Sampling factor for fft-ing the maps'
                     .type = float
                 grid_spacing = 0.5
-                    .help = 'Spacing of the grid points (fixed across resolutions)'
+                    .help = 'Spacing of the grid points in the sampled maps (A) - fixed across resolutions'
                     .type = float
                 padding = 3
-                    .help = "Padding around the edge of the maps"
+                    .help = "Padding around the edge of the maps (A)"
                     .type = float
             }
             masks
@@ -96,26 +107,23 @@ pandda_phil_def = """
             analysis
                 .help = "Settings to control the selection of datasets"
             {
-                min_datasets = 40
+                min_build_datasets = 40
                     .help = 'Minimum number of datasets needed to build distributions'
                     .type = int
-                max_datasets = 75
+                max_build_datasets = 75
                     .help = 'Maximum number of datasets used to build distributions'
                     .type = int
-                high_res_increment = 0.05
-                    .help = 'Increment of resolution shell for map analysis'
+                dynamic_res_limits = True
+                    .help = 'Allow the limits to change depending on the dataset resolution ranges'
+                    .type = bool
+                high_res_upper_limit = 0.0
+                    .help = 'Highest resolution limit (maps are never calulcated above this limit)'
                     .type = float
                 high_res_lower_limit = 4.0
                     .help = 'Lowest resolution limit (datasets below this are rejected)'
                     .type = float
-                high_res_upper_limit = 0.0
-                    .help = 'Highest resolution limit (maps are never calulcated above this limit)'
-                    .type = float
-                dynamic_res_limits = True
-                    .help = 'Allow the limits to change depending on the dataset resolution ranges'
-                    .type = bool
-                max_rfree = 0.4
-                    .help = 'Maximum allowed rfree for a structure (datasets above this are rejected)'
+                high_res_increment = 0.05
+                    .help = 'Increment of resolution shell for map analysis'
                     .type = float
                 no_analyse = None
                     .help = 'Don\'t analyse these datasets, only use them to build the distributions - comma separated list of dataset tags'
@@ -173,23 +181,26 @@ pandda_phil_def = """
         settings
             .help = "General Settings"
         {
-            verbose = True
-                .type = bool
             cpus = 1
                 .type = int
+            verbose = True
+                .type = bool
+            dry_run = False
+                .help = "Setup pandda, print working arguments, and exit"
+                .type = bool
             max_memory = 25.0
                 .type = float
-            testing = False
-                .help = "Validate hits against a known list of ligands"
-                .type = bool
-            plot_graphs = True
-                .help = "Output graphs using matplotlib"
-                .type = bool
             developer
                 .help = "Development Settings (Not needed by most users)"
             {
-                write_all_z_maps = False
+                write_maps_for_empty_datasets = False
+                    .help = "Output maps for all datasets, not just datasets markeed as interesting"
+                    .type = bool
+                write_all_z_map_types = False
                     .help = "Output all possible types of Z-maps (Takes a lot of space on disk)"
+                    .type = bool
+                validate_output = False
+                    .help = "Validate hits against a known list of ligands"
                     .type = bool
             }
             pickling

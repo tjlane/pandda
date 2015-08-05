@@ -1,6 +1,6 @@
 #!/usr/bin/env pandda.python
 
-import os, sys, shutil, copy
+import os, sys, copy
 
 from libtbx import phil
 
@@ -8,7 +8,7 @@ from libtbx import phil
 
 master_phil_def = """
 input {
-    outdir = ./merged
+    outdir = ./twiddle
         .type = str
     pandda_dir = ./
         .type = str
@@ -42,46 +42,21 @@ if not os.path.exists(params.outdir):   os.mkdir(params.outdir)
 # Check input directory
 assert os.path.exists(params.pandda_dir)
 
-files_to_merge = [a for a in args if (a.endswith('.pdb') and os.path.exists(a))]
+files_to_twiddle = [a for a in args if (a.endswith('.pdb') and os.path.exists(a))]
 
 ############################################################################
 
-print '\n'.join(files_to_merge)
+print '\n'.join(files_to_twiddle)
 
-tags = list(set([os.path.basename(f).split('-')[0] for f in files_to_merge]))
+for fin in files_to_twiddle:
 
-for tag in tags:
+    tag = os.path.basename(fin).split('-')[0]
+    fout = os.path.join(params.outdir, '{!s}.native.pdb'.format(os.path.splitext(os.path.basename(fin))[0]))
+    print fin
+    print tag
 
-    tag_files = [f for f in files_to_merge if os.path.basename(f).startswith(tag)]
+    comm = 'pandda.twiddle input={!s} output={!s} ../interesting_datasets/*{!s}*/pickles/dataset.pickle'.format(fin, fout, tag)
 
-    print tag, '-', len(tag_files), 'files'
-    
-    in_f = os.path.join(params.pandda_dir, 'interesting_datasets/*{!s}*/*{!s}*-input.pdb'.format(tag,tag))
-    temp_files = []
+    print comm
 
-    for i, lig_f in enumerate(tag_files):
-        print i, lig_f
-
-        temp_f = os.path.join(params.outdir, tag+'-'+str(i)+'-temp-merged.pdb')
-
-        comm = """pdb_merge xyzin1 {!s} xyzin2 {!s} xyzout {!s} << eof
-nomerge
-END
-eof""".format(in_f, lig_f, temp_f)
-
-        print comm
-        os.system(comm)
-        
-        # Reset in file for next ligand    
-        in_f = temp_f
-
-        # Append temp file to list
-        temp_files.append(temp_f)
-       
-    # Create final output file 
-    out_f = os.path.join(params.outdir, tag+'-merged.pdb')
-    # Move the last temp file to the final output
-    shutil.copy(temp_f, out_f)
-
-    # Delete all of the temporary files
-    [os.remove(f) for f in temp_files]
+    os.system(comm)
