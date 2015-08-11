@@ -15,7 +15,7 @@ import iotbx.map_tools
 import numpy 
 
 from Giant.Grid.Utils import get_grid_points_within_index_cutoff_of_grid_sites
-from Giant.Xray.Maps.Occupancy import calculate_occupancy_correlations
+from Giant.Xray.Maps.Occupancy import calculate_occupancy_correlations, estimate_event_occupancy
 
 ############################################################################
 
@@ -129,7 +129,7 @@ reference_region = [gp for gp in flex.nested_loop(mean_map.data.all()) if mean_m
 
 #####################################################################
 
-lig_occs, feature_corrs, global_corrs, corr_discrep = calculate_occupancy_correlations(
+lig_occs, feature_corrs, global_corrs = calculate_occupancy_correlations(
     ref_map=mean_map.data.as_double(),
     query_map=query_map.data.as_double(),
     feature_region=feature_region,
@@ -139,6 +139,7 @@ lig_occs, feature_corrs, global_corrs, corr_discrep = calculate_occupancy_correl
     occ_increment=params.occ_increment)
 
 # Calculate occupancy by correlation discrepancy
+corr_discrep = [global_corrs[i] - feature_corrs[i] for i in range(len(feature_corrs))]
 max_corr_discrep = max(corr_discrep)
 lig_occ_est = lig_occs[corr_discrep.index(max_corr_discrep)]
 print 'CORRELATION-DISCREPANCY OCCUPANCY ESTIMATE:', lig_occ_est
@@ -152,6 +153,27 @@ gradient_occs = lig_occs[1:-1]
 max_corr_grad_discrep = max(corr_gradient_discrep)
 lig_occ_est_grad = gradient_occs[corr_gradient_discrep.index(max_corr_grad_discrep)]
 print '   GRADIENT-DISCREPANCY OCCUPANCY ESTIMATE:', lig_occ_est_grad
+
+occ_est = estimate_event_occupancy(
+    ref_map=mean_map.data.as_double(),
+    query_map=query_map.data.as_double(),
+    feature_region=feature_region,
+    reference_region=reference_region,
+    min_occ=params.min_occ,
+    max_occ=params.max_occ,
+    occ_increment=params.occ_increment,
+    method='value')
+print 'FUNCTION:', occ_est
+occ_est = estimate_event_occupancy(
+    ref_map=mean_map.data.as_double(),
+    query_map=query_map.data.as_double(),
+    feature_region=feature_region,
+    reference_region=reference_region,
+    min_occ=params.min_occ,
+    max_occ=params.max_occ,
+    occ_increment=params.occ_increment,
+    method='gradient')
+print 'FUNCTION:', occ_est
 
 #####################################################################
 #for i_occ, lig_occ in enumerate(all_lig_occs):

@@ -1,80 +1,22 @@
 #!/usr/bin/env pandda.python
 
-import os, sys, copy
+import os, sys
 
-import numpy
+from PANDDAs.jiffies import parse_phil_args
+from PANDDAs.jiffies.pandda_export import master_phil, run
 
-import libtbx.phil
-
-############################################################################
-
-master_phil_def = """
-processing {
-    pdb = []
-        .type = path
-        .multiple = True
-
-    outdir = './processed'
-        .help = 'Directory in which to place output files'
-        .type = path
-
-    pandda_dir = ./
-        .type = path
-
-    label = None
-        .type = str
-
-    verbose = False
-        .type = bool
-
-}
-"""
-
-############################################################################
-
-def parse_input(args):
-    # Read in the master phil
-    master_phil = libtbx.phil.parse(master_phil_def)
-    # Show defaults and exit
-    if '--show-defaults' in args:
-        master_phil.show()
-        sys.exit()
-    # Copy the args so that we can remove items from the list without affecting args etc
-    args = copy.copy(args)
-    # Construct interpreter
-    cmd_interpr = master_phil.command_line_argument_interpreter(home_scope="processing")
-    # Process input arguments
-    phil_objects = []
-    for arg in args:
-        try: 
-            # Custom rules for modifying arguments
-            if ('=' not in arg) and arg.endswith('.pdb') and os.path.exists(arg):
-                arg = 'pdb='+arg
-            # Attempt to process arg
-            cmd_line_args = cmd_interpr.process(arg=arg)
-        except KeyboardInterrupt: 
-            raise
-        except Exception: 
-            raise Sorry("Unknown file or keyword: %s" % arg)
-        else: 
-            phil_objects.append(cmd_line_args)
-
-    # Extract Scope object
-    working_phil = master_phil.fetch(sources=phil_objects)
-    return working_phil
-
-def run(args):
-    # Parse input
-    working_phil = parse_input(args)
-    # Extract parameters
-    params = working_phil.extract().processing
-
-    # Find the dataset id
-    # Merge with reference conformation
-    # Map back to native frame
-    # Generate occupancy refinement parameters
-    # Create directory structure 
-    
 if __name__ == '__main__':
-    run(args=sys.argv[1:])
+
+    # Show Defaults (just values)
+    if '--show-defaults' in sys.argv:
+        master_phil.show(attributes_level=0)
+    # Show Defaults (including information)
+    elif '--help' in sys.argv:
+        master_phil.show(attributes_level=2)
+    # ... or just run ...
+    else:
+        working_phil = parse_phil_args(master_phil=master_phil, args=sys.argv[1:])
+        out = run(params=working_phil.extract())
+    # Exit (unnecessary, but eh)
+    sys.exit()
 

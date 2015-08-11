@@ -62,8 +62,6 @@ def calculate_occupancy_correlations(ref_map, query_map, feature_region, min_occ
         # Calculate how much of the reference map to take away
         ref_occ = 1 - feature_occ
 
-        if verbose: print 'Subtracting {!s} * reference map'.format(ref_occ)
-
         # Calculate the occupancy-subtracted difference map
         diff_map = calculate_occupancy_subtracted_map(ref_map=ref_map, query_map=query_map, subtract_occ=ref_occ)
 
@@ -75,10 +73,47 @@ def calculate_occupancy_correlations(ref_map, query_map, feature_region, min_occ
 
         feature_region_corr     = flex.linear_correlation(feature_region_vals_diff, feature_region_vals_ref, subtract_mean=False)
         reference_region_corr   = flex.linear_correlation(reference_region_vals_diff, reference_region_vals_ref, subtract_mean=False)
-        correlation_discrepancy = reference_region_corr.coefficient() - feature_region_corr.coefficient()
 
-        if verbose: print 'OCCUPANCY DISCREPANCY: {!s}'.format(correlation_discrepancy)
-
-        return_vals.append((feature_occ, feature_region_corr.coefficient(), reference_region_corr.coefficient(), correlation_discrepancy))
+        return_vals.append((feature_occ, feature_region_corr.coefficient(), reference_region_corr.coefficient()))
 
     return zip(*return_vals)
+
+def calculate_maximum_series_discrepancy(labels, series_1, series_2):
+    """Calculate the point at which two series are maximally different"""
+    assert len(series_1) == len(series_2)
+    assert len(series_1) == len(labels)
+    diffs = [series_1[i] - series_2[i] for i in range(len(series_1))]
+    return labels[diffs.index(max(diffs))]
+
+def estimate_event_occupancy(ref_map, query_map, feature_region, min_occ=0.0, max_occ=1.0, occ_increment=0.01, reference_region=None, verbose=False, method='gradient'):
+    """Calculate an estimate for the occupancy of a defined event"""
+    # Check method is valid
+    assert method in ['gradient', 'value']
+    # Calculate the correlations to the reference map for a range of occupancies
+    event_occs, event_corrs, global_corrs = calculate_occupancy_correlations(
+        ref_map          = ref_map,
+        query_map        = query_map,
+        feature_region   = feature_region,
+        reference_region = reference_region,
+        min_occ          = min_occ,
+        max_occ          = max_occ,
+        occ_increment    = occ_increment,
+        verbose          = verbose)
+
+    # Estimate the event occupancies
+    if method == 'value':
+        # Calculate the maximum discrepancy in the correlation values as an estimation of event occupancy
+        occ_est = calculate_maximum_series_discrepancy(
+            labels   = event_occs,
+            series_1 = global_corrs,
+            series_2 = event_corrs)
+    elif method == 'gradient':
+        # Calculate the maximum discrepancy in the correlation gradients as an estimation of event occupancy
+        occ_est = calculate_maximum_series_discrepancy(
+            labels   = event_occs[1:-1],
+            series_1 = [event_corrs[i+1] - event_corrs[i-1] for i in range(1, len(event_corrs)-1)],
+            series_2 = [global_corrs[i+1] - global_corrs[i-1] for i in range(1, len(global_corrs)-1)])
+
+    return occ_est
+
+

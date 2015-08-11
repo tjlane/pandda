@@ -1687,7 +1687,7 @@ class PanddaMultiDatasetAnalyser(object):
             self.reference_grid().partition().partition_grid(cpus=self.args.settings.cpus)
 
             t2 = time.time()
-            print('> GRID PARTITIONING > Time Taken: {!s} seconds'.format(int(t2-t1)))
+            self.log('> GRID PARTITIONING > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
     def mask_reference_grid(self, d_handler):
         """Create masks for the reference grid based on distances from atoms in the reference structure"""

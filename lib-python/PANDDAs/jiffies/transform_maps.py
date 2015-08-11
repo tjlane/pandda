@@ -1,70 +1,44 @@
-#!/usr/bin/env pandda.python
-
 import os, sys, copy
+
+import libtbx.phil
 
 import iotbx.pdb
 import iotbx.ccp4_map
 
 import cctbx.maptbx
 import cctbx.sgtbx
-#import mmtbx.maps.utils
 import iotbx.map_tools
 
-import libtbx.phil
-from libtbx.utils import Sorry, null_out
 from scitbx.array_family import flex
 
 from Giant.Structure.Align import align_chains
 
 from mmtbx.maps.superpose import mask_grid, generate_p1_box
 
-master_params = libtbx.phil.parse("""
-align {
-    reference = None
+master_phil = libtbx.phil.parse("""
+reference = None
+    .type = str
+moving {
+    pdb = None
         .type = str
-    moving {
-        pdb = None
-            .type = str
-        map = None
-            .type = str
-    }
-    output {
-        pdb_suffix = '.aligned.pdb'
-            .type = str
-        map_suffix = '.aligned.map'
-            .type = str
-        pdb_prefix = None
-            .type = str
-        map_prefix = None
-            .type = str
-        out_dir = './'
-            .type = str
-    }
+    map = None
+        .type = str
+}
+output {
+    pdb_suffix = '.aligned.pdb'
+        .type = str
+    map_suffix = '.aligned.map'
+        .type = str
+    pdb_prefix = None
+        .type = str
+    map_prefix = None
+        .type = str
+    out_dir = './'
+        .type = str
 }
 """)
 
-def run(args):
-    # Process input arguments
-    phil_objects = []
-    argument_interpreter = master_params.command_line_argument_interpreter(home_scope="align")
-
-    if '--show-defaults' in args:
-        master_params.show()
-        sys.exit()
-
-    for arg in args:
-        try: 
-            command_line_params = argument_interpreter.process(arg=arg)
-        except KeyboardInterrupt: 
-            raise
-        except Exception: 
-            raise Sorry("Unknown file or keyword: %s" % arg)
-        else: 
-            phil_objects.append(command_line_params)
-
-    # Extract Scope object
-    working_params = master_params.fetch(sources=phil_objects)
-    params = working_params.extract().align
+def run(params):
 
     # Read in the reference structure
     ref_inp = iotbx.pdb.hierarchy.input(params.reference)
@@ -84,13 +58,13 @@ def run(args):
     # Check the output file style
     if not params.output.pdb_prefix: params.output.pdb_prefix = os.path.splitext(os.path.basename(params.moving.pdb))[0]
     if not params.output.map_prefix: params.output.map_prefix = os.path.splitext(os.path.basename(params.moving.map))[0]
-    
+
     # Build up a list of rotation matrices and write out transformed maps
     for mov_chain in mov_inp.hierarchy.chains():
         if not mov_chain.is_protein():
             continue
 
-        # Generate output filenames        
+        # Generate output filenames
         output_pdb = os.path.join(params.output.out_dir, params.output.pdb_prefix + '.chain{!s}'.format(mov_chain.id) + params.output.pdb_suffix)
         output_map = os.path.join(params.output.out_dir, params.output.map_prefix + '.chain{!s}'.format(mov_chain.id) + params.output.map_suffix)
 
@@ -100,7 +74,7 @@ def run(args):
         if os.path.exists(output_map):
             print('OUTPUT MAP ALREADY EXISTS: {!s}'.format(output_map))
             sys.exit()
-        
+
         # Align to the reference chain
         lsq = align_chains(mov_chain=mov_chain, ref_chain=ref_chain)
         # Extract the rotation matrix
@@ -117,7 +91,7 @@ def run(args):
             map_data=mov_data,
             rotation_matrix=rt.inverse().r.elems,
             translation_vector=rt.inverse().t.elems)
-        
+
         iotbx.ccp4_map.write_ccp4_map(
             file_name=output_map,
             unit_cell=mov_map.unit_cell(),
@@ -152,9 +126,4 @@ def run(args):
 #            n_real=fake_map.n_real(),
 #            file_name=output_map,
 #            buffer=10)
-
-if __name__ == '__main__':
-    
-    run(args=sys.argv[1:])
-
 

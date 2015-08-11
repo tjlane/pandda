@@ -59,7 +59,7 @@ def save_all_models():
     # Find the next available index for the fitted structure
     fitted_outputs = sorted(glob.glob(os.path.join(model_dir, 'fitted-v*')))
     if fitted_outputs:
-        last_idx = int(fitted_outputs[-1][-4:])
+        last_idx = int(fitted_outputs[-1].replace('.pdb','')[-4:])
         new_fitted = 'fitted-v{:04d}.pdb'.format(last_idx+1)
     else:
         new_fitted = 'fitted-v0001.pdb'
@@ -93,8 +93,17 @@ def merge_ligand_with_protein():
     global p, l
 
     try:
-        merge_molecules(p, [l])
-    except err:
+        merge_molecules([l], p)
+    except Exception as err:
+        print err
+
+def move_ligand_here():
+
+    global l
+
+    try:
+        move_molecule_to_screen_centre(l)
+    except Exception as err:
         print err
 
 def load_new_set(hit_idx):
@@ -249,8 +258,11 @@ try:
 
     add_key_binding("merge ligand with protein", "m", lambda: merge_ligand_with_protein())
 
+    coot_toolbar_button("MERGE", "merge_ligand_with_protein()")
+    coot_toolbar_button("MOVE", "move_ligand_here()")
+
     add_key_binding("print results", "b", lambda: print_results())
-except err:
+except Exception as err:
     print err
 
 ################################

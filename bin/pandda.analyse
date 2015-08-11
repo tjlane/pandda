@@ -6,7 +6,7 @@ import numpy
 from scitbx.array_family import flex
 from scitbx.math import basic_statistics
 
-from Giant.Xray.Maps.Occupancy import calculate_occupancy_subtracted_map, calculate_occupancy_correlations
+from Giant.Xray.Maps.Occupancy import calculate_occupancy_subtracted_map, estimate_event_occupancy
 from Giant.Xray.Symmetry import combine_hierarchies, generate_adjacent_symmetry_copies
 
 from Giant.Grid.Masks import spherical_mask, atomic_mask, non_symmetrical_atomic_mask
@@ -912,7 +912,7 @@ def pandda_main(args):
                     # Use the outer mask to provide a reference point for the correlation to the mean map
                     reference_sites = pandda.reference_grid().global_mask().outer_mask()
                     # Calculate the correlation with the mean map as different amounts of the mean map are subtracted
-                    event_occs, event_corrs, global_corrs, corr_discrep = calculate_occupancy_correlations(
+                    event_occ_est = estimate_event_occupancy( 
                         ref_map          = map_analyser.statistical_maps.mean_map,
                         query_map        = m_handler.map,
                         feature_region   = expanded_sites,
@@ -920,57 +920,72 @@ def pandda_main(args):
                         min_occ          = pandda.params.occupancy_estimation.min_occ,
                         max_occ          = pandda.params.occupancy_estimation.max_occ,
                         occ_increment    = pandda.params.occupancy_estimation.occ_increment,
-                        verbose          = False)
+                        verbose          = pandda.args.settings.verbose)
                     
-                    # Extract the maximum discrepancy as an estimation of the event occupancy
-                    max_corr_discrep = max(corr_discrep)
-                    event_occ_est = event_occs[corr_discrep.index(max_corr_discrep)]
                     pandda.log('=> Event occupancy estimated as {!s}'.format(event_occ_est))
 
                     # ============================================================================>
-                    # Calculate occupancy maps at this occupancy
+                    # Calculate occupancy map at this occupancy
                     # ============================================================================>
                     event_occ_map = calculate_occupancy_subtracted_map(
                         ref_map      = map_analyser.statistical_maps.mean_map, 
                         query_map    = m_handler.map,
-                        subtract_occ = 1.0-event_occ_est)
+                        subtract_occ = 1.0 - event_occ_est)
                     # Write out this array
                     pandda.write_array_to_map(d_handler.output_handler.get_file('occupancy_map').format(event_key, event_occ_est), event_occ_map)
 
                     # ============================================================================>
                     # Write out the graph of the occupancy correlations
                     # ============================================================================>
-                    if pandda.args.output.plot_graphs:
-                        import matplotlib
-                        matplotlib.interactive(0)
-                        from matplotlib import pyplot
-                        # 2 subplots sharing x-axis
-                        fig, (axis_1_1, axis_2_1) = pyplot.subplots(2, sharex=True)
-                        # 1st Plot
-                        line_1_1, = axis_1_1.plot(event_occs, global_corrs, 'g--', label='GLOBAL')
-                        line_1_2, = axis_1_1.plot(event_occs, event_corrs, 'k--', label='EVENT')
-                        axis_1_1.set_xlabel('EVENT OCCUPANCY')
-                        axis_1_1.set_ylabel('MEAN-MAP CORRELATIONS', color='k')
-                        axis_1_1.set_ylim((-1, 1))
-                        # 2nd Plot
-                        line_2_1, = axis_2_1.plot(event_occs, corr_discrep, 'b-', label='DISCREP')
-                        axis_2_1.set_ylabel('CORRELATION DIFFERENCE', color='b')
-                        # Plot line at the maximum
-                        line_2_2, = axis_2_1.plot([event_occ_est,event_occ_est],[-1,1], 'k-')
-                        text_2_1 = axis_2_1.text(0.02+event_occ_est, 0.0, str(event_occ_est))
-                        # Joint legend
-                        axis_1_1.legend(handles=[line_1_1, line_1_2, line_2_1], loc=4)
-                        # Title
-                        axis_1_1.set_title('MAP QUALITY V LIGAND OCCUPANCY')
-                        # Remove spacing between subplots
-                        fig.subplots_adjust(hspace=0)
-                        pyplot.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible=False)
-                        pyplot.setp([axis_2_1.get_xticklabels()], visible=True)
-                        # Apply tight layout to prevent overlaps
-                        #pyplot.tight_layout()
-                        # Save
-                        pyplot.savefig(d_handler.output_handler.get_file('occ_corr_png').format(event_key))
-                        pyplot.close(fig)
+#                    if pandda.args.output.plot_graphs:
+#                        import matplotlib
+#                        matplotlib.interactive(0)
+#                        from matplotlib import pyplot
+#                        # 2 subplots sharing x-axis
+#                        fig, (axis_1_1, axis_2_1) = pyplot.subplots(2, sharex=True)
+#                        # 1st Plot - 1st Y-Axis
+#                        line_1_1, = axis_1_1.plot(occ_est_data.occ_values, occ_est_data.global_corr_vals, 'g--', label='GLOBAL')
+#                        line_1_2, = axis_1_1.plot(occ_est_data.occ_values, occ_est_data.local_corr_vals, 'k--', label='EVENT')
+#                        axis_1_1.set_xlabel('Event Occupancy')
+#                        axis_1_1.set_ylabel('Correlation to Mean Map', color='k')
+#                        axis_1_1.set_ylim((-1, 1))
+#                        # 1st Plot - 2nd Y-Axis
+#                        axis_1_2 = axis_1_1.twinx()
+#                        line_1_3, = axis_1_2.plot(occ_est_data.occ_values, occ_est_data.corr_vals_diffs, 'b-', label='DISCREP')
+#                        axis_1_2.set_ylabel('Correlation Differences', color='b')
+#                        # Plot line at the maximum
+#                        line_1_4, = axis_1_2.plot([occ_est_data.feature_occ_est,occ_est_data.feature_occ_est],[-1,1], 'k-')
+#                        text_1_1 = axis_1_2.text(0.02+occ_est_data.feature_occ_est, 0.0, str(occ_est_data.feature_occ_est))
+#                        # Joint legend
+#                        axis_1_1.legend(handles=[line_1_1, line_1_2, line_1_3], loc=4)
+#                        # Title
+#                        axis_1_1.set_title('Estimating Occupancy by Correlation Value Differences')
+#                        # 2nd Plot - 1st Y-Axis
+#                        line_2_1, = axis_2_1.plot(occ_est_data.occ_values, occ_est_data.global_corr_grads, 'g--', label='GLOBAL')
+#                        line_2_2, = axis_2_1.plot(occ_est_data.occ_values, occ_est_data.local_corr_grads, 'k--', label='EVENT')
+#                        axis_2_1.set_xlabel('Event Occupancy')
+#                        axis_2_1.set_ylabel('Correlation to Mean Map', color='k')
+#                        axis_2_1.set_ylim((-1, 1))
+#                        # 1st Plot - 2nd Y-Axis
+#                        axis_2_2 = axis_2_1.twinx()
+#                        line_2_3, = axis_2_2.plot(occ_est_data.occ_values, occ_est_data.corr_vals_diffs, 'b-', label='DISCREP')
+#                        axis_2_2.set_ylabel('Correlation Differences', color='b')
+#                        # Plot line at the maximum
+#                        line_2_4, = axis_2_2.plot([occ_est_data.feature_occ_est,occ_est_data.feature_occ_est],[-1,1], 'k-')
+#                        text_2_1 = axis_2_2.text(0.02+occ_est_data.feature_occ_est, 0.0, str(occ_est_data.feature_occ_est))
+#                        # Joint legend
+#                        axis_2_1.legend(handles=[line_2_1, line_2_2, line_2_3], loc=4)
+#                        # Title
+#                        axis_2_1.set_title('Estimating Occupancy by Correlation Gradient Differences')
+#                        # Remove spacing between subplots
+##                        fig.subplots_adjust(hspace=0)
+#                        pyplot.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible=False)
+#                        pyplot.setp([axis_2_1.get_xticklabels()], visible=True)
+#                        # Apply tight layout to prevent overlaps
+#                        #pyplot.tight_layout()
+#                        # Save
+#                        pyplot.savefig(d_handler.output_handler.get_file('occ_corr_png').format(event_key))
+#                        pyplot.close(fig)
 
 # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 # TODO REIMPLEMENT THIS IF IT CAN BE DONE SO THAT IT LOOKS NICE

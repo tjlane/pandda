@@ -1,74 +1,39 @@
-#!/usr/bin/env pandda.python
-
 import os, sys, copy
+
+import libtbx.phil
 
 import numpy
 
 import iotbx.pdb
-import libtbx.phil
 
 from scitbx.array_family import flex
-
-from libtbx.utils import Sorry
 
 ############################################################################
 
 systematic_letters = iotbx.pdb.systematic_chain_ids()
 
-master_phil_def = """
-merge {
-    major = None
-        .help = 'The major conformation of the protein (normally the unbound or reference structure)'
-        .type = str
+############################################################################
 
-    minor = None
-        .help = 'The minor conformation of the protein (normally the bound or "interesting" structure)'
-        .type = str
-    
-    output = './merged.pdb'
-        .help = 'output pdb file'
-        .type = str
+master_phil = libtbx.phil.parse("""
+major = None
+    .help = 'The major conformation of the protein (normally the unbound or reference structure)'
+    .type = str
 
-    verbose = False
-        .type = bool
+minor = None
+    .help = 'The minor conformation of the protein (normally the bound or "interesting" structure)'
+    .type = str
 
-}
-"""
+output = None
+    .help = 'output pdb file'
+    .type = str
+
+verbose = False
+    .type = bool
+""")
 
 ############################################################################
 
-def parse_input(args):
-    # Read in the master phil
-    master_phil = libtbx.phil.parse(master_phil_def)
-    # Show defaults and exit
-    if '--show-defaults' in args:
-        master_phil.show()
-        sys.exit()
-    # Copy the args so that we can remove items from the list without affecting args etc
-    args = copy.copy(args)
-    # Construct interpreter
-    cmd_interpr = master_phil.command_line_argument_interpreter(home_scope="merge")
-    # Process input arguments
-    phil_objects = []
-    for arg in args:
-        try: 
-            cmd_line_args = cmd_interpr.process(arg=arg)
-        except KeyboardInterrupt: 
-            raise
-        except Exception: 
-            raise Sorry("Unknown file or keyword: %s" % arg)
-        else: 
-            phil_objects.append(cmd_line_args)
-
-    # Extract Scope object
-    working_phil = master_phil.fetch(sources=phil_objects)
-    return working_phil
-
-def run(args):
-    # Parse input
-    working_phil = parse_input(args)
-    # Extract parameters
-    params = working_phil.extract().merge
+def run(params):
 
     ######################################################################
     print '===========================================>>>'
@@ -78,19 +43,19 @@ def run(args):
     # Read in the ligand file and set each residue to the requested conformer
     maj_obj = iotbx.pdb.hierarchy.input(params.major)
     min_obj = iotbx.pdb.hierarchy.input(params.minor)
-        
+
     ######################################################################
     print '===========================================>>>'
     print 'AUTO-GENERATING PARAMETERS'
     ######################################################################
-    
+
     # Find the next conformer that's not used in the major structure
     break_iter = False
     # Current altlocs in the major structure
     current_conf_ids = list(maj_obj.hierarchy.altloc_indices())
     # Iterate through and select new conformer ids
     for i_id, new_conf_id in enumerate(systematic_letters):
-        
+
         # STEP 2 (LOOK BELOW FOR STEP 1)
         # Find new id to re-assign to conformers in the minor structure
         # (Once new id has been selected to assign to major structure residues)
@@ -111,11 +76,11 @@ def run(args):
     print '===========================================>>>'
     print 'VALIDATING PARAMETERS'
     ######################################################################
-   
-    # Check that ... something 
-    maj_obj.hierarchy.only_model()  
-    min_obj.hierarchy.only_model()  
-  
+
+    # Check that ... something
+    maj_obj.hierarchy.only_model()
+    min_obj.hierarchy.only_model()
+
     ######################################################################
     print '===========================================>>>'
     print 'PREPARING THE STRUCTURES FOR MERGING'
@@ -134,7 +99,7 @@ def run(args):
         # Extract label for this residue
         resid = rg_maj.resid()
         chainid = rg_maj.parent().id
-        # Extract same rg for minor 
+        # Extract same rg for minor
         rg_min = [rg for rg in new_minor.residue_groups() if rg.resid()==resid and rg.parent().id==chainid]
 
         # MORE THAN ONE MATCHING RESIDUE -- ERROR?
@@ -177,14 +142,14 @@ def run(args):
     print '===========================================>>>'
     print 'UPDATING CONFORMER LABELS FOR MAJOR CONFORMERS'
     ######################################################################
-    
+
     # Record the number of conformers introduced into the major structure
     conf_introduced = 0
     # Iterate through and update major conformers
     for rg_maj in new_major.residue_groups():
         # Extract label for this residue
         resid = rg_maj.resid()
-        chainid = rg_maj.parent().id        
+        chainid = rg_maj.parent().id
         # Major and minor are the same - Don't need to change the altloc
         if (chainid, resid) in major_minor_same:
             continue
@@ -207,7 +172,7 @@ def run(args):
     print '===========================================>>>'
     print 'UPDATING CONFORMER LABELS FOR MINOR CONFORMERS'
     ######################################################################
-    
+
     # If no conformer, change to default
     # If conformers, change to default + e.g. 'A'
 
@@ -219,7 +184,7 @@ def run(args):
     for rg_min in new_minor.residue_groups():
         # Extract label for this residue
         resid = rg_min.resid()
-        chainid = rg_min.parent().id        
+        chainid = rg_min.parent().id
         # If residue has not changed - skip as will not be transferred anyway
         if (chainid, resid) in major_minor_same:
             continue
@@ -231,7 +196,7 @@ def run(args):
         # Conformers already present - increment the conformer id by 1
         else:
             print 'CONFORMERS PRESENT: {!s}'.format((chainid, resid))
-            for ag_min in rg_min.atom_groups(): 
+            for ag_min in rg_min.atom_groups():
                 conf_id = ag_min.altloc
                 # No conformer yet - set to defaults for minor
                 if conf_id == '':
@@ -248,7 +213,7 @@ def run(args):
     print '=====================>>>'
     print '{!s} CONFORMER IDS CREATED IN MINOR STRUCTURE'.format(conf_introduced)
     print '{!s} CONFORMER IDS UPDATED IN MINOR STRUCTURE'.format(conf_incremented)
-    
+
     ######################################################################
     print '===========================================>>>'
     print 'TRANSFERRING RESIDUES FROM MINOR CONFORMATION'
@@ -259,7 +224,7 @@ def run(args):
 
     # Iterate through chains
     for ch_min in new_minor.chains():
-        
+
         # Find the matching chain in the major conformation
         ch_fin = [c for c in final_struct.chains() if c.id==ch_min.id]
         # MORE THAN ONE MATCHING RESIDUE -- ERROR?
@@ -272,10 +237,10 @@ def run(args):
         elif len(ch_fin) == 1:
             ch_fin = ch_fin[0]
             # Iterate through residue groups
-            for rg_min in ch_min.residue_groups():                
+            for rg_min in ch_min.residue_groups():
                 # Extract label for this residue
                 resid = rg_min.resid()
-                chainid = rg_min.parent().id        
+                chainid = rg_min.parent().id
                 # If residue has not changed - do not transfer
                 if (chainid, resid) in major_minor_same:
                     continue
@@ -298,16 +263,11 @@ def run(args):
     print '===========================================>>>'
     print 'WRITING OUTPUT STRUCTURE'
     ######################################################################
-    
+
     # Update the atoms numbering
     final_struct.atoms_reset_serial()
     # Write output file
     final_struct.write_pdb_file(params.output)
 
     return
-
-if __name__ == '__main__':
-    
-    run(args=sys.argv[1:])
-
 
