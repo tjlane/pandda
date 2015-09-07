@@ -1,0 +1,7 @@
+#!/usr/bin/env pandda.python
+
+from PANDDAs.jiffies.pandda_migrate import parse_input, run
+
+if __name__ == '__main__':
+    scope = parse_input(sys.argv[1:])
+    out = run(scope)

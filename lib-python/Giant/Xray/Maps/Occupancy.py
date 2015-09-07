@@ -85,7 +85,7 @@ def calculate_maximum_series_discrepancy(labels, series_1, series_2):
     diffs = [series_1[i] - series_2[i] for i in range(len(series_1))]
     return labels[diffs.index(max(diffs))]
 
-def estimate_event_occupancy(ref_map, query_map, feature_region, min_occ=0.0, max_occ=1.0, occ_increment=0.01, reference_region=None, verbose=False, method='gradient'):
+def estimate_event_occupancy(ref_map, query_map, feature_region, min_occ=0.0, max_occ=1.0, occ_increment=0.01, reference_region=None, method='gradient', verbose=False):
     """Calculate an estimate for the occupancy of a defined event"""
     # Check method is valid
     assert method in ['gradient', 'value']

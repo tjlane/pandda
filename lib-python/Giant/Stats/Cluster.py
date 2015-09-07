@@ -1,4 +1,5 @@
 import scipy.spatial
+import scipy.cluster
 import numpy
 
 class cluster_data(object):

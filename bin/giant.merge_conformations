@@ -2,8 +2,8 @@
 
 import os, sys
 
-from PANDDAs.jiffies import parse_phil_args
-from PANDDAs.jiffies.pandda_export import master_phil, run
+from Giant.jiffies import parse_phil_args
+from Giant.jiffies.merge_conformations import master_phil, run
 
 if __name__ == '__main__':
 

@@ -4,32 +4,38 @@ import libtbx.phil
 
 import numpy
 
-from PANDDAs.jiffies import merge_conformations, transform_coordinates, export_files
+from PANDDAs.jiffies import transform_coordinates, export_files
+from Giant.jiffies import merge_conformations
 
 ############################################################################
 
 master_phil = libtbx.phil.parse("""
+process_and_export {
+    merge_and_export_fitted_structures = True
+        .help = 'export fitted ligand structures'
+        .type = bool
+
+    transform_and_export_defaults = True
+        .type = bool
+
+    pdbs_to_transform_and_export = None
+        .type = path
+        .multiple = True
+
+    maps_to_transform_and_export = None
+        .type = path
+        .multiple = True
+}
+
 include scope PANDDAs.jiffies.export_files.master_phil
-
-merge_and_export_fitted_structures = True
-    .help = 'export fitted ligand structures'
-    .type = bool
-
-pdbs_to_transform_and_export = None
-    .type = path
-    .multiple = True
-
-maps_to_transform_and_export = None
-    .type = path
-    .multiple = True
-
-transform_and_export_defaults = True
-    .type = bool
 
 """,
 process_includes = True)
 
 ############################################################################
+
+def prepend_prefix_to_basename(prefix, path):
+    return os.path.join(os.path.dirname(path),prefix+os.path.basename(path))
 
 def run(params):
 
@@ -41,24 +47,26 @@ def run(params):
     merged_template = '{!s}-pandda-model.pdb'
     fitted_template = 'modelled_structures/fitted-current.pdb'
     # Merge, Transform and Export fitted Structures?
-    if params.merge_and_export_fitted_structures:
-        # File to be transformed
-        params.pdbs_to_transform_and_export.append(merged_template)
+    if params.process_and_export.merge_and_export_fitted_structures:
+        # Merged structure (minor + major conformations)
+        params.process_and_export.pdbs_to_transform_and_export.append(merged_template)
 
     # When exporting the aligned structure by default
     aligned_template = '{!s}-aligned.pdb'
     # Transform and Export default files?
-    if params.transform_and_export_defaults:
-        # Add to list to transform
-        params.pdbs_to_transform_and_export.append(aligned_template)
+    if params.process_and_export.transform_and_export_defaults:
+        # Fitted structure (minor conformation)
+        params.process_and_export.pdbs_to_transform_and_export.append(fitted_template)
+        # Un-merged structure (major conformation/reference)
+        params.process_and_export.pdbs_to_transform_and_export.append(aligned_template)
 
     # Add files to be transformed to those to be exported
-    [params.files_to_export.append(temp_prefix+f.format('*')) for f in params.pdbs_to_transform_and_export]
+    [params.export.files_to_export.append(prepend_prefix_to_basename(temp_prefix, f).format('*')) for f in params.process_and_export.pdbs_to_transform_and_export]
 
     ############################################################################
 
     # Find the dataset directories to be exported
-    export_dirs = sorted(glob.glob(os.path.join(params.pandda_dir, params.datasets_to_export, '*')))
+    export_dirs = sorted(glob.glob(os.path.join(params.input.pandda_dir, params.export.datasets_to_export, '*')))
 
     # Merge the fitted structures
     for e_dir in export_dirs:
@@ -71,7 +79,7 @@ def run(params):
 
         # MERGING WITH ALIGNED STRUCTURE
 
-        if params.merge_and_export_fitted_structures:
+        if params.process_and_export.merge_and_export_fitted_structures:
             # Extract parameters for the merging and set them
             merging_params = merge_conformations.master_phil.extract()
             merging_params.major =  os.path.join(e_dir, aligned_template.format(dir_tag))
@@ -101,13 +109,13 @@ def run(params):
         transform_params.verbose = params.verbose
 
         # Transform the files in the list
-        for template_file in params.pdbs_to_transform_and_export:
+        for template_file in params.process_and_export.pdbs_to_transform_and_export:
 
             # Fill in the name of the file from the template
             dataset_file = template_file.format(dir_tag)
 
             transform_params.file.input  = os.path.join(e_dir, dataset_file)
-            transform_params.file.output = os.path.join(e_dir, temp_prefix+dataset_file)
+            transform_params.file.output = os.path.join(e_dir, prepend_prefix_to_basename(temp_prefix, dataset_file))
 
             # Transform the structures
             print '=========================+>'
@@ -128,7 +136,7 @@ def run(params):
     # Go through the files and remove the temp_prefix prefix
     print '=========================+>'
     print 'Renaming Temporary Files:'
-    for root, dirs, files in os.walk(params.out_dir):
+    for root, dirs, files in os.walk(params.output.out_dir):
         for f in files:
             if f.startswith(temp_prefix):
                 new_f = os.path.join(root, f[len(temp_prefix):])

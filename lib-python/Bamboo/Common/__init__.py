@@ -22,5 +22,11 @@ class Meta(object):
         elif args is not None:
             raise Exception('args must be dict or list')
 
+    def summary(self):
+        out = []
+        for k in self.__dict__:
+            out.append('{!s}: {!s}'.format(k, self.__dict__[k]))
+        return '\n'.join(out)
+
 class Info(Meta):
     pass

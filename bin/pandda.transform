@@ -3,7 +3,7 @@
 import os, sys
 
 from PANDDAs.jiffies import parse_phil_args
-from PANDDAs.jiffies.pandda_export import master_phil, run
+from PANDDAs.jiffies.pandda_transform import master_phil, run
 
 if __name__ == '__main__':
 
@@ -13,9 +13,6 @@ if __name__ == '__main__':
     # Show Defaults (including information)
     elif '--help' in sys.argv:
         master_phil.show(attributes_level=2)
-    # ... or just run ...
-    elif '--expert' in sys.argv:
-        master_phil.show(attributes_level=4)
     # ... or just run ...
     else:
         working_phil = parse_phil_args(master_phil=master_phil, args=sys.argv[1:])

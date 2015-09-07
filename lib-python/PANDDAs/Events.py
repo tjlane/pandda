@@ -1,6 +1,14 @@
 import os, sys
 
+import libtbx.cluster
+
 from Bamboo.Common import Info
+from Giant.Stats.Cluster import find_connected_groups
+
+from scitbx.array_family import flex
+
+def event_distance(event1, event2):
+    return (flex.double(event1.cluster.centroid) - flex.double(event2.cluster.centroid)).norm()
 
 class PointCluster(object):
     def __init__(self, id, points, values):
@@ -13,24 +21,48 @@ class PointCluster(object):
         self.size = len(self.values)
         self.centroid = self.points.mean()
 
+    def summary(self):
+        out = []
+        out.append('Point Cluster {!s} Summary'.format(self.id))
+        out.append('{!s} Points'.format(self.size))
+        out.append('Min:'.format(self.stats.min))
+        out.append('Max:'.format(self.stats.max))
+        out.append('Mean:'.format(self.stats.mean))
+        return '\n'.join(out)
+
 class Event(object):
+    _attributes = ['estimated_occupancy', 'dtag']
     def __init__(self, id, cluster, info=None):
         """Class to hold information about an event in a dataset"""
+        # Give it a name
         self.id = id
+        # Process cluster object (points and values for Event)
+        assert isinstance(cluster, PointCluster), 'cluster must be of type PointCluster'
         self.cluster = cluster
+        # Add Meta to the object
         if info:
             assert isinstance(info, Info)
-            assert hasattr(info, 'estimated_occupancy')
+            for a in self._attributes:
+                assert hasattr(info, a)
             self.info = info
         else:
-            self.info = Info(['estimated_occupancy'])
+            self.info = Info(self._attributes)
+
+    def summary(self):
+        out = []
+        out.append('Event {!s} Summary'.format(self.id))
+        out.append(self.cluster.summary())
+        out.append(self.info.summary())
+        return '\n'.join(out)
 
 class Site(object):
-    def __init__(self, events=[]):
+    def __init__(self, events=None):
         """Class to hold information about an identified site (collection of events)"""
+        # List of Events
         self.children = []
+        # Add Events
         if events: self.add_events(events)
-        self.update()
+
     def add_events(self, events, update=True):
         if isinstance(events, list):
             assert isinstance(events[0], Event), 'Added events must be of class Event'
@@ -41,41 +73,75 @@ class Site(object):
         if update:
             self.update()
         return self
-    def update(self)
-        self.size = len(self.children)
-        self.centroid = flex.vec3_double([e.cluster.centroid for e in self.children]).mean()
+
+    def update(self):
+        # Number of events at the site
+        self.num_events = len(self.children)
+        # Extract site centroids
+        centroids = flex.vec3_double([e.cluster.centroid for e in self.children])
+        # Centroid of the site (mean of event centroids)
+        self.centre = centroids.mean()
+        # Size of the site (min->max)
+        self.approx_size = (centroids.min(), centroids.max())
         return self
+
+    def summary(self):
+        out = []
+        out.append('Site Summary')
+        out.append('{!s} Events'.format(self.num_events))
+        out.append('Centroid: {!s}'.format(self.centre))
+        out.append('Approx Range: {!s}'.format(self.approx_size))
+        for s in self.children:
+            out.append('-----------------------')
+            out.append(s.summary())
+        return '\n'.join(out)
 
 class SiteList(object):
-    def __init__(self, sites=[]):
+    def __init__(self, sites=None):
         """Class to hold information about multiple sites on a protein"""
-        assert isinstance(sites, list)
-        if sites:
-            assert isinstance(sites[0], Site)
-        self.sites = sites
-        self.update()
-    def add_site(self, site)
-        assert isinstance(site, Site), 'Added sites must be of class Site'
-        self.sites.append(site)
-        self.update()
-        return self
-    def update(self):
+        # List of Sites
+        self.children = []
+        # Add Sites
+        if sites: self.add_sites(sites)
+
+    def add_sites(self, sites, update=True):
+        if isinstance(sites, list):
+            assert isinstance(sites[0], Site), 'Added sites must be of class Site'
+            self.children.extend(sites)
+        else:
+            assert isinstance(sites, Site), 'Added sites must be of class Site'
+            self.children.append(sites)
+        if update:
+            self.update()
         return self
 
-def cluster_events(events, site_list=None):
+    def update(self):
+        # Number of events at the site
+        self.num_sites = len(self.children)
+        return self
+
+    def summary(self):
+        out = []
+        out.append('SiteList Summary')
+        out.append('{!s} Sites'.format(self.num_sites))
+        for s in self.children:
+            out.append('=====================================')
+            out.append(s.summary())
+        return '\n'.join(out)
+
+def cluster_events(events, cutoff=5, linkage='average'):
     """Cluster events into sites. Returns a SiteList object. Appends new sites to existing SiteList if given"""
 
-    if not site_list: site_list = SiteList()
+    # Create hierarchical clustering of the events
+    cl = libtbx.cluster.HierarchicalClustering(data=events, distance_function=event_distance, linkage=linkage)
+    # Group the events
+    clusters = cl.getlevel(cutoff)
+    # Turn lists of events into sites
+    sites = map(Site, clusters)
+    # Merge into site list
+    site_list = SiteList(sites)
+    return site_list
 
-    for new_event in events:
-        create_new_site = True
-        if site_list.sites:
-            # Check to see if this event should be put in this site
-            event_centroid =
 
-        if create_new_site:
-            # Create new site and add to site_list
-            new_site = Site(new_event)
-            site_list.add_site(new_site)
 
 

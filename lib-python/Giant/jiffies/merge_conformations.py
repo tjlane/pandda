@@ -37,6 +37,15 @@ def run(params):
 
     ######################################################################
     print '===========================================>>>'
+    print 'VALIDATING GIVEN PARAMETERS'
+    ######################################################################
+
+    assert params.major
+    assert params.minor
+    if not params.output: params.output='./output.pdb'
+
+    ######################################################################
+    print '===========================================>>>'
     print 'READING INPUT FILES'
     ######################################################################
 
@@ -74,7 +83,7 @@ def run(params):
 
     ######################################################################
     print '===========================================>>>'
-    print 'VALIDATING PARAMETERS'
+    print 'VALIDATING INPUT MODELS'
     ######################################################################
 
     # Check that ... something
@@ -258,6 +267,21 @@ def run(params):
                     # Transfer the atom groups
                     for min_ag in rg_min.atom_groups():
                         rg_fin.append_atom_group(min_ag.detached_copy())
+
+    ######################################################################
+    print '===========================================>>>'
+    print 'NORMALISING OUTPUT STRUCTURE'
+    ######################################################################
+
+    # Iterate through the output structure, and normalise the occupancies if necessary
+    for rg in final_struct.residue_groups():
+        # Calculate the total occupancy for this residue group
+        occ_total = sum([max(ag.atoms().extract_occ()) for ag in rg.atom_groups()])
+        # If occupncy is greater than 1, normalise by this total
+        if occ_total > 1.0:
+            print 'NORMALISING RESIDUE', rg.resid()
+            [ag.atoms().set_occ(ag.atoms().extract_occ()/occ_total) for ag in rg.atom_groups()]
+            assert sum([max(ag.atoms().extract_occ()) for ag in rg.atom_groups()]) == 1.0
 
     ######################################################################
     print '===========================================>>>'

@@ -185,16 +185,23 @@ pandda_phil_def = """
                 .type = int
             verbose = True
                 .type = bool
-            dry_run = False
-                .help = "Setup pandda, print working arguments, and exit"
-                .type = bool
             max_memory = 25.0
                 .type = float
+            exit_flags
+                .help = "Flags for terminating the program early"
+            {
+                dry_run = False
+                    .help = "Setup pandda, print working arguments, and exit"
+                    .type = bool
+                calculate_first_mean_map_only = False
+                   .help = "Will calculate the highest resolution mean map and then exit - used for initial reference modelling"
+                    .type = bool
+            }
             developer
                 .help = "Development Settings (Not needed by most users)"
             {
                 write_maps_for_empty_datasets = False
-                    .help = "Output maps for all datasets, not just datasets markeed as interesting"
+                    .help = "Output maps for all datasets, not just datasets marked as interesting"
                     .type = bool
                 write_all_z_map_types = False
                     .help = "Output all possible types of Z-maps (Takes a lot of space on disk)"
@@ -208,6 +215,9 @@ pandda_phil_def = """
             {
                 full_pickle = False
                     .help = "Pickle the entire PANDDA object for reloading - takes a lot of space"
+                    .type = bool
+                pickle_maps = False
+                    .help = "Pickle the dataset maps as part of the dataset pickle object"
                     .type = bool
             }
         }

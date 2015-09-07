@@ -64,15 +64,6 @@ from PANDDAs.HTML import PANDDA_HTML_ENV
 from PANDDAs.Phil import pandda_phil_def
 from PANDDAs.Settings import PANDDA_TOP, PANDDA_TEXT
 
-diff_map_hash = {'2mFo-DFc' : 'mFo-DFc',
-                 'mFo'      : 'mFo-DFc',
-                 'Fo'       : 'Fo-DFc'}
-
-col_hash = { '2mFo-DFc' : {'AMP':'FWT'    , 'AMPWT':None  , 'PHA':'PHWT'    } ,
-             'mFo-DFc'  : {'AMP':'DELFWT' , 'AMPWT':None  , 'PHA':'PHDELWT' } ,
-             'mFo'      : {'AMP':'F'      , 'AMPWT':'FOM' , 'PHA':'FC'      }
-            }
-
 STRUCTURE_MASK_NAMES = [    'bad structure - chain counts',
                             'bad structure - chain ids',
                             'bad structure - chain sequences',
@@ -2790,7 +2781,7 @@ class PanddaMultiDatasetAnalyser(object):
         arg_list = [{   'd_handler':d_handler, 'params':self.params, 'map_resolution':map_resolution, \
                         'grid':self.reference_grid().grid_indexer(), 'ref_map_holder':ref_map_holder, \
                         'masked_cart_ref':masked_cart_ref, 'masked_cart_mappings':masked_cart_mappings      } for d_handler in dataset_handlers]
-        map_holders = easy_mp.pool_map(fixed_func=load_maps_map_func, args=arg_list, processes=self.args.settings.cpus, chunksize=3)
+        map_holders = easy_mp.pool_map(fixed_func=load_maps_map_func, args=arg_list, processes=self.args.settings.cpus, chunksize=1)
         # Append to the map holder list
         map_holder_list.add(map_holders)
         # Go through and assign parents

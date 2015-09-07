@@ -119,7 +119,13 @@ def load_new_set(hit_idx):
     d_tag = current_hit['dtag']
 
     dataset_dir = glob.glob(os.path.join(work_dir, 'interesting_datasets/*{!s}*'.format(d_tag)))
-    assert len(dataset_dir) == 1
+    if len(dataset_dir) != 1:
+        dataset_dir = glob.glob(os.path.join(work_dir, 'interesting_datasets/*{!s}'.format(d_tag)))
+    if len(dataset_dir) != 1:
+        dataset_dir = glob.glob(os.path.join(work_dir, 'interesting_datasets/{!s}'.format(d_tag)))
+
+    assert len(dataset_dir) == 1, 'Non-unique dataset directory found: {!s}'.format(d_tag)
+
     dataset_dir = dataset_dir[0]
 
     statmap_dir = os.path.join(work_dir, 'statistical_maps')
@@ -131,6 +137,10 @@ def load_new_set(hit_idx):
 
     # The most recent model of the protein in the pandda maps
     fitted_model = os.path.join(model_dir, 'fitted-current.pdb')
+
+    if ('--models-only' in sys.argv) and (not os.path.exists(fitted_model)):
+        key_binding_next()
+        return
 
     ########################################################
 
@@ -272,23 +282,15 @@ except Exception as err:
 #global hit_idx
 #global p, l
 
+
 work_dir = os.getcwd()
 
-#######################################################################################
 
+#######################################################################################
 # Process args
 cut_idx = [i for i,a in enumerate(sys.argv) if a.endswith('inspect.py')]
 assert len(cut_idx) == 1
 args = copy.copy(sys.argv)[cut_idx[0]+1:]
-
-# Select datasets to view, or all
-dataset_selection = [a for a in args if a.startswith('d=')]
-if dataset_selection:
-    dataset_selection = dataset_selection[0][2:].split(',')
-    print 'ONLY SELECTING DATASETS: {!s}'.format(dataset_selection)
-else:
-    dataset_selection = None
-
 #######################################################################################
 
 ## FIND THE NEXT OUTPUT FILE
@@ -307,18 +309,38 @@ else:
 #print results_file
 #print '======================>'
 
+#######################################################################################
 hit_list = load_z_blob_coordinates(os.path.join(work_dir, 'analyses', 'blob_site_summaries.csv'))
-hit_idx = 0
-
 #######################################################################################
 
-# If a selection has been given, filter out these datasets
+
+#######################################################################################
+# Select datasets to view, or all
+dataset_selection = [a for a in args if a.startswith('d=')]
 if dataset_selection:
+    dataset_selection = dataset_selection[0][2:].split(',')
+    print 'ONLY SELECTING DATASETS: {!s}'.format(dataset_selection)
     print '{!s} HITS BEFORE FILTERING'.format(len(hit_list))
     hit_list = [h for h in hit_list if h['dtag'] in dataset_selection]
     print '{!s} HITS AFTER FILTERING'.format(len(hit_list))
 else:
     print '{!s} HITS LOADED'.format(len(hit_list))
+#######################################################################################
+
+
+#######################################################################################
+# Select a startpoint for the hit list
+start_point = [a for a in args if a.startswith('start=')]
+if start_point:
+    start_point = int(start_point[0][6:])
+    assert start_point > 0
+    assert start_point > 0
+    print 'STARTING FROM HIT: {!s}'.format(start_point)
+    hit_idx = start_point-1
+else:
+    hit_idx = 0
+#######################################################################################
+
 
 #######################################################################################
 
