@@ -281,7 +281,7 @@ def run(params):
         if occ_total > 1.0:
             print 'NORMALISING RESIDUE', rg.resid()
             [ag.atoms().set_occ(ag.atoms().extract_occ()/occ_total) for ag in rg.atom_groups()]
-            assert sum([max(ag.atoms().extract_occ()) for ag in rg.atom_groups()]) == 1.0
+            assert sum([max(ag.atoms().extract_occ()) for ag in rg.atom_groups()]) <= 1.0, [max(ag.atoms().extract_occ()) for ag in rg.atom_groups()]
 
     ######################################################################
     print '===========================================>>>'

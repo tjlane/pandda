@@ -7,38 +7,47 @@ from Giant.Stats.Cluster import find_connected_groups
 
 from scitbx.array_family import flex
 
-def event_distance(event1, event2):
-    return (flex.double(event1.cluster.centroid) - flex.double(event2.cluster.centroid)).norm()
-
 class PointCluster(object):
     def __init__(self, id, points, values):
         """Class to hold information about an identified cluster of points, with associated values"""
         assert len(points) == len(values)
+        self.parent = None
         self.id = id
         self.points = flex.vec3_double(points)
         self.values = flex.double(values)
-        self.stats = self.values.min_max_mean()
+
+        stats = self.values.min_max_mean()
+        self.min = stats.min
+        self.max = stats.max
+        self.mean = stats.mean
+
         self.size = len(self.values)
+
+        self.peak = self.points[self.values.index(max(self.values))]
         self.centroid = self.points.mean()
 
     def summary(self):
         out = []
         out.append('Point Cluster {!s} Summary'.format(self.id))
         out.append('{!s} Points'.format(self.size))
-        out.append('Min:'.format(self.stats.min))
-        out.append('Max:'.format(self.stats.max))
-        out.append('Mean:'.format(self.stats.mean))
+        out.append('Min:'.format(self.min))
+        out.append('Max:'.format(self.max))
+        out.append('Mean:'.format(self.mean))
         return '\n'.join(out)
 
 class Event(object):
-    _attributes = ['estimated_occupancy', 'dtag']
+    _attributes = ['estimated_occupancy']
     def __init__(self, id, cluster, info=None):
         """Class to hold information about an event in a dataset"""
-        # Give it a name
-        self.id = id
         # Process cluster object (points and values for Event)
         assert isinstance(cluster, PointCluster), 'cluster must be of type PointCluster'
         self.cluster = cluster
+        self.cluster.parent = self
+        # Give it a name
+        if id: self.id = id
+        else:  self.id = cluster.id
+        # Allow a parent
+        self.parent = None
         # Add Meta to the object
         if info:
             assert isinstance(info, Info)
@@ -60,6 +69,8 @@ class Site(object):
         """Class to hold information about an identified site (collection of events)"""
         # List of Events
         self.children = []
+        self.parent = None
+        self.id = None
         # Add Events
         if events: self.add_events(events)
 
@@ -96,6 +107,9 @@ class Site(object):
             out.append(s.summary())
         return '\n'.join(out)
 
+    def sort(self, key, reverse=True):
+        return self.children.sort(key=key, reverse=True)
+
 class SiteList(object):
     def __init__(self, sites=None):
         """Class to hold information about multiple sites on a protein"""
@@ -129,6 +143,17 @@ class SiteList(object):
             out.append(s.summary())
         return '\n'.join(out)
 
+    def sort(self, key, reverse=True):
+        self.children.sort(key=key, reverse=True)
+        return self
+
+    def renumber(self, start_at=1):
+        for i_c, c in enumerate(self.children): c.id=i_c+start_at
+        return self
+
+def event_distance(event1, event2):
+    return (flex.double(event1.cluster.centroid) - flex.double(event2.cluster.centroid)).norm()
+
 def cluster_events(events, cutoff=5, linkage='average'):
     """Cluster events into sites. Returns a SiteList object. Appends new sites to existing SiteList if given"""
 
@@ -138,6 +163,10 @@ def cluster_events(events, cutoff=5, linkage='average'):
     clusters = cl.getlevel(cutoff)
     # Turn lists of events into sites
     sites = map(Site, clusters)
+    for i_site, site in enumerate(sites):
+        site.id = i_site+1
+        for event in site.children:
+            event.parent = site
     # Merge into site list
     site_list = SiteList(sites)
     return site_list

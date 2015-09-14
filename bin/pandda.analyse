@@ -1,13 +1,12 @@
 #!/usr/bin/env pandda.python
 
 import os, sys, glob, time, gc
-import numpy
+import numpy, pandas
 
 from scitbx.array_family import flex
 from scitbx.math import basic_statistics
 
 from Giant.Xray.Maps.Occupancy import calculate_occupancy_subtracted_map, estimate_event_occupancy
-from Giant.Xray.Symmetry import combine_hierarchies, generate_adjacent_symmetry_copies
 
 from Giant.Grid.Masks import spherical_mask, atomic_mask, non_symmetrical_atomic_mask
 from Giant.Grid.Utils import get_grid_points_within_index_cutoff_of_grid_sites
@@ -16,6 +15,7 @@ from Giant.Stats.Cluster import cluster_data
 from Giant.Utils import status_bar, rel_symlink
 
 from PANDDAs.Main import PanddaMultiDatasetAnalyser, PanddaMapAnalyser, MapHolder, Meta
+from PANDDAs.Events import PointCluster, Event, Site, SiteList, cluster_events 
 from PANDDAs import welcome
 
 def pandda_main(args):
@@ -100,7 +100,6 @@ def pandda_main(args):
             pandda.scale_datasets(  ampl_label=pandda.params.maps.ampl_label,
                                     phas_label=pandda.params.maps.phas_label    )
             pandda.align_datasets(  method=pandda.params.alignment.method   )
-    #        symmetry_root = pandda.generate_crystal_contacts()
         else:
             # ============================================================================>
             # Rebuild the masks of the rejected datasets (quick)
@@ -122,22 +121,7 @@ def pandda_main(args):
         # ============================================================================>
         # Create neighbouring symmetry copies of the reference structures
         # ============================================================================>
-        # XXX XXX XXX XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXX XXX XXX
-        # Use symmetry operations to create the symmetry mates of the reference structure
-        sym_ops, sym_hierarchies, chain_mappings = generate_adjacent_symmetry_copies(   ref_hierarchy    = pandda.reference_dataset().new_structure().hierarchy,
-                                                                                        crystal_symmetry = pandda.reference_dataset().input().crystal_symmetry(),
-                                                                                        buffer_thickness = pandda.params.masks.outer_mask+5    )
-        # Record the symmetry operations that generate the crystal contacts
-        pandda.crystal_contact_generators = sym_ops
-
-        # Create a combined hierarchy of the crystal contacts
-        symmetry_root = combine_hierarchies(sym_hierarchies)
-        symmetry_root.atoms().set_xyz(symmetry_root.atoms().extract_xyz() + pandda.reference_dataset().origin_shift())
-
-        # Write out the symmetry sites
-        if not os.path.exists(pandda.output_handler.get_file('reference_symmetry')):
-            symmetry_root.write_pdb_file(pandda.output_handler.get_file('reference_symmetry'))
-        # XXX XXX XXX XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXX XXX XXX
+        ref_sym_copies = pandda.generate_reference_symmetry_copies()
         # ============================================================================>
         #####
         # Filter and Analyse the Datasets
@@ -161,9 +145,9 @@ def pandda_main(args):
         # Update the resolution limits using the resolution limits from the datasets supplied
         if pandda.params.analysis.dynamic_res_limits:
             pandda.set_low_resolution(   min(   pandda.get_low_resolution(),
-                                                max(pandda.datasets_summary.get_data('high_res_limit'))   ))
+                                                max(pandda.tables.dataset_info['high_resolution']) ) )
             pandda.set_high_resolution(  max(   pandda.get_high_resolution(),
-                                                min(pandda.datasets_summary.get_data('high_res_limit'))   ))
+                                                min(pandda.tables.dataset_info['high_resolution']) ) )
             pandda.log('===================================>>>')
             pandda.log('UPDATED RESOLUTION LIMITS')
             pandda.log('LOW RESOLUTION:  {!s}'.format(pandda.get_low_resolution()))
@@ -224,8 +208,8 @@ def pandda_main(args):
             pandda.log('===================================>>>')
             pandda.log('Generating Symmetry Mask')
             # Pull out the cartesian sites of the symmetry mates
-            cache = symmetry_root.atom_selection_cache()
-            sym_sites_cart = symmetry_root.select(cache.selection('pepnames and not element H')).atoms().extract_xyz()
+            cache = ref_sym_copies.atom_selection_cache()
+            sym_sites_cart = ref_sym_copies.select(cache.selection('pepnames and not element H')).atoms().extract_xyz()
             # Generate the symmetry mask
             symmetry_mask = non_symmetrical_atomic_mask(  cart_sites = sym_sites_cart,
                                                           grid_spacing = pandda.reference_grid().grid_spacing(),
@@ -288,6 +272,14 @@ def pandda_main(args):
         # ============================================================================>
         # ============================================================================>
         # ============================================================================>
+        
+        # ============================================================================>
+        #####
+        # PRE-ANALYSIS ANALYSIS (DUMP OF DATASET PARAMETERS)
+        #####
+        # ============================================================================>
+        pandda.write_dataset_summary_graphs()
+        pandda.write_output_csvs()
             
         # ============================================================================>
         #####
@@ -500,8 +492,8 @@ def pandda_main(args):
             else:
                 pandda.log('===================================>>>', True)
                 pandda.log('Using Existing Map Distributions at {!s}A'.format(cut_resolution), True)
-                pandda.log('This should be 0: {!s}'.format(pandda.datasets.size(mask_name=building_mask_name)))
-                pandda.log('This should be 0: {!s}'.format(map_analyser.dataset_maps.size(mask_name=building_mask_name)))
+                assert pandda.datasets.size(mask_name=building_mask_name) == 0, 'BUILDING MASKS HAVE BEEN SELECTED WHEN MAPS ALREAD EXIST'
+                assert map_analyser.dataset_maps.size(mask_name=building_mask_name) == 0, 'BUILDING MASKS HAVE BEEN SELECTED WHEN MAPS ALREAD EXIST'
             # ============================================================================>
             # Calculate the mean map
             # ============================================================================>
@@ -538,11 +530,6 @@ def pandda_main(args):
                 map_analyser.calculate_statistical_maps(    masked_idxs=pandda.reference_grid().global_mask().outer_mask_indices(),
                                                             mask_name=building_mask_name,
                                                             cpus=pandda.args.settings.cpus)
-            # TODO TODO TODO
-            # TODO IMPLEMENT - Collect all of the map statistics from the different dataset_handlers
-            # So that the data_collections can be populated independently of when the uncertainties etc were calculated
-            #pandda.analyse_dataset_variability_3()
-            # TODO TODO TODO
 
             # ============================================================================>
             # PICKLE THE DATASETS THAT HAVE JUST BEEN PROCESSED
@@ -631,16 +618,10 @@ def pandda_main(args):
                 resolution_count[cut_resolution].append(d_handler.tag)
                     
                 # Create a file that says what resolution this was processed at
-                link_dir = os.path.join(pandda.output_handler.get_dir('resolutions'), '{!s}-{!s}'.format(d_handler.name, cut_resolution))
+                link_dir = os.path.join(pandda.output_handler.get_dir('resolutions'), '{!s}-{!s}'.format(cut_resolution, d_handler.name))
                 if not os.path.exists(link_dir):
                     rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=link_dir)
 
-                # Make this a function and add more to it...
-                text_file = d_handler.output_handler.get_file('dataset_info')
-                with open(text_file, 'a') as fh:
-                    # XXX WRITE SOME MORE INFORMATION OUT HERE
-                    fh.write('PROCESSED AT {!s}A\n'.format(cut_resolution))
-               
                 # Flag that this dataset is being analysed 
                 pandda.datasets.all_masks().set_mask_value(mask_name='analysed', entry_id=d_handler.tag, value=True)
                 
@@ -663,7 +644,6 @@ def pandda_main(args):
                 ##################################
                 # EXTRACT MAP VALUES             #
                 ##################################
-
                 assert m_handler.map is not None, 'NO MAP FOUND'
 
                 ##################################
@@ -674,9 +654,7 @@ def pandda_main(args):
                 ###################################################################
                 # NAIVE Z-MAP - NOT USING UNCERTAINTY ESTIMATION OR ADJUSTED STDS #
                 ###################################################################
-
                 z_map_naive = map_analyser.calculate_z_map(tag=d_handler.tag, method='naive')
-
                 # Normalise this map to N(0,1)
                 z_map_naive_masked = [z_map_naive[i] for i in pandda.reference_grid().global_mask().outer_mask_indices()]
                 z_map_naive_normalised = (z_map_naive - numpy.mean(z_map_naive_masked)) / numpy.std(z_map_naive_masked)
@@ -684,9 +662,7 @@ def pandda_main(args):
                 ##################################
                 # ADJUSTED+UNCERTAINTY Z-MAP     #
                 ##################################
-
                 z_map_corrected = map_analyser.calculate_z_map(tag=d_handler.tag, method='adjusted+uncertainty')
-
                 # Normalise this map to N(0,1)
                 z_map_corrected_masked = [z_map_corrected[i] for i in pandda.reference_grid().global_mask().outer_mask_indices()]
                 z_map_corrected_normalised = (z_map_corrected - numpy.mean(z_map_corrected_masked)) / numpy.std(z_map_corrected_masked)
@@ -694,36 +670,38 @@ def pandda_main(args):
                 # ============================================================================>
                 # ANALYSE Z-MAP FOR STATISTICAL VALIDITY
                 # ============================================================================>
-                # Calculate and store statistics of z-maps
+                # Calculate statistics of z-maps
                 z_map_stats = basic_statistics(flex.double([z_map_corrected[i] for i in pandda.reference_grid().global_mask().outer_mask_indices()]))
-                m_handler.z_map_stats = {}
-                m_handler.z_map_stats['z_map_mean'] = z_map_stats.mean
-                m_handler.z_map_stats['z_map_std']  = z_map_stats.bias_corrected_standard_deviation
-                m_handler.z_map_stats['z_map_skew'] = z_map_stats.skew
-                m_handler.z_map_stats['z_map_kurt'] = z_map_stats.kurtosis
-                # Store the z-statistics for this dataset                
-                pandda.map_observations.set_data_value(data_name='z_map_mean', entry_id=m_handler.tag, value=m_handler.z_map_stats['z_map_mean'])
-                pandda.map_observations.set_data_value(data_name='z_map_std',  entry_id=m_handler.tag, value=m_handler.z_map_stats['z_map_std'])
-                pandda.map_observations.set_data_value(data_name='z_map_skew', entry_id=m_handler.tag, value=m_handler.z_map_stats['z_map_skew'])
-                pandda.map_observations.set_data_value(data_name='z_map_kurt', entry_id=m_handler.tag, value=m_handler.z_map_stats['z_map_kurt'])
-                # Store other meta about this z-map
-                pandda.map_observations.set_data_value(data_name='raw_masked_map_mean', entry_id=d_handler.tag, value=m_handler.meta.raw_masked_map_mean)
-                pandda.map_observations.set_data_value(data_name='raw_masked_map_rms',  entry_id=d_handler.tag, value=m_handler.meta.raw_masked_map_rms)
-                pandda.map_observations.set_data_value(data_name='map_uncertainty',     entry_id=d_handler.tag, value=m_handler.meta.map_uncertainty)
-                pandda.map_observations.set_data_value(data_name='analysed_resolution', entry_id=d_handler.tag, value=m_handler.meta.resolution)
+                
+                # ============================================================================>
+                # STORE ANALYSIS DATA IN DATASET MAP TABLE
+                # ============================================================================>
+                # Add to the dataset map summary table
+                pandda.tables.dataset_map_info.set_value(d_handler.tag, 'analysed_resolution', m_handler.meta.resolution)
+                pandda.tables.dataset_map_info.set_value(d_handler.tag, 'map_uncertainty',     m_handler.meta.map_uncertainty)
+                pandda.tables.dataset_map_info.set_value(d_handler.tag, 'obs_map_mean',        m_handler.meta.obs_map_mean)
+                pandda.tables.dataset_map_info.set_value(d_handler.tag, 'obs_map_rms',         m_handler.meta.obs_map_rms)
+                pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_mean',          z_map_stats.mean)
+                pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_std',           z_map_stats.bias_corrected_standard_deviation)
+                pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_skew',          z_map_stats.skew)
+                pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_kurt',          z_map_stats.kurtosis)
+                
+                # ============================================================================>
+                # WRITE OUT DATASET INFORMATION TO CSV FILE
+                # ============================================================================>
+                out_list = pandda.tables.dataset_info.loc[d_handler.tag].append(pandda.tables.dataset_map_info.loc[d_handler.tag])
+                out_list.to_csv(   path = d_handler.output_handler.get_file('dataset_info'),
+                                   header      = True,
+                                   index_label = 'dtag'    )
 
                 # ============================================================================>
-                # XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX
                 # XXX  WHICH MAP TO DO THE BLOB SEARCHING ON  XXX
-                # XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX
                 # ============================================================================>
-                
                 z_map = z_map_corrected_normalised
 
                 # ============================================================================>
                 # STORE THE Z MAP        
                 # ============================================================================>
-
                 z_map_holder = MapHolder(   num         = m_handler.num,
                                             tag         = m_handler.tag,
                                             map         = z_map,
@@ -731,7 +709,7 @@ def pandda_main(args):
                                             unit_cell   = m_handler.unit_cell,
                                             space_group = m_handler.space_group,
                                             meta        = Meta({'type'          : 'z-map',
-                                                                'resolution'    : cut_resolution}),
+                                                                'resolution'    : m_handler.meta.resolution}),
                                             parent      = m_handler  )
                 # Link the sampled map handler to the z map holder
                 m_handler.child = z_map_holder
@@ -889,7 +867,6 @@ def pandda_main(args):
                 num_clusters, filtered_hit_clusters = pandda.group_clusters( hit_clusters = filtered_hit_clusters,
                                                                              grid_spacing = pandda.reference_grid().grid_spacing()   )
 
-
                 # ============================================================================>
                 # Filter the clusters by symmetry equivalence
                 # ============================================================================>
@@ -921,37 +898,39 @@ def pandda_main(args):
                 pandda.write_array_to_map(d_handler.output_handler.get_file('high_z_mask'), flex.double(highz_map_array.tolist()))
                 
                 # ============================================================================>
-                # Create cluster object from the clustered points
+                # Process the identified features
                 # ============================================================================>
-                d_handler.hit_clusters = cluster_data(filtered_hit_clusters)
-
-                # ============================================================================>
-                # Estimate the occupancy of the detected features 
-                # ============================================================================>
-                # Extract sites for this cluster and estimate the occupancy of the event
-                for event_idx, event_sites in enumerate(d_handler.hit_clusters.get_points()):
+                for event_idx, event_point_value_list in filtered_hit_clusters.items():
+                    # Create a unique identifier for this event
+                    event_key = (d_handler.tag, event_idx)
+                    # Split the tuples into lists
+                    points, values = zip(*event_point_value_list)
+                    # ============================================================================>
+                    # Create a point cluster object
+                    # ============================================================================>
+                    point_cluster = PointCluster(id=event_key, points=points, values=values)
+                    # ============================================================================>
+                    # Estimate the occupancy of the detected feature 
+                    # ============================================================================>
+                    # Extract sites for this cluster and estimate the occupancy of the event
                     pandda.log('===================================>>>', True)
-                    # Get the label for the cluster
-                    event_key = d_handler.hit_clusters.get_keys()[event_idx]
                     # Expand the sites to include the surrounding region (Only take 2nd return arguement of 'max' sites)
-                    expanded_sites = get_grid_points_within_index_cutoff_of_grid_sites(event_sites, max_grid_dist=3)[1]
-                    pandda.log('=> Event sites ({!s} points) expanded to {!s} points'.format(len(event_sites), len(expanded_sites)))
+                    expanded_points = get_grid_points_within_index_cutoff_of_grid_sites(point_cluster.points, max_grid_dist=3)[1]
+                    pandda.log('=> Event sites ({!s} points) expanded to {!s} points'.format(len(points), len(expanded_points)))
                     # Use the outer mask to provide a reference point for the correlation to the mean map
-                    reference_sites = pandda.reference_grid().global_mask().outer_mask()
+                    reference_points = pandda.reference_grid().global_mask().outer_mask()
                     # Calculate the correlation with the mean map as different amounts of the mean map are subtracted
                     event_occ_est = estimate_event_occupancy( 
                         ref_map          = map_analyser.statistical_maps.mean_map,
                         query_map        = m_handler.map,
-                        feature_region   = expanded_sites,
-                        reference_region = reference_sites,
+                        feature_region   = expanded_points,
+                        reference_region = reference_points,
                         min_occ          = pandda.params.occupancy_estimation.min_occ,
                         max_occ          = pandda.params.occupancy_estimation.max_occ,
                         occ_increment    = pandda.params.occupancy_estimation.occ_increment,
                         method           = 'value',
                         verbose          = pandda.args.settings.verbose)
-                    
-                    pandda.log('=> Event occupancy estimated as {!s}'.format(event_occ_est))
-
+                    pandda.log('=> Event occupancy estimated as {!s}'.format(event_occ_est), True)
                     # ============================================================================>
                     # Calculate occupancy map at this occupancy
                     # ============================================================================>
@@ -959,8 +938,23 @@ def pandda_main(args):
                         ref_map      = map_analyser.statistical_maps.mean_map, 
                         query_map    = m_handler.map,
                         subtract_occ = 1.0 - event_occ_est)
+                    # Normalise the event map
+                    event_occ_map = event_occ_map / event_occ_est
                     # Write out this array
-                    pandda.write_array_to_map(d_handler.output_handler.get_file('occupancy_map').format(event_key, event_occ_est), event_occ_map)
+                    pandda.write_array_to_map(d_handler.output_handler.get_file('occupancy_map').format(event_idx, event_occ_est), event_occ_map)
+                    # ============================================================================>
+                    # Create an event object
+                    # ============================================================================>
+                    event_obj = Event(id=point_cluster.id, cluster=point_cluster)
+                    event_obj.info.estimated_occupancy = event_occ_est
+                    # ============================================================================>
+                    # Append to dataset handler
+                    # ============================================================================>
+                    d_handler.events.append(event_obj)
+                    # ============================================================================>
+                    # Add event to the event table
+                    # ============================================================================>
+                    pandda.add_event_to_event_table(d_handler=d_handler, event=event_obj)
 
                     # ============================================================================>
                     # Write out the graph of the occupancy correlations
@@ -1069,15 +1063,17 @@ def pandda_main(args):
             # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
             # ============================================================================>
-            
-            # ============================================================================>
             #####
             # Write the summaries
             #####
             # ============================================================================>
-
             pandda.write_map_analyser_summary(map_analyser=map_analyser, analysis_mask_name=analysis_mask_name)
         
+            # ============================================================================>
+            #####
+            # Print summaries
+            #####
+            # ============================================================================>
             t_end = time.time()
             pandda.log('===================================>>>', True)
             pandda.log('{!s}A Map Processing Time: {!s}'.format(cut_resolution, time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(t_end - t_start))), True)
@@ -1089,12 +1085,10 @@ def pandda_main(args):
             # PICKLE THE DATASETS THAT HAVE JUST BEEN PROCESSED
             #####
             # ============================================================================>
-
             # Clear the linked maps if requested
             if not pandda.args.settings.pickling.pickle_maps:
                 for d_handler in pandda.datasets.mask(mask_name=analysis_mask_name):
                     d_handler.child = None           
-
             # Pickle the datasets 
             pandda.pickle_the_pandda(components=['datasets'], datasets=pandda.datasets.mask(mask_name=analysis_mask_name))
             pandda.update_pandda_size(tag='After Finding Clusters @ {!s}A'.format(cut_resolution))
@@ -1116,64 +1110,80 @@ def pandda_main(args):
             gc.collect() 
             gc.collect() 
             gc.collect() 
+        
+            # ============================================================================>
+            #####
+            # LIVE ANALYSIS - RUN AT THE END OF EACH LOOP
+            #####
+            # Analyse the processed data
+            # TODO Create a `hit processor` class
+            # ============================================================================>
+
+            # Extract all events from datasets
+            all_events=[]; [all_events.extend(d.events) for d in pandda.datasets.all()]
+            # Cluster events to sites 
+            site_list = cluster_events(all_events)
+            # Sort sites by size
+            site_list.sort(key=lambda site: site.num_events, reverse=True).renumber()
+            # Add the site information to the site table (at the moment overwriting old information -- TODO)
+            pandda.add_sites_to_site_table(new_sites=site_list, overwrite=True)
+            # Update the site labels in the event table
+            pandda.update_event_table(events=all_events)
+            
+            # XXX OLD METHOD XXX TO DELETE XXX
+            # Write a combined file of all of the result hits
+#            combined_cluster = pandda.process_z_value_clusters()
+#            pandda.write_ranked_cluster_csv(    cluster        = combined_cluster,
+#                                                sorted_indices = combined_cluster.sort(sorting_data='values', sorting_function=max, decreasing=True),
+#                                                outfile        = pandda.output_handler.get_file('identified_sites')     )
+
+
+            # ============================================================================>
+            # Update the output file
+            # ============================================================================>
+            pandda.write_output_csvs()
 
         # ============================================================================>
         #####
-        # END PROCESSING LOOP - Pickle statistical maps again just to be sure
+        # END OF MAIN LOOP
         #####
         # ============================================================================>
 
         t_analysis_end = time.time()
         pandda.log('===================================>>>', True)
         pandda.log('Total Analysis Time: {!s}'.format(time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(t_analysis_end - t_analysis_start))), True)
-
+        # Pickle statistical maps again just to be sure
         pandda.pickle_the_pandda(components=['stat_maps'])
         pandda.update_pandda_size(tag='After Processing')
 
         # ============================================================================>
         #####
-        # ANALYSIS
+        # FINAL ANALYSIS - RUN ONCE AT THE END OF THE PROGRAM
         #####
-        # Analyse the processed data
-        # TODO Create a `hit processor` class
+        # Analyse all of the processed data
         # ============================================================================>
-
-        # Collate clusters
-        cluster_total, cluster_num, all_dataset_clusters = pandda.collate_all_clusters()
-
+            
+        # Collate events
+        event_total, event_num, all_dataset_events = pandda.collate_event_counts()
         # Print some slightly less important information
         pandda.log('===================================>>>', False)
-        for d_tag, cluster_count in cluster_num:
-            pandda.log('Dataset {!s}: {!s} Clusters'.format(d_tag, cluster_count), False)
-        # Print a summary of the number of identified clusters
+        for d_tag, event_count in event_num:
+            pandda.log('Dataset {!s}: {!s} Events'.format(d_tag, event_count), False)
+        # Print a summary of the number of identified events
         pandda.log('===================================>>>', True)
-        pandda.log('Total Datasets with Clusters: {!s}'.format(len(cluster_num)), True)
-        pandda.log('Total Clusters: {!s}'.format(cluster_total), True)
+        pandda.log('Total Datasets with Events: {!s}'.format(len(event_num)), True)
+        pandda.log('Total Events: {!s}'.format(event_total), True)
 
-        combined_cluster = pandda.process_z_value_clusters()
-
-        # Write a combined file of all of the result hits
-        pandda.write_ranked_cluster_csv(
-                                cluster        = combined_cluster,
-                                sorted_indices = combined_cluster.sort(sorting_data='values', sorting_function=max, decreasing=True),
-                                outfile        = pandda.output_handler.get_file('blob_summaries')
-                                )
-
-        # Cluster results by site
-        # TODO Add site_definition object to pickles so that we can retain site information between runs
-        
         # ============================================================================>
         #####
         # SUMMARIES ------------------------------>>>
         #####
         # ============================================================================>
 
-        pandda.write_analysis_summary()
-        pandda.write_summary_csvs()
-        pandda.write_summary_graphs()
-
-#        if pandda.args.settings.developer.validate_output:
-#            test_pandda_results(pandda)
+        # Ugly output for the last time
+        pandda.write_output_csvs()
+        # Pretty output
+        pandda.write_html_analysis_summary()
 
         try:
             from ascii_graph import Pyasciigraph
