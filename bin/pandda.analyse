@@ -197,7 +197,7 @@ def pandda_main(args):
             # Generate the main protein mask
             global_mask = atomic_mask(  cart_sites   = pro_sites_cart,
                                         grid_size    = pandda.reference_grid().grid_size(),
-                                        unit_cell    = pandda.reference_grid().fake_unit_cell(),
+                                        unit_cell    = pandda.reference_grid().unit_cell(),
                                         max_dist     = pandda.params.masks.outer_mask,
                                         min_dist     = pandda.params.masks.inner_mask )
             pandda.reference_grid().set_global_mask(global_mask)
@@ -214,7 +214,7 @@ def pandda_main(args):
             symmetry_mask = non_symmetrical_atomic_mask(  cart_sites = sym_sites_cart,
                                                           grid_spacing = pandda.reference_grid().grid_spacing(),
                                                           grid_size  = pandda.reference_grid().grid_size(),
-                                                          unit_cell  = pandda.reference_grid().fake_unit_cell(),
+                                                          unit_cell  = pandda.reference_grid().unit_cell(),
                                                           max_dist   = pandda.params.masks.outer_mask,
                                                           min_dist   = pandda.params.masks.inner_mask )
             pandda.reference_grid().set_symmetry_mask(symmetry_mask)
@@ -275,14 +275,6 @@ def pandda_main(args):
         
         # ============================================================================>
         #####
-        # PRE-ANALYSIS ANALYSIS (DUMP OF DATASET PARAMETERS)
-        #####
-        # ============================================================================>
-        pandda.write_dataset_summary_graphs()
-        pandda.write_output_csvs()
-            
-        # ============================================================================>
-        #####
         # STORING FOR REUSE
         #####
         # ============================================================================>
@@ -291,6 +283,14 @@ def pandda_main(args):
         pandda.pickle_the_pandda(all=True)
         pandda.update_pandda_size(tag='After Pre-processing')
 
+        # ============================================================================>
+        #####
+        # PRE-ANALYSIS ANALYSIS (DUMP OF DATASET PARAMETERS)
+        #####
+        # ============================================================================>
+        pandda.write_output_csvs()
+        pandda.write_dataset_summary_graphs()
+            
         # ============================================================================>
         #####
         # PREPARE VARIABLES TO LOOP OVER RESOLUTION SHELLS
@@ -706,8 +706,8 @@ def pandda_main(args):
                                             tag         = m_handler.tag,
                                             map         = z_map,
                                             # Change these for the 'fake' grid unit_cell and a P1 space_group
-                                            unit_cell   = m_handler.unit_cell,
-                                            space_group = m_handler.space_group,
+                                            unit_cell   = pandda.reference_grid().unit_cell(),
+                                            space_group = pandda.reference_grid().space_group(),
                                             meta        = Meta({'type'          : 'z-map',
                                                                 'resolution'    : m_handler.meta.resolution}),
                                             parent      = m_handler  )
@@ -781,6 +781,11 @@ def pandda_main(args):
                 # ============================================================================>
                 
                 if (num_clusters != 0) or pandda.args.settings.developer.write_maps_for_empty_datasets:
+                    
+                    # Write the NATIVE map
+                    if not os.path.exists(d_handler.output_handler.get_file('native_map')):
+                        pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('native_map'),
+                                                    map_data    = pandda.rotate_map(d_handler=d_handler, map_data=m_handler.map))
                 
                     # Write the sampled map
                     if not os.path.exists(d_handler.output_handler.get_file('sampled_map')):
@@ -895,7 +900,8 @@ def pandda_main(args):
                 highz_points = []; [highz_points.extend(zip(*v)[0]) for v in filtered_hit_clusters.values()]
                 highz_map_array = numpy.zeros(pandda.reference_grid().grid_size_1d(), dtype=int)
                 highz_map_array.put(map(pandda.reference_grid().grid_indexer(), highz_points), [1]*len(highz_points))
-                pandda.write_array_to_map(d_handler.output_handler.get_file('high_z_mask'), flex.double(highz_map_array.tolist()))
+                map_mask = flex.double(highz_map_array.tolist()); map_mask.reshape(flex.grid(pandda.reference_grid().grid_size()))
+                pandda.write_array_to_map(output_file=d_handler.output_handler.get_file('high_z_mask'), map_data=map_mask)
                 
                 # ============================================================================>
                 # Process the identified features
@@ -941,7 +947,8 @@ def pandda_main(args):
                     # Normalise the event map
                     event_occ_map = event_occ_map / event_occ_est
                     # Write out this array
-                    pandda.write_array_to_map(d_handler.output_handler.get_file('occupancy_map').format(event_idx, event_occ_est), event_occ_map)
+                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('occupancy_map').format(event_idx, event_occ_est), 
+                                                map_data    = event_occ_map )
                     # ============================================================================>
                     # Create an event object
                     # ============================================================================>
@@ -1123,8 +1130,8 @@ def pandda_main(args):
             all_events=[]; [all_events.extend(d.events) for d in pandda.datasets.all()]
             # Cluster events to sites 
             site_list = cluster_events(all_events)
-            # Sort sites by size
-            site_list.sort(key=lambda site: site.num_events, reverse=True).renumber()
+            # Sort sites by largest Z-Value
+            site_list.sort(key=lambda s: (s.num_events, max([e.cluster.max for e in s.children])), reverse=True).renumber()
             # Add the site information to the site table (at the moment overwriting old information -- TODO)
             pandda.add_sites_to_site_table(new_sites=site_list, overwrite=True)
             # Update the site labels in the event table

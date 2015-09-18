@@ -6,6 +6,7 @@ import numpy
 from libtbx import easy_mp
 from libtbx.math_utils import ifloor, iceil
 from scitbx.array_family import flex
+import iotbx.crystal_symmetry_from_any
 
 from cctbx import crystal
 
@@ -80,13 +81,15 @@ class grid_handler(object):
         """Translates between 3d grid coordinates and 1d array coordinates"""
         return flex.grid(self.grid_size())
 
-    def fake_unit_cell(self):
-        """Create a unit cell as if the reference grid were a real lattice"""
-        return crystal.uctbx.unit_cell('{!s} {!s} {!s} 90 90 90'.format(*self.cart_size()))
-
-    def fake_space_group(self):
-        """Create a spacegroup as if the reference grid were a real lattice"""
+    def unit_cell(self):
+        """Create a unit cell as if the reference grid were a real lattice (THE UNIT CELL IS LARGER THAN cart_size() BY 1 GRID SPACING)"""
+        return crystal.uctbx.unit_cell('{!s} {!s} {!s} 90 90 90'.format(*list(flex.double(self.grid_size())*self.grid_spacing())))
+    def space_group(self):
+        """Create a spacegroup as if the reference grid were a real lattice (Cartesian Grid == P1 SpaceGroup)"""
         return crystal.sgtbx.space_group('P1')
+    def symmetry(self):
+        """Create a symmetry object as if the reference grid were a real lattice (THE UNIT CELL IS LARGER THAN cart_size() BY 1 GRID SPACING)"""
+        return iotbx.crystal_symmetry_from_any.from_string("{:f},{:f},{:f},90,90,90,P1".format(*list(flex.double(self.grid_size())*self.grid_spacing())))
 
     def create_grid_partition(self, atomic_hierarchy):
         """Partition the grid using nearest neighbour algorithm"""

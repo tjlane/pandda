@@ -108,13 +108,13 @@ class PanddaEvent(object):
 
 class PanddaSiteTracker(object):
     events = None
-    # Sites count from 1
-    site_val = 1
-    site_tot = 1
-    # Rank counts from 1
-    rank_val = 1
-    rank_idx = 0
-    rank_tot = 1
+    # Sites
+    site_val = 1 # Site Value           1 -> m
+    site_tot = 1 # Number of Sites      m
+    # Ranks (Events)
+    rank_idx = 0 # Indexing position    0 -> n-1
+    rank_val = 1 # Rank Value           1 -> n
+    rank_tot = 1 # Number of Events     n
 
     def __init__(self, csv, top_dir):
         self.top_dir = top_dir
@@ -124,24 +124,25 @@ class PanddaSiteTracker(object):
 
         self.events = pandas.read_csv(csv, sep=',', dtype={'dtag':str})
         self.events = self.events.set_index(['dtag','event_idx'])
-
         print '====================>>>'
         print self.events
         print '====================>>>'
         current = self.get_new_current_event()
         print current
         print '====================>>>'
-
         self.update()
 
     def update(self):
-        self.site_tot = len(set(self.events['site_idx']))
+        """Update position of the site list"""
+        self.rank_val = self.rank_idx + 1
         self.rank_tot = len(self.events)
+        self.site_val = int(self.events.iloc[self.rank_idx]['site_idx'])
+        self.site_tot = len(set(self.events['site_idx']))
 
     def get_new_current_event(self):
         """Get an `Event` object for the current event"""
+        self.update() # Ensure that we're up-to-date
         curr_event = self.events.iloc[self.rank_idx]
-        self.site_val = int(curr_event['site_idx'])
         print '\n\nCurrent Event:\n\n{!s}\n\n'.format(curr_event)
         return PanddaEvent(rank=self.rank_val, info=curr_event, top_dir=self.top_dir)
 
@@ -150,25 +151,21 @@ class PanddaSiteTracker(object):
     def get_next(self):
         if self.rank_val == self.rank_tot: return None
         self.rank_idx += 1
-        self.rank_val = self.rank_idx + 1
         return self.get_new_current_event()
 
     def get_prev(self):
         if self.rank_val == 1: return None
         self.rank_idx -= 1
-        self.rank_val = self.rank_idx + 1
         return self.get_new_current_event()
 
     def get_prev_site(self):
         if sel.site_val == 1:  return None
         self.rank_idx = self.events.index.get_loc(self.events[self.events['site_idx']==self.site_val-1].index[0])
-        self.rank_val = self.rank_idx + 1
         return self.get_new_current_event()
 
     def get_next_site(self):
         if curr_site == self.site_tot: return None
         self.rank_idx = self.events.index.get_loc(self.events[self.events['site_idx']==self.site_val+1].index[0])
-        self.rank_val = self.rank_idx + 1
         return self.get_new_current_event()
 
 #=========================================================================
@@ -208,9 +205,11 @@ class PanddaInspector(object):
         self.gui.labels['rank_tot'].set_label(str(self.site_list.rank_tot))
         # Update current event information
         self.gui.labels['dtag'].set_label(str(self.current_event.dtag))
-        self.gui.labels['idx'].set_label(str(self.current_event.event_idx))
-        self.gui.labels['zpeak'].set_label(str(self.current_event.z_peak))
+        self.gui.labels['e_idx'].set_label(str(self.current_event.event_idx))
+        self.gui.labels['zpeak'].set_label(str(round(self.current_event.z_peak,3)))
         self.gui.labels['csize'].set_label(str(self.current_event.cluster_size))
+        # Reset the comment box
+        self.gui.objects['comment text'].set_text(str(self.get_log_value('Comment')))
 
     #-------------------------------------------------------------------------
 
@@ -246,14 +245,6 @@ class PanddaInspector(object):
 
     #-------------------------------------------------------------------------
 
-    def save_and_load_next(self, skip_unmodelled=False):
-        self.save_current()
-        self.load_next_event(skip_unmodelled=skip_unmodelled)
-
-    def save_and_load_prev(self, skip_unmodelled=False):
-        self.save_current()
-        self.load_prev_event(skip_unmodelled=skip_unmodelled)
-
     def save_current(self):
         self.current_event.write_fitted_model(protein_obj=self.coot.open_mols['p'])
         self.write_output_csv()
@@ -269,6 +260,9 @@ class PanddaInspector(object):
         print '====================>>>'
         self.write_output_csv()
 
+    def get_log_value(self, col):
+        return self.log_table.get_value(index=self.current_event.index, col=col)
+
     #-------------------------------------------------------------------------
 
     def initialise_output_table(self, in_csv, out_csv):
@@ -280,8 +274,10 @@ class PanddaInspector(object):
             # Create new table from input csv
             self.log_table = pandas.read_csv(in_csv, sep=',', dtype={'dtag':str})
             # Create new columns
-            self.log_table['Interesting'] = False
-            self.log_table['Ligand Placed'] = False
+            self.log_table['Interesting'] = 'None'
+            self.log_table['Ligand Placed'] = 'None'
+            self.log_table['Ligand Confidence'] = 'None'
+            self.log_table['Comment'] = 'None'
 
         # Set the index
         self.log_table = self.log_table.set_index(['dtag','event_idx'])
@@ -377,20 +373,7 @@ class PanddaMolHandler(object):
         return e
 
 class GenericGUI(object):
-
-    """Generic GUI Class"""
-
-    def generic_label_value_pair(self, label, value):
-        gtk_label = gtk.Label(label)
-        gtk_value = gtk.Label(value)
-        gtk_box = gtk.EventBox()
-        gtk_box.add(gtk_value)
-        hbox = gtk.HBox()
-        hbox.add(gtk_label)
-        hbox.add(gtk_box)
-        frame = gtk.Frame()
-        frame.add(hbox)
-        return (gtk_value, frame)
+    pass
 
 class PanddaGUI(GenericGUI):
 
@@ -402,7 +385,7 @@ class PanddaGUI(GenericGUI):
 
         # GUI objects
         self.labels = {}
-        self.buttons = None
+        self.buttons = {}
         self.objects = {}
 
     def launch(self):
@@ -416,26 +399,33 @@ class PanddaGUI(GenericGUI):
         self.window.set_title("PANDDA inspect")
 
         # Main VBox object for the window
-        main_vbox = gtk.VBox()
-        main_vbox.set_spacing(5)
-
-        # Create summary table at the top of the window
-        self.progress_table = self.new_progress_table()
-        self.event_table    = self.new_event_table()
-        # Create own vbox
-        label_vbox = gtk.VBox()
-        label_vbox.set_spacing(5)
+        main_vbox = gtk.VBox(spacing=5)
+        # -----------------------------------------------------
+        # Create progress summary table at the top of the window
+        self.progress_table   = self._progress_table()
         frame = gtk.Frame(); frame.add(self.progress_table)
-        label_vbox.add(frame)
-        frame = gtk.Frame(); frame.add(self.event_table)
-        label_vbox.add(frame)
-        # Add vbox to main vbox
-        main_vbox.add(label_vbox)
-
-        # Create buttons at the bottom of the window (button_vbox is populated)
-        button_vbox, self.buttons = self.main_buttons()
-        # Add vbox to main vbox
-        main_vbox.add(button_vbox)
+        main_vbox.pack_start(frame)
+        # -----------------------------------------------------
+        hbox = gtk.HBox(homogeneous=False, spacing=5)
+        # Create event summary table at the top of the window
+        self.event_info_table = self._event_info_table()
+        frame = gtk.Frame(); frame.add(self.event_info_table)
+        hbox.pack_start(frame)
+        # Create buttons to control the ligand
+        lig_buttons = self._ligand_buttons()
+        frame = gtk.Frame(); frame.add(lig_buttons)
+        hbox.pack_start(frame)
+        # Add to main vbox
+        main_vbox.pack_start(hbox)
+        # -----------------------------------------------------
+        # Create buttons to navigate between datasets
+        nav_buttons = self._navi_buttons()
+        frame = gtk.Frame(); frame.add(nav_buttons)
+        main_vbox.pack_start(frame)
+        # Create buttones to record meta about the event
+        rec_buttons = self._record_buttons()
+        frame = gtk.Frame(); frame.add(rec_buttons)
+        main_vbox.pack_start(frame)
 
         # Link the buttons to the Inspector
         self.link_buttons()
@@ -446,76 +436,13 @@ class PanddaGUI(GenericGUI):
 
         return self
 
-    def main_buttons(self):
-
-        button_vbox = gtk.VBox()
-        button_vbox.set_spacing(5)
-        button_dict = {}
-
-        # Navigation Buttons
-        nav_hbox = gtk.HBox()
-        # ---
-        prev = gtk.Button(label="<<< Prev <<<")
-        button_dict['prev'] = prev
-        nav_hbox.add(prev)
-        # ---
-        skip = gtk.Button(label=">>> Next (Skip) >>>")
-        button_dict['skip'] = skip
-        nav_hbox.add(skip)
-        # ---
-        next = gtk.Button(label=">>> Next (+Save) >>>")
-        button_dict['next'] = next
-        nav_hbox.add(next)
-        # ---
-        button_vbox.add(nav_hbox)
-
-        # Data Buttons
-        data_hbox = gtk.HBox()
-        vbox_1 = gtk.VBox()
-        vbox_2 = gtk.VBox()
-        # ---
-        b = gtk.Button(label="Mark Interesting")
-        button_dict['tp'] = b
-        vbox_1.add(b)
-        # ---
-        b = gtk.Button(label="Mark Not Interesting")
-        button_dict['fp'] = b
-        vbox_1.add(b)
-        # ---
-        b = gtk.Button(label="Ligand Placed")
-        button_dict['placed'] = b
-        vbox_2.add(b)
-        # ---
-        data_hbox.add(vbox_1)
-        data_hbox.add(vbox_2)
-        button_vbox.add(data_hbox)
-
-        # Helper Buttons
-        helper_hbox = gtk.HBox()
-        # ---
-        merge = gtk.Button(label="Merge Ligand With Model")
-        button_dict['merge'] = merge
-        helper_hbox.add(merge)
-        # ---
-        move = gtk.Button(label="Move New Ligand Here")
-        button_dict['move'] = move
-        helper_hbox.add(move)
-        # ---
-        save = gtk.Button(label="Save Model")
-        button_dict['save'] = save
-        helper_hbox.add(save)
-        # ---
-        button_vbox.add(helper_hbox)
-
-        return button_vbox, button_dict
-
     def link_buttons(self):
         """Link the buttons in the GUI to functions in PanddaInspector"""
 
         # Navigation buttons
-        self.buttons['next'].connect("clicked", lambda x: self.parent.save_and_load_next())
-        self.buttons['prev'].connect("clicked", lambda x: self.parent.save_and_load_prev())
-        self.buttons['skip'].connect("clicked", lambda x: self.parent.load_next_event())
+        self.buttons['next'].connect("clicked", lambda x: [self.store(), self.parent.save_current(), self.parent.load_next_event()])
+        self.buttons['prev'].connect("clicked", lambda x: [self.store(), self.parent.save_current(), self.parent.load_prev_event()])
+        self.buttons['skip'].connect("clicked", lambda x: [self.store(), self.parent.load_next_event()])
 
         # Structure Buttons
         self.buttons['save'].connect("clicked",  lambda x: self.parent.save_current())
@@ -523,45 +450,222 @@ class PanddaGUI(GenericGUI):
         self.buttons['move'].connect("clicked",  lambda x: self.parent.coot.move_ligand_here())
 
         # Meta Recording buttons
-        self.buttons['placed'].connect("clicked", lambda x: self.parent.set_log_value(col='Ligand Placed', value='True'))
-        self.buttons['tp'].connect("clicked", lambda x: self.parent.set_log_value(col='Interesting', value=True))
-        self.buttons['fp'].connect("clicked", lambda x: self.parent.set_log_value(col='Interesting', value=False))
+        self.buttons['tp'].connect("clicked",         lambda x: self.parent.set_log_value(col='Interesting', value=True))
+        self.buttons['fp'].connect("clicked",         lambda x: self.parent.set_log_value(col='Interesting', value=False))
+        self.buttons['high conf'].connect("clicked",  lambda x: self.parent.set_log_value(col='Ligand Confidence', value='High'))
+        self.buttons['med conf'].connect("clicked",   lambda x: self.parent.set_log_value(col='Ligand Confidence', value='Medium'))
+        self.buttons['low conf'].connect("clicked",   lambda x: self.parent.set_log_value(col='Ligand Confidence', value='Low'))
+        self.buttons['placed'].connect("clicked",     lambda x: self.parent.set_log_value(col='Ligand Placed', value=True))
+        self.buttons['not placed'].connect("clicked", lambda x: self.parent.set_log_value(col='Ligand Placed', value=False))
 
-    def new_event_table(self):
+    def store(self):
+        """Record information from the gui to the pandas table in the main object"""
+        self.parent.set_log_value(col='Comment', value=self.objects['comment text'].get_text())
 
-        self.labels['dtag'],  tag_pair   = self.generic_label_value_pair( label='Dataset', value='None' )
-        self.labels['idx'],   idx_pair   = self.generic_label_value_pair( label='Event #', value=1 )
-        self.labels['zpeak'], zpeak_pair = self.generic_label_value_pair( label='Z-Peak',  value=0 )
-        self.labels['csize'], csize_pair = self.generic_label_value_pair( label='Z-Size',  value=0 )
+    def _navi_buttons(self):
+        box = gtk.HBox(homogeneous=True, spacing=5)
+        # ---
+        b = gtk.Button(label="<<< Prev <<<")
+        self.buttons['prev'] = b
+        box.add(b)
+        # ---
+        b = gtk.Button(label=">>> Next (Skip) >>>")
+        self.buttons['skip'] = b
+        box.add(b)
+        # ---
+        b = gtk.Button(label=">>> Next (Save) >>>")
+        self.buttons['next'] = b
+        box.add(b)
+        # ---
+        return box
 
-        table = gtk.Table(rows=3, columns=4)
+    def _ligand_buttons(self):
+        box = gtk.HBox(homogeneous=True, spacing=5)
+        # ---
+        b = gtk.Button(label="Merge Ligand With Model")
+        b.child.set_line_wrap(True)
+        b.child.props.width_chars = 10
+        b.child.set_justify(gtk.JUSTIFY_CENTER)
+        self.buttons['merge'] = b
+        box.add(b)
+        # ---
+        b = gtk.Button(label="Move New Ligand Here")
+        b.child.set_line_wrap(True)
+        b.child.props.width_chars = 10
+        b.child.set_justify(gtk.JUSTIFY_CENTER)
+        self.buttons['move'] = b
+        box.add(b)
+        # ---
+        b = gtk.Button(label="Save Model")
+        self.buttons['save'] = b
+        box.add(b)
+        # ---
+        return box
+
+    def _record_buttons(self):
+        # ---------------------------------------------
+        hbox_1 = gtk.HBox(homogeneous=True, spacing=5)
+        vbox_1_1 = gtk.VBox()
+        vbox_1_2 = gtk.VBox()
+        vbox_1_3 = gtk.VBox()
+        # ---
+        b = gtk.Button(label="Mark Interesting")
+        self.buttons['tp'] = b
+        vbox_1_1.add(b)
+        # ---
+        b = gtk.Button(label="Mark Not Interesting")
+        self.buttons['fp'] = b
+        vbox_1_1.add(b)
+        # ---
+        b = gtk.Button(label="High Confidence")
+        self.buttons['high conf'] = b
+        vbox_1_2.add(b)
+        # ---
+        b = gtk.Button(label="Medium Confidence")
+        self.buttons['med conf'] = b
+        vbox_1_2.add(b)
+        # ---
+        b = gtk.Button(label="Low Confidence")
+        self.buttons['low conf'] = b
+        vbox_1_2.add(b)
+        # ---
+        b = gtk.Button(label="Ligand Placed")
+        self.buttons['placed'] = b
+        vbox_1_3.add(b)
+        # ---
+        b = gtk.Button(label="No Ligand Placed")
+        self.buttons['not placed'] = b
+        vbox_1_3.add(b)
+        # ---
+        hbox_1.add(vbox_1_1); hbox_1.add(vbox_1_2); hbox_1.add(vbox_1_3)
+        # ---------------------------------------------
+        hbox_2 = gtk.HBox(homogeneous=False, spacing=5)
+        # ---
+        l = gtk.Label('Comment:')
+        hbox_2.add(l)
+        # ---
+        e = gtk.Entry(max=200)
+        self.objects['comment text'] = e
+        hbox_2.add(e)
+        # ---------------------------------------------
+        vbox_main = gtk.VBox(spacing=5)
+        vbox_main.pack_start(hbox_1)
+        vbox_main.pack_start(hbox_2)
+
+        return vbox_main
+
+    def _event_info_table(self):
+
+        # First Column
+        vbox_1 = gtk.VBox()
+
+        # Create title
         title = gtk.Label('Event Information:')
         title.set_justify(gtk.JUSTIFY_LEFT)
-        table.attach(title, 0,4,0,1)
-        table.attach(tag_pair,   0,2,1,2)
-        table.attach(idx_pair,   2,4,1,2)
-        table.attach(zpeak_pair, 0,2,2,3)
-        table.attach(csize_pair, 2,4,2,3)
+        frame = gtk.Frame(); frame.add(title)
+        # Add to first column
+        vbox_1.pack_start(frame)
 
-        return table
+        # Dataset Name
+        gtk_label = gtk.Label('Dataset')
+        gtk_value = gtk.Label('None')
+        gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
+        hbox = gtk.HBox(); hbox.add(gtk_label); hbox.add(gtk_box)
+        frame = gtk.Frame(); frame.add(hbox)
+        # Add to first column
+        vbox_1.pack_start(frame)
+        # Store label to allow editing
+        self.labels['dtag'] = gtk_value
 
-    def new_progress_table(self):
+        # Event Number for Dataset
+        gtk_label = gtk.Label('Event')
+        gtk_value = gtk.Label('1')
+        gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
+        hbox = gtk.HBox(); hbox.add(gtk_label); hbox.add(gtk_box)
+        frame = gtk.Frame(); frame.add(hbox)
+        # Add to first column
+        vbox_1.pack_start(frame)
+        # Store label to allow editing
+        self.labels['e_idx'] = gtk_value
 
-        self.labels['rank_val'], rank_val_pair = self.generic_label_value_pair( label='Event', value=0 )
-        self.labels['rank_tot'], rank_tot_pair = self.generic_label_value_pair( label='Total',    value=0 )
-        self.labels['site_val'], site_val_pair = self.generic_label_value_pair( label='Site',  value=0 )
-        self.labels['site_tot'], site_tot_pair = self.generic_label_value_pair( label='Total',    value=0 )
+        # Z-Peak for Dataset
+        gtk_label = gtk.Label('Z-Peak')
+        gtk_value = gtk.Label('0')
+        gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
+        hbox = gtk.HBox(); hbox.add(gtk_label); hbox.add(gtk_box)
+        frame = gtk.Frame(); frame.add(hbox)
+        # Add to first column
+        vbox_1.pack_start(frame)
+        # Store label to allow editing
+        self.labels['zpeak'] = gtk_value
 
-        table = gtk.Table(rows=2, columns=8)
+        # Z-Peak for Dataset
+        gtk_label = gtk.Label('Z-Size')
+        gtk_value = gtk.Label('1')
+        gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
+        hbox = gtk.HBox(); hbox.add(gtk_label); hbox.add(gtk_box)
+        frame = gtk.Frame(); frame.add(hbox)
+        # Add to first column
+        vbox_1.pack_start(frame)
+        # Store label to allow editing
+        self.labels['csize'] = gtk_value
+
+        return vbox_1
+
+    def _progress_table(self):
+
+        # Main HBox
+        hbox_main = gtk.HBox(spacing=5)
+
+        # First Column
+        vbox_1 = gtk.VBox()
+        # Second Column
+        vbox_2 = gtk.VBox()
+
+        # Create title
         title = gtk.Label('Inspection Event/Site Progress:')
         title.set_justify(gtk.JUSTIFY_LEFT)
-        table.attach(title, 0,4,0,2)
-        table.attach(rank_val_pair, 4,6,0,1)
-        table.attach(rank_tot_pair, 6,8,0,1)
-        table.attach(site_val_pair, 4,6,1,2)
-        table.attach(site_tot_pair, 6,8,1,2)
+        frame = gtk.Frame(); frame.add(title)
+        # Add to first column
+        vbox_1.pack_start(frame)
 
-        return table
+        # Event Number Name
+        gtk_label_1 = gtk.Label('Event')
+        gtk_value_1 = gtk.Label(0)
+        gtk_label_2 = gtk.Label('of')
+        gtk_value_2 = gtk.Label(0)
+        # Add values to boxes
+        gtk_box_1 = gtk.EventBox(); gtk_box_1.add(gtk_value_1)
+        gtk_box_2 = gtk.EventBox(); gtk_box_2.add(gtk_value_2)
+        hbox = gtk.HBox(); hbox.add(gtk_label_1); hbox.add(gtk_box_1); hbox.add(gtk_label_2); hbox.add(gtk_box_2)
+        frame = gtk.Frame(); frame.add(hbox)
+        # Add to second column
+        vbox_2.pack_start(frame)
+        # Store label to allow editing
+        self.labels['rank_val'] = gtk_value_1
+        self.labels['rank_tot'] = gtk_value_2
+
+        # Event Number Name
+        gtk_label_1 = gtk.Label('Site')
+        gtk_value_1 = gtk.Label(0)
+        gtk_label_2 = gtk.Label('of')
+        gtk_value_2 = gtk.Label(0)
+        # Add values to boxes
+        gtk_box_1 = gtk.EventBox(); gtk_box_1.add(gtk_value_1)
+        gtk_box_2 = gtk.EventBox(); gtk_box_2.add(gtk_value_2)
+        hbox = gtk.HBox(); hbox.add(gtk_label_1); hbox.add(gtk_box_1); hbox.add(gtk_label_2); hbox.add(gtk_box_2)
+        frame = gtk.Frame(); frame.add(hbox)
+        # Add to second column
+        vbox_2.pack_start(frame)
+        # Store label to allow editing
+        self.labels['site_val'] = gtk_value_1
+        self.labels['site_tot'] = gtk_value_2
+
+        # Add to main box
+        hbox_main.pack_start(vbox_1)
+        hbox_main.pack_start(vbox_2)
+
+        return hbox_main
 
 #############################################################################################
 

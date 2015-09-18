@@ -14,16 +14,15 @@ import numpy, pandas
 
 import iotbx.pdb
 import iotbx.mtz
-import mmtbx.f_model as model_handler
+import iotbx.ccp4_map
+import iotbx.crystal_symmetry_from_any
 #import iotbx.map_tools as map_tools
 
 from libtbx import easy_mp, easy_pickle
 from libtbx import phil
 
 import cctbx.miller
-
-from cctbx import maptbx
-from cctbx import crystal
+import cctbx.maptbx
 
 import scitbx.sparse
 import scitbx.matrix
@@ -436,13 +435,13 @@ class MapHolderList(HolderList):
 def map_handler(map_data, unit_cell):
     """Map handler for easy sampling of map"""
 
-    basic_map = maptbx.basic_map(   maptbx.basic_map_unit_cell_flag(),
-                                    map_data,
-                                    map_data.focus(),
-                                    unit_cell.orthogonalization_matrix(),
-                                    maptbx.out_of_bounds_clamp(0).as_handle(),
-                                    unit_cell
-                                )
+    basic_map = cctbx.maptbx.basic_map( cctbx.maptbx.basic_map_unit_cell_flag(),
+                                        map_data,
+                                        map_data.focus(),
+                                        unit_cell.orthogonalization_matrix(),
+                                        cctbx.maptbx.out_of_bounds_clamp(0).as_handle(),
+                                        unit_cell
+                                    )
 
     return basic_map
 
@@ -1735,17 +1734,14 @@ class PanddaMultiDatasetAnalyser(object):
 
         # Write protein masked map
         mask_map_file = self.output_handler.get_file('reference_dataset').replace('.mtz','.totalmask.ccp4')
-        self.write_array_to_map(output_file = mask_map_file,
-                                map_data = flex.double(self.reference_grid().global_mask().total_mask_binary()),
-                                grid_size = self.reference_grid().grid_size(),
-                                grid_spacing = self.reference_grid().grid_spacing())
-
+        map_mask = flex.double(self.reference_grid().global_mask().total_mask_binary())
+        map_mask.reshape(flex.grid(self.reference_grid().grid_size()))
+        self.write_array_to_map(output_file=mask_map_file, map_data=map_mask)
         # Write symmetry masked map
         mask_map_file = self.output_handler.get_file('reference_dataset').replace('.mtz','.symmask.ccp4')
-        self.write_array_to_map(output_file = mask_map_file,
-                                map_data = flex.double(self.reference_grid().symmetry_mask().total_mask_binary()),
-                                grid_size = self.reference_grid().grid_size(),
-                                grid_spacing = self.reference_grid().grid_spacing())
+        map_mask = flex.double(self.reference_grid().symmetry_mask().total_mask_binary())
+        map_mask.reshape(flex.grid(self.reference_grid().grid_size()))
+        self.write_array_to_map(output_file=mask_map_file, map_data=map_mask)
 
     def generate_reference_symmetry_copies(self):
         """Generate the symmetry copies of the reference structure in the reference frame"""
@@ -1997,6 +1993,7 @@ class PanddaMultiDatasetAnalyser(object):
             d_handler.output_handler.add_file(file_name='{!s}-aligned.pdb'.format(d_handler.tag), file_tag='aligned_structure')
             # Sampled map for the aligned structure
             d_handler.output_handler.add_file(file_name='{!s}-observed.ccp4'.format(d_handler.tag), file_tag='sampled_map')
+            d_handler.output_handler.add_file(file_name='{!s}-observed-native.ccp4'.format(d_handler.tag), file_tag='native_map')
             # Difference from the mean map for the aligned structure
             d_handler.output_handler.add_file(file_name='{!s}-mean_diff.ccp4'.format(d_handler.tag), file_tag='mean_diff_map')
             # Z-map for the structure
@@ -2704,7 +2701,7 @@ class PanddaMultiDatasetAnalyser(object):
         # Take the scaled diffraction data for the dataset and create fft
         fft_map = ref_handler.tr_scaled_sfs.fft_map( resolution_factor = self.params.maps.resolution_factor,
                                                      d_min = map_resolution,
-                                                     symmetry_flags = maptbx.use_space_group_symmetry )
+                                                     symmetry_flags = cctbx.maptbx.use_space_group_symmetry )
 
         # Scale the map
         if self.params.maps.scaling == 'none':     pass
@@ -2770,7 +2767,7 @@ class PanddaMultiDatasetAnalyser(object):
             # Take the scaled diffraction data for each dataset and create fft
             fft_map = d_handler.tr_scaled_sfs.fft_map(  resolution_factor = params.maps.resolution_factor,
                                                         d_min             = map_resolution,
-                                                        symmetry_flags    = maptbx.use_space_group_symmetry  )
+                                                        symmetry_flags    = cctbx.maptbx.use_space_group_symmetry  )
 
             # Scale the map
             if   params.maps.scaling == 'none':   pass
@@ -3785,6 +3782,9 @@ class PanddaMultiDatasetAnalyser(object):
         else:
             return
 
+        def filter_nans(x):
+            return [v for v in x if not numpy.isnan(v)]
+
         ########################################################
 
         self.log('===================================>>>')
@@ -3841,7 +3841,7 @@ class PanddaMultiDatasetAnalyser(object):
         # RMSDs
         fig = pyplot.figure()
         pyplot.title('RMSDS TO MEAN STRUCTURE HISTOGRAM')
-        pyplot.hist(x=d_info['rmsd_to_mean'], bins=n_bins)
+        pyplot.hist(x=filter_nans(d_info['rmsd_to_mean']), bins=n_bins)
         pyplot.xlabel('RMSD (A)')
         pyplot.ylabel('COUNT')
         # Apply tight layout to prevent overlaps
@@ -4051,12 +4051,30 @@ class PanddaMultiDatasetAnalyser(object):
                 out_line = '\n'.join(map(str,out_list)) + '\n'
                 fh.write(out_line)
 
-    def write_array_to_map(self, output_file, map_data, grid_size=None, grid_spacing=None):
+    def write_array_to_map_old(self, output_file, map_data, grid_size=None, grid_spacing=None):
         """Takes a 1d array and writes it to a map"""
         if not grid_size:    grid_size    = self.reference_grid().grid_size()
         if not grid_spacing: grid_spacing = self.reference_grid().grid_spacing()
-        self.log('> Writing Map: {!s}'.format(output_file))
+        self.log('> Writing Map (OLD METHOD): {!s}'.format(output_file))
         write_1d_array_as_p1_map(file_name=output_file, map_data=map_data, grid_size=grid_size, grid_spacing=grid_spacing)
+
+    def rotate_map(self, d_handler, map_data):
+        """Apply an RT matrix to an array on the reference grid"""
+
+        return cctbx.maptbx.rotate_translate_map(   unit_cell          = self.reference_grid().unit_cell(),
+                                                    map_data           = map_data,
+                                                    rotation_matrix    = d_handler.global_alignment_transform().rt().r.elems,
+                                                    translation_vector = d_handler.global_alignment_transform().rt().t.elems    )
+
+    def write_array_to_map(self, output_file, map_data):
+        """Take array on the reference grid and write to map"""
+
+        self.log('> Writing Map (>>> NEW METHOD <<<): {!s}'.format(output_file))
+        iotbx.ccp4_map.write_ccp4_map(  file_name   = output_file,
+                                        unit_cell   = self.reference_grid().unit_cell(),
+                                        space_group = self.reference_grid().space_group(),
+                                        map_data    = map_data,
+                                        labels      = flex.std_string(['Map from PANDDAs'])     )
 
     def pickle(self, pickle_file, pickle_object, overwrite=True):
         """Takes an object and pickles it"""

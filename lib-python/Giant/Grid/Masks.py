@@ -17,7 +17,7 @@ class atomic_mask(object):
         if min_dist: assert max_dist > min_dist, 'Minimum Mask Distance must be smaller than Maximum Mask Distance'
         print('===================================>>>')
 
-        # TODO Check that all of the points lie withing the fake unit cell
+        # TODO Check that all of the points lie within the fake unit cell
         # i.e. cart_sites + max_dist < unit_cell.parameters()
 
         # Store distances from masking atoms

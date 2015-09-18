@@ -10,9 +10,15 @@ from scitbx.array_family import flex
 class PointCluster(object):
     def __init__(self, id, points, values):
         """Class to hold information about an identified cluster of points, with associated values"""
+
+        # Check that both are lists for the moment
+        points = list(points)
+        values = list(values)
         assert len(points) == len(values)
+
         self.parent = None
         self.id = id
+        # Store as flex arrays
         self.points = flex.vec3_double(points)
         self.values = flex.double(values)
 
@@ -20,10 +26,9 @@ class PointCluster(object):
         self.min = stats.min
         self.max = stats.max
         self.mean = stats.mean
-
         self.size = len(self.values)
 
-        self.peak = self.points[self.values.index(max(self.values))]
+        self.peak = self.points[values.index(max(values))]
         self.centroid = self.points.mean()
 
     def summary(self):
