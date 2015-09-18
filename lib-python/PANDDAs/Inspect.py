@@ -24,6 +24,8 @@ class PanddaEvent(object):
         self.rank = rank
         # Site Number (1 -> m)
         self.site_idx  = int(info['site_idx'])
+        # Event Info
+        self.est_occ = round(info['est_occupancy'], 3)
         # Z statistics
         self.z_peak = info['z_peak']
         self.z_mean = info['z_mean']
@@ -206,6 +208,7 @@ class PanddaInspector(object):
         # Update current event information
         self.gui.labels['dtag'].set_label(str(self.current_event.dtag))
         self.gui.labels['e_idx'].set_label(str(self.current_event.event_idx))
+        self.gui.labels['e_occ'].set_label(str(self.current_event.est_occ))
         self.gui.labels['zpeak'].set_label(str(round(self.current_event.z_peak,3)))
         self.gui.labels['csize'].set_label(str(self.current_event.cluster_size))
         # Reset the comment box
@@ -570,7 +573,7 @@ class PanddaGUI(GenericGUI):
         gtk_label = gtk.Label('Dataset')
         gtk_value = gtk.Label('None')
         gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
-        hbox = gtk.HBox(); hbox.add(gtk_label); hbox.add(gtk_box)
+        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box)
         frame = gtk.Frame(); frame.add(hbox)
         # Add to first column
         vbox_1.pack_start(frame)
@@ -581,18 +584,29 @@ class PanddaGUI(GenericGUI):
         gtk_label = gtk.Label('Event')
         gtk_value = gtk.Label('1')
         gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
-        hbox = gtk.HBox(); hbox.add(gtk_label); hbox.add(gtk_box)
+        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box)
         frame = gtk.Frame(); frame.add(hbox)
         # Add to first column
         vbox_1.pack_start(frame)
         # Store label to allow editing
         self.labels['e_idx'] = gtk_value
 
+        # Estimated Event Occupancy
+        gtk_label = gtk.Label('Est. Occupancy')
+        gtk_value = gtk.Label('1.0')
+        gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
+        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box)
+        frame = gtk.Frame(); frame.add(hbox)
+        # Add to first column
+        vbox_1.pack_start(frame)
+        # Store label to allow editing
+        self.labels['e_occ'] = gtk_value
+
         # Z-Peak for Dataset
         gtk_label = gtk.Label('Z-Peak')
         gtk_value = gtk.Label('0')
         gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
-        hbox = gtk.HBox(); hbox.add(gtk_label); hbox.add(gtk_box)
+        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box)
         frame = gtk.Frame(); frame.add(hbox)
         # Add to first column
         vbox_1.pack_start(frame)
@@ -603,7 +617,7 @@ class PanddaGUI(GenericGUI):
         gtk_label = gtk.Label('Z-Size')
         gtk_value = gtk.Label('1')
         gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
-        hbox = gtk.HBox(); hbox.add(gtk_label); hbox.add(gtk_box)
+        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box)
         frame = gtk.Frame(); frame.add(hbox)
         # Add to first column
         vbox_1.pack_start(frame)
@@ -623,7 +637,7 @@ class PanddaGUI(GenericGUI):
         vbox_2 = gtk.VBox()
 
         # Create title
-        title = gtk.Label('Inspection Event/Site Progress:')
+        title = gtk.Label('Overall Inspection Event/Site Progress:')
         title.set_justify(gtk.JUSTIFY_LEFT)
         frame = gtk.Frame(); frame.add(title)
         # Add to first column
@@ -637,7 +651,7 @@ class PanddaGUI(GenericGUI):
         # Add values to boxes
         gtk_box_1 = gtk.EventBox(); gtk_box_1.add(gtk_value_1)
         gtk_box_2 = gtk.EventBox(); gtk_box_2.add(gtk_value_2)
-        hbox = gtk.HBox(); hbox.add(gtk_label_1); hbox.add(gtk_box_1); hbox.add(gtk_label_2); hbox.add(gtk_box_2)
+        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label_1); hbox.add(gtk_box_1); hbox.add(gtk_label_2); hbox.add(gtk_box_2)
         frame = gtk.Frame(); frame.add(hbox)
         # Add to second column
         vbox_2.pack_start(frame)
@@ -653,7 +667,7 @@ class PanddaGUI(GenericGUI):
         # Add values to boxes
         gtk_box_1 = gtk.EventBox(); gtk_box_1.add(gtk_value_1)
         gtk_box_2 = gtk.EventBox(); gtk_box_2.add(gtk_value_2)
-        hbox = gtk.HBox(); hbox.add(gtk_label_1); hbox.add(gtk_box_1); hbox.add(gtk_label_2); hbox.add(gtk_box_2)
+        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label_1); hbox.add(gtk_box_1); hbox.add(gtk_label_2); hbox.add(gtk_box_2)
         frame = gtk.Frame(); frame.add(hbox)
         # Add to second column
         vbox_2.pack_start(frame)
