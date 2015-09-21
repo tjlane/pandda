@@ -17,4 +17,8 @@ class crystalSummary(object):
         crystal = refl_data.crystals()[0]
         self.unit_cell = crystal.unit_cell()
 
+        # Column information
+        self.column_labels = refl_data.column_labels()
 
+    def reflection_data(self):
+        return iotbx.mtz.object(mtz_file)

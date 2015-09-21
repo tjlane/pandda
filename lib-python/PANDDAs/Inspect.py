@@ -226,6 +226,7 @@ class PanddaInspector(object):
         self.current_event = self.coot.load_event(e=new_event)
         # Update the gui
         self.update_gui()
+        self.print_current_log_values()
 
     def load_prev_event(self, skip_unmodelled=False):
         # Get the next event from the site list
@@ -237,6 +238,7 @@ class PanddaInspector(object):
         self.current_event = self.coot.load_event(e=new_event)
         # Update the gui
         self.update_gui()
+        self.print_current_log_values()
 
     def refresh_event(self):
         # Get new event instance
@@ -245,6 +247,7 @@ class PanddaInspector(object):
         self.current_event = self.coot.load_event(e=new_event)
         # Update the gui
         self.update_gui()
+        self.print_current_log_values()
 
     #-------------------------------------------------------------------------
 
@@ -254,13 +257,17 @@ class PanddaInspector(object):
 
     #-------------------------------------------------------------------------
 
+    def print_current_log_values(self):
+        print '====================>>>'
+        print 'Current Event:'
+        print self.log_table.loc[self.current_event.index]
+        print '====================>>>'
+
     def set_log_value(self, col, value):
         self.log_table.set_value(index=self.current_event.index, col=col, value=value)
         print '====================>>>'
         print 'LOG TABLE UPDATED:'
-        print '====================>>>'
-        print self.log_table.loc[self.current_event.index]
-        print '====================>>>'
+        self.print_current_log_values()
         self.write_output_csv()
 
     def get_log_value(self, col):
@@ -444,7 +451,7 @@ class PanddaGUI(GenericGUI):
 
         # Navigation buttons
         self.buttons['next'].connect("clicked", lambda x: [self.store(), self.parent.save_current(), self.parent.load_next_event()])
-        self.buttons['prev'].connect("clicked", lambda x: [self.store(), self.parent.save_current(), self.parent.load_prev_event()])
+        self.buttons['prev'].connect("clicked", lambda x: [self.store(), self.parent.load_prev_event()])
         self.buttons['skip'].connect("clicked", lambda x: [self.store(), self.parent.load_next_event()])
 
         # Structure Buttons
@@ -468,7 +475,7 @@ class PanddaGUI(GenericGUI):
     def _navi_buttons(self):
         box = gtk.HBox(homogeneous=True, spacing=5)
         # ---
-        b = gtk.Button(label="<<< Prev <<<")
+        b = gtk.Button(label="<<< Prev (Skip) <<<")
         self.buttons['prev'] = b
         box.add(b)
         # ---

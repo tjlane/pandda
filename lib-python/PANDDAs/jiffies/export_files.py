@@ -13,6 +13,10 @@ export {
     export_defaults = True
         .type = bool
 
+    required_file_for_export = 'modelled_structures/fitted-current.pdb'
+        .help = 'only export folder if this file exists (set to None to turn off)'
+        .type = path
+
     datasets_to_export = *interesting_datasets processed_datasets
         .type = choice
 }
@@ -34,7 +38,7 @@ output {
         .type = str
 }
 
-verbose = False
+verbose = True
     .type = bool
 """)
 
@@ -53,6 +57,7 @@ def run(params):
         params.export.files_to_export.append('*-input.mtz')
         params.export.files_to_export.append('ligand_files/*.cif')
         params.export.files_to_export.append('ligand_files/*.pdb')
+        params.export.files_to_export.append('*.native.ccp4')
 
     ############################################################################
 
@@ -62,6 +67,11 @@ def run(params):
 
         dir_tag = os.path.basename(proc_dir)
         print 'Processing Dataset: {!s}'.format(dir_tag)
+
+        # Check to see if this folder should be skipped (export fitted folders only)
+        if params.export.required_file_for_export and (not os.path.exists(os.path.join(proc_dir, params.export.required_file_for_export))):
+            print 'NO FITTED MODEL - SKIPPING: {}'.format(proc_dir)
+            continue
 
         export_dir = os.path.join(params.output.out_dir, params.output.dir_prefix+dir_tag)
         print 'Exporting files from {!s} to {!s}'.format(proc_dir, export_dir)

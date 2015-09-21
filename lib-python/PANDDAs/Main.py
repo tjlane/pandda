@@ -665,6 +665,7 @@ class MapList(object):
 
 class PanddaStatMapList(MapList):
     _map_names =    [   'mean_map',
+                        'medn_map',
                         'stds_map',
                         'sadj_map',
                         'skew_map',
@@ -740,9 +741,11 @@ class PanddaMapAnalyser(object):
 
         # Calculate Mean Maps
         mean_map_vals = numpy.zeros(self.meta.grid_size_1d)
+        medn_map_vals = numpy.zeros(self.meta.grid_size_1d)
         # Calculate the mean map across the datasets
         for i_chunk, chunk_idxs in enumerate(chunked_indices):
             status_bar(n=i_chunk, n_max=num_chunks)
+            # Pull out the values for this chunk
             p_map_vals = numpy.array([mh.map.select(chunk_idxs) for mh in self.dataset_maps.mask(mask_name=mask_name)])
             # Check that the output values are the expected dimensions
             if i_chunk+1 < num_chunks:
@@ -751,14 +754,21 @@ class PanddaMapAnalyser(object):
             # Calculate the mean of this chunk
             p_map_means = numpy.mean(p_map_vals, axis=0)
             mean_map_vals.put(chunk_idxs, p_map_means)
+            # Calculate the median of this chunk
+            p_map_medns = numpy.median(p_map_vals, axis=0)
+            medn_map_vals.put(chunk_idxs, p_map_medns)
+
         status_bar(n=num_chunks, n_max=num_chunks)
 
         t2 = time.time()
         self.log('> MEAN MAP CALCULATION > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
+        # Save and reshape the array to be the shape of the map
         self.statistical_maps.mean_map = flex.double(mean_map_vals.tolist())
-        # Reshape the array to be the shape of the map
         self.statistical_maps.mean_map.reshape(flex.grid(self.meta.grid_size))
+        # Save and reshape the array to be the shape of the map
+        self.statistical_maps.medn_map = flex.double(medn_map_vals.tolist())
+        self.statistical_maps.medn_map.reshape(flex.grid(self.meta.grid_size))
 
         return self.statistical_maps.mean_map
 
@@ -2005,6 +2015,7 @@ class PanddaMultiDatasetAnalyser(object):
             d_handler.output_handler.add_file(file_name='{!s}-high_z_mask.ccp4'.format(d_handler.tag), file_tag='high_z_mask')
             # Output template for the occupancy subtracted maps (with {!s} string remaining for occupancy)
             d_handler.output_handler.add_file(file_name='{!s}-event_{!s}_occupancy_{!s}_map.ccp4'.format(d_handler.tag, '{!s}', '{!s}'), file_tag='occupancy_map')
+            d_handler.output_handler.add_file(file_name='{!s}-event_{!s}_occupancy_{!s}_map.native.ccp4'.format(d_handler.tag, '{!s}', '{!s}'), file_tag='occupancy_map_native')
 
             # Fitted structures when modelled with pandda.inspect
             d_handler.output_handler.add_dir(dir_name='modelled_structures', dir_tag='models', top_dir_tag='root')
@@ -3594,8 +3605,7 @@ class PanddaMultiDatasetAnalyser(object):
         # Statistical Map Values
         masked_idxs = self.reference_grid().global_mask().outer_mask_indices()
         mean_map_vals = list(map_analyser.statistical_maps.mean_map.select(masked_idxs))
-        # TODO ADD MEDIAN MAP COMPARISON TODO
-#        medi_map_vals = list(map_analyser.statistical_maps.mean_map.select(masked_idxs))
+        medn_map_vals = list(map_analyser.statistical_maps.medn_map.select(masked_idxs))
         stds_map_vals = list(map_analyser.statistical_maps.stds_map.select(masked_idxs))
         sadj_map_vals = list(map_analyser.statistical_maps.sadj_map.select(masked_idxs))
 
@@ -3631,20 +3641,49 @@ class PanddaMultiDatasetAnalyser(object):
 
         self.log('=> Writing Statistical Map Distributions')
 
-        # STATISTICAL MAP VALUES
+        ##################################
+        # STATISTICAL MAP HISTOGRAMS
+        ##################################
         fig = pyplot.figure()
         pyplot.title('STATISTICAL MAP VALUES')
         # MEAN MAP
+        pyplot.subplot(2, 1, 1)
         pyplot.hist(x=mean_map_vals, bins=n_bins)
         pyplot.xlabel('MEAN MAP DISTRIBUTION')
         pyplot.ylabel('COUNT')
+        # MEDIAN MAP
+        pyplot.subplot(2, 1, 2)
+        pyplot.hist(x=medn_map_vals, bins=n_bins)
+        pyplot.xlabel('MEDIAN MAP DISTRIBUTION')
+        pyplot.ylabel('COUNT')
+        # Apply tight layout to prevent overlaps
+        pyplot.tight_layout()
+        # Save both
+        pyplot.savefig(os.path.join(img_out_dir, '{!s}A-mean_medn_map_vals.png'.format(map_res)))
+        pyplot.close(fig)
+
+        ##################################
+        # MEAN Values v MEDIAN Values
+        ##################################
+        fig = pyplot.figure()
+        pyplot.title('MEAN v MEDIAN MAP')
+        pyplot.scatter(x=mean_map_vals, y=medn_map_vals)
+        # Plot straight line between the min and max values
+        min_val = min(mean_map_vals+medn_map_vals)
+        max_val = max(mean_map_vals+medn_map_vals)
+        pyplot.plot([min_val, max_val], [min_val, max_val], 'b--')
+        # Axis labels
+        pyplot.xlabel('MEAN MAP')
+        pyplot.ylabel('MEDIAN MAP')
         # Apply tight layout to prevent overlaps
         pyplot.tight_layout()
         # Save
-        pyplot.savefig(os.path.join(img_out_dir, '{!s}A-mean_map_vals.png'.format(map_res)))
+        pyplot.savefig(os.path.join(img_out_dir, '{!s}A-mean_v_median_scatter.png'.format(map_res)))
         pyplot.close(fig)
 
-        # STATISTICAL MAP VALUES
+        ##################################
+        # STATISTICAL MAP HISTOGRAMS
+        ##################################
         fig = pyplot.figure()
         pyplot.title('STATISTICAL MAP VALUES')
         # STANDARD DEVIATION MAPS
@@ -3652,7 +3691,7 @@ class PanddaMultiDatasetAnalyser(object):
         pyplot.hist(x=stds_map_vals, bins=n_bins)
         pyplot.xlabel('STDS MAP DISTRIBUTION')
         pyplot.ylabel('COUNT')
-        # STANDARD DEVIATION MAPS
+        # ADJUSTED STANDARD DEVIATION MAPS
         pyplot.subplot(2, 1, 2)
         pyplot.hist(x=sadj_map_vals, bins=n_bins)
         pyplot.xlabel('ADJUSTED STDS MAP DISTRIBUTION')
@@ -3660,10 +3699,12 @@ class PanddaMultiDatasetAnalyser(object):
         # Apply tight layout to prevent overlaps
         pyplot.tight_layout()
         # Save both
-        pyplot.savefig(os.path.join(img_out_dir, '{!s}A-stds_map_vals.png'.format(map_res)))
+        pyplot.savefig(os.path.join(img_out_dir, '{!s}A-stds_sadj_map_vals.png'.format(map_res)))
         pyplot.close(fig)
 
+        ##################################
         # STD Values v ADJ STD Values
+        ##################################
         fig = pyplot.figure()
         pyplot.title('RAW v ADJUSTED STDS')
         pyplot.scatter(x=stds_map_vals, y=sadj_map_vals)
@@ -4060,6 +4101,10 @@ class PanddaMultiDatasetAnalyser(object):
 
     def rotate_map(self, d_handler, map_data):
         """Apply an RT matrix to an array on the reference grid"""
+
+        # For the local alignment transformation
+        #point_mappings = self.find_nearest_calpha(points)
+        #lab_rt_points = self.local_alignment_transforms()[r_lab].rt().inverse() * flex.vec3_double(lab_points)
 
         return cctbx.maptbx.rotate_translate_map(   unit_cell          = self.reference_grid().unit_cell(),
                                                     map_data           = map_data,

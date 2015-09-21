@@ -948,7 +948,9 @@ def pandda_main(args):
                     event_occ_map = event_occ_map / event_occ_est
                     # Write out this array
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('occupancy_map').format(event_idx, event_occ_est), 
-                                                map_data    = event_occ_map )
+                                                map_data    = event_occ_map )    
+                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('occupancy_map_native').format(event_idx, event_occ_est),
+                                                map_data    = pandda.rotate_map(d_handler=d_handler, map_data=event_occ_map))
                     # ============================================================================>
                     # Create an event object
                     # ============================================================================>
@@ -1129,7 +1131,8 @@ def pandda_main(args):
             # Extract all events from datasets
             all_events=[]; [all_events.extend(d.events) for d in pandda.datasets.all()]
             # Cluster events to sites 
-            site_list = cluster_events(all_events)
+#            site_list = cluster_events(all_events)
+            site_list = cluster_events(events=all_events, cutoff=10, linkage='average')
             # Sort sites by largest Z-Value
             site_list.sort(key=lambda s: (s.num_events, max([e.cluster.max for e in s.children])), reverse=True).renumber()
             # Add the site information to the site table (at the moment overwriting old information -- TODO)

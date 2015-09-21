@@ -43,22 +43,22 @@ def run(params):
     temp_prefix = 'temp-'
     temp_files_to_delete = []
 
-    # When exporting the model fitted into the pandda maps
-    merged_template = '{!s}-pandda-model.pdb'
+    # Default files paths
+    aligned_template = '{!s}-aligned.pdb'
     fitted_template = 'modelled_structures/fitted-current.pdb'
+    merged_template = '{!s}-pandda-model.pdb'
+
     # Merge, Transform and Export fitted Structures?
     if params.process_and_export.merge_and_export_fitted_structures:
         # Merged structure (minor + major conformations)
         params.process_and_export.pdbs_to_transform_and_export.append(merged_template)
 
-    # When exporting the aligned structure by default
-    aligned_template = '{!s}-aligned.pdb'
     # Transform and Export default files?
     if params.process_and_export.transform_and_export_defaults:
-        # Fitted structure (minor conformation)
-        params.process_and_export.pdbs_to_transform_and_export.append(fitted_template)
         # Un-merged structure (major conformation/reference)
         params.process_and_export.pdbs_to_transform_and_export.append(aligned_template)
+        # Fitted structure (minor conformation)
+        params.process_and_export.pdbs_to_transform_and_export.append(fitted_template)
 
     # Add files to be transformed to those to be exported
     [params.export.files_to_export.append(prepend_prefix_to_basename(temp_prefix, f).format('*')) for f in params.process_and_export.pdbs_to_transform_and_export]
@@ -74,6 +74,13 @@ def run(params):
         dir_tag = os.path.basename(e_dir)
         print '==========================================+>'
         print 'Processing Directory:', dir_tag
+
+        ############################################################################
+
+        # Check to see if this folder should be skipped (export fitted folders only)
+        if params.export.required_file_for_export and (not os.path.exists(os.path.join(e_dir, params.export.required_file_for_export))):
+            print 'NO FITTED MODEL - SKIPPING: {}'.format(e_dir)
+            continue
 
         ############################################################################
 
