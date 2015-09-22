@@ -945,7 +945,7 @@ def pandda_main(args):
                         query_map    = m_handler.map,
                         subtract_occ = 1.0 - event_occ_est)
                     # Normalise the event map
-                    event_occ_map = event_occ_map / event_occ_est
+                    #event_occ_map = event_occ_map / event_occ_est
                     # Write out this array
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('occupancy_map').format(event_idx, event_occ_est), 
                                                 map_data    = event_occ_map )    

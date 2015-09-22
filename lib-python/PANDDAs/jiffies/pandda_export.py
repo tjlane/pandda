@@ -5,7 +5,7 @@ import libtbx.phil
 import numpy
 
 from PANDDAs.jiffies import transform_coordinates, export_files
-from Giant.jiffies import merge_conformations
+from Giant.jiffies import merge_conformations, giant_occupancy_params
 
 ############################################################################
 
@@ -25,6 +25,9 @@ process_and_export {
     maps_to_transform_and_export = None
         .type = path
         .multiple = True
+
+    generate_occupancy_groupings = True
+        .type = bool
 }
 
 include scope PANDDAs.jiffies.export_files.master_phil
@@ -47,11 +50,8 @@ def run(params):
     aligned_template = '{!s}-aligned.pdb'
     fitted_template = 'modelled_structures/fitted-current.pdb'
     merged_template = '{!s}-pandda-model.pdb'
-
-    # Merge, Transform and Export fitted Structures?
-    if params.process_and_export.merge_and_export_fitted_structures:
-        # Merged structure (minor + major conformations)
-        params.process_and_export.pdbs_to_transform_and_export.append(merged_template)
+    refmac_refinement = 'refmac_refine.params'
+    phenix_refinement = 'phenix_refine.params'
 
     # Transform and Export default files?
     if params.process_and_export.transform_and_export_defaults:
@@ -60,8 +60,19 @@ def run(params):
         # Fitted structure (minor conformation)
         params.process_and_export.pdbs_to_transform_and_export.append(fitted_template)
 
+    # Merge, Transform and Export fitted Structures?
+    if params.process_and_export.merge_and_export_fitted_structures:
+        # Merged structure (minor + major conformations)
+        params.process_and_export.pdbs_to_transform_and_export.append(merged_template)
+
     # Add files to be transformed to those to be exported
     [params.export.files_to_export.append(prepend_prefix_to_basename(temp_prefix, f).format('*')) for f in params.process_and_export.pdbs_to_transform_and_export]
+
+    # Generate occupancy groupings?
+    if params.process_and_export.generate_occupancy_groupings:
+        # Refinement parameter files
+        params.export.files_to_export.append(refmac_refinement)
+        params.export.files_to_export.append(phenix_refinement)
 
     ############################################################################
 
@@ -136,6 +147,26 @@ def run(params):
                 temp_files_to_delete.append(transform_params.file.output)
             else:
                 print 'NOT MAPPING - INPUT DOES NOT EXIST:', transform_params.file.input
+
+        ############################################################################
+
+        # GENERATING OCCUPANCY PARAMETER FILES
+
+        # Extract parameters for the occupancy parameter generation and set them
+        occupancy_params = giant_occupancy_params.master_phil.extract()
+        occupancy_params.pdb = merging_params.output
+        occupancy_params.phenix_occ_out = os.path.join(e_dir, refmac_refinement)
+        occupancy_params.refmac_occ_out = os.path.join(e_dir, phenix_refinement)
+        occupancy_params.verbose = params.verbose
+        if params.verbose: print '=========================+>'
+        if params.verbose: print 'GENERATING OCCUPANCY REFINEMENT PARAMETERS: {}'.format(occupancy_params.pdb)
+        if params.verbose: print 'OUTPUTTING REFMAC SETTINGS TO: {}'.format(occupancy_params.refmac_occ_out)
+        if params.verbose: print 'OUTPUTTING PHENIX SETTINGS TO: {}'.format(occupancy_params.phenix_occ_out)
+        try:
+            giant_occupancy_params.run(occupancy_params)
+        except e:
+            print 'OCCUPANCY PARAMETER GENERATION FAILED: {} - {}'.format(e, e.message)
+            raise
 
     # Export the pandda folder
     export_files.run(params)

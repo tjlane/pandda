@@ -360,13 +360,6 @@ class PanddaMolHandler(object):
         r = read_pdb(e.reference_symmetry)
         set_mol_displayed(r, 0)
 
-        # Ligand Files
-        if (len(e.lig_pdbs) == 1) and (len(e.lig_cifs) == 1):
-            l_dict = read_cif_dictionary(e.lig_cifs[0])
-            l = handle_read_draw_molecule_and_move_molecule_here(e.lig_pdbs[0])
-            if os.path.exists(e.fitted_link): set_mol_displayed(l, 0)
-            else:                             set_mol_displayed(l, 1)
-
         # More Settings
         set_scrollable_map(o)
         set_imol_refinement_map(o)
@@ -378,7 +371,14 @@ class PanddaMolHandler(object):
         self.open_mols['d'] = d
         self.open_mols['o'] = o
         self.open_mols['r'] = r
-        self.open_mols['l'] = l
+
+        # Ligand Files
+        if (len(e.lig_pdbs) == 1) and (len(e.lig_cifs) == 1):
+            l_dict = read_cif_dictionary(e.lig_cifs[0])
+            l = handle_read_draw_molecule_and_move_molecule_here(e.lig_pdbs[0])
+            if os.path.exists(e.fitted_link): set_mol_displayed(l, 0)
+            else:                             set_mol_displayed(l, 1)
+            self.open_mols['l'] = l
 
         return e
 
