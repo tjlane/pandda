@@ -3,7 +3,41 @@ import numpy
 import iotbx.pdb
 from scitbx.array_family import flex
 
-def normalise_occupancies(hierarchy, in_place=False):
+def normalise_occupancies(hierarchy, exclude_conformers=[], max_occ=1.0, min_occ=0.0, in_place=False):
+    """Normalise the occupancies of a hierarchy so that the occupancies for a residue sum to 1.0"""
+
+    # Edit original copy or create new one?
+    if (not in_place): hierarchy = hierarchy.deep_copy()
+    # Iterate through the output structure, and normalise the occupancies if necessary
+    for rg in hierarchy.residue_groups():
+        # No conformers - don't normalise
+        if not rg.have_conformers(): continue
+
+        # Get the groups to change and the groups to keep constant
+        ag_chnge = [ag for ag in rg.atom_groups() if ag.altloc and (ag.altloc not in exclude_conformers)]
+        if not ag_chnge: continue
+        ag_const = [ag for ag in rg.atom_groups() if ag.altloc and (ag.altloc in exclude_conformers)]
+        # Calculate the total occupancy of the groups
+        occ_chnge = sum([max(ag.atoms().extract_occ()) for ag in ag_chnge])
+        occ_const = sum([max(ag.atoms().extract_occ()) for ag in ag_const])
+
+        if (occ_const+occ_chnge < min_occ):
+            # Occupancy too low - normalise to minimum value
+            new_occ_chnge = min_occ - occ_const
+        elif (occ_const+occ_chnge > max_occ):
+            # Occupancy too high - normalise to maximum value
+            new_occ_chnge = max_occ - occ_const
+        else:
+            # Not selected for normalising
+            continue
+
+        # Normalise residue occupancies
+        assert new_occ_chnge > 0.0, 'Occupancy of INVARIABLE AGs is more than 1.0: {}'.format(occ_const)
+        [ag.atoms().set_occ(ag.atoms().extract_occ()*new_occ_chnge/occ_chnge) for ag in ag_chnge]
+
+    return hierarchy
+
+def old_normalise_occupancies(hierarchy, in_place=False):
     """Normalise the occupancies of a hierarchy so that the occupancies for a residue sum to 1.0"""
 
     # Edit original copy or create new one?
@@ -14,10 +48,20 @@ def normalise_occupancies(hierarchy, in_place=False):
         occ_total = sum([max(ag.atoms().extract_occ()) for ag in rg.atom_groups()])
         # If occupancy is greater than 1, normalise by this total
         if occ_total > 1.0:
-            print 'NORMALISING RESIDUE: {}'.format(rg.resid())
             [ag.atoms().set_occ(ag.atoms().extract_occ()/occ_total) for ag in rg.atom_groups()]
-            assert sum([max(ag.atoms().extract_occ()) for ag in rg.atom_groups()]) <= 1.0, [max(ag.atoms().extract_occ()) for ag in rg.atom_groups()]
+            assert sum([max(ag.atoms().extract_occ()) for ag in rg.atom_groups()]) <= 1.1, [max(ag.atoms().extract_occ()) for ag in rg.atom_groups()]
+    return hierarchy
 
+def set_conformer_occupancy(hierarchy, conf_id, conf_occ, in_place=False):
+    """Normalise the occupancies of a hierarchy so that the occupancies for a residue sum to 1.0"""
+
+    # Edit original copy or create new one?
+    if (not in_place): hierarchy = hierarchy.deep_copy()
+    # Iterate through the output structure, and set the occupancies where selected
+    for rg in hierarchy.residue_groups():
+        # Calculate the total occupancy for this residue group
+        for ag in rg.atom_groups():
+            if ag.altloc == conf_id: ag.atoms().set_occ(flex.double([conf_occ]*len(ag.atoms())))
     return hierarchy
 
 def find_unused_chain_ids(hierarchies):
@@ -54,11 +98,11 @@ def resolve_residue_id_clashes(ref_hierarchy, mov_hierarchy, in_place=False):
         # PRESENT IN BOTH
         rg_ref = rg_ref[0]
         # Check to see if the residue is the same type as in the reference structure
-        if list(rg_ref.unique_resnames()) == list(rg_mov.unique_resnames()):
+        if map(str.strip, rg_ref.unique_resnames()) == map(str.strip,rg_mov.unique_resnames()):
             # Same residue -- that's fine
             continue
         else:
-            print 'DIFFERENCE RESIDUES WITH SAME ID - CHANGING CHAINS: {} != {}'.format(list(rg_ref.unique_resnames()), list(rg_mov.unique_resnames()))
+            print 'DIFFERENT RESIDUES WITH SAME ID - CHANGING CHAINS: {} != {}'.format(list(rg_ref.unique_resnames()), list(rg_mov.unique_resnames()))
             residues_to_update.append(rg_mov)
 
     # Go through and transfer the residue groups to new chains
@@ -92,8 +136,7 @@ def merge_hierarchies(ref_hierarchy, mov_hierarchy):
     new_mov = mov_hierarchy.deep_copy()
 
     ######################################################################
-    print '===========================================>>>'
-    print 'FINDING NEW CONFORMER IDS'
+    # FINDING NEW CONFORMER IDS
     ######################################################################
 
     # Find the next unused atlloc index to be used for the
@@ -104,8 +147,7 @@ def merge_hierarchies(ref_hierarchy, mov_hierarchy):
     new_conformer_for_mov = all_conformer_ids[new_conformer_for_mov_idx]
 
     ######################################################################
-    print '===========================================>>>'
-    print 'IDENTIFYING WHICH RESIDUES ARE DIFFERENT BETWEEN MOVING AND REFERENCE STRUCTURES'
+    # IDENTIFYING WHICH RESIDUES ARE DIFFERENT BETWEEN MOVING AND REFERENCE STRUCTURES
     ######################################################################
 
     # Iterate through the mov conformation and find which residues do NOT need merging (have not changed)
@@ -129,7 +171,7 @@ def merge_hierarchies(ref_hierarchy, mov_hierarchy):
             # Check to see if the residue has moved
             rg_mov = rg_mov[0]
             # Check that the residue name is the same
-            assert list(rg_ref.unique_resnames()) == list(rg_mov.unique_resnames()), 'Cannot Merge - Different Residues!: {} != {}'.format(list(rg_ref.unique_resnames()), list(rg_mov.unique_resnames()))
+            assert map(str.strip, rg_ref.unique_resnames()) == map(str.strip,rg_mov.unique_resnames()), 'Cannot Merge - Different Residues!: {} != {}'.format(list(rg_ref.unique_resnames()), list(rg_mov.unique_resnames()))
             # Extract atoms and check to see if the same
             rg_ref_ats = rg_ref.atoms()
             rg_mov_ats = rg_mov.atoms()
@@ -156,8 +198,7 @@ def merge_hierarchies(ref_hierarchy, mov_hierarchy):
     print '{!s} RESIDUES UNIQUE TO REFERENCE CONFORMATION'.format(len(ref_only))
 
     ######################################################################
-    print '===========================================>>>'
-    print 'UPDATING CONFORMER LABELS FOR REFERENCE CONFORMERS'
+    # UPDATING CONFORMER LABELS FOR REFERENCE CONFORMERS
     ######################################################################
 
     # Record the number of conformers introduced into the ref structure
@@ -176,17 +217,16 @@ def merge_hierarchies(ref_hierarchy, mov_hierarchy):
             conf_introduced += 1
         # Conformers already present - don't need to do anything for the ref conformation
         else:
-            print 'CONFORMERS PRESENT (NOT CHANGING): {!s}'.format((chainid, resid))
-            for ag in rg_ref.atom_groups():
-                print ag.altloc if ag.altloc else '-', '->', ag.altloc if ag.altloc else '-'
+#            print 'CONFORMERS PRESENT (NOT CHANGING): {!s}'.format((chainid, resid))
+#            for ag in rg_ref.atom_groups():
+#                print ag.altloc if ag.altloc else '-', '->', ag.altloc if ag.altloc else '-'
             pass
 
     print '=====================>>>'
     print '{!s} CONFORMER IDS UPDATED IN REFERENCE STRUCTURE'.format(conf_introduced)
 
     ######################################################################
-    print '===========================================>>>'
-    print 'UPDATING CONFORMER LABELS FOR MOVING CONFORMERS'
+    # UPDATING CONFORMER LABELS FOR MOVING CONFORMERS
     ######################################################################
 
     # If no conformer, change to default
@@ -208,7 +248,7 @@ def merge_hierarchies(ref_hierarchy, mov_hierarchy):
             conf_introduced += 1
         # Conformers already present - increment the conformer id by 1
         else:
-            print 'CONFORMERS PRESENT: {!s}'.format((chainid, resid))
+#            print 'CONFORMERS PRESENT: {!s}'.format((chainid, resid))
             for ag_min in rg_mov.atom_groups():
                 conf_id = ag_min.altloc
                 # No conformer yet - set to defaults for mov
@@ -218,7 +258,7 @@ def merge_hierarchies(ref_hierarchy, mov_hierarchy):
                     new_conf_idx = new_conformer_for_mov_idx + all_conformer_ids.index(conf_id) + 1
                     new_conf_id  = all_conformer_ids[new_conf_idx]
                 # Update the conformation
-                print conf_id if conf_id else '-', '->', new_conf_id
+#                print conf_id if conf_id else '-', '->', new_conf_id
                 ag_min.altloc = new_conf_id
             conf_incremented += 1
 
@@ -227,8 +267,7 @@ def merge_hierarchies(ref_hierarchy, mov_hierarchy):
     print '{!s} CONFORMER IDS UPDATED IN MOVING STRUCTURE'.format(conf_incremented)
 
     ######################################################################
-    print '===========================================>>>'
-    print 'TRANSFERRING RESIDUES FROM MOVING CONFORMATION'
+    # TRANSFERRING RESIDUES FROM MOVING CONFORMATION
     ######################################################################
 
     # Create another copy of the ref conformation

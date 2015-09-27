@@ -37,6 +37,8 @@ clash_dist = 2
     .type = float
     .help = 'The distance at which we consider the ligand to clash with a nearby (solvent) atom. Clashing atoms will be placed into another refinement group'
 
+overwrite = True
+    .type = bool
 verbose = True
     .type = bool
 
@@ -72,10 +74,12 @@ def run(params):
 
     assert params.phenix_occ_out or params.refmac_occ_out, 'Must specify refmac or phenix output file'
 
-    if params.phenix_occ_out:
-        assert not os.path.exists(params.phenix_occ_out)
-    if params.refmac_occ_out:
-        assert not os.path.exists(params.refmac_occ_out)
+    if params.phenix_occ_out and os.path.exists(params.phenix_occ_out):
+        if params.overwrite: os.remove(params.phenix_occ_out)
+        else: raise Exception('File already exists: {}'.format(params.phenix_occ_out))
+    if params.refmac_occ_out and os.path.exists(params.refmac_occ_out):
+        if params.overwrite: os.remove(params.refmac_occ_out)
+        else: raise Exception('File already exists: {}'.format(params.refmac_occ_out))
 
     ######################################################################
     # READ IN INPUT FILES

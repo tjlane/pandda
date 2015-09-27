@@ -29,6 +29,8 @@ output = None
     .help = 'output pdb file'
     .type = str
 
+overwrite = False
+    .type = bool
 verbose = False
     .type = bool
 """)
@@ -38,17 +40,20 @@ verbose = False
 def run(params):
 
     ######################################################################
-    print '===========================================>>>'
-    print 'VALIDATING GIVEN PARAMETERS'
+    if params.verbose: print '===========================================>>>'
+    if params.verbose: print 'VALIDATING GIVEN PARAMETERS'
     ######################################################################
 
     assert params.major
     assert params.minor
     if not params.output: params.output='./output.pdb'
+    if os.path.exists(params.output):
+        if params.overwrite: os.remove(params.output)
+        else: raise Exception('File already exists: {}'.format(params.output))
 
     ######################################################################
-    print '===========================================>>>'
-    print 'READING INPUT FILES'
+    if params.verbose: print '===========================================>>>'
+    if params.verbose: print 'READING INPUT FILES'
     ######################################################################
 
     # Read in the ligand file and set each residue to the requested conformer
@@ -56,8 +61,8 @@ def run(params):
     min_obj = iotbx.pdb.hierarchy.input(params.minor)
 
     ######################################################################
-    print '===========================================>>>'
-    print 'VALIDATING INPUT MODELS'
+    if params.verbose: print '===========================================>>>'
+    if params.verbose: print 'VALIDATING INPUT MODELS'
     ######################################################################
 
     # Check that ... something
@@ -69,30 +74,30 @@ def run(params):
     new_minor = min_obj.hierarchy.deep_copy()
 
     ######################################################################
-    print '===========================================>>>'
-    print 'RESOLVING RESIDUE ID CLASHES (BY ADDING MINOR RESIDUES TO NEW CHAINS)'
-    print '===========================================>>>'
+    if params.verbose: print '===========================================>>>'
+    if params.verbose: print 'RESOLVING RESIDUE ID CLASHES (BY ADDING MINOR RESIDUES TO NEW CHAINS)'
+    if params.verbose: print '===========================================>>>'
     ######################################################################
 
     new_minor = resolve_residue_id_clashes(ref_hierarchy=new_major, mov_hierarchy=new_minor)
 
     ######################################################################
-    print '===========================================>>>'
-    print 'MERGE THE STRUCTURES'
+    if params.verbose: print '===========================================>>>'
+    if params.verbose: print 'MERGE THE STRUCTURES'
     ######################################################################
 
     final_struct = merge_hierarchies(ref_hierarchy=new_major, mov_hierarchy=new_minor)
 
     ######################################################################
-    print '===========================================>>>'
-    print 'NORMALISING OUTPUT STRUCTURE'
+    if params.verbose: print '===========================================>>>'
+    if params.verbose: print 'NORMALISING OUTPUT STRUCTURE'
     ######################################################################
 
     final_struct = normalise_occupancies(hierarchy=final_struct)
 
     ######################################################################
-    print '===========================================>>>'
-    print 'WRITING OUTPUT STRUCTURE'
+    if params.verbose: print '===========================================>>>'
+    if params.verbose: print 'WRITING OUTPUT STRUCTURE'
     ######################################################################
 
     # Update the atoms numbering

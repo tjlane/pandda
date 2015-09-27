@@ -61,7 +61,7 @@ class PanddaEvent(object):
         if not os.path.exists(self.model_dir): os.mkdir(self.model_dir)
 
         # The most recent model of the protein in the pandda maps
-        self.fitted_link = os.path.join(self.model_dir, 'fitted-current.pdb')
+        self.fitted_link = os.path.join(self.model_dir, 'pandda-model.pdb')
         # Unfitted model of the protein
         self.unfitted_model = os.path.join(self.dataset_dir, '{!s}-aligned.pdb'.format(dtag))
         # Maps
@@ -176,7 +176,7 @@ class PanddaInspector(object):
 
     """Main Object in pandda.inspect"""
 
-    def __init__(self, csv, top_dir):
+    def __init__(self, csv, top_dir, skip_unmodelled=False, skip_viewed=False):
 
         # List of events from pandda.analyse
         self.site_list = PanddaSiteTracker(csv=csv, top_dir=top_dir)
@@ -193,6 +193,9 @@ class PanddaInspector(object):
 
         # Object to hold the currently loaded event
         self.current_event = None
+
+        self.skip_unmodelled = skip_unmodelled
+        self.skip_viewed = skip_viewed
 
     def start_gui(self):
         self.gui = PanddaGUI(parent=self)
@@ -216,24 +219,40 @@ class PanddaInspector(object):
 
     #-------------------------------------------------------------------------
 
-    def load_next_event(self, skip_unmodelled=False):
+    def load_next_event(self, skip_unmodelled=None, skip_viewed=None):
+        # Set to defaults if not given explicitly
+        if skip_unmodelled == None: skip_unmodelled = self.skip_unmodelled
+        if skip_viewed == None:     skip_viewed = self.skip_viewed
         # Get the next event from the site list
         new_event = self.site_list.get_next()
         # Loop until we get a modelled one (if requested)
         if skip_unmodelled and (not os.path.exists(new_event.fitted_link)):
-            self.load_next_event(); return
+            print 'SKIPPING UNMODELLED: {} - {}'.format(new_event.dtag, new_event.event_idx)
+            self.load_next_event(skip_unmodelled=skip_unmodelled, skip_viewed=skip_viewed); return
+        # Loop until we get an unviewed one (if requested)
+        if skip_viewed and (self.log_table.get_value(index=new_event.index, col='Viewed') == True):
+            print 'SKIPPING VIEWED: {} - {}'.format(new_event.dtag, new_event.event_idx)
+            self.load_next_event(skip_unmodelled=skip_unmodelled, skip_viewed=skip_viewed); return
         # Load and Save the event
         self.current_event = self.coot.load_event(e=new_event)
         # Update the gui
         self.update_gui()
         self.print_current_log_values()
 
-    def load_prev_event(self, skip_unmodelled=False):
-        # Get the next event from the site list
+    def load_prev_event(self, skip_unmodelled=None, skip_viewed=None):
+        # Set to defaults if not given explicitly
+        if skip_unmodelled == None: skip_unmodelled = self.skip_unmodelled
+        if skip_viewed == None:     skip_viewed = self.skip_viewed
+        # Get the prev event from the site list
         new_event = self.site_list.get_prev()
         # Loop until we get a modelled one (if requested)
         if skip_unmodelled and (not os.path.exists(new_event.fitted_link)):
-            self.load_prev_event(); return
+            print 'SKIPPING UNMODELLED: {} - {}'.format(new_event.dtag, new_event.event_idx)
+            self.load_prev_event(skip_unmodelled=skip_unmodelled, skip_viewed=skip_viewed); return
+        # Loop until we get an unviewed one (if requested)
+        if skip_viewed and (self.log_table.get_value(index=new_event.index, col='Viewed') == True):
+            print 'SKIPPING VIEWED: {} - {}'.format(new_event.dtag, new_event.event_idx)
+            self.load_prev_event(skip_unmodelled=skip_unmodelled, skip_viewed=skip_viewed); return
         # Load and Save the event
         self.current_event = self.coot.load_event(e=new_event)
         # Update the gui
@@ -288,6 +307,7 @@ class PanddaInspector(object):
             self.log_table['Ligand Placed'] = 'None'
             self.log_table['Ligand Confidence'] = 'None'
             self.log_table['Comment'] = 'None'
+            self.log_table['Viewed'] = False
 
         # Set the index
         self.log_table = self.log_table.set_index(['dtag','event_idx'])
@@ -471,6 +491,7 @@ class PanddaGUI(GenericGUI):
     def store(self):
         """Record information from the gui to the pandas table in the main object"""
         self.parent.set_log_value(col='Comment', value=self.objects['comment text'].get_text())
+        self.parent.set_log_value(col='Viewed', value=True)
 
     def _navi_buttons(self):
         box = gtk.HBox(homogeneous=True, spacing=5)
@@ -713,6 +734,10 @@ hit_list = os.path.join(work_dir, 'analyses', 'event_info.csv')
 
 inspector = PanddaInspector(csv=hit_list, top_dir=work_dir)
 inspector.start_gui()
+
+if '--go-to-unviewed' in sys.argv:
+    inspector.skip_viewed = True
+if '--go-to-models' in sys.argv:
+    inspector.skip_unmodelled = True
+
 inspector.refresh_event()
-
-

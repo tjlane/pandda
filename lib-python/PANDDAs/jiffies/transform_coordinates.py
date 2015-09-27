@@ -19,7 +19,10 @@ file
 }
 dataset_pickle = ./pickles/dataset.pickle
     .type = path
+overwrite = False
+    .type = bool
 verbose = False
+    .type = bool
 """)
 
 def run(params):
@@ -41,7 +44,9 @@ def run(params):
         params.file.output = os.path.splitext(os.path.basename(params.file.input))[0] + '.{!s}.pdb'
         if params.direction == 'toref':   params.file.output = params.file.output.format('ref')
         else:                           params.file.output = params.file.output.format('native')
-    assert not os.path.exists(params.file.output), 'FILE ALREADY EXISTS: {!s}'.format(params.file.output)
+    if os.path.exists(params.file.output):
+        if params.overwrite: os.remove(params.file.output)
+        else: raise Exception('FILE ALREADY EXISTS: {!s}'.format(params.file.output))
 
     if params.verbose: print 'TRANSFORMING: {!s}'.format(params.file.input)
     if params.verbose: print 'USING DATASET FROM: {!s}'.format(params.dataset_pickle)

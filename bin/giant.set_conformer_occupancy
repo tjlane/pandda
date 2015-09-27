@@ -3,7 +3,7 @@
 import os, sys
 
 from Giant.jiffies import parse_phil_args
-from Giant.jiffies.occupancy_params import master_phil, run
+from Giant.jiffies.set_conformer_occupancies import master_phil, run
 
 if __name__ == '__main__':
 

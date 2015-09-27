@@ -1139,8 +1139,6 @@ class PanddaMultiDatasetAnalyser(object):
                                                             columns = self._all_site_fields         )
 
         # TODO --- XXX --- TODO --- XXX --- TODO --- XXX --- TODO
-        # Structure summary Object - TODO DELETE TODO
-        self.ensemble_summary = None
         # Map and Dataset statistics - TODO DELETE TODO
         self.map_observations = data_collection()
         # TODO --- XXX --- TODO --- XXX --- TODO --- XXX --- TODO
@@ -1203,6 +1201,9 @@ class PanddaMultiDatasetAnalyser(object):
 
     def run_pandda_init(self):
         """Set up the pandda"""
+
+        # Update Status
+        self.update_status('running')
 
         # Print logo to log
         self.log(PANDDA_TEXT.format(self._version), True)
@@ -1332,13 +1333,12 @@ class PanddaMultiDatasetAnalyser(object):
 #        self.output_handler.add_dir(dir_name='ANALYSIS-{!s}'.format(run_label), dir_tag='run_directory', top_dir_tag='root')
 
         # Input parameters
-        self.output_handler.add_file(file_name='pandda.eff', file_tag='pandda_settings', dir_tag='root')
+        self.output_handler.add_file(file_name='pandda.eff',     file_tag='pandda_settings', dir_tag='root')
+        self.output_handler.add_file(file_name='pandda.running', file_tag='pandda_status_running', dir_tag='root')
+        self.output_handler.add_file(file_name='pandda.done',    file_tag='pandda_status_done', dir_tag='root')
 
         # Somewhere to store the analyses/summaries - for me to plot graphs
         self.output_handler.add_dir(dir_name='analyses', dir_tag='analyses', top_dir_tag='root')
-        self.output_handler.add_file(file_name='map_summaries.csv', file_tag='map_summaries', dir_tag='analyses')
-#        self.output_handler.add_file(file_name='statistical_map_summaries.csv', file_tag='stats_map_summaries', dir_tag='analyses')
-#        self.output_handler.add_file(file_name='dataset_summaries.csv', file_tag='dataset_summaries', dir_tag='analyses')
         # Somewhere to store the dataset information (general values)
         self.output_handler.add_file(file_name='dataset_info.csv', file_tag='dataset_info',  dir_tag='analyses')
         self.output_handler.add_file(file_name='dataset_map_info.csv', file_tag='dataset_map_info',  dir_tag='analyses')
@@ -1346,8 +1346,6 @@ class PanddaMultiDatasetAnalyser(object):
         # Somewhere to store the dataset information (identified events + sites)
         self.output_handler.add_file(file_name='event_info.csv', file_tag='event_info',  dir_tag='analyses')
         self.output_handler.add_file(file_name='site_info.csv', file_tag='site_info',  dir_tag='analyses')
-        self.output_handler.add_file(file_name='identified_events.csv', file_tag='identified_events', dir_tag='analyses')
-        self.output_handler.add_file(file_name='identified_sites.csv', file_tag='identified_sites', dir_tag='analyses')
         self.output_handler.add_file(file_name='point_distributions.csv', file_tag='point_distributions', dir_tag='analyses')
         # Somewhere to store the analysis summaries - for the user
         self.output_handler.add_dir(dir_name='results_summaries', dir_tag='output_summaries', top_dir_tag='root')
@@ -1373,6 +1371,7 @@ class PanddaMultiDatasetAnalyser(object):
         # Statistical Maps
         self.output_handler.add_dir(dir_name='statistical_maps', dir_tag='statistical_maps', top_dir_tag='root')
         self.output_handler.add_file(file_name='{!s}A-mean_map.ccp4', file_tag='mean_map', dir_tag='statistical_maps')
+        self.output_handler.add_file(file_name='{!s}A-medn_map.ccp4', file_tag='medn_map', dir_tag='statistical_maps')
         self.output_handler.add_file(file_name='{!s}A-stds_map.ccp4', file_tag='stds_map', dir_tag='statistical_maps')
         self.output_handler.add_file(file_name='{!s}A-sadj_map.ccp4', file_tag='sadj_map', dir_tag='statistical_maps')
         self.output_handler.add_file(file_name='{!s}A-skew_map.ccp4', file_tag='skew_map', dir_tag='statistical_maps')
@@ -1511,6 +1510,20 @@ class PanddaMultiDatasetAnalyser(object):
             else:
                 self.log('No Statistical Maps to Pickle')
 
+    def update_status(self, status):
+        """Set log files to indicate the status of the program"""
+
+        assert status in ['running','done']
+        running_file = self.output_handler.get_file('pandda_status_running')
+        done_file =    self.output_handler.get_file('pandda_status_done')
+
+        if status == 'running':
+            if os.path.exists(done_file):        os.remove(done_file)
+            if not os.path.exists(running_file): os.mknod(running_file)
+        elif status == 'done':
+            if os.path.exists(running_file):  os.remove(running_file)
+            if not os.path.exists(done_file): os.mknod(done_file)
+
     def exit(self, error=False):
         """Exit the PANDDA, record runtime etc..."""
         self.log('===================================>>>', True)
@@ -1568,21 +1581,20 @@ class PanddaMultiDatasetAnalyser(object):
     def print_log(self):
         self._log.show(self._log.read_all())
 
-    def get_pandda_size(self):
-        """Returns the history of the memory consumption of the PANDDA"""
-        return self._pandda_size
     def update_pandda_size(self, tag):
         pandda_size = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1000
         assert pandda_size < self.args.settings.max_memory*1024**3, 'PANDDA HAS EXCEEDED THE MAXIMUM AMOUNT OF ALLOWED MEMORY'
         self._pandda_size.append((tag, pandda_size))
-        from humanize import naturalsize
-        self.log(tag+': '+naturalsize(pandda_size, binary=True))
+        try:
+            from humanize import naturalsize
+            self.log(tag+': '+naturalsize(pandda_size, binary=True))
+        except:
+            pass
 
     def is_new_pandda(self):
         """Is this the first time the program has been run?"""
         return self._new_pandda
 
-# XXX MAYBE KEEP THESE
     def set_high_resolution(self, res):
         self._high_resolution = res
     def get_high_resolution(self):
@@ -1592,7 +1604,6 @@ class PanddaMultiDatasetAnalyser(object):
         self._low_resolution = res
     def get_low_resolution(self):
         return self._low_resolution
-# XXX MAYBE KEEP THESE
 
     def set_reference_dataset(self, dataset):
         """Set a reference dataset created externally"""
@@ -1693,12 +1704,6 @@ class PanddaMultiDatasetAnalyser(object):
         if not os.path.exists(self.output_handler.get_file('reference_on_origin')):
             ref_hierarchy.write_pdb_file(self.output_handler.get_file('reference_on_origin'))
 
-        self.log('===================================>>>', True)
-        self.log('Initialising Ensemble Summary', True)
-
-        # Initialise the structural ensemble object
-        self.ensemble_summary = identical_structure_ensemble(ref_hierarchy=self.reference_dataset().new_structure().hierarchy)
-
         return self.reference_dataset()
 
     def create_reference_grid(self, grid_spacing, expand_to_origin, buffer=0):
@@ -1772,42 +1777,6 @@ class PanddaMultiDatasetAnalyser(object):
             symmetry_root.write_pdb_file(self.output_handler.get_file('reference_symmetry'))
 
         return symmetry_root
-
-#    def mask_resampled_reference_grid(self):
-#        """Using the local and global masks, mask the resampled grid points"""
-#
-#        self.log('===================================>>>', True)
-#        self.log('Masking Resampled Grid (Global and Local Mask)', True)
-#
-#        # Get the grid points that are not masked, and points in the buffer
-#        grid_indexer = self.reference_grid().grid_indexer()
-#        resampled_points = self.reference_grid().resampled_grid_points()
-#        buffer_mask_binary = self.reference_grid().buffer_mask_binary()
-#        global_mask_binary = self.reference_grid().global_mask().total_mask_binary()
-#
-#        self.log('===================================>>>')
-#        self.log('Resampled Grid Size (3D): {!s}'.format(self.reference_grid().resampled_grid_size()))
-#        self.log('Resampled Grid Size (1D): {!s}'.format(len(resampled_points)))
-#        self.log('===================================>>>')
-#
-#        # Remove points using the protein mask, and the mask around the edge of the grid
-#        masked_resampled_points_1 = resampled_points
-#        self.log('Filtering with Buffer Mask... (Edge of Cell)')
-#        masked_resampled_points_2 = [p for p in masked_resampled_points_1 if buffer_mask_binary[grid_indexer(p)] == 0]
-#        self.log('Filtered Points: {!s}'.format(len(masked_resampled_points_2)))
-#        self.log('Filtering with Global Mask... (Protein)')
-#        masked_resampled_points_3 = [p for p in masked_resampled_points_2 if global_mask_binary[grid_indexer(p)] == 1]
-#        self.log('Filtered Points: {!s}'.format(len(masked_resampled_points_3)))
-#        masked_resampled_points = masked_resampled_points_3
-#
-#        # Store points in the reference grid object
-#        self.reference_grid().set_masked_grid_points(masked_resampled_points)
-#
-#        # Calculate the resampled mask on the original grid
-#        full_binary_mask = numpy.zeros(self.reference_grid().grid_size_1d(), int)
-#        [full_binary_mask.put(grid_indexer(gp), 1) for gp in masked_resampled_points]
-#        # Downsample to the resampled grid
-#        resampled_binary_mask = [full_binary_mask[grid_indexer(gp)] for gp in resampled_points]
 
     def build_input_list(self):
         """Builds a list of input files from the command line arguments passed"""
@@ -2221,8 +2190,8 @@ class PanddaMultiDatasetAnalyser(object):
         for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
             print('\rAligning Structures: Dataset {!s}          '.format(d_handler.tag), end=''); sys.stdout.flush()
 
-#            # Align to reference structure to get mapping transform
-#            d_handler.align_to_reference(ref_handler=self.reference_dataset(), method=method)
+            # Align to reference structure to get mapping transform
+            #d_handler.align_to_reference(ref_handler=self.reference_dataset(), method=method)
 
             global_mx, local_mxs = alignment_transforms[d_handler.tag]
 
@@ -2484,33 +2453,6 @@ class PanddaMultiDatasetAnalyser(object):
                 self.datasets.all_masks().set_mask_value(mask_name=analysis_mask_name, entry_id=d_handler.tag, value=True)
         return self.datasets.all_masks().get_mask(analysis_mask_name)
 
-#    def filter_datasets_3(self, resolution):
-#        """Select datasets based on resolution"""
-#
-#        self.log('===================================>>>', True)
-#        self.log('Selecting datasets based on resolution', True)
-#        self.log('===================================>>>', True)
-#
-#        # Select from the datasets that haven't been rejected
-#        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
-#
-#            print('\rFiltering Dataset {!s}          '.format(d_handler.tag), end=''); sys.stdout.flush()
-#
-#            # Check the resolution of the dataset
-#            if d_handler.reflection_data().max_min_resolution()[1] > resolution:
-#                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
-#                self.log('Does not meet high-resolution cutoff')
-#                self.log('Cut Resolution: {!s}'.format(resolution))
-#                self.log('Map Resolution: {!s}'.format(d_handler.reflection_data().max_min_resolution()[1]))
-#                self.log('===================================>>>')
-#                self.datasets.all_masks().set_mask_value(mask_name='selected for analysis', entry_id=d_handler.tag, value=False)
-#            else:
-#                self.datasets.all_masks().set_mask_value(mask_name='selected for analysis', entry_id=d_handler.tag, value=True)
-#
-#        self.log('\rDatasets Filtered.               ', True)
-#
-#        # TODO LINK THESE INTO THE APPROPRIATE RESOLUTION FOLDER - TO BE CREATED
-
     def calculate_mean_structure_and_protein_masks(self, deviation_cutoff):
         """Calculate the average of all of the structures, and create masks for each protein where residues deviate from the mean by more than `deviation_cutoff`"""
 
@@ -2555,120 +2497,6 @@ class PanddaMultiDatasetAnalyser(object):
         for d in self.datasets.mask(mask_name='rejected - total', invert=True):
             rmsd = d.get_calpha_sites().rms_difference(d.transform_from_reference(points=self.get_calpha_average_sites(), method='global'))
             self.tables.dataset_info.set_value(d.tag, 'rmsd_to_mean', rmsd)
-
-    def analyse_structure_variability_1(self):
-        """Go through all of the datasets and collect lots of different structural characteristics of the datasets for identifying odd datasets"""
-
-        self.log('===================================>>>', True)
-        self.log('Populating Ensemble Summary', True)
-
-        # Extract the hierarchy for each of the datasets
-        hierarchies = [d.hierarchy() for d in self.datasets.mask(mask_name='rejected - total', invert=True)]
-        hierarchy_ids = [d.tag for d in self.datasets.mask(mask_name='rejected - total', invert=True)]
-
-        # Add structures to the ensemble summary (auto-processes them)
-        ensemble_log = self.ensemble_summary.add_structures(new_hierarchies=hierarchies, hierarchy_ids=hierarchy_ids)
-        # This will already have been printed to stdout, so hide it.
-        self.log(ensemble_log, hide=True)
-
-    def analyse_structure_variability_2(self):
-        """Look at all of the rotation matrices for the local alignments and calculate the rms between neighbours"""
-
-        assert self.params.alignment.method in ['global', 'local']
-
-        if self.params.alignment.method == 'global':
-            self.log('GLOBAL ALIGNMENT SELECTED - NOT ANALYSING ROTATION MATRICES')
-            return
-
-        if self.args.output.plot_graphs:
-            import matplotlib
-            matplotlib.interactive(0)
-            from matplotlib import pyplot
-
-        rot_identity = scitbx.matrix.identity(3)
-
-        # Select datasets to analyse
-        used_datasets = self.datasets.mask(mask_name='rejected - total', invert=True)
-
-        # Reference c_alpha labels
-        ref_c_alpha_labels = sorted(used_datasets[0].local_alignment_transforms().keys())
-
-        # Array to hold the output data
-        num_datasets = len(used_datasets)
-        num_pairs =  len(ref_c_alpha_labels)-1
-        output_diffs = numpy.zeros((num_datasets, num_pairs, 2))
-
-        # Iterate through the datasets and pull out the alignment matrices
-        for d_num, d_handler in enumerate(used_datasets):
-
-            alignments = d_handler.local_alignment_transforms()
-            alignment_keys = sorted(alignments.keys())
-
-            assert alignment_keys == ref_c_alpha_labels
-
-            # Iterate through adjacent pairs of matrices
-            for i in range(0, num_pairs):
-
-                # Label and lsq fit for the current calpha
-                calpha_1 = alignment_keys[i]
-                assert calpha_1 == ref_c_alpha_labels[i]
-                rt_1 = alignments[calpha_1].rt()
-                # And for the next calpha
-                calpha_2 = alignment_keys[i+1]
-                assert calpha_2 == ref_c_alpha_labels[i+1]
-                rt_2 = alignments[calpha_2].rt()
-
-                # Calculate the mapping from one frame to the other
-                rt_1_2 = rt_1 * rt_2.inverse()
-                # Calculate the angle of the rotation matrix
-                theta_rad = scitbx.math.math.acos((rt_1_2.r.trace()-1)/2.0)
-                theta_deg = theta_rad * 180.0/scitbx.math.math.pi
-                # Calculate the length of the shift
-                t_shift =  rt_1_2.t.norm_sq()**0.5
-
-                # Append to the array
-                output_diffs[d_num, i, :] = theta_deg, t_shift
-
-        # Directory to write the output to
-        var_out_dir = self.output_handler.get_dir('analyses')
-
-        # Write out graphs
-        if self.args.output.plot_graphs:
-
-            # Create labels
-            labels = ['']*num_pairs
-            for i in range(0, num_pairs, 5)+[num_pairs-1]:
-                labels[i] = i+1
-            # Clear the last n before the last one
-            n = 4
-            labels[-1-n:-1] = ['']*n
-
-            # BOX PLOT OF ROTATION AND TRANSLATION SHIFTS
-            fig = pyplot.figure()
-            pyplot.title('ROTATION-TRANSLATION MATRIX VARIATION')
-            # ADJACENT ANGLE VARIATION
-            pyplot.subplot(2, 1, 1)
-            pyplot.boxplot(x=output_diffs[:,:,0], notch=True, sym='.', widths=0.5, whis=[5,95], whiskerprops={'ls':'-'}, flierprops={'ms':1}, labels=labels) # whis='range'
-            pyplot.xlabel('C-ALPHA')
-            pyplot.ylabel('ANGLE CHANGE')
-            # ADJACENT SHIFT VARIATION
-            pyplot.subplot(2, 1, 2)
-            pyplot.boxplot(x=output_diffs[:,:,1], notch=True, sym='.', widths=0.5, whis=[5,95], whiskerprops={'ls':'-'}, flierprops={'ms':1}, labels=labels) # whis='range'
-            pyplot.xlabel('C-ALPHA')
-            pyplot.ylabel('TRANSLATION CHANGE')
-            # Apply tight layout to prevent overlaps
-            pyplot.tight_layout()
-            # Save both
-            pyplot.savefig(os.path.join(var_out_dir, 'calpha_rt_variation.png'), format='png')
-            pyplot.close(fig)
-
-        # Write out to file
-        numpy.savetxt(  fname = os.path.join(var_out_dir, 'calpha_rt_r_variation.csv'), X=output_diffs[:,:,0],
-                        delimiter=',', newline='\n' )
-        numpy.savetxt(  fname = os.path.join(var_out_dir, 'calpha_rt_t_variation.csv'), X=output_diffs[:,:,1],
-                        delimiter=',', newline='\n' )
-
-        # Do some other stuff...
 
     def truncate_scaled_data(self, dataset_handlers, truncation_stuff=None):
         """Truncate data at the same indices across all the datasets"""
@@ -3605,7 +3433,8 @@ class PanddaMultiDatasetAnalyser(object):
         # Statistical Map Values
         masked_idxs = self.reference_grid().global_mask().outer_mask_indices()
         mean_map_vals = list(map_analyser.statistical_maps.mean_map.select(masked_idxs))
-        medn_map_vals = list(map_analyser.statistical_maps.medn_map.select(masked_idxs))
+        try:    medn_map_vals = list(map_analyser.statistical_maps.medn_map.select(masked_idxs))
+        except: medn_map_vals = mean_map_vals
         stds_map_vals = list(map_analyser.statistical_maps.stds_map.select(masked_idxs))
         sadj_map_vals = list(map_analyser.statistical_maps.sadj_map.select(masked_idxs))
 

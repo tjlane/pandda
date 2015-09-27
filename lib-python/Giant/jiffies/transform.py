@@ -57,6 +57,7 @@ def run(params):
     assert params.input.pdb or params.input.align_pdb, 'A PDB FILE TO BE ALIGNED MUST BE PROVIDED'
     if not params.input.align_pdb:
         params.input.align_pdb = params.input.pdb[0]
+        print 'SELECTING FIRST PDB FOR ALIGNING: {}'.format(params.input.align_pdb)
 
     # Read in the reference structure
     ref_inp = iotbx.pdb.hierarchy.input(params.align.reference)

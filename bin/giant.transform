@@ -3,7 +3,7 @@
 import os, sys
 
 from Giant.jiffies import parse_phil_args
-from Giant.jiffies.giant_transform import master_phil, run
+from Giant.jiffies.transform import master_phil, run
 
 if __name__ == '__main__':
 
