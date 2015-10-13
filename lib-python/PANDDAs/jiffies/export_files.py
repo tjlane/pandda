@@ -83,14 +83,14 @@ def set_defaults(params):
     params.export.files_to_export.append('*-input.mtz')
     params.export.files_to_export.append('ligand_files/*.cif')
     params.export.files_to_export.append('ligand_files/*.pdb')
-    params.export.files_to_export.append('*.native.ccp4')
+    params.export.files_to_export.append('*native.ccp4')
     return
 
 def run(params):
-    # Create output directory
-    if not os.path.exists(params.output.out_dir):   os.mkdir(params.output.out_dir)
     # Check input directory
     assert os.path.exists(params.input.pandda_dir)
+    # Create output directory
+    if not os.path.exists(params.output.out_dir):   os.mkdir(params.output.out_dir)
     # Add defaults
     if params.export.export_defaults: set_defaults(params)
     # Export files

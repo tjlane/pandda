@@ -11,7 +11,7 @@ from libtbx.utils import Sorry, null_out
 from scitbx.array_family import flex
 
 from PANDDAs.jiffies import parse_phil_args
-from Giant.Maths import pairwise_dists
+from Giant.Maths.geometry import pairwise_dists
 from Giant.Stats.Cluster import find_connected_groups
 
 master_phil = libtbx.phil.parse("""
@@ -44,24 +44,49 @@ verbose = True
 
 """)
 
-#out_phil = libtbx.phil.parse("""
-#refinement
-#{
-#    refine
-#    {
-#        occupancies
-#        {
-#            constrained_group
-#                .multiple = True
-#            {
-#                selection = None
-#                    .multiple = True
-#                    .type = str
-#            }
-#        }
-#    }
-#}
-#""")
+def generate_phenix_occupancy_params(occupancy_groups):
+    """Using pairs of sets of atom groups, generate occupancy groups for phenix"""
+
+    occ_params_template = """refinement {{\n  refine {{\n    occupancies {{\n{!s}\n    }}\n  }}\n}}"""
+    constrained_group_template = """      constrained_group {{\n{!s}\n      }}"""
+    selection_template = '        selection = {!s}'
+    res_sel_template = '(chain {!s} and resid {!s} and altid {!s})'
+
+    constrained_groups = []
+    for (g1, g2) in occupancy_groups:
+        if g1:
+            # Selections for the first group
+            g1_sel = [res_sel_template.format(ag.parent().parent().id, ag.parent().resid(), ag.altloc) for ag in g1]
+            g1_str = selection_template.format(' or \\\n                    '.join(g1_sel))
+        if g2:
+            # Selections for the second group
+            g2_sel = [res_sel_template.format(ag.parent().parent().id, ag.parent().resid(), ag.altloc) for ag in g2]
+            g2_str = selection_template.format(' or \\\n                    '.join(g2_sel))
+        if (g1 and g2): constrained_group_str = constrained_group_template.format('\n'.join([g1_str, g2_str]))
+        elif g1:        constrained_group_str = constrained_group_template.format(g1_str)
+        elif g2:        constrained_group_str = constrained_group_template.format(g2_str)
+        constrained_groups.append(constrained_group_str)
+    occ_params = occ_params_template.format('\n'.join(constrained_groups))
+    return occ_params
+
+def generate_refmac_occupancy_params(occupancy_groups):
+    """Using pairs of sets of atom groups, generate occupancy groups for refmac"""
+
+    selection_template = 'occupancy group id {!s} chain {!s} residue {!s} alt {!s}'
+    exclude_template = 'occupancy group alts incomplete {!s} {!s}'
+    final_line = 'occupancy refine'
+
+    out_lines = []
+    for i_g, (g1, g2) in enumerate(occupancy_groups):
+        # Selections for the first group
+        if g1: out_lines.extend([selection_template.format(2*i_g+1, ag.parent().parent().id, ag.parent().resseq, ag.altloc) for ag in g1])
+        if g2: out_lines.extend([selection_template.format(2*i_g+2, ag.parent().parent().id, ag.parent().resseq, ag.altloc) for ag in g2])
+        if (g1 and g2): out_lines.append(exclude_template.format(2*i_g+1, 2*i_g+2))
+        elif g1:        out_lines.append(exclude_template.format(2*i_g+1, ''))
+        elif g2:        out_lines.append(exclude_template.format(2*i_g+2, ''))
+    out_lines.append(final_line)
+    occ_params = '\n'.join(out_lines)
+    return occ_params
 
 def run(params):
 
@@ -72,7 +97,7 @@ def run(params):
     assert params.pdb, 'No PDB File Provided'
     assert params.lig, 'No Ligand Identifier Provided (e.g. LIG or LIG,UNL)'
 
-    assert params.phenix_occ_out or params.refmac_occ_out, 'Must specify refmac or phenix output file'
+    assert params.phenix_occ_out or params.refmac_occ_out, 'Must specify at least one of refmac or phenix output files'
 
     if params.phenix_occ_out and os.path.exists(params.phenix_occ_out):
         if params.overwrite: os.remove(params.phenix_occ_out)
@@ -87,19 +112,6 @@ def run(params):
 
     # Read in the ligand file and set each residue to the requested conformer
     pdb_obj = iotbx.pdb.hierarchy.input(params.pdb)
-
-#    ######################################################################
-#    # CREATE OUTPUT PHIL READY TO BE POPULATED
-#    ######################################################################
-#
-#    # Format the output phil (for Phenix Refine)
-#    out_params = out_phil.extract()
-#    # Extract the constrained_group scope object
-#    constraint_template = out_params.refinement.refine.occupancies.constrained_group[0]
-#    # Clear the constrained_group list
-#    out_params.refinement.refine.occupancies.constrained_group = []
-#    # Clear the selection list
-#    constraint_template.selection = []
 
     ######################################################################
     # Iterate through and create refinement groups
@@ -123,7 +135,7 @@ def run(params):
             print '============================================>'
             print 'Creating Occupancy Group:', lig_ag.id_str()
 
-        # If excluded - skip
+        # If excluded - skip (has probably been used already)
         if not use_resn[i_lig_ag]: continue
 
         ######################################################################
@@ -157,8 +169,9 @@ def run(params):
         # FIND RESIDUES THAT CLASH WITH THE GROUP
         ######################################################################
 
-        # Find nearby residues with a different conformer
-        diff_altloc_ag = [ag for ag in pdb_obj.hierarchy.atom_groups() if (ag.altloc) and (lig_ag.altloc != ag.altloc)]
+        # Find nearby residues with a different conformer (excluding those with more than two conformers as the constraints are too difficult)
+        diff_altloc_ag = [ag for ag in pdb_obj.hierarchy.atom_groups() if (ag.altloc) and (lig_ag.altloc != ag.altloc) and (len(ag.parent().conformers())<=2)]
+        # Remove those that have multiple conformers other than the ligand conformer (i.e. 'A','B','C' where ligand is conformer 'C')
         clash_ag = [ag for ag in diff_altloc_ag if [1 for gr_ag in ligand_group_ag if (pairwise_dists(gr_ag.atoms().extract_xyz(), ag.atoms().extract_xyz()).min() < params.clash_dist)]]
 
         ######################################################################
@@ -171,70 +184,31 @@ def run(params):
     # GENERATE OCCUPANCY RESTRAINTS FOR REFINEMENT
     ######################################################################
 
+    ##########################################
     # REFMAC
-
+    ##########################################
     if params.refmac_occ_out:
-
         if params.verbose:
             print '============================================>'
             print 'CREATING REFMAC OCCUPANCY REFINEMENT PARAMETERS'
-
-        selection_template = 'occupancy group id {!s} chain {!s} residue {!s} alt {!s}'
-        exclude_template = 'occupancy group alts incomplete {!s} {!s}'
-        final_line = 'occupancy refine'
-
-        out_lines = []
-        for i_g, (g1, g2) in enumerate(occupancy_groups):
-
-            # Selections for the first group
-            out_lines.extend([selection_template.format(2*i_g+1, ag.parent().parent().id, ag.parent().resseq, ag.altloc) for ag in g1])
-            out_lines.extend([selection_template.format(2*i_g+2, ag.parent().parent().id, ag.parent().resseq, ag.altloc) for ag in g2])
-            out_lines.append(exclude_template.format(2*i_g+1, 2*i_g+2))
-
-        out_lines.append(final_line)
-
-        # Combine into final template
-        occ_params = '\n'.join(out_lines)
+        occ_params = generate_refmac_occupancy_params(occupancy_groups=occupancy_groups)
         print '============================================>'
         print 'REFMAC Occupancy Refinement Parameter File Output'
         print '============================================>'
         print occ_params
-        # Write
-        with open(params.refmac_occ_out, 'w') as fh:
-            fh.write(occ_params)
+        with open(params.refmac_occ_out, 'w') as fh: fh.write(occ_params)
 
-    # PHENIX
-
+    ##########################################
+    # PHENIX PARAMETERS
+    ##########################################
     if params.phenix_occ_out:
-
         if params.verbose:
             print '============================================>'
             print 'CREATING PHENIX OCCUPANCY REFINEMENT PARAMETERS'
-
-        occ_params_template = """refinement {{\n  refine {{\n    occupancies {{\n{!s}\n    }}\n  }}\n}}"""
-        constrained_group_template = """      constrained_group {{\n{!s}\n      }}"""
-        selection_template = '        selection = {!s}'
-        #res_sel_template = '(chain "{!s}" and resid "{!s}" and altid "{!s}")'
-        res_sel_template = '(chain {!s} and resid {!s} and altid {!s})'
-
-        constrained_groups = []
-        for (g1, g2) in occupancy_groups:
-            # Selections for the first group
-            g1_sel = [res_sel_template.format(ag.parent().parent().id, ag.parent().resid(), ag.altloc) for ag in g1]
-            g1_str = selection_template.format(' or \\\n                    '.join(g1_sel))
-            # Selections for the second group
-            g2_sel = [res_sel_template.format(ag.parent().parent().id, ag.parent().resid(), ag.altloc) for ag in g2]
-            g2_str = selection_template.format(' or \\\n                    '.join(g2_sel))
-            # Create the constrained group strings
-            constrained_group_str = constrained_group_template.format('\n'.join([g1_str, g2_str]))
-            constrained_groups.append(constrained_group_str)
-        # Combine into final template
-        occ_params = occ_params_template.format('\n'.join(constrained_groups))
+        occ_params = generate_phenix_occupancy_params(occupancy_groups=occupancy_groups)
         print '============================================>'
         print 'PHENIX Occupancy Refinement Parameter File Output'
         print '============================================>'
         print occ_params
-        # Write
-        with open(params.phenix_occ_out, 'w') as fh:
-            fh.write(occ_params)
+        with open(params.phenix_occ_out, 'w') as fh: fh.write(occ_params)
 

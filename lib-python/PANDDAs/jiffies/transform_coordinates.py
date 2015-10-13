@@ -65,10 +65,15 @@ def run(params):
         trans_points = d_handler.transform_from_reference(  points=hier.atoms().extract_xyz(),
                                                             method='global')
 
+    # Try to add symmetry to the output file
+    try:    crystal_symmetry = d_handler.mtz_summary.symmetry
+    except: crystal_symmetry = None
+
     # Create new hierarchy and write out
     new_hier = hier.deep_copy()
     new_hier.atoms().set_xyz(trans_points)
-    new_hier.write_pdb_file(params.file.output)
+    new_hier.write_pdb_file(    file_name        = params.file.output,
+                                crystal_symmetry = crystal_symmetry     )
 
     return
 

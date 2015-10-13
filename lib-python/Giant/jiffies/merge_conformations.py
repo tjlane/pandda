@@ -9,6 +9,7 @@ import iotbx.pdb
 from scitbx.array_family import flex
 
 from Giant.Structure.Utils import resolve_residue_id_clashes, normalise_occupancies, merge_hierarchies
+from Giant.Utils.pdb import strip_pdb_to_input
 
 ############################################################################
 
@@ -57,8 +58,8 @@ def run(params):
     ######################################################################
 
     # Read in the ligand file and set each residue to the requested conformer
-    maj_obj = iotbx.pdb.hierarchy.input(params.major)
-    min_obj = iotbx.pdb.hierarchy.input(params.minor)
+    maj_obj = strip_pdb_to_input(params.major, remove_ter=True)
+    min_obj = strip_pdb_to_input(params.minor, remove_ter=True)
 
     ######################################################################
     if params.verbose: print '===========================================>>>'

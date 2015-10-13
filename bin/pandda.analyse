@@ -773,17 +773,29 @@ def pandda_main(args):
                 
                 # ============================================================================>
                 #####
-                # WRITE MAPS (ONLY IF CLUSTERS FOUND)
+                # WRITE MAPS
                 #####
+                # TODO ADD THIS TO A FUNCTION AND CHANGE WHEN IT IS CALLED SO THAT THE 
+                # DEPENDENCE ON NUM_CLUSTERS IS AFTER THE FILTERING (WRITING MAPS TOO EARLY)
                 # ============================================================================>
                 
                 if (num_clusters != 0) or pandda.args.settings.developer.write_maps_for_empty_datasets:
-                    
-                    # Write the NATIVE map
-                    if not os.path.exists(d_handler.output_handler.get_file('native_map')):
-                        pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('native_map'),
+
+                    # ============================================================================>
+                    # NATIVE MAPS (ROTATED)
+                    # ============================================================================>
+                    # Observed map
+                    if not os.path.exists(d_handler.output_handler.get_file('native_obs_map')):
+                        pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('native_obs_map'),
                                                     map_data    = pandda.rotate_map(d_handler=d_handler, map_data=m_handler.map))
-                
+                    # Z-map
+                    if not os.path.exists(d_handler.output_handler.get_file('native_z_map')):
+                        pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('native_z_map'),
+                                                    map_data    = pandda.rotate_map(d_handler=d_handler, map_data=m_handler.map))
+
+                    # ============================================================================>
+                    # REFERENCE FRAME MAPS (NOT ROTATED)
+                    # ============================================================================>
                     # Write the sampled map
                     if not os.path.exists(d_handler.output_handler.get_file('sampled_map')):
                         pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('sampled_map'),
@@ -796,10 +808,11 @@ def pandda_main(args):
                     if not os.path.exists(d_handler.output_handler.get_file('z_map_corrected_normalised')):
                         pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_corrected_normalised'),
                                                     map_data    = z_map_corrected_normalised)
-                    
+
+                    # ============================================================================>
                     # Write different Z-Maps? (Probably only needed for testing)
+                    # ============================================================================>
                     if pandda.args.settings.developer.write_all_z_map_types:
-                
                         # Write Naive Z-Map
                         if not os.path.exists(d_handler.output_handler.get_file('z_map_naive')):
                             pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map_naive'),
@@ -946,7 +959,7 @@ def pandda_main(args):
                     # Write out this array
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('occupancy_map').format(event_idx, event_occ_est), 
                                                 map_data    = event_occ_map )    
-                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('occupancy_map_native').format(event_idx, event_occ_est),
+                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('native_occupancy_map').format(event_idx, event_occ_est),
                                                 map_data    = pandda.rotate_map(d_handler=d_handler, map_data=event_occ_map))
                     # ============================================================================>
                     # Create an event object
@@ -1212,8 +1225,11 @@ def pandda_main(args):
 #    except Exception as err:
 #        return (pandda, err)
     finally:
-        pandda.update_status('done')
-        pandda.exit()
+        try:
+            pandda.update_status('done')
+            pandda.exit()
+        except:
+            print 'PANDDA EXITED WITHOUT CLOSING'
 
     return pandda, None
 

@@ -5,7 +5,7 @@ import libtbx.phil
 import numpy
 
 from PANDDAs.jiffies import transform_coordinates, export_files
-from Giant.jiffies import merge_conformations, giant_occupancy_params
+from Giant.jiffies import merge_conformations, create_occupancy_params
 
 ############################################################################
 
@@ -158,7 +158,7 @@ def process_and_export_folder(dir, params):
     print 'GENERATING OCCUPANCY REFINEMENT PARAMETERS'
 
     # Extract parameters for the occupancy parameter generation and set them
-    occupancy_params = giant_occupancy_params.master_phil.extract()
+    occupancy_params = create_occupancy_params.master_phil.extract()
     occupancy_params.pdb = merging_params.output
     occupancy_params.refmac_occ_out = os.path.join(dir, params.templates.refmac_refinement)
     occupancy_params.phenix_occ_out = os.path.join(dir, params.templates.phenix_refinement)
@@ -169,7 +169,7 @@ def process_and_export_folder(dir, params):
     if params.verbose: print 'OUTPUTTING REFMAC SETTINGS TO: {}'.format(occupancy_params.refmac_occ_out)
     if params.verbose: print 'OUTPUTTING PHENIX SETTINGS TO: {}'.format(occupancy_params.phenix_occ_out)
 
-    try: giant_occupancy_params.run(occupancy_params)
+    try: create_occupancy_params.run(occupancy_params)
     except Exception as e:
         print 'OCCUPANCY PARAMETER GENERATION FAILED: {} - {}'.format(e, e.message)
 

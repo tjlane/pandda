@@ -1972,7 +1972,6 @@ class PanddaMultiDatasetAnalyser(object):
             d_handler.output_handler.add_file(file_name='{!s}-aligned.pdb'.format(d_handler.tag), file_tag='aligned_structure')
             # Sampled map for the aligned structure
             d_handler.output_handler.add_file(file_name='{!s}-observed.ccp4'.format(d_handler.tag), file_tag='sampled_map')
-            d_handler.output_handler.add_file(file_name='{!s}-observed-native.ccp4'.format(d_handler.tag), file_tag='native_map')
             # Difference from the mean map for the aligned structure
             d_handler.output_handler.add_file(file_name='{!s}-mean_diff.ccp4'.format(d_handler.tag), file_tag='mean_diff_map')
             # Z-map for the structure
@@ -1984,7 +1983,11 @@ class PanddaMultiDatasetAnalyser(object):
             d_handler.output_handler.add_file(file_name='{!s}-high_z_mask.ccp4'.format(d_handler.tag), file_tag='high_z_mask')
             # Output template for the occupancy subtracted maps (with {!s} string remaining for occupancy)
             d_handler.output_handler.add_file(file_name='{!s}-event_{!s}_occupancy_{!s}_map.ccp4'.format(d_handler.tag, '{!s}', '{!s}'), file_tag='occupancy_map')
-            d_handler.output_handler.add_file(file_name='{!s}-event_{!s}_occupancy_{!s}_map.native.ccp4'.format(d_handler.tag, '{!s}', '{!s}'), file_tag='occupancy_map_native')
+
+            # Native (back-rotated/transformed) maps
+            d_handler.output_handler.add_file(file_name='{!s}-observed.native.ccp4'.format(d_handler.tag), file_tag='native_obs_map')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map.native.ccp4'.format(d_handler.tag), file_tag='native_z_map')
+            d_handler.output_handler.add_file(file_name='{!s}-event_{!s}_occupancy_{!s}_map.native.ccp4'.format(d_handler.tag, '{!s}', '{!s}'), file_tag='native_occupancy_map')
 
             # Fitted structures when modelled with pandda.inspect
             d_handler.output_handler.add_dir(dir_name='modelled_structures', dir_tag='models', top_dir_tag='root')
