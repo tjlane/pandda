@@ -11,7 +11,8 @@ def compare_dictionaries(dict1, dict2):
     return uniq_summ, comm_summ
 
 class Meta(object):
-    """Object for storing random data"""
+    """Object for storing random data - can be edited and added to as required"""
+    _initialized = False
     def __init__(self, args=None):
         if isinstance(args, dict):
             for k in args:
@@ -21,6 +22,7 @@ class Meta(object):
                 self.__dict__[l] = None
         elif args is not None:
             raise Exception('args must be dict or list')
+        _initialized = True
 
     def summary(self):
         out = []
@@ -29,4 +31,8 @@ class Meta(object):
         return '\n'.join(out)
 
 class Info(Meta):
-    pass
+    """Same as Meta, but cannot change variables after setting _initialized=True"""
+    def __setattr__(self, name, value):
+        if self._initialized and (not hasattr(self, name)):
+            raise AttributeError('Cannot set new attributes after initialisation: {!s}'.format(name))
+        object.__setattr__(self, name, value)

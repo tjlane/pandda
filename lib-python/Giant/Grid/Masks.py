@@ -1,4 +1,4 @@
-import os, sys, glob, time, re
+import os, sys, glob, re
 
 import numpy
 
@@ -15,10 +15,6 @@ class atomic_mask(object):
         """Take a grid and calculate all grid points with a certain distance cutoff of any point in cart_sites"""
 
         if min_dist: assert max_dist > min_dist, 'Minimum Mask Distance must be smaller than Maximum Mask Distance'
-        print('===================================>>>')
-
-        # TODO Check that all of the points lie within the fake unit cell
-        # i.e. cart_sites + max_dist < unit_cell.parameters()
 
         # Store distances from masking atoms
         self._max_dist = max_dist
@@ -31,58 +27,43 @@ class atomic_mask(object):
         # Unit cell
         self._fake_unit_cell = unit_cell
 
-        t1 = time.time()
-
         # Calculate the masked indices defined by max distance from protein atoms
-        self._outer_mask_indices = maptbx.grid_indices_around_sites(unit_cell=unit_cell,
-                                    fft_n_real=grid_size, fft_m_real=grid_size,
-                                    sites_cart=cart_sites, site_radii=flex.double(cart_sites.size(), max_dist))
-        # Calculate a binary list of the selected indices
+        self._outer_mask_indices = maptbx.grid_indices_around_sites(unit_cell  = unit_cell,
+                                                                    fft_n_real = grid_size, fft_m_real=grid_size,
+                                                                    sites_cart = cart_sites,
+                                                                    site_radii = flex.double(cart_sites.size(), max_dist))
         outer_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=int)
-        [outer_mask_binary.put(idx, 1) for idx in self.outer_mask_indices()]
+        outer_mask_binary.put(self._outer_mask_indices, 1)
         self._outer_mask_binary = outer_mask_binary.tolist()
-        # Select the masked grid points
-        self._outer_mask_points = [gp for idx, gp in enumerate(flex.nested_loop(self._grid_size)) if self._outer_mask_binary[idx]==1]
-
-        t2 = time.time()
-        print('> OUTER MASK > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
         # Calculate the masked indices defined by min distance from protein atoms
-        self._inner_mask_indices = maptbx.grid_indices_around_sites(unit_cell=unit_cell,
-                                    fft_n_real=grid_size, fft_m_real=grid_size,
-                                    sites_cart=cart_sites, site_radii=flex.double(cart_sites.size(), min_dist))
-        # Calculate a binary list of the selected indices
+        self._inner_mask_indices = maptbx.grid_indices_around_sites(unit_cell  = unit_cell,
+                                                                    fft_n_real = grid_size, fft_m_real = grid_size,
+                                                                    sites_cart = cart_sites,
+                                                                    site_radii = flex.double(cart_sites.size(), min_dist))
         inner_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=int)
-        [inner_mask_binary.put(idx, 1) for idx in self.inner_mask_indices()]
+        inner_mask_binary.put(self._inner_mask_indices, 1)
         self._inner_mask_binary = inner_mask_binary.tolist()
-        # Select the masked grid points
-        self._inner_mask_points = [gp for idx, gp in enumerate(flex.nested_loop(self._grid_size)) if self._inner_mask_binary[idx]==1]
-
-        t3 = time.time()
-        print('> INNER MASK > Time Taken: {!s} seconds'.format(int(t3-t2)))
 
         # Calculate the combination of these masks
         total_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), int)
-        [total_mask_binary.put(self._grid_idxr(gp), 1) for gp in self.outer_mask()]
-        [total_mask_binary.put(self._grid_idxr(gp), 0) for gp in self.inner_mask()]
+        total_mask_binary.put(self._outer_mask_indices, 1)
+        total_mask_binary.put(self._inner_mask_indices, 0)
         self._total_mask_binary = total_mask_binary.tolist()
-        # Select the masked grid indices
-        self._total_mask_indices = [gp for idx, gp in enumerate(flex.nested_loop(self._grid_size)) if self._total_mask_binary[idx]==1]
-        # Select the masked grid points
-        self._total_mask_points = [gp for idx, gp in enumerate(flex.nested_loop(self._grid_size)) if self._total_mask_binary[idx]==1]
-
-        t4 = time.time()
-        print('> TOTAL MASK > Time Taken: {!s} seconds'.format(int(t4-t3)))
+        self._total_mask_indices = [idx for idx in xrange(self._grid_idxr.size_1d()) if self._total_mask_binary[idx]>0]
 
     def total_mask(self):
         """Return the grid points allowed by the mask - combination of max_dist (allowed) and min_dist (rejected)"""
-        return self._total_mask_points
+        for p in flex.nested_loop(self._grid_size):
+            if self._total_mask_binary[self._grid_idxr(p)]: yield p
     def outer_mask(self):
         """Get grid points allowed subject to max_dist"""
-        return self._outer_mask_points
+        for p in flex.nested_loop(self._grid_size):
+            if self._outer_mask_binary[self._grid_idxr(p)]: yield p
     def inner_mask(self):
         """Get grid points rejected subject to min_dist"""
-        return self._inner_mask_points
+        for p in flex.nested_loop(self._grid_size):
+            if self._inner_mask_binary[self._grid_idxr(p)]: yield p
 
     def total_mask_binary(self):
         return self._total_mask_binary
@@ -100,13 +81,13 @@ class atomic_mask(object):
 
     def total_size(self):
         """Returns the number of grid points in the mask"""
-        return len(self.total_mask())
+        return len(self._total_mask_indices)
     def outer_size(self):
         """Returns the number of grid points inside max_dist"""
-        return len(self.outer_mask())
+        return len(self._outer_mask_indices)
     def inner_size(self):
-        """Returns the number of grid points inside max_dist"""
-        return len(self.inner_mask())
+        """Returns the number of grid points inside min_dist"""
+        return len(self._inner_mask_indices)
 
     def extent(self):
         """Returns the minimum and maximum grid points in the mask"""
@@ -121,14 +102,13 @@ class atomic_mask(object):
                             'Masked Grid Min/Max: {!s}'.format(self.extent())
                         ])
 
-class non_symmetrical_atomic_mask(atomic_mask):
-    """Creates the same mask as `atomic_mask` without allowing for unit cell shifts from the p1 box"""
+class grid_mask(atomic_mask):
+    """Creates the same mask as `atomic_mask` without allowing for lattice symmetry (rejects atoms outside of the unit cell)"""
 
-    def __init__(self, cart_sites, grid_spacing, grid_size, unit_cell, max_dist, min_dist):
-        """Take a grid and calculate all grid points with a certain distance cutoff of any point in cart_sites"""
+    def __init__(self, cart_sites, grid_size, unit_cell, max_dist, min_dist):
+        """Mask a grid (approximately) against a set of cartesian points"""
 
         if min_dist: assert max_dist >= min_dist, 'Minimum Mask Distance must be smaller than Maximum Mask Distance'
-        print('===================================>>>')
 
         # Store distances from masking atoms
         self._max_dist = max_dist
@@ -141,7 +121,52 @@ class non_symmetrical_atomic_mask(atomic_mask):
         # Unit cell
         self._fake_unit_cell = unit_cell
 
-        t1 = time.time()
+        # Filter out sites that are outside of the unit cell
+        filt_cart_sites = flex.vec3_double([p for p in cart_sites if not [x for x in unit_cell.fractionalize(p) if (x>1.000001 or x<-0.000001)]])
+
+        # Calculate the masked indices defined by max distance from protein atoms
+        self._outer_mask_indices = maptbx.grid_indices_around_sites(unit_cell  = unit_cell,
+                                                                    fft_n_real = grid_size, fft_m_real = grid_size,
+                                                                    sites_cart = filt_cart_sites,
+                                                                    site_radii = flex.double(filt_cart_sites.size(), max_dist))
+        outer_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=int)
+        outer_mask_binary.put(self._outer_mask_indices, 1)
+        self._outer_mask_binary = outer_mask_binary.tolist()
+
+        # Calculate the masked indices defined by min distance from protein atoms
+        self._inner_mask_indices = maptbx.grid_indices_around_sites(unit_cell  = unit_cell,
+                                                                    fft_n_real = grid_size, fft_m_real = grid_size,
+                                                                    sites_cart = filt_cart_sites,
+                                                                    site_radii = flex.double(filt_cart_sites.size(), min_dist))
+        inner_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=int)
+        inner_mask_binary.put(self._inner_mask_indices, 1)
+        self._inner_mask_binary = inner_mask_binary.tolist()
+
+        # Calculate the combination of these masks
+        total_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), int)
+        total_mask_binary.put(self._outer_mask_indices, 1)
+        total_mask_binary.put(self._inner_mask_indices, 0)
+        self._total_mask_binary  = total_mask_binary.tolist()
+        self._total_mask_indices = [idx for idx in xrange(self._grid_idxr.size_1d()) if self._total_mask_binary[idx]>0]
+
+class non_symmetrical_atomic_mask(atomic_mask):
+    """Creates the same mask as `atomic_mask` without allowing for unit cell shifts from the p1 box"""
+
+    def __init__(self, cart_sites, grid_spacing, grid_size, unit_cell, max_dist, min_dist):
+        """Take a grid and calculate all grid points with a certain distance cutoff of any point in cart_sites"""
+
+        if min_dist: assert max_dist >= min_dist, 'Minimum Mask Distance must be smaller than Maximum Mask Distance'
+
+        # Store distances from masking atoms
+        self._max_dist = max_dist
+        self._min_dist = min_dist
+
+        # Store grid size
+        self._grid_size = grid_size
+        self._grid_idxr = flex.grid(grid_size)
+
+        # Unit cell
+        self._fake_unit_cell = unit_cell
 
         # First, trim off cartesian sites that won't contribute to the masking (those more than max_dist from the edge of the box)
         # Extract the maximum and minimum of the unit cell (assumed to be a p1 grid on the origin)
@@ -152,10 +177,7 @@ class non_symmetrical_atomic_mask(atomic_mask):
         grid_filter_maximum = uc_max + max_dist
         # Filter out sites that are too far from the grid to be worth masking
         filt_cart_sites = flex.vec3_double([p for p in cart_sites if not (    ([i+1 for i in range(3) if p[i]<grid_filter_minimum[i]])
-                                                                           or ([i+1 for i in range(3) if p[i]>grid_filter_maximum[i]])
-                                                                        )])
-        print '> REJECTING {!s} SITES FROM THE SYMMETRY MASKING'.format(len(cart_sites)-len(filt_cart_sites))
-        print '> MASKING GRID WITH {!s} SITES'.format(len(filt_cart_sites))
+                                                                           or ([i+1 for i in range(3) if p[i]>grid_filter_maximum[i]])    )])
 
         # Mask the grid
         total_mask_points, \
@@ -166,28 +188,25 @@ class non_symmetrical_atomic_mask(atomic_mask):
                                                                                     min_dist=min_dist   )
 
         # Remove points that are outside of the grid we are interested in
-        self._total_mask_points = [gp for gp in total_mask_points if not ( ([i+1 for i in range(3) if gp[i]<=0]) or ([i+1 for i in range(3) if gp[i]>=grid_size[i]]) )]
-        self._outer_mask_points = [gp for gp in outer_mask_points if not ( ([i+1 for i in range(3) if gp[i]<=0]) or ([i+1 for i in range(3) if gp[i]>=grid_size[i]]) )]
-        self._inner_mask_points = [gp for gp in inner_mask_points if not ( ([i+1 for i in range(3) if gp[i]<=0]) or ([i+1 for i in range(3) if gp[i]>=grid_size[i]]) )]
+        total_mask_points = [gp for gp in total_mask_points if not ( ([i+1 for i in range(3) if gp[i]<=0]) or ([i+1 for i in range(3) if gp[i]>=grid_size[i]]) )]
+        outer_mask_points = [gp for gp in outer_mask_points if not ( ([i+1 for i in range(3) if gp[i]<=0]) or ([i+1 for i in range(3) if gp[i]>=grid_size[i]]) )]
+        inner_mask_points = [gp for gp in inner_mask_points if not ( ([i+1 for i in range(3) if gp[i]<=0]) or ([i+1 for i in range(3) if gp[i]>=grid_size[i]]) )]
 
         # Convert the list of points to lists of indices, and binary masks
-        self._total_mask_indices = [self._grid_idxr(gp) for gp in self.total_mask()]
+        self._total_mask_indices = [self._grid_idxr(gp) for gp in total_mask_points]
         total_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=int)
-        [total_mask_binary.put(idx, 1) for idx in self.total_mask_indices()]
+        total_mask_binary.put(self._total_mask_indices, 1)
         self._total_mask_binary = total_mask_binary.tolist()
 
-        self._outer_mask_indices = [self._grid_idxr(gp) for gp in self.outer_mask()]
+        self._outer_mask_indices = [self._grid_idxr(gp) for gp in outer_mask_points]
         outer_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=int)
-        [outer_mask_binary.put(idx, 1) for idx in self.outer_mask_indices()]
+        outer_mask_binary.put(self._outer_mask_indices, 1)
         self._outer_mask_binary = outer_mask_binary.tolist()
 
-        self._inner_mask_indices = [self._grid_idxr(gp) for gp in self.inner_mask()]
+        self._inner_mask_indices = [self._grid_idxr(gp) for gp in inner_mask_points]
         inner_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=int)
-        [inner_mask_binary.put(idx, 1) for idx in self.inner_mask_indices()]
+        inner_mask_binary.put(self._inner_mask_indices, 1)
         self._inner_mask_binary = inner_mask_binary.tolist()
-
-        t2 = time.time()
-        print('> SYMMETRY MASK > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
 class spherical_mask(object):
     def __init__(self, grid_spacing, distance_cutoff, grid_jump=None):

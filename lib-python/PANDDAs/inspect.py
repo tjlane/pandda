@@ -66,10 +66,13 @@ class PanddaEvent(object):
         self.unfitted_model = os.path.join(self.dataset_dir, '{!s}-aligned.pdb'.format(dtag))
         # Maps
         self.observed_map   = os.path.join(self.dataset_dir, '{!s}-observed.ccp4'.format(dtag))
-        self.z_map          = os.path.join(self.dataset_dir, '{!s}-z_map_adjusted_normalised.ccp4'.format(dtag))
+        self.z_map          = os.path.join(self.dataset_dir, '{!s}-z_map.ccp4'.format(dtag))
         self.mean_diff_map  = os.path.join(self.dataset_dir, '{!s}-mean_diff.ccp4'.format(dtag))
         try: self.occupancy_map = glob.glob(os.path.join(self.dataset_dir, '{!s}-event_{!s}_occupancy_*_map.ccp4'.format(dtag, self.event_idx)))[0]
         except: raise
+
+        self.dataset_symmetry = os.path.join(self.dataset_dir, '{!s}-sym_contacts.pdb'.format(dtag))
+        self.dataset_mask     = os.path.join(self.dataset_dir, '{!s}-masked_grid.ccp4'.format(dtag))
 
         # Ligand Files
         lig_files = glob.glob(os.path.join(self.ligand_dir, '*'))
@@ -377,8 +380,19 @@ class PanddaMolHandler(object):
 #        except: o = z
 
         # Symmetry contacts
-        r = read_pdb(e.reference_symmetry)
+        r = read_pdb(e.dataset_symmetry)
         set_mol_displayed(r, 0)
+
+        ############################################
+##       Reference Sym Contacts
+#        r = read_pdb(e.reference_symmetry)
+#        set_mol_displayed(r, 0)
+#
+##       Dataset Mask
+#        m = handle_read_ccp4_map(e.dataset_mask, 0)
+#        set_last_map_contour_level(1)
+#        set_map_displayed(o, 0)
+        ############################################
 
         # More Settings
         set_scrollable_map(o)

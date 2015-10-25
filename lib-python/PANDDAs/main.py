@@ -35,7 +35,7 @@ from libtbx.math_utils import ifloor, iceil
 
 #from iotbx.reflection_file_utils import extract_miller_array_from_file
 
-from Bamboo.Common import Meta
+from Bamboo.Common import Meta, Info
 from Bamboo.Common.Logs import Log
 from Bamboo.Common.File import output_file_object, easy_directory
 from Bamboo.Common.Data import data_collection, multiple_data_collection
@@ -45,14 +45,14 @@ from Bamboo.Common.Masks import mask_collection
 from Bamboo.Density.Edstats.Utils import score_with_edstats_to_dict
 
 from Giant.Grid import grid_handler
+from Giant.Grid.Masks import spherical_mask, atomic_mask, grid_mask
 
 from Giant.Xray.Miller.Scaling import apply_simple_scaling
 from Giant.Xray.Maps.Utils import write_1d_array_as_p1_map
 from Giant.Xray.Data import crystalSummary
+from Giant.Xray.Data.utils import extract_structure_factors
 from Giant.Xray.Symmetry import combine_hierarchies, generate_adjacent_symmetry_copies
 
-from Giant.Stats.Tests import test_significance_of_group_of_z_values, convert_pvalue_to_zscore
-from Giant.Stats.Utils import resample_ordered_list_of_values, calculate_minimum_redundancy
 from Giant.Stats.Ospina import estimate_true_underlying_sd
 
 from Giant.Stats.Cluster import cluster_data, combine_clusters, find_connected_groups
@@ -61,10 +61,12 @@ from Giant.Structure.Align import perform_flexible_alignment
 
 from Giant.Utils import status_bar, rel_symlink
 
+from PANDDAs import graphs
+
 from PANDDAs import PANDDA_VERSION
-from PANDDAs.HTML import PANDDA_HTML_ENV
-from PANDDAs.Phil import pandda_phil_def
-from PANDDAs.Settings import PANDDA_TOP, PANDDA_TEXT
+from PANDDAs.phil import pandda_phil_def
+from PANDDAs.html import PANDDA_HTML_ENV
+from PANDDAs.settings import PANDDA_TOP, PANDDA_TEXT
 
 STRUCTURE_MASK_NAMES = [    'bad structure - chain counts',
                             'bad structure - chain ids',
@@ -91,8 +93,6 @@ DATASET_INFO_FIELDS  = [    'high_resolution',
                             'low_resolution',
                             'r_work',
                             'r_free',
-                            'analysed_resolution',
-                            'map_uncertainty',
                             'rmsd_to_mean',
                             'space_group',
                             'uc_a',
@@ -122,6 +122,7 @@ SITE_TABLE_FIELDS    = [    'centroid',
                             'nearest_residue 1',
                             'nearest_residue 2',
                             'nearest_residue 3',
+                            'native_centroid',
                             'near_crystal_contacts'     ]
 
 # SET FILTERING CONSTANTS
@@ -238,12 +239,10 @@ class DatasetHandler(object):
 
         ########################################################
 
-        # Unscaled structure factors
-        self.unscaled_sfs = None
-        # Scaled structure factors
-        self.scaled_sfs = None
+        # All Structure factors
+        self.sfs = None
         # Truncated structure factors
-        self.tr_scaled_sfs = None
+        self.tr_sfs = None
 
         # Initialise other variables
         self.unit_cell = None
@@ -314,7 +313,7 @@ class DatasetHandler(object):
         assert method in ['local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
         if method == 'global':
             # Simple - use one rt to transform all of the points
-            return self.global_alignment_transform().rt().inverse() * points
+            return self.global_alignment_transform().inverse() * points
         elif method == 'local':
             # Use point mappings to tell us which residue rt to use for each point
             assert point_mappings, 'NO MAPPINGS GIVEN BETWEEN POINTS AND RTS'
@@ -329,7 +328,7 @@ class DatasetHandler(object):
                 # Extract the idxs and points of points with this label in the mapping
                 lab_idxs, lab_points = zip(*[(i, points[i]) for i, i_lab in enumerate(point_mappings) if r_lab==i_lab])
                 # Transform all of these points at once
-                lab_rt_points = self.local_alignment_transforms()[r_lab].rt().inverse() * flex.vec3_double(lab_points)
+                lab_rt_points = self.local_alignment_transforms()[r_lab].inverse() * flex.vec3_double(lab_points)
                 # Populate the array at the appropriate place
                 rt_points.put(lab_idxs, lab_rt_points)
                 all_idxs.extend(lab_idxs)
@@ -343,7 +342,7 @@ class DatasetHandler(object):
         assert method in ['local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
         if method == 'global':
             # Simple - use one rt to transform all of the points
-            return self.global_alignment_transform().rt() * points
+            return self.global_alignment_transform() * points
         elif method == 'local':
             if not point_mappings:
                 # Use point mappings to tell us which residue rt to use for each point
@@ -358,7 +357,7 @@ class DatasetHandler(object):
                 # Extract the idxs and points of points with this label in the mapping
                 lab_idxs, lab_points = zip(*[(i, points[i]) for i, i_lab in enumerate(point_mappings) if r_lab==i_lab])
                 # Transform all of these points at once
-                lab_rt_points = self.local_alignment_transforms()[r_lab].rt() * flex.vec3_double(lab_points)
+                lab_rt_points = self.local_alignment_transforms()[r_lab] * flex.vec3_double(lab_points)
                 # Populate the array at the appropriate place
                 rt_points.put(lab_idxs, lab_rt_points)
                 all_idxs.extend(lab_idxs)
@@ -366,7 +365,7 @@ class DatasetHandler(object):
             assert len(list(set(all_idxs))) == len(points)
 
             # Initial brute force method
-            #rt_points = [self.local_alignment_transforms()[r_lab].rt() * p for r_lab, p in zip(point_mappings, points)]
+            #rt_points = [self.local_alignment_transforms()[r_lab] * p for r_lab, p in zip(point_mappings, points)]
 
             return flex.vec3_double(rt_points)
 
@@ -477,7 +476,7 @@ def align_dataset_to_reference(d_handler, ref_handler, method):
         my_sites = d_handler.get_calpha_sites()
         ref_sites = ref_handler.get_calpha_sites()
         assert len(my_sites) == len(ref_sites)
-        global_rt_transform = superpose.least_squares_fit(reference_sites=ref_sites, other_sites=my_sites)
+        global_rt_transform = superpose.least_squares_fit(reference_sites=ref_sites, other_sites=my_sites).rt()
     else:
         global_rt_transform = None
 
@@ -646,8 +645,7 @@ class identical_structure_ensemble(object):
 
         return '\n'.join(report_string)
 
-class MapList(object):
-    _initialized = False
+class MapList(Info):
     _map_names = []
     def __init__(self, map_names=[]):
         assert self._map_names+map_names, 'No Map Names defined'
@@ -658,20 +656,8 @@ class MapList(object):
         # Set initialised so attributes can't be added
         self._initialized = True
 
-    def __setattr__(self, name, value):
-        if self._initialized and (not hasattr(self, name)):
-            raise AttributeError('Cannot set new attributes after initialisation: {!s}'.format(name))
-        object.__setattr__(self, name, value)
-
 class PanddaStatMapList(MapList):
-    _map_names =    [   'mean_map',
-                        'medn_map',
-                        'stds_map',
-                        'sadj_map',
-                        'skew_map',
-                        'kurt_map',
-                        'bimo_map'
-                    ]
+    _map_names = ['mean_map','medn_map','stds_map','sadj_map','skew_map','kurt_map','bimo_map']
 
 class PanddaMultipleStatMapList(object):
     def __init__(self):
@@ -803,8 +789,8 @@ class PanddaMapAnalyser(object):
 
         for i_mh, mh in enumerate(self.dataset_maps.mask(mask_name=mask_name)):
 
-            if hasattr(mh.meta, 'map_uncertainty'):
-                print('\rSKIPPING Dataset {!s} ({!s}/{!s})                                 '.format(mh.tag, i_mh+1, self.dataset_maps.size(mask_name=mask_name)), end=''); sys.stdout.flush()
+            if mh.meta.map_uncertainty is not None:
+                print('SKIPPING Dataset {!s} ({!s}/{!s})                                 '.format(mh.tag, i_mh+1, self.dataset_maps.size(mask_name=mask_name)))
                 continue
             else:
                 print('\rCalculating Map Uncertainty for Dataset {!s} ({!s}/{!s})          '.format(mh.tag, i_mh+1, self.dataset_maps.size(mask_name=mask_name)), end=''); sys.stdout.flush()
@@ -824,47 +810,23 @@ class PanddaMapAnalyser(object):
 
             # Save the uncertainty
             mh.meta.map_uncertainty = map_unc
-#            print('> UNCERTAINTY: {!s}'.format(fit_coeffs.round(3).tolist()[0]))
 
             if output_graphs and mh.parent:
 
-                fig = pyplot.figure()
-                pyplot.title('UNSORTED MEAN v OBS SCATTER PLOT')
-                pyplot.plot([-3, 10], [-3, 10], 'b--')
-                pyplot.plot(masked_mean_vals, masked_map_vals, 'go')
-                pyplot.xlabel('MEAN MAP VALUES')
-                pyplot.ylabel('OBSV MAP VALUES')
-                # Apply tight layout to prevent overlaps
-                pyplot.tight_layout()
-                # Save
-                pyplot.savefig(mh.parent.output_handler.get_file('obs_qqplot_unsorted_png'))
-                pyplot.close(fig)
+                graphs.mean_obs_scatter( f_name    = mh.parent.output_handler.get_file('obs_qqplot_unsorted_png'),
+                                         mean_vals = masked_mean_vals,
+                                         obs_vals  = masked_map_vals     )
 
-                fig = pyplot.figure()
-                pyplot.title('SORTED MEAN v OBS Q-Q PLOT')
-                pyplot.plot([-3, 10], [-3, 10], 'b--')
-                pyplot.plot(sorted_mean_vals, sorted_observed_vals, 'go-')
-                pyplot.xlabel('SORTED MEAN MAP VALUES')
-                pyplot.ylabel('SORTED OBSV MAP VALUES')
-                # Apply tight layout to prevent overlaps
-                pyplot.tight_layout()
-                # Save
-                pyplot.savefig(mh.parent.output_handler.get_file('obs_qqplot_sorted_png'))
-                pyplot.close(fig)
+                graphs.sorted_mean_obs_scatter( f_name    = mh.parent.output_handler.get_file('obs_qqplot_sorted_png'),
+                                                mean_vals = sorted_mean_vals,
+                                                obs_vals  = sorted_observed_vals    )
 
-                fig = pyplot.figure()
-                pyplot.title('DIFF-MEAN-MAP Q-Q PLOT')
-                pyplot.plot([map_off-5*map_unc, map_off+5*map_unc], [-5, 5], 'b--')
-                pyplot.plot([-1, 1], [q_cut, q_cut], 'k-.')
-                pyplot.plot([-1, 1], [-q_cut, -q_cut], 'k-.')
-                pyplot.plot(sorted_observed_diff_vals, expected_diff_vals, 'go-')
-                pyplot.xlabel('DIFF-MEAN-MAP QUANTILES')
-                pyplot.ylabel('THEORETICAL QUANTILES')
-                # Apply tight layout to prevent overlaps
-                pyplot.tight_layout()
-                # Save
-                pyplot.savefig(mh.parent.output_handler.get_file('unc_qqplot_png'))
-                pyplot.close(fig)
+                graphs.diff_mean_qqplot( f_name   = mh.parent.output_handler.get_file('unc_qqplot_png'),
+                                         map_off  = map_off,
+                                         map_unc  = map_unc,
+                                         q_cut    = q_cut,
+                                         obs_diff = sorted_observed_diff_vals,
+                                         quantile = expected_diff_vals  )
 
         self.log('\rMap Uncertainties Calculated.                                         ', True)
 
@@ -986,24 +948,26 @@ class PanddaMapAnalyser(object):
     def calculate_z_map(self, method, map=None, tag=None, uncertainty=None):
         """Calculate the z-map relative to the mean and std map"""
 
-        # STANDARD METHOD USES THE RAW STANDARD DEVIATION OF THE MAP VALUES
-        # ADJUSTED METHOD USED THE UNCERTAINTY CORRECTED STANDARD DEVIATION
-        assert method in ['naive','adjusted','adjusted+uncertainty']
+        assert method in ['naive','adjusted','uncertainty','adjusted+uncertainty']
         assert [tag, map].count(None) == 1, 'Must provide tag OR map'
 
         if tag:
-            # Get the holder
             mh = self.dataset_maps.get(tag=tag)
-            map = mh.map
-            if method == 'adjusted+uncertainty': uncertainty = mh.meta.map_uncertainty
-        else:
-            if method == 'adjusted+uncertainty': assert uncertainty is not None
+            if not map:
+                map = mh.map
+            if not uncertainty:
+                uncertainty = mh.meta.map_uncertainty
+
+        if 'uncertainty' in method:
+            assert uncertainty is not None
 
         # Calculate Z-values
         if method == 'naive':
             z_map_vals = (map - self.statistical_maps.mean_map)/self.statistical_maps.stds_map
-#        elif method == 'adjusted':
-#            z_map_vals = (map - self.statistical_maps.mean_map)/self.statistical_maps.sadj_map
+        elif method == 'adjusted':
+            z_map_vals = (map - self.statistical_maps.mean_map)/self.statistical_maps.sadj_map
+        elif method == 'uncertainty':
+            z_map_vals = (map - self.statistical_maps.mean_map)/uncertainty
         elif method == 'adjusted+uncertainty':
             z_map_vals = (map - self.statistical_maps.mean_map)/flex.sqrt(self.statistical_maps.sadj_map**2 + uncertainty**2)
         else:
@@ -1138,15 +1102,15 @@ class PanddaMultiDatasetAnalyser(object):
                                                             index   = pandas.Index(data=[], name='site_idx'),
                                                             columns = self._all_site_fields         )
 
-        # TODO --- XXX --- TODO --- XXX --- TODO --- XXX --- TODO
-        # Map and Dataset statistics - TODO DELETE TODO
-        self.map_observations = data_collection()
-        # TODO --- XXX --- TODO --- XXX --- TODO --- XXX --- TODO
-
-        # TODO --- XXX --- TODO --- XXX --- TODO --- XXX --- TODO
-        # Summaries of detected points - TODO DELETE TODO
-        self._cluster_summary = data_collection()
-        # TODO --- XXX --- TODO --- XXX --- TODO --- XXX --- TODO
+#        # TODO --- XXX --- TODO --- XXX --- TODO --- XXX --- TODO
+#        # Map and Dataset statistics - TODO DELETE TODO
+#        self.map_observations = data_collection()
+#        # TODO --- XXX --- TODO --- XXX --- TODO --- XXX --- TODO
+#
+#        # TODO --- XXX --- TODO --- XXX --- TODO --- XXX --- TODO
+#        # Summaries of detected points - TODO DELETE TODO
+#        self._cluster_summary = data_collection()
+#        # TODO --- XXX --- TODO --- XXX --- TODO --- XXX --- TODO
 
         # Average Structure (and masks)
         self._average_calpha_sites = None
@@ -1345,11 +1309,13 @@ class PanddaMultiDatasetAnalyser(object):
         self.output_handler.add_file(file_name='dataset_combined_info.csv', file_tag='dataset_combined_info',  dir_tag='analyses')
         # Somewhere to store the dataset information (identified events + sites)
         self.output_handler.add_file(file_name='event_info.csv', file_tag='event_info',  dir_tag='analyses')
+        self.output_handler.add_file(file_name='event_info_2.csv', file_tag='event_info_2',  dir_tag='analyses')
         self.output_handler.add_file(file_name='site_info.csv', file_tag='site_info',  dir_tag='analyses')
         self.output_handler.add_file(file_name='point_distributions.csv', file_tag='point_distributions', dir_tag='analyses')
         # Somewhere to store the analysis summaries - for the user
         self.output_handler.add_dir(dir_name='results_summaries', dir_tag='output_summaries', top_dir_tag='root')
         self.output_handler.add_file(file_name='success_summary_table.html', file_tag='summary_table', dir_tag='output_summaries')
+        self.output_handler.add_file(file_name='site_bar_graph.png', file_tag='site_bar_graph', dir_tag='output_summaries')
         # Somewhere to store the pickled objects
         self.output_handler.add_dir(dir_name='pickled_panddas', dir_tag='pickle', top_dir_tag='root')
 
@@ -1704,6 +1670,12 @@ class PanddaMultiDatasetAnalyser(object):
         if not os.path.exists(self.output_handler.get_file('reference_on_origin')):
             ref_hierarchy.write_pdb_file(self.output_handler.get_file('reference_on_origin'))
 
+        # Align reference dataset to it's shifted self
+        r = scitbx.matrix.rec([1,0,0,0,1,0,0,0,1], (3,3))
+        t = scitbx.matrix.rec(self.reference_dataset().origin_shift(), (3,1))
+        rt = scitbx.matrix.rt((r,t))
+        self.reference_dataset().set_global_alignment(alignment=rt)
+
         return self.reference_dataset()
 
     def create_reference_grid(self, grid_spacing, expand_to_origin, buffer=0):
@@ -1723,30 +1695,78 @@ class PanddaMultiDatasetAnalyser(object):
         self._ref_grid.create_cartesian_grid(expand_to_origin=expand_to_origin)
         self.log(self._ref_grid.summary())
 
-        self.log('===================================>>>', True)
-        self.log('Partitioning Reference Grid', True)
-
-        # Pull out the calphas
-        calpha_hierarchy = self.reference_dataset().hierarchy().select(self.reference_dataset().hierarchy().atom_selection_cache().selection('pepnames and name CA'))
-
-        if 1 or self.params.alignment.method == 'local':
+        if self.params.alignment.method == 'local':
+            self.log('===================================>>>', True)
+            self.log('Partitioning Reference Grid', True)
+            # Pull out the calphas
+            calpha_hierarchy = self.reference_dataset().hierarchy().select(self.reference_dataset().hierarchy().atom_selection_cache().selection('pepnames and name CA'))
             t1 = time.time()
-
             # Calculate the nearest residue for each point on the grid
             self.reference_grid().create_grid_partition(atomic_hierarchy=calpha_hierarchy)
             # Partition Grid
             self.reference_grid().partition().partition_grid(cpus=self.args.settings.cpus)
-
             t2 = time.time()
             self.log('> GRID PARTITIONING > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
-    def mask_reference_grid(self, d_handler):
+    def mask_reference_grid(self):
         """Create masks for the reference grid based on distances from atoms in the reference structure"""
 
         self.log('===================================>>>', True)
         self.log('Masking Reference Grid', True)
-        self.log('NOT YET', True)
 
+        # ============================================================================>
+        # Create neighbouring symmetry copies of the reference structures
+        # ============================================================================>
+        ref_sym_copies = self.generate_symmetry_copies(d_handler=self.reference_dataset(), save_operators=True)
+        # Write out the symmetry sites
+        if not os.path.exists(self.output_handler.get_file('reference_symmetry')):
+            ref_sym_copies.write_pdb_file(self.output_handler.get_file('reference_symmetry'))
+        # ============================================================================>
+        # Local mask used for forming groups of points around a grid point
+        # ============================================================================>
+        if self.reference_grid().local_mask() is None:
+            self.log('===================================>>>')
+            self.log('Generating Local Mask')
+            local_mask = spherical_mask(grid_spacing    = self.reference_grid().grid_spacing(),
+                                        distance_cutoff = 1.2,
+                                        grid_jump       = 1 )
+            self.reference_grid().set_local_mask(local_mask)
+        # ============================================================================>
+        # Global mask used for removing points in the bulk solvent regions
+        # ============================================================================>
+        if self.reference_grid().global_mask() is None:
+            self.log('===================================>>>')
+            self.log('Generating Protein Mask')
+            # Select the masking atoms from the reference structure
+            cache = self.reference_dataset().hierarchy().atom_selection_cache()
+            pro_sites_cart = self.reference_dataset().hierarchy().select(cache.selection('pepnames and not element H')).atoms().extract_xyz()
+            # Generate the main protein mask
+            global_mask = atomic_mask(  cart_sites   = pro_sites_cart,
+                                        grid_size    = self.reference_grid().grid_size(),
+                                        unit_cell    = self.reference_grid().unit_cell(),
+                                        max_dist     = self.params.masks.outer_mask,
+                                        min_dist     = self.params.masks.inner_mask )
+            self.reference_grid().set_global_mask(global_mask)
+        # ============================================================================>
+        # Global mask used for removing points close to symmetry copies of the protein
+        # ============================================================================>
+        if self.reference_grid().symmetry_mask() is None:
+            self.log('===================================>>>')
+            self.log('Generating Symmetry Mask')
+            # Pull out the cartesian sites of the symmetry mates
+            cache = ref_sym_copies.atom_selection_cache()
+            sym_sites_cart = ref_sym_copies.select(cache.selection('pepnames and not element H')).atoms().extract_xyz()
+            # Generate the symmetry mask
+            symmetry_mask = grid_mask(cart_sites = sym_sites_cart,
+                                      grid_size  = self.reference_grid().grid_size(),
+                                      unit_cell  = self.reference_grid().unit_cell(),
+                                      max_dist   = self.params.masks.outer_mask,
+                                      min_dist   = self.params.masks.inner_mask )
+            self.reference_grid().set_symmetry_mask(symmetry_mask)
+
+        # ============================================================================>
+        # Write masked maps
+        # ============================================================================>
         # Write protein masked map
         mask_map_file = self.output_handler.get_file('reference_dataset').replace('.mtz','.totalmask.ccp4')
         map_mask = flex.double(self.reference_grid().global_mask().total_mask_binary())
@@ -1758,23 +1778,21 @@ class PanddaMultiDatasetAnalyser(object):
         map_mask.reshape(flex.grid(self.reference_grid().grid_size()))
         self.write_array_to_map(output_file=mask_map_file, map_data=map_mask)
 
-    def generate_reference_symmetry_copies(self):
+        return
+
+    def generate_symmetry_copies(self, d_handler, save_operators=False):
         """Generate the symmetry copies of the reference structure in the reference frame"""
 
         # Use symmetry operations to create the symmetry mates of the reference structure
-        sym_ops, sym_hierarchies, chain_mappings = generate_adjacent_symmetry_copies(   ref_hierarchy    = self.reference_dataset().new_structure().hierarchy,
-                                                                                        crystal_symmetry = self.reference_dataset().input().crystal_symmetry(),
+        sym_ops, sym_hierarchies, chain_mappings = generate_adjacent_symmetry_copies(   ref_hierarchy    = d_handler.new_structure().hierarchy,
+                                                                                        crystal_symmetry = d_handler.input().crystal_symmetry(),
                                                                                         buffer_thickness = self.params.masks.outer_mask+5    )
         # Record the symmetry operations that generate the crystal contacts
-        self.crystal_contact_generators = sym_ops
+        if save_operators: self.crystal_contact_generators = sym_ops
 
         # Create a combined hierarchy of the crystal contacts
         symmetry_root = combine_hierarchies(sym_hierarchies)
-        symmetry_root.atoms().set_xyz(symmetry_root.atoms().extract_xyz() + self.reference_dataset().origin_shift())
-
-        # Write out the symmetry sites
-        if not os.path.exists(self.output_handler.get_file('reference_symmetry')):
-            symmetry_root.write_pdb_file(self.output_handler.get_file('reference_symmetry'))
+        symmetry_root.atoms().set_xyz(d_handler.transform_to_reference(points=symmetry_root.atoms().extract_xyz(), method='global'))
 
         return symmetry_root
 
@@ -1948,46 +1966,49 @@ class PanddaMultiDatasetAnalyser(object):
 
         start = time.time()
         self.log('===================================>>>', True)
-        print('Loading Datasets... (using {!s} cores)'.format(self.args.settings.cpus))
+        print('Adding Datasets... (using {!s} cores)'.format(self.args.settings.cpus))
         loaded_datasets = easy_mp.pool_map(fixed_func=load_dataset_map_func, args=arg_list, processes=self.args.settings.cpus)
         finish = time.time()
-        print('> Time Taken: {!s} seconds'.format(int(finish-start)))
+        self.log('> Adding Datasets > Time Taken: {!s} seconds'.format(int(finish-start)), True)
 
         lig_style = self.args.input.lig_style.strip('/')
 
         for d_handler in loaded_datasets:
+
             # Create a file manager object
             d_handler.initialise_output_directory(outputdir=os.path.join(self.output_handler.get_dir('processed_datasets'), d_handler.name))
-            # These will be links to the input files
+
+            # Main input/output files
             d_handler.output_handler.add_file(file_name='{!s}-input.pdb'.format(d_handler.tag), file_tag='input_structure')
             d_handler.output_handler.add_file(file_name='{!s}-input.mtz'.format(d_handler.tag), file_tag='input_data')
-            # Flag for what resolution this was processed at etc
             d_handler.output_handler.add_file(file_name='{!s}-info.csv'.format(d_handler.tag), file_tag='dataset_info', dir_tag='root')
-            # Add links to the ligand files if they've been found
+            d_handler.output_handler.add_file(file_name='{!s}-aligned.pdb'.format(d_handler.tag), file_tag='aligned_structure')
+            d_handler.output_handler.add_file(file_name='{!s}-sym_contacts.pdb'.format(d_handler.tag), file_tag='symmetry_copies')
+            d_handler.output_handler.add_file(file_name='{!s}-observed.ccp4'.format(d_handler.tag), file_tag='sampled_map')
+            d_handler.output_handler.add_file(file_name='{!s}-mean_diff.ccp4'.format(d_handler.tag), file_tag='mean_diff_map')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map.ccp4'.format(d_handler.tag), file_tag='z_map')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_naive.ccp4'.format(d_handler.tag), file_tag='z_map_naive')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_naive_normalised.ccp4'.format(d_handler.tag), file_tag='z_map_naive_normalised')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_uncertainty.ccp4'.format(d_handler.tag), file_tag='z_map_uncertainty')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_uncertainty_normalised.ccp4'.format(d_handler.tag), file_tag='z_map_uncertainty_normalised')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_adjusted.ccp4'.format(d_handler.tag), file_tag='z_map_corrected')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_adjusted_normalised.ccp4'.format(d_handler.tag), file_tag='z_map_corrected_normalised')
+            d_handler.output_handler.add_file(file_name='{!s}-event_{!s}_occupancy_{!s}_map.ccp4'.format(d_handler.tag, '{!s}', '{!s}'), file_tag='occupancy_map')
+
+            # Miscellaneous files
+            d_handler.output_handler.add_file(file_name='{!s}-high_z_mask.ccp4'.format(d_handler.tag), file_tag='high_z_mask')
+            d_handler.output_handler.add_file(file_name='{!s}-masked_grid.ccp4'.format(d_handler.tag), file_tag='grid_mask')
+
+            # Links to ligand files (if they've been found)
             d_handler.output_handler.add_dir(dir_name='ligand_files', dir_tag='ligand', top_dir_tag='root')
             d_handler.output_handler.add_file(file_name='{!s}-ligand.pdb'.format(d_handler.tag), file_tag='ligand_coordinates')
             d_handler.output_handler.add_file(file_name='{!s}-ligand.cif'.format(d_handler.tag), file_tag='ligand_restraints')
             d_handler.output_handler.add_file(file_name='{!s}-ligand.png'.format(d_handler.tag), file_tag='ligand_image')
-            # Aligned structure (created maps will be aligned to this structure)
-            d_handler.output_handler.add_file(file_name='{!s}-aligned.pdb'.format(d_handler.tag), file_tag='aligned_structure')
-            # Sampled map for the aligned structure
-            d_handler.output_handler.add_file(file_name='{!s}-observed.ccp4'.format(d_handler.tag), file_tag='sampled_map')
-            # Difference from the mean map for the aligned structure
-            d_handler.output_handler.add_file(file_name='{!s}-mean_diff.ccp4'.format(d_handler.tag), file_tag='mean_diff_map')
-            # Z-map for the structure
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_naive.ccp4'.format(d_handler.tag), file_tag='z_map_naive')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_naive_normalised.ccp4'.format(d_handler.tag), file_tag='z_map_naive_normalised')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_adjusted.ccp4'.format(d_handler.tag), file_tag='z_map_corrected')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_adjusted_normalised.ccp4'.format(d_handler.tag), file_tag='z_map_corrected_normalised')
-            # Z-map mask for the structure
-            d_handler.output_handler.add_file(file_name='{!s}-high_z_mask.ccp4'.format(d_handler.tag), file_tag='high_z_mask')
-            # Output template for the occupancy subtracted maps (with {!s} string remaining for occupancy)
-            d_handler.output_handler.add_file(file_name='{!s}-event_{!s}_occupancy_{!s}_map.ccp4'.format(d_handler.tag, '{!s}', '{!s}'), file_tag='occupancy_map')
 
             # Native (back-rotated/transformed) maps
             d_handler.output_handler.add_file(file_name='{!s}-observed.native.ccp4'.format(d_handler.tag), file_tag='native_obs_map')
             d_handler.output_handler.add_file(file_name='{!s}-z_map.native.ccp4'.format(d_handler.tag), file_tag='native_z_map')
-            d_handler.output_handler.add_file(file_name='{!s}-event_{!s}_occupancy_{!s}_map.native.ccp4'.format(d_handler.tag, '{!s}', '{!s}'), file_tag='native_occupancy_map')
+            d_handler.output_handler.add_file(file_name='{!s}-event_{!s}_occupancy_{!s}_map.native.ccp4'.format(d_handler.tag,'{!s}','{!s}'), file_tag='native_occupancy_map')
 
             # Fitted structures when modelled with pandda.inspect
             d_handler.output_handler.add_dir(dir_name='modelled_structures', dir_tag='models', top_dir_tag='root')
@@ -1996,16 +2017,15 @@ class PanddaMultiDatasetAnalyser(object):
             d_handler.output_handler.add_dir(dir_name='output_images', dir_tag='images', top_dir_tag='root')
             # Smapled map
             d_handler.output_handler.add_file(file_name='{!s}-obsv_map_dist.png'.format(d_handler.tag), file_tag='s_map_png', dir_tag='images')
-            # Differences from the mean
             d_handler.output_handler.add_file(file_name='{!s}-diff_mean_map_dist.png'.format(d_handler.tag), file_tag='d_mean_map_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_naive.png'.format(d_handler.tag), file_tag='z_map_naive_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_naive_normalised.png'.format(d_handler.tag), file_tag='z_map_naive_normalised_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_uncertainty.png'.format(d_handler.tag), file_tag='z_map_uncertainty_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_uncertainty_normalised.png'.format(d_handler.tag), file_tag='z_map_uncertainty_normalised_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_adjusted.png'.format(d_handler.tag), file_tag='z_map_corrected_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_adjusted_normalised.png'.format(d_handler.tag), file_tag='z_map_corrected_normalised_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_qq_plot.png'.format(d_handler.tag), file_tag='z_map_qq_plot_png', dir_tag='images')
-            # Correlations for different occupancies
             d_handler.output_handler.add_file(file_name='{!s}-event_{!s}_occupancy_correlation.png'.format(d_handler.tag, '{!s}'), file_tag='occ_corr_png', dir_tag='images')
-            # Statistical Plots
             d_handler.output_handler.add_file(file_name='{!s}-uncertainty-qqplot.png'.format(d_handler.tag), file_tag='unc_qqplot_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-mean-v-obs-sorted-qqplot.png'.format(d_handler.tag), file_tag='obs_qqplot_sorted_png', dir_tag='images')
             d_handler.output_handler.add_file(file_name='{!s}-mean-v-obs-unsorted-plot.png'.format(d_handler.tag), file_tag='obs_qqplot_unsorted_png', dir_tag='images')
@@ -2028,6 +2048,8 @@ class PanddaMultiDatasetAnalyser(object):
             # Pickled objects
             d_handler.output_handler.add_dir(dir_name='pickles', dir_tag='pickles', top_dir_tag='root')
             d_handler.output_handler.add_file(file_name='dataset.pickle', file_tag='dataset_pickle', dir_tag='pickles')
+
+            ##############################################################################################################
 
             # Link the input files to the output folder
             if not os.path.exists(d_handler.output_handler.get_file('input_structure')):
@@ -2057,6 +2079,9 @@ class PanddaMultiDatasetAnalyser(object):
 
         assert method in ['resolution','rfree'], 'METHOD FOR SELECTING THE REFERENCE DATASET NOT RECOGNISED: {!s}'.format(method)
 
+        # Filter the datasets that can be selected as the reference dataset
+        filtered_datasets = self.datasets.mask(mask_name='no_build', invert=True)
+
         if self.args.input.reference.pdb and self.args.input.reference.pdb:
             self.log('===================================>>>', True)
             self.log('Reference Provided by User', True)
@@ -2066,102 +2091,78 @@ class PanddaMultiDatasetAnalyser(object):
             self.log('Selecting Reference Dataset by: {!s}'.format(method), True)
             if method == 'rfree':
                 # Get RFrees of datasets (set to dummy value of 999 if resolution is too high so that it is not selected)
-                r_frees = [d.input().get_r_rfree_sigma().r_free if (d.reflection_data().max_min_resolution()[1] < min_resolution) else 999 for d in self.datasets.all()]
+                r_frees = [d.input().get_r_rfree_sigma().r_free if (d.reflection_data().max_min_resolution()[1] < min_resolution) else 999 for d in filtered_datasets]
                 if len(resolns) == 0: raise Exception('NO DATASETS BELOW RESOLUTION CUTOFF {!s}A - CANNOT SELECT REFERENCE DATASET'.format(min_resolution))
-                self._ref_dataset_index = r_frees.index(min(r_frees))
+                ref_dataset_index = r_frees.index(min(r_frees))
             elif method == 'resolution':
                 # Get Resolutions of datasets (set to dummy value of 999 if r-free is too high so that it is not selected)
-                resolns = [d.reflection_data().max_min_resolution()[1] if (d.input().get_r_rfree_sigma().r_free < max_rfree) else 999 for d in self.datasets.all()]
+                resolns = [d.reflection_data().max_min_resolution()[1] if (d.input().get_r_rfree_sigma().r_free < max_rfree) else 999 for d in filtered_datasets]
                 if len(resolns) == 0: raise Exception('NO DATASETS BELOW RFREE CUTOFF {!s} - CANNOT SELECT REFERENCE DATASET'.format(max_rfree))
-                self._ref_dataset_index = resolns.index(min(resolns))
+                ref_dataset_index = resolns.index(min(resolns))
 
-            reference = self.datasets.all()[self._ref_dataset_index]
-            assert reference.num == self._ref_dataset_index, 'INDEX DOES NOT MATCH DNUM'
-            self.log('Reference Selected: Dataset {!s}'.format(self._ref_dataset_index+1), True)
+            reference = filtered_datasets[ref_dataset_index]
+            self._ref_dataset_index = reference.num
+            self.log('Reference Selected: {!s}'.format(reference.tag), True)
             self.log('Resolution: {!s}, RFree: {!s}'.format(reference.reflection_data().max_min_resolution()[1], reference.input().get_r_rfree_sigma().r_free), True)
 
             return reference.pdb_filename(), reference.mtz_filename()
 
-    def scale_datasets(self, ampl_label, phas_label):
+    def load_reflection_data(self, ampl_label, phas_label):
         """Extract amplitudes and phases for creating map"""
-
-        def extract_structure_factors(mtz_object, ampl_label, phas_label):
-
-            # Get the crystal symmetry from the amplitudes' crystal
-            ampl_col = mtz_object.get_column(ampl_label)
-            crystal_symmetry = ampl_col.mtz_crystal().crystal_symmetry()
-            # Create miller set
-            mill_idx = mtz_object.extract_miller_indices()
-            mill_set = cctbx.miller.set(crystal_symmetry=crystal_symmetry, indices=mill_idx)
-            # Extract amplitudes and phases
-            ampl_com = mtz_object.extract_complex(column_label_ampl=ampl_label, column_label_phi=phas_label)
-            # Convert to miller array
-            mill_sfs = mill_set.array(ampl_com.data)
-            mill_sfs.set_observation_type_xray_amplitude()
-
-            # Check it's complex
-            assert mill_sfs.is_complex_array(), 'STRUCTURE FACTORS SHOULD BE COMPLEX?!'
-
-            # Make non-anomalous
-            mill_sfs = mill_sfs.as_non_anomalous_array()
-
-            return mill_sfs
 
         if self.args.input.reference.ampl_label:    ref_ampl_label = self.args.input.reference.ampl_label
         else:                                       ref_ampl_label = ampl_label
         if self.args.input.reference.phas_label:    ref_phas_label = self.args.input.reference.phas_label
         else:                                       ref_phas_label = phas_label
 
-        # TODO TRY EXCEPT ON FAILING TO EXTRACT
-        ref_sfs = extract_structure_factors(self.reference_dataset().reflection_data(), ampl_label=ref_ampl_label, phas_label=ref_phas_label)
-        # Extract the amplitudes for scaling
-        ref_amps = ref_sfs.amplitudes()
-        # Save the structure factors to the reference dataset object to create the map from later
-        self.reference_dataset().unscaled_sfs = ref_sfs
-        self.reference_dataset().scaled_sfs = ref_sfs
+        # Extract reflection data for the reference dataset
+        self.reference_dataset().sfs = extract_structure_factors(self.reference_dataset().reflection_data(), ampl_label=ref_ampl_label, phas_label=ref_phas_label)
 
         t1 = time.time()
-
         self.log('===================================>>>', True)
         for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
-
-            if d_handler.scaled_sfs != None:
-                print('\rAlready Scaled: Dataset {!s}          '.format(d_handler.tag), end=''); sys.stdout.flush()
-                continue
-            else:
-                print('\rScaling: Dataset {!s}                 '.format(d_handler.tag), end=''); sys.stdout.flush()
-
-            # Get reflection data object
-            refl_data = d_handler.reflection_data()
-
             # Extract miller array of structure factors
-            unscaled_sfs = extract_structure_factors(refl_data, ampl_label=ampl_label, phas_label=phas_label)
-
-            # Extract just the amplitudes for scaling
-            d_amps = unscaled_sfs.amplitudes()
-            d_phas = unscaled_sfs.phases()
-
-            assert d_amps.is_real_array(), 'AMPLITUDES SHOULD BE REAL?!'
-            assert d_phas.is_real_array(), 'PHASE ANGLES SHOULD BE REAL?!'
-
-            # Scale new data to the reference dataset
-            scaled_amps = apply_simple_scaling(miller=d_amps, ref_miller=ref_amps)
-
-            # Recombine the scaled amplitudes and the phases
-            scaled_sf_real = scaled_amps.data() * flex.cos(d_phas.data()*math.pi/180.0)
-            scaled_sf_imag = scaled_amps.data() * flex.sin(d_phas.data()*math.pi/180.0)
-            scaled_sf_com = flex.complex_double(reals=scaled_sf_real, imags=scaled_sf_imag)
-            # Create a copy of the old array with the new scaled structure factors
-            scaled_sfs = unscaled_sfs.array(data=scaled_sf_com)
-
-            # Set the scaled structure factors
-            d_handler.unscaled_sfs = unscaled_sfs
-            d_handler.scaled_sfs = scaled_sfs
-
-        self.log('\rDatasets Scaled.               ', True)
-
+            if d_handler.sfs != None:
+                print('\rAlready Loaded: Dataset {!s}          '.format(d_handler.tag), end=''); sys.stdout.flush()
+            else:
+                print('\rLoading: Dataset {!s}                 '.format(d_handler.tag), end=''); sys.stdout.flush()
+                d_handler.sfs = extract_structure_factors(mtz_object=d_handler.reflection_data(), ampl_label=ampl_label, phas_label=phas_label)
         t2 = time.time()
-        print('> DIFFRACTION DATA SCALING > Time Taken: {!s} seconds'.format(int(t2-t1)))
+        self.log('\r> Structure Factors Extracted > Time Taken: {!s} seconds'.format(int(t2-t1)), True)
+
+#    def scale_datasets(self, ampl_label, phas_label):
+#        """OLD - Scale the reflection data to the reference (now done on the maps in real space)"""
+#
+#        t1 = time.time()
+#        self.log('===================================>>>', True)
+#        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
+#            if d_handler.scaled_sfs != None:
+#                print('\rAlready Scaled: Dataset {!s}          '.format(d_handler.tag), end=''); sys.stdout.flush()
+#                continue
+#            else:
+#                print('\rScaling: Dataset {!s}                 '.format(d_handler.tag), end=''); sys.stdout.flush()
+#
+#            # Extract just the amplitudes for scaling
+#            d_amps = unscaled_sfs.amplitudes()
+#            d_phas = unscaled_sfs.phases()
+#
+#            assert d_amps.is_real_array(), 'AMPLITUDES SHOULD BE REAL?!'
+#            assert d_phas.is_real_array(), 'PHASE ANGLES SHOULD BE REAL?!'
+#
+#            # Scale new data to the reference dataset
+#            scaled_amps = apply_simple_scaling(miller=d_amps, ref_miller=ref_amps)
+#            # Recombine the scaled amplitudes and the phases
+#            scaled_sf_real = scaled_amps.data() * flex.cos(d_phas.data()*math.pi/180.0)
+#            scaled_sf_imag = scaled_amps.data() * flex.sin(d_phas.data()*math.pi/180.0)
+#            scaled_sf_com = flex.complex_double(reals=scaled_sf_real, imags=scaled_sf_imag)
+#            # Create a copy of the old array with the new scaled structure factors
+#            scaled_sfs = unscaled_sfs.array(data=scaled_sf_com)
+#            # Set the scaled structure factors
+#            d_handler.unscaled_sfs = unscaled_sfs
+#            d_handler.scaled_sfs = scaled_sfs
+#        self.log('\rDatasets Scaled.               ', True)
+#        t2 = time.time()
+#        print('> SCALING STRUCTURE FACTORS > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
     def align_datasets(self, method):
         """Align each structure the reference structure"""
@@ -2186,7 +2187,7 @@ class PanddaMultiDatasetAnalyser(object):
         alignment_transforms = easy_mp.pool_map(fixed_func=align_map_func, args=arg_list, processes=self.args.settings.cpus)
         alignment_transforms = dict(alignment_transforms)
         finish = time.time()
-        print('> Time Taken: {!s} seconds'.format(int(finish-start)))
+        self.log('\r> Generating Alignments > Time Taken: {!s} seconds'.format(int(finish-start)), True)
 
         # Post-process the alignments (write out aligned structures etc)
         t1 = time.time()
@@ -2233,10 +2234,9 @@ class PanddaMultiDatasetAnalyser(object):
                 # Raise error if the reference has already been set and it's not this dataset
                 elif self._ref_dataset_index != d_handler.num:
                     raise Exception('ALIGNED OBJECT EQUAL TO UNALIGNED OBJECT - THIS IS MOST UNLIKELY')
-        self.log('\rDatasets Aligned.                               ', True)
 
         t2 = time.time()
-        print('> STRUCTURE ALIGNMENT > Time Taken: {!s} seconds'.format(int(t2-t1)))
+        self.log('\r> Aligning Structures > Time Taken: {!s} seconds'.format(int(t2-t1)), True)
 
     def analyse_dataset_variability_1(self):
         """Go through all of the datasets and collect lots of different characteristics of the datasets for identifying odd datasets"""
@@ -2370,12 +2370,12 @@ class PanddaMultiDatasetAnalyser(object):
                 self.log('High RFree: {!s}'.format(d_handler.input().get_r_rfree_sigma().r_free))
                 self.log('===================================>>>')
                 self.datasets.all_masks().set_mask_value(mask_name='bad crystal - rfree', entry_id=d_handler.tag, value=True)
-            elif d_handler.scaled_sfs.amplitudes().correlation(d_handler.unscaled_sfs.amplitudes()).coefficient() < self.params.filtering.min_correlation_to_reflection_data:
-                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
-                self.log('Low correlation between scaled and unscaled data')
-                self.log('Scaled-Unscaled Correlation: {!s}'.format(d_handler.scaled_sfs.amplitudes().correlation(d_handler.unscaled_sfs.amplitudes()).coefficient()))
-                self.log('===================================>>>')
-                self.datasets.all_masks().set_mask_value(mask_name='bad crystal - data correlation', entry_id=d_handler.tag, value=True)
+#            elif d_handler.scaled_sfs.amplitudes().correlation(d_handler.unscaled_sfs.amplitudes()).coefficient() < self.params.filtering.min_correlation_to_reflection_data:
+#                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
+#                self.log('Low correlation between scaled and unscaled data')
+#                self.log('Scaled-Unscaled Correlation: {!s}'.format(d_handler.scaled_sfs.amplitudes().correlation(d_handler.unscaled_sfs.amplitudes()).coefficient()))
+#                self.log('===================================>>>')
+#                self.datasets.all_masks().set_mask_value(mask_name='bad crystal - data correlation', entry_id=d_handler.tag, value=True)
             # Check the deviation from the average sites
             elif d_handler.get_calpha_sites().rms_difference(d_handler.transform_from_reference(points=self.reference_dataset().get_calpha_sites(), method='global')) > self.params.filtering.max_rmsd_to_reference:
                 self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
@@ -2508,12 +2508,12 @@ class PanddaMultiDatasetAnalyser(object):
         self.log('Truncating Reflection Data', True)
 
         # Calculate which reflections are present in all datasets
-        common_set = self.reference_dataset().unscaled_sfs.set()
+        common_set = self.reference_dataset().sfs.set()
         ref_size = common_set.size()
         self.log('Number of Reflections in Reference Dataset: {!s}'.format(ref_size))
         # Create maps for all of the datasets (including the reference dataset)
         for i_dh, d_handler in enumerate(dataset_handlers):
-            common_set = common_set.common_set(d_handler.unscaled_sfs, assert_is_similar_symmetry=False)
+            common_set = common_set.common_set(d_handler.sfs, assert_is_similar_symmetry=False)
 #            self.log('After Dataset {!s} - Remaining Common Reflections: {!s}'.format(i_dh+1, common_set.size()))
 
         self.log('===================================>>>', True)
@@ -2524,9 +2524,9 @@ class PanddaMultiDatasetAnalyser(object):
         for d_handler in [self.reference_dataset()]+dataset_handlers:
             # At the moment save the 'truncated' sfs as the whole list
             # TODO
-            d_handler.tr_scaled_sfs = d_handler.unscaled_sfs.common_set(common_set, assert_is_similar_symmetry=False)
+            d_handler.tr_sfs = d_handler.sfs.common_set(common_set, assert_is_similar_symmetry=False)
 
-        reslns = [d.tr_scaled_sfs.d_min() for d in dataset_handlers]
+        reslns = [d.tr_sfs.d_min() for d in dataset_handlers]
         min_res = min(reslns)
         max_res = max(reslns)
 
@@ -2541,7 +2541,7 @@ class PanddaMultiDatasetAnalyser(object):
         ref_handler = self.reference_dataset()
 
         # Take the scaled diffraction data for the dataset and create fft
-        fft_map = ref_handler.tr_scaled_sfs.fft_map( resolution_factor = self.params.maps.resolution_factor,
+        fft_map = ref_handler.tr_sfs.fft_map( resolution_factor = self.params.maps.resolution_factor,
                                                      d_min = map_resolution,
                                                      symmetry_flags = cctbx.maptbx.use_space_group_symmetry )
 
@@ -2559,7 +2559,7 @@ class PanddaMultiDatasetAnalyser(object):
                                             unit_cell = fft_map.unit_cell()   )
 
         # Extract the points for the morphed maps (in the reference frame)
-        masked_gps = self.reference_grid().global_mask().outer_mask()
+        masked_gps = list(self.reference_grid().global_mask().outer_mask())
         masked_idxs = self.reference_grid().global_mask().outer_mask_indices()
         masked_cart_ref = flex.vec3_double(masked_gps)*self.reference_grid().grid_spacing()
         # Sample the map at the masked points
@@ -2582,8 +2582,7 @@ class PanddaMultiDatasetAnalyser(object):
                                     space_group = fft_map.space_group(),
                                     meta        = Meta({'type'            : 'reference observed map',
                                                         'resolution'      : map_resolution,
-                                                        'masked_map_vals' : masked_vals_ref,
-                                                        'masked_map_gps'  : masked_gps,
+#                                                        'masked_map_vals' : masked_vals_ref,
                                                         'map_mean'        : map_mean,
                                                         'map_rms'         : map_rms   }),
                                     parent      = ref_handler    )
@@ -2607,9 +2606,9 @@ class PanddaMultiDatasetAnalyser(object):
             print('\rLoading Maps for Dataset {!s}'.format(d_handler.tag), end=''); sys.stdout.flush()
 
             # Take the scaled diffraction data for each dataset and create fft
-            fft_map = d_handler.tr_scaled_sfs.fft_map(  resolution_factor = params.maps.resolution_factor,
-                                                        d_min             = map_resolution,
-                                                        symmetry_flags    = cctbx.maptbx.use_space_group_symmetry  )
+            fft_map = d_handler.tr_sfs.fft_map( resolution_factor = params.maps.resolution_factor,
+                                                d_min             = map_resolution,
+                                                symmetry_flags    = cctbx.maptbx.use_space_group_symmetry  )
 
             # Scale the map
             if   params.maps.scaling == 'none':   pass
@@ -2648,10 +2647,11 @@ class PanddaMultiDatasetAnalyser(object):
                                     # Change these for the 'fake' grid unit_cell and a P1 space_group
                                     unit_cell   = fft_map.unit_cell(),
                                     space_group = fft_map.space_group(),
-                                    meta        = Meta({'type'         : 'observed map',
-                                                        'resolution'   : map_resolution,
-                                                        'obs_map_mean' : d_map_mean,
-                                                        'obs_map_rms'  : d_map_rms }),
+                                    meta        = Meta({'type'            : 'observed map',
+                                                        'resolution'      : map_resolution,
+                                                        'map_uncertainty' : None,
+                                                        'obs_map_mean'    : d_map_mean,
+                                                        'obs_map_rms'     : d_map_rms }),
                                     parent      = None  )
 
             return map_holder
@@ -2663,11 +2663,14 @@ class PanddaMultiDatasetAnalyser(object):
         map_holder_list = MapHolderList()
 
         # Extract the points for the morphed maps (in the reference frame)
-        masked_gps = self.reference_grid().global_mask().outer_mask()
+        masked_gps = list(self.reference_grid().global_mask().outer_mask())
         masked_idxs = self.reference_grid().global_mask().outer_mask_indices()
         masked_cart_ref = flex.vec3_double(masked_gps)*self.reference_grid().grid_spacing()
         # Mapping of grid points to rotation matrix keys (residue CA labels)
-        masked_cart_mappings = self.reference_grid().partition().query_by_grid_indices(masked_idxs)
+        if self.params.alignment.method == 'local':
+            masked_cart_mappings = self.reference_grid().partition().query_by_grid_indices(masked_idxs)
+        else:
+            masked_cart_mappings = None
 
         # Load maps using multiple cores if possible
         self.log('===================================>>>', True)
@@ -2683,10 +2686,8 @@ class PanddaMultiDatasetAnalyser(object):
         for mh in map_holder_list.all():
             mh.parent = self.datasets.get(tag=mh.tag)
 
-        self.log('\rMap Values Loaded: {!s} Datasets          '.format(map_holder_list.size()), True)
-
         finish = time.time()
-        print('\r> Time Taken: {!s} seconds'.format(int(finish-start)))
+        self.log('\r> Loading Maps ({!s} Datasets) > Time Taken: {!s} seconds'.format(map_holder_list.size(), int(finish-start)), True)
 
         # Set the mask lengths and entry ids
         map_holder_list.all_masks().set_mask_length(mask_length=map_holder_list.size())
@@ -2791,7 +2792,7 @@ class PanddaMultiDatasetAnalyser(object):
         elif len(d_selected_points) > 10000:
             self.log('Dataset {!s}: Too many points to cluster: {!s} Points.'.format(d_handler.tag, len(d_selected_points)), True)
             num_clusters = -1
-            hit_clusters = {}
+            z_clusters = {}
             # This dataset is too noisy to analyse - flag!
             self.datasets.all_masks().set_mask_value(mask_name='noisy zmap', entry_id=d_handler.tag, value=True)
             # Link datasets to the noisy results directory
@@ -2806,7 +2807,7 @@ class PanddaMultiDatasetAnalyser(object):
                 # Only 1 point - 1 cluster! - edge case where we can't do clustering
                 num_clusters = 1
                 # Dictionary of results
-                hit_clusters = {1: d_selected_points}
+                z_clusters = {1: d_selected_points}
             else:
                 # Extract only the coordinates and form an array
                 point_array = numpy.array([tup[0] for tup in d_selected_points])
@@ -2818,23 +2819,22 @@ class PanddaMultiDatasetAnalyser(object):
                                                                     metric=clustering_metric,
                                                                     method=clustering_method    )   )
                 t2 = time.time()
-                if t2-t1 > 30.0:
-                    self.log('> Clustering > Time Taken: {!s} seconds'.format(int(t2-t1)))
+                self.log('> Clustering > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
                 # Get the number of clusters
                 num_clusters = max(clusts)
                 # Initialise dictionary to hold the points for the different clusters (under the new indexing)
-                hit_clusters = dict([(i+1, []) for i in range(num_clusters)])
+                z_clusters = dict([(i+1, []) for i in range(num_clusters)])
                 # Populate the clusters according to the clustering
-                [hit_clusters[c_idx].append(d_selected_points[p_idx]) for p_idx, c_idx in enumerate(clusts)]
+                [z_clusters[c_idx].append(d_selected_points[p_idx]) for p_idx, c_idx in enumerate(clusts)]
 
             # Check that the clusters are numbered properly
-            assert num_clusters == max(hit_clusters.keys())
-            assert num_clusters == len(hit_clusters.keys())
+            assert num_clusters == max(z_clusters.keys())
+            assert num_clusters == len(z_clusters.keys())
 
-        return num_clusters, hit_clusters
+        return num_clusters, z_clusters
 
-    def filter_z_clusters_1(self, hit_clusters,
+    def filter_z_clusters_1(self, z_clusters,
                                   min_cluster_volume,
                                   min_cluster_z_peak    ):
         """Filter the z-clusters on a variety of criteria (size, peak value)"""
@@ -2846,27 +2846,27 @@ class PanddaMultiDatasetAnalyser(object):
         min_cluster_size = int(min_cluster_volume/(self.reference_grid().grid_spacing()**3))
 
         # Filter out small clusters - get numbers of clusters satisfying the minimum cluster size
-        large_clusters = [c_num for c_num in range(1,len(hit_clusters)+1) if len(hit_clusters[c_num]) >= min_cluster_size]
+        large_clusters = [c_num for c_num in range(1,len(z_clusters)+1) if len(z_clusters[c_num]) >= min_cluster_size]
         if len(large_clusters) == 0:
             return 0, {}
 
         # Filter out weak clusters - get numbers of clusters satisfying the minimum z_peak value
-        strong_clusters = [c_num for c_num in large_clusters if max([c[1] for c in hit_clusters[c_num]]) >= min_cluster_z_peak]
+        strong_clusters = [c_num for c_num in large_clusters if max([c[1] for c in z_clusters[c_num]]) >= min_cluster_z_peak]
         if len(strong_clusters) == 0:
             return 0, {}
 
         # Renumber the filtered clusters
-        filtered_hit_clusters = dict([(new_c_idx+1, hit_clusters[old_c_num]) for new_c_idx, old_c_num in enumerate(strong_clusters)])
+        filtered_z_clusters = dict([(new_c_idx+1, z_clusters[old_c_num]) for new_c_idx, old_c_num in enumerate(strong_clusters)])
         # Check that the clusters are numbered properly
         num_clusters = len(strong_clusters)
-        assert num_clusters == max(filtered_hit_clusters.keys())
-        assert num_clusters == len(filtered_hit_clusters.keys())
+        assert num_clusters == max(filtered_z_clusters.keys())
+        assert num_clusters == len(filtered_z_clusters.keys())
 
-        self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(hit_clusters), len(filtered_hit_clusters)))
+        self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(z_clusters), len(filtered_z_clusters)))
 
-        return num_clusters, filtered_hit_clusters
+        return num_clusters, filtered_z_clusters
 
-    def filter_z_clusters_2(self, hit_clusters,
+    def filter_z_clusters_2(self, z_clusters,
                                   grid_spacing,
                                   grid_origin_cart,
                                   ref_structure,
@@ -2888,9 +2888,9 @@ class PanddaMultiDatasetAnalyser(object):
 
         # Remove any clusters that are more than min_contact_dist from the protein
         filtered_c_keys = []
-        for c_key in sorted(hit_clusters.keys()):
+        for c_key in sorted(z_clusters.keys()):
             # Extract points in cluster
-            cluster_points_cart = (flex.vec3_double([c[0] for c in hit_clusters[c_key]]) * grid_spacing) - grid_origin_cart
+            cluster_points_cart = (flex.vec3_double([c[0] for c in z_clusters[c_key]]) * grid_spacing) - grid_origin_cart
             # Calculate minimum distance to protein
             for r_site_cart in ref_sites_cart:
                 diff_vecs_cart = cluster_points_cart - r_site_cart
@@ -2899,29 +2899,29 @@ class PanddaMultiDatasetAnalyser(object):
                     filtered_c_keys.append(c_key)
                     break
 
-            # XXX PRINT XXX
-            if filtered_c_keys and (filtered_c_keys[-1] == c_key):
-                print('KEEPING CLUSTER:', c_key)
-            else:
-                print('REJECTING CLUSTER:', c_key, '\t', cluster_points_cart[0])
+            if self.args.settings.verbose:
+                if filtered_c_keys and (filtered_c_keys[-1] == c_key):
+                    print('KEEPING CLUSTER:', c_key)
+                else:
+                    print('REJECTING CLUSTER:', c_key, '\t', cluster_points_cart[0])
 
         # Check if all clusters have been rejected
         if not filtered_c_keys:
             num_clusters = 0
-            filtered_hit_clusters = {}
+            filtered_z_clusters = {}
         else:
             # Renumber the filtered clusters
-            filtered_hit_clusters = dict([(new_c_idx+1, hit_clusters[old_c_key]) for new_c_idx, old_c_key in enumerate(filtered_c_keys)])
+            filtered_z_clusters = dict([(new_c_idx+1, z_clusters[old_c_key]) for new_c_idx, old_c_key in enumerate(filtered_c_keys)])
             # Check that the clusters are numbered properly
             num_clusters = len(filtered_c_keys)
-            assert num_clusters == max(filtered_hit_clusters.keys())
-            assert num_clusters == len(filtered_hit_clusters.keys())
+            assert num_clusters == max(filtered_z_clusters.keys())
+            assert num_clusters == len(filtered_z_clusters.keys())
 
-        self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(hit_clusters), len(filtered_hit_clusters)))
+        self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(z_clusters), len(filtered_z_clusters)))
 
-        return num_clusters, filtered_hit_clusters
+        return num_clusters, filtered_z_clusters
 
-    def filter_z_clusters_3(self, hit_clusters,
+    def filter_z_clusters_3(self, z_clusters,
                                   grid_spacing,
                                   grid_origin_cart,
                                   ref_unit_cell,
@@ -2932,8 +2932,8 @@ class PanddaMultiDatasetAnalyser(object):
 
         # max_contact_dist - a point contacts an atom if the atoms is within this distance of it
 
-        if len(hit_clusters) == 1:
-            return 1, hit_clusters
+        if len(z_clusters) == 1:
+            return 1, z_clusters
         else:
             self.log('===================================>>>')
             self.log('FILTERING (STEP 3): Filtering symmetry equivalent clusters')
@@ -2949,14 +2949,14 @@ class PanddaMultiDatasetAnalyser(object):
         dist_cut_sq = 1.05 * 3 * grid_spacing * grid_spacing
 
         # Pull out the labels for the clusters
-        cluster_keys = sorted(hit_clusters.keys())
+        cluster_keys = sorted(z_clusters.keys())
 
         # Cartesianise and fractionalise the points in each of the clusters
         points_frac = {}
         points_cart = {}
         for c_key in cluster_keys:
             # Calculate the cartesian coordinates of the grid points (and apply reference shift)
-            points_cart[c_key] = (flex.vec3_double([c[0] for c in hit_clusters[c_key]]) * grid_spacing) - grid_origin_cart
+            points_cart[c_key] = (flex.vec3_double([c[0] for c in z_clusters[c_key]]) * grid_spacing) - grid_origin_cart
             # Fractionalise them to the unit cell of the reference structure
             points_frac[c_key] = ref_unit_cell.fractionalize(points_cart[c_key])
 
@@ -3022,11 +3022,10 @@ class PanddaMultiDatasetAnalyser(object):
                     # Check to see if site closer to cluster than minimum
                     if min(diffs_cart.dot()) < max_contact_dist_sq:
                         contacts += 1
-                # Record the number of contacts
-                c_contacts.append(contacts)
-                print('CLUSTER', c_key, 'CONTACTS', contacts)
-
-            print('CLUSTER CONTACTS', c_contacts)
+                # Record the number of contacts (over size of cluster)
+                c_contacts.append(1.0*contacts/len(c_points_cart))
+                if self.args.settings.verbose:
+                    print('CLUSTER:', c_key, ', CONTACTS PER POINT:', round(c_contacts[-1],3))
 
             # Find the cluster with the most contacts
             max_contacts = max(c_contacts)
@@ -3035,25 +3034,26 @@ class PanddaMultiDatasetAnalyser(object):
                 raise Exception('MAX CONTACTS IS 0!')
             else:
                 clusters_to_keep.append(clust_c_keys[c_contacts.index(max_contacts)])
-                print('KEEPING', clusters_to_keep[-1], 'FROM', clust_c_keys)
+                if self.args.settings.verbose:
+                    print('KEEPING CLUSTER', clusters_to_keep[-1])
 
         assert len(clusters_to_keep) == num_uniq_clusters, 'NUMBER OF BLOBS AND BLOBS TO BE RETURNED NOT THE SAME'
 
         # Select and renumber the filtered clusters to be returned
         filtered_num_clusters = num_uniq_clusters
-        filtered_hit_clusters = dict([(new_c_idx+1, hit_clusters[old_c_key]) for new_c_idx, old_c_key in enumerate(clusters_to_keep)])
+        filtered_z_clusters = dict([(new_c_idx+1, z_clusters[old_c_key]) for new_c_idx, old_c_key in enumerate(clusters_to_keep)])
 
-        self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(hit_clusters), len(filtered_hit_clusters)))
+        self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(z_clusters), len(filtered_z_clusters)))
 
-        return filtered_num_clusters, filtered_hit_clusters
+        return filtered_num_clusters, filtered_z_clusters
 
-    def group_clusters(self, hit_clusters,
+    def group_clusters(self, z_clusters,
                              grid_spacing,
                              separation_cutoff=5   ):
         """Join clusters that are separated by less than max_separation"""
 
-        if len(hit_clusters) == 1:
-            return 1, hit_clusters
+        if len(z_clusters) == 1:
+            return 1, z_clusters
         else:
             self.log('===================================>>>')
             self.log('GROUPING: Grouping Nearby Clusters')
@@ -3062,20 +3062,20 @@ class PanddaMultiDatasetAnalyser(object):
         grid_spacing_cutoff_sq = (separation_cutoff/grid_spacing)**2
 
         # Record which clusters are to be joined
-        connect_array = numpy.zeros((len(hit_clusters),len(hit_clusters)), dtype=int)
+        connect_array = numpy.zeros((len(z_clusters),len(z_clusters)), dtype=int)
 
-        cluster_keys = sorted(hit_clusters.keys())
+        cluster_keys = sorted(z_clusters.keys())
 
         for i_clust_1, c_key_1 in enumerate(cluster_keys):
             # Extract grid points for cluster 1
-            c_gp_1 = flex.vec3_double([c[0] for c in hit_clusters[c_key_1]])
+            c_gp_1 = flex.vec3_double([c[0] for c in z_clusters[c_key_1]])
             for i_clust_2, c_key_2 in enumerate(cluster_keys):
                 # Skip if this is the same blob
                 if i_clust_1 == i_clust_2:
                     connect_array[(i_clust_1, i_clust_2)] = 1
                     continue
                 # Extract grid points for cluster 2
-                c_gp_2 = flex.vec3_double([c[0] for c in hit_clusters[c_key_2]])
+                c_gp_2 = flex.vec3_double([c[0] for c in z_clusters[c_key_2]])
                 # Extract the minimum separation of the grid points
                 min_dist_sq = min([min((c_gp_2 - gp).dot()) for gp in c_gp_1])
                 # Check to see if they should be joined
@@ -3087,7 +3087,8 @@ class PanddaMultiDatasetAnalyser(object):
         num_groups = max(cluster_groupings)
         grouped_zip = zip(cluster_groupings, cluster_keys)
 
-        print('COMBINING', len(hit_clusters), 'GROUPS INTO', num_groups, 'GROUPS')
+        if self.args.settings.verbose:
+            print('COMBINING', len(z_clusters), 'GROUPS INTO', num_groups, 'GROUPS')
 
         # Output cluster dict
         grouped_clusters = {}
@@ -3097,21 +3098,15 @@ class PanddaMultiDatasetAnalyser(object):
             # Extract the keys for the clusters in this group
             group_c_keys = [c[1] for c in grouped_zip if c[0] == n_group]
             # Extract points for these clusters
-            group_points = []; [group_points.extend(hit_clusters[c_key]) for c_key in group_c_keys]
+            group_points = []; [group_points.extend(z_clusters[c_key]) for c_key in group_c_keys]
             # Combine all of the points into a new cluster
             grouped_clusters[n_group] = group_points
 
-            print('THIS SHOULD BE A TUPLE PAIR', grouped_clusters[n_group][0])
-
         assert len(grouped_clusters) == num_groups
+        assert sum(map(len, z_clusters.values())) == sum(map(len, grouped_clusters.values()))
 
-        print('ORIG CLUSTERS', map(len, hit_clusters.values()))
-        print('NEW CLUSTERS', map(len, grouped_clusters.values()))
-
-        print('ORIG TOTAL', sum(map(len, hit_clusters.values())))
-        print('NEW TOTAL', sum(map(len, grouped_clusters.values())))
-
-        self.log('Grouped {!s} Clusters together to form {!s} Clusters'.format(len(hit_clusters), len(grouped_clusters)))
+        print(map(len, z_clusters.values()),'->',map(len, grouped_clusters.values()))
+        self.log('Grouped {!s} Clusters together to form {!s} Clusters'.format(len(z_clusters), len(grouped_clusters)))
 
         return num_groups, grouped_clusters
 
@@ -3129,63 +3124,6 @@ class PanddaMultiDatasetAnalyser(object):
         event_total = sum([a[1] for a in event_num])
 
         return event_total, event_num, all_dataset_events
-
-    def process_z_value_clusters(self):
-        """Analyse the clusters of points with high Z-values"""
-
-        print('===================================>>>')
-        print('Processing Clusters of Z-scores')
-
-        # Summaries of the clusters
-        cluster_summaries = []
-        # Dataset numbers for those datasets with hits
-        cluster_ids = []
-        # All cluster objects
-        all_clusters = []
-
-        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
-
-            # Check to see if there are any clustered points
-            if not d_handler.hit_clusters:
-                continue
-
-            # Pull out the cluster object
-            cluster_obj = d_handler.hit_clusters
-
-            # Add to list of all clusters
-            cluster_ids.append(d_handler.tag)
-            all_clusters.append(cluster_obj)
-
-            ########################################################
-
-            # Pull out the coordinates of the peaks, in cartesian, in the frame of the dataset
-            peak_sites_cart_ref = list(flex.vec3_double(cluster_obj.get_peaks())*self.reference_grid().grid_spacing())
-#            peak_sites_cart = list(d_handler.transform_from_reference(points=flex.vec3_double(peak_sites_cart_ref), method=self.get_alignment_method(), point_mappings=self.reference_dataset().find_nearest_calpha(peak_sites_cart_ref)))
-            peak_sites_cart = list(d_handler.transform_from_reference(points=flex.vec3_double(peak_sites_cart_ref), method=self.params.alignment.method, point_mappings=self.reference_grid().partition().query_by_grid_points(cluster_obj.get_peaks())))
-            list_to_write = zip(cluster_obj.get_maxima(), cluster_obj.get_sizes(), *zip(*[p+p_ref for p,p_ref in zip(peak_sites_cart, peak_sites_cart_ref)]))
-
-            sort_order = cluster_obj.sort(sorting_data='values', sorting_function=max, decreasing=True)
-            sorted_list = [list_to_write[i] for i in sort_order]
-
-            string_to_write = '\n'.join(['z_peak, size, x, y, z, refx, refy, refz'] + [', '.join(map(str, l)) for l in sorted_list])
-            with open(d_handler.output_handler.get_file('z_peaks_csv'), 'w') as fh:
-                fh.write(string_to_write)
-
-            ########################################################
-
-            # Pull out the cluster summaries
-            for c_num, c_key in enumerate(cluster_obj.get_keys()):
-                cluster_summaries.append([d_handler.tag, c_key] + cluster_obj.get_sizes([c_num]) + cluster_obj.get_means([c_num]) + cluster_obj.get_maxima([c_num]))
-
-        # Combine all clusters into
-        combined_cluster = combine_clusters(clusters=all_clusters, ids=cluster_ids)
-
-        self.all_clustered_points = combined_cluster
-
-        return combined_cluster
-
-        # TODO XXX EITHER CREATE A NEW FUNCTION OR EXTEND THE FUNCTION ABOVE XXX TODO
-        # CLUSTER THE LARGE Z-VALUES ACROSS THE DATASETS TO DETECT INTERESTING 'SITES' ON THE PROTEIN
 
     def write_pymol_scripts(self, d_handler):
         """Autogenerate pymol scripts"""
@@ -3332,70 +3270,17 @@ class PanddaMultiDatasetAnalyser(object):
 
     def write_map_value_distribution(self, map_vals, output_file, plot_indices=None, plot_normal=False):
         """Write out the value distribution for a map"""
+        if not self.args.output.plot_graphs: return
+        if plot_indices: plot_vals = [map_vals[i] for i in plot_indices]
+        else:            plot_vals = list(map_vals)
+        graphs.map_value_distribution(f_name=output_file, plot_vals=plot_vals, plot_normal=plot_normal)
 
-        if self.args.output.plot_graphs:
-            import matplotlib
-            matplotlib.interactive(0)
-            from matplotlib import pyplot
-        else:
-            return
-
-        if plot_indices:
-            plot_vals = [map_vals[i] for i in plot_indices]
-        else:
-            plot_vals = list(map_vals)
-
-        fig = pyplot.figure()
-        pyplot.title('MAP VALUE DISTRIBUTION')
-        pyplot.hist(x=plot_vals, bins=30, normed=True)
-        if plot_normal:
-            # Plot the distribution for N(0,1)
-            nd_t = normal_distribution()
-            theor_x = numpy.linspace(-5,5,101)
-            theor_y = [nd_t.pdf(x) for x in theor_x]
-            pyplot.plot(theor_x, theor_y, c='k', ls='--', marker='o')
-            # Plot the distribution for the observed distribution
-            nd_o = normal_distribution(mean=numpy.mean(plot_vals), sd=numpy.std(plot_vals))
-            obs_x = numpy.linspace(-5,5,101)
-            obs_y = [nd_o.pdf(x) for x in obs_x]
-            pyplot.plot(obs_x, obs_y, c='g', ls='-', marker='o')
-        pyplot.xlabel('MAP VALUE')
-        pyplot.ylabel('DENSITY')
-        # Apply tight layout to prevent overlaps
-        pyplot.tight_layout()
-        # Save
-        pyplot.savefig(output_file)
-        pyplot.close(fig)
-
-    # TODO MOVE TO GRAPHS MODULE
     def write_qq_plot_against_normal(self, map_vals, output_file, plot_indices=None):
         """Plot the values in map_vals against those expected from a normal distribution"""
-
-        if self.args.output.plot_graphs:
-            import matplotlib
-            matplotlib.interactive(0)
-            from matplotlib import pyplot
-        else:
-            return
-
-        if plot_indices:
-            plot_vals = [map_vals[i] for i in plot_indices]
-        else:
-            plot_vals = list(map_vals)
-
-        expected_vals = normal_distribution().quantiles(len(plot_vals))
-
-        fig = pyplot.figure()
-        pyplot.title('OBS v THEORETICAL Q-Q PLOT')
-        pyplot.plot([min(expected_vals)-1, max(expected_vals)+1], [min(expected_vals)-1, max(expected_vals)+1], 'b--')
-        pyplot.plot(sorted(plot_vals), expected_vals, 'go-')
-        pyplot.xlabel('OBSERVED QUANTILES')
-        pyplot.ylabel('THEORETICAL QUANTILES')
-        # Apply tight layout to prevent overlaps
-        pyplot.tight_layout()
-        # Save
-        pyplot.savefig(output_file)
-        pyplot.close(fig)
+        if not self.args.output.plot_graphs: return
+        if plot_indices: plot_vals = [map_vals[i] for i in plot_indices]
+        else:            plot_vals = list(map_vals)
+        graphs.qq_plot_against_normal(f_name=output_file, plot_vals=plot_vals)
 
     def write_map_analyser_summary(self, map_analyser, analysis_mask_name):
         """Write statistical maps for a map_analyser object"""
@@ -3404,8 +3289,6 @@ class PanddaMultiDatasetAnalyser(object):
             import matplotlib
             matplotlib.interactive(0)
             from matplotlib import pyplot
-        else:
-            return
 
         ########################################################
 
@@ -3471,6 +3354,8 @@ class PanddaMultiDatasetAnalyser(object):
 
         ########################################################
 
+        if not self.args.output.plot_graphs: return
+
         self.log('=> Writing Statistical Map Distributions')
 
         ##################################
@@ -3512,6 +3397,12 @@ class PanddaMultiDatasetAnalyser(object):
         # Save
         pyplot.savefig(os.path.join(img_out_dir, '{!s}A-mean_v_median_scatter.png'.format(map_res)))
         pyplot.close(fig)
+
+        ##################################
+        # MEAN Values v MEDIAN Values
+        ##################################
+        graphs.med_mean_diff_hist(  f_name=os.path.join(img_out_dir, '{!s}A-mean_median_diff_hist.png'.format(map_res)),
+                                    plot_vals=numpy.abs(flex.double(mean_map_vals)-flex.double(medn_map_vals)))
 
         ##################################
         # STATISTICAL MAP HISTOGRAMS
@@ -3781,51 +3672,48 @@ class PanddaMultiDatasetAnalyser(object):
         self.log('Writing Dataset + Dataset Map Summary CSV')
 
         # Write the dataset information to csv file
-        self.tables.dataset_info.to_csv(     path_or_buf = self.output_handler.get_file('dataset_info'), index_label = 'dtag')
-        self.tables.dataset_map_info.to_csv( path_or_buf = self.output_handler.get_file('dataset_map_info'), index_label = 'dtag')
+        self.tables.dataset_info.to_csv(path_or_buf=self.output_handler.get_file('dataset_info'), index_label='dtag')
+        self.tables.dataset_map_info.to_csv(path_or_buf=self.output_handler.get_file('dataset_map_info'), index_label='dtag')
 
         self.log('===================================>>>')
         self.log('Writing COMBINED Dataset Summary CSV')
 
         # Join the tables on the index of the main table
-        df1=self.tables.dataset_info
-        df2=self.tables.dataset_map_info
-        full_table = pandas.concat([df1,df2], axis=1, join_axes=[df1.index])
-        # Write the dataset information to csv file
-        full_table.to_csv(  path_or_buf = self.output_handler.get_file('dataset_combined_info'),
-                            index_label = 'dtag'  )
+        comb_tab = self.tables.dataset_info.join(self.tables.dataset_map_info, how='outer')
+        comb_tab.to_csv(path_or_buf=self.output_handler.get_file('dataset_combined_info'), index_label='dtag')
 
         self.log('===================================>>>')
         self.log('Writing Event+Site Summary CSVs')
 
         # Sort the event data by z-peak and write out
-        self.tables.event_info.sort(columns=['site_idx','z_peak'], ascending=[1,0]).to_csv(
-                                        path_or_buf = self.output_handler.get_file('event_info')   )
-        self.tables.site_info.sort(columns=['num_events'], ascending=[0]).to_csv(
-                                        path_or_buf = self.output_handler.get_file('site_info')    )
+        sort_eve = self.tables.event_info.sort(columns=['site_idx','z_peak'], ascending=[1,0])
+        sort_eve.to_csv(path_or_buf=self.output_handler.get_file('event_info_2'))
+        sort_eve = sort_eve.join(comb_tab, how='right')
+        sort_eve.to_csv(path_or_buf=self.output_handler.get_file('event_info'))
+        # Sort the sites by number of events and write out
+        sort_sit = self.tables.site_info.sort(columns=['num_events'],ascending=[0])
+        sort_sit.to_csv( path_or_buf=self.output_handler.get_file('site_info'))
 
         # TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
         #self.log('===================================>>>')
         #self.log('Writing Residue Summaries - NOT YET')
         # TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
 
-    def add_sites_to_site_table(self, new_sites, overwrite=True):
+    def update_site_table(self, site_list, clear_table=True):
         """Add site entries to the site table"""
 
-#        if overwrite == True:
-#            new_table = self.tables.site_info
-
-#        self.tables.event_info.loc[event_key,:] = None
-#        self.tables.event_info.set_value(event_key, 'est_occupancy', event_obj.info.estimated_occupancy)
-#        self.tables.event_info.set_value(event_key, 'z_peak', event_obj.cluster.max)
-#        self.tables.event_info.set_value(event_key, 'z_mean', event_obj.cluster.mean)
-#        self.tables.event_info.set_value(event_key, 'cluster_size', event_obj.cluster.size)
-#        self.tables.event_info.set_value(event_key, ['refx','refy','refz'], event_obj.cluster.centroid*self.reference_grid().grid_spacing())
-#        self.tables.event_info.set_value(event_key, ['x','y','z'], d_handler.transform_from_reference(  points=event_obj.cluster.centroid*self.reference_grid().grid_spacing(),
-#                                                                                                        method='global',
-##                                                                                                        method=self.params.alignment.method,
-##                                                                                                        point_mappings=self.reference_grid().partition().query_by_grid_points([grid_ref])
-#                                                                                                        )[0])
+        # Clear an existing table
+        if clear_table:
+            self.tables.site_info = pandas.DataFrame(data    = None,
+                                                     index   = self.tables.site_info.index.reindex([])[0],
+                                                     columns = self.tables.site_info.columns)
+        # Go through and update the site information
+        for site in site_list.children:
+            self.tables.site_info.loc[site.id,:] = None
+            self.tables.site_info.set_value(site.id, 'centroid', tuple(flex.double(site.info.centroid)*self.reference_grid().grid_spacing()))
+            self.tables.site_info.set_value(site.id, 'native_centroid', tuple(self.reference_dataset().transform_from_reference(
+                                                                                                        points=flex.vec3_double([site.info.centroid])*self.reference_grid().grid_spacing(),
+                                                                                                        method='global')[0]))
         return
 
     def add_event_to_event_table(self, d_handler, event):
@@ -3851,52 +3739,12 @@ class PanddaMultiDatasetAnalyser(object):
 #                                                                                                        point_mappings=self.reference_grid().partition().query_by_grid_points([grid_ref])
                                                                                                         )[0]))
 
-    def update_event_table(self, events):
+    def update_event_table_site_info(self, events):
         """Update the event table for pre-existing events"""
         for e in events:
             assert e.id, 'NO ID GIVEN: {!s}'.format(e.id)
-            print('UPDATING:{!s}'.format(e.id))
             assert e.parent, 'EVENT HAS NO PARENT: {!s}'.format(e.parent)
             self.tables.event_info.set_value(e.id, 'site_idx', e.parent.id)
-
-#    def write_ranked_cluster_csv(self, cluster, sorted_indices, outfile):
-#        """Output a combined list of all of identified blobs, for all datasets"""
-#
-#        output_list = []
-#
-#        # Blob Rank, Blob Index
-#        for c_rank, c_index in enumerate(sorted_indices):
-#            # Extract the label of the cluster
-#            d_tag, c_num = cluster.get_keys([c_index])[0]
-#            # Pull out the d_handler for the dataset
-#            d_handler = self.datasets.get(tag=d_tag)
-#
-#            # Extract the location of the blob in the reference frame
-#            grid_ref = cluster.get_peaks([c_index])[0]
-#            cart_ref = list(flex.vec3_double([grid_ref])*self.reference_grid().grid_spacing())[0]
-#            # Transform it to the original frame of reference
-#            cart_nat = list(d_handler.transform_from_reference(
-#                                                                points=flex.vec3_double([cart_ref]),
-#                                                                method=self.params.alignment.method,
-##                                                                point_mappings=self.reference_dataset().find_nearest_calpha([cart_ref])
-#                                                                point_mappings=self.reference_grid().partition().query_by_grid_points([grid_ref])
-#                                                                )
-#                            )[0]
-#            # Extract the peak value of the blob
-#            cluster_peak_val = cluster.get_maxima([c_index])[0]
-#            cluster_size_val = cluster.get_sizes([c_index])[0]
-#
-#            # Combine into columns for the output
-#            cols_to_write = [d_tag, c_rank+1, c_num, cluster_peak_val, cluster_size_val] + list(cart_nat) + list(cart_ref) + [d_handler.pdb_filename(), d_handler.mtz_filename()]
-#            output_list.append(cols_to_write)
-#
-#        # Form the headers, and write
-#        headers = 'dtag, rank, event, blob_peak, blob_size, x, y, z, refx, refy, refz, pdb, mtz'
-#        string_to_write = '\n'.join([headers] + [', '.join(map(str, l)) for l in output_list])
-#        with open(outfile, 'w') as fh:
-#            fh.write(string_to_write)
-#
-#        return None
 
     def write_grid_point_distributions(self, grid_points, map_analyser, output_filename=None):
         """Write CSV file of grid points, dataset numbers and map values"""
@@ -3924,29 +3772,27 @@ class PanddaMultiDatasetAnalyser(object):
                 out_line = '\n'.join(map(str,out_list)) + '\n'
                 fh.write(out_line)
 
-    def write_array_to_map_old(self, output_file, map_data, grid_size=None, grid_spacing=None):
-        """Takes a 1d array and writes it to a map"""
-        if not grid_size:    grid_size    = self.reference_grid().grid_size()
-        if not grid_spacing: grid_spacing = self.reference_grid().grid_spacing()
-        self.log('> Writing Map (OLD METHOD): {!s}'.format(output_file))
-        write_1d_array_as_p1_map(file_name=output_file, map_data=map_data, grid_size=grid_size, grid_spacing=grid_spacing)
+#    def write_array_to_map_old(self, output_file, map_data, grid_size=None, grid_spacing=None):
+#        """Takes a 1d array and writes it to a map"""
+#        if not grid_size:    grid_size    = self.reference_grid().grid_size()
+#        if not grid_spacing: grid_spacing = self.reference_grid().grid_spacing()
+#        self.log('> Writing Map (OLD METHOD): {!s}'.format(output_file))
+#        write_1d_array_as_p1_map(file_name=output_file, map_data=map_data, grid_size=grid_size, grid_spacing=grid_spacing)
 
     def rotate_map(self, d_handler, map_data):
         """Apply an RT matrix to an array on the reference grid"""
 
         # For the local alignment transformation
         #point_mappings = self.find_nearest_calpha(points)
-        #lab_rt_points = self.local_alignment_transforms()[r_lab].rt().inverse() * flex.vec3_double(lab_points)
+        #lab_rt_points = self.local_alignment_transforms()[r_lab].inverse() * flex.vec3_double(lab_points)
 
         return cctbx.maptbx.rotate_translate_map(   unit_cell          = self.reference_grid().unit_cell(),
                                                     map_data           = map_data,
-                                                    rotation_matrix    = d_handler.global_alignment_transform().rt().r.elems,
-                                                    translation_vector = d_handler.global_alignment_transform().rt().t.elems    )
+                                                    rotation_matrix    = d_handler.global_alignment_transform().r.elems,
+                                                    translation_vector = d_handler.global_alignment_transform().t.elems    )
 
     def write_array_to_map(self, output_file, map_data):
         """Take array on the reference grid and write to map"""
-
-        self.log('> Writing Map (>>> NEW METHOD <<<): {!s}'.format(output_file))
         iotbx.ccp4_map.write_ccp4_map(  file_name   = output_file,
                                         unit_cell   = self.reference_grid().unit_cell(),
                                         space_group = self.reference_grid().space_group(),

@@ -30,17 +30,8 @@ class grid_handler(object):
 
         # Atomic Masks for partitioning the grid
         self._grid_masks = {}
-
         # Local mask for filtering/smoothing
         self._local_mask = None
-
-#        # Groups of points defined by the local mask
-#        self._buffer_mask_points = None
-#        self._buffer_mask_binary = None
-#
-#        # Group of points defined by sampling the grid regularly
-#        self._resampled_grid_points = None
-#        self._resampled_grid_size = None
 
         # Manually set group of points created by combining masks
         self._masked_grid_points = None
@@ -97,7 +88,6 @@ class grid_handler(object):
                                                 grid_spacing = self.grid_spacing(),
                                                 atomic_hierarchy = atomic_hierarchy  )
     def partition(self):
-        if not self._grid_partition: raise Exception('GRID NOT PARTITIONED')
         return self._grid_partition
 
     def add_mask(self, mask_name, mask):
@@ -148,31 +138,6 @@ class grid_handler(object):
 
     def local_mask(self):
         return self._local_mask
-
-#    def resampled_grid_points(self):
-#        """Get a down-sampled list of grid points, based on the local mask used"""
-#        return self._resampled_grid_points
-#    def resampled_grid_size(self):
-#        """Gets the size of the re-sampled grid"""
-#        return self._resampled_grid_size
-#    def resampled_grid_spacing(self):
-#        """Gets the grid spacing for the re-sampled grid"""
-#        return self._resampled_grid_spacing
-#    def resampled_grid_indexer(self):
-#        """Translates between 3d grid coordinates and 1d array coordinates"""
-#        return flex.grid(self.resampled_grid_size())
-#
-#    def buffer_mask_points(self):
-#        """Get a list of points in the buffer zone of the map"""
-#        return self._buffer_mask_points
-#    def buffer_mask_binary(self):
-#        """Get a binary mask for the buffer zone"""
-#        return self._buffer_mask_binary
-#
-#    def set_masked_grid_points(self, masked_points):
-#        self._masked_grid_points = masked_points
-#    def masked_grid_points(self):
-#        return self._masked_grid_points
 
     def summary(self):
         return '\n'.join([  '===================================>>>',

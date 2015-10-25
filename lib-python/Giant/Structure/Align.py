@@ -56,7 +56,7 @@ def perform_flexible_alignment(mov_hierarchy, ref_hierarchy, cutoff_radius=10):
         mov_sites = mov_selected_ats.extract_xyz()
 
         # Calculate the alignment for this residue
-        res_rt = superpose.least_squares_fit(reference_sites=ref_sites, other_sites=mov_sites)
+        res_rt = superpose.least_squares_fit(reference_sites=ref_sites, other_sites=mov_sites).rt()
 
         output_fits[(calpha_at.chain_id, calpha_at.resid())] = res_rt
 

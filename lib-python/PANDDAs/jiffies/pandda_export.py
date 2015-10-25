@@ -141,16 +141,19 @@ def process_and_export_folder(dir, params):
 
         # Fill in the name of the file from the template
         dataset_file = template_file.format(dir_name)
-        transform_params.file.input  = os.path.join(dir, dataset_file)
-        transform_params.file.output = os.path.join(dir, prepend_prefix_to_basename(params.templates.temp_prefix, dataset_file))
+        input_files  = glob.glob(os.path.join(dir, dataset_file))
 
-        # Transform the structures
-        if os.path.exists(transform_params.file.input):
-            transform_coordinates.run(transform_params)
-            # Will want to delete this later
-            temp_files_to_delete.append(transform_params.file.output)
-        else:
-            print 'NOT MAPPING - INPUT DOES NOT EXIST: {}'.format(transform_params.file.input)
+        for f in input_files:
+            transform_params.file.input = f
+            transform_params.file.output = prepend_prefix_to_basename(params.templates.temp_prefix, f)
+
+            if os.path.exists(transform_params.file.input):
+                # Transform the structures
+                transform_coordinates.run(transform_params)
+                # Will want to delete this later
+                temp_files_to_delete.append(transform_params.file.output)
+            else:
+                print 'NOT MAPPING - INPUT DOES NOT EXIST: {}'.format(transform_params.file.input)
 
     ############################################################################
 

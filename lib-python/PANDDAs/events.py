@@ -56,8 +56,7 @@ class Event(object):
         # Add Meta to the object
         if info:
             assert isinstance(info, Info)
-            for a in self._attributes:
-                assert hasattr(info, a)
+            for a in self._attributes: assert hasattr(info, a)
             self.info = info
         else:
             self.info = Info(self._attributes)
@@ -70,14 +69,24 @@ class Event(object):
         return '\n'.join(out)
 
 class Site(object):
-    def __init__(self, events=None):
+    _attributes = [ 'centroid', 'num_events', 'approx_size',
+                    'nearest_residues', 'near_crystal_contacts']
+    def __init__(self, events=None, info=None):
         """Class to hold information about an identified site (collection of events)"""
         # List of Events
         self.children = []
         self.parent = None
         self.id = None
+        # Add Meta to the object
+        if info:
+            assert isinstance(info, Info)
+            for a in self._attributes: assert hasattr(info, a)
+            self.info = info
+        else:
+            self.info = Info(self._attributes)
+
         # Add Events
-        if events: self.add_events(events)
+        if events: self.add_events(events=events, update=True)
 
     def add_events(self, events, update=True):
         if isinstance(events, list):
@@ -86,40 +95,40 @@ class Site(object):
         else:
             assert isinstance(events, Event), 'Added events must be of class Event'
             self.children.append(events)
-        if update:
-            self.update()
+        if update: self.update()
         return self
 
     def update(self):
-        # Number of events at the site
-        self.num_events = len(self.children)
-        # Extract site centroids
         centroids = flex.vec3_double([e.cluster.centroid for e in self.children])
-        # Centroid of the site (mean of event centroids)
-        self.centre = centroids.mean()
-        # Size of the site (min->max)
-        self.approx_size = (centroids.min(), centroids.max())
+        self.info.centroid = centroids.mean()
+        self.info.approx_size = (centroids.min(), centroids.max())
+        self.info.num_events = len(self.children)
         return self
 
     def summary(self):
         out = []
         out.append('Site Summary')
-        out.append('{!s} Events'.format(self.num_events))
-        out.append('Centroid: {!s}'.format(self.centre))
-        out.append('Approx Range: {!s}'.format(self.approx_size))
+        out.append('{!s} Events'.format(self.info.num_events))
+        out.append('Centroid: {!s}'.format(self.info.centroid))
+        out.append('Approx Range: {!s}'.format(self.info.approx_size))
         for s in self.children:
             out.append('-----------------------')
             out.append(s.summary())
         return '\n'.join(out)
 
     def sort(self, key, reverse=True):
-        return self.children.sort(key=key, reverse=True)
+        self.children.sort(key=key, reverse=True)
+
+    def find_protein_context(self, hierarchy):
+        return
 
 class SiteList(object):
     def __init__(self, sites=None):
         """Class to hold information about multiple sites on a protein"""
         # List of Sites
         self.children = []
+        self.parent = None
+        self.id = None
         # Add Sites
         if sites: self.add_sites(sites)
 
@@ -156,14 +165,17 @@ class SiteList(object):
         for i_c, c in enumerate(self.children): c.id=i_c+start_at
         return self
 
-def event_distance(event1, event2):
+def event_distance_centroid(event1, event2):
     return (flex.double(event1.cluster.centroid) - flex.double(event2.cluster.centroid)).norm()
 
-def cluster_events(events, cutoff=5, linkage='average'):
+def event_distance_min_cluster_distance(event1, event2):
+    return min([min((event1.cluster.points-x).norms()) for x in event2.cluster.points])
+
+def cluster_events(events, cutoff=3, linkage='single', dist_func=event_distance_centroid):
     """Cluster events into sites. Returns a SiteList object. Appends new sites to existing SiteList if given"""
 
     # Create hierarchical clustering of the events
-    cl = libtbx.cluster.HierarchicalClustering(data=events, distance_function=event_distance, linkage=linkage)
+    cl = libtbx.cluster.HierarchicalClustering(data=events, distance_function=dist_func, linkage=linkage)
     # Group the events
     clusters = cl.getlevel(cutoff)
     # Turn lists of events into sites

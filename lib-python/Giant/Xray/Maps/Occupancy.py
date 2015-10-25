@@ -19,8 +19,8 @@ def calculate_occupancy_correlations(ref_map, query_map, feature_region, min_occ
     # Check that the inputs are the right types
     assert isinstance(ref_map, flex.double), 'ref_map must of type flex.double'
     assert isinstance(query_map, flex.double), 'query_map must of type flex.double'
-    assert isinstance(feature_region, list), 'grid_point_selection must be of type flex.vec3_double'
-    assert isinstance(reference_region, list), 'grid_point_selection must be of type flex.vec3_double'
+    assert isinstance(feature_region, list), 'grid_point_selection must be of type list'
+    assert isinstance(reference_region, list), 'grid_point_selection must be of type list'
     # Check that the two maps are the same size
     assert ref_map.all() == query_map.all(), 'ref_map and query_map are not the same size: {!s} != {!s}'.format(ref_map.all(), query_map.all())
     assert ref_map.size() == query_map.size(), 'ref_map and query_map are not the same size: {!s} != {!s}'.format(ref_map.size(), query_map.size())

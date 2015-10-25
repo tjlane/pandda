@@ -1,4 +1,5 @@
-from numpy import empty
+
+import numpy
 from math import cos, pi, sqrt
 from scitbx.array_family import flex
 
@@ -18,6 +19,8 @@ def fractional_change_for_diagonals(uc1_diags, uc2_diags):
     m_ca = abs(d_ca_1-d_ca_2)/min(d_ca_1, d_ca_2)
     return m_ab, m_bc, m_ca
 
+#############################################################################
+
 def lcv_from_diagonals(uc1_diags, uc2_diags):
     chg_diags = fractional_change_for_diagonals(uc1_diags=uc1_diags, uc2_diags=uc2_diags)
     return max(chg_diags)
@@ -26,15 +29,32 @@ def lcv_from_unit_cells(uc1, uc2):
     """Calculate the Linear Cell Variation for two unit cells"""
     uc1_diags = unit_cell_diagonals(*uc1.parameters())
     uc2_diags = unit_cell_diagonals(*uc2.parameters())
-    return linear_cell_variation_from_diagonals(uc1_diags=uc1_diags, uc2_diags=uc2_diags)
+    return lcv_from_diagonals(uc1_diags=uc1_diags, uc2_diags=uc2_diags)
 
-def pairwise_lcv(unit_cells):
-    """Calculate the LCV for all pairs of unit cells"""
-    num_uc = len(unit_cells)
-    diags = empty([num_uc], dtype=object)
-    lcvs  = empty([num_uc]*2, dtype=object)
-    for i_uc1, uc1 in enumerate(unit_cells):
-        diags[i_uc1] = unit_cell_diagonals(*uc1.parameters())
-    for i_uc1, i_uc2 in flex.nested_loop((num_uc, num_uc)):
-        lcvs[i_uc1, i_uc2] = lcv_from_diagonals(uc1_diags=diags[i_uc1], uc2_diags=diags[i_uc2])
-    return lcvs
+#############################################################################
+
+def pairwise_lcv(unit_cells=None, parameters=None):
+    """Calculate the LCV for all pairs of unit cells/parameters"""
+    assert [unit_cells, parameters].count(None) == 1, "Provide either unit_cells or parameters"
+    if unit_cells:  parameters = [uc.parameters() for uc in unit_cells]
+    num_objs = len(parameters)
+    diags = numpy.empty([num_objs], dtype=object)
+    dist  = numpy.empty([num_objs]*2, dtype=object)
+    for i_uc1, uc1 in enumerate(parameters):
+        diags[i_uc1] = unit_cell_diagonals(*uc1)
+    for i_uc1, i_uc2 in flex.nested_loop((num_objs, num_objs)):
+        dist[i_uc1, i_uc2] = lcv_from_diagonals(uc1_diags=diags[i_uc1], uc2_diags=diags[i_uc2])
+    return dist
+
+def pairwise_ecv(unit_cells=None, parameters=None):
+    """Calculate the Euclidean Cell Variation (ECV) for all pairs of unit cells/parameters"""
+    assert [unit_cells, parameters].count(None) == 1, "Provide either unit_cells or parameters"
+    if unit_cells:  parameters = [uc.parameters() for uc in unit_cells]
+    num_objs = len(parameters)
+    diags = numpy.empty([num_objs], dtype=object)
+    dist  = numpy.empty([num_objs]*2, dtype=object)
+    for i_uc1, uc1 in enumerate(parameters):
+        diags[i_uc1] = unit_cell_diagonals(*uc1)
+    for i_uc1, i_uc2 in flex.nested_loop((num_objs, num_objs)):
+        dist[i_uc1, i_uc2] = flex.double(fractional_change_for_diagonals(diags[i_uc1],diags[i_uc2])).norm()
+    return dist

@@ -66,7 +66,7 @@ pandda_phil_def = """
                 min_correlation_to_reflection_data = 0.5
                     .help = "Reject datasets that have a correlation less than this to the reference reflection data "
                     .type = float
-                max_rmsd_to_reference = 1.0
+                max_rmsd_to_reference = 1.5
                     .help = "Reject datasets that have a calpha rmsd of greater than this to the reference"
                     .type = float
                 max_rfree = 0.4
@@ -135,6 +135,13 @@ pandda_phil_def = """
                     .help = 'Reject these datasets, don\'t even load them - comma separated list of dataset tags'
                     .type = str
             }
+            z_map_calculation
+                .help = "Settings to control the calculation of z-maps"
+            {
+                map_type = naive adjusted uncertainty *adjusted+uncertainty
+                    .help = 'Type of Z-map to calculate'
+                    .type = choice
+            }
             blob_search
                 .help = "Settings to control the finding of blobs"
             {
@@ -202,6 +209,9 @@ pandda_phil_def = """
             {
                 write_maps_for_empty_datasets = False
                     .help = "Output maps for all datasets, not just datasets marked as interesting"
+                    .type = bool
+                write_grid_masks = False
+                    .help = "Output the grid masks which control which areas are analysed"
                     .type = bool
                 write_all_z_map_types = False
                     .help = "Output all possible types of Z-maps (Takes a lot of space on disk)"
