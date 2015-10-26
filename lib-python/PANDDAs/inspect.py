@@ -1,7 +1,9 @@
 
-import os, sys, glob, copy
+import os, sys, glob, copy, itertools
 import gtk
 import pandas
+
+from PANDDAs import graphs
 
 try:
     set_nomenclature_errors_on_read("ignore")
@@ -204,6 +206,21 @@ class PanddaInspector(object):
         self.gui = PanddaGUI(parent=self)
         self.gui.launch()
 
+    def update(self):
+        """Update various parts of the class - including output graphs"""
+
+        # Plot output graph of site list
+        plot_vals = self.log_table['z_peak']
+        view_vals = self.log_table['Viewed']
+        site_idxs = self.log_table['site_idx']
+        groups = [list(g[1]) for g in itertools.groupby(range(len(site_idxs)), key=lambda i: site_idxs[i])]
+        graphs.multiple_bar_plot(   f_name      = os.path.join(self.top_dir, 'pandda_inspect.png'),
+                                    plot_vals   = [[plot_vals[i] for i in g] for g in groups],
+                                    colour_bool = [[view_vals[i] for i in g] for g in groups]   )
+
+        # Update gui with the new event values
+        self.update_gui()
+
     def update_gui(self):
 
         # Update global position
@@ -239,7 +256,7 @@ class PanddaInspector(object):
         # Load and Save the event
         self.current_event = self.coot.load_event(e=new_event)
         # Update the gui
-        self.update_gui()
+        self.update()
         self.print_current_log_values()
 
     def load_prev_event(self, skip_unmodelled=None, skip_viewed=None):
@@ -259,7 +276,7 @@ class PanddaInspector(object):
         # Load and Save the event
         self.current_event = self.coot.load_event(e=new_event)
         # Update the gui
-        self.update_gui()
+        self.update()
         self.print_current_log_values()
 
     def refresh_event(self):
@@ -268,7 +285,7 @@ class PanddaInspector(object):
         # Load and store the event
         self.current_event = self.coot.load_event(e=new_event)
         # Update the gui
-        self.update_gui()
+        self.update()
         self.print_current_log_values()
 
     #-------------------------------------------------------------------------
@@ -722,20 +739,6 @@ class PanddaGUI(GenericGUI):
         hbox_main.pack_start(vbox_2)
 
         return hbox_main
-
-#############################################################################################
-
-#try:
-#    add_key_binding("next blob", "s", lambda: inspector.save_and_load_next())
-#    add_key_binding("prev blob", "a", lambda: inspector.save_and_load_prev())
-#    add_key_binding("skip blob", "v", lambda: inspector.load_next_event())
-#
-#except Exception as err:
-#    print err
-
-#############################################################################################
-
-
 
 #############################################################################################
 #
