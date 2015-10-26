@@ -1,23 +1,19 @@
 #!/usr/bin/env pandda.python
 
 import os, sys, glob, time, gc
-import numpy, pandas
+import numpy
 
 from scitbx.array_family import flex
 from scitbx.math import basic_statistics
 
-from Giant.Xray.Maps.Occupancy import calculate_occupancy_subtracted_map, estimate_event_occupancy
+from Giant.Utils import rel_symlink
 
 from Giant.Grid.Masks import grid_mask
-from Giant.Grid.Utils import get_grid_points_within_index_cutoff_of_grid_sites
+from Giant.Xray.Maps.Occupancy import calculate_occupancy_subtracted_map, estimate_event_occupancy
 
-from Giant.Stats.Cluster import cluster_data
-from Giant.Utils import status_bar, rel_symlink
-
+from PANDDAs import welcome, graphs
 from PANDDAs.main import PanddaMultiDatasetAnalyser, PanddaMapAnalyser, MapHolder, Meta
-from PANDDAs.events import PointCluster, Event, Site, SiteList, cluster_events 
-from PANDDAs import welcome
-from PANDDAs import graphs
+from PANDDAs.events import PointCluster, Event, cluster_events 
 
 def pandda_main(args):
     """Run the PANDDA algorithm, using supplied args object"""
