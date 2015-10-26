@@ -5,9 +5,10 @@ import libtbx.phil
 import numpy
 import pandas
 
-from Giant.Xray.Data.cluster import sort_mtzs_by_spacegroup
+from Giant.Xray.Data import crystalSummary
+from Giant.Xray.Data.cluster import crystalGroup
 
-blank_arg_prepend = 'mtz='
+blank_arg_prepend = {'.mtz':'mtz=', '.pdb':'pdb='}
 
 master_phil = libtbx.phil.parse("""
 input {
@@ -15,6 +16,12 @@ input {
         .type = path
         .multiple = True
     mtz_regex = None
+        .type = str
+
+    pdb = None
+        .type = path
+        .multiple = True
+    pdb_regex = None
         .type = str
 }
 output {
@@ -33,15 +40,26 @@ def run(params):
 
     #########################################################################################################
 
-    if params.input.mtz_regex: labels = [re.findall(params.input.mtz_regex, m)[0] for m in params.input.mtz]
-    else:                      labels = ['MTZ-{:06d}'.format(i) for i in range(len(params.input.mtz))]
+    try:
+        if params.input.mtz_regex: m_labels = [re.findall(params.input.mtz_regex, f)[0] for f in params.input.mtz]
+        else:                      m_labels = ['MTZ-{:06d}'.format(i) for i in range(len(params.input.mtz))]
+        if params.input.pdb_regex: p_labels = [re.findall(params.input.pdb_regex, f)[0] for f in params.input.pdb]
+        else:                      p_labels = ['PDB-{:06d}'.format(i) for i in range(len(params.input.pdb))]
+    except:
+        print f
+        raise
 
     #########################################################################################################
 
     print '============================================>'
     print 'GROUPING BY SPACE GROUP'
 
-    crystal_groups = sort_mtzs_by_spacegroup(mtz_files=params.input.mtz, labels=labels)
+    if params.input.pdb: pdb_summaries = [crystalSummary.from_pdb(pdb_file=f, id=lab) for f,lab in zip(params.input.pdb, p_labels)]
+    else:                pdb_summaries = []
+    if params.input.mtz: mtz_summaries = [crystalSummary.from_mtz(mtz_file=f, id=lab) for f,lab in zip(params.input.mtz, m_labels)]
+    else:                mtz_summaries = []
+    # Group by SpaceGroup
+    crystal_groups = crystalGroup.by_space_group(crystals=pdb_summaries+mtz_summaries)
 
     #########################################################################################################
 
@@ -54,15 +72,15 @@ def run(params):
 
         #########################################################################################################
 
-        res_sorted = sorted(cg.crystals, key=lambda c: c.high_res)
-        high_res_crystal = res_sorted[0]
-        low_res_crystal  = res_sorted[-1]
+#        res_sorted = sorted(cg.crystals, key=lambda c: c.high_res)
+#        high_res_crystal = res_sorted[0]
+#        low_res_crystal  = res_sorted[-1]
 
-        print '===========================>'
-        print 'HIGHEST RESOLUTION: {:.2f}'.format(high_res_crystal.high_res)
-        print 'DATASET + PATH: {} - {}'.format(high_res_crystal.id, high_res_crystal.mtz_file)
-        print 'LOWEST RESOLUTION: {:.2f}'.format(low_res_crystal.high_res)
-        print 'DATASET + PATH: {} - {}'.format(low_res_crystal.id, low_res_crystal.mtz_file)
+#        print '===========================>'
+#        print 'HIGHEST RESOLUTION: {:.2f}'.format(high_res_crystal.high_res)
+#        print 'DATASET + PATH: {} - {}'.format(high_res_crystal.id, high_res_crystal.mtz_file)
+#        print 'LOWEST RESOLUTION: {:.2f}'.format(low_res_crystal.high_res)
+#        print 'DATASET + PATH: {} - {}'.format(low_res_crystal.id, low_res_crystal.mtz_file)
 
         #########################################################################################################
 
@@ -108,15 +126,26 @@ def run(params):
                 if not os.path.exists(sub_dir): os.mkdir(sub_dir)
 
                 for c in cg2.crystals:
-                    print 'Linking {}'.format(c.mtz_file)
-
-                    sub_sub_dir = os.path.join(sub_dir, c.id)
-                    if not os.path.exists(sub_sub_dir): os.mkdir(sub_sub_dir)
-                    os.symlink(os.path.abspath(c.mtz_file), os.path.join(sub_sub_dir, c.id+'.mtz'))
-
-                    potential_pdb = c.mtz_file.replace('.mtz','.pdb')
-                    if os.path.exists(potential_pdb):
-                       os.symlink(os.path.abspath(potential_pdb), os.path.join(sub_sub_dir, c.id+'.pdb'))
+                    if c.mtz_file:
+                        print 'Linking {}'.format(c.mtz_file)
+                        # Create subdirectory
+                        sub_sub_dir = os.path.join(sub_dir, c.id)
+                        if not os.path.exists(sub_sub_dir): os.mkdir(sub_sub_dir)
+                        os.symlink(os.path.abspath(c.mtz_file), os.path.join(sub_sub_dir, c.id+'.mtz'))
+                        # Link PDB as well if filenames are the same
+                        potential = c.mtz_file.replace('.mtz','.pdb')
+                        if os.path.exists(potential):
+                            os.symlink(os.path.abspath(potential), os.path.join(sub_sub_dir, c.id+'.pdb'))
+                    if c.pdb_file:
+                        print 'Linking {}'.format(c.pdb_file)
+                        # Create subdirectory
+                        sub_sub_dir = os.path.join(sub_dir, c.id)
+                        if not os.path.exists(sub_sub_dir): os.mkdir(sub_sub_dir)
+                        os.symlink(os.path.abspath(c.pdb_file), os.path.join(sub_sub_dir, c.id+'.pdb'))
+                        # Link PDB as well if filenames are the same
+                        potential = c.pdb_file.replace('.pdb','.mtz')
+                        if os.path.exists(potential):
+                            os.symlink(os.path.abspath(potential), os.path.join(sub_sub_dir, c.id+'.mtz'))
 
 def do_a_graph():
     from ascii_graph import Pyasciigraph

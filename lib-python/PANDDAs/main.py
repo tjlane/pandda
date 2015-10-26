@@ -235,7 +235,7 @@ class DatasetHandler(object):
 
         # Data summaries
         self.pdb_summary = None
-        self.mtz_summary = crystalSummary(self._mtz_file)
+        self.mtz_summary = crystalSummary.from_mtz(mtz_file=self._mtz_file)
 
         ########################################################
 

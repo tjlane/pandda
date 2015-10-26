@@ -2,9 +2,17 @@ import os, sys, copy
 
 from libtbx.utils import Sorry
 
-def parse_phil_args(master_phil, args, home_scope=None, blank_arg_prepend=''):
+def parse_phil_args(master_phil, args, home_scope=None, blank_arg_prepend=None):
 
-    if blank_arg_prepend: assert '=' in blank_arg_prepend
+    if blank_arg_prepend == None:
+        pass
+    elif isinstance(blank_arg_prepend, dict):
+        for item in blank_arg_prepend.values():
+            assert '=' in item
+    elif isinstance(blank_arg_prepend, str):
+        assert '=' in blank_arg_prepend
+    else: 
+        raise Exception('blank_arg_prepend must be str or dict')
 
     # Copy the args so that we can remove items from the list without affecting args etc
     args = copy.copy(args)
@@ -15,7 +23,14 @@ def parse_phil_args(master_phil, args, home_scope=None, blank_arg_prepend=''):
     for arg in args:
         try:
             # Prepend if blank
-            if '=' not in arg: arg = blank_arg_prepend+arg
+            if '=' not in arg:
+                if isinstance(blank_arg_prepend, dict):
+                    for key in blank_arg_prepend.keys():
+                        if arg.endswith(key):
+                            arg = blank_arg_prepend[key]+arg
+                            break
+                elif isinstance(blank_arg_prepend, str):
+                    arg = blank_arg_prepend+arg
             # Attempt to process arg
             cmd_line_args = cmd_interpr.process(arg=arg)
         except KeyboardInterrupt:

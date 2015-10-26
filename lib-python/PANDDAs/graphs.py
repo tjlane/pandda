@@ -3,7 +3,6 @@ matplotlib.interactive(0)
 from matplotlib import pyplot
 
 import numpy
-from scitbx.math.distributions import normal_distribution
 
 def mean_obs_scatter(f_name, mean_vals, obs_vals):
     fig = pyplot.figure()
@@ -55,6 +54,7 @@ def med_mean_diff_hist(f_name, plot_vals):
     pyplot.close(fig)
 
 def map_value_distribution(f_name, plot_vals, plot_normal):
+    from scitbx.math.distributions import normal_distribution
     fig = pyplot.figure()
     pyplot.title('MAP VALUE DISTRIBUTION')
     pyplot.hist(x=plot_vals, bins=30, normed=True)
@@ -76,6 +76,7 @@ def map_value_distribution(f_name, plot_vals, plot_normal):
     pyplot.close(fig)
 
 def qq_plot_against_normal(f_name, plot_vals):
+    from scitbx.math.distributions import normal_distribution
     fig = pyplot.figure()
     pyplot.title('OBS v THEORETICAL Q-Q PLOT')
     expected_vals = normal_distribution().quantiles(len(plot_vals))
@@ -145,8 +146,6 @@ def multiple_bar_plot(f_name, plot_vals, colour_bool=None):
     fig, all_axes = pyplot.subplots(num_sites, sharex=True)
 
     for i_site, bar_vals in enumerate(plot_vals):
-        s_axis = all_axes[i_site]
-
         num_vals = len(bar_vals)
         # Left sides of the bars
         bar_left = [x+0.6 for x in range(num_vals)]
@@ -154,13 +153,13 @@ def multiple_bar_plot(f_name, plot_vals, colour_bool=None):
         # Colour of the bars
         if colour_bool: bar_colr = ['green' if b else 'red' for b in colour_bool[i_site]]
         else:           bar_colr = ['blue']*num_vals
-
+        # Make the bar
+        s_axis = all_axes[i_site]
         bar_bar = s_axis.bar(left=bar_left, height=bar_hght, width=0.8, color=bar_colr)
-
-        s_axis.set_yticks([0, int(max(bar_hght)+0.5)])
+        s_axis.set_yticks([int(max(bar_hght)+0.5)])
 
     s_axis.set_xticks(range(1,max(map(len,plot_vals))+1))
-
+    pyplot.tight_layout()
     pyplot.savefig(f_name)
     pyplot.close(fig)
 

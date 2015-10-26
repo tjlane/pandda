@@ -40,7 +40,6 @@ def get_symmetry_operations_to_generate_crystal_contacts(ref_hierarchy, crystal_
     pair_generator = crystal.neighbors_fast_pair_generator(
         asu_mappings,
         distance_cutoff=buffer_thickness)
-    n_contacts = 0
     sym_operations = []
     for pair in pair_generator:
       # obtain rt_mx_ji - symmetry operator that should be applied to j-th atom
@@ -52,12 +51,6 @@ def get_symmetry_operations_to_generate_crystal_contacts(ref_hierarchy, crystal_
       if not rt_mx_ji.is_unit_mx():
         if rt_mx_ji not in sym_operations:
           sym_operations.append(rt_mx_ji)
-#        print pair.i_seq, pair.j_seq, rt_mx_ji, atoms[pair.i_seq].id_str(),
-#        print atoms[pair.j_seq].id_str(), "dist=",pair.dist_sq**.5
-        n_contacts += 1
-#    print n_contacts
-#    for m in sym_operations:
-#      print m
 
     return sym_operations
 
@@ -108,7 +101,6 @@ def generate_crystal_copies_from_operations(ref_hierarchy, crystal_symmetry, sym
         for chain in new_hierarchy.chains():
             old_id = chain.id
             chain.id = new_chain_ids_hash[(sym_op.as_xyz(), chain.id)]
-#            print 'CHANGE CHAIN ID: {!s} -> {!s}'.format(old_id, chain.id)
             chain_mappings[old_id].append(chain.id)
 
         # Add the hierarchy to the output dict, referenced by the symmetry operation
@@ -118,12 +110,8 @@ def generate_crystal_copies_from_operations(ref_hierarchy, crystal_symmetry, sym
 
 def combine_hierarchies(list_of_hierarchies):
     """Combine a list of hierarchies into one hierarchy -- Requires all of the chain identifiers to be unique"""
-
     top_h = list_of_hierarchies[0].deep_copy()
-
-    for next_h in list_of_hierarchies[1:]:
-        top_h.transfer_chains_from_other(next_h.deep_copy())
-
+    for next_h in list_of_hierarchies[1:]: top_h.transfer_chains_from_other(next_h.deep_copy())
     return top_h
 
 if __name__=='__main__':
