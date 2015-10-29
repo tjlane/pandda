@@ -46,7 +46,7 @@ from PANDDAs import graphs
 
 from PANDDAs import PANDDA_VERSION
 from PANDDAs.phil import pandda_phil_def
-from PANDDAs.html import PANDDA_HTML_ENV
+from PANDDAs.html import PANDDA_HTML_ENV, path2url
 from PANDDAs.settings import PANDDA_TOP, PANDDA_TEXT
 
 STRUCTURE_MASK_NAMES = [    'bad structure - chain counts',
@@ -467,164 +467,6 @@ def align_dataset_to_reference(d_handler, ref_handler, method):
         local_rt_transforms = None
 
     return global_rt_transform, local_rt_transforms
-
-#class identical_structure_ensemble(object):
-#    """Class for collating and comparing multiple observations of the same structure"""
-#
-#    def __init__(self, ref_hierarchy):
-#        """Initialise the comparison object"""
-#
-#        self.data = multiple_data_collection()
-#        self.ref_hierarchy = ref_hierarchy
-#
-#        # Set the collection ids to the residue labels
-#        residue_labels = [(rg.parent().id, rg.resid()) for rg in ref_hierarchy.residue_groups()]
-#        self.data.set_collection_ids(residue_labels)
-#        # List of just chain ids
-#        chain_ids = [rg.parent().id for rg in ref_hierarchy.residue_groups()]
-#        self.data.add_collection_info(info_name='chain ids', info_values=chain_ids)
-#        # List of just residue ids
-#        residue_ids = [rg.resid() for rg in ref_hierarchy.residue_groups()]
-#        self.data.add_collection_info(info_name='residue ids', info_values=residue_ids)
-#        # List of which residues are protein
-#        is_protein = [rg.parent().is_protein() for rg in ref_hierarchy.residue_groups()]
-#        self.data.add_collection_info(info_name='is protein', info_values=is_protein)
-#        # List of which residues are in multiple conformations
-#        has_conformers = [rg.have_conformers() for rg in ref_hierarchy.residue_groups()]
-#        self.data.add_collection_info(info_name='has conformers', info_values=has_conformers)
-#        # List of number of conformers per residue
-#        num_conformers = [len(rg.conformers()) for rg in ref_hierarchy.residue_groups()]
-#        self.data.add_collection_info(info_name='number of conformers', info_values=num_conformers)
-#        # List of number of unique resnames for each residue - XXX I'm not sure when this can be more than one?
-#        residue_names = [[s for s in rg.unique_resnames()] for rg in ref_hierarchy.residue_groups()]
-#        self.data.add_collection_info(info_name='residue names', info_values=residue_names)
-#        # List of residues types (amino, water, other, etc)
-#        residue_types = [iotbx.pdb.common_residue_names_get_class(rg.unique_resnames()[0]) for rg in ref_hierarchy.residue_groups()]
-#        self.data.add_collection_info(info_name='residue types', info_values=residue_types)
-#        # List of atom ids for each residue
-#        residue_atom_labels = [[a.id_str() for a in rg.atoms()] for rg in ref_hierarchy.residue_groups()]
-#        self.data.add_collection_info(info_name='atom labels', info_values=residue_atom_labels)
-#
-#    def add_structures(self, new_hierarchies, hierarchy_ids=None, verbose=True):
-#        """Add hierarchies to the analysis object - Iterate through the residues and extract values from across the datasets"""
-#
-#        # If no ids given, simply assign indexing values
-#        if not hierarchy_ids: hierarchy_ids = range(1, len(new_hierarchies)+1)
-#
-#        # Report string to be returned
-#        report_string = []
-#
-#        backbone_atom_names = [" CA ", " C  ", " O  ", " N  "]
-#
-#        # Extract the reference residue types
-#        ref_residue_types = self.data.get_collection_info('residue types')
-#        ref_residue_names = self.data.get_collection_info('residue names')
-#        ref_chain_ids =     self.data.get_collection_info('chain ids')
-#
-#        print('===================================>>>')
-#        print('Calculating B-factors for residues across the datasets')
-#        print('===================================>>>')
-#
-#        # Atomic selection cache for the reference structure - should be the same across the structures
-#        selection_cache = self.ref_hierarchy.atom_selection_cache()
-#
-#        # String of 1-letter codes for the protein
-#        amino_sequence = ''
-#        current_chain = ref_chain_ids[self.data.collection_ids[0]]
-#
-#        for res_id in self.data.collection_ids:
-#
-#            # Initialise a new object to hold the data for one residue
-#            res_collection = data_collection()
-#            res_collection.set_entry_ids(hierarchy_ids)
-#
-#            # Boolean mask for the selected residue
-#            res_bool_selection = selection_cache.selection("chain '{!s}' and resid '{!s}'".format(*res_id))
-#
-#            # Information to collect for the residues
-#            backbone_mean_bfactor = []
-#            sidechain_mean_bfactor = []
-#            total_mean_bfactor = []
-#
-#            # Switches for tracking and reporting new chains
-#            if current_chain != ref_chain_ids[res_id]:
-#                report_string.append('\rAnalysing Chain {!s}: {!s}'.format(current_chain, amino_sequence))
-#                print(report_string[-1])
-#                report_string.append('\rChain {!s} Analysed.'.format(current_chain))
-#                print(report_string[-1])
-#                # Reset sequence and update chain
-#                amino_sequence = ''
-#                current_chain = ref_chain_ids[res_id]
-#
-#            try:
-#                res_class = iotbx.pdb.common_residue_names_get_class(ref_residue_names[res_id][0])
-#                if res_class == 'common_amino_acid':
-#                    amino_sequence += iotbx.pdb.amino_acid_codes.one_letter_given_three_letter[ref_residue_names[res_id][0]]
-#                elif res_class == 'common_rna_dna':
-#                    amino_sequence += '<DNA/RNA>'
-#                elif res_class == 'ccp4_mon_lib_rna_dna':
-#                    amino_sequence += '<DNA/RNA>'
-#                elif res_class == 'common_water':
-#                    amino_sequence += 'o'
-#                elif res_class == 'common_small_molecule':
-#                    amino_sequence += '<MOL>'
-#                elif res_class == 'common_element':
-#                    amino_sequence += 'i'
-#                elif res_class == 'other':
-#                    amino_sequence += 'X'
-#                else:
-#                    raise Exception()
-#            except:
-#                amino_sequence += '?'
-#
-#            if len(amino_sequence) >= 50:
-#                report_string.append('\rAnalysing Chain {!s}: {!s}...'.format(current_chain, amino_sequence))
-#                print(report_string[-1])
-#                amino_sequence = ''
-#            else:
-#                print('\rAnalysing Chain {!s}: {!s}-->'.format(current_chain, amino_sequence), end=''); sys.stdout.flush()
-#
-#            # Iterate through the hierarchies and extract values for this residue
-#            for i_hierarchy in new_hierarchies:
-#
-#                # Select the atoms for this residue
-#                new_root = i_hierarchy.select(res_bool_selection)
-#
-#                # Calculate the sidechain and backbone b-factors for amino acids
-#                if ref_residue_types[res_id] == 'common_amino_acid':
-#
-#                    # Pull out the backbone atoms
-#                    backbone_atoms = [at for at in new_root.atoms() if at.name in backbone_atom_names]
-#                    if not backbone_atoms: backbone_mean_bfactor.append(numpy.nan)
-#                    else:                  backbone_mean_bfactor.append(flex.mean(flex.double([at.b for at in backbone_atoms])))
-#
-#                    # Pull out the sidechain atoms
-#                    sidechain_atoms = [at for at in new_root.atoms() if at.name not in backbone_atom_names]
-#                    if not sidechain_atoms: sidechain_mean_bfactor.append(numpy.nan)
-#                    else:                   sidechain_mean_bfactor.append(flex.mean(flex.double([at.b for at in sidechain_atoms])))
-#
-#                else:
-#                    # If not an amino acid, just append None
-#                    backbone_mean_bfactor.append(numpy.nan)
-#                    sidechain_mean_bfactor.append(numpy.nan)
-#
-#                # Calculate the mean b-factor for the whole residue
-#                total_atoms = [at for at in new_root.atoms()]
-#                if not total_atoms: total_mean_bfactor.append(numpy.nan)
-#                else:               total_mean_bfactor.append(flex.mean(flex.double([at.b for at in total_atoms])))
-#
-#            res_collection.add_data(data_name='backbone_mean_bfactor', data_values=backbone_mean_bfactor)
-#            res_collection.add_data(data_name='sidechain_mean_bfactor', data_values=sidechain_mean_bfactor)
-#            res_collection.add_data(data_name='total_mean_bfactor', data_values=total_mean_bfactor)
-#
-#            self.data.add_collection(collection_id=res_id, collection=res_collection)
-#
-#        report_string.append('\rAnalysing Chain {!s}: {!s}   '.format(current_chain, amino_sequence))
-#        print(report_string[-1])
-#        report_string.append('\rChain {!s} Analysed.'.format(current_chain))
-#        print(report_string[-1])
-#
-#        return '\n'.join(report_string)
 
 class MapList(Info):
     _map_names = []
@@ -1283,7 +1125,7 @@ class PanddaMultiDatasetAnalyser(object):
         self.output_handler.add_file(file_name='point_distributions.csv', file_tag='point_distributions', dir_tag='analyses')
         # Somewhere to store the analysis summaries - for the user
         self.output_handler.add_dir(dir_name='results_summaries', dir_tag='output_summaries', top_dir_tag='root')
-        self.output_handler.add_file(file_name='success_summary_table.html', file_tag='summary_table', dir_tag='output_summaries')
+        self.output_handler.add_file(file_name='pandda_analyse.html', file_tag='summary_table', dir_tag='output_summaries')
         self.output_handler.add_file(file_name='site_bar_graph.png', file_tag='site_bar_graph', dir_tag='output_summaries')
         # Somewhere to store the pickled objects
         self.output_handler.add_dir(dir_name='pickled_panddas', dir_tag='pickle', top_dir_tag='root')
@@ -3153,39 +2995,51 @@ class PanddaMultiDatasetAnalyser(object):
         """Writes an html summary of the datasets"""
 
         # Get template to be filled in
-        template = PANDDA_HTML_ENV.get_template('output_table.html')
+        template = PANDDA_HTML_ENV.get_template('pandda_summary.html')
         # XXX 0=success, 1=none, 2=info, 3=warning, 4=failure
 
         # Extract the dataset info as a dictionary
-        all_info = self.tables.dataset_info.transpose().to_dict()
+        all_d_info = self.tables.dataset_info.transpose().to_dict()
+        all_m_info = self.tables.dataset_map_info.transpose().to_dict()
 
+        # ===========================================================>
         # Construct the data object to populate the template
-        output_data = {'PANDDA_TOP' : PANDDA_TOP}
+        output_data = {'PANDDA_TOP' : path2url(PANDDA_TOP)}
         output_data['header'] = 'PANDDA Processing Output'
         output_data['title'] = 'PANDDA Processing Output'
         output_data['introduction'] = 'Summary of Processing of Datasets'
+        # ===========================================================>
+        # Header Images
+        output_data['top_images'] = []
+        output_data['top_images'].append({ 'path': path2url(self.output_handler.get_file(file_tag='site_bar_graph')),
+                                           'title': 'Identified Site Summary' })
+        # ===========================================================>
+        # Tables
         output_data['table'] = {}
-        output_data['table']['column_headings'] = ['Data Quality', 'Identical Structure', 'Model Quality', 'RMSD to Reference', 'Overall', 'Interesting Areas']
+        output_data['table']['column_headings'] = ['Crystal', 'Structure', 'RFree/RWork', 'Resolution', 'Reference RMSD', 'Map Uncertainty', 'Overall', 'Interesting Areas']
         output_data['table']['rows'] = []
         # Add the datasets as rows
         for d in self.datasets.all():
 
-            d_data = all_info[d.tag]
+            d_data = all_d_info[d.tag]
+            m_data = all_m_info[d.tag]
             rmsd  = round(d_data['rmsd_to_mean'], 3)
             rfree = round(d_data['r_free'], 3)
             rwork = round(d_data['r_work'], 3)
+            res_h = round(d_data['high_resolution'], 3)
+            uncty = round(m_data['map_uncertainty'], 3)
 
             columns = []
             overall_success = [0]
             # ------------------------------>>>
-            # Test for Data Quality
+            # Test for Bad Crystal
             # ------------------------------>>>
             if self.datasets.all_masks().get_mask_value(mask_name='rejected - crystal', entry_id=d.tag) == True:
                 columns.append({'flag':4,'message':'Rejected'.format(None)})
             else:
                 columns.append({'flag':0,'message':'OK'})
             # ------------------------------>>>
-            # Test for Identical Structures
+            # Test for Bad Structures
             # ------------------------------>>>
             if self.datasets.all_masks().get_mask_value(mask_name='rejected - structure', entry_id=d.tag) == True:
                 columns.append({'flag':4,'message':'Rejected'})
@@ -3195,35 +3049,49 @@ class PanddaMultiDatasetAnalyser(object):
             # Test for Refinement Success - some test on r-free
             # ------------------------------>>>
             if self.datasets.all_masks().get_mask_value(mask_name='bad crystal - rfree', entry_id=d.tag) == True:
-                columns.append({'flag':4,'message':'RFree: {!s}'.format(rfree)})
+                columns.append({'flag':4,'message':'{}/{}'.format(rfree,rwork)})
             else:
-                columns.append({'flag':0,'message':'RFree: {!s}'.format(rfree)})
+                columns.append({'flag':0,'message':'{}/{}'.format(rfree,rwork)})
+            # ------------------------------>>>
+            # Resolution
+            # ------------------------------>>>
+            if 0:
+                columns.append({'flag':4,'message':'{}'.format(res_h)})
+            else:
+                columns.append({'flag':0,'message':'{}'.format(res_h)})
             # ------------------------------>>>
             # Test for Structure movement
             # ------------------------------>>>
             if self.datasets.all_masks().get_mask_value(mask_name='bad crystal - isomorphous structure', entry_id=d.tag) == True:
-                columns.append({'flag':4,'message':'RMSD: {!s}'.format(rmsd)})
+                columns.append({'flag':4,'message':'{}'.format(rmsd)})
             else:
-                columns.append({'flag':0,'message':'RMSD: {!s}'.format(rmsd)})
+                columns.append({'flag':0,'message':'{}'.format(rmsd)})
+            # ------------------------------>>>
+            # Uncertainty of Map
+            # ------------------------------>>>
+            if 0:
+                columns.append({'flag':4,'message':'{}'.format(uncty)})
+            else:
+                columns.append({'flag':0,'message':'{}'.format(uncty)})
             # ------------------------------>>>
             # Test for Structure movement
             # ------------------------------>>>
             if self.datasets.all_masks().get_mask_value(mask_name='analysed', entry_id=d.tag) == True:
-                columns.append({'flag':0,'message':'Analysed'.format(rmsd)})
+                columns.append({'flag':0,'message':'Analysed'})
             else:
-                columns.append({'flag':4,'message':'Rejected'.format(rmsd)})
+                columns.append({'flag':1,'message':'Not Analysed'})
             # ------------------------------>>>
             # Test for if it's interesting
             # ------------------------------>>>
             if self.datasets.all_masks().get_mask_value(mask_name='interesting', entry_id=d.tag) == True:
-                columns.append({'flag':0,'message':'Clusters Found'})
+                columns.append({'flag':0,'message':'{} Clusters'.format(len(d.events))})
             else:
                 columns.append({'flag':1,'message':''})
 
             # Find largest error
             overall_success = max([c['flag'] for c in columns])
 
-            output_data['table']['rows'].append({'heading':'Dataset {!s}'.format(d.tag),
+            output_data['table']['rows'].append({'heading':d.tag,
                                                  'success':overall_success,
                                                  'columns':columns})
 

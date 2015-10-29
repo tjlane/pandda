@@ -95,7 +95,7 @@ def run(params):
                                 xlab  = 'Crystal',
                                 ylab  = 'Linear Cell Variation',
                                 ylim  = (0,0.2),
-                                annotate_y_min = 0.05)
+                                annotate_y_min = 0.2)
 
             #########################################################################################################
 

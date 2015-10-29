@@ -27,6 +27,8 @@ input {
 output {
     out_dir = None
         .type = path
+    html_out = None
+        .type = path
 }
 """)
 

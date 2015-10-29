@@ -136,11 +136,15 @@ def write_occupancy_graph(occ_est_data, d_handler):
     pyplot.savefig(d_handler.output_handler.get_file('occ_corr_png').format(event_key))
     pyplot.close(fig)
 
-def multiple_bar_plot(f_name, plot_vals, colour_bool=None):
+def multiple_bar_plot(f_name, plot_vals, colour_bool=None, colour_vals=None):
 
     if colour_bool:
+        assert not colour_vals, 'Provide either colour_bool or colours'
         assert len(plot_vals) == len(colour_bool)
         assert map(len,plot_vals) == map(len,colour_bool)
+    elif colour_vals:
+        assert len(plot_vals) == len(colour_vals)
+        assert map(len,plot_vals) == map(len,colour_vals)
 
     num_sites = len(plot_vals)
     fig, all_axes = pyplot.subplots(num_sites, sharex=True)
@@ -151,8 +155,10 @@ def multiple_bar_plot(f_name, plot_vals, colour_bool=None):
         bar_left = [x+0.6 for x in range(num_vals)]
         bar_hght = bar_vals
         # Colour of the bars
-        if colour_bool: bar_colr = ['green' if b else 'red' for b in colour_bool[i_site]]
-        else:           bar_colr = ['blue']*num_vals
+        if colour_bool:   bar_colr = ['green' if b else 'red' for b in colour_bool[i_site]]
+        elif colour_vals: bar_colr = colour_vals[i_site]
+        else:             bar_colr = ['blue']*num_vals
+
         # Make the bar
         s_axis = all_axes[i_site]
         bar_bar = s_axis.bar(left=bar_left, height=bar_hght, width=0.8, color=bar_colr)

@@ -3,7 +3,7 @@ import os, sys, glob, copy, itertools
 import gtk
 import pandas
 
-from PANDDAs import graphs
+from PANDDAs import graphs, inspect_html
 
 try:
     set_nomenclature_errors_on_read("ignore")
@@ -212,11 +212,16 @@ class PanddaInspector(object):
         # Plot output graph of site list
         plot_vals = self.log_table['z_peak']
         view_vals = self.log_table['Viewed']
+        modl_vals = self.log_table['Ligand Placed']
+        colr_vals = ['green' if m else 'red' if v else 'blue' for m,v in zip(modl_vals,view_vals)]
         site_idxs = self.log_table['site_idx']
         groups = [list(g[1]) for g in itertools.groupby(range(len(site_idxs)), key=lambda i: site_idxs[i])]
-        graphs.multiple_bar_plot(   f_name      = os.path.join(self.top_dir, 'pandda_inspect.png'),
+        graphs.multiple_bar_plot(   f_name      = os.path.join(self.top_dir, 'results_summaries', 'pandda_inspect.png'),
                                     plot_vals   = [[plot_vals[i] for i in g] for g in groups],
-                                    colour_bool = [[view_vals[i] for i in g] for g in groups]   )
+#                                    colour_bool = [[view_vals[i] for i in g] for g in groups]   )
+                                    colour_vals = [[colr_vals[i] for i in g] for g in groups]   )
+        # Write output html
+        inspect_html.write_inspect_html(out_dir=self.top_dir, inspector=self)
 
         # Update gui with the new event values
         self.update_gui()
@@ -323,8 +328,8 @@ class PanddaInspector(object):
             # Create new table from input csv
             self.log_table = pandas.read_csv(in_csv, sep=',', dtype={'dtag':str})
             # Create new columns
-            self.log_table['Interesting'] = 'None'
-            self.log_table['Ligand Placed'] = 'None'
+            self.log_table['Interesting'] = False
+            self.log_table['Ligand Placed'] = False
             self.log_table['Ligand Confidence'] = 'None'
             self.log_table['Comment'] = 'None'
             self.log_table['Viewed'] = False
