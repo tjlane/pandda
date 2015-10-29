@@ -27,12 +27,14 @@ class panddaHtmlWidget(QWidget):
             view.setHtml(content)
 
 class panddaWindow(QTabWidget):
-    def __init__(self, tabs=[]):
+    def __init__(self, tabs=None):
         super(panddaWindow, self).__init__()
         self.setWindowTitle('PANDDA GUI')
         # Create Tabs
         self.tabs = []
-        for t in tabs: self.add_tab(t)
+        if tabs is not None:
+            for t in tabs: 
+                self.add_tab(t)
     def add_tab(self, widget):
         self.tabs.append(widget)
         self.addTab(widget, widget.name)

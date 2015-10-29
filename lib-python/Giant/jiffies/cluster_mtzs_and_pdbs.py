@@ -24,6 +24,10 @@ input {
     pdb_regex = None
         .type = str
 }
+clustering{
+    lcv_cutoff = 0.2
+        .type = float
+}
 output {
     out_dir = None
         .type = path
@@ -101,7 +105,7 @@ def run(params):
 
         #########################################################################################################
 
-        for i_cg2, cg2 in enumerate(cg.by_unit_cell(cg.crystals,cutoff=0.2)):
+        for i_cg2, cg2 in enumerate(cg.by_unit_cell(cg.crystals, cutoff=params.clustering.lcv_cutoff)):
 
             cluster_name = '{}-Cluster-{}'.format(sg_name, i_cg2+1)
 
@@ -114,7 +118,7 @@ def run(params):
                 cg2.dendrogram( fname = os.path.join(img_dir, '{}-dendrogram.png'.format(cluster_name)),
                                 xlab  = 'Crystal',
                                 ylab  = 'Linear Cell Variation',
-                                ylim  = (0,0.2),
+                                ylim  = (0, params.clustering.lcv_cutoff),
                                 annotate_y_min = 0.05)
 
             #########################################################################################################

@@ -246,8 +246,8 @@ class PanddaInspector(object):
 
     def load_next_event(self, skip_unmodelled=None, skip_viewed=None):
         # Set to defaults if not given explicitly
-        if skip_unmodelled == None: skip_unmodelled = self.skip_unmodelled
-        if skip_viewed == None:     skip_viewed = self.skip_viewed
+        if skip_unmodelled is None: skip_unmodelled = self.skip_unmodelled
+        if skip_viewed is None:     skip_viewed = self.skip_viewed
         # Get the next event from the site list
         new_event = self.site_list.get_next()
         # Loop until we get a modelled one (if requested)
@@ -266,8 +266,8 @@ class PanddaInspector(object):
 
     def load_prev_event(self, skip_unmodelled=None, skip_viewed=None):
         # Set to defaults if not given explicitly
-        if skip_unmodelled == None: skip_unmodelled = self.skip_unmodelled
-        if skip_viewed == None:     skip_viewed = self.skip_viewed
+        if skip_unmodelled is None: skip_unmodelled = self.skip_unmodelled
+        if skip_viewed is None:     skip_viewed = self.skip_viewed
         # Get the prev event from the site list
         new_event = self.site_list.get_prev()
         # Loop until we get a modelled one (if requested)

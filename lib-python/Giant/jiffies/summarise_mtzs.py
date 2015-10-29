@@ -18,6 +18,11 @@ input {
     mtz_regex = None
         .type = str
 }
+check_for{
+    labels = None
+        .type = str
+        .multiple = True
+}
 output {
     out_dir = None
         .type = path
@@ -65,7 +70,10 @@ def run(params):
 
     for c in cg.crystals:
 
-        print c.mtz_file[0:30], c.column_labels
+        if params.check_for.labels:
+            for lab in params.check_for.labels:
+                if lab not in c.column_labels:
+                    print 'COLUMN NOT IN FILE ({}): {}'.format(lab, c.mtz_file)
 
 
 

@@ -76,7 +76,7 @@ class pdbRecord(fileHistory):
 
     def __setattr__(self, name, value):
 
-        if value == None:
+        if value is None:
             self.__dict__[name] = value
         elif name == 'current':
             if isinstance(value,str):
@@ -127,7 +127,7 @@ class mtzRecord(fileHistory):
 
     def __setattr__(self, name, value):
 
-        if value == None:
+        if value is None:
             self.__dict__[name] = value
         elif name == 'current':
             if isinstance(value,str):

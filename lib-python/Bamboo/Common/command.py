@@ -19,12 +19,18 @@ class commandManager(object):
         Modified by Nicholas Pearce: added code inspired by code from the CCP4 dispatcher project
     '''
 
-    def __init__(self, program, cmd_line_args=[], std_inp_lines=[]):
+    def __init__(self, program, cmd_line_args=None, std_inp_lines=None):
         # Name of program
         self.program = shlex.split(program)
         # Command line args and standard input args
-        self.cmd_line_args = cmd_line_args
-        self.std_inp_lines = '\n'.join(std_inp_lines)
+        if cmd_line_args: 
+            self.cmd_line_args = cmd_line_args
+        else:
+            self.cmd_line_args = []
+        if std_inp_lines:
+            self.std_inp_lines = std_inp_lines
+        else:
+            self.std_inp_lines = []
         # Objects
         self.kwargs = {}
         self.thread = None

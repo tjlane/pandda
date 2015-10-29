@@ -115,7 +115,7 @@ def combine_clusters(clusters, ids=None):
     new_data = []
 
     for i_clust, old_cluster in enumerate(clusters):
-        if old_cluster == None:
+        if old_cluster is None:
             continue
         new_keys.extend([(ids[i_clust], old_key) for old_key in old_cluster.get_keys()])
         new_data.extend(old_cluster.get_data())

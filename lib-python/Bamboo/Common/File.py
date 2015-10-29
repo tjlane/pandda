@@ -20,7 +20,7 @@ class output_file_object(object):
         # Check that it hasn't been created already
         assert dir_tag not in self.output_dirs.keys()
         # Check the directory that it's being added to exists
-        if top_dir_tag == None: top_dir_tag = 'root'
+        if top_dir_tag is None: top_dir_tag = 'root'
         top_dir_name = self.output_dirs[top_dir_tag]
         # Create dirname and store
         self.output_dirs[dir_tag] = os.path.join(top_dir_name, dir_name)
@@ -39,7 +39,7 @@ class output_file_object(object):
         # Check that it hasn't been created already
         assert file_tag not in self.output_files.keys()
         # Check the directory that it's beeing added to exists
-        if dir_tag == None: dir_tag = 'root'
+        if dir_tag is None: dir_tag = 'root'
         dir_name = self.output_dirs[dir_tag]
         # Create filename and store
         self.output_files[file_tag] = os.path.join(dir_name, file_name)

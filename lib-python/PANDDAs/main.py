@@ -470,7 +470,8 @@ def align_dataset_to_reference(d_handler, ref_handler, method):
 
 class MapList(Info):
     _map_names = []
-    def __init__(self, map_names=[]):
+    def __init__(self, map_names=None):
+        if map_names is None: map_names=[]
         assert self._map_names+map_names, 'No Map Names defined'
         for m in self._map_names+map_names:
             self.__dict__[m] = None
@@ -829,7 +830,7 @@ class PanddaMultiDatasetAnalyser(object):
         """Class for the processing of datasets from a fragment soaking campaign"""
 
         # Allow the program to pull from the command line if no arguments are given
-        if args == None:
+        if args is None:
             args = sys.argv[1:]
 
         # ===============================================================================>
@@ -1229,7 +1230,7 @@ class PanddaMultiDatasetAnalyser(object):
         if not pickles_found:
             self.log('===> No Pickles Found', True)
 
-    def pickle_the_pandda(self, components=[], all=False, datasets=None):
+    def pickle_the_pandda(self, components=None, all=False, datasets=None):
         """Pickles it's major components for quick loading..."""
 
         if all == True:
@@ -2032,7 +2033,7 @@ class PanddaMultiDatasetAnalyser(object):
             # Check to see if this is the reference dataset
             if alignment_rmsd == 0.0:
                 # This must be the reference! Set the dataset number if it's not already set
-                if self._ref_dataset_index == None:
+                if self._ref_dataset_index is None:
                     self._ref_dataset_index = d_handler.num
                     print('REFERENCE FOUND! {!s}                          '.format(d_handler.tag))
                 # Raise error if the reference has already been set and it's not this dataset

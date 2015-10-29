@@ -15,7 +15,7 @@ print 'RUNNING: {}'.format(script_path)
 ##########################################################
 # Get the path of the PANDDAs top folder
 ##########################################################
-PANDDA_TOP = os.path.join(os.path.dirname(script_path), '../')
+PANDDA_TOP = os.path.dirname(script_path)
 print 'PANDDAs RUNNING FROM: {}'.format(PANDDA_TOP)
 ##########################################################
 # Find the bin of the PANDDAs module
@@ -40,12 +40,11 @@ else:
     print('Updating pandda.python paths')
     print('=====================================+>')
     # Create a link to this python
-    if os.path.exists(pandda_python):
-        if os.path.islink(pandda_python):
-            print 'Unlinking: {}'.format(pandda_python)
-            os.unlink(pandda_python)
-        else:
-            raise Exception('{} is hardcoded (should be a symbolic link) - cannot replace'.format(pandda_python))
+    if os.path.islink(pandda_python):
+        print 'Unlinking: {}'.format(pandda_python)
+        os.unlink(pandda_python)
+    else:
+        raise Exception('{} is hardcoded (should be a symbolic link) - cannot replace'.format(pandda_python))
     # Link the python to a new pandda.python symlink
     print 'LINKING {} -> {}'.format(cctbx_python, pandda_python)
     os.symlink(cctbx_python, pandda_python)
@@ -67,12 +66,11 @@ else:
     print('Updating pandda.ipython paths')
     print('=====================================+>')
     # Create a link to this ipython
-    if os.path.exists(pandda_ipython):
-        if os.path.islink(pandda_ipython):
-            print 'Unlinking: {}'.format(pandda_ipython)
-            os.unlink(pandda_ipython)
-        else:
-            raise Exception('{} is hardcoded (should be a symbolic link) - cannot replace'.format(pandda_ipython))
+    if os.path.islink(pandda_ipython):
+        print 'Unlinking: {}'.format(pandda_ipython)
+        os.unlink(pandda_ipython)
+    else:
+        raise Exception('{} is hardcoded (should be a symbolic link) - cannot replace'.format(pandda_ipython))
     # Link the ipython to a new pandda.ipython symlink
     print 'LINKING {} -> {}'.format(cctbx_ipython, pandda_ipython)
     os.symlink(cctbx_ipython, pandda_ipython)

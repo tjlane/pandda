@@ -4,7 +4,7 @@ from libtbx.utils import Sorry
 
 def parse_phil_args(master_phil, args, home_scope=None, blank_arg_prepend=None):
 
-    if blank_arg_prepend == None:
+    if blank_arg_prepend is None:
         pass
     elif isinstance(blank_arg_prepend, dict):
         for item in blank_arg_prepend.values():

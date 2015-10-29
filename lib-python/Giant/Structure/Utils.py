@@ -20,8 +20,10 @@ def find_next_conformer_idx(hierarchy, all_ids=iotbx.pdb.systematic_chain_ids())
         if new_conf_id not in current_conf_ids:
             return i_id
 
-def normalise_occupancies(hierarchy, exclude_conformers=[], max_occ=1.0, min_occ=0.0, in_place=False):
+def normalise_occupancies(hierarchy, exclude_conformers=None, max_occ=1.0, min_occ=0.0, in_place=False):
     """Normalise the occupancies of a hierarchy so that the occupancies for a residue sum to 1.0"""
+
+    if exclude_conformers is None: exclude_conformers = []
 
     # Edit original copy or create new one?
     if (not in_place): hierarchy = hierarchy.deep_copy()

@@ -11,8 +11,12 @@ def get_backbone_sites(input_hierarchy, cbeta=True):
     else:     atoms = [' C  ',' N  ',' CA ',' O  ']
     return flex.vec3_double([a.xyz for a in get_atom_selection(input_hierarchy, atom_names=[' C  ',' N  ',' CA ',' O  '], atom=True, hetero=False)])
 
-def get_atom_selection(input_hierarchy, chain_names=[], res_names=[], atom_names=[], atom=True, hetero=False, proteinonly=True):
+def get_atom_selection(input_hierarchy, chain_names=None, res_names=None, atom_names=None, atom=True, hetero=False, proteinonly=True):
     """Iterate through atoms in input_hierarchy and select atoms matching the criteria"""
+
+    if chain_names is None: chain_names = []
+    if res_names   is None: res_names   = []
+    if atom_names  is None: atom_names  = []
 
     filt_atoms = input_hierarchy.atoms_with_labels()
 
