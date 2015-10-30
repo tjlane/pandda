@@ -31,6 +31,8 @@ clustering{
 output {
     out_dir = None
         .type = path
+    split_pdbs_and_mtzs = True
+        .type = bool
     html_out = None
         .type = path
 }
@@ -131,11 +133,20 @@ def run(params):
                 sub_dir = os.path.join(params.output.out_dir, cluster_name)
                 if not os.path.exists(sub_dir): os.mkdir(sub_dir)
 
+                if params.output.split_pdbs_and_mtzs:
+                    # Split the mtzs and pdbs into separate directories
+                    mtz_dir = os.path.join(sub_dir, 'mtzs')
+                    if not os.path.exists(mtz_dir): os.mkdir(mtz_dir)
+                    pdb_dir = os.path.join(sub_dir, 'pdbs')
+                    if not os.path.exists(pdb_dir): os.mkdir(pdb_dir)
+                else:
+                    mtz_dir = pdb_dir = sub_dir
+
                 for c in cg2.crystals:
                     if c.mtz_file:
                         print 'Linking {}'.format(c.mtz_file)
                         # Create subdirectory
-                        sub_sub_dir = os.path.join(sub_dir, c.id)
+                        sub_sub_dir = os.path.join(mtz_dir, c.id)
                         if not os.path.exists(sub_sub_dir): os.mkdir(sub_sub_dir)
                         os.symlink(os.path.abspath(c.mtz_file), os.path.join(sub_sub_dir, c.id+'.mtz'))
                         # Link PDB as well if filenames are the same
@@ -145,7 +156,7 @@ def run(params):
                     if c.pdb_file:
                         print 'Linking {}'.format(c.pdb_file)
                         # Create subdirectory
-                        sub_sub_dir = os.path.join(sub_dir, c.id)
+                        sub_sub_dir = os.path.join(pdb_dir, c.id)
                         if not os.path.exists(sub_sub_dir): os.mkdir(sub_sub_dir)
                         os.symlink(os.path.abspath(c.pdb_file), os.path.join(sub_sub_dir, c.id+'.pdb'))
                         # Link PDB as well if filenames are the same

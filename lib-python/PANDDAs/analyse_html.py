@@ -12,11 +12,12 @@ def write_analyse_html(pandda):
     all_d_info = pandda.tables.dataset_info.transpose().to_dict()
     all_m_info = pandda.tables.dataset_map_info.transpose().to_dict()
 
-    len_data = len(all_d_info.index)
+    len_data = len(pandda.tables.dataset_info.index)
     num_interesting = sum(pandda.datasets.all_masks().get_mask(mask_name='interesting'))
     num_analysed    = sum(pandda.datasets.all_masks().get_mask(mask_name='analysed'))
+    num_rejected    = sum(pandda.datasets.all_masks().get_mask(mask_name='rejected - total'))
     num_not_interesting = num_analysed - num_interesting
-    num_not_analysed    = len_data - num_analysed
+    num_not_analysed    = len_data - num_analysed - num_rejected
 
     # ===========================================================>
     # Construct the data object to populate the template
@@ -34,8 +35,9 @@ def write_analyse_html(pandda):
     output_data['progress_bar'] = []
     output_data['progress_bar'].append({'title':'Dataset Summary', 'data':[]})
     output_data['progress_bar'][0]['data'].append({'text':'Interesting',     'colour':'success', 'size':100.0*num_interesting/len_data})
-    output_data['progress_bar'][0]['data'].append({'text':'Not Interesting', 'colour':'warning', 'size':100.0*num_not_interesting/len_data})
-    output_data['progress_bar'][0]['data'].append({'text':'Not Analysed',    'colour':'danger',  'size':100.0*num_not_analysed/len_data})
+    output_data['progress_bar'][0]['data'].append({'text':'Not Interesting', 'colour':'info',    'size':100.0*num_not_interesting/len_data})
+    output_data['progress_bar'][0]['data'].append({'text':'Not Analysed',    'colour':'warning', 'size':100.0*num_not_analysed/len_data})
+    output_data['progress_bar'][0]['data'].append({'text':'Rejected',        'colour':'danger',  'size':100.0*num_rejected/len_data})
     # ===========================================================>
     # Tables
     output_data['table'] = {}

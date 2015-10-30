@@ -55,7 +55,7 @@
         {% endfor -%}
       </div>
       {% endif %}
-      <div class="table-responsive">
+      <div class="table-responsive" style="height:400px">
         <table class="table table-bordered table-striped">
           <thead>
             <tr>
@@ -67,7 +67,7 @@
           </thead>
           <tbody>
             {% for row in table.rows -%}
-              {% if row.success is defined %}<tr class={{['success','default','info','warning','danger'][row.success] }}>{% else %}<tr>{% endif %}
+              {% if row.colour is defined %}<tr class={{ row.colour }}>{% else %}<tr>{% endif %}
               <th class="text-nowrap" scope="row">{{ row.heading }}</th>
               {% for col in row.columns -%}
                 <td class="text-nowrap {% if col.colour is defined -%}text-{{col.colour}}{% endif -%}"><span class="glyphicon {% if col.icon is defined -%}glyphicon-{{col.icon}}{% endif -%}" aria-hidden="true"></span> {{ col.message }}</td>
