@@ -12,7 +12,7 @@ from Giant.Grid.Masks import grid_mask
 from Giant.Xray.Maps.Occupancy import calculate_occupancy_subtracted_map, estimate_event_occupancy
 
 from PANDDAs import welcome, graphs
-from PANDDAs.main import PanddaMultiDatasetAnalyser, PanddaMapAnalyser, MapHolder, Meta
+from PANDDAs.analyse import PanddaMultiDatasetAnalyser, PanddaMapAnalyser, MapHolder, Meta
 from PANDDAs.events import PointCluster, Event, cluster_events 
 
 def pandda_main(args):
