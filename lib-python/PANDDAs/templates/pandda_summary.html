@@ -38,6 +38,23 @@
         {% endfor -%}
       </div>
       {% endif %}
+      {% if progress_bar is defined %}
+      <div class="row">
+        {% for bar in progress_bar -%}
+        <div class="col-xs-12">
+          <p>{{ bar.title }}</p>
+          <div class="progress">
+            {% for seg in bar.data -%}
+            <div class="progress-bar progress-bar-striped progress-bar-{{ seg.colour }}" style="width: {{ seg.size }}%">
+              <span class="sr-only">{{ seg.text }}</span>
+              {{ seg.text ~ " (" ~ seg.size|int() ~ "%)" }}
+            </div>
+            {% endfor -%}
+          </div>
+        </div>
+        {% endfor -%}
+      </div>
+      {% endif %}
       <div class="table-responsive">
         <table class="table table-bordered table-striped">
           <thead>
@@ -52,14 +69,10 @@
             {% for row in table.rows -%}
               {% if row.success is defined %}<tr class={{['success','default','info','warning','danger'][row.success] }}>{% else %}<tr>{% endif %}
               <th class="text-nowrap" scope="row">{{ row.heading }}</th>
-              {% for column in row.columns -%}
-                {% if column.flag is defined -%}
-                <td class="text-nowrap text-{{ ['success','success','muted','muted','danger'][column.flag] }}"><span class="glyphicon glyphicon-{{ ['ok','remove','flag','flag','remove'][column.flag] }}" aria-hidden="true"></span> {{ column.message }}</td>
-                {% else -%}
-                <td class="text-nowrap">{{ column.message }}</td>
-                {% endif -%}
+              {% for col in row.columns -%}
+                <td class="text-nowrap {% if col.colour is defined -%}text-{{col.colour}}{% endif -%}"><span class="glyphicon {% if col.icon is defined -%}glyphicon-{{col.icon}}{% endif -%}" aria-hidden="true"></span> {{ col.message }}</td>
               {% endfor -%}
-              {% if row.success is defined %}<td><span class="label label-{{ ['success','default','info','warning','danger'][row.success] }}">{{ ['Complete','Complete','Information','Warning','Failed'][row.success] }}</span></td>{% endif -%}
+              {% if row.colour is defined %}<td><span class="label label-{{ row.colour }}">{{ row.message }}</span></td>{% endif -%}
             </tr>
             {% endfor -%}
           </tbody>

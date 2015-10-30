@@ -6,7 +6,7 @@ sys.path.append(os.path.join(os.environ['PANDDA_TOP'], 'lib-python'))
 
 from PyQt4.QtGui import QApplication
 from PANDDAs.jiffies import parse_phil_args
-from PANDDAs.pyqt import panddaWindow, panddaHtmlWidget   
+from PANDDAs.summary import panddaWindow, panddaHtmlWidget   
 
 def show_summary():
     app = QApplication(sys.argv)

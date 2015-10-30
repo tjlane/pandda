@@ -1155,6 +1155,7 @@ def pandda_main(args):
             # Update the output file
             # ============================================================================>
             pandda.write_output_csvs()
+            pandda.write_html_analysis_summary()
 
         # ============================================================================>
         #####
@@ -1201,9 +1202,7 @@ def pandda_main(args):
         #####
         # ============================================================================>
 
-        # Ugly output for the last time
         pandda.write_output_csvs()
-        # Pretty output
         pandda.write_html_analysis_summary()
 
         try:

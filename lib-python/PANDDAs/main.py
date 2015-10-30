@@ -47,6 +47,7 @@ from PANDDAs import graphs
 from PANDDAs import PANDDA_VERSION
 from PANDDAs.phil import pandda_phil_def
 from PANDDAs.html import PANDDA_HTML_ENV, path2url
+from PANDDAs.analyse_html import write_analyse_html
 from PANDDAs.settings import PANDDA_TOP, PANDDA_TEXT
 
 STRUCTURE_MASK_NAMES = [    'bad structure - chain counts',
@@ -2994,110 +2995,7 @@ class PanddaMultiDatasetAnalyser(object):
 
     def write_html_analysis_summary(self):
         """Writes an html summary of the datasets"""
-
-        # Get template to be filled in
-        template = PANDDA_HTML_ENV.get_template('pandda_summary.html')
-        # XXX 0=success, 1=none, 2=info, 3=warning, 4=failure
-
-        # Extract the dataset info as a dictionary
-        all_d_info = self.tables.dataset_info.transpose().to_dict()
-        all_m_info = self.tables.dataset_map_info.transpose().to_dict()
-
-        # ===========================================================>
-        # Construct the data object to populate the template
-        output_data = {'PANDDA_TOP' : path2url(PANDDA_TOP)}
-        output_data['header'] = 'PANDDA Processing Output'
-        output_data['title'] = 'PANDDA Processing Output'
-        output_data['introduction'] = 'Summary of Processing of Datasets'
-        # ===========================================================>
-        # Header Images
-        output_data['top_images'] = []
-        output_data['top_images'].append({ 'path': path2url(self.output_handler.get_file(file_tag='site_bar_graph')),
-                                           'title': 'Identified Site Summary' })
-        # ===========================================================>
-        # Tables
-        output_data['table'] = {}
-        output_data['table']['column_headings'] = ['Crystal', 'Structure', 'RFree/RWork', 'Resolution', 'Reference RMSD', 'Map Uncertainty', 'Overall', 'Interesting Areas']
-        output_data['table']['rows'] = []
-        # Add the datasets as rows
-        for d in self.datasets.all():
-
-            d_data = all_d_info[d.tag]
-            m_data = all_m_info[d.tag]
-            rmsd  = round(d_data['rmsd_to_mean'], 3)
-            rfree = round(d_data['r_free'], 3)
-            rwork = round(d_data['r_work'], 3)
-            res_h = round(d_data['high_resolution'], 3)
-            uncty = round(m_data['map_uncertainty'], 3)
-
-            columns = []
-            overall_success = [0]
-            # ------------------------------>>>
-            # Test for Bad Crystal
-            # ------------------------------>>>
-            if self.datasets.all_masks().get_mask_value(mask_name='rejected - crystal', entry_id=d.tag) == True:
-                columns.append({'flag':4,'message':'Rejected'.format(None)})
-            else:
-                columns.append({'flag':0,'message':'OK'})
-            # ------------------------------>>>
-            # Test for Bad Structures
-            # ------------------------------>>>
-            if self.datasets.all_masks().get_mask_value(mask_name='rejected - structure', entry_id=d.tag) == True:
-                columns.append({'flag':4,'message':'Rejected'})
-            else:
-                columns.append({'flag':0,'message':'OK'})
-            # ------------------------------>>>
-            # Test for Refinement Success - some test on r-free
-            # ------------------------------>>>
-            if self.datasets.all_masks().get_mask_value(mask_name='bad crystal - rfree', entry_id=d.tag) == True:
-                columns.append({'flag':4,'message':'{}/{}'.format(rfree,rwork)})
-            else:
-                columns.append({'flag':0,'message':'{}/{}'.format(rfree,rwork)})
-            # ------------------------------>>>
-            # Resolution
-            # ------------------------------>>>
-            if 0:
-                columns.append({'flag':4,'message':'{}'.format(res_h)})
-            else:
-                columns.append({'flag':0,'message':'{}'.format(res_h)})
-            # ------------------------------>>>
-            # Test for Structure movement
-            # ------------------------------>>>
-            if self.datasets.all_masks().get_mask_value(mask_name='bad crystal - isomorphous structure', entry_id=d.tag) == True:
-                columns.append({'flag':4,'message':'{}'.format(rmsd)})
-            else:
-                columns.append({'flag':0,'message':'{}'.format(rmsd)})
-            # ------------------------------>>>
-            # Uncertainty of Map
-            # ------------------------------>>>
-            if 0:
-                columns.append({'flag':4,'message':'{}'.format(uncty)})
-            else:
-                columns.append({'flag':0,'message':'{}'.format(uncty)})
-            # ------------------------------>>>
-            # Test for Structure movement
-            # ------------------------------>>>
-            if self.datasets.all_masks().get_mask_value(mask_name='analysed', entry_id=d.tag) == True:
-                columns.append({'flag':0,'message':'Analysed'})
-            else:
-                columns.append({'flag':1,'message':'Not Analysed'})
-            # ------------------------------>>>
-            # Test for if it's interesting
-            # ------------------------------>>>
-            if self.datasets.all_masks().get_mask_value(mask_name='interesting', entry_id=d.tag) == True:
-                columns.append({'flag':0,'message':'{} Clusters'.format(len(d.events))})
-            else:
-                columns.append({'flag':1,'message':''})
-
-            # Find largest error
-            overall_success = max([c['flag'] for c in columns])
-
-            output_data['table']['rows'].append({'heading':d.tag,
-                                                 'success':overall_success,
-                                                 'columns':columns})
-
-        with open(self.output_handler.get_file(file_tag='summary_table'), 'w') as out_html:
-            out_html.write(template.render(output_data))
+        write_analyse_html(self)
 
     def write_map_value_distribution(self, map_vals, output_file, plot_indices=None, plot_normal=False):
         """Write out the value distribution for a map"""

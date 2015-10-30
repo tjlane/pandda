@@ -20,8 +20,10 @@ def write(fh, mes):
     fh.write(mes+'\n')
     print mes
 
-def test_pandda_results(summary_files, pandda, ignores=[], output_dir='./validation_output'):
+def test_pandda_results(summary_files, pandda, ignores=None, output_dir='./validation_output'):
     """If a list of hits is available, test to see whether the pandda identified them"""
+
+    if ignores is None: ignores = []
 
     output_dir = easy_directory(output_dir)
     output_log = os.path.join(output_dir, 'validation.log')
