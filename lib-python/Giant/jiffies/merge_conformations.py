@@ -8,7 +8,8 @@ import iotbx.pdb
 
 from scitbx.array_family import flex
 
-from Giant.Structure.Utils import resolve_residue_id_clashes, normalise_occupancies, merge_hierarchies
+from Giant.Structure.utils import resolve_residue_id_clashes, merge_hierarchies
+from Giant.Structure.occupancy import normalise_occupancies
 from Giant.Utils.pdb import strip_pdb_to_input
 
 ############################################################################

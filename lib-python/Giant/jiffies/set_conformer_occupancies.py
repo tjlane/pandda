@@ -8,7 +8,7 @@ import iotbx.pdb
 
 from scitbx.array_family import flex
 
-from Giant.Structure.Utils import normalise_occupancies, set_conformer_occupancy
+from Giant.Structure.occupancy import normalise_occupancies, set_conformer_occupancy
 
 ############################################################################
 

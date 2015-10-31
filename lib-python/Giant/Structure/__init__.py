@@ -2,9 +2,7 @@ import iotbx.pdb
 
 
 class residueGroupSummary(object):
-
     def __init__(self, residue_group):
-
         self.residue_group = residue_group
 
 class atomGroupSummary(object):

@@ -38,7 +38,7 @@ from Giant.Xray.Data.utils import extract_structure_factors
 from Giant.Xray.Symmetry import combine_hierarchies, generate_adjacent_symmetry_copies
 from Giant.Stats.Ospina import estimate_true_underlying_sd
 from Giant.Stats.Cluster import find_connected_groups
-from Giant.Structure.Align import perform_flexible_alignment
+from Giant.Structure.align import perform_flexible_alignment
 
 from Giant.Utils import status_bar, rel_symlink
 

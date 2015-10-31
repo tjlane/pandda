@@ -213,7 +213,7 @@ class PanddaInspector(object):
         plot_vals = self.log_table['z_peak']
         view_vals = self.log_table['Viewed']
         modl_vals = self.log_table['Ligand Placed']
-        colr_vals = ['green' if m else 'red' if v else 'blue' for m,v in zip(modl_vals,view_vals)]
+        colr_vals = ['limegreen' if m else 'red' if v else 'blue' for m,v in zip(modl_vals,view_vals)]
         site_idxs = self.log_table['site_idx']
         groups = [list(g[1]) for g in itertools.groupby(range(len(site_idxs)), key=lambda i: site_idxs[i])]
         graphs.multiple_bar_plot(   f_name      = os.path.join(self.top_dir, 'results_summaries', 'pandda_inspect.png'),
@@ -438,10 +438,7 @@ class PanddaMolHandler(object):
 
         return e
 
-class GenericGUI(object):
-    pass
-
-class PanddaGUI(GenericGUI):
+class PanddaGUI(object):
 
     """GUI Class for pandda.inspect"""
 
@@ -454,12 +451,18 @@ class PanddaGUI(GenericGUI):
         self.buttons = {}
         self.objects = {}
 
+    def on_destroy(self,  widget=None, *data):
+        print 'sdznfvjzbso'
+        self.parent.update()
+        gtk.main_quit()
+
     def launch(self):
         """Launch GUI window"""
 
         # Create main window
         self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
-        self.window.connect("delete_event", gtk.main_quit)
+        self.window.connect("delete_event", self.on_destroy)
+        self.window.connect("destroy_event", self.on_destroy)
         self.window.set_border_width(10)
         self.window.set_default_size(600, 400)
         self.window.set_title("PANDDA inspect")

@@ -1137,9 +1137,9 @@ def pandda_main(args):
             t_test_4 = time.time()
             # ===
            
-            pandda.log('1: {}'.format(t_test_2-t_test_1), True)
-            pandda.log('2: {}'.format(t_test_3-t_test_2), True)
-            pandda.log('3: {}'.format(t_test_4-t_test_3), True)
+            pandda.log('Time 1: {}'.format(t_test_2-t_test_1), True)
+            pandda.log('Time 2: {}'.format(t_test_3-t_test_2), True)
+            pandda.log('Time 3: {}'.format(t_test_4-t_test_3), True)
 
             # Plot output graph of site list 
             graphs.multiple_bar_plot(   f_name    = pandda.output_handler.get_file('site_bar_graph'), 

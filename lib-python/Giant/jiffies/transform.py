@@ -11,7 +11,7 @@ import iotbx.map_tools
 
 from scitbx.array_family import flex
 
-from Giant.Structure.Align import align_chains
+from Giant.Structure.align import align_chains
 
 from mmtbx.maps.superpose import mask_grid, generate_p1_box
 
