@@ -14,13 +14,6 @@ class edstats(object):
         self.scores = pandas.DataFrame.from_dict(scores)
         self._command = command
 
-    def get(self, atom_group):
-        resname = atom_group.resname
-        chain   = atom_group.parent().parent().id
-        res_i   = atom_group.parent().resseq_as_int()
-        conf_id = atom_group.altloc if atom_group.altloc else ' '
-        return self.scores.loc[(resname, chain, res_i, conf_id)]
-
 def score_with_edstats_to_dict(mtzpath, pdbpath):
     """Scores residues against density, then converts to dict"""
 
@@ -61,6 +54,7 @@ def score_with_edstats_to_list(mtzpath, pdbpath):
         # Read the output
         with os.fdopen(temp_handle) as f:
             output = f.read().strip().replace('\r\n','\n').replace('\r','\n').splitlines()
+        command.file_output = output
     finally:
         os.remove(temp_path)
 
