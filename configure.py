@@ -28,10 +28,11 @@ assert os.path.exists(PANDDA_BIN)
 ##########################################################
 cctbx_python = [arg for arg in sys.argv if 'cctbx.python' in arg]
 pandda_python = os.path.join(PANDDA_BIN, 'pandda.python')
-if not cctbx_python:
-    raise Exception('No cctbx path given - pass path to cctbx.python executable')
-else:
+if cctbx_python:
     cctbx_python = find_executable(cctbx_python[0])
+else:
+    cctbx_python = find_executable('cctbx.python')
+
 # Link cctbx.python to pandda.python
 if not cctbx_python:
     raise Exception('No cctbx path found - pass path to cctbx.python executable')
@@ -54,10 +55,11 @@ else:
 ##########################################################
 cctbx_ipython = [arg for arg in sys.argv if 'libtbx.ipython' in arg]
 pandda_ipython = os.path.join(PANDDA_BIN, 'pandda.ipython')
-if not cctbx_ipython:
-    print('No libtbx.ipython path given - pass path to libtbx.ipython executable')
-else:
+if cctbx_ipython:
     cctbx_ipython = find_executable(cctbx_ipython[0])
+else:
+    cctbx_ipython = find_executable('libtbx.ipython')
+
 # Link libtbx.ipython to pandda.ipython
 if not cctbx_ipython:
     print('No libtbx.ipython path found - pass path to libtbx.ipython executable')
