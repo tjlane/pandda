@@ -19,7 +19,7 @@ input {
         .type = str
 }
 check_for{
-    labels = None
+    label = None
         .type = str
         .multiple = True
 }
@@ -66,12 +66,22 @@ def run(params):
     print 'LOWEST RESOLUTION: {:.2f}'.format(low_res_crystal.high_res)
     print 'DATASET + PATH: {} - {}'.format(low_res_crystal.id, low_res_crystal.mtz_file)
 
-    #########################################################################################################
+    vol_sorted = sorted(cg.crystals, key=lambda c: c.unit_cell.volume())
+    high_vol_crystal = vol_sorted[-1]
+    low_vol_crystal  = vol_sorted[0]
+
+    print '===========================>'
+    print 'HIGHEST VOLUME: {:.2f}'.format(high_vol_crystal.unit_cell.volume())
+    print 'DATASET + PATH: {} - {}'.format(high_vol_crystal.id, high_vol_crystal.mtz_file)
+    print 'LOWEST VOLUME: {:.2f}'.format(low_vol_crystal.unit_cell.volume())
+    print 'DATASET + PATH: {} - {}'.format(low_vol_crystal.id, low_vol_crystal.mtz_file)
+
+#########################################################################################################
 
     for c in cg.crystals:
 
-        if params.check_for.labels:
-            for lab in params.check_for.labels:
+        if params.check_for.label:
+            for lab in params.check_for.label:
                 if lab not in c.column_labels:
                     print 'COLUMN NOT IN FILE ({}): {}'.format(lab, c.mtz_file)
 
