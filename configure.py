@@ -43,7 +43,7 @@ else:
     if os.path.islink(pandda_python):
         print 'Unlinking: {}'.format(pandda_python)
         os.unlink(pandda_python)
-    else:
+    elif os.path.exists(pandda_python):
         raise Exception('{} is hardcoded (should be a symbolic link) - cannot replace'.format(pandda_python))
     # Link the python to a new pandda.python symlink
     print 'LINKING {} -> {}'.format(cctbx_python, pandda_python)
@@ -69,7 +69,7 @@ else:
     if os.path.islink(pandda_ipython):
         print 'Unlinking: {}'.format(pandda_ipython)
         os.unlink(pandda_ipython)
-    else:
+    elif os.path.exists(pandda_ipython):
         raise Exception('{} is hardcoded (should be a symbolic link) - cannot replace'.format(pandda_ipython))
     # Link the ipython to a new pandda.ipython symlink
     print 'LINKING {} -> {}'.format(cctbx_ipython, pandda_ipython)
