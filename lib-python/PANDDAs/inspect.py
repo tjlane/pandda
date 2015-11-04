@@ -206,7 +206,7 @@ class PanddaInspector(object):
         self.gui = PanddaGUI(parent=self)
         self.gui.launch()
 
-    def update(self):
+    def update_html(self):
         """Update various parts of the class - including output graphs"""
 
         # Plot output graph of site list
@@ -222,9 +222,6 @@ class PanddaInspector(object):
                                     colour_vals = [[colr_vals[i] for i in g] for g in groups]   )
         # Write output html
         inspect_html.write_inspect_html(out_dir=self.top_dir, inspector=self)
-
-        # Update gui with the new event values
-        self.update_gui()
 
     def update_gui(self):
 
@@ -261,7 +258,7 @@ class PanddaInspector(object):
         # Load and Save the event
         self.current_event = self.coot.load_event(e=new_event)
         # Update the gui
-        self.update()
+        self.update_gui()
         self.print_current_log_values()
 
     def load_prev_event(self, skip_unmodelled=None, skip_viewed=None):
@@ -281,7 +278,7 @@ class PanddaInspector(object):
         # Load and Save the event
         self.current_event = self.coot.load_event(e=new_event)
         # Update the gui
-        self.update()
+        self.update_gui()
         self.print_current_log_values()
 
     def refresh_event(self):
@@ -290,7 +287,7 @@ class PanddaInspector(object):
         # Load and store the event
         self.current_event = self.coot.load_event(e=new_event)
         # Update the gui
-        self.update()
+        self.update_gui()
         self.print_current_log_values()
 
     #-------------------------------------------------------------------------
@@ -453,7 +450,6 @@ class PanddaGUI(object):
 
     def on_destroy(self,  widget=None, *data):
         print 'sdznfvjzbso'
-        self.parent.update()
         gtk.main_quit()
 
     def launch(self):
@@ -531,6 +527,7 @@ class PanddaGUI(object):
         """Record information from the gui to the pandas table in the main object"""
         self.parent.set_log_value(col='Comment', value=self.objects['comment text'].get_text())
         self.parent.set_log_value(col='Viewed', value=True)
+        self.parent.update_html()
 
     def _navi_buttons(self):
         box = gtk.HBox(homogeneous=True, spacing=5)

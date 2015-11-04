@@ -1109,53 +1109,39 @@ def pandda_main(args):
             # Analyse the processed data
             # TODO Create a `hit processor` class
             # ============================================================================>
-            t_event_cluster_start = time.time()
-            # ==================================================>
-
-            # ===
-            t_test_1 = time.time()
-            # ===
             # Extract all events from datasets
             all_events=[]; [all_events.extend(d.events) for d in pandda.datasets.all()]
-            # Cluster events to sites 
-            site_list = cluster_events(events=all_events, cutoff=10.0/pandda.reference_grid().grid_spacing(), linkage='single')
-            # ===
-            t_test_2 = time.time()
-            # ===
-            # Sort sites by largest Z-Value
-            site_list.sort(key=lambda s: (s.info.num_events, max([e.cluster.max for e in s.children])), reverse=True).renumber()
-            # Add meta to the site list
-            [s.find_protein_context(hierarchy=pandda.reference_dataset().hierarchy()) for s in site_list.children]
-            # ===
-            t_test_3 = time.time()
-            # ===
-            # Add the site information to the site table
-            pandda.update_site_table(site_list=site_list, clear_table=True)
-            # Update the site labels in the event table
-            pandda.update_event_table_site_info(events=all_events)
-            # ===
-            t_test_4 = time.time()
-            # ===
-           
-            pandda.log('Time 1: {}'.format(t_test_2-t_test_1), True)
-            pandda.log('Time 2: {}'.format(t_test_3-t_test_2), True)
-            pandda.log('Time 3: {}'.format(t_test_4-t_test_3), True)
-
-            # Plot output graph of site list 
-            graphs.multiple_bar_plot(   f_name    = pandda.output_handler.get_file('site_bar_graph'), 
-                                        plot_vals = [sorted([e.cluster.max for e in s.children],reverse=True) for s in site_list.children]   ) 
-
-            # ============================================================================>
-            t_event_cluster_end = time.time()
-            # ==================================================>
-            pandda.log('============================================================================>>>', True)
-            pandda.log('Event Clustering: {!s}'.format(time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(t_event_cluster_end - t_event_cluster_start))), True)
-
-            # ============================================================================>
-            # Update the output file
-            # ============================================================================>
-            pandda.write_output_csvs()
-            pandda.write_html_analysis_summary()
+            # Process the events if some have been found
+            if all_events:
+                # ==================================================>
+                t_event_cluster_start = time.time()
+                # ==================================================>
+                # Cluster events to sites 
+                site_list = cluster_events(events=all_events, cutoff=10.0/pandda.reference_grid().grid_spacing(), linkage='single')
+                # Sort sites by largest Z-Value
+                site_list.sort(key=lambda s: (s.info.num_events, max([e.cluster.max for e in s.children])), reverse=True).renumber()
+                # Add meta to the site list
+                [s.find_protein_context(hierarchy=pandda.reference_dataset().hierarchy()) for s in site_list.children]
+                # Add the site information to the site table
+                pandda.update_site_table(site_list=site_list, clear_table=True)
+                # Update the site labels in the event table
+                pandda.update_event_table_site_info(events=all_events)
+                # Plot output graph of site list 
+                graphs.multiple_bar_plot(   f_name    = pandda.output_handler.get_file('site_bar_graph'), 
+                                            plot_vals = [sorted([e.cluster.max for e in s.children],reverse=True) for s in site_list.children]   ) 
+                # ==================================================>
+                t_event_cluster_end = time.time()
+                # ==================================================>
+                pandda.log('============================================================================>>>', True)
+                pandda.log('Event Clustering: {!s}'.format(time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(t_event_cluster_end - t_event_cluster_start))), True)
+                # ==================================================>
+                # Update the output file
+                # ==================================================>
+                pandda.write_output_csvs()
+                pandda.write_html_analysis_summary()
+                # ==================================================>
+            else:
+                print 'No Events Found'
 
         # ============================================================================>
         #####

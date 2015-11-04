@@ -31,9 +31,9 @@ def write_inspect_html(out_dir, inspector):
     # Progress Bars
     output_data['progress_bar'] = []
     output_data['progress_bar'].append({'title':'Fitting Progress', 'data':[]})
-    output_data['progress_bar'][0]['data'].append({'text':'Fitted',  'colour':'success', 'size':100.0*num_fitted/len_data})
-    output_data['progress_bar'][0]['data'].append({'text':'Unviewed','colour':'warning', 'size':100.0*num_unviewed/len_data})
-    output_data['progress_bar'][0]['data'].append({'text':'Empty',   'colour':'danger',  'size':100.0*num_empty/len_data})
+    output_data['progress_bar'][0]['data'].append({'text':'Fitted',           'colour':'success', 'size':100.0*num_fitted/len_data})
+    output_data['progress_bar'][0]['data'].append({'text':'Unviewed',         'colour':'warning', 'size':100.0*num_unviewed/len_data})
+    output_data['progress_bar'][0]['data'].append({'text':'No Ligand Fitted', 'colour':'danger',  'size':100.0*num_empty/len_data})
     # ===========================================================>
     # Tables
     output_data['table'] = {}

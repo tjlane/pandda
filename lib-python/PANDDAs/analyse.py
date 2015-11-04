@@ -1594,7 +1594,9 @@ class PanddaMultiDatasetAnalyser(object):
                                                                                         crystal_symmetry = d_handler.input().crystal_symmetry(),
                                                                                         buffer_thickness = self.params.masks.outer_mask+5    )
         # Record the symmetry operations that generate the crystal contacts
-        if save_operators: self.crystal_contact_generators = sym_ops
+        if save_operators:
+            self.log('Saving Sym Ops: {!s}'.format(sym_ops), True)
+            self.crystal_contact_generators = sym_ops
 
         # Create a combined hierarchy of the crystal contacts
         symmetry_root = combine_hierarchies(sym_hierarchies)
@@ -2767,6 +2769,7 @@ class PanddaMultiDatasetAnalyser(object):
             points_frac[c_key] = ref_unit_cell.fractionalize(points_cart[c_key])
 
         # Matrix for whether they are near to each other
+        self.log('Symmetry Equivalence over: {!s}'.format(ref_sym_ops), True)
         equiv_sites = numpy.zeros([len(ref_sym_ops), len(cluster_keys), len(cluster_keys)], dtype=int)
 
         # Apply the symmetry operations to each cluster to see if it is near to other clusters

@@ -1,4 +1,8 @@
 import matplotlib
+
+try:    matplotlib.use('Agg')
+except: print 'Failed to load Agg as Backend for Matplotlib'
+
 matplotlib.interactive(0)
 from matplotlib import pyplot
 
