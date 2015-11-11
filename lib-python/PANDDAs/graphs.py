@@ -153,6 +153,9 @@ def multiple_bar_plot(f_name, plot_vals, colour_bool=None, colour_vals=None):
     num_sites = len(plot_vals)
     fig, all_axes = pyplot.subplots(num_sites, sharex=True)
 
+    # Change to list if only one subplot (pyplot...)
+    if num_sites == 1: all_axes = [all_axes]
+
     for i_site, bar_vals in enumerate(plot_vals):
         num_vals = len(bar_vals)
         # Left sides of the bars
