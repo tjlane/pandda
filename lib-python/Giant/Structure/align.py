@@ -5,7 +5,55 @@ from scitbx.array_family import flex
 import iotbx.pdb
 import mmtbx.alignment
 
+def nearby_coords_bool(query, coords, cutoff):
+    """Find all points in coords within cutoff of query. Return boolean selection"""
+    assert isinstance(coords, flex.vec3_double)
+    return (coords-query).dot() < (cutoff**2)
+
+#def nearby_coords(query, coords, cutoff):
+#    assert isinstance(coords, flex.vec3_double)
+#    return coords.select(nearby_coords_bool(query=query, coords=coords, cutoff=cutoff))
+
 def perform_flexible_alignment(mov_hierarchy, ref_hierarchy, cutoff_radius=10):
+    """Perform a flexible alignment on the two hierarchies. Will return a list of alignment metrics, one for each residue."""
+
+    assert mov_hierarchy.is_similar_hierarchy(ref_hierarchy), 'HIERARCHIES MUST BE SIMILAR'
+    # Caches for the reference structure
+    ref_cache          = ref_hierarchy.atom_selection_cache()
+    ref_backbone_hier  = ref_hierarchy.select(ref_cache.iselection('pepnames and (name CA or name C or name O or name N)'))
+    ref_backbone_cache = ref_backbone_hier.atom_selection_cache()
+    # Caches for the query structure
+    mov_cache          = mov_hierarchy.atom_selection_cache()
+    mov_backbone_hier  = mov_hierarchy.select(mov_cache.iselection('pepnames and (name CA or name C or name O or name N)'))
+    mov_backbone_cache = mov_backbone_hier.atom_selection_cache()
+    # Tranformation dictionaries
+    rts = {}
+    # Calculate a transformation matrix for each calpha
+    for calpha_at in ref_hierarchy.select(ref_cache.iselection('pepnames and name CA')).atoms_with_labels():
+        # Get selection within cutoff distance
+        align_sel = nearby_coords_bool( query  = calpha_at.xyz,
+                                        coords = ref_backbone_hier.atoms().extract_xyz(),
+                                        cutoff = cutoff_radius  )
+        # Extract full atom groups where one of the atoms has been selected
+        align_ags = ref_backbone_hier.select(align_sel).atom_groups()
+        align_str = ' or '.join(['(chain "{}" and resid "{}" and altloc "{}")'.format(ag.parent().parent().id, ag.parent().resid(), ag.altloc if ag.altloc else ' ') for ag in align_ags])
+        # Extract atoms to be aligned
+        ref_align_ats = ref_backbone_hier.select(ref_backbone_cache.selection(align_str)).atoms()
+        mov_align_ats = mov_backbone_hier.select(mov_backbone_cache.selection(align_str)).atoms()
+        # Check that atoms are identical in the two hierarchies
+        assert len(ref_align_ats) == len(mov_align_ats), 'atoms to be aligned are not the same length'
+        assert len(ref_align_ats) > 0, len(ref_align_ats)
+        assert len(ref_align_ats) >= sum(align_sel), 'Aligned atoms fewer than select atoms: {} < {}'.format(len(ref_align_ats), sum(align_sel))
+        for ref_at, mov_at in zip(ref_align_ats, mov_align_ats):
+            assert ref_at.pdb_label_columns() == mov_at.pdb_label_columns(), 'ATOMS MUST BE IDENTICAL'
+        # Calculate the alignment for this residue
+        rt = superpose.least_squares_fit(   reference_sites = ref_align_ats.extract_xyz(),
+                                            other_sites     = mov_align_ats.extract_xyz()   ).rt()
+        # Save the rotation matrix
+        rts[(calpha_at.chain_id, calpha_at.resid())] = rt
+    return rts
+
+def perform_flexible_alignment_old(mov_hierarchy, ref_hierarchy, cutoff_radius=10):
     """Perform a flexible alignment on the two hierarchies. Will return a list of alignment metrics, one for each residue."""
 
     assert mov_hierarchy.is_similar_hierarchy(ref_hierarchy), 'HIERARCHIES MUST BE SIMILAR'
@@ -16,8 +64,6 @@ def perform_flexible_alignment(mov_hierarchy, ref_hierarchy, cutoff_radius=10):
 
     # Extract Xray Structures for the reference structure
     ref_xray = ref_hierarchy.extract_xray_structure()
-
-    calpha_labels = [at.id_str() for at in ref_hierarchy.select(calpha_idxs).atoms()]
 
     # Tranformation dictionaries
     output_fits = {}

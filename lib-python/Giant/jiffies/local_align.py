@@ -1,4 +1,5 @@
 import os, sys, copy, re
+import time
 
 import libtbx.phil
 
@@ -40,7 +41,11 @@ def run(params):
     ref_hierarchy = iotbx.pdb.hierarchy.input(params.input.reference_pdb).hierarchy
     ref_hierarchy_trimmed = ref_hierarchy.select(ref_hierarchy.atom_selection_cache().selection('pepnames and (name CA or name C or name O or name N)'))
 
+    t_start = time.time()
+
     for mov_pdb in params.input.pdb:
+
+        print 'ALIGNING: {}'.format(mov_pdb)
 
         # =================================================>
         # Load structure
@@ -92,4 +97,8 @@ def run(params):
         new_hierarchy = mov_hierarchy.deep_copy()
         new_hierarchy.atoms().set_xyz(aligned_coords)
         new_hierarchy.write_pdb_file(file_name=os.path.join(os.path.dirname(mov_pdb), params.output.prefix+os.path.basename(mov_pdb)))
+
+    t_end = time.time()
+    print 'Total Runtime: {!s}'.format(time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(t_end-t_start)))
+
 
