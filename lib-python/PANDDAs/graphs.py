@@ -9,6 +9,7 @@ from matplotlib import pyplot
 import numpy
 
 def mean_obs_scatter(f_name, mean_vals, obs_vals):
+    """Plot mean map against observed map values"""
     fig = pyplot.figure()
     pyplot.title('UNSORTED MEAN v OBS SCATTER PLOT')
     pyplot.plot([-3, 10], [-3, 10], 'b--')
@@ -22,6 +23,7 @@ def mean_obs_scatter(f_name, mean_vals, obs_vals):
     pyplot.close(fig)
 
 def sorted_mean_obs_scatter(f_name, mean_vals, obs_vals):
+    """Plot sorted mean map against sorted observed map values"""
     fig = pyplot.figure()
     pyplot.title('SORTED MEAN v OBS Q-Q PLOT')
     pyplot.plot([-3, 10], [-3, 10], 'b--')
@@ -35,6 +37,7 @@ def sorted_mean_obs_scatter(f_name, mean_vals, obs_vals):
     pyplot.close(fig)
 
 def diff_mean_qqplot(f_name, map_off, map_unc, q_cut, obs_diff, quantile):
+    """Plot diff-mean map against normal quantiles, with uncertainty lines"""
     fig = pyplot.figure()
     pyplot.title('DIFF-MEAN-MAP Q-Q PLOT')
     pyplot.plot([map_off-5*map_unc, map_off+5*map_unc], [-5, 5], 'b--')
@@ -48,6 +51,7 @@ def diff_mean_qqplot(f_name, map_off, map_unc, q_cut, obs_diff, quantile):
     pyplot.close(fig)
 
 def med_mean_diff_hist(f_name, plot_vals):
+    """Plot median map against mean map"""
     fig = pyplot.figure()
     pyplot.title('MEAN-MEDIAN DIFFERENCE HISTOGRAM')
     pyplot.hist(x=plot_vals, bins=30, normed=True)
@@ -58,6 +62,7 @@ def med_mean_diff_hist(f_name, plot_vals):
     pyplot.close(fig)
 
 def map_value_distribution(f_name, plot_vals, plot_normal):
+    """Plot histogram of values, with optional normal distribution"""
     from scitbx.math.distributions import normal_distribution
     fig = pyplot.figure()
     pyplot.title('MAP VALUE DISTRIBUTION')
@@ -80,6 +85,7 @@ def map_value_distribution(f_name, plot_vals, plot_normal):
     pyplot.close(fig)
 
 def qq_plot_against_normal(f_name, plot_vals):
+    """Sort and plot list of values against expected quantiles from a normal distribution"""
     from scitbx.math.distributions import normal_distribution
     fig = pyplot.figure()
     pyplot.title('OBS v THEORETICAL Q-Q PLOT')
@@ -93,8 +99,7 @@ def qq_plot_against_normal(f_name, plot_vals):
     pyplot.close(fig)
 
 def write_occupancy_graph(occ_est_data, d_handler):
-
-    # 2 subplots sharing x-axis
+    """Write output graph from occupancy estimation"""
     fig, (axis_1_1, axis_2_1) = pyplot.subplots(2, sharex=True)
     # 1st Plot - 1st Y-Axis
     line_1_1, = axis_1_1.plot(occ_est_data.occ_values, occ_est_data.global_corr_vals, 'g--', label='GLOBAL')
@@ -131,7 +136,6 @@ def write_occupancy_graph(occ_est_data, d_handler):
     # Title
     axis_2_1.set_title('Estimating Occupancy by Correlation Gradient Differences')
     # Remove spacing between subplots
-#        fig.subplots_adjust(hspace=0)
     pyplot.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible=False)
     pyplot.setp([axis_2_1.get_xticklabels()], visible=True)
     # Apply tight layout to prevent overlaps
@@ -141,7 +145,7 @@ def write_occupancy_graph(occ_est_data, d_handler):
     pyplot.close(fig)
 
 def multiple_bar_plot(f_name, plot_vals, colour_bool=None, colour_vals=None):
-
+    """Plot set of bar graphs in one figure"""
     if colour_bool:
         assert not colour_vals, 'Provide either colour_bool or colours'
         assert len(plot_vals) == len(colour_bool)
@@ -149,13 +153,11 @@ def multiple_bar_plot(f_name, plot_vals, colour_bool=None, colour_vals=None):
     elif colour_vals:
         assert len(plot_vals) == len(colour_vals)
         assert map(len,plot_vals) == map(len,colour_vals)
-
     num_sites = len(plot_vals)
     fig, all_axes = pyplot.subplots(num_sites, sharex=True)
-
     # Change to list if only one subplot (pyplot...)
     if num_sites == 1: all_axes = [all_axes]
-
+    # Iterate through different graphs
     for i_site, bar_vals in enumerate(plot_vals):
         num_vals = len(bar_vals)
         # Left sides of the bars
@@ -165,12 +167,11 @@ def multiple_bar_plot(f_name, plot_vals, colour_bool=None, colour_vals=None):
         if colour_bool:   bar_colr = ['limegreen' if b else 'red' for b in colour_bool[i_site]]
         elif colour_vals: bar_colr = colour_vals[i_site]
         else:             bar_colr = ['blue']*num_vals
-
         # Make the bar
         s_axis = all_axes[i_site]
         bar_bar = s_axis.bar(left=bar_left, height=bar_hght, width=0.8, color=bar_colr)
         s_axis.set_yticks([int(max(bar_hght)+0.5)])
-
+    # Add xticks and save
     s_axis.set_xticks(range(1,max(map(len,plot_vals))+1))
     pyplot.tight_layout()
     pyplot.savefig(f_name)

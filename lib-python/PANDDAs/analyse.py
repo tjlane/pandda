@@ -46,8 +46,7 @@ from PANDDAs import graphs
 
 from PANDDAs import PANDDA_VERSION
 from PANDDAs.phil import pandda_phil_def
-from PANDDAs.html import PANDDA_HTML_ENV, path2url
-from PANDDAs.analyse_html import write_analyse_html
+from PANDDAs.html import PANDDA_HTML_ENV
 from PANDDAs.settings import PANDDA_TOP, PANDDA_TEXT
 
 STRUCTURE_MASK_NAMES = [    'bad structure - chain counts',
@@ -1085,20 +1084,13 @@ class PanddaMultiDatasetAnalyser(object):
         # Global Directories that do not change from run to run
         # ===============================================================================>
 
-        # Somewhere to flag the empty directories (failed pre-processing)
-        self.output_handler.add_dir(dir_name='empty_directories', dir_tag='empty_directories', top_dir_tag='root')
-        # Somewhere to flag the rejected directories (rejected from analysis)
-        self.output_handler.add_dir(dir_name='rejected_datasets', dir_tag='rejected_datasets', top_dir_tag='root')
-        # Somewhere to store all of the output maps
-        self.output_handler.add_dir(dir_name='processed_datasets', dir_tag='processed_datasets', top_dir_tag='root')
-        # Somewhere to store the interesting datasets
+        self.output_handler.add_dir(dir_name='empty_directories',    dir_tag='empty_directories',    top_dir_tag='root')
+        self.output_handler.add_dir(dir_name='processed_datasets',   dir_tag='processed_datasets',   top_dir_tag='root')
+        self.output_handler.add_dir(dir_name='rejected_datasets',    dir_tag='rejected_datasets',    top_dir_tag='root')
         self.output_handler.add_dir(dir_name='interesting_datasets', dir_tag='interesting_datasets', top_dir_tag='root')
-        # Somewhere to store the noisy datasets
-        self.output_handler.add_dir(dir_name='noisy_datasets', dir_tag='noisy_datasets', top_dir_tag='root')
-        # Somewhere to record which dataset was processed at which resolution
-        self.output_handler.add_dir(dir_name='resolutions', dir_tag='resolutions', top_dir_tag='root')
-        # Somewhere to store all of the aligned structures
-        self.output_handler.add_dir(dir_name='aligned_structures', dir_tag='aligned_structures', top_dir_tag='root')
+        self.output_handler.add_dir(dir_name='noisy_datasets',       dir_tag='noisy_datasets',       top_dir_tag='root')
+        self.output_handler.add_dir(dir_name='aligned_structures',   dir_tag='aligned_structures',   top_dir_tag='root')
+        self.output_handler.add_dir(dir_name='resolutions',          dir_tag='resolutions',          top_dir_tag='root')
 
         # ===============================================================================>
         # New directories that will be created for each run (so that data is not overwritten)
@@ -1109,26 +1101,37 @@ class PanddaMultiDatasetAnalyser(object):
 #        # Top folder for this run
 #        self.output_handler.add_dir(dir_name='ANALYSIS-{!s}'.format(run_label), dir_tag='run_directory', top_dir_tag='root')
 
-        # Input parameters
+        # ================================================>
+        # Input + Status parameters
+        # ================================================>
         self.output_handler.add_file(file_name='pandda.eff',     file_tag='pandda_settings', dir_tag='root')
         self.output_handler.add_file(file_name='pandda.running', file_tag='pandda_status_running', dir_tag='root')
         self.output_handler.add_file(file_name='pandda.done',    file_tag='pandda_status_done', dir_tag='root')
 
-        # Somewhere to store the analyses/summaries - for me to plot graphs
+        # ================================================>
+        # Somewhere to store the analyses/summaries
+        # ================================================>
         self.output_handler.add_dir(dir_name='analyses', dir_tag='analyses', top_dir_tag='root')
+        # Store dataset summary graphs
+        self.output_handler.add_dir(dir_name='dataset_graphs', dir_tag='d_graphs', top_dir_tag='analyses')
+        self.output_handler.add_file(file_name='dataset_resolutions.png',  file_tag='d_resolutions',  dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_rfactors.png',     file_tag='d_rfactors',     dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_rmsd_to_mean.png', file_tag='d_rmsd_to_mean', dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_cell_params.png',  file_tag='d_cell_params',  dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_cell_volumes.png', file_tag='d_cell_volumes', dir_tag='d_graphs')
         # Somewhere to store the dataset information (general values)
-        self.output_handler.add_file(file_name='dataset_info.csv', file_tag='dataset_info',  dir_tag='analyses')
-        self.output_handler.add_file(file_name='dataset_map_info.csv', file_tag='dataset_map_info',  dir_tag='analyses')
+        self.output_handler.add_file(file_name='dataset_info.csv',          file_tag='dataset_info',  dir_tag='analyses')
+        self.output_handler.add_file(file_name='dataset_map_info.csv',      file_tag='dataset_map_info',  dir_tag='analyses')
         self.output_handler.add_file(file_name='dataset_combined_info.csv', file_tag='dataset_combined_info',  dir_tag='analyses')
         # Somewhere to store the dataset information (identified events + sites)
-        self.output_handler.add_file(file_name='event_info.csv', file_tag='event_info',  dir_tag='analyses')
-        self.output_handler.add_file(file_name='event_info_2.csv', file_tag='event_info_2',  dir_tag='analyses')
-        self.output_handler.add_file(file_name='site_info.csv', file_tag='site_info',  dir_tag='analyses')
+        self.output_handler.add_file(file_name='event_info.csv',   file_tag='event_info',  dir_tag='analyses')
+        self.output_handler.add_file(file_name='site_info.csv',    file_tag='site_info',  dir_tag='analyses')
         self.output_handler.add_file(file_name='point_distributions.csv', file_tag='point_distributions', dir_tag='analyses')
         # Somewhere to store the analysis summaries - for the user
         self.output_handler.add_dir(dir_name='results_summaries', dir_tag='output_summaries', top_dir_tag='root')
-        self.output_handler.add_file(file_name='pandda_analyse.html', file_tag='summary_table', dir_tag='output_summaries')
-        self.output_handler.add_file(file_name='site_bar_graph.png', file_tag='site_bar_graph', dir_tag='output_summaries')
+        self.output_handler.add_file(file_name='pandda_initial.html',      file_tag='initial_html',   dir_tag='output_summaries')
+        self.output_handler.add_file(file_name='pandda_analyse.html',      file_tag='analyse_html',   dir_tag='output_summaries')
+        self.output_handler.add_file(file_name='pandda_analyse_sites.png', file_tag='site_bar_graph', dir_tag='output_summaries')
         # Somewhere to store the pickled objects
         self.output_handler.add_dir(dir_name='pickled_panddas', dir_tag='pickle', top_dir_tag='root')
 
@@ -1138,9 +1141,9 @@ class PanddaMultiDatasetAnalyser(object):
 
         # Reference Structure and Dataset
         self.output_handler.add_dir(dir_name='reference', dir_tag='reference', top_dir_tag='root')
-        self.output_handler.add_file(file_name='reference.pdb', file_tag='reference_structure', dir_tag='reference')
-        self.output_handler.add_file(file_name='reference.mtz', file_tag='reference_dataset', dir_tag='reference')
-        self.output_handler.add_file(file_name='reference.shifted.pdb', file_tag='reference_on_origin', dir_tag='reference')
+        self.output_handler.add_file(file_name='reference.pdb',          file_tag='reference_structure', dir_tag='reference')
+        self.output_handler.add_file(file_name='reference.mtz',          file_tag='reference_dataset', dir_tag='reference')
+        self.output_handler.add_file(file_name='reference.shifted.pdb',  file_tag='reference_on_origin', dir_tag='reference')
         self.output_handler.add_file(file_name='reference.symmetry.pdb', file_tag='reference_symmetry', dir_tag='reference')
 
         # ===============================================================================>
@@ -2769,7 +2772,6 @@ class PanddaMultiDatasetAnalyser(object):
             points_frac[c_key] = ref_unit_cell.fractionalize(points_cart[c_key])
 
         # Matrix for whether they are near to each other
-        self.log('Symmetry Equivalence over: {!s}'.format(ref_sym_ops), True)
         equiv_sites = numpy.zeros([len(ref_sym_ops), len(cluster_keys), len(cluster_keys)], dtype=int)
 
         # Apply the symmetry operations to each cluster to see if it is near to other clusters
@@ -2995,10 +2997,6 @@ class PanddaMultiDatasetAnalyser(object):
             if not os.path.exists(view_image):
                 print('FAILED TO MAKE IMAGES')
                 print(c.err)
-
-    def write_html_analysis_summary(self):
-        """Writes an html summary of the datasets"""
-        write_analyse_html(self)
 
     def write_map_value_distribution(self, map_vals, output_file, plot_indices=None, plot_normal=False):
         """Write out the value distribution for a map"""
@@ -3275,126 +3273,85 @@ class PanddaMultiDatasetAnalyser(object):
             import matplotlib
             matplotlib.interactive(0)
             from matplotlib import pyplot
-        else:
-            return
+        else: return
 
         def filter_nans(x):
             return [v for v in x if not numpy.isnan(v)]
 
-        ########################################################
-
         self.log('===================================>>>')
         self.log('Generating Summary Graphs')
-
-        # Extract dataset summary table
         d_info = self.tables.dataset_info
-        # Get the output directory to write the graphs into
-        img_out_dir = self.output_handler.get_dir('analyses')
         n_bins = 30
-
-        ########################################################
-
-        self.log('=> Data Quality Variation')
-
-        # RESOLUTIONS
+        # ================================================>
         fig = pyplot.figure()
         pyplot.title('RESOLUTION HISTOGRAMS')
-        # High Resolution
         pyplot.subplot(2, 1, 1)
         pyplot.hist(x=d_info['high_resolution'], bins=n_bins)
         pyplot.xlabel('HIGH RESOLUTION LIMIT (A)')
         pyplot.ylabel('COUNT')
-        # Low Resolution
         pyplot.subplot(2, 1, 2)
         pyplot.hist(x=d_info['low_resolution'], bins=n_bins)
         pyplot.xlabel('LOW RESOLUTION LIMIT (A)')
         pyplot.ylabel('COUNT')
-        # Apply tight layout to prevent overlaps
         pyplot.tight_layout()
-        # Save both
-        pyplot.savefig(os.path.join(img_out_dir, 'd_resolutions.png'))
+        pyplot.savefig(self.output_handler.get_file('d_resolutions'))
         pyplot.close(fig)
-
-        # R-FACTORS
+        # ================================================>
         fig = pyplot.figure()
         pyplot.title('R-FACTOR HISTOGRAMS')
-        # RFree
         pyplot.subplot(2, 1, 1)
         pyplot.hist(x=d_info['r_free'], bins=n_bins)
         pyplot.xlabel('R-FREE')
         pyplot.ylabel('COUNT')
-        # RWork
         pyplot.subplot(2, 1, 2)
         pyplot.hist(x=d_info['r_work'], bins=n_bins)
         pyplot.xlabel('R-WORK')
         pyplot.ylabel('COUNT')
-        # Apply tight layout to prevent overlaps
         pyplot.tight_layout()
-        # Save both
-        pyplot.savefig(os.path.join(img_out_dir, 'd_rfactors.png'))
+        pyplot.savefig(self.output_handler.get_file('d_rfactors'))
         pyplot.close(fig)
-
-        # RMSDs
+        # ================================================>
         fig = pyplot.figure()
         pyplot.title('RMSDS TO MEAN STRUCTURE HISTOGRAM')
         pyplot.hist(x=filter_nans(d_info['rmsd_to_mean']), bins=n_bins)
         pyplot.xlabel('RMSD (A)')
         pyplot.ylabel('COUNT')
-        # Apply tight layout to prevent overlaps
         pyplot.tight_layout()
-        # Save
-        pyplot.savefig(os.path.join(img_out_dir, 'd_rmsd_to_mean.png'))
+        pyplot.savefig(self.output_handler.get_file('d_rmsd_to_mean'))
         pyplot.close(fig)
-
-        ########################################################
-
-        self.log('=> Crystal Variation')
-
-        # CELL PARAMS
+        # ================================================>
         fig = pyplot.figure()
         pyplot.title('UNIT CELL PARAMS')
-        # A
         pyplot.subplot(2, 3, 1)
         pyplot.hist(x=d_info['uc_a'], bins=n_bins)
         pyplot.xlabel('A (A)')
         pyplot.ylabel('COUNT')
-        # B
         pyplot.subplot(2, 3, 2)
         pyplot.hist(x=d_info['uc_b'], bins=n_bins)
         pyplot.xlabel('B (A)')
-        # C
         pyplot.subplot(2, 3, 3)
         pyplot.hist(x=d_info['uc_c'], bins=n_bins)
         pyplot.xlabel('C (A)')
-        # ALPHA
         pyplot.subplot(2, 3, 4)
         pyplot.hist(x=d_info['uc_alpha'], bins=n_bins)
         pyplot.xlabel('ALPHA')
         pyplot.ylabel('COUNT')
-        # BETA
         pyplot.subplot(2, 3, 5)
         pyplot.hist(x=d_info['uc_beta'], bins=n_bins)
         pyplot.xlabel('BETA')
-        # GAMMA
         pyplot.subplot(2, 3, 6)
         pyplot.hist(x=d_info['uc_gamma'], bins=n_bins)
         pyplot.xlabel('GAMMA')
-        # Apply tight layout to prevent overlaps
-        #pyplot.tight_layout()
-        # Save both
-        pyplot.savefig(os.path.join(img_out_dir, 'd_cell_param.png'))
+        pyplot.savefig(self.output_handler.get_file('d_cell_params'))
         pyplot.close(fig)
-
-        # CELL VOLUME
+        # ================================================>
         fig = pyplot.figure()
         pyplot.title('UNIT CELL VOLUME HISTOGRAM')
         pyplot.hist(x=d_info['uc_vol'], bins=n_bins)
         pyplot.xlabel('VOLUME (A**3)')
         pyplot.ylabel('COUNT')
-        # Apply tight layout to prevent overlaps
         pyplot.tight_layout()
-        # Save
-        pyplot.savefig(os.path.join(img_out_dir, 'd_cell_volume.png'))
+        pyplot.savefig(self.output_handler.get_file('d_cell_volumes'))
         pyplot.close(fig)
 
     def write_output_csvs(self):
@@ -3419,17 +3376,11 @@ class PanddaMultiDatasetAnalyser(object):
 
         # Sort the event data by z-peak and write out
         sort_eve = self.tables.event_info.sort(columns=['site_idx','z_peak'], ascending=[1,0])
-        sort_eve.to_csv(path_or_buf=self.output_handler.get_file('event_info_2'))
         sort_eve = sort_eve.join(comb_tab, how='right')
         sort_eve.to_csv(path_or_buf=self.output_handler.get_file('event_info'))
         # Sort the sites by number of events and write out
         sort_sit = self.tables.site_info.sort(columns=['num_events'],ascending=[0])
         sort_sit.to_csv( path_or_buf=self.output_handler.get_file('site_info'))
-
-        # TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
-        #self.log('===================================>>>')
-        #self.log('Writing Residue Summaries - NOT YET')
-        # TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
 
     def update_site_table(self, site_list, clear_table=True):
         """Add site entries to the site table"""

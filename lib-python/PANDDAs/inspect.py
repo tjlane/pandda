@@ -216,7 +216,7 @@ class PanddaInspector(object):
         colr_vals = ['limegreen' if m else 'red' if v else 'blue' for m,v in zip(modl_vals,view_vals)]
         site_idxs = self.log_table['site_idx']
         groups = [list(g[1]) for g in itertools.groupby(range(len(site_idxs)), key=lambda i: site_idxs[i])]
-        graphs.multiple_bar_plot(   f_name      = os.path.join(self.top_dir, 'results_summaries', 'pandda_inspect.png'),
+        graphs.multiple_bar_plot(   f_name      = os.path.join(self.top_dir, 'results_summaries', 'pandda_inspect_sites.png'),
                                     plot_vals   = [[plot_vals[i] for i in g] for g in groups],
 #                                    colour_bool = [[view_vals[i] for i in g] for g in groups]   )
                                     colour_vals = [[colr_vals[i] for i in g] for g in groups]   )

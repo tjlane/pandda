@@ -25,7 +25,7 @@ def write_inspect_html(out_dir, inspector):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    output_data['top_images'].append({ 'path': path2url(os.path.abspath(os.path.join(out_dir, 'results_summaries', 'pandda_inspect.png'))),
+    output_data['top_images'].append({ 'path': path2url(os.path.abspath(os.path.join(out_dir, 'results_summaries', 'pandda_inspect_sites.png'))),
                                        'title': 'Identified Site Summary' })
     # ===========================================================>
     # Progress Bars

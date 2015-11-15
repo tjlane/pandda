@@ -55,6 +55,7 @@
         {% endfor -%}
       </div>
       {% endif %}
+      {% if table is defined %}
       <div class="table-responsive" style="height:400px">
         <table class="table table-bordered table-striped">
           <thead>
@@ -78,6 +79,7 @@
           </tbody>
         </table>
       </div>
+      {% endif %}
     </div>
 
   </body>

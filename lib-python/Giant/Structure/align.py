@@ -1,18 +1,17 @@
 
-from scitbx.math import superpose
-from scitbx.array_family import flex
+import itertools
+import numpy
 
 import iotbx.pdb
 import mmtbx.alignment
+
+from scitbx.math import superpose
+from scitbx.array_family import flex
 
 def nearby_coords_bool(query, coords, cutoff):
     """Find all points in coords within cutoff of query. Return boolean selection"""
     assert isinstance(coords, flex.vec3_double)
     return (coords-query).dot() < (cutoff**2)
-
-#def nearby_coords(query, coords, cutoff):
-#    assert isinstance(coords, flex.vec3_double)
-#    return coords.select(nearby_coords_bool(query=query, coords=coords, cutoff=cutoff))
 
 def perform_flexible_alignment(mov_hierarchy, ref_hierarchy, cutoff_radius=10):
     """Perform a flexible alignment on the two hierarchies. Will return a list of alignment metrics, one for each residue."""
@@ -52,6 +51,56 @@ def perform_flexible_alignment(mov_hierarchy, ref_hierarchy, cutoff_radius=10):
         # Save the rotation matrix
         rts[(calpha_at.chain_id, calpha_at.resid())] = rt
     return rts
+
+def find_nearest_calphas(hierarchy, coordinates):
+    """Find the nearest calpha in hierarchy for each coordinate in coordinates"""
+    import scipy.spatial
+    # Extract calphas and associated labels
+    hierarchy = hierarchy.select(hierarchy.atom_selection_cache().selection('pepnames and name CA'))
+    calpha_sites, calpha_labs = zip(*[(a.xyz, (a.chain_id, a.resid())) for a in hierarchy.atoms_with_labels()])
+    # Build a tree to find the smallest distance
+    tree = scipy.spatial.KDTree(data=calpha_sites)
+    # Find the nearest neighbours
+    nn_dists, nn_groups = tree.query(coordinates)
+    # Extract the associated labels
+    mappings = [calpha_labs[i] for i in nn_groups]
+    return mappings
+
+def transform_coordinates_with_flexible_alignment(alignments, coordinates, mappings, inverse=False):
+    """Transform coordinates by associated alignments associated with mappings values"""
+
+    assert len(coordinates) == len(mappings)
+    if not isinstance(coordinates, flex.vec3_double):
+        coordinates = flex.vec3_double(coordinates)
+    # Sort the indices by the mapping values
+    num_tot = len(coordinates)
+    sorted_idxs     = flex.size_t(sorted(range(num_tot), key=lambda i: mappings[i]))
+    sorted_coords   = coordinates.select(sorted_idxs)
+    sorted_mappings = [mappings[i] for i in sorted_idxs]
+
+    # Initialise output array
+    out_coords = numpy.zeros(len(coordinates), dtype=[('x',float),('y',float),('z',float)])
+
+    # Iterate through the coords in groups and transform
+    for lab, lab_idxs in itertools.groupby(range(num_tot), key=lambda i: sorted_mappings[i]):
+        lab_idxs = flex.size_t(lab_idxs)
+        print 'Using RT for {}'.format(lab)
+        print 'on {} points'.format(len(lab_idxs))
+        print 'from idx {} to {}'.format(lab_idxs[0], lab_idxs[-1])
+        # Extract coordinates for this block
+        lab_coords   = sorted_coords.select(lab_idxs)
+        lab_mappings = [sorted_mappings[i] for i in lab_idxs]
+        orig_idxs    = sorted_idxs.select(lab_idxs)
+        assert max(lab_idxs)-min(lab_idxs) == len(lab_idxs)-1
+        assert len(set(lab_mappings)) == 1
+        # Extract RT matrix
+        rt = alignments[lab]
+        if inverse: rt = rt.inverse()
+        # Transform and put back
+        rt_coords = rt * lab_coords
+        out_coords.put(orig_idxs, rt_coords)
+
+    return flex.vec3_double(out_coords)
 
 def perform_flexible_alignment_old(mov_hierarchy, ref_hierarchy, cutoff_radius=10):
     """Perform a flexible alignment on the two hierarchies. Will return a list of alignment metrics, one for each residue."""

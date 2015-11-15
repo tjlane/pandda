@@ -13,6 +13,7 @@ from Giant.Xray.Maps.Occupancy import calculate_occupancy_subtracted_map, estima
 
 from PANDDAs import welcome, graphs
 from PANDDAs.analyse import PanddaMultiDatasetAnalyser, PanddaMapAnalyser, MapHolder, Meta
+from PANDDAs.analyse_html import write_initial_html, write_analyse_html
 from PANDDAs.events import PointCluster, Event, cluster_events 
 
 def pandda_main(args):
@@ -233,6 +234,7 @@ def pandda_main(args):
         # ============================================================================>
         pandda.write_output_csvs()
         pandda.write_dataset_summary_graphs()
+        write_initial_html(pandda)
             
         # ============================================================================>
         #####
@@ -1138,7 +1140,7 @@ def pandda_main(args):
                 # Update the output file
                 # ==================================================>
                 pandda.write_output_csvs()
-                pandda.write_html_analysis_summary()
+                write_analyse_html(pandda)
                 # ==================================================>
             else:
                 print 'No Events Found'
@@ -1189,7 +1191,7 @@ def pandda_main(args):
         # ============================================================================>
 
         pandda.write_output_csvs()
-        pandda.write_html_analysis_summary()
+        write_analyse_html(pandda)
 
         try:
             from ascii_graph import Pyasciigraph
