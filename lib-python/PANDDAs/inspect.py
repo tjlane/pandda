@@ -123,7 +123,8 @@ class PanddaSiteTracker(object):
     rank_val = 1 # Rank Value           1 -> n
     rank_tot = 1 # Number of Events     n
 
-    def __init__(self, csv, top_dir):
+    def __init__(self, parent, csv, top_dir):
+        self.parent  = parent
         self.top_dir = top_dir
         self.parse_csv(csv)
 
@@ -150,29 +151,53 @@ class PanddaSiteTracker(object):
         """Get an `Event` object for the current event"""
         self.update() # Ensure that we're up-to-date
         curr_event = self.events.iloc[self.rank_idx]
-        print '\n\nCurrent Event:\n\n{!s}\n\n'.format(curr_event)
+#        print '\n\nCurrent Event:\n\n{!s}\n\n'.format(curr_event)
         return PanddaEvent(rank=self.rank_val, info=curr_event, top_dir=self.top_dir)
 
     #-------------------------------------------------------------------------
 
+    def at_first_event(self):
+        self.update()
+        return self.rank_val == 1
+
+    def at_last_event(self):
+        self.update()
+        return self.rank_val == self.rank_tot
+
+    #-------------------------------------------------------------------------
+
     def get_next(self):
-        if self.rank_val == self.rank_tot: return None
-        self.rank_idx += 1
+        if self.rank_idx == self.rank_tot - 1:
+            self.rank_idx = 0
+#            return None
+        else:
+            self.rank_idx += 1
         return self.get_new_current_event()
 
     def get_prev(self):
-        if self.rank_val == 1: return None
-        self.rank_idx -= 1
-        return self.get_new_current_event()
-
-    def get_prev_site(self):
-        if sel.site_val == 1:  return None
-        self.rank_idx = self.events.index.get_loc(self.events[self.events['site_idx']==self.site_val-1].index[0])
+        if self.rank_idx == 0:
+            self.rank_idx = self.rank_tot - 1
+#            return None
+        else:
+            self.rank_idx -= 1
         return self.get_new_current_event()
 
     def get_next_site(self):
-        if curr_site == self.site_tot: return None
-        self.rank_idx = self.events.index.get_loc(self.events[self.events['site_idx']==self.site_val+1].index[0])
+        if self.site_val == self.site_tot:
+            new_site_val = 1
+#            return None
+        else:
+            new_site_val = self.site_val + 1
+        self.rank_idx = self.events.index.get_loc(self.events[self.events['site_idx']==new_site_val].index[0])
+        return self.get_new_current_event()
+
+    def get_prev_site(self):
+        if self.site_val == 1:
+            new_site_val = self.site_tot
+#            return None
+        else:
+            new_site_val = self.site_val - 1
+        self.rank_idx = self.events.index.get_loc(self.events[self.events['site_idx']==new_site_val].index[0])
         return self.get_new_current_event()
 
 #=========================================================================
@@ -181,10 +206,10 @@ class PanddaInspector(object):
 
     """Main Object in pandda.inspect"""
 
-    def __init__(self, csv, top_dir, skip_unmodelled=False, skip_viewed=False):
+    def __init__(self, csv, top_dir):
 
         # List of events from pandda.analyse
-        self.site_list = PanddaSiteTracker(csv=csv, top_dir=top_dir)
+        self.site_list = PanddaSiteTracker(parent=self, csv=csv, top_dir=top_dir)
         # Handling of coot commands
         self.coot = PanddaMolHandler(parent=self)
 
@@ -198,9 +223,6 @@ class PanddaInspector(object):
 
         # Object to hold the currently loaded event
         self.current_event = None
-
-        self.skip_unmodelled = skip_unmodelled
-        self.skip_viewed = skip_viewed
 
     def start_gui(self):
         self.gui = PanddaGUI(parent=self)
@@ -239,56 +261,8 @@ class PanddaInspector(object):
         # Reset the comment box
         self.gui.objects['comment text'].set_text(str(self.get_log_value('Comment')))
 
-    #-------------------------------------------------------------------------
-
-    def load_next_event(self, skip_unmodelled=None, skip_viewed=None):
-        # Set to defaults if not given explicitly
-        if skip_unmodelled is None: skip_unmodelled = self.skip_unmodelled
-        if skip_viewed is None:     skip_viewed = self.skip_viewed
-        # Get the next event from the site list
-        new_event = self.site_list.get_next()
-        # Loop until we get a modelled one (if requested)
-        if skip_unmodelled and (not os.path.exists(new_event.fitted_link)):
-            print 'SKIPPING UNMODELLED: {} - {}'.format(new_event.dtag, new_event.event_idx)
-            self.load_next_event(skip_unmodelled=skip_unmodelled, skip_viewed=skip_viewed); return
-        # Loop until we get an unviewed one (if requested)
-        if skip_viewed and (self.log_table.get_value(index=new_event.index, col='Viewed') == True):
-            print 'SKIPPING VIEWED: {} - {}'.format(new_event.dtag, new_event.event_idx)
-            self.load_next_event(skip_unmodelled=skip_unmodelled, skip_viewed=skip_viewed); return
-        # Load and Save the event
-        self.current_event = self.coot.load_event(e=new_event)
-        # Update the gui
-        self.update_gui()
-        self.print_current_log_values()
-
-    def load_prev_event(self, skip_unmodelled=None, skip_viewed=None):
-        # Set to defaults if not given explicitly
-        if skip_unmodelled is None: skip_unmodelled = self.skip_unmodelled
-        if skip_viewed is None:     skip_viewed = self.skip_viewed
-        # Get the prev event from the site list
-        new_event = self.site_list.get_prev()
-        # Loop until we get a modelled one (if requested)
-        if skip_unmodelled and (not os.path.exists(new_event.fitted_link)):
-            print 'SKIPPING UNMODELLED: {} - {}'.format(new_event.dtag, new_event.event_idx)
-            self.load_prev_event(skip_unmodelled=skip_unmodelled, skip_viewed=skip_viewed); return
-        # Loop until we get an unviewed one (if requested)
-        if skip_viewed and (self.log_table.get_value(index=new_event.index, col='Viewed') == True):
-            print 'SKIPPING VIEWED: {} - {}'.format(new_event.dtag, new_event.event_idx)
-            self.load_prev_event(skip_unmodelled=skip_unmodelled, skip_viewed=skip_viewed); return
-        # Load and Save the event
-        self.current_event = self.coot.load_event(e=new_event)
-        # Update the gui
-        self.update_gui()
-        self.print_current_log_values()
-
-    def refresh_event(self):
-        # Get new event instance
-        new_event = self.site_list.get_new_current_event()
-        # Load and store the event
-        self.current_event = self.coot.load_event(e=new_event)
-        # Update the gui
-        self.update_gui()
-        self.print_current_log_values()
+    def raise_gui_error_and_reset(self, error_msg):
+        self.gui.error_msg(msg=error_msg)
 
     #-------------------------------------------------------------------------
 
@@ -296,28 +270,74 @@ class PanddaInspector(object):
         self.current_event.write_fitted_model(protein_obj=self.coot.open_mols['p'])
         self.write_output_csv()
 
+    def load_new_event(self, new_event):
+        if new_event is None:
+            # TODO DO SOMETHING BETTER HERE TODO
+            # Instead of loading new event, inform using the same model
+            self.raise_gui_error_and_reset(error_msg='Reloading Same MODEL (Unchanged)')
+        else:
+            self.current_event = self.coot.load_event(e=new_event)
+        self.update_gui()
+        self.print_current_log_values()
+
+    def refresh_event(self):
+        self.load_new_event(new_event=self.site_list.get_new_current_event())
+
+    def load_next_event(self, skip_unmodelled=False, skip_viewed=False):
+        if not self.check_valid_button_click(skip_unmodelled, skip_viewed): return
+        new_event = self.site_list.get_next()
+        # Loop until we get a modelled one (if requested)
+        if (new_event is not None) and skip_unmodelled and (not os.path.exists(new_event.fitted_link)):
+#            if self.site_list.at_first_event():
+            if self.current_event.index == new_event.index:
+                self.raise_gui_error_and_reset(error_msg='No more unmodelled datasets')
+            else:
+                print 'SKIPPING UNMODELLED: {} - {}'.format(new_event.dtag, new_event.event_idx)
+                self.load_next_event(skip_unmodelled=skip_unmodelled, skip_viewed=skip_viewed)
+            return
+        # Loop until we get an unviewed one (if requested)
+        if (new_event is not None) and skip_viewed and (self.log_table.get_value(index=new_event.index, col='Viewed') == True):
+            print 'SKIPPING VIEWED: {} - {}'.format(new_event.dtag, new_event.event_idx)
+            self.load_next_event(skip_unmodelled=skip_unmodelled, skip_viewed=skip_viewed)
+            return
+        # Actually load the event
+        self.load_new_event(new_event=new_event)
+
+    def load_prev_event(self, skip_unmodelled=False, skip_viewed=False):
+        if not self.check_valid_button_click(skip_unmodelled, skip_viewed): return
+        new_event = self.site_list.get_prev()
+#        # Loop until we get a modelled one (if requested)
+#        if (new_event is not None) and skip_unmodelled and (not os.path.exists(new_event.fitted_link)):
+#            print 'SKIPPING UNMODELLED: {} - {}'.format(new_event.dtag, new_event.event_idx)
+#            self.load_prev_event(skip_unmodelled=skip_unmodelled, skip_viewed=skip_viewed)
+#            return
+#        # Loop until we get an unviewed one (if requested)
+#        if (new_event is not None) and skip_viewed and (self.log_table.get_value(index=new_event.index, col='Viewed') == True):
+#            print 'SKIPPING VIEWED: {} - {}'.format(new_event.dtag, new_event.event_idx)
+#            self.load_prev_event(skip_unmodelled=skip_unmodelled, skip_viewed=skip_viewed)
+#            return
+        # Actually load the event
+        self.load_new_event(new_event=new_event)
+
+    def load_next_site(self):
+        self.load_new_event(new_event=self.site_list.get_next_site())
+
+    def load_prev_site(self):
+        self.load_new_event(new_event=self.site_list.get_prev_site())
+
     #-------------------------------------------------------------------------
 
-    def print_current_log_values(self):
-        print '====================>>>'
-        print 'Current Event:'
-        print self.log_table.loc[self.current_event.index]
-        print '====================>>>'
-
-    def set_log_value(self, col, value):
-        self.log_table.set_value(index=self.current_event.index, col=col, value=value)
-        print '====================>>>'
-        print 'LOG TABLE UPDATED:'
-        self.print_current_log_values()
-        self.write_output_csv()
-
-    def get_log_value(self, col):
-        return self.log_table.get_value(index=self.current_event.index, col=col)
-
+    def check_valid_button_click(self, skip_unmodelled=None, skip_viewed=None):
+        if skip_unmodelled == True:
+            pass
+        if skip_viewed == True:
+            if sum(self.log_table['Viewed']) == len(self.log_table['Viewed']):
+                self.raise_gui_error_and_reset(error_msg='All models have been viewed')
+                return False
+        return True
     #-------------------------------------------------------------------------
 
     def initialise_output_table(self, in_csv, out_csv):
-
         if os.path.exists(out_csv):
             # Output csv already exists from previous run -- reload
             self.log_table = pandas.read_csv(out_csv, sep=',', dtype={'dtag':str})
@@ -330,12 +350,26 @@ class PanddaInspector(object):
             self.log_table['Ligand Confidence'] = 'None'
             self.log_table['Comment'] = 'None'
             self.log_table['Viewed'] = False
-
         # Set the index
         self.log_table = self.log_table.set_index(['dtag','event_idx'])
-
         # Save Table
         self.write_output_csv()
+
+    def get_log_value(self, col):
+        return self.log_table.get_value(index=self.current_event.index, col=col)
+
+    def set_log_value(self, col, value):
+        self.log_table.set_value(index=self.current_event.index, col=col, value=value)
+        print '====================>>>'
+        print 'LOG TABLE UPDATED:'
+        self.print_current_log_values()
+        self.write_output_csv()
+
+    def print_current_log_values(self):
+        print '====================>>>'
+        print 'Current Event:'
+        print self.log_table.loc[self.current_event.index]
+        print '====================>>>'
 
     def write_output_csv(self):
         self.log_table.to_csv(self.output_csv)
@@ -449,8 +483,17 @@ class PanddaGUI(object):
         self.objects = {}
 
     def on_destroy(self,  widget=None, *data):
-        print 'sdznfvjzbso'
         gtk.main_quit()
+
+    def error_msg(self, msg):
+        """Display an error window"""
+        d = gtk.MessageDialog(  parent  = self.window,
+                                flags   = gtk.DIALOG_DESTROY_WITH_PARENT,
+                                type    = gtk.MESSAGE_INFO,
+                                buttons = gtk.BUTTONS_CLOSE,
+                                message_format = msg )
+        d.run()
+        d.destroy()
 
     def launch(self):
         """Launch GUI window"""
@@ -466,9 +509,20 @@ class PanddaGUI(object):
         # Main VBox object for the window
         main_vbox = gtk.VBox(spacing=5)
         # -----------------------------------------------------
+        hbox = gtk.HBox(spacing=5)
         # Create progress summary table at the top of the window
-        self.progress_table   = self._progress_table()
+        self.progress_table = self._progress_table()
         frame = gtk.Frame(); frame.add(self.progress_table)
+        hbox.pack_start(frame)
+        # Create buttons to navigate between datasets
+        nav_buttons = self._navi_buttons_2()
+        hbox.pack_start(nav_buttons)
+        # Add to main vbox
+        main_vbox.pack_start(hbox)
+        # -----------------------------------------------------
+        # Create buttons to navigate between datasets
+        nav_buttons = self._navi_buttons_1()
+        frame = gtk.Frame(); frame.add(nav_buttons)
         main_vbox.pack_start(frame)
         # -----------------------------------------------------
         hbox = gtk.HBox(homogeneous=False, spacing=5)
@@ -483,10 +537,6 @@ class PanddaGUI(object):
         # Add to main vbox
         main_vbox.pack_start(hbox)
         # -----------------------------------------------------
-        # Create buttons to navigate between datasets
-        nav_buttons = self._navi_buttons()
-        frame = gtk.Frame(); frame.add(nav_buttons)
-        main_vbox.pack_start(frame)
         # Create buttones to record meta about the event
         rec_buttons = self._record_buttons()
         frame = gtk.Frame(); frame.add(rec_buttons)
@@ -509,6 +559,11 @@ class PanddaGUI(object):
         self.buttons['prev'].connect("clicked", lambda x: [self.store(), self.parent.load_prev_event()])
         self.buttons['skip'].connect("clicked", lambda x: [self.store(), self.parent.load_next_event()])
 
+        self.buttons['next-unviewed'].connect("clicked", lambda x: [self.store(), self.parent.load_next_event(skip_viewed=True)])
+        self.buttons['next-modelled'].connect("clicked", lambda x: [self.store(), self.parent.load_next_event(skip_unmodelled=True)])
+        self.buttons['next-site'].connect("clicked", lambda x: [self.store(), self.parent.load_next_site()])
+        self.buttons['prev-site'].connect("clicked", lambda x: [self.store(), self.parent.load_prev_site()])
+
         # Structure Buttons
         self.buttons['save'].connect("clicked",  lambda x: self.parent.save_current())
         self.buttons['merge'].connect("clicked", lambda x: self.parent.coot.merge_ligand_with_protein())
@@ -529,25 +584,61 @@ class PanddaGUI(object):
         self.parent.set_log_value(col='Viewed', value=True)
         self.parent.update_html()
 
-    def _navi_buttons(self):
-        box = gtk.HBox(homogeneous=True, spacing=5)
+    def _navi_buttons_1(self):
+        box = gtk.HBox(homogeneous=False, spacing=2)
+        box.set_border_width(3)
         # ---
         b = gtk.Button(label="<<< Prev (Skip) <<<")
         self.buttons['prev'] = b
-        box.add(b)
+        box.pack_start(b)
         # ---
         b = gtk.Button(label=">>> Next (Skip) >>>")
         self.buttons['skip'] = b
-        box.add(b)
+        box.pack_start(b)
+        # ---
+        b = gtk.VSeparator()
+        box.pack_start(b, expand=False, padding=5)
         # ---
         b = gtk.Button(label=">>> Next (Save) >>>")
         self.buttons['next'] = b
-        box.add(b)
+        box.pack_start(b)
         # ---
         return box
 
+    def _navi_buttons_2(self):
+        main_box  = gtk.VBox(homogeneous=True, spacing=5)
+        # ---
+        box1 = gtk.HBox(homogeneous=True, spacing=2)
+        box1.set_border_width(3)
+        frame = gtk.Frame(); frame.add(box1)
+        main_box.pack_start(frame)
+        # ---
+        box2 = gtk.HBox(homogeneous=True, spacing=2)
+        box2.set_border_width(3)
+        frame = gtk.Frame(); frame.add(box2)
+        main_box.pack_start(frame)
+        # ---
+        b = gtk.Button(label="<<< Prev Site <<<")
+        self.buttons['prev-site'] = b
+        box1.add(b)
+        # ---
+        b = gtk.Button(label=">>> Next Site >>>")
+        self.buttons['next-site'] = b
+        box1.add(b)
+        # ---
+        b = gtk.Button(label=">>> Next Unviewed >>>")
+        self.buttons['next-unviewed'] = b
+        box2.add(b)
+        # ---
+        b = gtk.Button(label=">>> Next Modelled >>>")
+        self.buttons['next-modelled'] = b
+        box2.add(b)
+        # ---
+        return main_box
+
     def _ligand_buttons(self):
-        box = gtk.HBox(homogeneous=True, spacing=5)
+        box = gtk.HBox(homogeneous=True, spacing=2)
+        box.set_border_width(3)
         # ---
         b = gtk.Button(label="Merge Ligand With Model")
         b.child.set_line_wrap(True)
@@ -572,9 +663,11 @@ class PanddaGUI(object):
     def _record_buttons(self):
         # ---------------------------------------------
         hbox_1 = gtk.HBox(homogeneous=True, spacing=5)
-        vbox_1_1 = gtk.VBox()
-        vbox_1_2 = gtk.VBox()
-        vbox_1_3 = gtk.VBox()
+        hbox_1.set_border_width(3)
+        vbox_1_1 = gtk.VBox(homogeneous=True, spacing=2)
+        vbox_1_2 = gtk.VBox(homogeneous=True, spacing=2)
+        vbox_1_3 = gtk.VBox(homogeneous=True, spacing=2)
+        hbox_1.add(vbox_1_1); hbox_1.add(vbox_1_2); hbox_1.add(vbox_1_3)
         # ---
         b = gtk.Button(label="Mark Interesting")
         self.buttons['tp'] = b
@@ -603,8 +696,6 @@ class PanddaGUI(object):
         b = gtk.Button(label="No Ligand Placed")
         self.buttons['not placed'] = b
         vbox_1_3.add(b)
-        # ---
-        hbox_1.add(vbox_1_1); hbox_1.add(vbox_1_2); hbox_1.add(vbox_1_3)
         # ---------------------------------------------
         hbox_2 = gtk.HBox(homogeneous=False, spacing=5)
         # ---
@@ -625,6 +716,7 @@ class PanddaGUI(object):
 
         # First Column
         vbox_1 = gtk.VBox()
+        vbox_1.set_border_width(3)
 
         # Create title
         title = gtk.Label('Event Information:')
@@ -692,20 +784,16 @@ class PanddaGUI(object):
 
     def _progress_table(self):
 
-        # Main HBox
-        hbox_main = gtk.HBox(spacing=5)
-
         # First Column
-        vbox_1 = gtk.VBox()
-        # Second Column
-        vbox_2 = gtk.VBox()
+        vbox_main = gtk.VBox(spacing=5)
+        vbox_main.set_border_width(3)
 
         # Create title
         title = gtk.Label('Overall Inspection Event/Site Progress:')
         title.set_justify(gtk.JUSTIFY_LEFT)
         frame = gtk.Frame(); frame.add(title)
         # Add to first column
-        vbox_1.pack_start(frame)
+        vbox_main.pack_start(frame)
 
         # Event Number Name
         gtk_label_1 = gtk.Label('Event')
@@ -718,7 +806,7 @@ class PanddaGUI(object):
         hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label_1); hbox.add(gtk_box_1); hbox.add(gtk_label_2); hbox.add(gtk_box_2)
         frame = gtk.Frame(); frame.add(hbox)
         # Add to second column
-        vbox_2.pack_start(frame)
+        vbox_main.pack_start(frame)
         # Store label to allow editing
         self.labels['rank_val'] = gtk_value_1
         self.labels['rank_tot'] = gtk_value_2
@@ -734,16 +822,12 @@ class PanddaGUI(object):
         hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label_1); hbox.add(gtk_box_1); hbox.add(gtk_label_2); hbox.add(gtk_box_2)
         frame = gtk.Frame(); frame.add(hbox)
         # Add to second column
-        vbox_2.pack_start(frame)
+        vbox_main.pack_start(frame)
         # Store label to allow editing
         self.labels['site_val'] = gtk_value_1
         self.labels['site_tot'] = gtk_value_2
 
-        # Add to main box
-        hbox_main.pack_start(vbox_1)
-        hbox_main.pack_start(vbox_2)
-
-        return hbox_main
+        return vbox_main
 
 #############################################################################################
 #
@@ -756,10 +840,5 @@ hit_list = os.path.join(work_dir, 'analyses', 'event_info.csv')
 
 inspector = PanddaInspector(csv=hit_list, top_dir=work_dir)
 inspector.start_gui()
-
-if '--go-to-unviewed' in sys.argv:
-    inspector.skip_viewed = True
-if '--go-to-models' in sys.argv:
-    inspector.skip_unmodelled = True
 
 inspector.refresh_event()
