@@ -1,11 +1,51 @@
 import os
 
-import scipy
+import scipy, numpy
 
 from scitbx.array_family import flex
 
 import iotbx.pdb
 from cctbx import crystal
+
+from Giant.Stats.Cluster import find_connected_groups
+
+def find_symmetry_equivalent_groups(points_frac, sym_ops, unit_cell, cutoff_cart):
+    """Group sets of points by minimum distance between points, allowing for symmetry"""
+
+    # Pre-calculate the square distance
+    dist_cut_sq = cutoff_cart**2
+    # Matrix for whether they are near to each other
+    equiv_sites = numpy.zeros([len(sym_ops), len(points_frac), len(points_frac)], dtype=int)
+
+    # Apply the symmetry operations to each group to see if it is near to other groups
+    for i_sym_op, sym_op in enumerate(sym_ops):
+        # Transformed groups under this symmetry operation
+        trans_points_frac = [sym_op.as_rational().as_float() * pf for pf in points_frac]
+        # Loop through original points
+        for i_group_1, group_1 in enumerate(points_frac):
+            # Loop through transformed points again
+            for i_group_2, group_2 in enumerate(trans_points_frac):
+                # Comparing group to itself - skip
+                if i_group_1 == i_group_2:
+                    equivalent = True
+                else:
+                    # Start by assuming the clusters are not related
+                    equivalent = False
+                    # Loop through and see if the clusters overlap
+                    for qp in group_2:
+                        # Calculate difference and convert back to cartesian
+                        diffs_cart = unit_cell.orthogonalize(group_1 - qp)
+                        # Check if any are closer than the minimum required
+                        if min(diffs_cart.dot()) < dist_cut_sq:
+                            equivalent = True
+                            break
+                # If the clusters overlap, they are equivalent
+                if equivalent:
+                    equiv_sites[(i_sym_op, i_group_1, i_group_2)] = 1
+
+    # Condense the cluster equivalence - take max over the symmetry operations and group by connected paths
+    sym_groups = find_connected_groups(connection_matrix=equiv_sites.max(axis=0))
+    return sym_groups
 
 def generate_adjacent_symmetry_copies(ref_hierarchy, crystal_symmetry, buffer_thickness=0, method=2):
     """Find symmetry copies of the protein in contact with the asu and generate these copies"""

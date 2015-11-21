@@ -6,13 +6,14 @@ import numpy
 from scitbx.array_family import flex
 from scitbx.math import basic_statistics
 
+from Bamboo.Common import Meta, Info
 from Giant.Utils import rel_symlink
 
 from Giant.Grid.Masks import grid_mask
 from Giant.Xray.Maps.Occupancy import calculate_occupancy_subtracted_map, estimate_event_occupancy
 
 from PANDDAs import welcome, graphs
-from PANDDAs.analyse import PanddaMultiDatasetAnalyser, PanddaMapAnalyser, MapHolder, Meta
+from PANDDAs.analyse import PanddaMultiDatasetAnalyser, PanddaMapAnalyser, PanddaZMapAnalyser, MapHolder
 from PANDDAs.analyse_html import write_initial_html, write_analyse_html
 from PANDDAs.events import PointCluster, Event, cluster_events 
 
@@ -177,22 +178,6 @@ def pandda_main(args):
         pandda.log(pandda.reference_grid().local_mask().summary(), True)
         pandda.log(pandda.reference_grid().global_mask().summary(), True)
 
-        # TODO TODO TODO - DELETE?
-        # Combine the symmetry mask and the atomic mask to create the mask for clustering
-#        pandda.log('===================================>>>', True)
-#        pandda.log('Combining Atomic Mask and Symmetry Mask', True)
-#        grid_idxr = pandda.reference_grid().grid_indexer()
-#        # Mask EXCLUDING the inner mask (excluding symmetry inner mask)
-#        combined_total_mask = [gp for gp in pandda.reference_grid().global_mask().total_mask() if pandda.reference_grid().symmetry_mask().inner_mask_binary()[grid_idxr(gp)] == 0]
-#        # Mask INCLUDING the inner mask (excluding symmetry inner mask)
-#        combined_outer_mask = [gp for gp in pandda.reference_grid().global_mask().outer_mask() if pandda.reference_grid().symmetry_mask().inner_mask_binary()[grid_idxr(gp)] == 0]
-#
-#        pandda.log('GLOBAL TOTAL MASK: {!s}'.format(pandda.reference_grid().global_mask().total_size()))
-#        pandda.log('SYMMETRY INNER MASK: {!s}'.format(pandda.reference_grid().symmetry_mask().inner_size()))
-#        pandda.log('COMBINED TOTAL MASK: {!s}'.format(len(combined_total_mask)))
-#        pandda.log('COMBINED OUTER MASK: {!s}'.format(len(combined_outer_mask)))
-        # TODO TODO TODO
-
         # ============================================================================>
         # ============================================================================>
         # ============================================================================>
@@ -225,7 +210,6 @@ def pandda_main(args):
         # Pickle all of the large arrays so they can be reloaded
         # ============================================================================>
         pandda.pickle_the_pandda(all=True)
-        pandda.update_pandda_size(tag='After Pre-processing')
 
         # ============================================================================>
         #####
@@ -491,7 +475,6 @@ def pandda_main(args):
             # PICKLE THE DATASETS THAT HAVE JUST BEEN PROCESSED
             # ============================================================================>
             pandda.pickle_the_pandda(components=['datasets'], datasets=pandda.datasets.mask(mask_name=analysis_mask_name))
-            pandda.update_pandda_size(tag='After Analysing Maps @ {!s}'.format(cut_resolution))
             # ============================================================================>
             # Extract and store the statistical map objects
             # ============================================================================>
@@ -521,22 +504,7 @@ def pandda_main(args):
             except:
                 print('UNIMPORTANT: FAILED TO WRITE AUTOMATIC DISTRIBUTION OF GRID POINTS')
                 raise
-            # ============================================================================>
-            #####
-            # Blob Search - Manual Settings
-            #####
-            # ============================================================================>
-            # Minimum size of cluster
-            min_cluster_volume   = pandda.params.blob_search.min_blob_volume
-            min_cluster_z_peak   = pandda.params.blob_search.min_blob_z_peak
-            # Z cutoff for maps
-            z_cutoff             = pandda.params.blob_search.contour_level
-            # Clustering Methods
-            clustering_criterion = pandda.params.blob_search.clustering.criterion
-            clustering_metric    = pandda.params.blob_search.clustering.metric
-            clustering_method    = pandda.params.blob_search.clustering.linkage
-            # Cutoff for separation of clusters (sqrt((2x)**2 + (2y)**2 + (2z)**2)) -- allows diagonal grid points to connect
-            clustering_cutoff = 1.1 * numpy.math.sqrt(3) * pandda.reference_grid().grid_spacing()
+
             # ============================================================================>
             #####
             # DATA PROCESSING
@@ -545,18 +513,16 @@ def pandda_main(args):
             # Use the means and the stds to convert the maps to z-maps
             # Use the local mask to look for groups of significant z-values
             # ============================================================================>
-            # XXX Change this to a separate object XXX
-            pandda.print_clustering_settings(   z_cutoff             = z_cutoff,
-                                                min_cluster_volume   = min_cluster_volume,
-                                                min_cluster_z_peak   = min_cluster_z_peak,
-                                                clustering_cutoff    = clustering_cutoff,
-                                                clustering_criterion = clustering_criterion,
-                                                clustering_metric    = clustering_metric,
-                                                clustering_method    = clustering_method  )
-
+            # Count the number of datasets processed at each resolution
             assert cut_resolution not in resolution_count
             resolution_count[cut_resolution] = []
-
+            # ============================================================================>
+            # Blob Search Object
+            # ============================================================================>
+            blob_finder = PanddaZMapAnalyser( params = pandda.params.blob_search, 
+                                              grid_spacing = pandda.reference_grid().grid_spacing(),
+                                              log = pandda._log )
+            blob_finder.print_settings()
             # ============================================================================>
             #####
             # Calculate Z-Maps
@@ -583,12 +549,28 @@ def pandda_main(args):
                 # Create a file that says what resolution this was processed at
                 link_dir = os.path.join(pandda.output_handler.get_dir('resolutions'), '{!s}-{!s}'.format(cut_resolution, d_handler.name))
                 if not os.path.exists(link_dir): rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=link_dir)
-              
+                
+                # ============================================================================>
+                # Validate/Check/Zero the dataset
+                # ============================================================================>
+                # Check that the dataset is new or being reprocessed
+                if pandda.datasets.all_masks().get_mask_value(mask_name='old datasets', entry_id=d_handler.tag):
+                    # Delete events from before
+                    d_handler.events = []
+                else:
+                    # Dataset should not have any events
+                    assert d_handler.events == []
+
                 # ============================================================================>
                 # Generate masks for this dataset
                 # ============================================================================>
                 # Generate symmetry contacts for this dataset
-                dataset_sym_copies = pandda.generate_symmetry_copies(d_handler=d_handler, save_operators=False)
+                t_temp_1 = time.time()
+                dataset_sym_copies = d_handler.generate_symmetry_copies(rt_method      = pandda.params.alignment.method, 
+                                                                        save_operators = False, 
+                                                                        buffer         = pandda.params.masks.outer_mask+5   )
+                t_temp_2 = time.time()
+                pandda.log('Sym GEN: {} seconds'.format(t_temp_2-t_temp_1))
                 cache = dataset_sym_copies.atom_selection_cache()
                 dataset_sym_sites_cart = dataset_sym_copies.select(cache.selection('pepnames and not element H')).atoms().extract_xyz()
                 # Generate custom grid mask for this dataset
@@ -599,8 +581,11 @@ def pandda_main(args):
                                                     min_dist   = pandda.params.masks.inner_mask )
                 # Combine the standard mask with the custom mask
                 grid_idxr = pandda.reference_grid().grid_indexer()
+                t_temp_1 = time.time()
                 dataset_total_mask = [gp for gp in pandda.reference_grid().global_mask().total_mask() if dataset_contact_mask.inner_mask_binary()[grid_idxr(gp)] < 0.5]
-                dataset_outer_mask = [gp for gp in pandda.reference_grid().global_mask().outer_mask() if dataset_contact_mask.inner_mask_binary()[grid_idxr(gp)] == 0]
+                dataset_outer_mask = [gp for gp in pandda.reference_grid().global_mask().outer_mask() if dataset_contact_mask.inner_mask_binary()[grid_idxr(gp)] < 0.5]
+                t_temp_2 = time.time()
+                pandda.log('Mask Combination: {} seconds'.format(t_temp_2-t_temp_1))
 
                 # Write coordinates of symmetry copies 
                 if not os.path.exists(d_handler.output_handler.get_file('symmetry_copies')):    
@@ -614,7 +599,6 @@ def pandda_main(args):
                 ################################################
                 # AUTOGENERATE SCRIPTS FOR VIEWING THE DATASET #
                 ################################################
-
                 pandda.write_pymol_scripts(d_handler=d_handler)
                 
                 #############################################
@@ -770,15 +754,7 @@ def pandda_main(args):
                 # ============================================================================>
                 # Contour the grid at a particular Z-Value
                 # ============================================================================>
-                num_clusters, z_clusters = pandda.cluster_high_z_values(
-                                                            d_handler            = d_handler,
-                                                            z_map                = z_map,
-                                                            z_cutoff             = z_cutoff,
-                                                            point_mask           = dataset_total_mask,
-                                                            clustering_cutoff    = clustering_cutoff,
-                                                            clustering_criterion = clustering_criterion,
-                                                            clustering_metric    = clustering_metric,
-                                                            clustering_method    = clustering_method     )
+                num_clusters, z_clusters = blob_finder.cluster_high_z_values(z_map=z_map, point_mask=dataset_total_mask)
                 # ============================================================================>
                 # Too many points to cluster -- probably a bad dataset
                 # ============================================================================>
@@ -797,35 +773,30 @@ def pandda_main(args):
                 # Filter the clusters by size and peak height
                 # ============================================================================>
                 if num_clusters > 0:
-                    num_clusters, z_clusters = pandda.filter_z_clusters_1(z_clusters         = z_clusters,
-                                                                          min_cluster_volume = min_cluster_volume,
-                                                                          min_cluster_z_peak = min_cluster_z_peak)
-                    if num_clusters == 0: pandda.log('===> No Clusters found - Minimum cluster peak/size not reached.', True)
+                    num_clusters, z_clusters = blob_finder.filter_z_clusters_1(z_clusters=z_clusters)
+                    if num_clusters == 0: pandda.log('===> Minimum cluster peak/size not reached.', True)
                 # ============================================================================>
                 # Filter the clusters by distance from protein
                 # ============================================================================>
                 if num_clusters > 0: 
-                    num_clusters, z_clusters = pandda.filter_z_clusters_2(z_clusters       = z_clusters,
-                                                                          grid_spacing     = pandda.reference_grid().grid_spacing(), 
-                                                                          grid_origin_cart = pandda.reference_dataset().origin_shift(),
-                                                                          ref_structure    = pandda.reference_dataset().new_structure().hierarchy)
-                    if num_clusters == 0: pandda.log('===> No Clusters found - Clusters too far from protein.', True)
+                    num_clusters, z_clusters = blob_finder.filter_z_clusters_2(z_clusters       = z_clusters,
+                                                                               grid_origin_cart = pandda.reference_dataset().origin_shift(),
+                                                                               ref_structure    = pandda.reference_dataset().new_structure().hierarchy)
+                    if num_clusters == 0: pandda.log('===> Clusters too far from protein.', True)
                 # ============================================================================>
                 # Group Nearby Clusters Together
                 # ============================================================================>
                 if num_clusters > 0:
-                    num_clusters, z_clusters = pandda.group_clusters(z_clusters   = z_clusters,
-                                                                     grid_spacing = pandda.reference_grid().grid_spacing()   )
+                    num_clusters, z_clusters = blob_finder.group_clusters(z_clusters=z_clusters)
                 # ============================================================================>
                 # Filter the clusters by symmetry equivalence
                 # ============================================================================>
                 if num_clusters > 0:
-                    num_clusters, z_clusters = pandda.filter_z_clusters_3(z_clusters       = z_clusters,
-                                                                          grid_spacing     = pandda.reference_grid().grid_spacing(), 
-                                                                          grid_origin_cart = pandda.reference_dataset().origin_shift(),
-                                                                          ref_unit_cell    = pandda.reference_dataset().unit_cell,
-                                                                          ref_sym_ops      = pandda.crystal_contact_generators,
-                                                                          ref_structure    = pandda.reference_dataset().new_structure().hierarchy     )
+                    num_clusters, z_clusters = blob_finder.filter_z_clusters_3(z_clusters       = z_clusters,
+                                                                               grid_origin_cart = pandda.reference_dataset().origin_shift(),
+                                                                               ref_unit_cell    = pandda.reference_dataset().unit_cell,
+                                                                               ref_sym_ops      = pandda.reference_dataset().crystal_contact_generators,
+                                                                               ref_structure    = pandda.reference_dataset().new_structure().hierarchy     )
                 
                 # ============================================================================>
                 #####
@@ -861,9 +832,10 @@ def pandda_main(args):
                                                     map_data    = z_map)
                     # Write map of where the blobs are
                     if not os.path.exists(d_handler.output_handler.get_file('high_z_mask')):
-                        highz_points = []; [highz_points.extend(zip(*v)[0]) for v in z_clusters.values()]
+                        highz_points = z_clusters[0][0]; [highz_points.extend(x[0]) for x in z_clusters[1:]]
+                        highz_points = [map(int, v) for v in highz_points]
                         highz_map_array = numpy.zeros(pandda.reference_grid().grid_size_1d(), dtype=int)
-                        highz_map_array.put(map(pandda.reference_grid().grid_indexer(), highz_points), 1)
+                        highz_map_array.put(map(pandda.reference_grid().grid_indexer(), list(highz_points)), 1)
                         map_mask = flex.double(highz_map_array.tolist()); map_mask.reshape(flex.grid(pandda.reference_grid().grid_size()))
                         pandda.write_array_to_map(output_file=d_handler.output_handler.get_file('high_z_mask'), map_data=map_mask)
                     # ============================================================================>
@@ -911,6 +883,7 @@ def pandda_main(args):
                 if num_clusters > 0:
                     pandda.log('===> {!s} Cluster(s) found.'.format(num_clusters), True)
                 else:
+                    pandda.log('===> No Clusters found.', True)
                     continue
                 assert num_clusters > 0, 'NUMBER OF CLUSTERS AFTER FILTERING == 0!'
 
@@ -926,23 +899,21 @@ def pandda_main(args):
                 # ============================================================================>
                 # Process the identified features
                 # ============================================================================>
-                for event_idx, event_point_value_list in z_clusters.items():
+                for event_idx, (event_points, event_values) in enumerate(z_clusters):
+                    # Number events from 1
+                    event_num = event_idx + 1
                     # Create a unique identifier for this event
-                    event_key = (d_handler.tag, event_idx)
-                    # Split the tuples into lists
-                    points, values = zip(*event_point_value_list)
+                    event_key = (d_handler.tag, event_num)
                     # ============================================================================>
                     # Create a point cluster object
                     # ============================================================================>
-                    point_cluster = PointCluster(id=event_key, points=points, values=values)
+                    point_cluster = PointCluster(id=event_key, points=event_points, values=event_values)
                     # ============================================================================>
                     # Estimate the occupancy of the detected feature 
                     # ============================================================================>
                     # Extract sites for this cluster and estimate the occupancy of the event
                     pandda.log('===================================>>>', True)
-                    pandda.log('Estimating Event {!s} Occupancy'.format(event_idx), True)
-#                    # Expand the sites to include the surrounding region (Only take 2nd return arguement of 'max' sites)
-#                    expanded_points = get_grid_points_within_index_cutoff_of_grid_sites(point_cluster.points, max_grid_dist=3)[1]
+                    pandda.log('Estimating Event {!s} Occupancy'.format(event_num), True)
                     # Generate custom grid mask for this dataset
                     event_mask = grid_mask( cart_sites = flex.vec3_double(point_cluster.points)*pandda.reference_grid().grid_spacing(),
                                             grid_size  = pandda.reference_grid().grid_size(),
@@ -975,9 +946,9 @@ def pandda_main(args):
                     # Normalise the event map
                     #event_occ_map = event_occ_map / event_occ_est
                     # Write out this array
-                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('occupancy_map').format(event_idx, event_occ_est), 
+                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('occupancy_map').format(event_num, event_occ_est), 
                                                 map_data    = event_occ_map )    
-                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('native_occupancy_map').format(event_idx, event_occ_est),
+                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('native_occupancy_map').format(event_num, event_occ_est),
                                                 map_data    = pandda.rotate_map(d_handler=d_handler, map_data=event_occ_map))
                     # ============================================================================>
                     # Create an event object
@@ -1084,7 +1055,6 @@ def pandda_main(args):
                     d_handler.child = None           
             # Pickle the datasets 
             pandda.pickle_the_pandda(components=['datasets'], datasets=pandda.datasets.mask(mask_name=analysis_mask_name))
-            pandda.update_pandda_size(tag='After Finding Clusters @ {!s}A'.format(cut_resolution))
 
             # ============================================================================>
             # DELETE THE MAP ANALYSER TO FREE UP MEMORY
@@ -1157,7 +1127,6 @@ def pandda_main(args):
 
         # Pickle statistical maps again just to be sure
         pandda.pickle_the_pandda(components=['stat_maps'])
-        pandda.update_pandda_size(tag='After Processing')
 
         # ============================================================================>
         #####
@@ -1182,7 +1151,8 @@ def pandda_main(args):
         
         pandda.log('===================================>>>', True)
         pandda.log('Potentially Useful Shortcuts for Future Runs')
-        pandda.log('no_build={!s}'.format(','.join(zip(*event_num)[0])))
+        if event_num:
+            pandda.log('no_build={!s}'.format(','.join(zip(*event_num)[0])))
 
         # ============================================================================>
         #####

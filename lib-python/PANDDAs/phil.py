@@ -29,7 +29,7 @@ pandda_phil_def = """
         output
             .help = "Output directory"
         {
-            outdir = './pandda'
+            out_dir = './pandda'
                 .type = path
             dataset_prefix = ''
                 .help = "Prefix to be attached to each dataset name"

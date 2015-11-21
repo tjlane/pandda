@@ -22,10 +22,12 @@ def write_initial_html(pandda):
                                        'title': 'Dataset R-Factors' })
     output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='d_rmsd_to_mean')),
                                        'title': 'Dataset RMSD to Mean Structure' })
-    output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='d_cell_params')),
-                                       'title': 'Dataset Cell Parameters' })
     output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='d_cell_volumes')),
                                        'title': 'Dataset Cell Volumes' })
+    output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='d_cell_axes')),
+                                       'title': 'Dataset Cell Axis Lengths' })
+    output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='d_cell_angles')),
+                                       'title': 'Dataset Cell Angles' })
     # ===========================================================>
     # Write Output
     with open(pandda.output_handler.get_file(file_tag='initial_html'), 'w') as out_html:

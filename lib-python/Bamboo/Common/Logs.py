@@ -3,11 +3,12 @@
 import os, sys, datetime
 
 class Log(object):
-    def __init__(self, log_file, stdout=sys.stdout):
+    def __init__(self, log_file, stdout=sys.stdout, verbose=False):
         """Log Object for writing to logs...?"""
         # File that the log will be written to
         self.log_file = log_file
         self.stdout = stdout
+        self.verbose = verbose
     def show(self, message, newline=True):
         if newline:
             self.stdout.write(message+'\n')

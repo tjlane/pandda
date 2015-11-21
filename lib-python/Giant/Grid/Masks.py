@@ -1,4 +1,5 @@
 import os, sys, glob, re
+import time
 
 import numpy
 
@@ -122,8 +123,21 @@ class grid_mask(atomic_mask):
         self._fake_unit_cell = unit_cell
 
         # Filter out sites that are outside of the unit cell
-        filt_cart_sites = flex.vec3_double([p for p in cart_sites if not [x for x in unit_cell.fractionalize(p) if (x>1.000001 or x<-0.000001)]])
+        frac_sites = unit_cell.fractionalize(cart_sites)
+        ax1_len_1 = (frac_sites.dot((1.0,0.0,0.0)) <  1.000001).iselection()
+        ax2_len_1 = (frac_sites.dot((0.0,1.0,0.0)) <  1.000001).iselection()
+        ax3_len_1 = (frac_sites.dot((0.0,0.0,1.0)) <  1.000001).iselection()
+        ax1_len_2 = (frac_sites.dot((1.0,0.0,0.0)) > -0.000001).iselection()
+        ax2_len_2 = (frac_sites.dot((0.0,1.0,0.0)) > -0.000001).iselection()
+        ax3_len_2 = (frac_sites.dot((0.0,0.0,1.0)) > -0.000001).iselection()
+        allowed_idxs_1 = ax1_len_1.intersection(ax2_len_1).intersection(ax3_len_1)
+        allowed_idxs_2 = ax1_len_2.intersection(ax2_len_2).intersection(ax3_len_2)
+        allowed_idxs = allowed_idxs_1.intersection(allowed_idxs_2)
+        if not allowed_idxs: raise Exception('No Sites valid for masking!')
+        filt_cart_sites = cart_sites.select(allowed_idxs)
+#        filt_cart_sites_2 = flex.vec3_double([p for p in cart_sites if not [x for x in unit_cell.fractionalize(p) if (x>1.000001 or x<-0.000001)]])
 
+        t1 = time.time()
         # Calculate the masked indices defined by max distance from protein atoms
         self._outer_mask_indices = maptbx.grid_indices_around_sites(unit_cell  = unit_cell,
                                                                     fft_n_real = grid_size, fft_m_real = grid_size,
@@ -132,6 +146,7 @@ class grid_mask(atomic_mask):
         outer_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=int)
         outer_mask_binary.put(self._outer_mask_indices, 1)
         self._outer_mask_binary = outer_mask_binary.tolist()
+        t2 = time.time()
 
         # Calculate the masked indices defined by min distance from protein atoms
         self._inner_mask_indices = maptbx.grid_indices_around_sites(unit_cell  = unit_cell,
@@ -141,6 +156,10 @@ class grid_mask(atomic_mask):
         inner_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=int)
         inner_mask_binary.put(self._inner_mask_indices, 1)
         self._inner_mask_binary = inner_mask_binary.tolist()
+        t3 = time.time()
+
+        print 'Mask 1: {}'.format(t2-t1)
+        print 'Mask 2: {}'.format(t3-t2)
 
         # Calculate the combination of these masks
         total_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), int)

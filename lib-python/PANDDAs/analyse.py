@@ -4,7 +4,6 @@ import os, sys, glob, time, re
 import copy, resource, gc
 import warnings
 
-import scipy.spatial
 import scipy.cluster
 
 import numpy, pandas
@@ -28,19 +27,18 @@ from scitbx.math.distributions import normal_distribution
 from Bamboo.Common import Meta, Info
 from Bamboo.Common.Logs import Log
 from Bamboo.Common.File import output_file_object, easy_directory
-from Bamboo.Common.Masks import mask_collection
 
 from Giant.Grid import grid_handler
 from Giant.Grid.Masks import spherical_mask, atomic_mask, grid_mask
 
 from Giant.Xray.Data import crystalSummary
 from Giant.Xray.Data.utils import extract_structure_factors
-from Giant.Xray.Symmetry import combine_hierarchies, generate_adjacent_symmetry_copies
+from Giant.Xray.Symmetry import combine_hierarchies, generate_adjacent_symmetry_copies, find_symmetry_equivalent_groups
 from Giant.Stats.Ospina import estimate_true_underlying_sd
-from Giant.Stats.Cluster import find_connected_groups
-from Giant.Structure.align import perform_flexible_alignment
+from Giant.Stats.Cluster import find_connected_groups, generate_group_idxs
+from Giant.Structure.align import perform_flexible_alignment, find_nearest_calphas, transform_coordinates_with_flexible_alignment
 
-from Giant.Utils import status_bar, rel_symlink
+from Giant.Utils import status_bar, status_bar_2, rel_symlink
 
 from PANDDAs import graphs
 
@@ -48,6 +46,7 @@ from PANDDAs import PANDDA_VERSION
 from PANDDAs.phil import pandda_phil_def
 from PANDDAs.html import PANDDA_HTML_ENV
 from PANDDAs.settings import PANDDA_TOP, PANDDA_TEXT
+from PANDDAs.holders import *
 
 STRUCTURE_MASK_NAMES = [    'bad structure - chain counts',
                             'bad structure - chain ids',
@@ -109,87 +108,11 @@ SITE_TABLE_FIELDS    = [    'centroid',
 # SET FILTERING CONSTANTS
 FILTER_SCALING_CORRELATION_CUTOFF = 0.7
 
-class HolderList(object):
-    """Class for grouping many holders together"""
-    _holder_class = None
-
-    def __init__(self, *args):
-        self._holder_list = []
-        self._masks = mask_collection()
-        # Allow for subclassing
-        self.__class_init__(args)
-
-    def __class_init__(self, args):
-        pass
-
-    def __getitem__(self, idx):
-        if   isinstance(idx, int): return self.get(num=idx)
-        elif isinstance(idx, str): return self.get(tag=idx)
-        else: raise Exception('CANNOT INDEX EXCEPT BY int OR str. TYPE GIVEN: {!s}'.format(type(idx)))
-
-    def __call__(self):
-        """Return all holders"""
-        return self.all()
-
-    def all(self):
-        """Return all holders"""
-        return self._holder_list
-    def all_nums(self):
-        """Return the list of holder ids"""
-        return [h.num for h in self.all()]
-    def all_tags(self):
-        """Return the list of holder tags"""
-        return [h.tag for h in self.all()]
-
-    def all_masks(self):
-        """Return the mask object"""
-        return self._masks
-    def mask(self, mask_name, invert=False):
-        """Retrieve a masked list of datasets"""
-        if not mask_name:
-            return self.all()
-        else:
-            return self._masks.mask(mask_name=mask_name, input_list=self.all(), invert=invert)
-
-    def size(self, mask_name=None, invert=False):
-        """Return the number of holders in the list (with optional mask applied)"""
-        if mask_name:   return len(self.mask(mask_name=mask_name, invert=invert))
-        else:           return len(self.all())
-
-    def add(self, new_holders):
-        """Add new datasets"""
-
-        for new_h in new_holders:
-            # Check all added datasets are the right class
-            if self._holder_class:
-                assert isinstance(new_h, self._holder_class), 'OBJECTS MUST BE OF TYPE: {!s}\n(ADDED OF TYPE: {!s})'.format(self._holder_class, type(new_h))
-            # Check all added dataset id tags are strs
-            assert isinstance(new_h.tag, str), 'TAG MUST BE str. Type given: {!s}'.format(type(new_h.tag))
-            assert new_h.tag not in self.all_tags(), 'HOLDER WITH TAG ALREADY EXISTS: {!s}'.format(new_h.tag)
-            # Check all added dataset id nums are ints
-            assert isinstance(new_h.num, int), 'NUM MUST BE int. Type given: {!s}'.format(type(new_h.num))
-            assert new_h.num not in self.all_nums(), 'HOLDER WITH NUM ALREADY EXISTS: {!s}'.format(new_h.num)
-            # No problems, add to list
-            self._holder_list.append(new_h)
-
-    def get(self, tag=None, num=None):
-        """Get a dataset by tag or num"""
-
-        assert [num, tag].count(None) == 1, 'Must give EITHER num OR tag'
-        if num: matching = [m for m in self.all() if m.num == num]
-        else:   matching = [m for m in self.all() if m.tag == tag]
-        if len(matching) == 0: raise Exception('NO MATCHING HOLDER FOUND - NUM: {!s}, TAG: {!s}'.format(num, tag))
-        if len(matching) != 1: raise Exception('MORE THAN ONE MATCHING HOLDER FOUND - NUM: {!s}, TAG: {!s}'.format(num, tag))
-        return matching[0]
-
 class DatasetHandler(object):
-    child = None
     def __init__(self, dataset_number, pdb_filename, mtz_filename, dataset_tag=None, name_prefix=''):
         """Create a dataset object to allow common functions to be applied easily to a number of datasets"""
-
         assert os.path.exists(pdb_filename), 'PDB file does not exist!'
         assert os.path.exists(mtz_filename), 'MTZ file does not exist!'
-
         # Store dataset number
         self.num = dataset_number
         # Store the tag for the dataset
@@ -201,41 +124,33 @@ class DatasetHandler(object):
             else:             self.tag = 'D{:05d}'.format(self.num)
         # Store a name for the dataset
         self.name = name_prefix + '{!s}'.format(self.tag)
-
         # Output Directories
         self.output_handler = None
-
+        self.child = None
         ########################################################
-
         # Store filenames
         self._pdb_file = os.path.abspath(pdb_filename)
         self._mtz_file = os.path.abspath(mtz_filename)
-
         # PDB Objects
         self._structure = self.new_structure()
-
         # Data summaries
         self.pdb_summary = None
         self.mtz_summary = crystalSummary.from_mtz(mtz_file=self._mtz_file)
-
         ########################################################
-
         # All Structure factors
         self.sfs = None
         # Truncated structure factors
         self.tr_sfs = None
-
         # Initialise other variables
         self.unit_cell = None
         self.space_group = None
-
         # Single matrix - global alignment
         self._global_rt_transform = None
         # Multiple matrices - local alignment
         self._local_rt_transforms = None
-
         ########################################################
-
+        self.crystal_contact_generators = None
+        ########################################################
         # Map of the clusters in the dataset
         self.events = []
 
@@ -289,76 +204,52 @@ class DatasetHandler(object):
     def get_structure_summary(self):
         return structure_summary(hierarchy=self.hierarchy())
 
-    def transform_from_reference(self, points, method, point_mappings=None):
-        """Use alignment to map from reference frame to our frame"""
+    def find_nearest_calpha(self, points):
+        """Returns the labels of the nearest calpha for each of the given points"""
+        return find_nearest_calphas(hierarchy=self.hierarchy(), coordinates=points)
+
+    def transform_coordinates(self, points, method, point_mappings=None, inverse=False):
+        """Transform coordinates using contained alignments"""
         assert method in ['local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
         if method == 'global':
-            # Simple - use one rt to transform all of the points
-            return self.global_alignment_transform().inverse() * points
+            if inverse: return self.global_alignment_transform().inverse() * points
+            else:       return self.global_alignment_transform() * points
         elif method == 'local':
-            # Use point mappings to tell us which residue rt to use for each point
-            assert point_mappings, 'NO MAPPINGS GIVEN BETWEEN POINTS AND RTS'
-            assert len(points) == len(point_mappings), 'POINT MAPPINGS NOT THE SAME LENGTH AS POINTS'
+            assert point_mappings is not None
+            return transform_coordinates_with_flexible_alignment(   alignments  = self.local_alignment_transforms(),
+                                                                    coordinates = points,
+                                                                    mappings    = point_mappings,
+                                                                    inverse     = inverse)
 
-            # Get the set of labels to transform in groups
-            lab_set = sorted(list(set(point_mappings)))
-            all_idxs = []
-            # Initialise output array
-            rt_points = numpy.zeros(len(points), dtype=[('x',float),('y',float),('z',float)])
-            for r_lab in lab_set:
-                # Extract the idxs and points of points with this label in the mapping
-                lab_idxs, lab_points = zip(*[(i, points[i]) for i, i_lab in enumerate(point_mappings) if r_lab==i_lab])
-                # Transform all of these points at once
-                lab_rt_points = self.local_alignment_transforms()[r_lab].inverse() * flex.vec3_double(lab_points)
-                # Populate the array at the appropriate place
-                rt_points.put(lab_idxs, lab_rt_points)
-                all_idxs.extend(lab_idxs)
-
-            assert len(list(set(all_idxs))) == len(points)
-
-            return flex.vec3_double(rt_points)
+    def transform_from_reference(self, points, method, point_mappings=None):
+        """Use alignment to map to reference frame from our frame"""
+        return self.transform_coordinates(  points         = points,
+                                            method         = method,
+                                            point_mappings = point_mappings,
+                                            inverse        = True   )
 
     def transform_to_reference(self, points, method, point_mappings=None):
         """Use alignment to map to reference frame from our frame"""
-        assert method in ['local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
-        if method == 'global':
-            # Simple - use one rt to transform all of the points
-            return self.global_alignment_transform() * points
-        elif method == 'local':
-            if not point_mappings:
-                # Use point mappings to tell us which residue rt to use for each point
-                point_mappings = self.find_nearest_calpha(points)
+        return self.transform_coordinates(  points         = points,
+                                            method         = method,
+                                            point_mappings = point_mappings,
+                                            inverse        = False  )
 
-            # Get the set of labels to transform in groups
-            lab_set = sorted(list(set(point_mappings)))
-            all_idxs = []
-            # Initialise output array
-            rt_points = numpy.zeros(len(points), dtype=[('x',float),('y',float),('z',float)])
-            for r_lab in lab_set:
-                # Extract the idxs and points of points with this label in the mapping
-                lab_idxs, lab_points = zip(*[(i, points[i]) for i, i_lab in enumerate(point_mappings) if r_lab==i_lab])
-                # Transform all of these points at once
-                lab_rt_points = self.local_alignment_transforms()[r_lab] * flex.vec3_double(lab_points)
-                # Populate the array at the appropriate place
-                rt_points.put(lab_idxs, lab_rt_points)
-                all_idxs.extend(lab_idxs)
+    def generate_symmetry_copies(self, rt_method=None, save_operators=True, buffer=10):
+        """Generate the symmetry copies of the reference structure in the reference frame"""
 
-            assert len(list(set(all_idxs))) == len(points)
+        # Use symmetry operations to create the symmetry mates of the reference structure
+        sym_ops, sym_hierarchies, chain_mappings = generate_adjacent_symmetry_copies(   ref_hierarchy    = self.new_structure().hierarchy,
+                                                                                        crystal_symmetry = self.input().crystal_symmetry(),
+                                                                                        buffer_thickness = buffer    )
+        # Record the symmetry operations that generate the crystal contacts
+        if save_operators: self.crystal_contact_generators = sym_ops
 
-            # Initial brute force method
-            #rt_points = [self.local_alignment_transforms()[r_lab] * p for r_lab, p in zip(point_mappings, points)]
-
-            return flex.vec3_double(rt_points)
-
-    def find_nearest_calpha(self, points):
-        """Returns the labels of the nearest calpha for each of the given points"""
-
-        calpha_hierarchy = self.hierarchy().select(self.hierarchy().atom_selection_cache().selection('pepnames and name CA'))
-        atom_sites, atom_labels = zip(*[(a.xyz, (a.chain_id, a.resid())) for a in calpha_hierarchy.atoms_with_labels()])
-
-        tree = scipy.spatial.KDTree(data=atom_sites)
-        nn_dists, nn_groups = tree.query(points)
-        return [atom_labels[i] for i in nn_groups]
+        # Create a combined hierarchy of the crystal contacts
+        symmetry_root = combine_hierarchies(sym_hierarchies)
+        # Transform to reference frame?
+        if rt_method: symmetry_root.atoms().set_xyz(self.transform_to_reference(points=symmetry_root.atoms().extract_xyz(), method=rt_method))
+        return symmetry_root
 
 class ReferenceDatasetHandler(DatasetHandler):
     _origin_shift = (0,0,0)
@@ -384,8 +275,6 @@ class DatasetHandlerList(HolderList):
         print(args)
 
 class MapHolder(object):
-    child = None
-    parent = None
     """Class to hold map values and meta data"""
     def __init__(self, num, tag, map, unit_cell, space_group, meta, parent=None, child=None):
         assert isinstance(num, int), 'Num must be int. Type given: {!s}'.format(type(num))
@@ -411,6 +300,35 @@ class MapHolderList(HolderList):
 
     def __custom_init__(self, *args):
         print(args)
+
+class MapList(Info):
+    _map_names = []
+    def __init__(self, map_names=None):
+        if map_names is None: map_names=[]
+        assert self._map_names+map_names, 'No Map Names defined'
+        for m in self._map_names+map_names:
+            self.__dict__[m] = None
+        # Intialise meta dict
+        self.meta = Meta()
+        # Set initialised so attributes can't be added
+        self._initialized = True
+
+class PanddaStatMapList(MapList):
+    _map_names = ['mean_map','medn_map','stds_map','sadj_map','skew_map','kurt_map','bimo_map']
+
+class PanddaMultipleStatMapList(object):
+    def __init__(self):
+        """Store lots of statistical maps"""
+        self.map_lists = {}
+    def get_resolutions(self):
+        return sorted(self.map_lists.keys())
+    def add(self, stat_map_list, resolution):
+        assert isinstance(resolution, float), 'Resolution of map must be of type float. Type given: {!s}'.format(type(resolution))
+        assert resolution not in self.map_lists.keys(), 'MAPS OF THIS RESOLUTION ALREADY ADDED'
+        assert isinstance(stat_map_list, PanddaStatMapList), 'stat_map_list must be of type PanddaMultipleStatMapList. Type given: {!s}'.format(type(stat_map_list))
+        self.map_lists[resolution] = stat_map_list
+    def get(self, resolution):
+        return self.map_lists[resolution]
 
 def map_handler(map_data, unit_cell):
     """Map handler for easy sampling of map"""
@@ -450,52 +368,16 @@ def structure_summary(hierarchy):
 
 def align_dataset_to_reference(d_handler, ref_handler, method):
     """Calculate the rotation and translation needed to align one structure to another"""
-
     assert method in ['both','local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
-
+    global_rt_transform = local_rt_transforms = None
     if method == 'global' or method == 'both':
         my_sites = d_handler.get_calpha_sites()
         ref_sites = ref_handler.get_calpha_sites()
         assert len(my_sites) == len(ref_sites)
         global_rt_transform = superpose.least_squares_fit(reference_sites=ref_sites, other_sites=my_sites).rt()
-    else:
-        global_rt_transform = None
-
     if method == 'local' or method == 'both':
-        local_rt_transforms = perform_flexible_alignment(mov_hierarchy=d_handler.hierarchy(), ref_hierarchy=ref_handler.hierarchy())
-    else:
-        local_rt_transforms = None
-
+        local_rt_transforms = perform_flexible_alignment(mov_hierarchy=d_handler.hierarchy(), ref_hierarchy=ref_handler.hierarchy(), cutoff_radius=10)
     return global_rt_transform, local_rt_transforms
-
-class MapList(Info):
-    _map_names = []
-    def __init__(self, map_names=None):
-        if map_names is None: map_names=[]
-        assert self._map_names+map_names, 'No Map Names defined'
-        for m in self._map_names+map_names:
-            self.__dict__[m] = None
-        # Intialise meta dict
-        self.meta = Meta()
-        # Set initialised so attributes can't be added
-        self._initialized = True
-
-class PanddaStatMapList(MapList):
-    _map_names = ['mean_map','medn_map','stds_map','sadj_map','skew_map','kurt_map','bimo_map']
-
-class PanddaMultipleStatMapList(object):
-    def __init__(self):
-        """Store lots of statistical maps"""
-        self.map_lists = {}
-    def get_resolutions(self):
-        return sorted(self.map_lists.keys())
-    def add(self, stat_map_list, resolution):
-        assert isinstance(resolution, float), 'Resolution of map must be of type float. Type given: {!s}'.format(type(resolution))
-        assert resolution not in self.map_lists.keys(), 'MAPS OF THIS RESOLUTION ALREADY ADDED'
-        assert isinstance(stat_map_list, PanddaStatMapList), 'stat_map_list must be of type PanddaMultipleStatMapList. Type given: {!s}'.format(type(stat_map_list))
-        self.map_lists[resolution] = stat_map_list
-    def get(self, resolution):
-        return self.map_lists[resolution]
 
 class PanddaMapAnalyser(object):
     """Class to hold dataset maps, statistical maps and meta data for a set of related maps. Also holds functions for analysing the maps."""
@@ -554,7 +436,7 @@ class PanddaMapAnalyser(object):
         medn_map_vals = numpy.zeros(self.meta.grid_size_1d)
         # Calculate the mean map across the datasets
         for i_chunk, chunk_idxs in enumerate(chunked_indices):
-            status_bar(n=i_chunk, n_max=num_chunks)
+            status_bar_2(n=i_chunk, n_max=num_chunks)
             # Pull out the values for this chunk
             p_map_vals = numpy.array([mh.map.select(chunk_idxs) for mh in self.dataset_maps.mask(mask_name=mask_name)])
             # Check that the output values are the expected dimensions
@@ -567,8 +449,8 @@ class PanddaMapAnalyser(object):
             # Calculate the median of this chunk
             p_map_medns = numpy.median(p_map_vals, axis=0)
             medn_map_vals.put(chunk_idxs, p_map_medns)
-
-        status_bar(n=num_chunks, n_max=num_chunks)
+        # Print full bar
+        status_bar_2(n=num_chunks, n_max=num_chunks)
 
         t2 = time.time()
         self.log('> MEAN MAP CALCULATION > Time Taken: {!s} seconds'.format(int(t2-t1)))
@@ -609,6 +491,7 @@ class PanddaMapAnalyser(object):
         middle_expected_diff_vals = expected_diff_vals.select(middle_indices)
 
         self.log('===================================>>>')
+        self.log('Calculating Map Uncertainties')
         t1 = time.time()
 
         for i_mh, mh in enumerate(self.dataset_maps.mask(mask_name=mask_name)):
@@ -617,7 +500,8 @@ class PanddaMapAnalyser(object):
                 print('SKIPPING Dataset {!s} ({!s}/{!s})                                 '.format(mh.tag, i_mh+1, self.dataset_maps.size(mask_name=mask_name)))
                 continue
             else:
-                print('\rCalculating Map Uncertainty for Dataset {!s} ({!s}/{!s})          '.format(mh.tag, i_mh+1, self.dataset_maps.size(mask_name=mask_name)), end=''); sys.stdout.flush()
+                status_bar_2(n=i_mh+1, n_max=self.dataset_maps.size(mask_name=mask_name))
+#                print('\rCalculating Map Uncertainty for Dataset {!s} ({!s}/{!s})          '.format(mh.tag, i_mh+1, self.dataset_maps.size(mask_name=mask_name)), end=''); sys.stdout.flush()
 
             # Extract the map values as the masked indices
             masked_map_vals = mh.map.select(masked_idxs)
@@ -651,8 +535,6 @@ class PanddaMapAnalyser(object):
                                          q_cut    = q_cut,
                                          obs_diff = sorted_observed_diff_vals,
                                          quantile = expected_diff_vals  )
-
-        self.log('\rMap Uncertainties Calculated.                                         ', True)
 
         t2 = time.time()
         self.log('> MAP UNCERTAINTY CALCULATION > Time Taken: {!s} seconds'.format(int(t2-t1)))
@@ -706,7 +588,7 @@ class PanddaMapAnalyser(object):
 
         # Calculate the statistics of the map values across the datasets
         for i_chunk, chunk_idxs in enumerate(chunked_indices):
-            status_bar(n=i_chunk, n_max=num_chunks)
+            status_bar_2(n=i_chunk, n_max=num_chunks)
             # Select map values from each map
             p_map_vals = numpy.array([mh.map.select(chunk_idxs) for mh in self.dataset_maps.mask(mask_name=mask_name)])
             if i_chunk+1 < num_chunks:
@@ -721,7 +603,7 @@ class PanddaMapAnalyser(object):
 
             masked_point_statistics.extend(point_statistics)
 
-        status_bar(n=num_chunks, n_max=num_chunks)
+        status_bar_2(n=num_chunks, n_max=num_chunks)
         assert len(masked_point_statistics) == len(masked_idxs)
 
         t2 = time.time()
@@ -799,32 +681,27 @@ class PanddaMapAnalyser(object):
 
         return z_map_vals
 
-class PanddaInfoTables(object):
+class PanddaTableFields:
+    all_dataset_fields     = DATASET_INFO_FIELDS
+    all_dataset_map_fields = DATASET_MAP_FIELDS
+    all_event_fields       = DATASET_EVENT_FIELDS
+    all_site_fields        = SITE_TABLE_FIELDS
 
-    _all_dataset_fields     = DATASET_INFO_FIELDS
-    _all_dataset_map_fields = DATASET_MAP_FIELDS
-    _all_event_fields       = DATASET_EVENT_FIELDS
-    _all_site_fields        = SITE_TABLE_FIELDS
+class PanddaMaskNames:
+    structure_mask_names = STRUCTURE_MASK_NAMES
+    crystal_mask_names   = CRYSTAL_MASK_NAMES
+    reject_mask_names    = REJECT_MASK_NAMES
+    flag_mask_names      = FLAG_MASK_NAMES
+    custom_mask_names    = ['no_analyse', 'no_build']
+    all_mask_names       = structure_mask_names + crystal_mask_names + reject_mask_names + flag_mask_names + custom_mask_names
 
 class PanddaMultiDatasetAnalyser(object):
     """Class for the processing of datasets from a fragment soaking campaign"""
 
     _version = PANDDA_VERSION
 
-    _structure_mask_names = STRUCTURE_MASK_NAMES
-    _crystal_mask_names   = CRYSTAL_MASK_NAMES
-    _reject_mask_names    = REJECT_MASK_NAMES
-    _flag_mask_names      = FLAG_MASK_NAMES
-    _custom_mask_names    = ['no_analyse', 'no_build']
-    _all_mask_names       = _structure_mask_names + _crystal_mask_names + _reject_mask_names + _flag_mask_names + _custom_mask_names
-
-    _all_dataset_fields     = DATASET_INFO_FIELDS
-    _all_dataset_map_fields = DATASET_MAP_FIELDS
-    _all_event_fields       = DATASET_EVENT_FIELDS
-    _all_site_fields        = SITE_TABLE_FIELDS
-
     def __init__(self, args=None):
-#                    outdir='./pandda', datadir='./Processing', pdb_style='*/refine.pdb', mtz_style='*/refine.mtz',
+#                    out_dir='./pandda', datadir='./Processing', pdb_style='*/refine.pdb', mtz_style='*/refine.mtz',
 #                    ref_pdb='./reference.pdb', ref_mtz='./reference.mtz', run_mol_subst=False,
 #                    verbose=True, keep_maps_in_memory=False, maxmemory=25):
         """Class for the processing of datasets from a fragment soaking campaign"""
@@ -866,9 +743,9 @@ class PanddaMultiDatasetAnalyser(object):
         # OUTPUT FILES STUFF
         # ===============================================================================>
 
-        self.outdir = easy_directory(os.path.abspath(self.args.output.outdir))
+        self.out_dir = easy_directory(os.path.abspath(self.args.output.out_dir))
 
-        self._log = Log(log_file=os.path.join(self.outdir, 'pandda.log'))
+        self._log = Log(log_file=os.path.join(self.out_dir, 'pandda.log'), verbose=self.args.settings.verbose)
 
         # Set up the output folders and files
         self._run_directory_setup()
@@ -879,9 +756,6 @@ class PanddaMultiDatasetAnalyser(object):
 
         self._high_resolution = None
         self._low_resolution = None
-
-        # Current and maximum sizes of the pandda in memory
-        self._pandda_size = [('Zero',0)]
 
         # ===============================================================================>
         # DATA AND MAPS STUFF
@@ -912,25 +786,23 @@ class PanddaMultiDatasetAnalyser(object):
         # Record global information about the datasets
         self.tables.dataset_info        = pandas.DataFrame( data    = None,
                                                             index   = pandas.Index(data=[], name='dtag'),
-                                                            columns = self._all_dataset_fields      )
+                                                            columns = PanddaTableFields.all_dataset_fields      )
         # Record information about the created maps for each dataset
         self.tables.dataset_map_info    = pandas.DataFrame( data    = None,
                                                             index   = pandas.Index(data=[], name='dtag'),
-                                                            columns = self._all_dataset_map_fields  )
+                                                            columns = PanddaTableFields.all_dataset_map_fields  )
         # Record the events detected in each dataset
         self.tables.event_info          = pandas.DataFrame( data    = None,
                                                             index   = pandas.MultiIndex(levels=[[],[]], labels=[[],[]], names=['dtag','event_idx']),
-                                                            columns = self._all_event_fields        )
+                                                            columns = PanddaTableFields.all_event_fields        )
         # Record information about the clustered events (cluster of events = site)
         self.tables.site_info           = pandas.DataFrame( data    = None,
                                                             index   = pandas.Index(data=[], name='site_idx'),
-                                                            columns = self._all_site_fields         )
+                                                            columns = PanddaTableFields.all_site_fields         )
 
         # Average Structure (and masks)
         self._average_calpha_sites = None
         self._residue_deviation_masks = None
-
-        self.crystal_contact_generators = None
 
         # ===============================================================================>
         # PICKLE STUFF
@@ -1014,7 +886,7 @@ class PanddaMultiDatasetAnalyser(object):
         self.log('===================================>>>', True)
         self.log('READING INPUT FROM : {!s}'.format(self.data_dirs), True)
         self.log('===================================>>>', True)
-        self.log('WRITING OUTPUT TO: {!s}'.format(self.outdir), True)
+        self.log('WRITING OUTPUT TO: {!s}'.format(self.out_dir), True)
 
         # ===============================================================================>
         # REPOPULATE PANDDA FROM PREVIOUS RUNS
@@ -1057,10 +929,6 @@ class PanddaMultiDatasetAnalyser(object):
         self.log('===================================>>>', True)
         self.log('Analysis Started: {!s}'.format(time.strftime("%a, %d %b %Y %H:%M:%S", time.gmtime(self._init_time))), True)
 
-        # Get the size of the empty pandda
-        self.log('===================================>>>', True)
-        self.update_pandda_size(tag='Initialised Pandda')
-
     def _validate_parameters(self):
         """Validate and preprocess the loaded parameters"""
 
@@ -1072,13 +940,13 @@ class PanddaMultiDatasetAnalyser(object):
 #        assert p.input.mtz_style, 'pandda.input.mtz_style IS NOT DEFINED'
         assert p.input.lig_style, 'pandda.input.lig_style IS NOT DEFINED'
         # Output
-        assert p.output.outdir, 'pandda.output.outdir IS NOT DEFINED'
+        assert p.output.out_dir, 'pandda.output.out_dir IS NOT DEFINED'
 
     def _run_directory_setup(self):
         """Initialise the pandda directory system"""
 
         # Create a file and directory organiser
-        self.output_handler = output_file_object(rootdir=self.outdir)
+        self.output_handler = output_file_object(rootdir=self.out_dir)
 
         # ===============================================================================>
         # Global Directories that do not change from run to run
@@ -1117,7 +985,8 @@ class PanddaMultiDatasetAnalyser(object):
         self.output_handler.add_file(file_name='dataset_resolutions.png',  file_tag='d_resolutions',  dir_tag='d_graphs')
         self.output_handler.add_file(file_name='dataset_rfactors.png',     file_tag='d_rfactors',     dir_tag='d_graphs')
         self.output_handler.add_file(file_name='dataset_rmsd_to_mean.png', file_tag='d_rmsd_to_mean', dir_tag='d_graphs')
-        self.output_handler.add_file(file_name='dataset_cell_params.png',  file_tag='d_cell_params',  dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_cell_axes.png',    file_tag='d_cell_axes',    dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_cell_angles.png',  file_tag='d_cell_angles',  dir_tag='d_graphs')
         self.output_handler.add_file(file_name='dataset_cell_volumes.png', file_tag='d_cell_volumes', dir_tag='d_graphs')
         # Somewhere to store the dataset information (general values)
         self.output_handler.add_file(file_name='dataset_info.csv',          file_tag='dataset_info',  dir_tag='analyses')
@@ -1213,11 +1082,10 @@ class PanddaMultiDatasetAnalyser(object):
                 pickled_dataset_list = self.pickled_dataset_meta.dataset_pickle_list
                 # Check they all exist - should be relative to the outdirectory
                 for filename in pickled_dataset_list:
-                    assert os.path.isfile(os.path.join(self.outdir, filename)), 'File does not exist: {!s}'.format(filename)
+                    assert os.path.isfile(os.path.join(self.out_dir, filename)), 'File does not exist: {!s}'.format(filename)
                 # Unpickle the datasets and add them to the dataset handler list
                 self.log('===> Reloading old datasets')
-                self.datasets.add([self.unpickle(os.path.join(self.outdir,f)) for f in pickled_dataset_list])
-                self.update_pandda_size(tag='After Unpickling Dataset Objects')
+                self.datasets.add([self.unpickle(os.path.join(self.out_dir,f)) for f in pickled_dataset_list])
             else:
                 self.log('===> Not reloading old datasets')
         else:
@@ -1330,13 +1198,13 @@ class PanddaMultiDatasetAnalyser(object):
                 self.log('Combining old dataset meta with new meta for pickle')
                 number_of_datasets  = self.pickled_dataset_meta.number_of_datasets  + self.datasets.size()
                 dataset_labels      = self.pickled_dataset_meta.dataset_labels      + [d.tag for d in self.datasets.all()]
-                dataset_pickle_list = self.pickled_dataset_meta.dataset_pickle_list + [os.path.relpath(d.output_handler.get_file('dataset_pickle'), start=self.outdir) for d in self.datasets.all()]
+                dataset_pickle_list = self.pickled_dataset_meta.dataset_pickle_list + [os.path.relpath(d.output_handler.get_file('dataset_pickle'), start=self.out_dir) for d in self.datasets.all()]
             else:
                 # Don't need to consider the pickle as the datasets have been reloaded
                 self.log('Creating new meta for pickle')
                 number_of_datasets  = self.datasets.size()
                 dataset_labels      = [d.tag for d in self.datasets.all()]
-                dataset_pickle_list = [os.path.relpath(d.output_handler.get_file('dataset_pickle'), start=self.outdir) for d in self.datasets.all()]
+                dataset_pickle_list = [os.path.relpath(d.output_handler.get_file('dataset_pickle'), start=self.out_dir) for d in self.datasets.all()]
             # Create a dictionary to be stored
             dataset_meta = Meta({'number_of_datasets'    : number_of_datasets,
                                  'dataset_labels'        : dataset_labels,
@@ -1353,7 +1221,7 @@ class PanddaMultiDatasetAnalyser(object):
         """Log message to file, and mirror to stdout if verbose or force_print (hide overrules show)"""
         if not isinstance(message, str):    message = str(message)
         # Print to stdout
-        if (not hide) and (show or self.args.settings.verbose):
+        if (not hide) and (show or self._log.verbose):
             self._log.show(message)
         # Remove \r from message as this spoils the log (^Ms)
         message = message.replace('\r','')
@@ -1362,16 +1230,6 @@ class PanddaMultiDatasetAnalyser(object):
 
     def print_log(self):
         self._log.show(self._log.read_all())
-
-    def update_pandda_size(self, tag):
-        pandda_size = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1000
-        assert pandda_size < self.args.settings.max_memory*1024**3, 'PANDDA HAS EXCEEDED THE MAXIMUM AMOUNT OF ALLOWED MEMORY'
-        self._pandda_size.append((tag, pandda_size))
-        try:
-            from humanize import naturalsize
-            self.log(tag+': '+naturalsize(pandda_size, binary=True))
-        except:
-            pass
 
     def is_new_pandda(self):
         """Is this the first time the program has been run?"""
@@ -1419,7 +1277,7 @@ class PanddaMultiDatasetAnalyser(object):
         self.datasets.all_masks().set_mask_length(mask_length=self.datasets.size())
         self.datasets.all_masks().set_entry_ids(entry_ids=[d.tag for d in self.datasets.all()])
         # Initialise standard blank masks
-        for mask_name in self._all_mask_names:
+        for mask_name in PanddaMaskNames.all_mask_names:
             self.datasets.all_masks().add_mask(mask_name=mask_name, mask=[False]*self.datasets.size())
 
         # Initialise masks for datasets that shouldn't be analysed
@@ -1440,7 +1298,7 @@ class PanddaMultiDatasetAnalyser(object):
         self.datasets.all_masks().add_mask(mask_name='old datasets', mask=[False]*self.datasets.size())
 
         if self.pickled_dataset_meta and self.args.method.reload_existing_datasets:
-            for tag in self.pickled_dataset_meta.dataset_tags:
+            for tag in self.pickled_dataset_meta.dataset_labels:
                 self.datasets.all_masks().set_mask_value(mask_name='old datasets', entry_id=tag, value=True)
             self.log('Considering {!s} datasets as "New Datasets"'.format(self.datasets.size(mask_name='old datasets', invert=True)))
             self.log('Considering {!s} datasets as "Old Datasets"'.format(self.datasets.size(mask_name='old datasets')))
@@ -1526,7 +1384,7 @@ class PanddaMultiDatasetAnalyser(object):
         # ============================================================================>
         # Create neighbouring symmetry copies of the reference structures
         # ============================================================================>
-        ref_sym_copies = self.generate_symmetry_copies(d_handler=self.reference_dataset(), save_operators=True)
+        ref_sym_copies = self.reference_dataset().generate_symmetry_copies(rt_method=self.params.alignment.method, save_operators=True, buffer=self.params.masks.outer_mask+5)
         # Write out the symmetry sites
         if not os.path.exists(self.output_handler.get_file('reference_symmetry')):
             ref_sym_copies.write_pdb_file(self.output_handler.get_file('reference_symmetry'))
@@ -1588,24 +1446,6 @@ class PanddaMultiDatasetAnalyser(object):
         self.write_array_to_map(output_file=mask_map_file, map_data=map_mask)
 
         return
-
-    def generate_symmetry_copies(self, d_handler, save_operators=False):
-        """Generate the symmetry copies of the reference structure in the reference frame"""
-
-        # Use symmetry operations to create the symmetry mates of the reference structure
-        sym_ops, sym_hierarchies, chain_mappings = generate_adjacent_symmetry_copies(   ref_hierarchy    = d_handler.new_structure().hierarchy,
-                                                                                        crystal_symmetry = d_handler.input().crystal_symmetry(),
-                                                                                        buffer_thickness = self.params.masks.outer_mask+5    )
-        # Record the symmetry operations that generate the crystal contacts
-        if save_operators:
-            self.log('Saving Sym Ops: {!s}'.format(sym_ops), True)
-            self.crystal_contact_generators = sym_ops
-
-        # Create a combined hierarchy of the crystal contacts
-        symmetry_root = combine_hierarchies(sym_hierarchies)
-        symmetry_root.atoms().set_xyz(d_handler.transform_to_reference(points=symmetry_root.atoms().extract_xyz(), method='global'))
-
-        return symmetry_root
 
     def build_input_list(self):
         """Builds a list of input files from the command line arguments passed"""
@@ -1941,40 +1781,6 @@ class PanddaMultiDatasetAnalyser(object):
         t2 = time.time()
         self.log('\r> Structure Factors Extracted > Time Taken: {!s} seconds'.format(int(t2-t1)), True)
 
-#    def scale_datasets(self, ampl_label, phas_label):
-#        """OLD - Scale the reflection data to the reference (now done on the maps in real space)"""
-#
-#        t1 = time.time()
-#        self.log('===================================>>>', True)
-#        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
-#            if d_handler.scaled_sfs != None:
-#                print('\rAlready Scaled: Dataset {!s}          '.format(d_handler.tag), end=''); sys.stdout.flush()
-#                continue
-#            else:
-#                print('\rScaling: Dataset {!s}                 '.format(d_handler.tag), end=''); sys.stdout.flush()
-#
-#            # Extract just the amplitudes for scaling
-#            d_amps = unscaled_sfs.amplitudes()
-#            d_phas = unscaled_sfs.phases()
-#
-#            assert d_amps.is_real_array(), 'AMPLITUDES SHOULD BE REAL?!'
-#            assert d_phas.is_real_array(), 'PHASE ANGLES SHOULD BE REAL?!'
-#
-#            # Scale new data to the reference dataset
-#            scaled_amps = apply_simple_scaling(miller=d_amps, ref_miller=ref_amps)
-#            # Recombine the scaled amplitudes and the phases
-#            scaled_sf_real = scaled_amps.data() * flex.cos(d_phas.data()*math.pi/180.0)
-#            scaled_sf_imag = scaled_amps.data() * flex.sin(d_phas.data()*math.pi/180.0)
-#            scaled_sf_com = flex.complex_double(reals=scaled_sf_real, imags=scaled_sf_imag)
-#            # Create a copy of the old array with the new scaled structure factors
-#            scaled_sfs = unscaled_sfs.array(data=scaled_sf_com)
-#            # Set the scaled structure factors
-#            d_handler.unscaled_sfs = unscaled_sfs
-#            d_handler.scaled_sfs = scaled_sfs
-#        self.log('\rDatasets Scaled.               ', True)
-#        t2 = time.time()
-#        print('> SCALING STRUCTURE FACTORS > Time Taken: {!s} seconds'.format(int(t2-t1)))
-
     def align_datasets(self, method):
         """Align each structure the reference structure"""
 
@@ -2075,7 +1881,7 @@ class PanddaMultiDatasetAnalyser(object):
 
         self.log('===================================>>>', True)
         self.log('Filtering Datasets (Non-identical structures). Potential Classes:', True)
-        for failure_class in self._structure_mask_names:
+        for failure_class in PanddaMaskNames.structure_mask_names:
             self.log('\t{!s}'.format(failure_class), True)
         self.log('===================================>>>', True)
 
@@ -2144,14 +1950,14 @@ class PanddaMultiDatasetAnalyser(object):
                 pass
 
         # Combine structure_masks
-        structure_reject_mask = self.datasets.all_masks().combine_masks(self._structure_mask_names)
+        structure_reject_mask = self.datasets.all_masks().combine_masks(PanddaMaskNames.structure_mask_names)
         self.datasets.all_masks().add_mask(mask_name='rejected - structure', mask=structure_reject_mask)
 
         # Update the combined masks
-        combined_reject_mask = self.datasets.all_masks().combine_masks(self._reject_mask_names)
+        combined_reject_mask = self.datasets.all_masks().combine_masks(PanddaMaskNames.reject_mask_names)
         self.datasets.all_masks().add_mask(mask_name='rejected - total', mask=combined_reject_mask)
 
-        self.log('\rDatasets Filtered.               ', True)
+        self.log('\rDatasets Filtered.                          ', True)
         self.log('Rejected Datasets (Structure): {!s}'.format(sum(self.datasets.all_masks().get_mask(mask_name='rejected - structure'))), True)
         self.log('Rejected Datasets (Total):     {!s}'.format(sum(self.datasets.all_masks().get_mask(mask_name='rejected - total'))), True)
 
@@ -2166,7 +1972,7 @@ class PanddaMultiDatasetAnalyser(object):
 
         self.log('===================================>>>', True)
         self.log('Filtering Datasets (Non-isomorphous datasets). Potential Classes:', True)
-        for failure_class in self._crystal_mask_names:
+        for failure_class in PanddaMaskNames.crystal_mask_names:
             self.log('\t{!s}'.format(failure_class), True)
         self.log('===================================>>>', True)
 
@@ -2198,11 +2004,11 @@ class PanddaMultiDatasetAnalyser(object):
                 pass
 
         # Combine crystal masks
-        crystal_reject_mask = self.datasets.all_masks().combine_masks(self._crystal_mask_names)
+        crystal_reject_mask = self.datasets.all_masks().combine_masks(PanddaMaskNames.crystal_mask_names)
         self.datasets.all_masks().add_mask(mask_name='rejected - crystal', mask=crystal_reject_mask)
 
         # Combine all of the masks
-        combined_reject_mask = self.datasets.all_masks().combine_masks(self._reject_mask_names)
+        combined_reject_mask = self.datasets.all_masks().combine_masks(PanddaMaskNames.reject_mask_names)
         self.datasets.all_masks().add_mask(mask_name='rejected - total', mask=combined_reject_mask)
 
         self.log('\rDatasets Filtered.               ', True)
@@ -2545,381 +2351,6 @@ class PanddaMultiDatasetAnalyser(object):
 #        assert flex.product(flex.int(self.reference_grid().resampled_grid_size())) == len(resamp_mod_z_map)
 #
 #        return mod_z_map.as_dense_vector(), flex.double(resamp_mod_z_map)
-
-    def print_clustering_settings(self, z_cutoff,
-                                        min_cluster_volume,
-                                        min_cluster_z_peak,
-                                        clustering_cutoff,
-                                        clustering_criterion,
-                                        clustering_metric,
-                                        clustering_method   ):
-
-        # Calculate the approximate minimum volume for the cluster size
-        min_cluster_size = int(min_cluster_volume/(self.reference_grid().grid_spacing()**3))
-
-        self.log('===================================>>>', True)
-        self.log('Z-Scores Clustering Scores', True)
-        self.log('===================================>>>', True)
-        self.log('Clustering Points with Z-Scores > {!s}'.format(z_cutoff), True)
-        self.log('===================================>>>', True)
-        self.log('Clustering Cutoff:           {!s}'.format(clustering_cutoff), True)
-        self.log('Clustering Metric:           {!s}'.format(clustering_metric), True)
-        self.log('Clustering Criterion:        {!s}'.format(clustering_criterion), True)
-        self.log('Clustering Method (Linkage): {!s}'.format(clustering_method), True)
-        self.log('===================================>>>', True)
-        self.log('Minimum Cluster Size:        {!s}'.format(min_cluster_size), True)
-        self.log('Minimum Cluster Volume:      {!s}'.format(min_cluster_volume), True)
-        self.log('Minimum Cluster Z-Peak:      {!s}'.format(min_cluster_z_peak), True)
-        self.log('===================================>>>', True)
-
-    def cluster_high_z_values(self, d_handler,
-                                    z_map,
-                                    z_cutoff,
-                                    point_mask,
-                                    clustering_cutoff,
-                                    clustering_criterion,
-                                    clustering_metric,
-                                    clustering_method   ):
-        """Finds all the points in the z-map above `z_cutoff`, points will then be clustered into groups of cutoff `clustering_cutoff` angstroms"""
-
-        self.log('===================================>>>', True)
-
-        # Check that the map is the expected size etc...
-        assert len(z_map) == self.reference_grid().grid_size_1d()
-
-        # Translate between grid coords and grid index
-        grid_indexer = self.reference_grid().grid_indexer()
-        # Scale the cutoff (Angstroms) into grid units
-        grid_clustering_cutoff = clustering_cutoff/self.reference_grid().grid_spacing()
-
-        # Look for z-clusters on the mask
-        d_selected_points = [(gp, z_map[grid_indexer(gp)]) for gp in point_mask if z_map[grid_indexer(gp)] >= z_cutoff]
-
-        # No Cluster points found
-        if not d_selected_points:
-            self.log('Dataset {!s}: No Clusters Found'.format(d_handler.tag), True)
-            return 0, {}
-        # Can't cluster if there are too many points
-        elif len(d_selected_points) > 10000:
-            self.log('Dataset {!s}: Too many points to cluster: {!s} Points.'.format(d_handler.tag, len(d_selected_points)), True)
-            num_clusters = -1
-            z_clusters = {}
-            # This dataset is too noisy to analyse - flag!
-            self.datasets.all_masks().set_mask_value(mask_name='noisy zmap', entry_id=d_handler.tag, value=True)
-            # Link datasets to the noisy results directory
-            noisy_dir = os.path.join(self.output_handler.get_dir('noisy_datasets'), d_handler.name)
-            if not os.path.exists(noisy_dir):
-                rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=noisy_dir)
-        # Cluster points if we have found them
-        else:
-            self.log('Dataset {!s}: Clustering {!s} Point(s).'.format(d_handler.tag, len(d_selected_points)), True)
-            # Points found for this cluster!
-            if len(d_selected_points) == 1:
-                # Only 1 point - 1 cluster! - edge case where we can't do clustering
-                num_clusters = 1
-                # Dictionary of results
-                z_clusters = {1: d_selected_points}
-            else:
-                # Extract only the coordinates and form an array
-                point_array = numpy.array([tup[0] for tup in d_selected_points])
-                # Cluster the extracted points
-                t1 = time.time()
-                clusts = list(scipy.cluster.hierarchy.fclusterdata( X=point_array,
-                                                                    t=grid_clustering_cutoff,
-                                                                    criterion=clustering_criterion,
-                                                                    metric=clustering_metric,
-                                                                    method=clustering_method    )   )
-                t2 = time.time()
-                self.log('> Clustering > Time Taken: {!s} seconds'.format(int(t2-t1)))
-
-                # Get the number of clusters
-                num_clusters = max(clusts)
-                # Initialise dictionary to hold the points for the different clusters (under the new indexing)
-                z_clusters = dict([(i+1, []) for i in range(num_clusters)])
-                # Populate the clusters according to the clustering
-                [z_clusters[c_idx].append(d_selected_points[p_idx]) for p_idx, c_idx in enumerate(clusts)]
-
-            # Check that the clusters are numbered properly
-            assert num_clusters == max(z_clusters.keys())
-            assert num_clusters == len(z_clusters.keys())
-
-        return num_clusters, z_clusters
-
-    def filter_z_clusters_1(self, z_clusters,
-                                  min_cluster_volume,
-                                  min_cluster_z_peak    ):
-        """Filter the z-clusters on a variety of criteria (size, peak value)"""
-
-        self.log('===================================>>>')
-        self.log('FILTERING (STEP 1): Filtering by blob size and peak value')
-
-        # Calculate the approximate minimum volume for the cluster size
-        min_cluster_size = int(min_cluster_volume/(self.reference_grid().grid_spacing()**3))
-
-        # Filter out small clusters - get numbers of clusters satisfying the minimum cluster size
-        large_clusters = [c_num for c_num in range(1,len(z_clusters)+1) if len(z_clusters[c_num]) >= min_cluster_size]
-        if len(large_clusters) == 0:
-            return 0, {}
-
-        # Filter out weak clusters - get numbers of clusters satisfying the minimum z_peak value
-        strong_clusters = [c_num for c_num in large_clusters if max([c[1] for c in z_clusters[c_num]]) >= min_cluster_z_peak]
-        if len(strong_clusters) == 0:
-            return 0, {}
-
-        # Renumber the filtered clusters
-        filtered_z_clusters = dict([(new_c_idx+1, z_clusters[old_c_num]) for new_c_idx, old_c_num in enumerate(strong_clusters)])
-        # Check that the clusters are numbered properly
-        num_clusters = len(strong_clusters)
-        assert num_clusters == max(filtered_z_clusters.keys())
-        assert num_clusters == len(filtered_z_clusters.keys())
-
-        self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(z_clusters), len(filtered_z_clusters)))
-
-        return num_clusters, filtered_z_clusters
-
-    def filter_z_clusters_2(self, z_clusters,
-                                  grid_spacing,
-                                  grid_origin_cart,
-                                  ref_structure,
-                                  min_contact_dist=6    ):
-        """Find and remove clusters more than a minimum distance from the protein"""
-
-        # min_contact_dist - blobs are rejected if they are more than this distance from the protein
-
-        self.log('===================================>>>')
-        self.log('FILTERING (STEP 2): Filtering by minimum distance from protein')
-
-        # Extract the protein sites
-        cache = ref_structure.atom_selection_cache()
-        protein_bool = cache.selection('pepnames')
-        ref_sites_cart = ref_structure.select(protein_bool).atoms().extract_xyz()
-
-        # Save time - calculate the square of the contact distance
-        min_contact_dist_sq = min_contact_dist**2
-
-        # Remove any clusters that are more than min_contact_dist from the protein
-        filtered_c_keys = []
-        for c_key in sorted(z_clusters.keys()):
-            # Extract points in cluster
-            cluster_points_cart = (flex.vec3_double([c[0] for c in z_clusters[c_key]]) * grid_spacing) - grid_origin_cart
-            # Calculate minimum distance to protein
-            for r_site_cart in ref_sites_cart:
-                diff_vecs_cart = cluster_points_cart - r_site_cart
-                # Keep key if minimum distance is less than min_contact_dist
-                if min(diff_vecs_cart.dot()) < min_contact_dist_sq:
-                    filtered_c_keys.append(c_key)
-                    break
-
-            if self.args.settings.verbose:
-                if filtered_c_keys and (filtered_c_keys[-1] == c_key):
-                    print('KEEPING CLUSTER:', c_key)
-                else:
-                    print('REJECTING CLUSTER:', c_key, '\t', cluster_points_cart[0])
-
-        # Check if all clusters have been rejected
-        if not filtered_c_keys:
-            num_clusters = 0
-            filtered_z_clusters = {}
-        else:
-            # Renumber the filtered clusters
-            filtered_z_clusters = dict([(new_c_idx+1, z_clusters[old_c_key]) for new_c_idx, old_c_key in enumerate(filtered_c_keys)])
-            # Check that the clusters are numbered properly
-            num_clusters = len(filtered_c_keys)
-            assert num_clusters == max(filtered_z_clusters.keys())
-            assert num_clusters == len(filtered_z_clusters.keys())
-
-        self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(z_clusters), len(filtered_z_clusters)))
-
-        return num_clusters, filtered_z_clusters
-
-    def filter_z_clusters_3(self, z_clusters,
-                                  grid_spacing,
-                                  grid_origin_cart,
-                                  ref_unit_cell,
-                                  ref_sym_ops,
-                                  ref_structure,
-                                  max_contact_dist=8  ):
-        """Find and remove symmetry equivalent clusters"""
-
-        # max_contact_dist - a point contacts an atom if the atoms is within this distance of it
-
-        if len(z_clusters) == 1:
-            return 1, z_clusters
-        else:
-            self.log('===================================>>>')
-            self.log('FILTERING (STEP 3): Filtering symmetry equivalent clusters')
-
-        # Extract the protein sites
-        cache = ref_structure.atom_selection_cache()
-        protein_bool = cache.selection('pepnames')
-        ref_sites_cart = ref_structure.select(protein_bool).atoms().extract_xyz()
-
-        # Save time - calculate the square of the contact distance
-        max_contact_dist_sq = max_contact_dist**2
-        # Minimum distance between cart points to be equiv (due to sampling on grid)
-        dist_cut_sq = 1.05 * 3 * grid_spacing * grid_spacing
-
-        # Pull out the labels for the clusters
-        cluster_keys = sorted(z_clusters.keys())
-
-        # Cartesianise and fractionalise the points in each of the clusters
-        points_frac = {}
-        points_cart = {}
-        for c_key in cluster_keys:
-            # Calculate the cartesian coordinates of the grid points (and apply reference shift)
-            points_cart[c_key] = (flex.vec3_double([c[0] for c in z_clusters[c_key]]) * grid_spacing) - grid_origin_cart
-            # Fractionalise them to the unit cell of the reference structure
-            points_frac[c_key] = ref_unit_cell.fractionalize(points_cart[c_key])
-
-        # Matrix for whether they are near to each other
-        equiv_sites = numpy.zeros([len(ref_sym_ops), len(cluster_keys), len(cluster_keys)], dtype=int)
-
-        # Apply the symmetry operations to each cluster to see if it is near to other clusters
-        for i_sym_op, sym_op in enumerate(ref_sym_ops):
-            # Transformed clusters under this symmetry operation
-            trans_points_frac = dict([(c_key, sym_op.as_rational().as_float() * points_frac[c_key]) for c_key in cluster_keys])
-            # Loop through clusters
-            for i_clust_1, c_key_1 in enumerate(cluster_keys):
-                # Extract points for the un-transformed points
-                ref_points = points_frac[c_key_1]
-                # Loop through clusters again
-                for i_clust_2, c_key_2 in enumerate(cluster_keys):
-                    # Comparing cluster to itself - skip
-                    if i_clust_1 == i_clust_2:
-                        # These are cleary equivalent
-                        equivalent = True
-                    else:
-                        # Start by assuming the clusters are not related
-                        equivalent = False
-                        # Extract locations for the transformed points
-                        query_points = trans_points_frac[c_key_2]
-                        # Loop through and see if the clusters overlap
-                        for qp in query_points:
-                            # Brute force - calculate the distance from all to all
-                            diffs_frac = ref_points - qp
-                            # Convert back to cartesian
-                            diffs_cart = ref_unit_cell.orthogonalize(diffs_frac)
-                            # Check if any are closer than the minimum required
-                            if min(diffs_cart.dot()) < dist_cut_sq:
-                                equivalent = True
-                                break
-                    # If the clusters overlap, they are equivalent
-                    if equivalent:
-                        equiv_sites[(i_sym_op, i_clust_1, i_clust_2)] = 1
-
-        # Condense the cluster equivalence - take max over the symmetry operations and group by connected paths
-        sym_cluster_groups = find_connected_groups(connection_matrix=equiv_sites.max(axis=0))
-        # Number of unique clusters
-        num_uniq_clusters = max(sym_cluster_groups)
-        sym_cluster_zip = zip(sym_cluster_groups, cluster_keys)
-
-        # Keys of clusters to keep
-        clusters_to_keep = []
-        # Iterate through the equivalent clusters and find the closest one to the protein
-        for n_clust in range(1, num_uniq_clusters+1):
-            # Extract the keys for the clusterss in this group
-            clust_c_keys = [c[1] for c in sym_cluster_zip if c[0] == n_clust]
-            # Save the number of contacts between the cluster and the protein
-            c_contacts = []
-            # Calculate the number of contacts each cluster has with the protein
-            for c_key in clust_c_keys:
-                # Initialise contact counter
-                contacts = 0
-                # Get the cartesian points for the cluster
-                c_points_cart = points_cart[c_key]
-                # Again, use the brute force all-v-all method
-                for rp in ref_sites_cart:
-                    diffs_cart = c_points_cart - rp
-                    # Check to see if site closer to cluster than minimum
-                    if min(diffs_cart.dot()) < max_contact_dist_sq:
-                        contacts += 1
-                # Record the number of contacts (over size of cluster)
-                c_contacts.append(1.0*contacts/len(c_points_cart))
-                if self.args.settings.verbose:
-                    print('CLUSTER:', c_key, ', CONTACTS PER POINT:', round(c_contacts[-1],3))
-
-            # Find the cluster with the most contacts
-            max_contacts = max(c_contacts)
-
-            if max_contacts == 0:
-                raise Exception('MAX CONTACTS IS 0!')
-            else:
-                clusters_to_keep.append(clust_c_keys[c_contacts.index(max_contacts)])
-                if self.args.settings.verbose:
-                    print('KEEPING CLUSTER', clusters_to_keep[-1])
-
-        assert len(clusters_to_keep) == num_uniq_clusters, 'NUMBER OF BLOBS AND BLOBS TO BE RETURNED NOT THE SAME'
-
-        # Select and renumber the filtered clusters to be returned
-        filtered_num_clusters = num_uniq_clusters
-        filtered_z_clusters = dict([(new_c_idx+1, z_clusters[old_c_key]) for new_c_idx, old_c_key in enumerate(clusters_to_keep)])
-
-        self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(z_clusters), len(filtered_z_clusters)))
-
-        return filtered_num_clusters, filtered_z_clusters
-
-    def group_clusters(self, z_clusters,
-                             grid_spacing,
-                             separation_cutoff=5   ):
-        """Join clusters that are separated by less than max_separation"""
-
-        if len(z_clusters) == 1:
-            return 1, z_clusters
-        else:
-            self.log('===================================>>>')
-            self.log('GROUPING: Grouping Nearby Clusters')
-
-        # Minimum distance between grid points to be joined (squared)
-        grid_spacing_cutoff_sq = (separation_cutoff/grid_spacing)**2
-
-        # Record which clusters are to be joined
-        connect_array = numpy.zeros((len(z_clusters),len(z_clusters)), dtype=int)
-
-        cluster_keys = sorted(z_clusters.keys())
-
-        for i_clust_1, c_key_1 in enumerate(cluster_keys):
-            # Extract grid points for cluster 1
-            c_gp_1 = flex.vec3_double([c[0] for c in z_clusters[c_key_1]])
-            for i_clust_2, c_key_2 in enumerate(cluster_keys):
-                # Skip if this is the same blob
-                if i_clust_1 == i_clust_2:
-                    connect_array[(i_clust_1, i_clust_2)] = 1
-                    continue
-                # Extract grid points for cluster 2
-                c_gp_2 = flex.vec3_double([c[0] for c in z_clusters[c_key_2]])
-                # Extract the minimum separation of the grid points
-                min_dist_sq = min([min((c_gp_2 - gp).dot()) for gp in c_gp_1])
-                # Check to see if they should be joined
-                if min_dist_sq < grid_spacing_cutoff_sq:
-                    connect_array[(i_clust_1, i_clust_2)] = 1
-
-        # Find which clusters to join
-        cluster_groupings = find_connected_groups(connection_matrix=connect_array)
-        num_groups = max(cluster_groupings)
-        grouped_zip = zip(cluster_groupings, cluster_keys)
-
-        if self.args.settings.verbose:
-            print('COMBINING', len(z_clusters), 'GROUPS INTO', num_groups, 'GROUPS')
-
-        # Output cluster dict
-        grouped_clusters = {}
-
-        # Iterate through the groups of clusters and combine each group into one cluster
-        for n_group in range(1, num_groups+1):
-            # Extract the keys for the clusters in this group
-            group_c_keys = [c[1] for c in grouped_zip if c[0] == n_group]
-            # Extract points for these clusters
-            group_points = []; [group_points.extend(z_clusters[c_key]) for c_key in group_c_keys]
-            # Combine all of the points into a new cluster
-            grouped_clusters[n_group] = group_points
-
-        assert len(grouped_clusters) == num_groups
-        assert sum(map(len, z_clusters.values())) == sum(map(len, grouped_clusters.values()))
-
-        print(map(len, z_clusters.values()),'->',map(len, grouped_clusters.values()))
-        self.log('Grouped {!s} Clusters together to form {!s} Clusters'.format(len(z_clusters), len(grouped_clusters)))
-
-        return num_groups, grouped_clusters
 
     def collate_event_counts(self):
         """Collate eventss from all of the datasets"""
@@ -3321,34 +2752,39 @@ class PanddaMultiDatasetAnalyser(object):
         pyplot.close(fig)
         # ================================================>
         fig = pyplot.figure()
-        pyplot.title('UNIT CELL PARAMS')
-        pyplot.subplot(2, 3, 1)
+        pyplot.title('UNIT CELL AXES')
+        pyplot.subplot(3, 1, 1)
         pyplot.hist(x=d_info['uc_a'], bins=n_bins)
         pyplot.xlabel('A (A)')
-        pyplot.ylabel('COUNT')
-        pyplot.subplot(2, 3, 2)
+        pyplot.subplot(3, 1, 2)
         pyplot.hist(x=d_info['uc_b'], bins=n_bins)
         pyplot.xlabel('B (A)')
-        pyplot.subplot(2, 3, 3)
+        pyplot.subplot(3, 1, 3)
         pyplot.hist(x=d_info['uc_c'], bins=n_bins)
         pyplot.xlabel('C (A)')
-        pyplot.subplot(2, 3, 4)
+        pyplot.tight_layout()
+        pyplot.savefig(self.output_handler.get_file('d_cell_axes'))
+        pyplot.close(fig)
+        # ================================================>
+        fig = pyplot.figure()
+        pyplot.title('UNIT CELL ANGLES')
+        pyplot.subplot(3, 1, 1)
         pyplot.hist(x=d_info['uc_alpha'], bins=n_bins)
         pyplot.xlabel('ALPHA')
-        pyplot.ylabel('COUNT')
-        pyplot.subplot(2, 3, 5)
+        pyplot.subplot(3, 1, 2)
         pyplot.hist(x=d_info['uc_beta'], bins=n_bins)
         pyplot.xlabel('BETA')
-        pyplot.subplot(2, 3, 6)
+        pyplot.subplot(3, 1, 3)
         pyplot.hist(x=d_info['uc_gamma'], bins=n_bins)
         pyplot.xlabel('GAMMA')
-        pyplot.savefig(self.output_handler.get_file('d_cell_params'))
+        pyplot.tight_layout()
+        pyplot.savefig(self.output_handler.get_file('d_cell_angles'))
         pyplot.close(fig)
         # ================================================>
         fig = pyplot.figure()
         pyplot.title('UNIT CELL VOLUME HISTOGRAM')
         pyplot.hist(x=d_info['uc_vol'], bins=n_bins)
-        pyplot.xlabel('VOLUME (A**3)')
+        pyplot.xlabel('VOLUME (A^3)')
         pyplot.ylabel('COUNT')
         pyplot.tight_layout()
         pyplot.savefig(self.output_handler.get_file('d_cell_volumes'))
@@ -3480,11 +2916,256 @@ class PanddaMultiDatasetAnalyser(object):
         if os.path.exists(pickle_file) and not overwrite:
             self.log('NOT PICKLING: {!s}'.format(pickle_file))
         else:
-            self.log('Pickling Object: {!s}'.format(pickle_file))
+            self.log('Pickling Object: ...{!s}'.format(pickle_file[-50:]))
             easy_pickle.dump(pickle_file, pickle_object)
 
     def unpickle(self, pickle_file):
         """Takes an object and unpickles it"""
-        self.log('Unpickling File: {!s}'.format(pickle_file))
+        self.log('Unpickling File: ...{!s}'.format(pickle_file[-50:]))
         return easy_pickle.load(pickle_file)
 
+class PanddaZMapAnalyser(object):
+    def __init__(self, params, grid_spacing, log):
+        self._log = log
+
+        self.params = params
+        self.grid_spacing = grid_spacing
+
+        self.grid_clustering_cutoff = 1.1 * numpy.math.sqrt(3)
+        self.real_clustering_cufoff = self.grid_clustering_cutoff * grid_spacing
+        self.grid_minimum_volume = int(self.params.min_blob_volume/(grid_spacing**3))
+
+    def log(self, message, show=False, hide=False):
+        """Log message to file, and mirror to stdout if verbose or force_print (hide overrules show)"""
+        if not isinstance(message, str):    message = str(message)
+        # Print to stdout
+        if (not hide) and (show or self._log.verbose):
+            self._log.show(message)
+        # Remove \r from message as this spoils the log (^Ms)
+        message = message.replace('\r','')
+        # Write to file
+        self._log.write(message=message+'\n', mode='a')
+
+    def print_settings(self):
+        self.log('===================================>>>', True)
+        self.log('Z-Scores Clustering', True)
+        self.log('===================================>>>', True)
+        self.log('Clustering Points with Z-Scores > {!s}'.format(self.params.contour_level), True)
+        self.log('===================================>>>', True)
+        self.log('Clustering Cutoff (A):       {!s}'.format(self.real_clustering_cufoff), True)
+        self.log('Clustering Metric:           {!s}'.format(self.params.clustering.metric), True)
+        self.log('Clustering Criterion:        {!s}'.format(self.params.clustering.criterion), True)
+        self.log('Clustering Method (Linkage): {!s}'.format(self.params.clustering.linkage), True)
+        self.log('===================================>>>', True)
+        self.log('Minimum Cluster Z-Peak:      {!s}'.format(self.params.min_blob_z_peak), True)
+        self.log('Minimum Cluster Volume (A):  {!s}'.format(self.params.min_blob_volume), True)
+        self.log('Minimum Cluster Size:        {!s}'.format(self.grid_minimum_volume), True)
+        self.log('===================================>>>', True)
+
+    def cluster_high_z_values(self, z_map, point_mask):
+        """Finds all the points in the z-map above `z_cutoff`, points will then be clustered into groups of cutoff `clustering_cutoff` angstroms"""
+
+        point_mask_gps = flex.vec3_double(point_mask)
+        # Convert the gps to idxs
+        point_mask_idx = flex.size_t(map(z_map.accessor(), point_mask))
+        # Select these values from the map
+        point_mask_val = z_map.select(point_mask_idx)
+        # Find values above cutoff
+        above_bool = (point_mask_val >= self.params.contour_level)
+        above_val = point_mask_val.select(above_bool)
+        above_gps = point_mask_gps.select(above_bool)
+        above_len = len(above_val)
+
+        # No Cluster points found
+        if   above_len == 0:
+            return 0, []
+        # One Cluster point found
+        elif above_len == 1:
+            return 1, [(above_gps, above_val)]
+        # Can't cluster if there are too many points
+        elif above_len > 10000:
+            return -1, [(above_gps, above_val)]
+        # Cluster points if we have found them
+        else:
+            self.log('> Clustering {!s} Points.'.format(above_len), True)
+            # Cluster the extracted points
+            t1 = time.time()
+            cluster_ids = scipy.cluster.hierarchy.fclusterdata( X = above_gps,
+                                                                t = self.grid_clustering_cutoff,
+                                                                criterion = self.params.clustering.criterion,
+                                                                metric    = self.params.clustering.metric,
+                                                                method    = self.params.clustering.linkage )
+            cluster_ids = list(cluster_ids)
+            t2 = time.time()
+            self.log('> Clustering > Time Taken: {!s} seconds'.format(int(t2-t1)))
+
+            # Get the number of clusters
+            num_clusters = max(cluster_ids)
+            # Group the values by cluster id
+            z_clusters = []
+            for c_id, c_idxs in generate_group_idxs(cluster_ids):
+                c_idxs = flex.size_t(c_idxs)
+                c_gps = above_gps.select(c_idxs)
+                c_val = above_val.select(c_idxs)
+                z_clusters.append((c_gps, c_val))
+            assert num_clusters == len(z_clusters)
+            return num_clusters, z_clusters
+
+    def filter_z_clusters_1(self, z_clusters):
+        """Filter the z-clusters on a variety of criteria (size, peak value)"""
+
+        self.log('===================================>>>')
+        self.log('Filtering by blob size and peak value')
+
+        filt_z_clusters = z_clusters
+        # Filter out small clusters - get numbers of clusters satisfying the minimum cluster size
+        large_clusters = (flex.int([x[1].size() for x in filt_z_clusters]) >= self.grid_minimum_volume).iselection()
+        if large_clusters.size() == 0:  return 0, []
+        filt_z_clusters = [filt_z_clusters[i] for i in large_clusters]
+        # Filter out weak clusters - get numbers of clusters satisfying the minimum z_peak value
+        strong_clusters = (flex.double([x[1].min_max_mean().max for x in filt_z_clusters]) >= self.params.min_blob_z_peak).iselection()
+        if strong_clusters.size() == 0: return 0, []
+        filt_z_clusters = [filt_z_clusters[i] for i in strong_clusters]
+
+        self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(z_clusters), len(filt_z_clusters)))
+        return len(filt_z_clusters), filt_z_clusters
+
+    def filter_z_clusters_2(self, z_clusters, grid_origin_cart, ref_structure, min_contact_dist=6):
+        """Find and remove clusters more than a minimum distance from the protein"""
+
+        # min_contact_dist - blobs are rejected if they are more than this distance from the protein
+
+        self.log('===================================>>>')
+        self.log('Filtering by minimum distance from protein')
+
+        # Extract the protein sites
+        ref_sites_cart = ref_structure.select(ref_structure.atom_selection_cache().selection('pepnames')).atoms().extract_xyz()
+        # Save time - calculate the square of the contact distance
+        min_contact_dist_sq = min_contact_dist**2
+
+        # Remove any clusters that are more than min_contact_dist from the protein
+        filtered_c_idxs = []
+        for c_idx, (c_gps, c_val) in enumerate(z_clusters):
+            # Extract points in cluster
+            cluster_points_cart = (c_gps * self.grid_spacing) - grid_origin_cart
+            # Calculate minimum distance to protein
+            for r_site_cart in ref_sites_cart:
+                diff_vecs_cart = cluster_points_cart - r_site_cart
+                # Keep cluster if minimum distance is less than min_contact_dist
+                if min(diff_vecs_cart.dot()) < min_contact_dist_sq:
+                    filtered_c_idxs.append(c_idx)
+                    break
+            # Report
+            if self._log.verbose:
+                if filtered_c_idxs and (filtered_c_idxs[-1] == c_idx):
+                    print('KEEPING CLUSTER:', c_idx)
+                else:
+                    print('REJECTING CLUSTER:', c_idx)
+        # Select filtered clusters
+        filt_z_clusters = [z_clusters[i] for i in filtered_c_idxs]
+
+        self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(z_clusters), len(filt_z_clusters)))
+        return len(filt_z_clusters), filt_z_clusters
+
+    def filter_z_clusters_3(self, z_clusters, grid_origin_cart, ref_unit_cell, ref_sym_ops, ref_structure, max_contact_dist=8):
+        """Find and remove symmetry equivalent clusters"""
+
+        if len(z_clusters) == 1:
+            return 1, z_clusters
+        else:
+            self.log('===================================>>>')
+            self.log('Filtering symmetry equivalent clusters')
+
+        # Extract the protein sites
+        ref_sites_cart = ref_structure.select(ref_structure.atom_selection_cache().selection('pepnames')).atoms().extract_xyz()
+
+        # Cartesianise and fractionalise the points in each of the clusters (in the crystallographic frame)
+        points_cart = [None]*len(z_clusters)
+        points_frac = [None]*len(z_clusters)
+        for c_idx, (c_gps, c_val) in enumerate(z_clusters):
+            # Extract points in cluster
+            points_cart[c_idx] = (c_gps * self.grid_spacing) - grid_origin_cart
+            # Fractionalise them to the unit cell of the reference structure
+            points_frac[c_idx] = ref_unit_cell.fractionalize(points_cart[c_idx])
+        # Find the sets of clusters that are symmetry related
+        sym_equiv_groups = find_symmetry_equivalent_groups( points_frac = points_frac,
+                                                            sym_ops     = ref_sym_ops,
+                                                            unit_cell   = ref_unit_cell,
+                                                            cutoff_cart = 1.05*1.7321*self.grid_spacing )
+        # max_contact_dist - a point contacts an atom if the atoms is within this distance of it
+        # Save time - calculate the square of the contact distance
+        max_contact_dist_sq = max_contact_dist**2
+        # Iterate through and chose one from each group to keep
+        filt_z_clusters = []
+        for g_id, g_idxs in generate_group_idxs(sym_equiv_groups):
+            # Count the number of contact for each cluster in the group
+            c_contacts = []
+            # Iterate through cluster in the group
+            for c_idx in g_idxs:
+                # Initialise contact counter
+                contacts = 0
+                # Get the cartesian points for the cluster
+                c_points_cart = points_cart[c_idx]
+                # Again, use the brute force all-v-all method
+                for rp in ref_sites_cart:
+                    diffs_cart = c_points_cart - rp
+                    # Check to see if site closer to cluster than minimum
+                    if min(diffs_cart.dot()) < max_contact_dist_sq:
+                        contacts += 1
+                # Record the number of contacts (over size of cluster)
+                c_contacts.append(1.0*contacts/len(c_points_cart))
+                if self._log.verbose:
+                    print('CLUSTER:', c_idx, ', CONTACTS PER POINT:', round(c_contacts[-1],3))
+
+            # Find the cluster with the most contacts
+            max_contacts = max(c_contacts)
+            if max_contacts == 0:
+                raise Exception('MAX CONTACTS IS 0!')
+            else:
+                cluster_to_keep = g_idxs[c_contacts.index(max_contacts)]
+                filt_z_clusters.append(z_clusters[cluster_to_keep])
+                if self._log.verbose:
+                    print('KEEPING CLUSTER', cluster_to_keep)
+        assert len(filt_z_clusters) == max(sym_equiv_groups), 'NUMBER OF UNIQUE GROUPS AND GROUPS TO BE RETURNED NOT THE SAME'
+
+        self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(z_clusters), len(filt_z_clusters)))
+        return len(filt_z_clusters), filt_z_clusters
+
+    def group_clusters(self, z_clusters, separation_cutoff=5):
+        """Join clusters that are separated by less than max_separation"""
+
+        if len(z_clusters) == 1:
+            return 1, z_clusters
+        else:
+            self.log('===================================>>>')
+            self.log('Grouping Nearby Clusters')
+
+        # Minimum distance between grid points to be joined (squared)
+        grid_cutoff_sq = (separation_cutoff/self.grid_spacing)**2
+
+        # Record which clusters are to be joined
+        connect_array = numpy.zeros((len(z_clusters),len(z_clusters)), dtype=int)
+        for i_clust_1, (c_gps_1, c_val_1) in enumerate(z_clusters):
+            for i_clust_2, (c_gps_2, c_val_2) in enumerate(z_clusters):
+                # Skip if this is the same blob
+                if i_clust_1 == i_clust_2:
+                    connect_array[(i_clust_1, i_clust_2)] = 1
+                    continue
+                # Extract the minimum separation of the grid points
+                min_dist_sq = min([min((c_gps_2 - gp).dot()) for gp in c_gps_1])
+                # Check to see if they should be joined
+                if min_dist_sq < grid_cutoff_sq:
+                    connect_array[(i_clust_1, i_clust_2)] = 1
+        # Cluster the connection array
+        cluster_groupings = find_connected_groups(connection_matrix=connect_array)
+        # Concatenate smaller clusters into larger clusters
+        grouped_clusters = []
+        for g_id, g_idxs in generate_group_idxs(cluster_groupings):
+            g_gps = z_clusters[g_idxs[0]][0]; [g_gps.extend(z_clusters[i][0]) for i in g_idxs[1:]]
+            g_val = z_clusters[g_idxs[0]][1]; [g_val.extend(z_clusters[i][1]) for i in g_idxs[1:]]
+            grouped_clusters.append((g_gps, g_val))
+
+        assert len(grouped_clusters) == max(cluster_groupings)
+
+        self.log('Grouped {!s} Clusters together to form {!s} Clusters'.format(len(z_clusters), len(grouped_clusters)))
+        return len(grouped_clusters), grouped_clusters
