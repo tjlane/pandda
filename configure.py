@@ -3,11 +3,6 @@ import os, sys
 from distutils.spawn import find_executable
 
 ##########################################################
-# Find the path of the running python
-##########################################################
-this_python = sys.executable
-
-##########################################################
 # Get the path of this script
 ##########################################################
 script_path = os.path.realpath(__file__)
@@ -17,21 +12,21 @@ print 'RUNNING: {}'.format(script_path)
 ##########################################################
 PANDDA_TOP = os.path.dirname(script_path)
 print 'PANDDAs RUNNING FROM: {}'.format(PANDDA_TOP)
-##########################################################
-# Find the bin of the PANDDAs module
-##########################################################
+
 PANDDA_BIN = os.path.join(PANDDA_TOP, 'bin')
 assert os.path.exists(PANDDA_BIN)
+
+pandda_python  = os.path.join(PANDDA_BIN, 'pandda.python')
+pandda_ipython = os.path.join(PANDDA_BIN, 'pandda.ipython')
+pandda_sh      = os.path.join(PANDDA_TOP, 'scripts', 'pandda.sh')
+pandda_csh     = os.path.join(PANDDA_TOP, 'scripts', 'pandda.csh')
 
 ##########################################################
 # Get the user-given path to the cctbx.python to be used
 ##########################################################
 cctbx_python = [arg for arg in sys.argv if 'cctbx.python' in arg]
-pandda_python = os.path.join(PANDDA_BIN, 'pandda.python')
-if cctbx_python:
-    cctbx_python = find_executable(cctbx_python[0])
-else:
-    cctbx_python = find_executable('cctbx.python')
+if cctbx_python: cctbx_python = find_executable(cctbx_python[0])
+else:            cctbx_python = find_executable('cctbx.python')
 
 # Link cctbx.python to pandda.python
 if not cctbx_python:
@@ -54,11 +49,8 @@ else:
 # Get the user-given path to the libtbx.ipython to be used
 ##########################################################
 cctbx_ipython = [arg for arg in sys.argv if 'libtbx.ipython' in arg]
-pandda_ipython = os.path.join(PANDDA_BIN, 'pandda.ipython')
-if cctbx_ipython:
-    cctbx_ipython = find_executable(cctbx_ipython[0])
-else:
-    cctbx_ipython = find_executable('libtbx.ipython')
+if cctbx_ipython: cctbx_ipython = find_executable(cctbx_ipython[0])
+else:             cctbx_ipython = find_executable('libtbx.ipython')
 
 # Link libtbx.ipython to pandda.ipython
 if not cctbx_ipython:
@@ -78,18 +70,34 @@ else:
     os.symlink(cctbx_ipython, pandda_ipython)
 
 ##########################################################
+# Write bashrc
+##########################################################
+with open(pandda_sh, 'w') as fh:
+    fh.write('# Setup for PANDDAs\n')
+    fh.write('export PANDDA_TOP={}\n'.format(PANDDA_TOP))
+    fh.write('export PYTHONPATH=${PYTHONPATH}:$PANDDA_TOP/lib-python\n')
+    fh.write('export PATH=${PATH}:$PANDDA_TOP/bin\n')
+
+##########################################################
+# Write cshrc
+##########################################################
+with open(pandda_csh, 'w') as fh:
+    fh.write('# Setup for PANDDAs\n')
+    fh.write('setenv PANDDA_TOP {}\n'.format(PANDDA_TOP))
+    fh.write('setenv PYTHONPATH ${PYTHONPATH}:$PANDDA_TOP/lib-python\n')
+    fh.write('setenv PATH ${PATH}:$PANDDA_TOP/bin\n')
+
+##########################################################
 # Print lines to be added to bashrc, cshrc
 ##########################################################
 print('\n=====================================+>')
 print('Add following lines to bashrc:')
 print('=====================================+>')
-print('export PANDDA_TOP={}'.format(PANDDA_TOP))
-print('source {}'.format(os.path.join('$PANDDA_TOP','scripts','pandda.sh')))
+print('source {}'.format(pandda_sh))
 print('\n=====================================+>')
 print('Add following lines to cshrc:')
 print('=====================================+>')
-print('setenv PANDDA_TOP {}'.format(PANDDA_TOP))
-print('source {}'.format(os.path.join('$PANDDA_TOP','scripts','pandda.csh')))
+print('source {}'.format(pandda_csh))
 print('\n=====================================+>')
 
 
