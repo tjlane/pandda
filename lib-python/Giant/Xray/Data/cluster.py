@@ -6,6 +6,7 @@ import iotbx.mtz
 import libtbx.cluster
 import scipy.cluster.hierarchy
 
+from Giant.Stats.Cluster import generate_group_idxs
 from Giant.Xray.Data import crystalSummary, unitCellVariation
 from Giant.Xray.unit_cell import lcv_from_unit_cells, pairwise_lcv, pairwise_ecv
 
@@ -38,10 +39,17 @@ class crystalGroup(object):
         """Cluster crystals by unit cell and return crystalGroup for each cluster"""
         if len(crystals) == 1: return [cls(crystals)]
         assert method in ['lcv'], 'method not recognised'
-        if   method == 'lcv': link_func = lambda a,b: lcv_from_unit_cells(a.unit_cell, b.unit_cell)
-        hierarchy = libtbx.cluster.HierarchicalClustering(crystals, link_func)
-        clusters = hierarchy.getlevel(cutoff)
-        return [cls(c) for c in clusters]
+#        # Method 1
+#        if   method == 'lcv': link_func = lambda a,b: lcv_from_unit_cells(a.unit_cell, b.unit_cell)
+#        hierarchy = libtbx.cluster.HierarchicalClustering(crystals, link_func)
+#        clusters = hierarchy.getlevel(cutoff)
+#        return [cls(c) for c in clusters]
+        # Method 2
+        if   method == 'lcv': link_func = pairwise_lcv
+        dist_mat = link_func(unit_cells=[c.unit_cell for c in crystals])
+        link_mat = scipy.cluster.hierarchy.linkage(dist_mat, method='single', metric='euclidean')
+        clusters = scipy.cluster.hierarchy.fcluster(link_mat, t=cutoff, criterion='inconsistent')
+        return [cls([crystals[idx] for idx in g]) for i_g,g in generate_group_idxs(clusters)]
 
 def dendrogram(fname, link_mat, labels=None, ylab=None, xlab=None, ylim=None, annotate_y_min=0.25):
     from matplotlib import pyplot
@@ -69,7 +77,7 @@ def dendrogram(fname, link_mat, labels=None, ylab=None, xlab=None, ylim=None, an
 def unit_cell_dendrogram(fname, unit_cells, link_func, labels=None, **kwargs):
     """Calculate a dendrogram for a set of mtz files/object, clustering by unit_cell parameters"""
     dist_mat = link_func(unit_cells=unit_cells)
-    link_mat = scipy.cluster.hierarchy.linkage(dist_mat)
+    link_mat = scipy.cluster.hierarchy.linkage(dist_mat, method='single', metric='euclidean')
     dendrogram(fname=fname, link_mat=link_mat, labels=labels, **kwargs)
 
 def sort_pdbs_by_space_group(pdb_files=None, pdb_inputs=None, labels=None):

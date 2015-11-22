@@ -30,7 +30,7 @@ def find_connected_groups(connection_matrix):
     # Calculate the linkage matrix
     l = scipy.cluster.hierarchy.linkage(cd_dist_mx, method='single', metric='euclidean')
     # Cluster with very low cutoff
-    connected_groups = scipy.cluster.hierarchy.fcluster(Z=l, t=0.01).tolist()
+    connected_groups = scipy.cluster.hierarchy.fcluster(Z=l, t=0.01, criterion='inconsistent').tolist()
 
     return connected_groups
 
