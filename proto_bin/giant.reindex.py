@@ -33,6 +33,9 @@ def run(params):
         cad_output_mtz   = os.path.join(os.path.dirname(mtz_file), 'cad_'+os.path.basename(mtz_file))
         free_output_mtz  = os.path.join(os.path.dirname(mtz_file), 'free_'+os.path.basename(mtz_file))
 
+        ######################################
+        # REINDEX
+        ######################################
         cm = commandManager('pointless')
         cm.add_command_line_arguments([ 'hklin', mtz_file,
                                         'hklref', params.input.reference_mtz,
@@ -46,6 +49,9 @@ def run(params):
         print cm.error
         print '============================>'
 
+        ######################################
+        # Transfer Free-R Flags
+        ######################################
         cm = commandManager('cad')
         cm.add_command_line_arguments([ 'hklin1', reind_output_mtz,
                                         'hklin2', params.input.reference_mtz,
@@ -62,11 +68,13 @@ def run(params):
         print cm.error
         print '============================>'
 
-        cm = commandManager('freerflag')
-        cm.add_command_line_arguments([ 'hklin', cad_output_mtz,
-                                        'hklout', free_output_mtz   ])
-        cm.add_standard_input([ 'COMPLETE FREE=FreeR_flag',
-                                'END'     ])
+        ######################################
+        # Fill in missing reflections (nans)
+        ######################################
+        cm = commandManager('uniqueify')
+        cm.add_command_line_arguments([ '-f', 'FreeR_flag',
+                                        cad_output_mtz,
+                                        free_output_mtz   ])
         cm.print_settings()
         cm.run()
         print '============================>'
@@ -75,7 +83,21 @@ def run(params):
         print cm.error
         print '============================>'
 
-
+#        ######################################
+#        # Complete Free-R Flags
+#        ######################################
+#        cm = commandManager('freerflag')
+#        cm.add_command_line_arguments([ 'hklin', cad_output_mtz,
+#                                        'hklout', free_output_mtz   ])
+#        cm.add_standard_input([ 'COMPLETE FREE=FreeR_flag',
+#                                'END'     ])
+#        cm.print_settings()
+#        cm.run()
+#        print '============================>'
+#        print cm.output
+#        print '============================>'
+#        print cm.error
+#        print '============================>'
 
 if __name__ == '__main__':
 

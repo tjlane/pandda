@@ -33,6 +33,7 @@ from Giant.Grid.Masks import spherical_mask, atomic_mask, grid_mask
 
 from Giant.Xray.Data import crystalSummary
 from Giant.Xray.Data.utils import extract_structure_factors
+from Giant.Xray.Maps import scale_map_to_reference
 from Giant.Xray.Symmetry import combine_hierarchies, generate_adjacent_symmetry_copies, find_symmetry_equivalent_groups
 from Giant.Stats.Ospina import estimate_true_underlying_sd
 from Giant.Stats.Cluster import find_connected_groups, generate_group_idxs
@@ -230,6 +231,8 @@ class DatasetHandler(object):
 
     def transform_to_reference(self, points, method, point_mappings=None):
         """Use alignment to map to reference frame from our frame"""
+        if point_mappings is None:
+            point_mappings = self.find_nearest_calpha(points)
         return self.transform_coordinates(  points         = points,
                                             method         = method,
                                             point_mappings = point_mappings,
@@ -322,9 +325,9 @@ class PanddaMultipleStatMapList(object):
         self.map_lists = {}
     def get_resolutions(self):
         return sorted(self.map_lists.keys())
-    def add(self, stat_map_list, resolution):
+    def add(self, stat_map_list, resolution, overwrite=False):
         assert isinstance(resolution, float), 'Resolution of map must be of type float. Type given: {!s}'.format(type(resolution))
-        assert resolution not in self.map_lists.keys(), 'MAPS OF THIS RESOLUTION ALREADY ADDED'
+        if not overwrite: assert resolution not in self.map_lists.keys(), 'MAPS OF THIS RESOLUTION ALREADY ADDED'
         assert isinstance(stat_map_list, PanddaStatMapList), 'stat_map_list must be of type PanddaMultipleStatMapList. Type given: {!s}'.format(type(stat_map_list))
         self.map_lists[resolution] = stat_map_list
     def get(self, resolution):
@@ -1384,7 +1387,7 @@ class PanddaMultiDatasetAnalyser(object):
         # ============================================================================>
         # Create neighbouring symmetry copies of the reference structures
         # ============================================================================>
-        ref_sym_copies = self.reference_dataset().generate_symmetry_copies(rt_method=self.params.alignment.method, save_operators=True, buffer=self.params.masks.outer_mask+5)
+        ref_sym_copies = self.reference_dataset().generate_symmetry_copies(rt_method='global', save_operators=True, buffer=self.params.masks.outer_mask+5)
         # Write out the symmetry sites
         if not os.path.exists(self.output_handler.get_file('reference_symmetry')):
             ref_sym_copies.write_pdb_file(self.output_handler.get_file('reference_symmetry'))
@@ -2128,10 +2131,9 @@ class PanddaMultiDatasetAnalyser(object):
         common_set = self.reference_dataset().sfs.set()
         ref_size = common_set.size()
         self.log('Number of Reflections in Reference Dataset: {!s}'.format(ref_size))
-        # Create maps for all of the datasets (including the reference dataset)
+        # Truncate reflections to the common set
         for i_dh, d_handler in enumerate(dataset_handlers):
             common_set = common_set.common_set(d_handler.sfs, assert_is_similar_symmetry=False)
-#            self.log('After Dataset {!s} - Remaining Common Reflections: {!s}'.format(i_dh+1, common_set.size()))
 
         self.log('===================================>>>', True)
         self.log('Number of Common Reflections between Datasets: {!s} ({!s}% of reference)'.format(common_set.size(), int(100.0*common_set.size()/ref_size)))
@@ -2139,8 +2141,6 @@ class PanddaMultiDatasetAnalyser(object):
 
         # Create maps for all of the datasets (including the reference dataset)
         for d_handler in [self.reference_dataset()]+dataset_handlers:
-            # At the moment save the 'truncated' sfs as the whole list
-            # TODO
             d_handler.tr_sfs = d_handler.sfs.common_set(common_set, assert_is_similar_symmetry=False)
 
         reslns = [d.tr_sfs.d_min() for d in dataset_handlers]
@@ -2156,40 +2156,35 @@ class PanddaMultiDatasetAnalyser(object):
 
         # Reference dataset handler
         ref_handler = self.reference_dataset()
-
         # Take the scaled diffraction data for the dataset and create fft
         fft_map = ref_handler.tr_sfs.fft_map( resolution_factor = self.params.maps.resolution_factor,
-                                                     d_min = map_resolution,
-                                                     symmetry_flags = cctbx.maptbx.use_space_group_symmetry )
-
+                                              d_min = map_resolution,
+                                              symmetry_flags = cctbx.maptbx.use_space_group_symmetry )
         # Scale the map
         if self.params.maps.scaling == 'none':     pass
         elif self.params.maps.scaling == 'sigma':  fft_map.apply_sigma_scaling()
         elif self.params.maps.scaling == 'volume': fft_map.apply_volume_scaling()
-
         # Store the unit cell and the space group for later
         ref_handler.unit_cell   = fft_map.unit_cell()
         ref_handler.space_group = fft_map.space_group()
-
         # Create map handler and map to the reference frame
         native_map_handler = map_handler(   map_data  = fft_map.real_map(),
                                             unit_cell = fft_map.unit_cell()   )
-
         # Extract the points for the morphed maps (in the reference frame)
-        masked_gps = list(self.reference_grid().global_mask().outer_mask())
-        masked_idxs = self.reference_grid().global_mask().outer_mask_indices()
+        masked_gps      = list(self.reference_grid().global_mask().outer_mask())
+        masked_idxs     = self.reference_grid().global_mask().outer_mask_indices()
         masked_cart_ref = flex.vec3_double(masked_gps)*self.reference_grid().grid_spacing()
+        # Transform Coordinates
+        masked_cart_nat = ref_handler.transform_from_reference( points = masked_cart_ref,
+                                                                method = 'global' )
         # Sample the map at the masked points
-        masked_vals_ref = native_map_handler.get_cart_values(masked_cart_ref)
-
+        masked_vals_ref = native_map_handler.get_cart_values(masked_cart_nat)
         # Record the Mean and RMS values of these map values so that the other datasets can be scaled to the same
         map_mean = masked_vals_ref.min_max_mean().mean
         map_rms  = masked_vals_ref.standard_deviation_of_the_sample()
-
         # Calculate the sparse vector of the masked map values
         masked_map_sparse = scitbx.sparse.vector(self.reference_grid().grid_size_1d(), dict(zip(masked_idxs, masked_vals_ref)))
         masked_map        = masked_map_sparse.as_dense_vector()
-
         # Map Holder for the calculated map
         ref_map_holder = MapHolder( num         = ref_handler.num,
                                     tag         = ref_handler.tag,
@@ -2212,21 +2207,21 @@ class PanddaMultiDatasetAnalyser(object):
         def load_maps_map_func(arg_dict):
             """Function to allow maps to be loaded in parallel"""
 
-            d_handler            = arg_dict['d_handler']
-            grid                 = arg_dict['grid']
-            params               = arg_dict['params']
-            map_resolution       = arg_dict['map_resolution']
-            ref_map_holder       = arg_dict['ref_map_holder']
-            masked_cart_ref      = arg_dict['masked_cart_ref']
-            masked_cart_mappings = arg_dict['masked_cart_mappings']
+            d_handler       = arg_dict['d_handler']
+            grid            = arg_dict['grid']
+            params          = arg_dict['params']
+            map_resolution  = arg_dict['map_resolution']
+            ref_map_holder  = arg_dict['ref_map_holder']
+            masked_cart_ref = arg_dict['masked_cart_ref']
+            masked_cart_map = arg_dict['masked_cart_map']
+            scaling_mask    = arg_dict['scaling_mask']
 
             print('\rLoading Maps for Dataset {!s}'.format(d_handler.tag), end=''); sys.stdout.flush()
 
-            # Take the scaled diffraction data for each dataset and create fft
+            # Take the truncated diffraction data for each dataset and create fft
             fft_map = d_handler.tr_sfs.fft_map( resolution_factor = params.maps.resolution_factor,
                                                 d_min             = map_resolution,
                                                 symmetry_flags    = cctbx.maptbx.use_space_group_symmetry  )
-
             # Scale the map
             if   params.maps.scaling == 'none':   pass
             elif params.maps.scaling == 'sigma':  fft_map.apply_sigma_scaling()
@@ -2235,32 +2230,33 @@ class PanddaMultiDatasetAnalyser(object):
             #################################
             # MORPH MAPS TO REFERENCE FRAME #
             #################################
-
             # Create map handler and map to the reference frame
             native_map_handler = map_handler(   map_data  = fft_map.real_map(),
                                                 unit_cell = fft_map.unit_cell() )
-
             # Transform Coordinates
-            masked_cart_d = d_handler.transform_from_reference(points=masked_cart_ref, method=params.alignment.method, point_mappings=masked_cart_mappings)
+            masked_cart_d = d_handler.transform_from_reference( points = masked_cart_ref,
+                                                                method = params.alignment.method,
+                                                                point_mappings = masked_cart_map )
             # Sample the map at these points
             masked_vals_d = native_map_handler.get_cart_values(masked_cart_d)
 
-            # Normalise map - Scale it to the same scale as the reference dataset on the same points
+            # Calculate mean and rms of map values
             d_map_mean = masked_vals_d.min_max_mean().mean
             d_map_rms  = masked_vals_d.standard_deviation_of_the_sample()
-            masked_vals_d = (masked_vals_d - d_map_mean)*(ref_map_holder.meta.map_rms/d_map_rms) + ref_map_holder.meta.map_mean
+            # Normalise map - Scale it to the same scale as the reference dataset on the same points
+#            masked_vals_d = (masked_vals_d - d_map_mean)*(ref_map_holder.meta.map_rms/d_map_rms) + ref_map_holder.meta.map_mean
 
             # Calculate the sparse vector of the masked map values
             morphed_map_sparse = scitbx.sparse.vector(grid.size_1d(), dict(zip(masked_idxs, masked_vals_d)))
             morphed_map        = morphed_map_sparse.as_dense_vector()
-
             # Reshape into right shape of the grid
             morphed_map.reshape(grid)
-
+            # Scale map to reference
+            morphed_map = scale_map_to_reference(ref_map=ref_map_holder.map, map=morphed_map, mask_idxs=scaling_mask)
             # Create map holder
-            map_holder = MapHolder( num         = d_handler.num,
-                                    tag         = d_handler.tag,
-                                    map         = morphed_map,
+            map_holder = MapHolder( num = d_handler.num,
+                                    tag = d_handler.tag,
+                                    map = morphed_map,
                                     # Change these for the 'fake' grid unit_cell and a P1 space_group
                                     unit_cell   = fft_map.unit_cell(),
                                     space_group = fft_map.space_group(),
@@ -2270,7 +2266,6 @@ class PanddaMultiDatasetAnalyser(object):
                                                         'obs_map_mean'    : d_map_mean,
                                                         'obs_map_rms'     : d_map_rms }),
                                     parent      = None  )
-
             return map_holder
 
         self.log('===================================>>>', True)
@@ -2280,22 +2275,25 @@ class PanddaMultiDatasetAnalyser(object):
         map_holder_list = MapHolderList()
 
         # Extract the points for the morphed maps (in the reference frame)
-        masked_gps = list(self.reference_grid().global_mask().outer_mask())
-        masked_idxs = self.reference_grid().global_mask().outer_mask_indices()
+        masked_gps      = list(self.reference_grid().global_mask().outer_mask())
+        masked_idxs     = self.reference_grid().global_mask().outer_mask_indices()
         masked_cart_ref = flex.vec3_double(masked_gps)*self.reference_grid().grid_spacing()
         # Mapping of grid points to rotation matrix keys (residue CA labels)
         if self.params.alignment.method == 'local':
-            masked_cart_mappings = self.reference_grid().partition().query_by_grid_indices(masked_idxs)
+            masked_cart_map = self.reference_grid().partition().query_by_grid_indices(masked_idxs)
         else:
-            masked_cart_mappings = None
+            masked_cart_map = None
 
         # Load maps using multiple cores if possible
         self.log('===================================>>>', True)
         print('Loading Maps (using {!s} cores)'.format(self.args.settings.cpus))
         start = time.time()
-        arg_list = [{   'd_handler':d_handler, 'params':self.params, 'map_resolution':map_resolution, \
-                        'grid':self.reference_grid().grid_indexer(), 'ref_map_holder':ref_map_holder, \
-                        'masked_cart_ref':masked_cart_ref, 'masked_cart_mappings':masked_cart_mappings      } for d_handler in dataset_handlers]
+        arg_list = [{ 'd_handler' : d_handler,    'params' : self.params,     'map_resolution' : map_resolution, \
+                      'grid'      : self.reference_grid().grid_indexer(),     'ref_map_holder' : ref_map_holder, \
+                      'masked_cart_ref' : masked_cart_ref, \
+                      'masked_cart_map' : masked_cart_map, \
+#                      'scaling_mask'    : self.reference_grid().global_mask().outer_mask_indices()      } for d_handler in dataset_handlers]
+                      'scaling_mask'    : self.reference_grid().global_mask().inner_mask_indices()      } for d_handler in dataset_handlers]
         map_holders = easy_mp.pool_map(fixed_func=load_maps_map_func, args=arg_list, processes=self.args.settings.cpus, chunksize=1)
         # Append to the map holder list
         map_holder_list.add(map_holders)
@@ -2914,14 +2912,14 @@ class PanddaMultiDatasetAnalyser(object):
     def pickle(self, pickle_file, pickle_object, overwrite=True):
         """Takes an object and pickles it"""
         if os.path.exists(pickle_file) and not overwrite:
-            self.log('NOT PICKLING: {!s}'.format(pickle_file))
+            self.log('NOT PICKLING: {!s}'.format(os.path.relpath(pickle_file, start=self.out_dir)))
         else:
-            self.log('Pickling Object: ...{!s}'.format(pickle_file[-50:]))
+            self.log('Pickling Object: {!s}'.format(os.path.relpath(pickle_file, start=self.out_dir)))
             easy_pickle.dump(pickle_file, pickle_object)
 
     def unpickle(self, pickle_file):
         """Takes an object and unpickles it"""
-        self.log('Unpickling File: ...{!s}'.format(pickle_file[-50:]))
+        self.log('Unpickling File: {!s}'.format(os.path.relpath(pickle_file, start=self.out_dir)))
         return easy_pickle.load(pickle_file)
 
 class PanddaZMapAnalyser(object):

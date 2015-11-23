@@ -84,9 +84,9 @@ def transform_coordinates_with_flexible_alignment(alignments, coordinates, mappi
     # Iterate through the coords in groups and transform
     for lab, lab_idxs in itertools.groupby(range(num_tot), key=lambda i: sorted_mappings[i]):
         lab_idxs = flex.size_t(lab_idxs)
-        print 'Using RT for {}'.format(lab)
-        print 'on {} points'.format(len(lab_idxs))
-        print 'from idx {} to {}'.format(lab_idxs[0], lab_idxs[-1])
+#        print 'Using RT for {}'.format(lab)
+#        print 'on {} points'.format(len(lab_idxs))
+#        print 'from idx {} to {}'.format(lab_idxs[0], lab_idxs[-1])
         # Extract coordinates for this block
         lab_coords   = sorted_coords.select(lab_idxs)
         lab_mappings = [sorted_mappings[i] for i in lab_idxs]

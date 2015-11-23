@@ -447,6 +447,20 @@ def pandda_main(args):
                                                         map_data    = map_analyser.statistical_maps.mean_map     )
                 return pandda, None
             # ============================================================================>
+            # Plot Mean Map against Reference Map - should be fairly similar...
+            # ============================================================================>
+            # Plot the mean map against the reference map (unsorted)
+            graphs.mean_obs_scatter(        f_name    = os.path.join(pandda.output_handler.get_dir('reference'), 'reference_against_mean_unsorted.png'),
+                                            mean_vals = mean_map.select(pandda.reference_grid().global_mask().outer_mask_indices()),
+                                            obs_vals  = ref_map_holder.map.select(pandda.reference_grid().global_mask().outer_mask_indices())           )
+            # Plot the mean map against the reference map (sorted)
+            graphs.sorted_mean_obs_scatter( f_name    = os.path.join(pandda.output_handler.get_dir('reference'), 'reference_against_mean_sorted.png'),
+                                            mean_vals = sorted(mean_map.select(pandda.reference_grid().global_mask().outer_mask_indices())),
+                                            obs_vals  = sorted(ref_map_holder.map.select(pandda.reference_grid().global_mask().outer_mask_indices()))   )
+            # Plot the reference map distribution
+            pandda.write_map_value_distribution( map_vals    = ref_map_holder.map.select(pandda.reference_grid().global_mask().outer_mask_indices()),
+                                                 output_file = os.path.join(pandda.output_handler.get_dir('reference'), 'reference_map_distribution.png')     )
+            # ============================================================================>
             # Calculate the uncertainty of all loaded maps (needs the mean map to have been calculated)
             # ============================================================================>
             # If not pandda.args.method.recalculate_statistical_maps, then no building_mask datasets will have been added, so don't need to be selective in this function
@@ -483,7 +497,7 @@ def pandda_main(args):
                 # Check to see if already in there
                 if cut_resolution in pandda.stat_maps.get_resolutions():
                     pandda.log('Overwriting existing statistical maps @ {!s}A'.format(cut_resolution))
-                pandda.stat_maps.add(stat_map_list=map_analyser.statistical_maps, resolution=cut_resolution)
+                pandda.stat_maps.add(stat_map_list=map_analyser.statistical_maps, resolution=cut_resolution, overwrite=True)
                 pandda.pickle_the_pandda(components=['stat_maps'])
             # ============================================================================>
             # Write out Grid Point Distributions for interesting grid points (high modality, etc...)
@@ -565,12 +579,9 @@ def pandda_main(args):
                 # Generate masks for this dataset
                 # ============================================================================>
                 # Generate symmetry contacts for this dataset
-                t_temp_1 = time.time()
                 dataset_sym_copies = d_handler.generate_symmetry_copies(rt_method      = pandda.params.alignment.method, 
                                                                         save_operators = False, 
                                                                         buffer         = pandda.params.masks.outer_mask+5   )
-                t_temp_2 = time.time()
-                pandda.log('Sym GEN: {} seconds'.format(t_temp_2-t_temp_1))
                 cache = dataset_sym_copies.atom_selection_cache()
                 dataset_sym_sites_cart = dataset_sym_copies.select(cache.selection('pepnames and not element H')).atoms().extract_xyz()
                 # Generate custom grid mask for this dataset
@@ -581,11 +592,8 @@ def pandda_main(args):
                                                     min_dist   = pandda.params.masks.inner_mask )
                 # Combine the standard mask with the custom mask
                 grid_idxr = pandda.reference_grid().grid_indexer()
-                t_temp_1 = time.time()
                 dataset_total_mask = [gp for gp in pandda.reference_grid().global_mask().total_mask() if dataset_contact_mask.inner_mask_binary()[grid_idxr(gp)] < 0.5]
                 dataset_outer_mask = [gp for gp in pandda.reference_grid().global_mask().outer_mask() if dataset_contact_mask.inner_mask_binary()[grid_idxr(gp)] < 0.5]
-                t_temp_2 = time.time()
-                pandda.log('Mask Combination: {} seconds'.format(t_temp_2-t_temp_1))
 
                 # Write coordinates of symmetry copies 
                 if not os.path.exists(d_handler.output_handler.get_file('symmetry_copies')):    
@@ -595,7 +603,7 @@ def pandda_main(args):
                 # Extract the map for this dataset    
                 ################################################
                 m_handler = map_analyser.dataset_maps.get(tag=d_handler.tag)
-                
+
                 ################################################
                 # AUTOGENERATE SCRIPTS FOR VIEWING THE DATASET #
                 ################################################
