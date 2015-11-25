@@ -25,6 +25,20 @@ pandda_phil_def = """
                 phas_label = None
                     .type = str
             }
+            flags
+                .help = "Flags for individual datasets"
+            {
+                ignore_datasets = None
+                    .help = 'Reject these datasets, don\'t even load them - comma separated list of dataset tags'
+                    .type = str
+                no_analyse = None
+                    .help = 'Don\'t analyse these datasets, only use them to build the distributions - comma separated list of dataset tags'
+                    .type = str
+                no_build = None
+                    .help = 'Don\'t use these datasets to build the distributions, only analyse them - comma separated list of dataset tags'
+                    .type = str
+            }
+
         }
         output
             .help = "Output directory"
@@ -41,14 +55,14 @@ pandda_phil_def = """
         method
             .help = "High Level control of algorithm"
         {
-            reload_existing_datasets = False
-                .help = "Reload existing datasets? (Time-consuming) - if False, will only load new datasets (unprocessed datasets)"
-                .type = bool
-            recalculate_statistical_maps = False
-                .help = "Recalculate all of the statistical maps? (Time-consuming) - if False, looks for existing statistical maps and uses those (reverts to True if none are found)"
+            reload_existing_datasets = True
+                .help = "Reload existing datasets? - if False, will only load new datasets (unprocessed datasets)"
                 .type = bool
             reprocess_existing_datasets = False
                 .help = "Reprocess existing datasets? (Time-consuming) - if False, will only calculate z-maps for new datasets (unprocessed datasets)"
+                .type = bool
+            recalculate_statistical_maps = False
+                .help = "Recalculate all of the statistical maps? (Time-consuming) - if False, looks for existing statistical maps and uses those (reverts to True if none are found)"
                 .type = bool
         }
         params
@@ -63,11 +77,8 @@ pandda_phil_def = """
             filtering
                 .help = "Settings to control when datasets are rejected from the analysis"
             {
-                min_correlation_to_reflection_data = 0.5
-                    .help = "Reject datasets that have a correlation less than this to the reference reflection data "
-                    .type = float
                 max_rmsd_to_reference = 1.5
-                    .help = "Reject datasets that have a calpha rmsd of greater than this to the reference"
+                    .help = "Reject datasets that have a calpha rmsd of greater than this to the reference (after alignment)"
                     .type = float
                 max_rfree = 0.4
                     .help = 'Maximum allowed rfree for a structure (datasets above this are rejected)'
@@ -84,7 +95,7 @@ pandda_phil_def = """
                     .type = choice
                 scaling = none *sigma volume
                     .type = choice
-                resolution_factor = 0.33
+                resolution_factor = 0.25
                     .help = 'Sampling factor for fft-ing the maps'
                     .type = float
                 grid_spacing = 0.5
@@ -114,28 +125,19 @@ pandda_phil_def = """
                     .help = 'Maximum number of datasets used to build distributions'
                     .type = int
                 dynamic_res_limits = True
-                    .help = 'Allow the limits to change depending on the dataset resolution ranges'
+                    .help = 'Allow the analysed resolution limits to change depending on the dataset resolution ranges'
                     .type = bool
                 high_res_upper_limit = 0.0
                     .help = 'Highest resolution limit (maps are never calulcated above this limit)'
                     .type = float
                 high_res_lower_limit = 4.0
-                    .help = 'Lowest resolution limit (datasets below this are rejected)'
+                    .help = 'Lowest resolution limit (datasets below this are ignored)'
                     .type = float
                 high_res_increment = 0.05
                     .help = 'Increment of resolution shell for map analysis'
                     .type = float
-                no_analyse = None
-                    .help = 'Don\'t analyse these datasets, only use them to build the distributions - comma separated list of dataset tags'
-                    .type = str
-                no_build = None
-                    .help = 'Don\'t use these datasets to build the distributions, only analyse them - comma separated list of dataset tags'
-                    .type = str
-                ignore_datasets = None
-                    .help = 'Reject these datasets, don\'t even load them - comma separated list of dataset tags'
-                    .type = str
             }
-            z_map_calculation
+            z_map
                 .help = "Settings to control the calculation of z-maps"
             {
                 map_type = naive adjusted uncertainty *adjusted+uncertainty
@@ -232,23 +234,5 @@ pandda_phil_def = """
             }
         }
     }
-"""
-
-pandda_twiddle_def = """
-    twiddle
-    {
-        direction = toref *fromref
-            .type = choice
-        file
-        {
-            input  = None
-                .type = path
-            output = None
-                .type = path
-        }
-        dataset_pickle = ./pickles/dataset.pickle
-            .type = path
-    }
-
 """
 

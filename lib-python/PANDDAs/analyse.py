@@ -1284,15 +1284,15 @@ class PanddaMultiDatasetAnalyser(object):
             self.datasets.all_masks().add_mask(mask_name=mask_name, mask=[False]*self.datasets.size())
 
         # Initialise masks for datasets that shouldn't be analysed
-        if self.params.analysis.no_analyse:
-            no_analyse_tags = self.params.analysis.no_analyse.split(',')
+        if self.args.input.flags.no_analyse:
+            no_analyse_tags = self.args.input.flags.no_analyse.split(',')
             self.log('Not analysing {!s} Datasets: {!s}'.format(len(no_analyse_tags), ', '.join(no_analyse_tags)))
             no_analyse_mask = [True if d.tag in no_analyse_tags else False for d in self.datasets.all()]
             self.datasets.all_masks().add_mask(mask_name='no_analyse', mask=no_analyse_mask)
 
         # Initialise mask for datasets that shouldn't be used for building
-        if self.params.analysis.no_build:
-            no_build_tags = self.params.analysis.no_build.split(',')
+        if self.args.input.flags.no_build:
+            no_build_tags = self.args.input.flags.no_build.split(',')
             self.log('Not building distributions from {!s} Datasets: {!s}'.format(len(no_build_tags), ', '.join(no_build_tags)))
             no_build_mask = [True if d.tag in no_build_tags else False for d in self.datasets.all()]
             self.datasets.all_masks().add_mask(mask_name='no_build', mask=no_build_mask)
@@ -1541,8 +1541,8 @@ class PanddaMultiDatasetAnalyser(object):
             filtered_new_files = new_files
 
         # Filter out manually labelled datasets to ignore
-        if self.params.analysis.ignore_datasets:
-            ignore_tags = self.params.analysis.ignore_datasets.split(',')
+        if self.args.input.flags.ignore_datasets:
+            ignore_tags = self.args.input.flags.ignore_datasets.split(',')
             self.log('Ignoring {!s} Datasets: {!s}'.format(len(ignore_tags), ', '.join(ignore_tags)))
             re_filtered_new_files = []
             for i, (pdb, mtz, tag) in enumerate(filtered_new_files):

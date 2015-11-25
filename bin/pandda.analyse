@@ -680,13 +680,13 @@ def pandda_main(args):
                 # ============================================================================>
                 # XXX  WHICH MAP TO DO THE BLOB SEARCHING ON  XXX
                 # ============================================================================>
-                if pandda.params.z_map_calculation.map_type == 'naive':
+                if pandda.params.z_map.map_type == 'naive':
                     z_map = z_map_naive_normalised
-                elif pandda.params.z_map_calculation.map_type == 'adjusted':
+                elif pandda.params.z_map.map_type == 'adjusted':
                     z_map = z_map_adjst_normalised
-                elif pandda.params.z_map_calculation.map_type == 'uncertainty':
+                elif pandda.params.z_map.map_type == 'uncertainty':
                     z_map = z_map_uncty_normalised
-                elif pandda.params.z_map_calculation.map_type == 'adjusted+uncertainty':
+                elif pandda.params.z_map.map_type == 'adjusted+uncertainty':
                     z_map = z_map_compl_normalised
 
                 # ============================================================================>
@@ -926,7 +926,7 @@ def pandda_main(args):
                     event_mask = grid_mask( cart_sites = flex.vec3_double(point_cluster.points)*pandda.reference_grid().grid_spacing(),
                                             grid_size  = pandda.reference_grid().grid_size(),
                                             unit_cell  = pandda.reference_grid().unit_cell(),
-                                            max_dist   = 3.0*pandda.reference_grid().grid_spacing(),
+                                            max_dist   = 5.0,
                                             min_dist   = 0.0 )
                     expanded_points = list(event_mask.outer_mask())
                     pandda.log('=> Event sites ({!s} points) expanded to {!s} points'.format(len(point_cluster.points), len(expanded_points)))
