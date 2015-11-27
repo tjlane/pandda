@@ -17,12 +17,15 @@ print 'PANDDAs RUNNING FROM: {}'.format(PANDDA_TOP)
 PANDDA_BIN = os.path.join(PANDDA_TOP, 'bin')
 assert os.path.exists(PANDDA_BIN)
 
+PANDDA_SCRIPTS = os.path.join(PANDDA_TOP, 'scripts')
+if not os.path.exists(PANDDA_SCRIPTS): os.mkdir(PANDDA_SCRIPTS)
+
 pandda_python  = os.path.join(PANDDA_BIN, 'pandda.python')
 pandda_ipython = os.path.join(PANDDA_BIN, 'pandda.ipython')
 pandda_coot    = os.path.join(PANDDA_BIN, 'pandda.coot')
 
-pandda_sh      = os.path.join(PANDDA_TOP, 'scripts', 'pandda.sh')
-pandda_csh     = os.path.join(PANDDA_TOP, 'scripts', 'pandda.csh')
+pandda_sh      = os.path.join(PANDDA_SCRIPTS, 'pandda.sh')
+pandda_csh     = os.path.join(PANDDA_SCRIPTS, 'pandda.csh')
 
 ##########################################################
 # Get the user-given path to the cctbx.python to be used
