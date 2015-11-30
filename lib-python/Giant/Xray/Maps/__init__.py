@@ -10,6 +10,6 @@ def scale_map_to_reference(ref_map, map, mask_idxs):
     # Fit ref = a*map + b
     # a, b
     scale, offset = numpy.polyfit(x=map_vals, y=ref_vals, deg=1)
-    print '\nScale: {}\tOffset: {}'.format(scale, offset)
+#    print '\nScale: {}\tOffset: {}'.format(scale, offset)
 
     return (map*scale) + offset

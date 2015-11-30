@@ -3009,6 +3009,13 @@ class PanddaZMapAnalyser(object):
             assert num_clusters == len(z_clusters)
             return num_clusters, z_clusters
 
+    def validate_clusters(self, z_clusters):
+        for i, (gps, vals) in enumerate(z_clusters):
+            print 'Cluster {}'.format(i)
+            print 'Points: {}'.format(len(gps))
+            print 'Values: {}'.format(len(vals))
+            assert len(gps) == len(vals)
+
     def filter_z_clusters_1(self, z_clusters):
         """Filter the z-clusters on a variety of criteria (size, peak value)"""
 
@@ -3159,8 +3166,8 @@ class PanddaZMapAnalyser(object):
         # Concatenate smaller clusters into larger clusters
         grouped_clusters = []
         for g_id, g_idxs in generate_group_idxs(cluster_groupings):
-            g_gps = z_clusters[g_idxs[0]][0]; [g_gps.extend(z_clusters[i][0]) for i in g_idxs[1:]]
-            g_val = z_clusters[g_idxs[0]][1]; [g_val.extend(z_clusters[i][1]) for i in g_idxs[1:]]
+            g_gps = []; [g_gps.extend(z_clusters[i][0]) for i in g_idxs]
+            g_val = []; [g_val.extend(z_clusters[i][1]) for i in g_idxs]
             grouped_clusters.append((g_gps, g_val))
 
         assert len(grouped_clusters) == max(cluster_groupings)
