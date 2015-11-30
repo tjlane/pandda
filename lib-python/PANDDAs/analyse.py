@@ -205,9 +205,10 @@ class DatasetHandler(object):
     def get_structure_summary(self):
         return structure_summary(hierarchy=self.hierarchy())
 
-    def find_nearest_calpha(self, points):
+    def find_nearest_calpha(self, points, hierarchy=None):
         """Returns the labels of the nearest calpha for each of the given points"""
-        return find_nearest_calphas(hierarchy=self.hierarchy(), coordinates=points)
+        if hierarchy is None: hierarchy = self.hierarchy()
+        return find_nearest_calphas(hierarchy, coordinates=points)
 
     def transform_coordinates(self, points, method, point_mappings=None, inverse=False):
         """Transform coordinates using contained alignments"""
@@ -3011,9 +3012,9 @@ class PanddaZMapAnalyser(object):
 
     def validate_clusters(self, z_clusters):
         for i, (gps, vals) in enumerate(z_clusters):
-            print 'Cluster {}'.format(i)
-            print 'Points: {}'.format(len(gps))
-            print 'Values: {}'.format(len(vals))
+            print('Cluster {}'.format(i))
+            print('Points: {}'.format(len(gps)))
+            print('Values: {}'.format(len(vals)))
             assert len(gps) == len(vals)
 
     def filter_z_clusters_1(self, z_clusters):
@@ -3167,7 +3168,9 @@ class PanddaZMapAnalyser(object):
         grouped_clusters = []
         for g_id, g_idxs in generate_group_idxs(cluster_groupings):
             g_gps = []; [g_gps.extend(z_clusters[i][0]) for i in g_idxs]
+            g_gps = flex.vec3_double(g_gps)
             g_val = []; [g_val.extend(z_clusters[i][1]) for i in g_idxs]
+            g_val = flex.double(g_val)
             grouped_clusters.append((g_gps, g_val))
 
         assert len(grouped_clusters) == max(cluster_groupings)

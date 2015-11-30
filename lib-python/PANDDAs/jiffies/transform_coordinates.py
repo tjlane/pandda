@@ -58,12 +58,22 @@ def run(params):
     # Load the ligand to be twiddled
     hier = iotbx.pdb.hierarchy.input(params.file.input).hierarchy
 
+    if d_handler.local_alignment_transforms:
+        method = 'local'
+        mappings = d_handler.find_nearest_calpha(   points = hier.atoms().extract_xyz(),
+                                                    hierarchy = hier    )
+    else:
+        method = 'global'
+        mappings = None
+
     if params.direction == 'toref':
-        trans_points = d_handler.transform_to_reference(    points=hier.atoms().extract_xyz(),
-                                                            method='global')
+        trans_points = d_handler.transform_to_reference(    points = hier.atoms().extract_xyz(),
+                                                            method = method,
+                                                            point_mappings = mappings   )
     elif params.direction == 'fromref':
-        trans_points = d_handler.transform_from_reference(  points=hier.atoms().extract_xyz(),
-                                                            method='global')
+        trans_points = d_handler.transform_from_reference(  points = hier.atoms().extract_xyz(),
+                                                            method = method,
+                                                            point_mappings = mappings   )
 
     # Try to add symmetry to the output file
     try:    crystal_symmetry = d_handler.mtz_summary.symmetry
