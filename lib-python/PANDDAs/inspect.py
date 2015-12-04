@@ -65,15 +65,15 @@ class PanddaEvent(object):
         # The most recent model of the protein in the pandda maps
         self.fitted_link = os.path.join(self.model_dir, 'pandda-model.pdb')
         # Unfitted model of the protein
-        self.unfitted_model = os.path.join(self.dataset_dir, '{!s}-aligned.pdb'.format(dtag))
+        self.unfitted_model = os.path.join(self.dataset_dir, '{!s}-aligned-structure.pdb'.format(dtag))
         # Maps
-        self.observed_map   = os.path.join(self.dataset_dir, '{!s}-observed.ccp4'.format(dtag))
+        self.observed_map   = os.path.join(self.dataset_dir, '{!s}-aligned-map.ccp4'.format(dtag))
         self.z_map          = os.path.join(self.dataset_dir, '{!s}-z_map.ccp4'.format(dtag))
-        self.mean_diff_map  = os.path.join(self.dataset_dir, '{!s}-mean_diff.ccp4'.format(dtag))
+        self.mean_diff_map  = os.path.join(self.dataset_dir, '{!s}-difference-from-mean.ccp4'.format(dtag))
         try: self.occupancy_map = glob.glob(os.path.join(self.dataset_dir, '{!s}-event_{!s}_occupancy_*_map.ccp4'.format(dtag, self.event_idx)))[0]
         except: raise
 
-        self.dataset_symmetry = os.path.join(self.dataset_dir, '{!s}-sym_contacts.pdb'.format(dtag))
+        self.dataset_symmetry = os.path.join(self.dataset_dir, '{!s}-aligned-sym-contacts.pdb'.format(dtag))
         self.dataset_mask     = os.path.join(self.dataset_dir, '{!s}-masked_grid.ccp4'.format(dtag))
 
         # Ligand Files
@@ -836,7 +836,7 @@ class PanddaGUI(object):
 #############################################################################################
 
 work_dir = os.getcwd()
-hit_list = os.path.join(work_dir, 'analyses', 'event_info.csv')
+hit_list = os.path.join(work_dir, 'analyses', 'pandda_analyse_events.csv')
 
 inspector = PanddaInspector(csv=hit_list, top_dir=work_dir)
 inspector.start_gui()

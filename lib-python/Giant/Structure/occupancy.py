@@ -1,3 +1,4 @@
+from scitbx.array_family import flex
 
 def normalise_occupancies(hierarchy, exclude_conformers=None, max_occ=1.0, min_occ=0.0, in_place=False):
     """Normalise the occupancies of a hierarchy so that the occupancies for a residue sum to 1.0"""

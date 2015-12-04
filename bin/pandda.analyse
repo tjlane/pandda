@@ -172,11 +172,11 @@ def pandda_main(args):
         # ============================================================================>
         # Print the summaries
         # ============================================================================>
-        pandda.log('===================================>>>', True)
-        pandda.log('Grid Summary: ', True)
-        pandda.log(pandda.reference_grid().summary(), True)
-        pandda.log(pandda.reference_grid().local_mask().summary(), True)
-        pandda.log(pandda.reference_grid().global_mask().summary(), True)
+#        pandda.log('===================================>>>', True)
+#        pandda.log('Grid Summary: ', True)
+#        pandda.log(pandda.reference_grid().summary(), True)
+#        pandda.log(pandda.reference_grid().local_mask().summary(), True)
+#        pandda.log(pandda.reference_grid().global_mask().summary(), True)
 
         # ============================================================================>
         # ============================================================================>
@@ -763,7 +763,6 @@ def pandda_main(args):
                 # Contour the grid at a particular Z-Value
                 # ============================================================================>
                 num_clusters, z_clusters = blob_finder.cluster_high_z_values(z_map=z_map, point_mask=dataset_total_mask)
-                blob_finder.validate_clusters(z_clusters)
                 # ============================================================================>
                 # Too many points to cluster -- probably a bad dataset
                 # ============================================================================>
@@ -931,7 +930,7 @@ def pandda_main(args):
                     event_mask = grid_mask( cart_sites = flex.vec3_double(point_cluster.points)*pandda.reference_grid().grid_spacing(),
                                             grid_size  = pandda.reference_grid().grid_size(),
                                             unit_cell  = pandda.reference_grid().unit_cell(),
-                                            max_dist   = 5.0,
+                                            max_dist   = 1.0,
                                             min_dist   = 0.0 )
                     expanded_points = list(event_mask.outer_mask())
                     pandda.log('=> Event sites ({!s} points) expanded to {!s} points'.format(len(point_cluster.points), len(expanded_points)))

@@ -34,13 +34,13 @@ templates {
     temp_prefix = 'temp-'
         .help = 'Prefix to append to temporary files'
         .type = str
-    aligned_template = '{!s}-aligned.pdb'
+    aligned_template = '{!s}-aligned-structure.pdb'
         .help = 'Un-merged structure (major conformation/reference)'
         .type = str
     fitted_template = 'modelled_structures/pandda-model.pdb'
         .help = 'Fitted structure (minor conformation)'
         .type = str
-    merged_template = '{!s}-combined-model.pdb'
+    merged_template = '{!s}-ensemble-model.pdb'
         .help = 'Merged structure (minor + major conformations)'
         .type = str
     refmac_refinement = 'refmac_refine.params'
