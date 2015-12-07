@@ -1101,7 +1101,7 @@ def pandda_main(args):
                 t_event_cluster_start = time.time()
                 # ==================================================>
                 # Cluster events to sites 
-                site_list = cluster_events(events=all_events, cutoff=10.0/pandda.reference_grid().grid_spacing(), linkage='single')
+                site_list = cluster_events(events=all_events, cutoff=5.0/pandda.reference_grid().grid_spacing(), linkage='single')
                 # Sort sites by largest Z-Value
                 site_list.sort(key=lambda s: (s.info.num_events, max([e.cluster.max for e in s.children])), reverse=True).renumber()
                 # Add meta to the site list

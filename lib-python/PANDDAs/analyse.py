@@ -356,8 +356,6 @@ def structure_summary(hierarchy):
     # Counts of different things in the structure
     o_counts = hierarchy.overall_counts()
 
-    assert o_counts.chain_ids.values().count(1) == len(o_counts.chain_ids.values()), 'CHAINS MAY ONLY BE PRESENT ONCE IN STRUCTURE'
-
     # Chain Summaries
     s_dict['chain_sequences'] = {}
     s_dict['chain_classes'] = {}
