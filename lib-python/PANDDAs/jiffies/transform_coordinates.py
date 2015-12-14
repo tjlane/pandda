@@ -60,8 +60,14 @@ def run(params):
 
     if d_handler.local_alignment_transforms:
         method = 'local'
+        if params.direction == 'toref':
+            map_hier = d_handler.new_structure().hierarchy
+        else:
+            map_hier = d_handler.new_structure().hierarchy
+            map_hier.atoms().set_xyz(d_handler.transform_to_reference(points=map_hier.atoms().extract_xyz(), method=method))
+
         mappings = d_handler.find_nearest_calpha(   points = hier.atoms().extract_xyz(),
-                                                    hierarchy = hier    )
+                                                    hierarchy = map_hier    )
     else:
         method = 'global'
         mappings = None
