@@ -5,9 +5,34 @@ import scipy, numpy
 from scitbx.array_family import flex
 
 import iotbx.pdb
-from cctbx import crystal
+from cctbx import crystal, sgtbx
 
 from Giant.Stats.Cluster import find_connected_groups
+
+def match_sites_by_symmetry(ref_sites, query_sites, unit_cell, space_group, cutoff=5):
+    """Pair sites in query_sites to sites in ref_sites, allowing for symmetry"""
+
+    pairings = numpy.zeros((len(ref_sites), len(query_sites)), dtype=numpy.int)
+
+    for i_ref, ref in enumerate(ref_sites):
+        ref_frac = unit_cell.fractionalize(ref)
+        sym_sites_ref = sgtbx.sym_equiv_sites(space_group   = space_group,
+                                              unit_cell     = unit_cell,
+                                              original_site = ref_frac  )
+
+        for i_query, query in enumerate(query_sites):
+            query_frac = unit_cell.fractionalize(query)
+            min_dist = sgtbx.min_sym_equiv_distance_info(sym_sites_ref, query_frac).dist()
+            if min_dist < cutoff:
+                pairings[i_ref, i_query] = 1
+
+    return pairings
+
+def combine_hierarchies(list_of_hierarchies):
+    """Combine a list of hierarchies into one hierarchy -- Requires all of the chain identifiers to be unique"""
+    top_h = list_of_hierarchies[0].deep_copy()
+    for next_h in list_of_hierarchies[1:]: top_h.transfer_chains_from_other(next_h.deep_copy())
+    return top_h
 
 def find_symmetry_equivalent_groups(points_frac, sym_ops, unit_cell, cutoff_cart):
     """Group sets of points by minimum distance between points, allowing for symmetry"""
@@ -46,19 +71,6 @@ def find_symmetry_equivalent_groups(points_frac, sym_ops, unit_cell, cutoff_cart
     # Condense the cluster equivalence - take max over the symmetry operations and group by connected paths
     sym_groups = find_connected_groups(connection_matrix=equiv_sites.max(axis=0))
     return sym_groups
-
-def generate_adjacent_symmetry_copies(ref_hierarchy, crystal_symmetry, buffer_thickness=0, method=2):
-    """Find symmetry copies of the protein in contact with the asu and generate these copies"""
-
-    sym_ops_mat = get_symmetry_operations_to_generate_crystal_contacts( ref_hierarchy=ref_hierarchy,
-                                                                        crystal_symmetry=crystal_symmetry,
-                                                                        buffer_thickness=buffer_thickness   )
-
-    sym_hierarchies, chain_mappings = generate_crystal_copies_from_operations(ref_hierarchy=ref_hierarchy,
-                                                                              crystal_symmetry=crystal_symmetry,
-                                                                              sym_ops_mat=sym_ops_mat)
-
-    return sym_ops_mat, sym_hierarchies, chain_mappings
 
 def get_symmetry_operations_to_generate_crystal_contacts(ref_hierarchy, crystal_symmetry, buffer_thickness):
     """Use an alternate method to identify the symmetry operations required to generate crystal contacts"""
@@ -148,11 +160,18 @@ def generate_crystal_copies_from_operations(ref_hierarchy, crystal_symmetry, sym
 
     return sym_hierarchies, chain_mappings
 
-def combine_hierarchies(list_of_hierarchies):
-    """Combine a list of hierarchies into one hierarchy -- Requires all of the chain identifiers to be unique"""
-    top_h = list_of_hierarchies[0].deep_copy()
-    for next_h in list_of_hierarchies[1:]: top_h.transfer_chains_from_other(next_h.deep_copy())
-    return top_h
+def generate_adjacent_symmetry_copies(ref_hierarchy, crystal_symmetry, buffer_thickness=0, method=2):
+    """Find symmetry copies of the protein in contact with the asu and generate these copies"""
+
+    sym_ops_mat = get_symmetry_operations_to_generate_crystal_contacts( ref_hierarchy=ref_hierarchy,
+                                                                        crystal_symmetry=crystal_symmetry,
+                                                                        buffer_thickness=buffer_thickness   )
+
+    sym_hierarchies, chain_mappings = generate_crystal_copies_from_operations(ref_hierarchy=ref_hierarchy,
+                                                                              crystal_symmetry=crystal_symmetry,
+                                                                              sym_ops_mat=sym_ops_mat)
+
+    return sym_ops_mat, sym_hierarchies, chain_mappings
 
 if __name__=='__main__':
 
