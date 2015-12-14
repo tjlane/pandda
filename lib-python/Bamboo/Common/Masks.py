@@ -40,9 +40,15 @@ class mask_collection(object):
         return self.masks[mask_name][self._entry_ids.index(entry_id)]
 
     def mask(self, mask_name, input_list, invert=False):
-        """Mask `input_list` according to the mask `mask`"""
+        """Mask input_list according to the mask with name mask_name"""
         assert isinstance(invert, bool)
         return [l for m, l in zip(self.masks[mask_name], input_list) if m != invert]
+
+    def mask_custom(self, mask, input_list, invert=False):
+        """Mask input_list according to the mask"""
+        assert isinstance(invert, bool)
+        assert len(mask) == self._mask_length, 'Given mask is the wrong length'
+        return [l for m, l in zip(mask, input_list) if m != invert]
 
     def combine_masks(self, mask_names):
         """Combine lots of different masks"""

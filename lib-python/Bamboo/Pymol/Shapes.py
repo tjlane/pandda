@@ -1,5 +1,8 @@
-from pymol import cmd
-from pymol.cgo import *
+try:
+    from pymol import cmd
+    from pymol.cgo import *
+except:
+    pass
 
 class shape(object):
     def draw(self, name):
@@ -45,7 +48,7 @@ class sphere(shape):
         s += "]"
         return s
 
-if 1 or __name__ == '__main__':
+if __name__ == '__main__':
 
     a=cylinder((0,0,0),(1,1,1))
     print a.as_cmd('cylinder')
