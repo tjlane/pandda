@@ -4,6 +4,7 @@ import gtk
 import pandas
 
 from PANDDAs import graphs, inspect_html
+from PANDDAs.constants import PanddaAnalyserFilenames, PanddaDatasetFilenames, PanddaDatasetPNGFilenames
 
 try:
     set_nomenclature_errors_on_read("ignore")
@@ -27,7 +28,7 @@ class PanddaEvent(object):
         # Site Number (1 -> m)
         self.site_idx  = int(info['site_idx'])
         # Event Info
-        self.est_occ = round(info['est_occupancy'], 3)
+        self.est_occ = round(info['est_occupancy'], 2)
         # Z statistics
         self.z_peak = info['z_peak']
         self.z_mean = info['z_mean']
@@ -45,16 +46,10 @@ class PanddaEvent(object):
         # Identify other common directories
         self.stat_map_dir = os.path.join(top_dir, 'statistical_maps')
         self.ref_dir      = os.path.join(top_dir, 'reference')
-        # Symmetry contacts
-        self.reference_symmetry = os.path.join(self.ref_dir, 'reference.symmetry.pdb')
         # Find the directory for the dataset
-        self.dataset_dir = glob.glob(os.path.join(top_dir, 'interesting_datasets/*{!s}*'.format(dtag)))
-        if len(self.dataset_dir) != 1:
-            self.dataset_dir = glob.glob(os.path.join(top_dir, 'interesting_datasets/*{!s}'.format(dtag)))
-        if len(self.dataset_dir) != 1:
-            self.dataset_dir = glob.glob(os.path.join(top_dir, 'interesting_datasets/{!s}'.format(dtag)))
+        self.dataset_dir  = glob.glob(os.path.join(top_dir, 'interesting_datasets/{!s}'.format(dtag)))
         assert len(self.dataset_dir) == 1, 'Non-unique dataset directory found: {!s}'.format(dtag)
-        self.dataset_dir = self.dataset_dir[0]
+        self.dataset_dir  = self.dataset_dir[0]
 
         # Identify dataset subdirectories and files
         self.ligand_dir = os.path.join(self.dataset_dir, 'ligand_files')
@@ -63,18 +58,15 @@ class PanddaEvent(object):
         if not os.path.exists(self.model_dir): os.mkdir(self.model_dir)
 
         # The most recent model of the protein in the pandda maps
-        self.fitted_link = os.path.join(self.model_dir, 'pandda-model.pdb')
+        self.fitted_link        = os.path.join(self.model_dir,      PanddaDatasetFilenames.modelled_structure.format(dtag)  )
         # Unfitted model of the protein
-        self.unfitted_model = os.path.join(self.dataset_dir, '{!s}-aligned-structure.pdb'.format(dtag))
+        self.unfitted_model     = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.aligned_structure.format(dtag)   )
         # Maps
-        self.observed_map   = os.path.join(self.dataset_dir, '{!s}-aligned-map.ccp4'.format(dtag))
-        self.z_map          = os.path.join(self.dataset_dir, '{!s}-z_map.ccp4'.format(dtag))
-        self.mean_diff_map  = os.path.join(self.dataset_dir, '{!s}-difference-from-mean.ccp4'.format(dtag))
-        try: self.occupancy_map = glob.glob(os.path.join(self.dataset_dir, '{!s}-event_{!s}_occupancy_*_map.ccp4'.format(dtag, self.event_idx)))[0]
-        except: raise
-
-        self.dataset_symmetry = os.path.join(self.dataset_dir, '{!s}-aligned-sym-contacts.pdb'.format(dtag))
-        self.dataset_mask     = os.path.join(self.dataset_dir, '{!s}-masked_grid.ccp4'.format(dtag))
+        self.observed_map       = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.sampled_map.format(dtag)         )
+        self.z_map              = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.z_map.format(dtag)               )
+        self.mean_diff_map      = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.mean_diff_map.format(dtag)       )
+        self.occupancy_map      = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.occupancy_map.format(dtag, self.event_idx, self.est_occ))
+        self.dataset_symmetry   = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.symmetry_copies.format(dtag)     )
 
         # Ligand Files
         lig_files = glob.glob(os.path.join(self.ligand_dir, '*'))
@@ -426,26 +418,13 @@ class PanddaMolHandler(object):
         set_map_displayed(d, 0)
 
         # Occupancy Map
-#        try:
         o = handle_read_ccp4_map(e.occupancy_map, 0)
         set_last_map_contour_level(1)
         set_map_displayed(o, 1)
-#        except: o = z
 
         # Symmetry contacts
         r = read_pdb(e.dataset_symmetry)
         set_mol_displayed(r, 0)
-
-        ############################################
-##       Reference Sym Contacts
-#        r = read_pdb(e.reference_symmetry)
-#        set_mol_displayed(r, 0)
-#
-##       Dataset Mask
-#        m = handle_read_ccp4_map(e.dataset_mask, 0)
-#        set_last_map_contour_level(1)
-#        set_map_displayed(o, 0)
-        ############################################
 
         # More Settings
         set_scrollable_map(o)

@@ -58,7 +58,7 @@ def write_analyse_html(pandda):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='site_bar_graph')),
+    output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='analyse_site_graph')),
                                        'title': 'Identified Site Summary' })
     # ===========================================================>
     # Progress Bars

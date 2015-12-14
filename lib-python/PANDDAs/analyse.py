@@ -47,64 +47,8 @@ from PANDDAs import PANDDA_VERSION
 from PANDDAs.phil import pandda_phil_def
 from PANDDAs.html import PANDDA_HTML_ENV
 from PANDDAs.settings import PANDDA_TOP, PANDDA_TEXT
+from PANDDAs.constants import *
 from PANDDAs.holders import *
-
-STRUCTURE_MASK_NAMES = [    'bad structure - chain counts',
-                            'bad structure - chain ids',
-                            'bad structure - chain sequences',
-                            'bad structure - residue counts',
-                            'bad structure - atom counts',
-                            'bad structure - non-identical structures',
-                            'bad structure - different space group'    ]
-CRYSTAL_MASK_NAMES   = [    'bad crystal - isomorphous crystal',
-                            'bad crystal - isomorphous structure',
-                            'bad crystal - space group',
-                            'bad crystal - data quality',
-                            'bad crystal - data correlation',
-                            'bad crystal - rfree'  ]
-REJECT_MASK_NAMES    = [    'rejected - total',
-                            'rejected - crystal',
-                            'rejected - structure',
-                            'rejected - unknown'  ]
-FLAG_MASK_NAMES      = [    'noisy zmap',
-                            'interesting',
-                            'analysed'  ]
-
-DATASET_INFO_FIELDS  = [    'high_resolution',
-                            'low_resolution',
-                            'r_work',
-                            'r_free',
-                            'rmsd_to_mean',
-                            'space_group',
-                            'uc_a',
-                            'uc_b',
-                            'uc_c',
-                            'uc_alpha',
-                            'uc_beta',
-                            'uc_gamma',
-                            'uc_vol'                ]
-DATASET_MAP_FIELDS   = [    'analysed_resolution',
-                            'map_uncertainty',
-                            'obs_map_mean',
-                            'obs_map_rms',
-                            'z_map_mean',
-                            'z_map_std',
-                            'z_map_skew',
-                            'z_map_kurt'            ]
-DATASET_EVENT_FIELDS = [    'site_idx',
-                            'est_occupancy',
-                            'z_peak',
-                            'z_mean',
-                            'cluster_size',
-                            'x','y','z',
-                            'refx','refy','refz'    ]
-SITE_TABLE_FIELDS    = [    'centroid',
-                            'num_events',
-                            'nearest_residue 1',
-                            'nearest_residue 2',
-                            'nearest_residue 3',
-                            'native_centroid',
-                            'near_crystal_contacts'     ]
 
 # SET FILTERING CONSTANTS
 FILTER_SCALING_CORRELATION_CUTOFF = 0.7
@@ -118,13 +62,13 @@ class DatasetHandler(object):
         self.num = dataset_number
         # Store the tag for the dataset
         if dataset_tag:
-            self.tag = dataset_tag
+            self.tag = name_prefix + dataset_tag
         else:
             # If num < 0 - mark as a reference dataset
             if self.num < 0:  self.tag = 'REF{:05d}'.format(self.num)
             else:             self.tag = 'D{:05d}'.format(self.num)
         # Store a name for the dataset
-        self.name = name_prefix + '{!s}'.format(self.tag)
+        self.name = name_prefix + '{!s}'.format(dataset_tag)
         # Output Directories
         self.output_handler = None
         self.child = None
@@ -683,29 +627,12 @@ class PanddaMapAnalyser(object):
 
         return z_map_vals
 
-class PanddaTableFields:
-    all_dataset_fields     = DATASET_INFO_FIELDS
-    all_dataset_map_fields = DATASET_MAP_FIELDS
-    all_event_fields       = DATASET_EVENT_FIELDS
-    all_site_fields        = SITE_TABLE_FIELDS
-
-class PanddaMaskNames:
-    structure_mask_names = STRUCTURE_MASK_NAMES
-    crystal_mask_names   = CRYSTAL_MASK_NAMES
-    reject_mask_names    = REJECT_MASK_NAMES
-    flag_mask_names      = FLAG_MASK_NAMES
-    custom_mask_names    = ['no_analyse', 'no_build']
-    all_mask_names       = structure_mask_names + crystal_mask_names + reject_mask_names + flag_mask_names + custom_mask_names
-
 class PanddaMultiDatasetAnalyser(object):
     """Class for the processing of datasets from a fragment soaking campaign"""
 
     _version = PANDDA_VERSION
 
     def __init__(self, args=None):
-#                    out_dir='./pandda', datadir='./Processing', pdb_style='*/refine.pdb', mtz_style='*/refine.mtz',
-#                    ref_pdb='./reference.pdb', ref_mtz='./reference.mtz', run_mol_subst=False,
-#                    verbose=True, keep_maps_in_memory=False, maxmemory=25):
         """Class for the processing of datasets from a fragment soaking campaign"""
 
         # Allow the program to pull from the command line if no arguments are given
@@ -939,7 +866,6 @@ class PanddaMultiDatasetAnalyser(object):
         # Input
         assert p.input.data_dirs is not None, 'pandda.input.data_dirs IS NOT DEFINED'
         assert p.input.pdb_style, 'pandda.input.pdb_style IS NOT DEFINED'
-#        assert p.input.mtz_style, 'pandda.input.mtz_style IS NOT DEFINED'
         assert p.input.lig_style, 'pandda.input.lig_style IS NOT DEFINED'
         # Output
         assert p.output.out_dir, 'pandda.output.out_dir IS NOT DEFINED'
@@ -949,6 +875,9 @@ class PanddaMultiDatasetAnalyser(object):
 
         # Create a file and directory organiser
         self.output_handler = output_file_object(rootdir=self.out_dir)
+
+        # Filename templates
+        f = PanddaAnalyserFilenames
 
         # ===============================================================================>
         # Global Directories that do not change from run to run
@@ -974,35 +903,40 @@ class PanddaMultiDatasetAnalyser(object):
         # ================================================>
         # Input + Status parameters
         # ================================================>
-        self.output_handler.add_file(file_name='pandda.eff',     file_tag='pandda_settings', dir_tag='root')
-        self.output_handler.add_file(file_name='pandda.running', file_tag='pandda_status_running', dir_tag='root')
-        self.output_handler.add_file(file_name='pandda.done',    file_tag='pandda_status_done', dir_tag='root')
+        self.output_handler.add_file(file_name='pandda.eff',        file_tag='pandda_settings',         dir_tag='root')
+        self.output_handler.add_file(file_name='pandda.running',    file_tag='pandda_status_running',   dir_tag='root')
+        self.output_handler.add_file(file_name='pandda.done',       file_tag='pandda_status_done',      dir_tag='root')
 
         # ================================================>
         # Somewhere to store the analyses/summaries
         # ================================================>
         self.output_handler.add_dir(dir_name='analyses', dir_tag='analyses', top_dir_tag='root')
         # Store dataset summary graphs
-        self.output_handler.add_dir(dir_name='dataset_graphs', dir_tag='d_graphs', top_dir_tag='analyses')
-        self.output_handler.add_file(file_name='dataset_resolutions.png',  file_tag='d_resolutions',  dir_tag='d_graphs')
-        self.output_handler.add_file(file_name='dataset_rfactors.png',     file_tag='d_rfactors',     dir_tag='d_graphs')
-        self.output_handler.add_file(file_name='dataset_rmsd_to_mean.png', file_tag='d_rmsd_to_mean', dir_tag='d_graphs')
-        self.output_handler.add_file(file_name='dataset_cell_axes.png',    file_tag='d_cell_axes',    dir_tag='d_graphs')
-        self.output_handler.add_file(file_name='dataset_cell_angles.png',  file_tag='d_cell_angles',  dir_tag='d_graphs')
-        self.output_handler.add_file(file_name='dataset_cell_volumes.png', file_tag='d_cell_volumes', dir_tag='d_graphs')
+        self.output_handler.add_dir(dir_name='dataset_graph_summaries', dir_tag='d_graphs', top_dir_tag='analyses')
+        self.output_handler.add_file(file_name='dataset_resolutions.png',           file_tag='d_resolutions',  dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_rfactors.png',              file_tag='d_rfactors',     dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_rmsd_to_mean.png',          file_tag='d_rmsd_to_mean', dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_cell_axes.png',             file_tag='d_cell_axes',    dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_cell_angles.png',           file_tag='d_cell_angles',  dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_cell_volumes.png',          file_tag='d_cell_volumes', dir_tag='d_graphs')
         # Somewhere to store the dataset information (general values)
-        self.output_handler.add_file(file_name='all_datasets_info.csv',          file_tag='dataset_info',  dir_tag='analyses')
-        self.output_handler.add_file(file_name='all_datasets_info_maps.csv',     file_tag='dataset_map_info',  dir_tag='analyses')
-        self.output_handler.add_file(file_name='all_datasets_info_combined.csv', file_tag='dataset_combined_info',  dir_tag='analyses')
+        self.output_handler.add_file(file_name=f.dataset_info,                      file_tag='dataset_info',            dir_tag='analyses')
+        self.output_handler.add_file(file_name=f.dataset_map_info,                  file_tag='dataset_map_info',        dir_tag='analyses')
+        self.output_handler.add_file(file_name=f.dataset_combined_info,             file_tag='dataset_combined_info',   dir_tag='analyses')
         # Somewhere to store the dataset information (identified events + sites)
-        self.output_handler.add_file(file_name='pandda_analyse_events.csv',   file_tag='event_info',  dir_tag='analyses')
-        self.output_handler.add_file(file_name='pandda_analyse_sites.csv',    file_tag='site_info',  dir_tag='analyses')
-        self.output_handler.add_file(file_name='_point_distributions.csv', file_tag='point_distributions', dir_tag='analyses')
+        self.output_handler.add_file(file_name=f.event_info,                        file_tag='event_info',          dir_tag='analyses')
+        self.output_handler.add_file(file_name=f.site_info,                         file_tag='site_info',           dir_tag='analyses')
+        self.output_handler.add_file(file_name='_point_distributions.csv',          file_tag='point_distributions', dir_tag='analyses')
         # Somewhere to store the analysis summaries - for the user
         self.output_handler.add_dir(dir_name='results_summaries', dir_tag='output_summaries', top_dir_tag='root')
-        self.output_handler.add_file(file_name='pandda_initial.html',      file_tag='initial_html',   dir_tag='output_summaries')
-        self.output_handler.add_file(file_name='pandda_analyse.html',      file_tag='analyse_html',   dir_tag='output_summaries')
-        self.output_handler.add_file(file_name='pandda_analyse_sites.png', file_tag='site_bar_graph', dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.initial.html,                      file_tag='initial_html',        dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.analyse.html,                      file_tag='analyse_html',        dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.analyse_site_graph,                file_tag='analyse_site_graph',  dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.pymol_sites_py,                    file_tag='pymol_sites_py',      dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.pymol_sites_pml,                   file_tag='pymol_sites_pml',     dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.pymol_sites_png_1,                 file_tag='pymol_sites_png_1',   dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.pymol_sites_png_2,                 file_tag='pymol_sites_png_2',   dir_tag='output_summaries')
+
         # Somewhere to store the pickled objects
         self.output_handler.add_dir(dir_name='pickled_panddas', dir_tag='pickle', top_dir_tag='root')
 
@@ -1012,10 +946,10 @@ class PanddaMultiDatasetAnalyser(object):
 
         # Reference Structure and Dataset
         self.output_handler.add_dir(dir_name='reference', dir_tag='reference', top_dir_tag='root')
-        self.output_handler.add_file(file_name='reference.pdb',          file_tag='reference_structure', dir_tag='reference')
-        self.output_handler.add_file(file_name='reference.mtz',          file_tag='reference_dataset', dir_tag='reference')
-        self.output_handler.add_file(file_name='reference.shifted.pdb',  file_tag='reference_on_origin', dir_tag='reference')
-        self.output_handler.add_file(file_name='reference.symmetry.pdb', file_tag='reference_symmetry', dir_tag='reference')
+        self.output_handler.add_file(file_name=f.reference_structure,               file_tag='reference_structure', dir_tag='reference')
+        self.output_handler.add_file(file_name=f.reference_dataset,                 file_tag='reference_dataset',   dir_tag='reference')
+        self.output_handler.add_file(file_name=f.reference_on_origin,               file_tag='reference_on_origin', dir_tag='reference')
+        self.output_handler.add_file(file_name=f.reference_symmetry,                file_tag='reference_symmetry',  dir_tag='reference')
 
         # ===============================================================================>
         # Standard template files that will be populated when needed
@@ -1023,13 +957,13 @@ class PanddaMultiDatasetAnalyser(object):
 
         # Statistical Maps
         self.output_handler.add_dir(dir_name='statistical_maps', dir_tag='statistical_maps', top_dir_tag='root')
-        self.output_handler.add_file(file_name='{!s}A-mean_map.ccp4', file_tag='mean_map', dir_tag='statistical_maps')
-        self.output_handler.add_file(file_name='{!s}A-medn_map.ccp4', file_tag='medn_map', dir_tag='statistical_maps')
-        self.output_handler.add_file(file_name='{!s}A-stds_map.ccp4', file_tag='stds_map', dir_tag='statistical_maps')
-        self.output_handler.add_file(file_name='{!s}A-sadj_map.ccp4', file_tag='sadj_map', dir_tag='statistical_maps')
-        self.output_handler.add_file(file_name='{!s}A-skew_map.ccp4', file_tag='skew_map', dir_tag='statistical_maps')
-        self.output_handler.add_file(file_name='{!s}A-kurt_map.ccp4', file_tag='kurt_map', dir_tag='statistical_maps')
-        self.output_handler.add_file(file_name='{!s}A-bimo_map.ccp4', file_tag='bimo_map', dir_tag='statistical_maps')
+        self.output_handler.add_file(file_name=f.mean_map,                          file_tag='mean_map',            dir_tag='statistical_maps')
+        self.output_handler.add_file(file_name=f.medn_map,                          file_tag='medn_map',            dir_tag='statistical_maps')
+        self.output_handler.add_file(file_name=f.stds_map,                          file_tag='stds_map',            dir_tag='statistical_maps')
+        self.output_handler.add_file(file_name=f.sadj_map,                          file_tag='sadj_map',            dir_tag='statistical_maps')
+        self.output_handler.add_file(file_name=f.skew_map,                          file_tag='skew_map',            dir_tag='statistical_maps')
+        self.output_handler.add_file(file_name=f.kurt_map,                          file_tag='kurt_map',            dir_tag='statistical_maps')
+        self.output_handler.add_file(file_name=f.bimo_map,                          file_tag='bimo_map',            dir_tag='statistical_maps')
 
     def _run_pickle_setup(self):
         """Initialise all of the pickle filenames"""
@@ -1037,19 +971,19 @@ class PanddaMultiDatasetAnalyser(object):
         # Pickle Handler
         self.pickle_handler = output_file_object(rootdir=self.output_handler.get_dir('pickle'))
         # Pickled Reference Objects
-        self.pickle_handler.add_file(file_name='reference_grid.pickle', file_tag='reference_grid')
-        self.pickle_handler.add_file(file_name='reference_dataset.pickle', file_tag='reference_dataset')
+        self.pickle_handler.add_file(file_name='reference_grid.pickle',     file_tag='reference_grid')
+        self.pickle_handler.add_file(file_name='reference_dataset.pickle',  file_tag='reference_dataset')
         # Pickled Datasets
-        self.pickle_handler.add_file(file_name='dataset_masks.pickle', file_tag='dataset_masks')
-        self.pickle_handler.add_file(file_name='dataset_meta.pickle', file_tag='dataset_meta')
+        self.pickle_handler.add_file(file_name='dataset_masks.pickle',      file_tag='dataset_masks')
+        self.pickle_handler.add_file(file_name='dataset_meta.pickle',       file_tag='dataset_meta')
         # Pickled Information
-        self.pickle_handler.add_file(file_name='dataset_info.pickle', file_tag='dataset_info')
-        self.pickle_handler.add_file(file_name='dataset_map_info.pickle', file_tag='map_info')
+        self.pickle_handler.add_file(file_name='dataset_info.pickle',       file_tag='dataset_info')
+        self.pickle_handler.add_file(file_name='dataset_map_info.pickle',   file_tag='map_info')
         # Pickled Stats
-        self.pickle_handler.add_file(file_name='statistical_maps.pickle', file_tag='stat_maps')
+        self.pickle_handler.add_file(file_name='statistical_maps.pickle',   file_tag='stat_maps')
 
         # Pickled SELF
-        self.pickle_handler.add_file(file_name='my_pandda.pickle', file_tag='my_pandda')
+        self.pickle_handler.add_file(file_name='my_pandda.pickle',          file_tag='my_pandda')
 
     def load_pickled_objects(self):
         """Loads any pickled objects it finds"""
@@ -1607,8 +1541,6 @@ class PanddaMultiDatasetAnalyser(object):
             self.log('Adding more datasets')
             self.log('{!s} already loaded'.format(self.datasets.size()))
             self.log('{!s} not loaded'.format(self.pickled_dataset_meta.number_of_datasets - self.datasets.size()))
-            self.log('tags: X -> X')
-            self.log('nums: Y -> Y')
 
         # Counting offset for dataset index
         if self.pickled_dataset_meta: n_offset = self.pickled_dataset_meta.number_of_datasets
@@ -1626,42 +1558,46 @@ class PanddaMultiDatasetAnalyser(object):
 
         lig_style = self.args.input.lig_style.strip('/')
 
+        # Output Path Templates
+        f = PanddaDatasetFilenames
+        p = PanddaDatasetPNGFilenames
+
         for d_handler in loaded_datasets:
 
             # Create a file manager object
             d_handler.initialise_output_directory(outputdir=os.path.join(self.output_handler.get_dir('processed_datasets'), d_handler.name))
 
             # Main input/output files
-            d_handler.output_handler.add_file(file_name='{!s}-pandda-input.pdb'.format(d_handler.tag), file_tag='input_structure')
-            d_handler.output_handler.add_file(file_name='{!s}-pandda-input.mtz'.format(d_handler.tag), file_tag='input_data')
-            d_handler.output_handler.add_file(file_name='{!s}-info.csv'.format(d_handler.tag), file_tag='dataset_info', dir_tag='root')
-            d_handler.output_handler.add_file(file_name='{!s}-aligned-structure.pdb'.format(d_handler.tag), file_tag='aligned_structure')
-            d_handler.output_handler.add_file(file_name='{!s}-aligned-sym-contacts.pdb'.format(d_handler.tag), file_tag='symmetry_copies')
-            d_handler.output_handler.add_file(file_name='{!s}-aligned-map.ccp4'.format(d_handler.tag), file_tag='sampled_map')
-            d_handler.output_handler.add_file(file_name='{!s}-difference-from-mean.ccp4'.format(d_handler.tag), file_tag='mean_diff_map')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map.ccp4'.format(d_handler.tag), file_tag='z_map')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_naive.ccp4'.format(d_handler.tag), file_tag='z_map_naive')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_naive_normalised.ccp4'.format(d_handler.tag), file_tag='z_map_naive_normalised')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_uncertainty.ccp4'.format(d_handler.tag), file_tag='z_map_uncertainty')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_uncertainty_normalised.ccp4'.format(d_handler.tag), file_tag='z_map_uncertainty_normalised')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_adjusted.ccp4'.format(d_handler.tag), file_tag='z_map_corrected')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_adjusted_normalised.ccp4'.format(d_handler.tag), file_tag='z_map_corrected_normalised')
-            d_handler.output_handler.add_file(file_name='{!s}-event_{!s}_occupancy_{!s}_map.ccp4'.format(d_handler.tag, '{!s}', '{!s}'), file_tag='occupancy_map')
+            d_handler.output_handler.add_file(file_name=f.input_structure.format(d_handler.tag),                    file_tag='input_structure'              )
+            d_handler.output_handler.add_file(file_name=f.input_data.format(d_handler.tag),                         file_tag='input_data'                   )
+            d_handler.output_handler.add_file(file_name=f.dataset_info.format(d_handler.tag),                       file_tag='dataset_info'                 )
+            d_handler.output_handler.add_file(file_name=f.aligned_structure.format(d_handler.tag),                  file_tag='aligned_structure'            )
+            d_handler.output_handler.add_file(file_name=f.symmetry_copies.format(d_handler.tag),                    file_tag='symmetry_copies'              )
+            d_handler.output_handler.add_file(file_name=f.sampled_map.format(d_handler.tag),                        file_tag='sampled_map'                  )
+            d_handler.output_handler.add_file(file_name=f.mean_diff_map.format(d_handler.tag),                      file_tag='mean_diff_map'                )
+            d_handler.output_handler.add_file(file_name=f.z_map.format(d_handler.tag),                              file_tag='z_map'                        )
+            d_handler.output_handler.add_file(file_name=f.z_map_naive.format(d_handler.tag),                        file_tag='z_map_naive'                  )
+            d_handler.output_handler.add_file(file_name=f.z_map_naive_norm.format(d_handler.tag),                   file_tag='z_map_naive_normalised'       )
+            d_handler.output_handler.add_file(file_name=f.z_map_uncertainty.format(d_handler.tag),                  file_tag='z_map_uncertainty'            )
+            d_handler.output_handler.add_file(file_name=f.z_map_uncertainty_norm.format(d_handler.tag),             file_tag='z_map_uncertainty_normalised' )
+            d_handler.output_handler.add_file(file_name=f.z_map_corrected.format(d_handler.tag),                    file_tag='z_map_corrected'              )
+            d_handler.output_handler.add_file(file_name=f.z_map_corrected_norm.format(d_handler.tag),               file_tag='z_map_corrected_normalised'   )
+            d_handler.output_handler.add_file(file_name=f.occupancy_map.format(d_handler.tag, '{!s}', '{!s}'),      file_tag='occupancy_map'                )
 
             # Miscellaneous files
-            d_handler.output_handler.add_file(file_name='{!s}-high_z_mask.ccp4'.format(d_handler.tag), file_tag='high_z_mask')
-            d_handler.output_handler.add_file(file_name='{!s}-masked_grid.ccp4'.format(d_handler.tag), file_tag='grid_mask')
+            d_handler.output_handler.add_file(file_name=f.high_z_mask.format(d_handler.tag), file_tag='high_z_mask')
+            d_handler.output_handler.add_file(file_name=f.grid_mask.format(d_handler.tag),   file_tag='grid_mask')
 
             # Links to ligand files (if they've been found)
             d_handler.output_handler.add_dir(dir_name='ligand_files', dir_tag='ligand', top_dir_tag='root')
-            d_handler.output_handler.add_file(file_name='{!s}-ligand.pdb'.format(d_handler.tag), file_tag='ligand_coordinates')
-            d_handler.output_handler.add_file(file_name='{!s}-ligand.cif'.format(d_handler.tag), file_tag='ligand_restraints')
-            d_handler.output_handler.add_file(file_name='{!s}-ligand.png'.format(d_handler.tag), file_tag='ligand_image')
+#            d_handler.output_handler.add_file(file_name=f.ligand_coordinates.format(d_handler.tag),                 file_tag='ligand_coordinates'   )
+#            d_handler.output_handler.add_file(file_name=f.ligand_restraints.format(d_handler.tag),                  file_tag='ligand_restraints'    )
+#            d_handler.output_handler.add_file(file_name=f.ligand_image.format(d_handler.tag),                       file_tag='ligand_image'         )
 
             # Native (back-rotated/transformed) maps
-            d_handler.output_handler.add_file(file_name='{!s}-observed.native.ccp4'.format(d_handler.tag), file_tag='native_obs_map')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map.native.ccp4'.format(d_handler.tag), file_tag='native_z_map')
-            d_handler.output_handler.add_file(file_name='{!s}-event_{!s}_occupancy_{!s}_map.native.ccp4'.format(d_handler.tag,'{!s}','{!s}'), file_tag='native_occupancy_map')
+            d_handler.output_handler.add_file(file_name=f.native_obs_map.format(d_handler.tag),                     file_tag='native_obs_map'       )
+            d_handler.output_handler.add_file(file_name=f.native_z_map.format(d_handler.tag),                       file_tag='native_z_map'         )
+            d_handler.output_handler.add_file(file_name=f.native_occupancy_map.format(d_handler.tag,'{!s}','{!s}'), file_tag='native_occupancy_map' )
 
             # Fitted structures when modelled with pandda.inspect
             d_handler.output_handler.add_dir(dir_name='modelled_structures', dir_tag='models', top_dir_tag='root')
@@ -1669,38 +1605,35 @@ class PanddaMultiDatasetAnalyser(object):
             # Output images
             d_handler.output_handler.add_dir(dir_name='output_images', dir_tag='images', top_dir_tag='root')
             # Smapled map
-            d_handler.output_handler.add_file(file_name='{!s}-obsv_map_dist.png'.format(d_handler.tag), file_tag='s_map_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-diff_mean_map_dist.png'.format(d_handler.tag), file_tag='d_mean_map_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_naive.png'.format(d_handler.tag), file_tag='z_map_naive_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_naive_normalised.png'.format(d_handler.tag), file_tag='z_map_naive_normalised_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_uncertainty.png'.format(d_handler.tag), file_tag='z_map_uncertainty_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_uncertainty_normalised.png'.format(d_handler.tag), file_tag='z_map_uncertainty_normalised_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_adjusted.png'.format(d_handler.tag), file_tag='z_map_corrected_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_adjusted_normalised.png'.format(d_handler.tag), file_tag='z_map_corrected_normalised_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_dist_qq_plot.png'.format(d_handler.tag), file_tag='z_map_qq_plot_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-event_{!s}_occupancy_correlation.png'.format(d_handler.tag, '{!s}'), file_tag='occ_corr_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-uncertainty-qqplot.png'.format(d_handler.tag), file_tag='unc_qqplot_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-mean-v-obs-sorted-qqplot.png'.format(d_handler.tag), file_tag='obs_qqplot_sorted_png', dir_tag='images')
-            d_handler.output_handler.add_file(file_name='{!s}-mean-v-obs-unsorted-plot.png'.format(d_handler.tag), file_tag='obs_qqplot_unsorted_png', dir_tag='images')
-
-            # Edstats Scores
-            d_handler.output_handler.add_file(file_name='{!s}-edstats.scores'.format(d_handler.tag), file_tag='edstats_scores')
+            d_handler.output_handler.add_file(file_name=p.s_map_png.format(d_handler.tag),                          file_tag='s_map_png',                        dir_tag='images')
+            d_handler.output_handler.add_file(file_name=p.d_mean_map_png.format(d_handler.tag),                     file_tag='d_mean_map_png',                   dir_tag='images')
+            d_handler.output_handler.add_file(file_name=p.z_map_naive_png.format(d_handler.tag),                    file_tag='z_map_naive_png',                  dir_tag='images')
+            d_handler.output_handler.add_file(file_name=p.z_map_naive_norm_png.format(d_handler.tag),               file_tag='z_map_naive_normalised_png',       dir_tag='images')
+            d_handler.output_handler.add_file(file_name=p.z_map_uncertainty_png.format(d_handler.tag),              file_tag='z_map_uncertainty_png',            dir_tag='images')
+            d_handler.output_handler.add_file(file_name=p.z_map_uncertainty_norm_png.format(d_handler.tag),         file_tag='z_map_uncertainty_normalised_png', dir_tag='images')
+            d_handler.output_handler.add_file(file_name=p.z_map_corrected_png.format(d_handler.tag),                file_tag='z_map_corrected_png',              dir_tag='images')
+            d_handler.output_handler.add_file(file_name=p.z_map_corrected_norm_png.format(d_handler.tag),           file_tag='z_map_corrected_normalised_png',   dir_tag='images')
+            d_handler.output_handler.add_file(file_name=p.z_map_qq_plot_png.format(d_handler.tag),                  file_tag='z_map_qq_plot_png',                dir_tag='images')
+            d_handler.output_handler.add_file(file_name=p.occ_corr_png.format(d_handler.tag, '{!s}'),               file_tag='occ_corr_png',                     dir_tag='images')
+            d_handler.output_handler.add_file(file_name=p.unc_qqplot_png.format(d_handler.tag),                     file_tag='unc_qqplot_png',                   dir_tag='images')
+            d_handler.output_handler.add_file(file_name=p.obs_qqplot_sorted_png.format(d_handler.tag),              file_tag='obs_qqplot_sorted_png',            dir_tag='images')
+            d_handler.output_handler.add_file(file_name=p.obs_qqplot_unsorted_png.format(d_handler.tag),            file_tag='obs_qqplot_unsorted_png',          dir_tag='images')
 
             # Analysis files
-            d_handler.output_handler.add_file(file_name='{!s}-z_map_peaks.csv'.format(d_handler.tag), file_tag='z_peaks_csv')
+            d_handler.output_handler.add_file(file_name=f.z_peaks_csv.format(d_handler.tag), file_tag='z_peaks_csv')
 
             # Scripts
             d_handler.output_handler.add_dir(dir_name='scripts', dir_tag='scripts', top_dir_tag='root')
-            d_handler.output_handler.add_file(file_name='load_maps.pml', file_tag='pymol_script', dir_tag='scripts')
-            d_handler.output_handler.add_file(file_name='ccp4mg_{!s}_{!s}.py', file_tag='ccp4mg_script', dir_tag='scripts')
+            d_handler.output_handler.add_file(file_name=f.pymol_script,     file_tag='pymol_script',    dir_tag='scripts')
+            d_handler.output_handler.add_file(file_name=f.ccp4mg_script,    file_tag='ccp4mg_script',   dir_tag='scripts')
 
             # Output blobs
             d_handler.output_handler.add_dir(dir_name='blobs', dir_tag='blobs', top_dir_tag='root')
-            d_handler.output_handler.add_file(file_name='blob_{!s}_{!s}.png', file_tag='ccp4mg_png', dir_tag='blobs')
+            d_handler.output_handler.add_file(file_name=f.ccp4mg_png,       file_tag='ccp4mg_png',      dir_tag='blobs')
 
             # Pickled objects
             d_handler.output_handler.add_dir(dir_name='pickles', dir_tag='pickles', top_dir_tag='root')
-            d_handler.output_handler.add_file(file_name='dataset.pickle', file_tag='dataset_pickle', dir_tag='pickles')
+            d_handler.output_handler.add_file(file_name=f.dataset_pickle,   file_tag='dataset_pickle',  dir_tag='pickles')
 
             ##############################################################################################################
 
@@ -2364,14 +2297,14 @@ class PanddaMultiDatasetAnalyser(object):
 
         return event_total, event_num, all_dataset_events
 
-    def write_pymol_scripts(self, d_handler):
-        """Autogenerate pymol scripts"""
-
-        # Get template to be filled in
-        template = PANDDA_HTML_ENV.get_template('load_pandda_maps.pml')
-
-        with open(d_handler.output_handler.get_file(file_tag='pymol_script'), 'w') as out_pml:
-            out_pml.write(template.render({'file_dict':d_handler.output_handler.output_files}))
+#    def write_pymol_scripts(self, d_handler):
+#        """Autogenerate pymol scripts"""
+#
+#        # Get template to be filled in
+#        template = PANDDA_HTML_ENV.get_template('load_pandda_maps.pml')
+#
+#        with open(d_handler.output_handler.get_file(file_tag='pymol_script'), 'w') as out_pml:
+#            out_pml.write(template.render({'file_dict':d_handler.output_handler.output_files}))
 
     def image_blob(self, script, image, d_handler, point, point_no, towards=[10,10,10]):
         """Take pictures of the maps with ccp4mg"""
@@ -2830,7 +2763,50 @@ class PanddaMultiDatasetAnalyser(object):
             self.tables.site_info.set_value(site.id, 'native_centroid', tuple(self.reference_dataset().transform_from_reference(
                                                                                                         points=flex.vec3_double([site.info.centroid])*self.reference_grid().grid_spacing(),
                                                                                                         method='global')[0]))
-        return
+
+    def make_pymol_site_image_and_scripts(self, site_list, make_images=True):
+        """Generate pymol script to mark the location of identified sites"""
+
+        pymol_str =  '# Mark the identified sites on the protein\n'
+        pymol_str += 'from pymol import cmd\n'
+        pymol_str += 'from pymol.cgo import *\n'
+        pymol_str += 'cmd.load("{}", "reference")\n'.format(self.output_handler.get_file('reference_structure'))
+        pymol_str += 'cmd.show_as("cartoon", "reference")\n'
+        pymol_str += 'cmd.color("gray", "reference")\n'
+        # Add sphere at each of the sites
+        for site in site_list.children:
+            lab = 'site_{}'.format(site.id)
+            com = tuple(flex.double(site.info.centroid)*self.reference_grid().grid_spacing())
+            pymol_str += 'cmd.pseudoatom("{}", pos={}, vdw=2.5)\n'.format(lab, com)
+            pymol_str += 'cmd.show("sphere", "{}")\n'.format(lab)
+            pymol_str += 'cmd.label("{}", "{}")\n'.format(lab, site.id)
+            pymol_str += 'cmd.color("red", "{}")\n'.format(lab)
+            pymol_str += 'cmd.set("label_color", "white", "{}")\n'.format(lab)
+        pymol_str += 'cmd.set("label_size", 30)\n'
+        pymol_str += 'cmd.set("label_position", (0,0,4))\n'
+        # Write as python script
+        with open(self.output_handler.get_file(file_tag='pymol_sites_py'), 'w') as fh:
+            fh.write(pymol_str)
+
+        # Run Pymol to generate images and output to pngs
+        if make_images:
+            pymol_str =  '# Load the protein representation and output images of sites\n'
+            pymol_str += 'run {}\n'.format(self.output_handler.get_file(file_tag='pymol_sites_py'))
+            pymol_str += 'orient\n'
+            pymol_str += 'png {}, width=10cm, dpi=300, ray=1\n'.format(self.output_handler.get_file(file_tag='pymol_sites_png_1'))
+            pymol_str += 'rotate x, 180\n'
+            pymol_str += 'png {}, width=10cm, dpi=300, ray=1\n'.format(self.output_handler.get_file(file_tag='pymol_sites_png_2'))
+            pymol_str += 'quit'
+
+            with open(self.output_handler.get_file(file_tag='pymol_sites_pml'), 'w') as fh:
+                fh.write(pymol_str)
+
+            from Bamboo.Common.command import commandManager
+            c = commandManager('pymol')
+            c.add_command_line_arguments(['-c', self.output_handler.get_file(file_tag='pymol_sites_pml')])
+
+        #os.remove(self.output_handler.get_file(file_tag='pymol_sites_pml'))
+        #os.remove(self.output_handler.get_file(file_tag='pymol_sites_py'))
 
     def add_event_to_event_table(self, d_handler, event):
         """Add event entries to the event table"""
