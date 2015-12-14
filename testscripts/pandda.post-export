@@ -6,6 +6,8 @@ import numpy, pandas
 
 from Giant.jiffies import set_conformer_occupancies 
 
+from PANDDAs.constants import PanddaDatasetFilenames
+
 top_dir = os.getcwd()
 print 'WORKING FROM: {}'.format(top_dir)
 
@@ -20,8 +22,8 @@ for dir in glob.glob(os.path.join(top_dir,'*')):
     os.chdir(dir)
 
     # Input
-    pdb_in = glob.glob('./*-combined-model.pdb')[0]
-    mtz_in = glob.glob('./*-input.mtz')[0]
+    pdb_in = glob.glob(PanddaDatasetFilenames.ensemble_structure.format('*'))[0]
+    mtz_in = glob.glob(PanddaDatasetFilenames.input_data.format('*'))[0]
     # Output
     occ_set_pdb = './occupancy_set.pdb'
     link_out = './refine.pdb'
