@@ -17,12 +17,14 @@ master_phil_def = """
 input {
     outdir = ./
         .type = str
-    mean_map = None
+    ref_map = None
         .type = path
     query_map = None
         .type = path
     outprefix = 'subtracted'
         .type = str
+    renormalise = False
+        .type = bool
 }
 """
 # Read in the master phil
@@ -50,32 +52,36 @@ params = working_phil.extract().input
 
 ############################################################################
 
-mean_map = iotbx.ccp4_map.map_reader(params.mean_map)
+ref_map = iotbx.ccp4_map.map_reader(params.ref_map)
 query_map = iotbx.ccp4_map.map_reader(params.query_map)
 
-assert mean_map.data.all() == query_map.data.all()
-assert mean_map.data.size() == query_map.data.size()
-assert mean_map.unit_cell().is_similar_to(query_map.unit_cell())
+assert ref_map.data.all() == query_map.data.all()
+assert ref_map.data.size() == query_map.data.size()
+assert ref_map.unit_cell().is_similar_to(query_map.unit_cell())
 
-print 'ALL', mean_map.data.all() 
-print 'ORIGIN', mean_map.data.origin()
-print 'FOCUS', mean_map.data.focus()
+print 'ALL', ref_map.data.all() 
+print 'ORIGIN', ref_map.data.origin()
+print 'FOCUS', ref_map.data.focus()
 
 for lig_occ in numpy.arange(0.0, 1.000001, 0.1):
     
-    mean_occ = 1 - lig_occ
+    ref_occ = 1 - lig_occ
     
-    print 'Subtracting {!s} * mean map'.format(mean_occ)
+    print 'Subtracting {!s} * ref map'.format(ref_occ)
 
-    diff_data = (query_map.data - mean_map.data*mean_occ).as_double()
+    diff_data = (query_map.data - ref_map.data*ref_occ).as_double()
 #    diff_data.reshape(flex.grid(diff_data.all()))
+    
+    if params.renormalise: diff_data = diff_data/lig_occ
 
     outfile = params.outprefix + '-lig-occ-{!s}.ccp4'.format(lig_occ)
     outpath = os.path.join(params.outdir, outfile) 
    
     # "Un-pad" the map
-    gridding_first = mean_map.data.origin()
-    gridding_last = tuple(flex.int(query_map.data.all())-2)
+    gridding_first = ref_map.data.origin()
+#    gridding_last = tuple(flex.int(query_map.data.all())-2)
+    gridding_last = tuple(flex.int(query_map.data.all())-1)
+#    gridding_last = tuple(flex.int(query_map.data.all())-0)
     diff_data = maptbx.copy(diff_data, first=gridding_first, last=gridding_last)
  
     # Reducing the size of the grid by 1 seems to be neccessary                                
