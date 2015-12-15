@@ -112,8 +112,8 @@ class PanddaDatasetFilenames:
     # Misc...
     z_peaks_csv            = '{!s}-z_map_peaks.csv'
     pymol_script           = 'load_maps.pml'
-#    ccp4mg_script          = 'ccp4mg_{!s}_{!s}.py'
-#    ccp4mg_png             = 'blob_{!s}_{!s}.png'
+    ccp4mg_script          = 'ccp4mg_{!s}_{!s}.py'
+    ccp4mg_png             = 'blob_{!s}_{!s}.png'
 
 class PanddaDatasetPNGFilenames:
     s_map_png                   = '{!s}-obsv_map_dist.png'

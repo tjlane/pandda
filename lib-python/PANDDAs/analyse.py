@@ -929,8 +929,8 @@ class PanddaMultiDatasetAnalyser(object):
         self.output_handler.add_file(file_name='_point_distributions.csv',          file_tag='point_distributions', dir_tag='analyses')
         # Somewhere to store the analysis summaries - for the user
         self.output_handler.add_dir(dir_name='results_summaries', dir_tag='output_summaries', top_dir_tag='root')
-        self.output_handler.add_file(file_name=f.initial.html,                      file_tag='initial_html',        dir_tag='output_summaries')
-        self.output_handler.add_file(file_name=f.analyse.html,                      file_tag='analyse_html',        dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.initial_html,                      file_tag='initial_html',        dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.analyse_html,                      file_tag='analyse_html',        dir_tag='output_summaries')
         self.output_handler.add_file(file_name=f.analyse_site_graph,                file_tag='analyse_site_graph',  dir_tag='output_summaries')
         self.output_handler.add_file(file_name=f.pymol_sites_py,                    file_tag='pymol_sites_py',      dir_tag='output_summaries')
         self.output_handler.add_file(file_name=f.pymol_sites_pml,                   file_tag='pymol_sites_pml',     dir_tag='output_summaries')
@@ -2804,6 +2804,7 @@ class PanddaMultiDatasetAnalyser(object):
             from Bamboo.Common.command import commandManager
             c = commandManager('pymol')
             c.add_command_line_arguments(['-c', self.output_handler.get_file(file_tag='pymol_sites_pml')])
+            c.run()
 
         #os.remove(self.output_handler.get_file(file_tag='pymol_sites_pml'))
         #os.remove(self.output_handler.get_file(file_tag='pymol_sites_py'))

@@ -1111,7 +1111,7 @@ def pandda_main(args):
                 # Update the site labels in the event table
                 pandda.update_event_table_site_info(events=all_events)
                 # Plot output graph of site list 
-                graphs.multiple_bar_plot(   f_name    = pandda.output_handler.get_file('site_bar_graph'), 
+                graphs.multiple_bar_plot(   f_name    = pandda.output_handler.get_file('analyse_site_graph'), 
                                             plot_vals = [sorted([e.cluster.max for e in s.children],reverse=True) for s in site_list.children]   ) 
                 # Create pictures of the sites on the protein
                 pandda.make_pymol_site_image_and_scripts(site_list=site_list, make_images=True)
