@@ -1,15 +1,49 @@
 import os, sys, copy, glob
+import shutil
 
 import libtbx.phil
 
 import numpy
 
-from PANDDAs.jiffies import transform_coordinates, export_files
+from PANDDAs.jiffies import transform_coordinates
+from PANDDAs.constants import PanddaDatasetFilenames
 from Giant.jiffies import merge_conformations, create_occupancy_params
 
 ############################################################################
 
 master_phil = libtbx.phil.parse("""
+input {
+    pandda_dir = ./pandda
+        .help = 'Path to the pandda directory to export files from'
+        .type = str
+}
+output {
+    out_dir = ./pandda-export
+        .type = str
+
+    dir_prefix = ''
+        .help = 'Prefix to be added to each output (sub)directory'
+        .type = str
+
+    file_prefix = ''
+        .help = 'Prefix to be added to each output file'
+        .type = str
+}
+export {
+    datasets_to_export = *interesting_datasets processed_datasets
+        .type = choice
+
+    files_to_export = None
+        .type = path
+        .multiple = True
+
+    export_defaults = True
+        .type = bool
+
+    required_file_for_export = *model None
+        .help = 'only export folder if this file exists (set to None to turn off)'
+        .type = choice
+}
 process_and_export {
     merge_and_export_fitted_structures = True
         .help = 'export fitted ligand structures'
@@ -22,26 +56,12 @@ process_and_export {
         .type = path
         .multiple = True
 
-    maps_to_transform_and_export = None
-        .type = path
-        .multiple = True
-
     generate_occupancy_groupings = True
         .type = bool
 }
-
 templates {
     temp_prefix = 'temp-'
         .help = 'Prefix to append to temporary files'
-        .type = str
-    aligned_template = '{!s}-aligned-structure.pdb'
-        .help = 'Un-merged structure (major conformation/reference)'
-        .type = str
-    fitted_template = 'modelled_structures/pandda-model.pdb'
-        .help = 'Fitted structure (minor conformation)'
-        .type = str
-    merged_template = '{!s}-ensemble-model.pdb'
-        .help = 'Merged structure (minor + major conformations)'
         .type = str
     refmac_refinement = 'refmac_refine.params'
         .help = 'refmac occupancy groupings/refinement parameters'
@@ -51,10 +71,12 @@ templates {
         .type = str
 }
 
-include scope PANDDAs.jiffies.export_files.master_phil
+overwrite = True
+    .type = bool
+verbose = False
+    .type = bool
 
-""",
-process_includes = True)
+""")
 
 ############################################################################
 
@@ -63,17 +85,23 @@ def prepend_prefix_to_basename(prefix, path):
 
 def set_defaults(params):
 
+    # Add default export files
+    if params.export.export_defaults:
+        # Add default files to list
+        params.export.files_to_export.append('*-pandda-input.pdb')
+        params.export.files_to_export.append('*-pandda-input.mtz')
+        params.export.files_to_export.append('ligand_files/*.cif')
+        params.export.files_to_export.append('ligand_files/*.pdb')
+        params.export.files_to_export.append('*.native.ccp4')
+
     # Transform and Export default files?
     if params.process_and_export.transform_and_export_defaults:
-        params.process_and_export.pdbs_to_transform_and_export.append(params.templates.aligned_template)
-        params.process_and_export.pdbs_to_transform_and_export.append(params.templates.fitted_template)
-
+        params.process_and_export.pdbs_to_transform_and_export.append(PanddaDatasetFilenames.aligned_structure)
+        params.process_and_export.pdbs_to_transform_and_export.append(os.path.join('modelled_structures',PanddaDatasetFilenames.modelled_structure))
     # Merge, Transform and Export fitted Structures?
     if params.process_and_export.merge_and_export_fitted_structures:
-        params.process_and_export.pdbs_to_transform_and_export.append(params.templates.merged_template)
+        params.process_and_export.pdbs_to_transform_and_export.append(PanddaDatasetFilenames.ensemble_structure)
 
-    # Add default export files
-    if params.export.export_defaults: export_files.set_defaults(params)
     # Export occupancy groupings + refinement parameter files?
     if params.process_and_export.generate_occupancy_groupings:
         params.export.files_to_export.append(params.templates.refmac_refinement)
@@ -81,6 +109,33 @@ def set_defaults(params):
     # Add files to be transformed to those to be exported
     for f in params.process_and_export.pdbs_to_transform_and_export:
         params.export.files_to_export.append(prepend_prefix_to_basename(params.templates.temp_prefix, f).format('*'))
+
+def export_folder(dir, params):
+    """Export a subset of a folders contents"""
+
+    # Extract folder name
+    dir_name = os.path.basename(dir)
+    if params.verbose: print 'Processing Folder: {!s}'.format(dir_name)
+    # Create output dir
+    export_dir = os.path.join(params.output.out_dir, params.output.dir_prefix+dir_name)
+    if not os.path.exists(export_dir):  os.mkdir(export_dir)
+    # Export files
+    if params.verbose: print 'Exporting files from {!s} to {!s}'.format(dir, export_dir)
+    for proc_file_template in params.export.files_to_export:
+        proc_files = glob.glob(os.path.join(dir, proc_file_template))
+        for proc_file in proc_files:
+            # Check that the file exists
+            if not os.path.exists(proc_file):
+                if params.verbose: print 'FILE DOES NOT EXIST: {!s}'.format(proc_file)
+                continue
+            # Exported file path
+            export_file = os.path.join(export_dir, params.output.file_prefix+os.path.basename(proc_file))
+            if params.verbose: print 'Exporting {!s} to {!s}'.format(proc_file, export_file)
+            # Check to see if file already exists and delete if overwrite
+            if os.path.exists(export_file):
+                if params.overwrite: os.remove(export_file)
+                else: raise Exception('File Already Exists: {}'.format(export_file))
+            shutil.copy(proc_file, export_file)
 
 def process_and_export_folder(dir, params):
     """Merge structures, transform them and export a subset of a folders contents"""
@@ -93,9 +148,11 @@ def process_and_export_folder(dir, params):
     ############################################################################
 
     # Check to see if this folder should be skipped (export fitted folders only)
-    if params.export.required_file_for_export and (not os.path.exists(os.path.join(dir, params.export.required_file_for_export))):
-        print 'NO FITTED MODEL - SKIPPING: {}'.format(dir)
-        return
+    if params.export.required_file_for_export:
+        if params.export.required_file_for_export == 'model':
+            if not os.path.exists(os.path.join(dir, 'modelled_structures', PanddaDatasetFilenames.modelled_structure.format(dir_name))):
+                print 'NO FITTED MODEL - SKIPPING: {}'.format(dir)
+                return
 
     ############################################################################
 
@@ -104,9 +161,9 @@ def process_and_export_folder(dir, params):
     if params.process_and_export.merge_and_export_fitted_structures:
         # Extract parameters for the merging and set them
         merging_params = merge_conformations.master_phil.extract()
-        merging_params.major =  os.path.join(dir, params.templates.aligned_template.format(dir_name))
-        merging_params.minor =  os.path.join(dir, params.templates.fitted_template)
-        merging_params.output = os.path.join(dir, params.templates.merged_template.format(dir_name))
+        merging_params.major =  os.path.join(dir, PanddaDatasetFilenames.aligned_structure.format(dir_name))
+        merging_params.minor =  os.path.join(dir, 'modelled_structures', PanddaDatasetFilenames.modelled_structure.format(dir_name))
+        merging_params.output = os.path.join(dir, PanddaDatasetFilenames.ensemble_structure.format(dir_name))
         merging_params.overwrite = params.overwrite
         merging_params.verbose = params.verbose
 
@@ -157,24 +214,25 @@ def process_and_export_folder(dir, params):
 
     ############################################################################
 
-    print '=========================+>'
-    print 'GENERATING OCCUPANCY REFINEMENT PARAMETERS'
+    if params.process_and_export.generate_occupancy_groupings:
+        print '=========================+>'
+        print 'GENERATING OCCUPANCY REFINEMENT PARAMETERS'
 
-    # Extract parameters for the occupancy parameter generation and set them
-    occupancy_params = create_occupancy_params.master_phil.extract()
-    occupancy_params.pdb = merging_params.output
-    occupancy_params.refmac_occ_out = os.path.join(dir, params.templates.refmac_refinement)
-    occupancy_params.phenix_occ_out = os.path.join(dir, params.templates.phenix_refinement)
-    occupancy_params.overwrite = params.overwrite
-    occupancy_params.verbose = params.verbose
+        # Extract parameters for the occupancy parameter generation and set them
+        occupancy_params = create_occupancy_params.master_phil.extract()
+        occupancy_params.pdb = merging_params.output
+        occupancy_params.refmac_occ_out = os.path.join(dir, params.templates.refmac_refinement)
+        occupancy_params.phenix_occ_out = os.path.join(dir, params.templates.phenix_refinement)
+        occupancy_params.overwrite = params.overwrite
+        occupancy_params.verbose = params.verbose
 
-    if params.verbose: print 'ANALYSING FILE: {}'.format(occupancy_params.pdb)
-    if params.verbose: print 'OUTPUTTING REFMAC SETTINGS TO: {}'.format(occupancy_params.refmac_occ_out)
-    if params.verbose: print 'OUTPUTTING PHENIX SETTINGS TO: {}'.format(occupancy_params.phenix_occ_out)
+        if params.verbose: print 'ANALYSING FILE: {}'.format(occupancy_params.pdb)
+        if params.verbose: print 'OUTPUTTING REFMAC SETTINGS TO: {}'.format(occupancy_params.refmac_occ_out)
+        if params.verbose: print 'OUTPUTTING PHENIX SETTINGS TO: {}'.format(occupancy_params.phenix_occ_out)
 
-    try: create_occupancy_params.run(occupancy_params)
-    except Exception as e:
-        print 'OCCUPANCY PARAMETER GENERATION FAILED: {} - {}'.format(e, e.message)
+        try: create_occupancy_params.run(occupancy_params)
+        except Exception as e:
+            print 'OCCUPANCY PARAMETER GENERATION FAILED: {} - {}'.format(e, e.message)
 
     ############################################################################
 
@@ -182,7 +240,7 @@ def process_and_export_folder(dir, params):
     print 'EXPORTING FOLDER: {}'.format(dir)
 
     # Export the pandda folder
-    export_files.export_folder(dir=dir, params=params)
+    export_folder(dir=dir, params=params)
 
     ############################################################################
 
