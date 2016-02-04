@@ -1,6 +1,4 @@
 
-PANDDA_VERSION = 0.1
-
 
 def welcome(current_user):
 

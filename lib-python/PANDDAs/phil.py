@@ -7,9 +7,15 @@ pandda_phil_def = """
         {
             data_dirs = None
                 .type = str
+            dir_regex = None
+                .type = str
             pdb_style = final.pdb
                 .type = str
+            pdb_regex = None
+                .type = str
             mtz_style = None
+                .type = str
+            mtz_regex = None
                 .type = str
             lig_style = *.cif
                 .type = str
@@ -159,19 +165,6 @@ pandda_phil_def = """
                 blobs_to_image = 2
                     .help = 'Maximum number of blobs to image per dataset'
                     .type = int
-                clustering
-                    .help = "Settings to control the clustering of blob points"
-                {
-                    criterion = *distance
-                        .type = choice
-                        .optional = False
-                    metric    = *euclidean
-                        .type = choice
-                        .optional = False
-                    linkage   = *single
-                        .type = choice
-                        .optional = False
-                }
             }
             occupancy_estimation
                 .help = "Parameters to control the estimation of feature occupancies"

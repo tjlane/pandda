@@ -14,6 +14,8 @@ from PANDDAs.jiffies import parse_phil_args
 from Giant.Maths.geometry import pairwise_dists
 from Giant.Stats.Cluster import find_connected_groups
 
+blank_arg_prepend = {'.pdb' : 'pdb='}
+
 master_phil = libtbx.phil.parse("""
 pdb = None
     .help = 'The major conformation of the protein (normally the unbound or reference structure)'
@@ -22,10 +24,10 @@ lig = LIG,UNL
     .help = 'Residues to be occupancy refined (comma separated list of residue identifiers, i.e. lig=LIG or lig=LIG,UNL)'
     .type = str
 
-phenix_occ_out = 'phenix_occ.params'
+phenix_occ_out = 'phenix_refine.params'
     .help = 'Output occupancy coupling parameter file for phenix (allowing refinement of the water model in superposition with the ligand)'
     .type = path
-refmac_occ_out = 'refmac_occ.params'
+refmac_occ_out = 'refmac_refine.params'
     .help = 'Output occupancy coupling parameter file for phenix (allowing refinement of the water model in superposition with the ligand)'
     .type = path
 
@@ -192,11 +194,12 @@ def run(params):
             print '============================================>'
             print 'CREATING REFMAC OCCUPANCY REFINEMENT PARAMETERS'
         occ_params = generate_refmac_occupancy_params(occupancy_groups=occupancy_groups)
-        print '============================================>'
-        print 'REFMAC Occupancy Refinement Parameter File Output'
-        print '============================================>'
-        print occ_params
         with open(params.refmac_occ_out, 'w') as fh: fh.write(occ_params)
+        if params.verbose:
+            print '============================================>'
+            print 'REFMAC Occupancy Refinement Parameter File Output'
+            print '============================================>'
+            print occ_params
 
     ##########################################
     # PHENIX PARAMETERS
@@ -206,9 +209,10 @@ def run(params):
             print '============================================>'
             print 'CREATING PHENIX OCCUPANCY REFINEMENT PARAMETERS'
         occ_params = generate_phenix_occupancy_params(occupancy_groups=occupancy_groups)
-        print '============================================>'
-        print 'PHENIX Occupancy Refinement Parameter File Output'
-        print '============================================>'
-        print occ_params
         with open(params.phenix_occ_out, 'w') as fh: fh.write(occ_params)
+        if params.verbose:
+            print '============================================>'
+            print 'PHENIX Occupancy Refinement Parameter File Output'
+            print '============================================>'
+            print occ_params
 

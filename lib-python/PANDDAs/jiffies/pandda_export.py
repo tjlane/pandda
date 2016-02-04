@@ -96,7 +96,7 @@ def set_defaults(params):
 
     # Transform and Export default files?
     if params.process_and_export.transform_and_export_defaults:
-        params.process_and_export.pdbs_to_transform_and_export.append(PanddaDatasetFilenames.aligned_structure)
+#        params.process_and_export.pdbs_to_transform_and_export.append(PanddaDatasetFilenames.aligned_structure)
         params.process_and_export.pdbs_to_transform_and_export.append(os.path.join('modelled_structures',PanddaDatasetFilenames.modelled_structure))
     # Merge, Transform and Export fitted Structures?
     if params.process_and_export.merge_and_export_fitted_structures:

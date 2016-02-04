@@ -27,6 +27,9 @@ input {
 clustering{
     lcv_cutoff = 0.2
         .type = float
+    label_nodes_above = 0.2
+        .help = "Label nodes above this value"
+        .type = float
 }
 output {
     out_dir = None
@@ -121,7 +124,7 @@ def run(params):
                                 xlab  = 'Crystal',
                                 ylab  = 'Linear Cell Variation',
                                 ylim  = (0, params.clustering.lcv_cutoff),
-                                annotate_y_min = 0.05)
+                                annotate_y_min = params.clustering.label_nodes_above)
 
             #########################################################################################################
 

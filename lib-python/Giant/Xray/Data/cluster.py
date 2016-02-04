@@ -3,7 +3,6 @@ import itertools
 import numpy, pandas
 
 import iotbx.mtz
-import libtbx.cluster
 import scipy.cluster.hierarchy
 
 from Giant.Stats.Cluster import generate_group_idxs
@@ -48,7 +47,6 @@ class crystalGroup(object):
         if   method == 'lcv': link_func = pairwise_lcv
         dist_mat = link_func(unit_cells=[c.unit_cell for c in crystals])
         link_mat = scipy.cluster.hierarchy.linkage(dist_mat, method='single', metric='euclidean')
-#        clusters = scipy.cluster.hierarchy.fcluster(link_mat, t=cutoff, criterion='inconsistent')
         clusters = scipy.cluster.hierarchy.fcluster(link_mat, t=cutoff, criterion='distance')
         return [cls([crystals[idx] for idx in g]) for i_g,g in generate_group_idxs(clusters)]
 

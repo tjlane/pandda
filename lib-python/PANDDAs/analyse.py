@@ -43,10 +43,9 @@ from Giant.Utils import status_bar, status_bar_2, rel_symlink
 
 from PANDDAs import graphs
 
-from PANDDAs import PANDDA_VERSION
 from PANDDAs.phil import pandda_phil_def
 from PANDDAs.html import PANDDA_HTML_ENV
-from PANDDAs.settings import PANDDA_TOP, PANDDA_TEXT
+from PANDDAs.settings import PANDDA_TOP, PANDDA_TEXT, PANDDA_VERSION
 from PANDDAs.constants import *
 from PANDDAs.holders import *
 
@@ -783,7 +782,7 @@ class PanddaMultiDatasetAnalyser(object):
         self.update_status('running')
 
         # Print logo to log
-        self.log(PANDDA_TEXT.format(self._version), True)
+        self.log(PANDDA_TEXT, True)
 
         self.log('===================================>>>', True)
         self.log('PROCESSED ARGUMENTS', True)
@@ -866,6 +865,10 @@ class PanddaMultiDatasetAnalyser(object):
         # Input
         assert p.input.data_dirs is not None, 'pandda.input.data_dirs IS NOT DEFINED'
         assert p.input.pdb_style, 'pandda.input.pdb_style IS NOT DEFINED'
+        assert p.input.pdb_regex or p.input.mtz_regex or p.input.dir_regex or \
+               (p.input.pdb_style and ('*' in p.input.pdb_style)) or \
+               (p.input.mtz_style and ('*' in p.input.mtz_style)) or \
+               (p.input.data_dirs and ('*' in p.input.data_dirs))
         assert p.input.lig_style, 'pandda.input.lig_style IS NOT DEFINED'
         # Output
         assert p.output.out_dir, 'pandda.output.out_dir IS NOT DEFINED'
@@ -1424,7 +1427,10 @@ class PanddaMultiDatasetAnalyser(object):
                 # Do regex matching on the file pairs
                 if '*' in pdb_style:
                     pdb_base = os.path.basename(new_pdb)
-                    pdb_regex = pdb_style.replace('*', '(.*)')
+                    if self.args.input.pdb_regex:
+                        pdb_regex = self.args.input.pdb_regex
+                    else:
+                        pdb_regex = pdb_style.replace('*', '(.*)')
                     pdb_tag = re.findall(pdb_regex, pdb_base)
                     assert pdb_tag, 'NO PDB TAG FOUND: {!s} -> {!s}'.format(pdb_regex, pdb_base)
                     if isinstance(pdb_tag[0], tuple):
@@ -1434,7 +1440,10 @@ class PanddaMultiDatasetAnalyser(object):
 
                 if '*' in mtz_style:
                     mtz_base = os.path.basename(new_mtz)
-                    mtz_regex = mtz_style.replace('*', '(.*)')
+                    if self.args.input.mtz_regex:
+                        mtz_regex = self.args.input.mtz_regex
+                    else:
+                        mtz_regex = mtz_style.replace('*', '(.*)')
                     mtz_tag = re.findall(mtz_regex, mtz_base)
                     assert mtz_tag, 'NO MTZ TAG FOUND: {!s} -> {!s}'.format(mtz_regex, mtz_base)
                     if isinstance(mtz_tag[0], tuple):
@@ -1444,7 +1453,10 @@ class PanddaMultiDatasetAnalyser(object):
 
                 if '*' in dir_style:
                     dir_base = os.path.dirname(pdb_files[0])
-                    dir_regex = dir_style.replace('*', '(.*)')
+                    if self.args.input.dir_regex:
+                        dir_regex = self.args.input.dir_regex
+                    else:
+                        dir_regex = dir_style.replace('*', '(.*)')
                     dir_tag = re.findall(dir_regex, dir_base)
                     assert dir_tag, 'NO DIR TAG FOUND: {!s} -> {!s}'.format(dir_regex, dir_base)
                     if isinstance(dir_tag[0], tuple):
@@ -2770,18 +2782,28 @@ class PanddaMultiDatasetAnalyser(object):
         pymol_str =  '# Mark the identified sites on the protein\n'
         pymol_str += 'from pymol import cmd\n'
         pymol_str += 'from pymol.cgo import *\n'
-        pymol_str += 'cmd.load("{}", "reference")\n'.format(self.output_handler.get_file('reference_structure'))
+        pymol_str += 'cmd.load("{}", "reference")\n'.format(self.output_handler.get_file('reference_on_origin'))
         pymol_str += 'cmd.show_as("cartoon", "reference")\n'
         pymol_str += 'cmd.color("gray", "reference")\n'
         # Add sphere at each of the sites
         for site in site_list.children:
-            lab = 'site_{}'.format(site.id)
-            com = tuple(flex.double(site.info.centroid)*self.reference_grid().grid_spacing())
-            pymol_str += 'cmd.pseudoatom("{}", pos={}, vdw=2.5)\n'.format(lab, com)
-            pymol_str += 'cmd.show("sphere", "{}")\n'.format(lab)
-            pymol_str += 'cmd.label("{}", "{}")\n'.format(lab, site.id)
-            pymol_str += 'cmd.color("red", "{}")\n'.format(lab)
-            pymol_str += 'cmd.set("label_color", "white", "{}")\n'.format(lab)
+            # Only print the site if it has more than one event
+            if len(site.children) > 1:
+                lab = 'site_{}'.format(site.id)
+                com = tuple(flex.double(site.info.centroid)*self.reference_grid().grid_spacing())
+                pymol_str += 'cmd.pseudoatom("{}", pos={}, vdw=2.5)\n'.format(lab, com)
+                pymol_str += 'cmd.show("sphere", "{}")\n'.format(lab)
+                pymol_str += 'cmd.label("{}", "{}")\n'.format(lab, site.id)
+                pymol_str += 'cmd.color("red", "{}")\n'.format(lab)
+                pymol_str += 'cmd.set("label_color", "white", "{}")\n'.format(lab)
+            # Label events as smaller spheres
+            for event in site.children:
+                lab = 'event'
+                com = tuple(flex.double(event.cluster.centroid)*self.reference_grid().grid_spacing())
+                pymol_str += 'cmd.pseudoatom("{}", pos={}, vdw=0.5)\n'.format(lab, com)
+                pymol_str += 'cmd.show("sphere", "{}")\n'.format(lab)
+                pymol_str += 'cmd.color("green", "{}")\n'.format(lab)
+        # Set label things...
         pymol_str += 'cmd.set("label_size", 30)\n'
         pymol_str += 'cmd.set("label_position", (0,0,4))\n'
         # Write as python script
@@ -2794,7 +2816,7 @@ class PanddaMultiDatasetAnalyser(object):
             pymol_str += 'run {}\n'.format(self.output_handler.get_file(file_tag='pymol_sites_py'))
             pymol_str += 'orient\n'
             pymol_str += 'png {}, width=10cm, dpi=300, ray=1\n'.format(self.output_handler.get_file(file_tag='pymol_sites_png_1'))
-            pymol_str += 'rotate x, 180\n'
+            pymol_str += 'rotate z, 180\n'
             pymol_str += 'png {}, width=10cm, dpi=300, ray=1\n'.format(self.output_handler.get_file(file_tag='pymol_sites_png_2'))
             pymol_str += 'quit'
 
@@ -2927,9 +2949,6 @@ class PanddaZMapAnalyser(object):
         self.log('Clustering Points with Z-Scores > {!s}'.format(self.params.contour_level), True)
         self.log('===================================>>>', True)
         self.log('Clustering Cutoff (A):       {!s}'.format(self.real_clustering_cufoff), True)
-        self.log('Clustering Metric:           {!s}'.format(self.params.clustering.metric), True)
-        self.log('Clustering Criterion:        {!s}'.format(self.params.clustering.criterion), True)
-        self.log('Clustering Method (Linkage): {!s}'.format(self.params.clustering.linkage), True)
         self.log('===================================>>>', True)
         self.log('Minimum Cluster Z-Peak:      {!s}'.format(self.params.min_blob_z_peak), True)
         self.log('Minimum Cluster Volume (A):  {!s}'.format(self.params.min_blob_volume), True)
@@ -2966,9 +2985,9 @@ class PanddaZMapAnalyser(object):
             t1 = time.time()
             cluster_ids = scipy.cluster.hierarchy.fclusterdata( X = above_gps,
                                                                 t = self.grid_clustering_cutoff,
-                                                                criterion = self.params.clustering.criterion,
-                                                                metric    = self.params.clustering.metric,
-                                                                method    = self.params.clustering.linkage )
+                                                                criterion = 'distance',
+                                                                metric    = 'euclidean',
+                                                                method    = 'single' )
             cluster_ids = list(cluster_ids)
             t2 = time.time()
             self.log('> Clustering > Time Taken: {!s} seconds'.format(int(t2-t1)))
@@ -2987,9 +3006,9 @@ class PanddaZMapAnalyser(object):
 
     def validate_clusters(self, z_clusters):
         for i, (gps, vals) in enumerate(z_clusters):
-            print('Cluster {}'.format(i))
-            print('Points: {}'.format(len(gps)))
-            print('Values: {}'.format(len(vals)))
+            #print('Cluster {}'.format(i))
+            #print('Points: {}'.format(len(gps)))
+            #print('Values: {}'.format(len(vals)))
             assert len(gps) == len(vals)
 
     def filter_z_clusters_1(self, z_clusters):

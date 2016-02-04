@@ -1,9 +1,9 @@
 import os, sys
 
-import libtbx.cluster
+import scipy.cluster
 
 from Bamboo.Common import Info
-from Giant.Stats.Cluster import find_connected_groups
+from Giant.Stats.Cluster import find_connected_groups, generate_group_idxs
 
 from scitbx.array_family import flex
 
@@ -165,13 +165,34 @@ class SiteList(object):
         for i_c, c in enumerate(self.children): c.id=i_c+start_at
         return self
 
+def cluster_events(events, cutoff=10, linkage='average'):
+
+    centroids = [e.cluster.centroid for e in events]
+    cluster_ids = scipy.cluster.hierarchy.fclusterdata( X = centroids,
+                                                        t = cutoff,
+                                                        criterion = 'distance',
+                                                        metric    = 'euclidean',
+                                                        method    = linkage )
+    cluster_ids = list(cluster_ids)
+
+    sites = []
+    for s_idx, e_idxs in generate_group_idxs(cluster_ids):
+        new_site = Site([events[i] for i in e_idxs])
+        new_site.id = s_idx
+        assert s_idx > 0
+        for e in new_site.children:
+            e.parent = new_site
+        sites.append(new_site)
+
+    return SiteList(sites)
+
 def event_distance_centroid(event1, event2):
     return (flex.double(event1.cluster.centroid) - flex.double(event2.cluster.centroid)).norm()
 
 def event_distance_min_cluster_distance(event1, event2):
     return min([min((event1.cluster.points-x).norms()) for x in event2.cluster.points])
 
-def cluster_events(events, cutoff=3, linkage='single', dist_func=event_distance_centroid):
+def cluster_events_old(events, cutoff=3, linkage='single', dist_func=event_distance_centroid):
     """Cluster events into sites. Returns a SiteList object. Appends new sites to existing SiteList if given"""
 
     # Create hierarchical clustering of the events

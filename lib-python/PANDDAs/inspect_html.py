@@ -2,6 +2,7 @@ import os
 
 from PANDDAs.settings import PANDDA_TOP, PANDDA_TEXT
 from PANDDAs.html import PANDDA_HTML_ENV, path2url
+from PANDDAs.constants import PanddaAnalyserFilenames
 
 def write_inspect_html(out_dir, inspector):
 
@@ -25,7 +26,11 @@ def write_inspect_html(out_dir, inspector):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    output_data['top_images'].append({ 'path': path2url(os.path.abspath(os.path.join(out_dir, 'results_summaries', 'pandda_inspect_sites.png'))),
+    output_data['top_images'].append({ 'path': path2url(os.path.abspath(os.path.join(out_dir, 'results_summaries', PanddaAnalyserFilenames.pymol_sites_png_1))),
+                                       'title': 'Identified Sites (Front)' })
+    output_data['top_images'].append({ 'path': path2url(os.path.abspath(os.path.join(out_dir, 'results_summaries', PanddaAnalyserFilenames.pymol_sites_png_2))),
+                                       'title': 'Identified Sites (Back)' })
+    output_data['top_images'].append({ 'path': path2url(os.path.abspath(os.path.join(out_dir, 'results_summaries', PanddaAnalyserFilenames.inspect_site_graph))),
                                        'title': 'Identified Site Summary' })
     # ===========================================================>
     # Progress Bars
@@ -37,7 +42,7 @@ def write_inspect_html(out_dir, inspector):
     # ===========================================================>
     # Tables
     output_data['table'] = {}
-    output_data['table']['column_headings'] = ['Event','Site','Est. Occupancy','Z-Peak','Map Resolution','Map Uncertainty','Interesting','Ligand Placed','Ligand Confidence','Comment','Viewed']
+    output_data['table']['column_headings'] = ['Viewed','Interesting','Lig. Placed','Event','Site','1 - BDC','Z-Peak','Map Res.','Map Unc.','Confidence','Comment']
     output_data['table']['rows'] = []
     # Add the datasets as rows
     for i_d in range(len(all_data.index)):
@@ -49,12 +54,9 @@ def write_inspect_html(out_dir, inspector):
         d_tag, d_event = all_data.index[i_d]
 
         columns = []
-        columns.append({'message':d_event})
-        columns.append({'message':d_data['site_idx']})
-        columns.append({'message':round(d_data['est_occupancy'],3)})
-        columns.append({'message':round(d_data['z_peak'],3)})
-        columns.append({'message':d_data['analysed_resolution']})
-        columns.append({'message':round(d_data['map_uncertainty'],3)})
+
+        if d_data['Viewed']:        columns.append({'colour':'success', 'icon':'ok',     'message':d_data['Viewed']})
+        else:                       columns.append({'colour':'danger',  'icon':'remove', 'message':d_data['Viewed']})
 
         if d_data['Interesting']:   columns.append({'colour':'success', 'icon':'ok',     'message':d_data['Interesting']})
         else:                       columns.append({'colour':'danger',  'icon':'remove', 'message':d_data['Interesting']})
@@ -62,13 +64,17 @@ def write_inspect_html(out_dir, inspector):
         if d_data['Ligand Placed']: columns.append({'colour':'success', 'icon':'ok',     'message':d_data['Ligand Placed']})
         else:                       columns.append({'colour':'danger',  'icon':'remove', 'message':d_data['Ligand Placed']})
 
+        columns.append({'message':d_event})
+        columns.append({'message':d_data['site_idx']})
+        columns.append({'message':round(d_data['est_occupancy'],3)})
+        columns.append({'message':round(d_data['z_peak'],3)})
+        columns.append({'message':d_data['analysed_resolution']})
+        columns.append({'message':round(d_data['map_uncertainty'],3)})
+
         columns.append({'message':d_data['Ligand Confidence']})
         columns.append({'message':d_data['Comment']})
 
-        if d_data['Viewed']:        columns.append({'colour':'success', 'icon':'ok',     'message':d_data['Viewed']})
-        else:                       columns.append({'colour':'danger',  'icon':'remove', 'message':d_data['Viewed']})
-
-        row_message = 'Ligand' if d_data['Ligand Placed'] else \
+        row_message = 'Hit' if d_data['Ligand Placed'] else \
                       ''
         row_colour  = 'success' if d_data['Ligand Placed'] else \
                       'danger' if not d_data['Viewed'] else \

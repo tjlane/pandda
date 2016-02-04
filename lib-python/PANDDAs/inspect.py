@@ -282,7 +282,7 @@ class PanddaInspector(object):
         if (new_event is not None) and skip_unmodelled and (not os.path.exists(new_event.fitted_link)):
 #            if self.site_list.at_first_event():
             if self.current_event.index == new_event.index:
-                self.raise_gui_error_and_reset(error_msg='No more unmodelled datasets')
+                self.raise_gui_error_and_reset(error_msg='No modelled datasets')
             else:
                 print 'SKIPPING UNMODELLED: {} - {}'.format(new_event.dtag, new_event.event_idx)
                 self.load_next_event(skip_unmodelled=skip_unmodelled, skip_viewed=skip_viewed)
@@ -419,7 +419,7 @@ class PanddaMolHandler(object):
 
         # Occupancy Map
         o = handle_read_ccp4_map(e.occupancy_map, 0)
-        set_last_map_contour_level(1)
+        set_last_map_contour_level(2*e.est_occ)
         set_map_displayed(o, 1)
 
         # Symmetry contacts
@@ -727,7 +727,7 @@ class PanddaGUI(object):
         self.labels['e_idx'] = gtk_value
 
         # Estimated Event Occupancy
-        gtk_label = gtk.Label('Est. Occupancy')
+        gtk_label = gtk.Label('1 - BDC')
         gtk_value = gtk.Label('1.0')
         gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
         hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box)

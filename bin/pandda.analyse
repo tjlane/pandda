@@ -820,9 +820,9 @@ def pandda_main(args):
                     # NATIVE MAPS (ROTATED)
                     # ============================================================================>
                     # Observed map
-                    if not os.path.exists(d_handler.output_handler.get_file('native_obs_map')):
-                        pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('native_obs_map'),
-                                                    map_data    = pandda.rotate_map(d_handler=d_handler, map_data=m_handler.map))
+                    #if not os.path.exists(d_handler.output_handler.get_file('native_obs_map')):
+                    #    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('native_obs_map'),
+                    #                                map_data    = pandda.rotate_map(d_handler=d_handler, map_data=m_handler.map))
                     # Z-map
                     if not os.path.exists(d_handler.output_handler.get_file('native_z_map')):
                         pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('native_z_map'),
@@ -842,14 +842,6 @@ def pandda_main(args):
                     if not os.path.exists(d_handler.output_handler.get_file('z_map')):
                         pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('z_map'),
                                                     map_data    = z_map)
-                    # Write map of where the blobs are
-                    if not os.path.exists(d_handler.output_handler.get_file('high_z_mask')):
-                        highz_points = []; [highz_points.extend(list(x[0])) for x in z_clusters]
-                        highz_points = [map(int, v) for v in highz_points]
-                        highz_map_array = numpy.zeros(pandda.reference_grid().grid_size_1d(), dtype=int)
-                        highz_map_array.put(map(pandda.reference_grid().grid_indexer(), list(highz_points)), 1)
-                        map_mask = flex.double(highz_map_array.tolist()); map_mask.reshape(flex.grid(pandda.reference_grid().grid_size()))
-                        pandda.write_array_to_map(output_file=d_handler.output_handler.get_file('high_z_mask'), map_data=map_mask)
                     # ============================================================================>
                     # MASKS/BLOBS/GENERIC MAPS
                     # ============================================================================>
@@ -860,6 +852,14 @@ def pandda_main(args):
                             map_mask.put(map(pandda.reference_grid().grid_indexer(), dataset_outer_mask), 1)
                             map_mask = flex.double(map_mask.tolist()); map_mask.reshape(flex.grid(pandda.reference_grid().grid_size()))
                             pandda.write_array_to_map(output_file=d_handler.output_handler.get_file('grid_mask'), map_data=map_mask)
+                        # Write map of where the blobs are (high-Z mask)
+                        if not os.path.exists(d_handler.output_handler.get_file('high_z_mask')):
+                            highz_points = []; [highz_points.extend(list(x[0])) for x in z_clusters]
+                            highz_points = [map(int, v) for v in highz_points]
+                            highz_map_array = numpy.zeros(pandda.reference_grid().grid_size_1d(), dtype=int)
+                            highz_map_array.put(map(pandda.reference_grid().grid_indexer(), list(highz_points)), 1)
+                            map_mask = flex.double(highz_map_array.tolist()); map_mask.reshape(flex.grid(pandda.reference_grid().grid_size()))
+                            pandda.write_array_to_map(output_file=d_handler.output_handler.get_file('high_z_mask'), map_data=map_mask)
                     # ============================================================================>
                     # Write different Z-Maps? (Probably only needed for testing)
                     # ============================================================================>
@@ -1101,7 +1101,7 @@ def pandda_main(args):
                 t_event_cluster_start = time.time()
                 # ==================================================>
                 # Cluster events to sites 
-                site_list = cluster_events(events=all_events, cutoff=5.0/pandda.reference_grid().grid_spacing(), linkage='single')
+                site_list = cluster_events(events=all_events, cutoff=15.0/pandda.reference_grid().grid_spacing(), linkage='average')
                 # Sort sites by largest Z-Value
                 site_list.sort(key=lambda s: (s.info.num_events, max([e.cluster.max for e in s.children])), reverse=True).renumber()
                 # Add meta to the site list
