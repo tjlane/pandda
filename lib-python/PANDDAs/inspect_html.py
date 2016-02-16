@@ -17,6 +17,12 @@ def write_inspect_html(out_dir, inspector):
     num_empty  = num_viewed - num_fitted
     num_unviewed = len_data - num_viewed
 
+    num_blobs = len_data
+    num_sites = len(set(all_data['site_idx']))
+    # Number of datasets with hits
+    try:    num_d_hit = len(set(zip(*all_data.index[all_data['Ligand Placed'] == True])[0]))
+    except: num_d_hit = 0
+
     # ===========================================================>
     # Construct the data object to populate the template
     output_data = {'PANDDA_TOP' : path2url(PANDDA_TOP)}
@@ -32,6 +38,13 @@ def write_inspect_html(out_dir, inspector):
                                        'title': 'Identified Sites (Back)' })
     output_data['top_images'].append({ 'path': path2url(os.path.abspath(os.path.join(out_dir, 'results_summaries', PanddaAnalyserFilenames.inspect_site_graph))),
                                        'title': 'Identified Site Summary' })
+    # ===========================================================>
+    # Summary Bar
+    output_data['summary_bar'] = []
+    output_data['summary_bar'].append({'colour':'info',    'text':'PANDDA-Identified Blobs: {}'.format(num_blobs)})
+    output_data['summary_bar'].append({'colour':'info',    'text':'PANDDA-Identified Sites: {}'.format(num_sites)})
+    output_data['summary_bar'].append({'colour':'success', 'text':'Number of Ligands Fitted: {}'.format(num_fitted)})
+    output_data['summary_bar'].append({'colour':'success', 'text':'Datasets w. Fitted Ligands: {}'.format(num_d_hit)})
     # ===========================================================>
     # Progress Bars
     output_data['progress_bar'] = []

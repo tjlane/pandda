@@ -873,6 +873,9 @@ class PanddaMultiDatasetAnalyser(object):
         # Output
         assert p.output.out_dir, 'pandda.output.out_dir IS NOT DEFINED'
 
+        if p.method.reprocess_existing_datasets or self.args.method.reprocess_selected_datasets:
+            p.method.reload_existing_datasets = True
+
     def _run_directory_setup(self):
         """Initialise the pandda directory system"""
 
@@ -1740,14 +1743,21 @@ class PanddaMultiDatasetAnalyser(object):
 
         assert method in ['local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
 
-        # If local alignment has been chosen, also do a global alignment
-        if method == 'local': method = 'both'
+        # Select the datasets for alignment
+        if method == 'local':
+            # If local alignment has been chosen, also do a global alignment
+            method = 'both'
+            # Select the datasets that don't have local alignments
+            align_datasets = [d_handler for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True) if not d_handler.local_alignment_transforms()]
+        else:
+            # Select the datasets that don't have global alignments
+            align_datasets = [d_handler for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True) if not d_handler.global_alignment_transform()]
 
         # Align the datasets using multiple cores if possible
         self.log('===================================>>>', True)
-        print('Generating Alignments (using {!s} cores)'.format(self.args.settings.cpus))
+        print('Generating Alignments (using {!s} cores) for {} datasets'.format(self.args.settings.cpus, len(align_datasets)))
         start = time.time()
-        arg_list = [{'r_handler':self.reference_dataset(), 'd_handler':d_handler, 'method':method} for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True)]
+        arg_list = [{'r_handler':self.reference_dataset(), 'd_handler':d_handler, 'method':method} for d_handler in align_datasets]
         alignment_transforms = easy_mp.pool_map(fixed_func=align_map_func, args=arg_list, processes=self.args.settings.cpus)
         alignment_transforms = dict(alignment_transforms)
         finish = time.time()
@@ -1999,6 +2009,11 @@ class PanddaMultiDatasetAnalyser(object):
 
         assert high_res_large_cutoff > high_res_small_cutoff, '{!s} must be larger than {!s}'.format(high_res_large_cutoff, high_res_small_cutoff)
 
+        if self.args.method.reprocess_selected_datasets:
+            datasets_for_reprocessing = self.args.method.reprocess_selected_datasets.split(',')
+        else:
+            datasets_for_reprocessing = []
+
         # Create empty mask
         self.datasets.all_masks().add_mask(mask_name=analysis_mask_name, mask=[False]*self.datasets.size())
         # Select from the datasets that haven't been rejected
@@ -2013,7 +2028,7 @@ class PanddaMultiDatasetAnalyser(object):
             elif self.datasets.all_masks().get_mask_value(mask_name='no_analyse', entry_id=d_handler.tag) == True:
                 self.log('Rejecting Dataset {!s}: Excluded from analysis'.format(d_handler.tag))
                 continue
-            elif (not self.args.method.reprocess_existing_datasets) and self.datasets.all_masks().get_mask_value(mask_name='old datasets', entry_id=d_handler.tag):
+            elif self.datasets.all_masks().get_mask_value(mask_name='old datasets', entry_id=d_handler.tag) and (not self.args.method.reprocess_existing_datasets) and (d_handler.tag not in datasets_for_reprocessing):
                 self.log('Rejecting Dataset {!s}: Already Processed (Old Dataset)'.format(d_handler.tag))
                 continue
             else:
@@ -2071,11 +2086,12 @@ class PanddaMultiDatasetAnalyser(object):
         self.log('===================================>>>', True)
         self.log('Truncating Reflection Data', True)
 
-        # Calculate which reflections are present in all datasets
-        common_set = self.reference_dataset().sfs.set()
-        ref_size = common_set.size()
+        # Calculate which reflections are present in the reference dataset
+        ref_size = self.reference_dataset().sfs.set().size()
         self.log('Number of Reflections in Reference Dataset: {!s}'.format(ref_size))
-        # Truncate reflections to the common set
+
+        # Truncate reflections to the common set (not including the reference dataset)
+        common_set = dataset_handlers[0].sfs.set()
         for i_dh, d_handler in enumerate(dataset_handlers):
             common_set = common_set.common_set(d_handler.sfs, assert_is_similar_symmetry=False)
 
@@ -2816,7 +2832,7 @@ class PanddaMultiDatasetAnalyser(object):
             pymol_str += 'run {}\n'.format(self.output_handler.get_file(file_tag='pymol_sites_py'))
             pymol_str += 'orient\n'
             pymol_str += 'png {}, width=10cm, dpi=300, ray=1\n'.format(self.output_handler.get_file(file_tag='pymol_sites_png_1'))
-            pymol_str += 'rotate z, 180\n'
+            pymol_str += 'rotate y, 180\n'
             pymol_str += 'png {}, width=10cm, dpi=300, ray=1\n'.format(self.output_handler.get_file(file_tag='pymol_sites_png_2'))
             pymol_str += 'quit'
 
@@ -2848,11 +2864,11 @@ class PanddaMultiDatasetAnalyser(object):
         self.tables.event_info.set_value(event.id, 'z_mean', event.cluster.mean)
         self.tables.event_info.set_value(event.id, 'cluster_size', event.cluster.size)
         self.tables.event_info.set_value(event.id, ['refx','refy','refz'], list(flex.double(event.cluster.peak)*self.reference_grid().grid_spacing()))
+        if self.params.alignment.method=='local': mappings = self.reference_grid().partition().query_by_grid_points([grid_ref])
+        else:                                     mappings = None
         self.tables.event_info.set_value(event.id, ['x','y','z'], list(d_handler.transform_from_reference(  points=flex.vec3_double([event.cluster.peak])*self.reference_grid().grid_spacing(),
-                                                                                                        method='global',
-#                                                                                                        method=self.params.alignment.method,
-#                                                                                                        point_mappings=self.reference_grid().partition().query_by_grid_points([grid_ref])
-                                                                                                        )[0]))
+                                                                                                            method=self.params.alignment.method,
+                                                                                                            point_mappings=mappings       )[0]))
 
     def update_event_table_site_info(self, events):
         """Update the event table for pre-existing events"""
@@ -2887,17 +2903,22 @@ class PanddaMultiDatasetAnalyser(object):
                 out_line = '\n'.join(map(str,out_list)) + '\n'
                 fh.write(out_line)
 
-    def rotate_map(self, d_handler, map_data):
+    def rotate_map(self, d_handler, map_data, align_on_grid_point=None):
         """Apply an RT matrix to an array on the reference grid"""
 
-        # For the local alignment transformation
-        #point_mappings = self.find_nearest_calpha(points)
-        #lab_rt_points = self.local_alignment_transforms()[r_lab].inverse() * flex.vec3_double(lab_points)
+        if (align_on_grid_point is not None) and self.params.alignment.method=='local':
+            # For the local alignment transformation
+            rt_lab = self.reference_grid().partition().query_by_grid_points([align_on_grid_point])[0]
+            self.log('Aligning Map on {}'.format(rt_lab))
+            rt = d_handler.local_alignment_transforms()[rt_lab]
+        else:
+            # For the global alignment transformation
+            rt = d_handler.global_alignment_transform()
 
         return cctbx.maptbx.rotate_translate_map(   unit_cell          = self.reference_grid().unit_cell(),
                                                     map_data           = map_data,
-                                                    rotation_matrix    = d_handler.global_alignment_transform().r.elems,
-                                                    translation_vector = d_handler.global_alignment_transform().t.elems    )
+                                                    rotation_matrix    = rt.r.elems,
+                                                    translation_vector = rt.t.elems    )
 
     def write_array_to_map(self, output_file, map_data):
         """Take array on the reference grid and write to map"""

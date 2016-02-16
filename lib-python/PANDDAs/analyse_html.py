@@ -145,7 +145,7 @@ def write_analyse_html(pandda):
         else:
             columns.append({'colour':'default', 'icon':'remove',    'message':''})
 
-        row_message = 'Hits' if pandda.datasets.all_masks().get_mask_value(mask_name='interesting', entry_id=d.tag) == True else \
+        row_message = 'Z-Blobs Found' if pandda.datasets.all_masks().get_mask_value(mask_name='interesting', entry_id=d.tag) == True else \
                       ''
         row_colour  = 'success' if row_message else \
                       'danger' if pandda.datasets.all_masks().get_mask_value(mask_name='rejected - total', entry_id=d.tag) == True else \

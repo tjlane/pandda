@@ -64,12 +64,15 @@ pandda_phil_def = """
             reload_existing_datasets = True
                 .help = "Reload existing datasets? - if False, will only load new datasets (unprocessed datasets)"
                 .type = bool
-            reprocess_existing_datasets = False
-                .help = "Reprocess existing datasets? (Time-consuming) - if False, will only calculate z-maps for new datasets (unprocessed datasets)"
-                .type = bool
             recalculate_statistical_maps = False
                 .help = "Recalculate all of the statistical maps? (Time-consuming) - if False, looks for existing statistical maps and uses those (reverts to True if none are found)"
                 .type = bool
+            reprocess_existing_datasets = False
+                .help = "Reprocess existing datasets? (Time-consuming) - if False, will only calculate z-maps for new datasets (unprocessed datasets)"
+                .type = bool
+            reprocess_selected_datasets = None
+                .help = "Reprocess selection of datasets (comma-separated list)"
+                .type = str
         }
         params
             .help = "Algorithm Parameters"

@@ -28,16 +28,6 @@
     <div class="container">
       <h1>{{ title }}</h1>
       <h2>{{ introduction }}</h2>
-      {% if top_images is defined %}
-      <div class="row">
-        {% for img in top_images -%}
-        <div class="col-xs-12 col-sm-12 col-md-6 col-lg-6">
-           <p>{{ img.title }}</p>
-           <img class="img-responsive" src="{{ img.path }}" alt="No Image">
-        </div>
-        {% endfor -%}
-      </div>
-      {% endif %}
       {% if progress_bar is defined %}
       <div class="row">
         {% for bar in progress_bar -%}
@@ -55,8 +45,25 @@
         {% endfor -%}
       </div>
       {% endif %}
+      {% if summary_bar is defined %}
+      <div class="row">
+        {% for bar in summary_bar -%}
+        <div class="col-xs-12 col-sm-6 col-md-4 col-lg-3"><div class="alert alert-{{ bar.colour }}" role="alert">{{ bar.text }}</div></div>
+        {% endfor -%}
+      </div>
+      {% endif %}
+      {% if top_images is defined %}
+      <div class="row">
+        {% for img in top_images -%}
+        <div class="col-xs-12 col-sm-12 col-md-6 col-lg-6">
+           <p>{{ img.title }}</p>
+           <img class="img-responsive" src="{{ img.path }}" alt="No Image">
+        </div>
+        {% endfor -%}
+      </div>
+      {% endif %}
       {% if table is defined %}
-      <div class="table-responsive" style="height:400px">
+      <div class="table-responsive" style="height:600px">
         <table class="table table-bordered table-striped">
           <thead>
             <tr>
@@ -80,6 +87,7 @@
         </table>
       </div>
       {% endif %}
+      <div class="alert alert-info" role="alert">PANDDAs. Written by Nicholas M Pearce in 2015/2016.</div>
     </div>
 
   </body>

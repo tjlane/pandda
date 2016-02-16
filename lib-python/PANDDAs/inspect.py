@@ -567,18 +567,21 @@ class PanddaGUI(object):
         box = gtk.HBox(homogeneous=False, spacing=2)
         box.set_border_width(3)
         # ---
-        b = gtk.Button(label="<<< Prev (Skip) <<<")
+        b = gtk.Button(label="<<< Prev <<<\n\n(Don't Save Model)")
+        b.child.set_justify(gtk.JUSTIFY_CENTER)
         self.buttons['prev'] = b
         box.pack_start(b)
         # ---
-        b = gtk.Button(label=">>> Next (Skip) >>>")
+        b = gtk.Button(label=">>> Next >>>\n\n(Don't Save Model)")
+        b.child.set_justify(gtk.JUSTIFY_CENTER)
         self.buttons['skip'] = b
         box.pack_start(b)
         # ---
         b = gtk.VSeparator()
         box.pack_start(b, expand=False, padding=5)
         # ---
-        b = gtk.Button(label=">>> Next (Save) >>>")
+        b = gtk.Button(label=">>> Next >>>\n\n(Save Model)")
+        b.child.set_justify(gtk.JUSTIFY_CENTER)
         self.buttons['next'] = b
         box.pack_start(b)
         # ---
@@ -597,19 +600,19 @@ class PanddaGUI(object):
         frame = gtk.Frame(); frame.add(box2)
         main_box.pack_start(frame)
         # ---
-        b = gtk.Button(label="<<< Prev Site <<<")
+        b = gtk.Button(label="<<< Go to Prev Site <<<")
         self.buttons['prev-site'] = b
         box1.add(b)
         # ---
-        b = gtk.Button(label=">>> Next Site >>>")
+        b = gtk.Button(label=">>> Go to Next Site >>>")
         self.buttons['next-site'] = b
         box1.add(b)
         # ---
-        b = gtk.Button(label=">>> Next Unviewed >>>")
+        b = gtk.Button(label=">>> Go to Next Unviewed >>>")
         self.buttons['next-unviewed'] = b
         box2.add(b)
         # ---
-        b = gtk.Button(label=">>> Next Modelled >>>")
+        b = gtk.Button(label=">>> Go to Next Modelled >>>")
         self.buttons['next-modelled'] = b
         box2.add(b)
         # ---
@@ -648,11 +651,11 @@ class PanddaGUI(object):
         vbox_1_3 = gtk.VBox(homogeneous=True, spacing=2)
         hbox_1.add(vbox_1_1); hbox_1.add(vbox_1_2); hbox_1.add(vbox_1_3)
         # ---
-        b = gtk.Button(label="Mark Interesting")
+        b = gtk.Button(label="Mark Event as Interesting")
         self.buttons['tp'] = b
         vbox_1_1.add(b)
         # ---
-        b = gtk.Button(label="Mark Not Interesting")
+        b = gtk.Button(label="Mark Event as Not Interesting")
         self.buttons['fp'] = b
         vbox_1_1.add(b)
         # ---

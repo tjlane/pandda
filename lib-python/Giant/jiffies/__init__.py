@@ -11,7 +11,7 @@ def parse_phil_args(master_phil, args, home_scope=None, blank_arg_prepend=None):
             assert '=' in item
     elif isinstance(blank_arg_prepend, str):
         assert '=' in blank_arg_prepend
-    else: 
+    else:
         raise Exception('blank_arg_prepend must be str or dict')
 
     # Copy the args so that we can remove items from the list without affecting args etc
@@ -25,10 +25,16 @@ def parse_phil_args(master_phil, args, home_scope=None, blank_arg_prepend=None):
             # Prepend if blank
             if '=' not in arg:
                 if isinstance(blank_arg_prepend, dict):
+                    found_key = False
                     for key in blank_arg_prepend.keys():
+                        if key is None:
+                            continue
                         if arg.endswith(key):
                             arg = blank_arg_prepend[key]+arg
+                            found_key = True
                             break
+                    if (found_key == False) and (None in blank_arg_prepend.keys()):
+                        arg = blank_arg_prepend[None]+arg
                 elif isinstance(blank_arg_prepend, str):
                     arg = blank_arg_prepend+arg
             # Attempt to process arg

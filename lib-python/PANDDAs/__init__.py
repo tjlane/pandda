@@ -6,6 +6,8 @@ def welcome(current_user):
         from greetings import get_greeting
         print get_greeting(username=current_user)
         return
+    except SystemExit:
+        raise
     except:
         pass
 

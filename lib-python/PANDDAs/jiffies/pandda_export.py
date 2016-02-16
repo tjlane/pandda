@@ -11,11 +11,17 @@ from Giant.jiffies import merge_conformations, create_occupancy_params
 
 ############################################################################
 
+blank_arg_prepend = {None:'export_dir='}
+
 master_phil = libtbx.phil.parse("""
 input {
     pandda_dir = ./pandda
         .help = 'Path to the pandda directory to export files from'
         .type = str
+    export_dir = None
+        .help = 'Manually specify directories to export'
+        .type = str
+        .multiple = True
 }
 output {
     out_dir = ./pandda-export
@@ -273,7 +279,12 @@ def run(params):
     ############################################################################
 
     # Find the dataset directories to be exported
-    export_dirs = sorted(glob.glob(os.path.join(params.input.pandda_dir, params.export.datasets_to_export, '*')))
+    if params.input.export_dir:
+        export_dirs = sorted([os.path.join(params.input.pandda_dir, params.export.datasets_to_export, p) for p in params.input.export_dir])
+        export_dirs = [p for p in export_dirs if os.path.exists(p)]
+        print 'Exporting:\n\t', '\n\t'.join(export_dirs)
+    else:
+        export_dirs = sorted(glob.glob(os.path.join(params.input.pandda_dir, params.export.datasets_to_export, '*')))
     assert export_dirs, 'No Export Directories Found'
 
     # Create output directory
