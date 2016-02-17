@@ -25,9 +25,6 @@ def calculate_occupancy_correlations(ref_map, query_map, feature_region, min_occ
     assert ref_map.all() == query_map.all(), 'ref_map and query_map are not the same size: {!s} != {!s}'.format(ref_map.all(), query_map.all())
     assert ref_map.size() == query_map.size(), 'ref_map and query_map are not the same size: {!s} != {!s}'.format(ref_map.size(), query_map.size())
 
-    if verbose: print 'FEATURE REGION:', len(feature_region)
-    if verbose: print 'REFERENCE REGION:', len(reference_region)
-
     ##########################################################################################
 
     # Calculate the map indices of the grid points where the feature is

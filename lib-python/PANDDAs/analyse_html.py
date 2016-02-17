@@ -20,7 +20,7 @@ def write_initial_html(pandda):
                                        'title': 'Dataset Resolutions' })
     output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='d_rfactors')),
                                        'title': 'Dataset R-Factors' })
-    output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='d_rmsd_to_mean')),
+    output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='d_global_rmsd_to_ref')),
                                        'title': 'Dataset RMSD to Mean Structure' })
     output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='d_cell_volumes')),
                                        'title': 'Dataset Cell Volumes' })

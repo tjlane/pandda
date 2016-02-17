@@ -1,0 +1,174 @@
+#!/usr/bin/env pandda.python
+
+import os, sys, glob
+
+import libtbx.phil
+
+from Bamboo.Common.command import commandManager
+from Giant.Utils import rel_symlink
+
+blank_arg_prepend = {   '.mtz':'mtz=', 
+                        '.pdb':'pdb=', 
+                        '.cif':'cif=',
+                        '.params':'params=' }
+
+master_phil = libtbx.phil.parse("""
+input {
+    pdb = None
+        .type = str
+    mtz = 'refine.mtz'
+        .type = str
+    cif = None
+        .type = str
+        .multiple = True
+    params = 'phenix_refine.params'
+        .type = str
+}
+settings {
+    program = *phenix refmac
+        .type = choice
+    create_occupancy_params = False
+        .type = bool
+    ordered_solvent = False
+        .type = bool
+    anisotropic = False
+        .type = bool
+    no_coords = False
+        .type = bool
+}
+output {
+    dir_prefix = 'Refine_'
+        .type = str
+    out_prefix = 'refine'
+        .type = str
+    link_prefix = 'refine'
+        .type = str
+}
+
+""")
+
+def run(params):
+
+    assert params.input.pdb is not None, 'No PDB given for refinement'
+    assert params.input.mtz is not None, 'No MTZ given for refinement'
+   
+    ######################## 
+    current_dirs = sorted(glob.glob(params.output.dir_prefix+'*'))
+    if not current_dirs:
+        out_dir = params.output.dir_prefix+'1'
+    else:
+        current_dirs = [s.replace(params.output.dir_prefix, '') for s in current_dirs]
+        out_dir = params.output.dir_prefix + str(sorted(map(int, current_dirs))[-1]+1)
+    print 'Outputting to {}'.format(out_dir)
+    os.mkdir(out_dir)  
+ 
+    ######################## 
+    output_prefix = os.path.join(out_dir, params.output.out_prefix)
+    print 'Output Real Prefix = {}'.format(output_prefix)
+    print 'Output Link Prefix = {}'.format(params.output.link_prefix)
+
+    ######################## 
+    # Create occupancy parameters
+    if params.settings.create_occupancy_params and params.input.params:
+        print 'Running giant.create_occupancy_params'
+        print 'Generating occupancy model for the input pdb: {}'.format(params.input.pdb)
+        os.system('giant.create_occupancy_params pdb={} phenix_occ_out={} refmac_occ_out=None verbose=False'.format(params.input.pdb, params.input.params))
+
+
+    ######################## 
+    # Phenix
+    if params.settings.program == 'phenix':
+        ######################## 
+        # Build command string
+        cm = commandManager('phenix.refine')
+        cm.add_command_line_arguments([ params.input.pdb, params.input.mtz ])
+        cm.add_command_line_arguments([ 'output.prefix={}'.format(output_prefix) ])
+        if params.input.cif: 
+            cm.add_command_line_arguments( params.input.cif )
+        if params.input.params and os.path.exists(params.input.params): 
+            cm.add_command_line_arguments([ params.input.params ])
+        if params.settings.ordered_solvent:
+            cm.add_command_line_arguments([ 'ordered_solvent=True' ])
+        if params.settings.anisotropic:
+            cm.add_command_line_arguments([ 'adp.individual.anisotropic="not element H"' ])
+        if params.settings.no_coords:
+            cm.add_command_line_arguments([ 'strategy=occupancies+individual_adp' ])
+
+    elif params.settings.program == 'refmac':
+        ######################## 
+        # Build command string
+        cm = commandManager('refmac5')
+        cm.add_command_line_arguments( ['xyzin', params.input.pdb, 'hklin', params.input.mtz] )
+        cm.add_command_line_arguments( ['xyzout', output_prefix+'.pdb', 'hklout', output_prefix+'.mtz'] )
+        if params.input.cif:
+            for cif in params.input.cif:
+              cm.add_command_line_arguments( ['libin', cif] )
+        cm.add_standard_input( ['END'] )
+
+    ######################## 
+    # Print + Run
+    cm.print_settings()
+    out = cm.run()
+    print cm.output
+
+    if out != 0:
+        print cm.error
+    
+    ######################## 
+    # Write log
+    with open(output_prefix+'.quick.log', 'w') as fh:
+        fh.write('\n\nSTDOUT\n\n')
+        fh.write(cm.output)
+        fh.write('\n\nSTDERR\n\n')
+        fh.write(cm.error)
+    
+    ######################## 
+    # Link input
+    rel_symlink(params.input.pdb, os.path.abspath(os.path.join(out_dir, 'input.pdb')))
+    rel_symlink(params.input.mtz, os.path.abspath(os.path.join(out_dir, 'input.mtz')))
+
+    ######################## 
+    # Link output
+    real_pdb = glob.glob(output_prefix+'*.pdb')
+    link_pdb = params.output.link_prefix+'.pdb'
+    if real_pdb:
+        real_pdb = real_pdb[0]
+        if os.path.exists(link_pdb): os.unlink(link_pdb)
+        os.symlink(real_pdb, link_pdb)
+    
+    real_mtz = glob.glob(output_prefix+'*.mtz')
+    link_mtz = params.output.link_prefix+'.mtz'
+    if real_mtz:
+        real_mtz = real_mtz[0]
+        if os.path.exists(link_mtz): os.unlink(link_mtz)
+        os.symlink(real_mtz, link_mtz)
+
+    ######################## 
+    # Create occupancy parameters
+    if os.path.exists(link_pdb) and params.settings.create_occupancy_params and params.input.params:
+        print 'Running giant.create_occupancy_params'
+        print 'Generating occupancy model for the input pdb: {}'.format(link_pdb)
+        os.system('giant.create_occupancy_params pdb={} verbose=False'.format(link_pdb))
+
+##########################
+
+from Giant.jiffies import parse_phil_args
+
+if __name__ == '__main__':
+
+    # Show Defaults (just values)
+    if '--show-defaults' in sys.argv:
+        master_phil.show(attributes_level=0)
+    # Show Defaults (including information)
+    elif '--help' in sys.argv:
+        master_phil.show(attributes_level=2)
+    # ... or just run ...
+    elif '--expert' in sys.argv:
+        master_phil.show(attributes_level=4)
+    # ... or just run ...
+    else:
+        working_phil = parse_phil_args(master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
+        out = run(params=working_phil.extract())
+    # Exit (unnecessary, but eh)
+    sys.exit()
+

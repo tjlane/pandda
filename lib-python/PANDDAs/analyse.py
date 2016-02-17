@@ -648,7 +648,7 @@ class PanddaMultiDatasetAnalyser(object):
         # Show defaults and exit
         if '--show-defaults' in args:
             self.master_phil.show()
-            sys.exit()
+            raise SystemExit()
 
         # Process the input arguments and convert to phil
         self.cmds = args
@@ -660,12 +660,6 @@ class PanddaMultiDatasetAnalyser(object):
 
         # Validate the processed parameters
         self._validate_parameters()
-
-        # ===============================================================================>
-        # INPUT FILES STUFF
-        # ===============================================================================>
-
-        self.data_dirs = os.path.abspath(self.args.input.data_dirs)
 
         # ===============================================================================>
         # OUTPUT FILES STUFF
@@ -775,6 +769,30 @@ class PanddaMultiDatasetAnalyser(object):
 
         return working_phil, args
 
+    def _validate_parameters(self):
+        """Validate and preprocess the loaded parameters"""
+
+        p = self.args
+
+        # Input
+        assert p.input.data_dirs is not None, 'pandda.input.data_dirs IS NOT DEFINED'
+        assert p.input.pdb_style, 'pandda.input.pdb_style IS NOT DEFINED'
+        assert p.input.pdb_regex or p.input.mtz_regex or p.input.dir_regex or \
+               (p.input.pdb_style and ('*' in p.input.pdb_style)) or \
+               (p.input.mtz_style and ('*' in p.input.mtz_style)) or \
+               (p.input.data_dirs and ('*' in p.input.data_dirs))
+        assert p.input.lig_style, 'pandda.input.lig_style IS NOT DEFINED'
+        # Output
+        assert p.output.out_dir, 'pandda.output.out_dir IS NOT DEFINED'
+
+        # Make fullpath so we can run on the eff file from anywhere
+        p.input.data_dirs = os.path.abspath(p.input.data_dirs)
+        p.output.out_dir  = os.path.abspath(p.output.out_dir)
+
+        # If any datasets are set to be reprocessed, reload all datasets (need to change this to allow for "reload_selected_datasets")
+        if p.method.reprocess_existing_datasets or self.args.method.reprocess_selected_datasets:
+            p.method.reload_existing_datasets = True
+
     def run_pandda_init(self):
         """Set up the pandda"""
 
@@ -812,7 +830,7 @@ class PanddaMultiDatasetAnalyser(object):
         self.log('===================================>>>', True)
         self.log('RUNNING FROM: {!s}'.format(sys.argv[0]), True)
         self.log('===================================>>>', True)
-        self.log('READING INPUT FROM : {!s}'.format(self.data_dirs), True)
+        self.log('READING INPUT FROM : {!s}'.format(self.args.input.data_dirs), True)
         self.log('===================================>>>', True)
         self.log('WRITING OUTPUT TO: {!s}'.format(self.out_dir), True)
 
@@ -857,25 +875,6 @@ class PanddaMultiDatasetAnalyser(object):
         self.log('===================================>>>', True)
         self.log('Analysis Started: {!s}'.format(time.strftime("%a, %d %b %Y %H:%M:%S", time.gmtime(self._init_time))), True)
 
-    def _validate_parameters(self):
-        """Validate and preprocess the loaded parameters"""
-
-        p = self.args
-
-        # Input
-        assert p.input.data_dirs is not None, 'pandda.input.data_dirs IS NOT DEFINED'
-        assert p.input.pdb_style, 'pandda.input.pdb_style IS NOT DEFINED'
-        assert p.input.pdb_regex or p.input.mtz_regex or p.input.dir_regex or \
-               (p.input.pdb_style and ('*' in p.input.pdb_style)) or \
-               (p.input.mtz_style and ('*' in p.input.mtz_style)) or \
-               (p.input.data_dirs and ('*' in p.input.data_dirs))
-        assert p.input.lig_style, 'pandda.input.lig_style IS NOT DEFINED'
-        # Output
-        assert p.output.out_dir, 'pandda.output.out_dir IS NOT DEFINED'
-
-        if p.method.reprocess_existing_datasets or self.args.method.reprocess_selected_datasets:
-            p.method.reload_existing_datasets = True
-
     def _run_directory_setup(self):
         """Initialise the pandda directory system"""
 
@@ -919,12 +918,12 @@ class PanddaMultiDatasetAnalyser(object):
         self.output_handler.add_dir(dir_name='analyses', dir_tag='analyses', top_dir_tag='root')
         # Store dataset summary graphs
         self.output_handler.add_dir(dir_name='dataset_graph_summaries', dir_tag='d_graphs', top_dir_tag='analyses')
-        self.output_handler.add_file(file_name='dataset_resolutions.png',           file_tag='d_resolutions',  dir_tag='d_graphs')
-        self.output_handler.add_file(file_name='dataset_rfactors.png',              file_tag='d_rfactors',     dir_tag='d_graphs')
-        self.output_handler.add_file(file_name='dataset_rmsd_to_mean.png',          file_tag='d_rmsd_to_mean', dir_tag='d_graphs')
-        self.output_handler.add_file(file_name='dataset_cell_axes.png',             file_tag='d_cell_axes',    dir_tag='d_graphs')
-        self.output_handler.add_file(file_name='dataset_cell_angles.png',           file_tag='d_cell_angles',  dir_tag='d_graphs')
-        self.output_handler.add_file(file_name='dataset_cell_volumes.png',          file_tag='d_cell_volumes', dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_resolutions.png',           file_tag='d_resolutions',        dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_rfactors.png',              file_tag='d_rfactors',           dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_global_rmsd_to_ref.png',    file_tag='d_global_rmsd_to_ref', dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_cell_axes.png',             file_tag='d_cell_axes',          dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_cell_angles.png',           file_tag='d_cell_angles',        dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_cell_volumes.png',          file_tag='d_cell_volumes',       dir_tag='d_graphs')
         # Somewhere to store the dataset information (general values)
         self.output_handler.add_file(file_name=f.dataset_info,                      file_tag='dataset_info',            dir_tag='analyses')
         self.output_handler.add_file(file_name=f.dataset_map_info,                  file_tag='dataset_map_info',        dir_tag='analyses')
@@ -1118,20 +1117,18 @@ class PanddaMultiDatasetAnalyser(object):
 
     def exit(self, error=False):
         """Exit the PANDDA, record runtime etc..."""
+
+        self.update_status('done')
         self.log('===================================>>>', True)
         self.log('...FINISHED!...', True)
         self.log('===================================>>>', True)
         self._finish_time = time.time()
         self.log('Runtime: {!s}'.format(time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(self._finish_time - self._init_time))))
 
-        try:
-            if self.args.settings.pickling.full_pickle:
-                # Pickle myself
-                self.log('===================================>>>', True)
-                self.log('Pickling the PANDDA Results')
-                self.pickle(pickle_file=self.pickle_handler.get_file('my_pandda'), pickle_object=self, overwrite=True)
-        except:
-            self.log('FAILED TO PICKLE MYSELF')
+        # If error, don't make meta or self pickle
+        if error:
+            self.log('PANDDA exited with an error')
+            return
 
         try:
             # Extract meta about the datasets
@@ -1158,6 +1155,16 @@ class PanddaMultiDatasetAnalyser(object):
                         overwrite = True)
         except:
             self.log('FAILED TO PICKLE META')
+
+        # Lastly, pickle myself (if required)
+        try:
+            if self.args.settings.pickling.full_pickle:
+                # Pickle myself
+                self.log('===================================>>>', True)
+                self.log('Pickling the PANDDA Results')
+                self.pickle(pickle_file=self.pickle_handler.get_file('my_pandda'), pickle_object=self, overwrite=True)
+        except:
+            self.log('FAILED TO PICKLE MYSELF')
 
     def log(self, message, show=False, hide=False):
         """Log message to file, and mirror to stdout if verbose or force_print (hide overrules show)"""
@@ -1204,11 +1211,6 @@ class PanddaMultiDatasetAnalyser(object):
         """Get all of the files that were added on this run"""
         return self._input_files
 
-    def get_calpha_average_sites(self):
-        return self._average_calpha_sites
-    def get_calpha_deviation_masks(self):
-        return self._residue_deviation_masks
-
     def initialise_analysis(self):
         """Add blank masks to the mask objects, based on how many datasets have been loaded"""
 
@@ -1254,6 +1256,39 @@ class PanddaMultiDatasetAnalyser(object):
         # Add dataset tags as rows in the tables
         self.tables.dataset_info     = self.tables.dataset_info.append(pandas.DataFrame(index=[d.tag for d in self.datasets.all()]), verify_integrity=True)
         self.tables.dataset_map_info = self.tables.dataset_map_info.append(pandas.DataFrame(index=[d.tag for d in self.datasets.all()]), verify_integrity=True)
+
+    def select_reference_dataset(self, method='resolution', max_rfree=0.4, min_resolution=5):
+        """Select dataset to act as the reference - scaling, aligning etc"""
+
+        assert method in ['resolution','rfree'], 'METHOD FOR SELECTING THE REFERENCE DATASET NOT RECOGNISED: {!s}'.format(method)
+
+        # Filter the datasets that can be selected as the reference dataset
+        filtered_datasets = self.datasets.mask(mask_name='no_build', invert=True)
+
+        if self.args.input.reference.pdb and self.args.input.reference.pdb:
+            self.log('===================================>>>', True)
+            self.log('Reference Provided by User', True)
+            return self.args.input.reference.pdb, self.args.input.reference.mtz
+        else:
+            self.log('===================================>>>', True)
+            self.log('Selecting Reference Dataset by: {!s}'.format(method), True)
+            if method == 'rfree':
+                # Get RFrees of datasets (set to dummy value of 999 if resolution is too high so that it is not selected)
+                r_frees = [d.input().get_r_rfree_sigma().r_free if (d.reflection_data().max_min_resolution()[1] < min_resolution) else 999 for d in filtered_datasets]
+                if len(resolns) == 0: raise Exception('NO DATASETS BELOW RESOLUTION CUTOFF {!s}A - CANNOT SELECT REFERENCE DATASET'.format(min_resolution))
+                ref_dataset_index = r_frees.index(min(r_frees))
+            elif method == 'resolution':
+                # Get Resolutions of datasets (set to dummy value of 999 if r-free is too high so that it is not selected)
+                resolns = [d.reflection_data().max_min_resolution()[1] if (d.input().get_r_rfree_sigma().r_free < max_rfree) else 999 for d in filtered_datasets]
+                if len(resolns) == 0: raise Exception('NO DATASETS BELOW RFREE CUTOFF {!s} - CANNOT SELECT REFERENCE DATASET'.format(max_rfree))
+                ref_dataset_index = resolns.index(min(resolns))
+
+            reference = filtered_datasets[ref_dataset_index]
+            self._ref_dataset_index = reference.num
+            self.log('Reference Selected: {!s}'.format(reference.tag), True)
+            self.log('Resolution: {!s}, RFree: {!s}'.format(reference.reflection_data().max_min_resolution()[1], reference.input().get_r_rfree_sigma().r_free), True)
+
+            return reference.pdb_filename(), reference.mtz_filename()
 
     def load_reference_dataset(self, ref_pdb, ref_mtz):
         """Set the reference dataset, to which all other datasets will be aligned and scaled"""
@@ -1407,7 +1442,7 @@ class PanddaMultiDatasetAnalyser(object):
         new_files = []
         empty_directories = []
 
-        for dir in sorted(glob.glob(self.data_dirs)):
+        for dir in sorted(glob.glob(self.args.input.data_dirs)):
             pdb_files = glob.glob(os.path.join(dir, pdb_style))
             mtz_files = glob.glob(os.path.join(dir, mtz_style))
             if not (pdb_files and mtz_files):
@@ -1675,39 +1710,6 @@ class PanddaMultiDatasetAnalyser(object):
         self.log('{!s} Datasets Loaded (New).          '.format(len(loaded_datasets), True))
         self.log('{!s} Datasets Loaded (Total).        '.format(self.datasets.size(), True))
 
-    def select_reference_dataset(self, method='resolution', max_rfree=0.4, min_resolution=5):
-        """Select dataset to act as the reference - scaling, aligning etc"""
-
-        assert method in ['resolution','rfree'], 'METHOD FOR SELECTING THE REFERENCE DATASET NOT RECOGNISED: {!s}'.format(method)
-
-        # Filter the datasets that can be selected as the reference dataset
-        filtered_datasets = self.datasets.mask(mask_name='no_build', invert=True)
-
-        if self.args.input.reference.pdb and self.args.input.reference.pdb:
-            self.log('===================================>>>', True)
-            self.log('Reference Provided by User', True)
-            return self.args.input.reference.pdb, self.args.input.reference.mtz
-        else:
-            self.log('===================================>>>', True)
-            self.log('Selecting Reference Dataset by: {!s}'.format(method), True)
-            if method == 'rfree':
-                # Get RFrees of datasets (set to dummy value of 999 if resolution is too high so that it is not selected)
-                r_frees = [d.input().get_r_rfree_sigma().r_free if (d.reflection_data().max_min_resolution()[1] < min_resolution) else 999 for d in filtered_datasets]
-                if len(resolns) == 0: raise Exception('NO DATASETS BELOW RESOLUTION CUTOFF {!s}A - CANNOT SELECT REFERENCE DATASET'.format(min_resolution))
-                ref_dataset_index = r_frees.index(min(r_frees))
-            elif method == 'resolution':
-                # Get Resolutions of datasets (set to dummy value of 999 if r-free is too high so that it is not selected)
-                resolns = [d.reflection_data().max_min_resolution()[1] if (d.input().get_r_rfree_sigma().r_free < max_rfree) else 999 for d in filtered_datasets]
-                if len(resolns) == 0: raise Exception('NO DATASETS BELOW RFREE CUTOFF {!s} - CANNOT SELECT REFERENCE DATASET'.format(max_rfree))
-                ref_dataset_index = resolns.index(min(resolns))
-
-            reference = filtered_datasets[ref_dataset_index]
-            self._ref_dataset_index = reference.num
-            self.log('Reference Selected: {!s}'.format(reference.tag), True)
-            self.log('Resolution: {!s}, RFree: {!s}'.format(reference.reflection_data().max_min_resolution()[1], reference.input().get_r_rfree_sigma().r_free), True)
-
-            return reference.pdb_filename(), reference.mtz_filename()
-
     def load_reflection_data(self, ampl_label, phas_label):
         """Extract amplitudes and phases for creating map"""
 
@@ -1812,14 +1814,13 @@ class PanddaMultiDatasetAnalyser(object):
         t2 = time.time()
         self.log('\r> Aligning Structures > Time Taken: {!s} seconds'.format(int(t2-t1)), True)
 
-    def analyse_dataset_variability_1(self):
+    def collate_dataset_variables(self):
         """Go through all of the datasets and collect lots of different characteristics of the datasets for identifying odd datasets"""
 
         self.log('===================================>>>', True)
-        self.log('Collecting Dataset/Crystal Variation Data - 1', True)
+        self.log('Collating Dataset Structure/Crystal Variables', True)
         self.log('===================================>>>')
 
-        self.log('Extracting Resolutions')
         for d in self.datasets.all():
             # Resolution info
             self.tables.dataset_info.set_value(d.tag, 'high_resolution', d.mtz_summary.high_res)
@@ -1832,6 +1833,19 @@ class PanddaMultiDatasetAnalyser(object):
             # Quality info
             self.tables.dataset_info.set_value(d.tag, 'r_work', d.input().get_r_rfree_sigma().r_work)
             self.tables.dataset_info.set_value(d.tag, 'r_free', d.input().get_r_rfree_sigma().r_free)
+
+    def calculate_dataset_variability(self):
+        """Go through all of the datasets and collect lots of different characteristics of the datasets for identifying odd datasets"""
+
+        self.log('===================================>>>', True)
+        self.log('Calculating Dataset Structure/Crystal Variation', True)
+        self.log('===================================>>>')
+
+        # Now calculate the variation in the structure, from the reference
+        self.log('Calculating RMSDs (Calphas) to Reference Structure')
+        for d in self.datasets.mask(mask_name='rejected - total', invert=True):
+            rmsd = d.get_calpha_sites().rms_difference(d.transform_from_reference(points=self.reference_dataset().get_calpha_sites(), method='global'))
+            self.tables.dataset_info.set_value(d.tag, 'global_rmsd_to_ref', rmsd)
 
     def filter_datasets_1(self):
         """Filter out the datasets which contain different protein models (i.e. protein length, sequence, etc)"""
@@ -1979,6 +1993,17 @@ class PanddaMultiDatasetAnalyser(object):
             if not os.path.exists(reject_dir):
                 rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=reject_dir)
 
+    def check_and_reset_datasets(self):
+        """Check that pickled datasets are ready for reprocessing, etc, if required"""
+
+        if self.args.method.reprocess_selected_datasets: datasets_for_reprocessing = self.args.method.reprocess_selected_datasets.split(',')
+        else:                                            datasets_for_reprocessing = []
+
+        for d_handler in self.datasets.all():
+            if self.args.method.reprocess_existing_datasets or (d_handler.tag in datasets_for_reprocessing):
+                # Delete events from before
+                d_handler.events = []
+
     def select_for_building_distributions(self, high_res_cutoff, building_mask_name):
         """Select all datasets with resolution better than high_res_cutoff"""
 
@@ -2009,10 +2034,8 @@ class PanddaMultiDatasetAnalyser(object):
 
         assert high_res_large_cutoff > high_res_small_cutoff, '{!s} must be larger than {!s}'.format(high_res_large_cutoff, high_res_small_cutoff)
 
-        if self.args.method.reprocess_selected_datasets:
-            datasets_for_reprocessing = self.args.method.reprocess_selected_datasets.split(',')
-        else:
-            datasets_for_reprocessing = []
+        if self.args.method.reprocess_selected_datasets: datasets_for_reprocessing = self.args.method.reprocess_selected_datasets.split(',')
+        else:                                            datasets_for_reprocessing = []
 
         # Create empty mask
         self.datasets.all_masks().add_mask(mask_name=analysis_mask_name, mask=[False]*self.datasets.size())
@@ -2034,51 +2057,6 @@ class PanddaMultiDatasetAnalyser(object):
             else:
                 self.datasets.all_masks().set_mask_value(mask_name=analysis_mask_name, entry_id=d_handler.tag, value=True)
         return self.datasets.all_masks().get_mask(analysis_mask_name)
-
-    def calculate_mean_structure_and_protein_masks(self, deviation_cutoff):
-        """Calculate the average of all of the structures, and create masks for each protein where residues deviate from the mean by more than `deviation_cutoff`"""
-
-        self.log('===================================>>>', True)
-        self.log('Calculating Mean Structure', True)
-        self.log('===================================>>>')
-
-        # TODO Make this reject points until consensus
-
-        # Pull all c-alpha sites for each structure
-        all_sites = numpy.array([d.transform_to_reference(points=d.get_calpha_sites(), method='global') for d in self.datasets.mask(mask_name='rejected - total', invert=True)])
-        # Calculate the mean x,y,z for each c-alpha
-        mean_sites = numpy.mean(all_sites, axis=0)
-        # Differences from the mean
-        diff_sites = all_sites - mean_sites
-        # Euclidean norms of the distances moved
-        diff_norms = numpy.apply_along_axis(numpy.linalg.norm, axis=2, arr=diff_sites)
-
-        # TODO MOVE THIS TO THE STRUCTURE VARIATION FUNCTION TODO
-
-        # TODO CREATE A HIERARCHY FOR THE MEAN STRUCTURE (AND WITH MEAN NORMALISED B-FACTORS?)
-
-        # Create a list of masks for large-moving c-alphas
-        residue_deviation_masks = []
-        # Iterate by dataset, masking if the deviation of the calpha in the dataset is more than `deviation_cutoff`
-        for calpha_shifts in diff_norms:
-            residue_deviation_masks.append([1 if shift > deviation_cutoff else 0 for shift in calpha_shifts])
-
-        # Save the masks
-        self._average_calpha_sites = flex.vec3_double(mean_sites)
-        self._residue_deviation_masks = residue_deviation_masks
-
-    def analyse_dataset_variability_2(self):
-        """Go through all of the datasets and collect lots of different characteristics of the datasets for identifying odd datasets"""
-
-        self.log('===================================>>>', True)
-        self.log('Collecting Dataset/Crystal Variation Data - 2', True)
-        self.log('===================================>>>')
-
-        # Now calculate the variation in the structure, from the reference
-        self.log('Calculating Variation in RMSD (Calphas) to Reference Structure')
-        for d in self.datasets.mask(mask_name='rejected - total', invert=True):
-            rmsd = d.get_calpha_sites().rms_difference(d.transform_from_reference(points=self.get_calpha_average_sites(), method='global'))
-            self.tables.dataset_info.set_value(d.tag, 'rmsd_to_mean', rmsd)
 
     def truncate_scaled_data(self, dataset_handlers, truncation_stuff=None):
         """Truncate data at the same indices across all the datasets"""
@@ -2701,12 +2679,12 @@ class PanddaMultiDatasetAnalyser(object):
         pyplot.close(fig)
         # ================================================>
         fig = pyplot.figure()
-        pyplot.title('RMSDS TO MEAN STRUCTURE HISTOGRAM')
-        pyplot.hist(x=filter_nans(d_info['rmsd_to_mean']), bins=n_bins)
+        pyplot.title('RMSDS TO REFERENCE STRUCTURE HISTOGRAM')
+        pyplot.hist(x=filter_nans(d_info['global_rmsd_to_ref']), bins=n_bins)
         pyplot.xlabel('RMSD (A)')
         pyplot.ylabel('COUNT')
         pyplot.tight_layout()
-        pyplot.savefig(self.output_handler.get_file('d_rmsd_to_mean'))
+        pyplot.savefig(self.output_handler.get_file('d_global_rmsd_to_ref'))
         pyplot.close(fig)
         # ================================================>
         fig = pyplot.figure()
@@ -2864,7 +2842,7 @@ class PanddaMultiDatasetAnalyser(object):
         self.tables.event_info.set_value(event.id, 'z_mean', event.cluster.mean)
         self.tables.event_info.set_value(event.id, 'cluster_size', event.cluster.size)
         self.tables.event_info.set_value(event.id, ['refx','refy','refz'], list(flex.double(event.cluster.peak)*self.reference_grid().grid_spacing()))
-        if self.params.alignment.method=='local': mappings = self.reference_grid().partition().query_by_grid_points([grid_ref])
+        if self.params.alignment.method=='local': mappings = self.reference_grid().partition().query_by_grid_points([map(int,event.cluster.peak)])
         else:                                     mappings = None
         self.tables.event_info.set_value(event.id, ['x','y','z'], list(d_handler.transform_from_reference(  points=flex.vec3_double([event.cluster.peak])*self.reference_grid().grid_spacing(),
                                                                                                             method=self.params.alignment.method,
@@ -2909,7 +2887,7 @@ class PanddaMultiDatasetAnalyser(object):
         if (align_on_grid_point is not None) and self.params.alignment.method=='local':
             # For the local alignment transformation
             rt_lab = self.reference_grid().partition().query_by_grid_points([align_on_grid_point])[0]
-            self.log('Aligning Map on {}'.format(rt_lab))
+            self.log('=> Aligning Occupancy Map to: Chain {}, Residue {}'.format(rt_lab[0], rt_lab[1].strip()))
             rt = d_handler.local_alignment_transforms()[rt_lab]
         else:
             # For the global alignment transformation
@@ -3077,11 +3055,11 @@ class PanddaZMapAnalyser(object):
                     filtered_c_idxs.append(c_idx)
                     break
             # Report
-            if self._log.verbose:
-                if filtered_c_idxs and (filtered_c_idxs[-1] == c_idx):
-                    print('KEEPING CLUSTER:', c_idx)
-                else:
-                    print('REJECTING CLUSTER:', c_idx)
+#            if self._log.verbose:
+#                if filtered_c_idxs and (filtered_c_idxs[-1] == c_idx):
+#                    print('KEEPING CLUSTER:', c_idx)
+#                else:
+#                    print('REJECTING CLUSTER:', c_idx)
         # Select filtered clusters
         filt_z_clusters = [z_clusters[i] for i in filtered_c_idxs]
 
@@ -3135,8 +3113,8 @@ class PanddaZMapAnalyser(object):
                         contacts += 1
                 # Record the number of contacts (over size of cluster)
                 c_contacts.append(1.0*contacts/len(c_points_cart))
-                if self._log.verbose:
-                    print('CLUSTER:', c_idx, ', CONTACTS PER POINT:', round(c_contacts[-1],3))
+#                if self._log.verbose:
+#                    print('CLUSTER:', c_idx, ', CONTACTS PER POINT:', round(c_contacts[-1],3))
 
             # Find the cluster with the most contacts
             max_contacts = max(c_contacts)
@@ -3145,8 +3123,8 @@ class PanddaZMapAnalyser(object):
             else:
                 cluster_to_keep = g_idxs[c_contacts.index(max_contacts)]
                 filt_z_clusters.append(z_clusters[cluster_to_keep])
-                if self._log.verbose:
-                    print('KEEPING CLUSTER', cluster_to_keep)
+#                if self._log.verbose:
+#                    print('KEEPING CLUSTER', cluster_to_keep)
         assert len(filt_z_clusters) == max(sym_equiv_groups), 'NUMBER OF UNIQUE GROUPS AND GROUPS TO BE RETURNED NOT THE SAME'
 
         self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(z_clusters), len(filt_z_clusters)))

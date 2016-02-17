@@ -20,14 +20,11 @@ from PANDDAs.events import PointCluster, Event, cluster_events
 def pandda_main(args):
     """Run the PANDDA algorithm, using supplied args object"""
 
+    # Init as None in case of --show-defaults
+    pandda = None
+
     try:
 
-        # ============================================================================>
-        #####
-        # MANUAL SETTINGS
-        #####
-        # ============================================================================>
-        # None!
         # ============================================================================>
         #####
         # Initialise
@@ -55,7 +52,7 @@ def pandda_main(args):
         # Check to see if we're reusing statistical maps
         if (not pandda.args.method.recalculate_statistical_maps) and pandda.stat_maps.get_resolutions():
             pandda.log('===================================>>>', True)
-            pandda.log('REUSING STATISTICAL MAPS AT: {!s}'.format(pandda.stat_maps.get_resolutions()), True)
+            pandda.log('REUSING STATISTICAL MAPS AT: {!s}'.format(', '.join(map(str,pandda.stat_maps.get_resolutions()))), True)
         # Check that enough datasets have been found
         elif pandda.datasets.size() + len(input_files) < pandda.params.analysis.min_build_datasets:
             pandda.log('===================================>>>', True)
@@ -91,14 +88,13 @@ def pandda_main(args):
             #####
             # Scale, Align and Initial-Filter All Data
             #####
-            # TODO CHANGE SCALING TO "LOAD_REFLECTION_DATA"
             # ============================================================================>
             # Filter out datasets with different protein structures
             pandda.filter_datasets_1()
-            # Scale and align the datasets to the reference
+            # Load reflection data for each dataset
             pandda.load_reflection_data(ampl_label=pandda.params.maps.ampl_label,
                                         phas_label=pandda.params.maps.phas_label)
-#            pandda.scale_datasets()
+            # Align structures to the reference
             pandda.align_datasets(method=pandda.params.alignment.method)
         else:
             # ============================================================================>
@@ -106,6 +102,7 @@ def pandda_main(args):
             # ============================================================================>
             pandda.initialise_analysis()
             pandda.filter_datasets_1()
+
         # ============================================================================>
         # Check that enough VALID datasets have been found
         # ============================================================================>
@@ -124,17 +121,18 @@ def pandda_main(args):
         # Filter and Analyse the Datasets
         #####
         # ============================================================================>
-
-        pandda.log('============================================================================>>>', True)
-        pandda.log('Preparing for Analysis', True)
-
-        # Collate many variables across the datasets to be used for filtering
-        pandda.analyse_dataset_variability_1()
+        # Collate dataset variables and parameters
+        pandda.collate_dataset_variables()
         # Filter out the datasets that are not isomorphous and therefore incomparable
         pandda.filter_datasets_2()
         # Analyses the crystallographic and structural variability of the datasets
-        pandda.calculate_mean_structure_and_protein_masks(deviation_cutoff=0.5)
-        pandda.analyse_dataset_variability_2()
+        pandda.calculate_dataset_variability()
+
+        # ============================================================================>
+        # Validate/Reset the loaded datasets
+        # ============================================================================>
+        pandda.check_and_reset_datasets()
+
         # ============================================================================>
         #####
         # Update Settings
@@ -157,7 +155,7 @@ def pandda_main(args):
             pandda.log('HIGH RESOLUTION: {!s}'.format(pandda.get_high_resolution()))
         # ============================================================================>
         #####
-        # Create Sample Grid
+        # Create Sampling Grid (for generated maps)
         #####
         # Create reference grid based on the reference structure
         # ============================================================================>
@@ -168,7 +166,6 @@ def pandda_main(args):
                                             buffer           = pandda.params.masks.outer_mask+pandda.params.maps.padding    )
             # Create various masks to define regions of the grid by distance to the protein and symmetry copies
             pandda.mask_reference_grid()
-
         # ============================================================================>
         # Print the summaries
         # ============================================================================>
@@ -177,39 +174,12 @@ def pandda_main(args):
 #        pandda.log(pandda.reference_grid().summary(), True)
 #        pandda.log(pandda.reference_grid().local_mask().summary(), True)
 #        pandda.log(pandda.reference_grid().global_mask().summary(), True)
-
         # ============================================================================>
-        # ============================================================================>
-        # ============================================================================>
-        # ============================================================================>
-        # ============================================================================>
-        # TODO TODO TODO - MOVE?
-        # Calculate centre of mass of the reference dataset
-        pandda.log('===================================>>>', True)
-        pandda.log('Calculating Reference Structure Centre of Mass', True)
-
-        # Should be in the reference frame
-        ref_structure = pandda.reference_dataset().hierarchy()
-        backbone_atoms = ref_structure.select(ref_structure.atom_selection_cache().selection('pepnames and (name CA or name C or name O or name N)')).atoms()
-        backbone_sites = backbone_atoms.extract_xyz()
-        backbone_wghts = flex.double([1]*len(backbone_sites))
-
-        centre_of_mass = backbone_sites.mean_weighted(weights=backbone_wghts)
-        # TODO TODO TODO
-        # ============================================================================>
-        # ============================================================================>
-        # ============================================================================>
-        # ============================================================================>
-        # ============================================================================>
-        
-        # ============================================================================>
-        #####
-        # STORING FOR REUSE
-        #####
+        # Store for reuse
         # ============================================================================>
         # Pickle all of the large arrays so they can be reloaded
         # ============================================================================>
-        pandda.pickle_the_pandda(all=True)
+        pandda.pickle_the_pandda(components=['grid'])
 
         # ============================================================================>
         #####
@@ -437,25 +407,25 @@ def pandda_main(args):
             # Calculate the mean map
             # ============================================================================>
             if (not map_analyser.statistical_maps.mean_map) or pandda.args.method.recalculate_statistical_maps:
-                mean_map = map_analyser.calculate_mean_map(masked_idxs = pandda.reference_grid().global_mask().outer_mask_indices(), 
-                                                           mask_name   = building_mask_name)
+                map_analyser.calculate_mean_map(masked_idxs = pandda.reference_grid().global_mask().outer_mask_indices(), 
+                                                mask_name   = building_mask_name)
             # ============================================================================>
             # If only Mean Map Requested -- return
             # ============================================================================>
             if pandda.args.settings.exit_flags.calculate_first_mean_map_only:
                 pandda.write_array_to_map(output_file = pandda.output_handler.get_file('mean_map').format(cut_resolution),
-                                                        map_data    = map_analyser.statistical_maps.mean_map     )
+                                          map_data    = map_analyser.statistical_maps.mean_map     )
                 return pandda, None
             # ============================================================================>
             # Plot Mean Map against Reference Map - should be fairly similar...
             # ============================================================================>
             # Plot the mean map against the reference map (unsorted)
             graphs.mean_obs_scatter(        f_name    = os.path.join(pandda.output_handler.get_dir('reference'), 'reference_against_mean_unsorted.png'),
-                                            mean_vals = mean_map.select(pandda.reference_grid().global_mask().outer_mask_indices()),
+                                            mean_vals = map_analyser.statistical_maps.mean_map.select(pandda.reference_grid().global_mask().outer_mask_indices()),
                                             obs_vals  = ref_map_holder.map.select(pandda.reference_grid().global_mask().outer_mask_indices())           )
             # Plot the mean map against the reference map (sorted)
             graphs.sorted_mean_obs_scatter( f_name    = os.path.join(pandda.output_handler.get_dir('reference'), 'reference_against_mean_sorted.png'),
-                                            mean_vals = sorted(mean_map.select(pandda.reference_grid().global_mask().outer_mask_indices())),
+                                            mean_vals = sorted(map_analyser.statistical_maps.mean_map.select(pandda.reference_grid().global_mask().outer_mask_indices())),
                                             obs_vals  = sorted(ref_map_holder.map.select(pandda.reference_grid().global_mask().outer_mask_indices()))   )
             # Plot the reference map distribution
             pandda.write_map_value_distribution( map_vals    = ref_map_holder.map.select(pandda.reference_grid().global_mask().outer_mask_indices()),
@@ -567,17 +537,16 @@ def pandda_main(args):
                 # ============================================================================>
                 # Validate/Check/Zero the dataset
                 # ============================================================================>
-                # Check that the dataset is new or being reprocessed
-                if pandda.datasets.all_masks().get_mask_value(mask_name='old datasets', entry_id=d_handler.tag):
-                    # Delete events from before
-                    d_handler.events = []
-                else:
-                    # Dataset should not have any events
-                    assert d_handler.events == []
+                # Dataset should not have any events
+                assert d_handler.events == []
 
                 # ============================================================================>
                 # Generate masks for this dataset
                 # ============================================================================>
+
+                pandda.log('===================================>>>', True)
+                pandda.log('Generating Symmetry Contacts for Dataset {!s}'.format(d_handler.tag), True)
+
                 # Generate symmetry contacts for this dataset
                 dataset_sym_copies = d_handler.generate_symmetry_copies(rt_method      = pandda.params.alignment.method, 
                                                                         save_operators = False, 
@@ -616,13 +585,9 @@ def pandda_main(args):
                 pandda.log('Calculating Z-MAPs for Dataset {!s}'.format(d_handler.tag), True)
 
                 ##################################
-                # EXTRACT MAP VALUES             #
-                ##################################
-                assert m_handler.map is not None, 'NO MAP FOUND'
-
-                ##################################
                 # CALCULATE MEAN-DIFF MAPS       #
                 ##################################
+                assert m_handler.map is not None, 'NO MAP FOUND'
                 d_map = m_handler.map - map_analyser.statistical_maps.mean_map
 
                 # ============================================================================>
@@ -677,9 +642,9 @@ def pandda_main(args):
                                    index_label = 'dtag'    )
 
                 # ============================================================================>
-                # XXX  WHICH MAP TO DO THE BLOB SEARCHING ON  XXX
+                # SELECT WHICH MAP TO DO THE BLOB SEARCHING ON
                 # ============================================================================>
-                if pandda.params.z_map.map_type == 'naive':
+                if pandda.params.z_map.map_type   == 'naive':
                     z_map = z_map_naive_normalised
                 elif pandda.params.z_map.map_type == 'adjusted':
                     z_map = z_map_adjst_normalised
@@ -937,7 +902,7 @@ def pandda_main(args):
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('occupancy_map').format(event_num, event_occ_est), 
                                                 map_data    = event_occ_map )    
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('native_occupancy_map').format(event_num, event_occ_est),
-                                                map_data    = pandda.rotate_map(d_handler=d_handler, map_data=event_occ_map, align_on_grid_point=point_cluster.centroid))
+                                                map_data    = pandda.rotate_map(d_handler=d_handler, map_data=event_occ_map, align_on_grid_point=map(int,point_cluster.centroid)))
                     # ============================================================================>
                     # Create an event object
                     # ============================================================================>
@@ -1059,15 +1024,12 @@ def pandda_main(args):
             # Launch Garbage-Collection Manually just to be sure
             # ============================================================================>            
             gc.collect() 
-            gc.collect() 
-            gc.collect() 
         
             # ============================================================================>
             #####
             # LIVE ANALYSIS - RUN AT THE END OF EACH LOOP
             #####
             # Analyse the processed data
-            # TODO Create a `hit processor` class
             # ============================================================================>
             # Extract all events from datasets
             all_events=[]; [all_events.extend(d.events) for d in pandda.datasets.all()]
@@ -1171,16 +1133,24 @@ def pandda_main(args):
         raise
     except AssertionError:
         raise
-#    except Exception as err:
-#        return (pandda, err)
-    finally:
+    except SystemExit:
         try:
-            pandda.update_status('done')
-            pandda.exit()
-        except:
-            print 'PANDDA EXITED WITHOUT CLOSING'
-
-    return pandda, None
+            pandda.exit(error=False)
+            return pandda, None
+        except: 
+            print '<<< Pandda exited before being initialised >>>'
+            return None,   None
+    except:
+        try:    pandda.exit(error=True)
+        except: pass
+        raise
+    else:
+        try:    
+            pandda.exit(error=False)
+            return pandda, None
+        except: 
+            print '<<< Pandda exited before being initialised >>>'
+            return None,   None
 
 def run_custom_analyses(pandda):
     """If a list of hits is available, test to see whether the pandda identified them"""

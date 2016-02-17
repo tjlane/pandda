@@ -1,0 +1,10 @@
+
+echo ''
+echo 'Datasets Processed:'
+cat pandda.log | grep Total: | tail -n1
+
+echo ''
+echo 'Resolutions Processed:'
+cat pandda.log | grep Total: -c 
+
+echo ''

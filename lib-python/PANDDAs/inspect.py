@@ -659,15 +659,15 @@ class PanddaGUI(object):
         self.buttons['fp'] = b
         vbox_1_1.add(b)
         # ---
-        b = gtk.Button(label="High Confidence")
+        b = gtk.Button(label="Model: High Confidence")
         self.buttons['high conf'] = b
         vbox_1_2.add(b)
         # ---
-        b = gtk.Button(label="Medium Confidence")
+        b = gtk.Button(label="Model: Medium Confidence")
         self.buttons['med conf'] = b
         vbox_1_2.add(b)
         # ---
-        b = gtk.Button(label="Low Confidence")
+        b = gtk.Button(label="Model: Low Confidence")
         self.buttons['low conf'] = b
         vbox_1_2.add(b)
         # ---

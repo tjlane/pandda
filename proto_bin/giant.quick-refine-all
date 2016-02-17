@@ -1,0 +1,25 @@
+#!/usr/bin/env pandda.python
+
+import os, sys, glob
+
+if len(sys.argv) > 1:
+    proc_dirs = sorted([os.path.abspath(p) for p in sys.argv[1:] if os.path.exists(p)])
+else:
+    proc_dirs = sorted([os.path.abspath(p) for p in glob.glob('./*') if os.path.isdir(p)])
+
+print 'Processing {} Directories'.format(len(proc_dirs))
+
+for d in proc_dirs:
+
+    print 'Processing {}'.format(d)
+    os.chdir(d)
+    if os.path.exists('./refine.pdb'):
+        os.system('giant.quick-refine program=refmac *.cif refine.pdb refine.mtz')
+    else:
+        os.system('phenix.geometry_minimization *.cif *-ensemble-model.pdb')
+        os.system('giant.quick-refine program=refmac *.cif *-ensemble-model_minimized.pdb *-pandda-input.mtz')
+
+
+
+
+

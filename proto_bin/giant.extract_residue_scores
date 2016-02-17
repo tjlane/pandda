@@ -1,0 +1,25 @@
+#!/usr/bin/env pandda.python
+
+import os, sys
+
+from Giant.jiffies import parse_phil_args
+from Giant.jiffies.extract_residue_scores import master_phil, run, blank_arg_prepend
+
+if __name__ == '__main__':
+
+    # Show Defaults (just values)
+    if '--show-defaults' in sys.argv:
+        master_phil.show(attributes_level=0)
+    # Show Defaults (including information)
+    elif '--help' in sys.argv:
+        master_phil.show(attributes_level=2)
+    # ... or just run ...
+    elif '--expert' in sys.argv:
+        master_phil.show(attributes_level=4)
+    # ... or just run ...
+    else:
+        working_phil = parse_phil_args(master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
+        out = run(params=working_phil.extract())
+    # Exit (unnecessary, but eh)
+    sys.exit()
+
