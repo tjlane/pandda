@@ -22,9 +22,15 @@ class panddaHtmlWidget(QWidget):
         # Add html to the view
         if os.path.exists(content):
             with open(content, 'r') as fh:
-                view.setHtml(fh.read())
+                text = fh.read()
+            dir = os.path.dirname(os.path.abspath(content))
+            # Dynamically change the html paths to full paths to allow rendering
+            text = text.replace('src="../', 'src="file://'+dir+'/../')
+            text = text.replace('src="./', 'src="file://'+dir+'/')
+            # Set the text in the html window
+            view.setHtml(text)
         else:
-            view.setHtml(content)
+            view.setHtml('File does not yet exist: {}'.format(content))
 
 class panddaWindow(QTabWidget):
     def __init__(self, tabs=None):
@@ -33,7 +39,7 @@ class panddaWindow(QTabWidget):
         # Create Tabs
         self.tabs = []
         if tabs is not None:
-            for t in tabs: 
+            for t in tabs:
                 self.add_tab(t)
     def add_tab(self, widget):
         self.tabs.append(widget)
