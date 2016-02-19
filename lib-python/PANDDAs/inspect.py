@@ -235,7 +235,7 @@ class PanddaInspector(object):
 #                                    colour_bool = [[view_vals[i] for i in g] for g in groups]   )
                                     colour_vals = [[colr_vals[i] for i in g] for g in groups]   )
         # Write output html
-        inspect_html.write_inspect_html(out_dir=self.top_dir, inspector=self)
+        inspect_html.write_inspect_html(top_dir=self.top_dir, inspector=self)
 
     def update_gui(self):
 

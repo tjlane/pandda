@@ -2788,7 +2788,7 @@ class PanddaMultiDatasetAnalyser(object):
                 pymol_str += 'cmd.pseudoatom("{}", pos={}, vdw=2.5)\n'.format(lab, com)
                 pymol_str += 'cmd.show("sphere", "{}")\n'.format(lab)
                 pymol_str += 'cmd.label("{}", "{}")\n'.format(lab, site.id)
-                pymol_str += 'cmd.color("red", "{}")\n'.format(lab)
+                pymol_str += 'cmd.color("blue", "{}")\n'.format(lab)
                 pymol_str += 'cmd.set("label_color", "white", "{}")\n'.format(lab)
             # Label events as smaller spheres
             for event in site.children:
@@ -2800,6 +2800,7 @@ class PanddaMultiDatasetAnalyser(object):
         # Set label things...
         pymol_str += 'cmd.set("label_size", 30)\n'
         pymol_str += 'cmd.set("label_position", (0,0,4))\n'
+        pymol_str += 'cmd.bg_color(color="white")\n'
         # Write as python script
         with open(self.output_handler.get_file(file_tag='pymol_sites_py'), 'w') as fh:
             fh.write(pymol_str)
@@ -2808,6 +2809,7 @@ class PanddaMultiDatasetAnalyser(object):
         if make_images:
             pymol_str =  '# Load the protein representation and output images of sites\n'
             pymol_str += 'run {}\n'.format(self.output_handler.get_file(file_tag='pymol_sites_py'))
+            pymol_str += 'set ray_opaque_background, off\n'
             pymol_str += 'orient\n'
             pymol_str += 'png {}, width=10cm, dpi=300, ray=1\n'.format(self.output_handler.get_file(file_tag='pymol_sites_png_1'))
             pymol_str += 'rotate y, 180\n'

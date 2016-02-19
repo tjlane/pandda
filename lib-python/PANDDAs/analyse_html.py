@@ -6,6 +6,10 @@ from PANDDAs.html import PANDDA_HTML_ENV, path2url
 def write_initial_html(pandda):
     # Get template to be filled in
     template = PANDDA_HTML_ENV.get_template('pandda_summary.html')
+    # Output file
+    out_file = pandda.output_handler.get_file(file_tag='initial_html')
+    # Output directory (for relative symlinks)
+    out_dir  = os.path.abspath(os.path.dirname(out_file))
 
     # ===========================================================>
     # Construct the data object to populate the template
@@ -16,27 +20,31 @@ def write_initial_html(pandda):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='d_resolutions')),
+    output_data['top_images'].append({ 'path': os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_resolutions'), start=out_dir),
                                        'title': 'Dataset Resolutions' })
-    output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='d_rfactors')),
+    output_data['top_images'].append({ 'path': os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_rfactors'), start=out_dir),
                                        'title': 'Dataset R-Factors' })
-    output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='d_global_rmsd_to_ref')),
+    output_data['top_images'].append({ 'path': os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_global_rmsd_to_ref'), start=out_dir),
                                        'title': 'Dataset RMSD to Mean Structure' })
-    output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='d_cell_volumes')),
+    output_data['top_images'].append({ 'path': os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_cell_volumes'), start=out_dir),
                                        'title': 'Dataset Cell Volumes' })
-    output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='d_cell_axes')),
+    output_data['top_images'].append({ 'path': os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_cell_axes'), start=out_dir),
                                        'title': 'Dataset Cell Axis Lengths' })
-    output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='d_cell_angles')),
+    output_data['top_images'].append({ 'path': os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_cell_angles'), start=out_dir),
                                        'title': 'Dataset Cell Angles' })
     # ===========================================================>
     # Write Output
-    with open(pandda.output_handler.get_file(file_tag='initial_html'), 'w') as out_html:
+    with open(out_file, 'w') as out_html:
         out_html.write(template.render(output_data))
 
 def write_analyse_html(pandda):
 
     # Get template to be filled in
     template = PANDDA_HTML_ENV.get_template('pandda_summary.html')
+    # Output file
+    out_file = pandda.output_handler.get_file(file_tag='analyse_html')
+    # Output directory (for relative symlinks)
+    out_dir  = os.path.abspath(os.path.dirname(out_file))
 
     # Extract the dataset info as a dictionary
     all_d_info = pandda.tables.dataset_info.transpose().to_dict()
@@ -58,7 +66,7 @@ def write_analyse_html(pandda):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    output_data['top_images'].append({ 'path': path2url(pandda.output_handler.get_file(file_tag='analyse_site_graph')),
+    output_data['top_images'].append({ 'path': os.path.relpath(path=pandda.output_handler.get_file(file_tag='analyse_site_graph'), start=out_dir),
                                        'title': 'Identified Site Summary' })
     # ===========================================================>
     # Progress Bars
@@ -158,5 +166,5 @@ def write_analyse_html(pandda):
 
     # ===========================================================>
     # Write Output
-    with open(pandda.output_handler.get_file(file_tag='analyse_html'), 'w') as out_html:
+    with open(out_file, 'w') as out_html:
         out_html.write(template.render(output_data))

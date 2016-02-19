@@ -4,10 +4,14 @@ from PANDDAs.settings import PANDDA_TOP, PANDDA_TEXT
 from PANDDAs.html import PANDDA_HTML_ENV, path2url
 from PANDDAs.constants import PanddaAnalyserFilenames
 
-def write_inspect_html(out_dir, inspector):
+def write_inspect_html(top_dir, inspector):
 
     # Get template to be filled in
     template = PANDDA_HTML_ENV.get_template('pandda_summary.html')
+    # Output file
+    out_file = os.path.join(top_dir, 'results_summaries', 'pandda_inspect.html')
+    # Output directory (for relative symlinks)
+    out_dir  = os.path.abspath(os.path.dirname(out_file))
 
     all_data = inspector.log_table
     len_data = len(all_data.index)
@@ -32,11 +36,11 @@ def write_inspect_html(out_dir, inspector):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    output_data['top_images'].append({ 'path': path2url(os.path.abspath(os.path.join(out_dir, 'results_summaries', PanddaAnalyserFilenames.pymol_sites_png_1))),
+    output_data['top_images'].append({ 'path': os.path.relpath(path=os.path.join(top_dir, 'results_summaries', PanddaAnalyserFilenames.pymol_sites_png_1), start=out_dir),
                                        'title': 'Identified Sites (Front)' })
-    output_data['top_images'].append({ 'path': path2url(os.path.abspath(os.path.join(out_dir, 'results_summaries', PanddaAnalyserFilenames.pymol_sites_png_2))),
+    output_data['top_images'].append({ 'path': os.path.relpath(path=os.path.join(top_dir, 'results_summaries', PanddaAnalyserFilenames.pymol_sites_png_2), start=out_dir),
                                        'title': 'Identified Sites (Back)' })
-    output_data['top_images'].append({ 'path': path2url(os.path.abspath(os.path.join(out_dir, 'results_summaries', PanddaAnalyserFilenames.inspect_site_graph))),
+    output_data['top_images'].append({ 'path': os.path.relpath(path=os.path.join(top_dir, 'results_summaries', PanddaAnalyserFilenames.inspect_site_graph), start=out_dir),
                                        'title': 'Identified Site Summary' })
     # ===========================================================>
     # Summary Bar
@@ -98,5 +102,5 @@ def write_inspect_html(out_dir, inspector):
                                              'message' : row_message,
                                              'columns' : columns})
 
-    with open(os.path.join(out_dir, 'results_summaries', 'pandda_inspect.html'), 'w') as out_html:
+    with open(out_file, 'w') as out_html:
         out_html.write(template.render(output_data))
