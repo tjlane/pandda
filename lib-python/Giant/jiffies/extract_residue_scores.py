@@ -10,6 +10,14 @@ from Bamboo.Density.Edstats import edstats
 from Giant.Utils.pdb import strip_pdb_to_input
 from IPython import embed
 
+#################################
+import matplotlib
+try:    matplotlib.use('Agg')
+except: print 'Failed to load Agg as Backend for Matplotlib'
+matplotlib.interactive(0)
+from matplotlib import pyplot
+#################################
+
 blank_arg_prepend = {'.pdb':'pdb=', '.mtz':'mtz=', None:'dir='}
 
 master_phil = libtbx.phil.parse("""
@@ -33,13 +41,15 @@ input {
         .multiple = False
 }
 selection {
-    res_names = LIG,UNL
+    res_names = LIG,UNL,DRG
         .type = str
         .help = "Comma-separated list of residue names to score -- if None then scores all"
 }
 output {
     prefix = residue_scores.csv
         .type = path
+    plot_graphs = True
+        .type = bool
 }
 """)
 
@@ -102,6 +112,8 @@ def run(params):
                                 pdb_2=(True if params.input.pdb_2_style else False))
 
     for dir in params.input.dir:
+
+        if not os.path.isdir(dir): continue
 
         try:
             pdb  = glob.glob(os.path.join(dir, params.input.pdb_style))[0]
@@ -257,3 +269,32 @@ def run(params):
     print '#=======================++>'
     data_table.to_csv(params.output.prefix)
     print 'Output written to {}'.format(params.output.prefix)
+
+    if params.output.plot_graphs:
+
+        fig = pyplot.figure()
+        pyplot.title('RSCC HISTOGRAM')
+        pyplot.hist(x=data_table['RSCC'], bins=30, normed=True)
+        pyplot.xlabel('RSCC')
+        pyplot.ylabel('DENSITY')
+        pyplot.tight_layout()
+        pyplot.savefig(os.path.splitext(params.output.prefix)[0]+'-rscc-hist.png')
+        pyplot.close(fig)
+
+        fig = pyplot.figure()
+        pyplot.title('RSZD HISTOGRAM')
+        pyplot.hist(x=data_table['RSZD'], bins=30, normed=True)
+        pyplot.xlabel('RSZD')
+        pyplot.ylabel('DENSITY')
+        pyplot.tight_layout()
+        pyplot.savefig(os.path.splitext(params.output.prefix)[0]+'-rszd-hist.png')
+        pyplot.close(fig)
+
+        fig = pyplot.figure()
+        pyplot.title('RSZD HISTOGRAM')
+        pyplot.plot(data_table['OCC'], data_table['RSCC'], 'go')
+        pyplot.xlabel('OCCUPANCY')
+        pyplot.ylabel('RSCC')
+        pyplot.tight_layout()
+        pyplot.savefig(os.path.splitext(params.output.prefix)[0]+'-rscc-v-occ.png')
+        pyplot.close(fig)

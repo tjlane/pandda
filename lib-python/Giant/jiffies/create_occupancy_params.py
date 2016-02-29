@@ -20,7 +20,7 @@ master_phil = libtbx.phil.parse("""
 pdb = None
     .help = 'The major conformation of the protein (normally the unbound or reference structure)'
     .type = str
-lig = LIG,UNL
+lig = LIG,UNL,DRG
     .help = 'Residues to be occupancy refined (comma separated list of residue identifiers, i.e. lig=LIG or lig=LIG,UNL)'
     .type = str
 
@@ -208,6 +208,8 @@ def run(params):
         # Filter out residue groups
         filtered_rgs = [rg for rg in all_rgs if (len([ag.altloc for ag in rg.atom_groups()]) == 1) or matching_alt.intersection([ag.altloc for ag in rg.atom_groups()])]
         filtered_ags = []; [filtered_ags.extend(rg.atom_groups()) for rg in filtered_rgs]
+        # Remove blank altlocs
+        filtered_ags = [ag for ag in filtered_ags if ag.altloc]
         print '{} residue groups, {} atom groups'.format(len(filtered_rgs), len(filtered_ags))
 
         filtered_alt = [ag.altloc for ag in filtered_ags]
