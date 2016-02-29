@@ -10,7 +10,6 @@ import libtbx.phil
 from libtbx.utils import Sorry, null_out
 from scitbx.array_family import flex
 
-from PANDDAs.jiffies import parse_phil_args
 from Giant.Maths.geometry import pairwise_dists
 from Giant.Stats.Cluster import find_connected_groups, generate_group_idxs
 
