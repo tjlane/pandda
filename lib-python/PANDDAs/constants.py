@@ -42,7 +42,7 @@ DATASET_MAP_FIELDS   = [    'analysed_resolution',
                             'z_map_skew',
                             'z_map_kurt'            ]
 DATASET_EVENT_FIELDS = [    'site_idx',
-                            'est_occupancy',
+                            '1-BDC',
                             'z_peak',
                             'z_mean',
                             'cluster_size',
@@ -97,7 +97,7 @@ class PanddaDatasetFilenames:
     z_map_corrected        = '{!s}-z_map_adjusted.ccp4'
     z_map_corrected_norm   = '{!s}-z_map_adjusted_normalised.ccp4'
     # Events...
-    occupancy_map          = '{!s}-event_{!s}_occupancy_{!s}_map.ccp4'
+    event_map              = '{!s}-event_{!s}_1-BDC_{!s}_map.ccp4'
     # Masks...
     high_z_mask            = '{!s}-high_z_mask.ccp4'
     grid_mask              = '{!s}-masked_grid.ccp4'
@@ -108,7 +108,7 @@ class PanddaDatasetFilenames:
     # Native (Output) Maps
     native_obs_map         = '{!s}-observed.native.ccp4'
     native_z_map           = '{!s}-z_map.native.ccp4'
-    native_occupancy_map   = '{!s}-event_{!s}_occupancy_{!s}_map.native.ccp4'
+    native_event_map       = '{!s}-event_{!s}_1-BDC_{!s}_map.native.ccp4'
     # Misc...
     z_peaks_csv            = '{!s}-z_map_peaks.csv'
     pymol_script           = 'load_maps.pml'
@@ -125,17 +125,22 @@ class PanddaDatasetPNGFilenames:
     z_map_corrected_png         = '{!s}-z_map_dist_adjusted.png'
     z_map_corrected_norm_png    = '{!s}-z_map_dist_adjusted_normalised.png'
     z_map_qq_plot_png           = '{!s}-z_map_dist_qq_plot.png'
-    occ_corr_png                = '{!s}-event_{!s}_occupancy_correlation.png'
+    bdc_est_png                 = '{!s}-event_{!s}_BDC_estimation.png'
     unc_qqplot_png              = '{!s}-uncertainty-qqplot.png'
     obs_qqplot_sorted_png       = '{!s}-mean-v-obs-sorted-qqplot.png'
     obs_qqplot_unsorted_png     = '{!s}-mean-v-obs-unsorted-plot.png'
 
+class PanddaAnalyserFoldernames:
+    pass
+
 class PanddaAnalyserFilenames:
     initial_html            = 'pandda_initial.html'
     analyse_html            = 'pandda_analyse.html'
-    analyse_site_graph      = 'pandda_analyse_sites.png'
+    analyse_site_graph      = 'pandda_analyse_sites_graph.png'
+    analyse_site_graph_mult = 'pandda_analyse_sites_graph_{!s}.png'
     inspect_html            = 'pandda_inspect.html'
-    inspect_site_graph      = 'pandda_inspect_sites.png'
+    inspect_site_graph      = 'pandda_inspect_sites_graph.png'
+    inspect_site_graph_mult = 'pandda_inspect_sites_graph_{!s}.png'
     # Output csvs
     event_info              = 'pandda_analyse_events.csv'
     site_info               = 'pandda_analyse_sites.csv'

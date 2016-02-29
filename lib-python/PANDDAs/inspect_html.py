@@ -1,4 +1,4 @@
-import os
+import os, glob
 
 from PANDDAs.settings import PANDDA_TOP, PANDDA_TEXT
 from PANDDAs.html import PANDDA_HTML_ENV, path2url
@@ -36,12 +36,13 @@ def write_inspect_html(top_dir, inspector):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    output_data['top_images'].append({ 'path': os.path.relpath(path=os.path.join(top_dir, 'results_summaries', PanddaAnalyserFilenames.pymol_sites_png_1), start=out_dir),
+    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=os.path.join(top_dir, 'results_summaries', PanddaAnalyserFilenames.pymol_sites_png_1), start=out_dir),
                                        'title': 'Identified Sites (Front)' })
-    output_data['top_images'].append({ 'path': os.path.relpath(path=os.path.join(top_dir, 'results_summaries', PanddaAnalyserFilenames.pymol_sites_png_2), start=out_dir),
+    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=os.path.join(top_dir, 'results_summaries', PanddaAnalyserFilenames.pymol_sites_png_2), start=out_dir),
                                        'title': 'Identified Sites (Back)' })
-    output_data['top_images'].append({ 'path': os.path.relpath(path=os.path.join(top_dir, 'results_summaries', PanddaAnalyserFilenames.inspect_site_graph), start=out_dir),
-                                       'title': 'Identified Site Summary' })
+    for i_png, png in enumerate(sorted(glob.glob(os.path.join(top_dir, 'results_summaries', PanddaAnalyserFilenames.inspect_site_graph_mult).format('*')))):
+        output_data['top_images'].append({ 'path': './'+os.path.relpath(path=png, start=out_dir),
+                                           'title': 'Identified Site Summary ({})'.format(i_png+1) })
     # ===========================================================>
     # Summary Bar
     output_data['summary_bar'] = []
@@ -83,7 +84,7 @@ def write_inspect_html(top_dir, inspector):
 
         columns.append({'message':d_event})
         columns.append({'message':d_data['site_idx']})
-        columns.append({'message':round(d_data['est_occupancy'],3)})
+        columns.append({'message':round(d_data['1-BDC'],3)})
         columns.append({'message':round(d_data['z_peak'],3)})
         columns.append({'message':d_data['analysed_resolution']})
         columns.append({'message':round(d_data['map_uncertainty'],3)})

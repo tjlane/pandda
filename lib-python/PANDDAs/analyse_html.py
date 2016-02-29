@@ -1,4 +1,4 @@
-import os
+import os, glob
 
 from PANDDAs.settings import PANDDA_TOP, PANDDA_TEXT
 from PANDDAs.html import PANDDA_HTML_ENV, path2url
@@ -20,17 +20,17 @@ def write_initial_html(pandda):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    output_data['top_images'].append({ 'path': os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_resolutions'), start=out_dir),
+    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_resolutions'), start=out_dir),
                                        'title': 'Dataset Resolutions' })
-    output_data['top_images'].append({ 'path': os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_rfactors'), start=out_dir),
+    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_rfactors'), start=out_dir),
                                        'title': 'Dataset R-Factors' })
-    output_data['top_images'].append({ 'path': os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_global_rmsd_to_ref'), start=out_dir),
+    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_global_rmsd_to_ref'), start=out_dir),
                                        'title': 'Dataset RMSD to Mean Structure' })
-    output_data['top_images'].append({ 'path': os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_cell_volumes'), start=out_dir),
+    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_cell_volumes'), start=out_dir),
                                        'title': 'Dataset Cell Volumes' })
-    output_data['top_images'].append({ 'path': os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_cell_axes'), start=out_dir),
+    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_cell_axes'), start=out_dir),
                                        'title': 'Dataset Cell Axis Lengths' })
-    output_data['top_images'].append({ 'path': os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_cell_angles'), start=out_dir),
+    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_cell_angles'), start=out_dir),
                                        'title': 'Dataset Cell Angles' })
     # ===========================================================>
     # Write Output
@@ -66,8 +66,13 @@ def write_analyse_html(pandda):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    output_data['top_images'].append({ 'path': os.path.relpath(path=pandda.output_handler.get_file(file_tag='analyse_site_graph'), start=out_dir),
-                                       'title': 'Identified Site Summary' })
+    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=pandda.output_handler.get_file(file_tag='pymol_sites_png_1'), start=out_dir),
+                                       'title': 'Identified Sites (Front)' })
+    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=pandda.output_handler.get_file(file_tag='pymol_sites_png_2'), start=out_dir),
+                                       'title': 'Identified Sites (Back)' })
+    for i_png, png in enumerate(sorted(glob.glob(pandda.output_handler.get_file(file_tag='analyse_site_graph_mult').format('*')))):
+        output_data['top_images'].append({ 'path': './'+os.path.relpath(path=png, start=out_dir),
+                                           'title': 'Identified Site Summary ({})'.format(i_png+1) })
     # ===========================================================>
     # Progress Bars
     output_data['progress_bar'] = []

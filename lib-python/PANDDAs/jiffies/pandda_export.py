@@ -276,6 +276,13 @@ def run(params):
     # Default files paths
     set_defaults(params)
 
+    # Change paths to absolute paths
+    params.input.pandda_dir = os.path.abspath(params.input.pandda_dir)
+    params.output.out_dir   = os.path.abspath(params.output.out_dir)
+
+    # Must be in the pandda directory (pandda objects use relative paths)
+    os.chdir(params.input.pandda_dir)
+
     ############################################################################
 
     # Find the dataset directories to be exported
@@ -293,6 +300,4 @@ def run(params):
     # Merge the fitted structures
     for dir in export_dirs:
         process_and_export_folder(dir=dir, params=params)
-
-
 

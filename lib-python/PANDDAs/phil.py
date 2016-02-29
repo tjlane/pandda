@@ -7,18 +7,22 @@ pandda_phil_def = """
         {
             data_dirs = None
                 .type = str
-            dir_regex = None
-                .type = str
             pdb_style = final.pdb
-                .type = str
-            pdb_regex = None
                 .type = str
             mtz_style = None
                 .type = str
-            mtz_regex = None
-                .type = str
             lig_style = *.cif
                 .type = str
+            regex
+                .help = "Advanced dataset labelling regexs"
+            {
+                dir_regex = None
+                    .type = str
+                pdb_regex = None
+                    .type = str
+                mtz_regex = None
+                    .type = str
+            }
             reference
                 .help = "Manually define reference structure"
             {
@@ -64,15 +68,15 @@ pandda_phil_def = """
             reload_existing_datasets = True
                 .help = "Reload existing datasets? - if False, will only load new datasets (unprocessed datasets)"
                 .type = bool
-            recalculate_statistical_maps = False
-                .help = "Recalculate all of the statistical maps? (Time-consuming) - if False, looks for existing statistical maps and uses those (reverts to True if none are found)"
-                .type = bool
             reprocess_existing_datasets = False
                 .help = "Reprocess existing datasets? (Time-consuming) - if False, will only calculate z-maps for new datasets (unprocessed datasets)"
                 .type = bool
             reprocess_selected_datasets = None
                 .help = "Reprocess selection of datasets (comma-separated list)"
                 .type = str
+            recalculate_statistical_maps = False
+                .help = "Recalculate all of the statistical maps? (Time-consuming) - if False, looks for existing statistical maps and uses those (reverts to True if none are found)"
+                .type = bool
         }
         params
             .help = "Algorithm Parameters"
@@ -96,11 +100,9 @@ pandda_phil_def = """
             maps
                 .help = "Settings to control the generation of the dataset maps"
             {
-                maps_to_analyse = *2FOFC FOFC
+                ampl_label = FWT *2FOFCWT
                     .type = choice
-                ampl_label = FWT *2FOFCWT DELFWT FOFCWT
-                    .type = choice
-                phas_label = PHWT *PH2FOFCWT PHDELWT PHFOFCWT
+                phas_label = PHWT *PH2FOFCWT
                     .type = choice
                 scaling = none *sigma volume
                     .type = choice
@@ -169,18 +171,18 @@ pandda_phil_def = """
                     .help = 'Maximum number of blobs to image per dataset'
                     .type = int
             }
-            occupancy_estimation
-                .help = "Parameters to control the estimation of feature occupancies"
+            background_correction
+                .help = "Parameters to control the estimation of feature background corrections"
             {
-                min_occ = 0.0
+                min_bdc = 0.0
                     .type = float
-                    .help = 'Minimum occupancy estimate'
-                max_occ = 1.0
+                    .help = 'Minimum background correction estimate'
+                max_bdc = 1.0
                     .type = float
-                    .help = 'Maximum occupancy estimate'
-                occ_increment = 0.01
+                    .help = 'Maximum background correction estimate'
+                increment = 0.01
                     .type = float
-                    .help = 'Resolution of occupancy estimation'
+                    .help = 'Resolution of background correction estimation'
             }
         }
         settings

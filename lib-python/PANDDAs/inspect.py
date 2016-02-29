@@ -21,6 +21,10 @@ class PanddaEvent(object):
         self.index = info.name
         # Dataset tag
         self.dtag = info.name[0]
+        # Dataset Information
+        self.map_resolution  = round(info['analysed_resolution'],2)
+        self.map_uncertainty = round(info['map_uncertainty'],2)
+        self.rwork_rfree     = (round(info['r_work'],3),round(info['r_free'],3))
         # Event number for the dataset
         self.event_idx = int(info.name[1])
         # Position in the ranked list (1 -> n)
@@ -28,9 +32,9 @@ class PanddaEvent(object):
         # Site Number (1 -> m)
         self.site_idx  = int(info['site_idx'])
         # Event Info
-        self.est_occ = round(info['est_occupancy'], 2)
+        self.est_1_bdc = round(info['1-BDC'], 2)
         # Z statistics
-        self.z_peak = info['z_peak']
+        self.z_peak = round(info['z_peak'], 1)
         self.z_mean = info['z_mean']
         self.cluster_size = int(info['cluster_size'])
         # Coordinate information
@@ -65,7 +69,7 @@ class PanddaEvent(object):
         self.observed_map       = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.sampled_map.format(dtag)         )
         self.z_map              = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.z_map.format(dtag)               )
         self.mean_diff_map      = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.mean_diff_map.format(dtag)       )
-        self.occupancy_map      = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.occupancy_map.format(dtag, self.event_idx, self.est_occ))
+        self.event_map          = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.event_map.format(dtag, self.event_idx, self.est_1_bdc))
         self.dataset_symmetry   = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.symmetry_copies.format(dtag)     )
 
         # Ligand Files
@@ -195,7 +199,6 @@ class PanddaSiteTracker(object):
 #=========================================================================
 
 class PanddaInspector(object):
-
     """Main Object in pandda.inspect"""
 
     def __init__(self, csv, top_dir):
@@ -230,9 +233,12 @@ class PanddaInspector(object):
         colr_vals = ['limegreen' if m else 'red' if v else 'blue' for m,v in zip(modl_vals,view_vals)]
         site_idxs = self.log_table['site_idx']
         groups = [list(g[1]) for g in itertools.groupby(range(len(site_idxs)), key=lambda i: site_idxs[i])]
-        graphs.multiple_bar_plot(   f_name      = os.path.join(self.top_dir, 'results_summaries', 'pandda_inspect_sites.png'),
+        graphs.multiple_bar_plot(   f_name      = os.path.join(self.top_dir, 'results_summaries', PanddaAnalyserFilenames.inspect_site_graph),
                                     plot_vals   = [[plot_vals[i] for i in g] for g in groups],
-#                                    colour_bool = [[view_vals[i] for i in g] for g in groups]   )
+                                    colour_vals = [[colr_vals[i] for i in g] for g in groups]   )
+        graphs.multiple_bar_plot_over_several_images(
+                                    f_template  = os.path.join(self.top_dir, 'results_summaries', PanddaAnalyserFilenames.inspect_site_graph_mult),
+                                    plot_vals   = [[plot_vals[i] for i in g] for g in groups],
                                     colour_vals = [[colr_vals[i] for i in g] for g in groups]   )
         # Write output html
         inspect_html.write_inspect_html(top_dir=self.top_dir, inspector=self)
@@ -244,12 +250,15 @@ class PanddaInspector(object):
         self.gui.labels['site_tot'].set_label(str(self.site_list.site_tot))
         self.gui.labels['rank_val'].set_label(str(self.site_list.rank_val))
         self.gui.labels['rank_tot'].set_label(str(self.site_list.rank_tot))
-        # Update current event information
+        # Update current event and dataset information
         self.gui.labels['dtag'].set_label(str(self.current_event.dtag))
         self.gui.labels['e_idx'].set_label(str(self.current_event.event_idx))
-        self.gui.labels['e_occ'].set_label(str(self.current_event.est_occ))
+        self.gui.labels['e_1_bdc'].set_label(str(self.current_event.est_1_bdc))
         self.gui.labels['zpeak'].set_label(str(round(self.current_event.z_peak,3)))
         self.gui.labels['csize'].set_label(str(self.current_event.cluster_size))
+        self.gui.labels['map_res'].set_label(str(self.current_event.map_resolution))
+        self.gui.labels['map_unc'].set_label(str(self.current_event.map_uncertainty))
+        self.gui.labels['rwork_rfree'].set_label('{} / {}'.format(*self.current_event.rwork_rfree))
         # Reset the comment box
         self.gui.objects['comment text'].set_text(str(self.get_log_value('Comment')))
 
@@ -260,6 +269,15 @@ class PanddaInspector(object):
 
     def save_current(self):
         self.current_event.write_fitted_model(protein_obj=self.coot.open_mols['p'])
+        self.write_output_csv()
+
+    def reset_current(self):
+        close_molecule(self.coot.open_mols['p'])
+        if os.path.exists(self.current_event.fitted_link):
+            p = read_pdb(self.current_event.fitted_link)
+        else:
+            p = read_pdb(self.current_event.unfitted_model)
+        self.coot.open_mols['p'] = p
         self.write_output_csv()
 
     def load_new_event(self, new_event):
@@ -417,9 +435,9 @@ class PanddaMolHandler(object):
         set_last_map_contour_level_by_sigma(3)
         set_map_displayed(d, 0)
 
-        # Occupancy Map
-        o = handle_read_ccp4_map(e.occupancy_map, 0)
-        set_last_map_contour_level(2*e.est_occ)
+        # Event Map
+        o = handle_read_ccp4_map(e.event_map, 0)
+        set_last_map_contour_level(2*e.est_1_bdc)
         set_map_displayed(o, 1)
 
         # Symmetry contacts
@@ -489,6 +507,10 @@ class PanddaGUI(object):
         main_vbox = gtk.VBox(spacing=5)
         # -----------------------------------------------------
         hbox = gtk.HBox(spacing=5)
+        # Create buttones to allow user to quit
+        quit_buttons = self._quit_buttons()
+        frame = gtk.Frame(); frame.add(quit_buttons)
+        hbox.pack_start(frame)
         # Create progress summary table at the top of the window
         self.progress_table = self._progress_table()
         frame = gtk.Frame(); frame.add(self.progress_table)
@@ -543,8 +565,14 @@ class PanddaGUI(object):
         self.buttons['next-site'].connect("clicked", lambda x: [self.store(), self.parent.load_next_site()])
         self.buttons['prev-site'].connect("clicked", lambda x: [self.store(), self.parent.load_prev_site()])
 
+        # Quit
+        self.buttons['quit'].connect("clicked", lambda x: [self.store(), gtk.main_quit()])
+
         # Structure Buttons
         self.buttons['save'].connect("clicked",  lambda x: self.parent.save_current())
+        self.buttons['reset'].connect("clicked",  lambda x: self.parent.reset_current())
+
+        # Ligand Buttons
         self.buttons['merge'].connect("clicked", lambda x: self.parent.coot.merge_ligand_with_protein())
         self.buttons['move'].connect("clicked",  lambda x: self.parent.coot.move_ligand_here())
 
@@ -567,12 +595,12 @@ class PanddaGUI(object):
         box = gtk.HBox(homogeneous=False, spacing=2)
         box.set_border_width(3)
         # ---
-        b = gtk.Button(label="<<< Prev <<<\n\n(Don't Save Model)")
+        b = gtk.Button(label="<<< Prev <<<\n(Don't Save Model)")
         b.child.set_justify(gtk.JUSTIFY_CENTER)
         self.buttons['prev'] = b
         box.pack_start(b)
         # ---
-        b = gtk.Button(label=">>> Next >>>\n\n(Don't Save Model)")
+        b = gtk.Button(label=">>> Next >>>\n(Don't Save Model)")
         b.child.set_justify(gtk.JUSTIFY_CENTER)
         self.buttons['skip'] = b
         box.pack_start(b)
@@ -580,7 +608,7 @@ class PanddaGUI(object):
         b = gtk.VSeparator()
         box.pack_start(b, expand=False, padding=5)
         # ---
-        b = gtk.Button(label=">>> Next >>>\n\n(Save Model)")
+        b = gtk.Button(label=">>> Next >>>\n(Save Model)")
         b.child.set_justify(gtk.JUSTIFY_CENTER)
         self.buttons['next'] = b
         box.pack_start(b)
@@ -619,28 +647,46 @@ class PanddaGUI(object):
         return main_box
 
     def _ligand_buttons(self):
-        box = gtk.HBox(homogeneous=True, spacing=2)
-        box.set_border_width(3)
+        box1 = gtk.VBox(homogeneous=True, spacing=2)
+        box1.set_border_width(3)
         # ---
         b = gtk.Button(label="Merge Ligand With Model")
         b.child.set_line_wrap(True)
         b.child.props.width_chars = 10
         b.child.set_justify(gtk.JUSTIFY_CENTER)
         self.buttons['merge'] = b
-        box.add(b)
+        box1.add(b)
         # ---
         b = gtk.Button(label="Move New Ligand Here")
         b.child.set_line_wrap(True)
         b.child.props.width_chars = 10
         b.child.set_justify(gtk.JUSTIFY_CENTER)
         self.buttons['move'] = b
-        box.add(b)
+        box1.add(b)
+        # ---
+        box2 = gtk.VBox(homogeneous=True, spacing=2)
+        box2.set_border_width(3)
         # ---
         b = gtk.Button(label="Save Model")
+        b.child.set_line_wrap(True)
+        b.child.props.width_chars = 10
+        b.child.set_justify(gtk.JUSTIFY_CENTER)
         self.buttons['save'] = b
-        box.add(b)
+        box2.add(b)
         # ---
-        return box
+        b = gtk.Button(label="Reset Model")
+        b.child.set_line_wrap(True)
+        b.child.props.width_chars = 10
+        b.child.set_justify(gtk.JUSTIFY_CENTER)
+        self.buttons['reset'] = b
+        box2.add(b)
+        # ---
+        hbox_main = gtk.HBox(spacing=5)
+        hbox_main.pack_start(box1)
+        hbox_main.pack_start(gtk.VSeparator(), expand=False, padding=5)
+        hbox_main.pack_start(box2)
+
+        return hbox_main
 
     def _record_buttons(self):
         # ---------------------------------------------
@@ -681,24 +727,78 @@ class PanddaGUI(object):
         # ---------------------------------------------
         hbox_2 = gtk.HBox(homogeneous=False, spacing=5)
         # ---
+        hbox_2.pack_start(gtk.HBox(), expand=False, fill=False, padding=10)
+        # ---
         l = gtk.Label('Comment:')
-        hbox_2.add(l)
+        hbox_2.pack_start(l, expand=False, fill=False, padding=5)
         # ---
         e = gtk.Entry(max=200)
         self.objects['comment text'] = e
-        hbox_2.add(e)
+        hbox_2.pack_start(e, expand=True, fill=True, padding=5)
+        # ---
+        hbox_2.pack_start(gtk.HBox(), expand=False, fill=False, padding=10)
         # ---------------------------------------------
-        vbox_main = gtk.VBox(spacing=5)
-        vbox_main.pack_start(hbox_1)
-        vbox_main.pack_start(hbox_2)
+        vbox_main = gtk.VBox(spacing=0)
+        vbox_main.pack_start(hbox_1, padding=0)
+        vbox_main.pack_start(hbox_2, padding=5)
 
         return vbox_main
 
+    def _quit_buttons(self):
+        # ---------------------------------------------
+        vbox_1 = gtk.VBox(spacing=5)
+        vbox_1.set_border_width(3)
+        # ---
+        b = gtk.Button(label="Quit")
+        self.buttons['quit'] = b
+        vbox_1.pack_start(b)
+        # ---
+        vbox_1.pack_start(gtk.HSeparator(), expand=False, padding=5)
+        vbox_1.pack_start(gtk.HBox())
+        # ---
+        hbox_main = gtk.HBox(spacing=5)
+        hbox_main.pack_start(vbox_1)
+
+        return hbox_main
+
     def _event_info_table(self):
 
-        # First Column
+        # Main box
+        vbox_main = gtk.VBox()
+        vbox_main.set_border_width(3)
+        #  Pack sub-boxes
+        hbox_sub_1 = gtk.HBox()
+        hbox_sub_2 = gtk.HBox()
+        vbox_main.pack_start(hbox_sub_1)
+        vbox_main.pack_start(hbox_sub_2)
+
+        ##############
+        # HBOX SUB 1 #
+        ##############
+
+        # Dataset Name
+        gtk_label = gtk.Label('Dataset ID')
+        gtk_value = gtk.Label('None')
+        gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
+        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box)
+        frame = gtk.Frame(); frame.add(hbox)
+        # Add to first box
+        hbox_sub_1.pack_start(frame)
+        # Store label to allow editing
+        self.labels['dtag'] = gtk_value
+
+        ##############
+        # HBOX SUB 2 #
+        ##############
+
         vbox_1 = gtk.VBox()
-        vbox_1.set_border_width(3)
+        vbox_2 = gtk.VBox()
+        hbox_sub_2.pack_start(vbox_1)
+        hbox_sub_2.pack_start(vbox_2)
+
+        ##########
+        # VBOX 1 #
+        ##########
 
         # Create title
         title = gtk.Label('Event Information:')
@@ -707,44 +807,33 @@ class PanddaGUI(object):
         # Add to first column
         vbox_1.pack_start(frame)
 
-        # Dataset Name
-        gtk_label = gtk.Label('Dataset')
-        gtk_value = gtk.Label('None')
-        gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
-        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box)
-        frame = gtk.Frame(); frame.add(hbox)
-        # Add to first column
-        vbox_1.pack_start(frame)
-        # Store label to allow editing
-        self.labels['dtag'] = gtk_value
-
         # Event Number for Dataset
-        gtk_label = gtk.Label('Event')
-        gtk_value = gtk.Label('1')
+        gtk_label = gtk.Label('Event #')
+        gtk_value = gtk.Label('-')
         gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
-        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box)
+        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box); hbox.set_border_width(3)
         frame = gtk.Frame(); frame.add(hbox)
         # Add to first column
         vbox_1.pack_start(frame)
         # Store label to allow editing
         self.labels['e_idx'] = gtk_value
 
-        # Estimated Event Occupancy
+        # Estimated Event Background Correction
         gtk_label = gtk.Label('1 - BDC')
-        gtk_value = gtk.Label('1.0')
+        gtk_value = gtk.Label('-')
         gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
-        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box)
+        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box); hbox.set_border_width(3)
         frame = gtk.Frame(); frame.add(hbox)
         # Add to first column
         vbox_1.pack_start(frame)
         # Store label to allow editing
-        self.labels['e_occ'] = gtk_value
+        self.labels['e_1_bdc'] = gtk_value
 
         # Z-Peak for Dataset
-        gtk_label = gtk.Label('Z-Peak')
-        gtk_value = gtk.Label('0')
+        gtk_label = gtk.Label('Z-blob Peak')
+        gtk_value = gtk.Label('-')
         gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
-        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box)
+        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box); hbox.set_border_width(3)
         frame = gtk.Frame(); frame.add(hbox)
         # Add to first column
         vbox_1.pack_start(frame)
@@ -752,17 +841,72 @@ class PanddaGUI(object):
         self.labels['zpeak'] = gtk_value
 
         # Z-Peak for Dataset
-        gtk_label = gtk.Label('Z-Size')
-        gtk_value = gtk.Label('1')
+        gtk_label = gtk.Label('Z-blob Size')
+        gtk_value = gtk.Label('-')
         gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
-        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box)
+        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box); hbox.set_border_width(3)
         frame = gtk.Frame(); frame.add(hbox)
         # Add to first column
         vbox_1.pack_start(frame)
         # Store label to allow editing
         self.labels['csize'] = gtk_value
 
-        return vbox_1
+        ##########
+        # VBOX 2 #
+        ##########
+
+        # Create title
+        title = gtk.Label('Dataset Information:')
+        title.set_justify(gtk.JUSTIFY_LEFT)
+        frame = gtk.Frame(); frame.add(title)
+        # Add to second column
+        vbox_2.pack_start(frame)
+
+        # Resolution for Dataset
+        gtk_label = gtk.Label('Resolution')
+        gtk_value = gtk.Label('-')
+        gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
+        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box); hbox.set_border_width(3)
+        frame = gtk.Frame(); frame.add(hbox)
+        # Add to second column
+        vbox_2.pack_start(frame)
+        # Store label to allow editing
+        self.labels['map_res'] = gtk_value
+
+        # Map Uncertainty for Dataset
+        gtk_label = gtk.Label('Map Uncertainty')
+        gtk_value = gtk.Label('-')
+        gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
+        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box); hbox.set_border_width(3)
+        frame = gtk.Frame(); frame.add(hbox)
+        # Add to second column
+        vbox_2.pack_start(frame)
+        # Store label to allow editing
+        self.labels['map_unc'] = gtk_value
+
+        # R-Free/R-Work for Dataset
+        gtk_label = gtk.Label('R-Free / R-Work')
+        gtk_value = gtk.Label('-')
+        gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
+        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box); hbox.set_border_width(3)
+        frame = gtk.Frame(); frame.add(hbox)
+        # Add to second column
+        vbox_2.pack_start(frame)
+        # Store label to allow editing
+        self.labels['rwork_rfree'] = gtk_value
+
+        # Currently Blank
+        gtk_label = gtk.Label('-')
+        gtk_value = gtk.Label('-')
+        gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
+        hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box); hbox.set_border_width(3)
+        frame = gtk.Frame(); frame.add(hbox)
+        # Add to second column
+        vbox_2.pack_start(frame)
+        # Store label to allow editing
+        self.labels['blank'] = gtk_value
+
+        return vbox_main
 
     def _progress_table(self):
 

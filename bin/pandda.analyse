@@ -234,7 +234,9 @@ def pandda_main(args):
                 if res_limits[-1] != max_limit:
                     res_limits.append(max_limit)
         # ==================================================>
+        #####
         # Initialise for iterations over shells
+        #####
         # ============================================================================>
         # Analyse all datasets from high_shell_limit -> cut_resolution (initialise high_shell_limit to 0)
         high_shell_limit = 0
@@ -531,8 +533,10 @@ def pandda_main(args):
                 # Update datasets masks flag
                 pandda.datasets.all_masks().set_mask_value(mask_name='analysed', entry_id=d_handler.tag, value=True)
                 # Create a file that says what resolution this was processed at
-                link_dir = os.path.join(pandda.output_handler.get_dir('resolutions'), '{!s}-{!s}'.format(cut_resolution, d_handler.name))
+                # TODO DELETE? TODO
+                link_dir = os.path.join(pandda.output_handler.get_dir('resolutions'), '{!s}-{!s}'.format(cut_resolution, d_handler.tag))
                 if not os.path.exists(link_dir): rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=link_dir)
+                # TODO DELETE? TODO
                 
                 # ============================================================================>
                 # Validate/Check/Zero the dataset
@@ -723,9 +727,11 @@ def pandda_main(args):
                 if num_clusters == -1:
                     # This dataset is too noisy to analyse - flag!
                     pandda.datasets.all_masks().set_mask_value(mask_name='noisy zmap', entry_id=d_handler.tag, value=True)
+                    # TODO DELETE? TODO
                     # Link datasets to the noisy results directory
-                    noisy_dir = os.path.join(pandda.output_handler.get_dir('noisy_datasets'), d_handler.name)
+                    noisy_dir = os.path.join(pandda.output_handler.get_dir('noisy_datasets'), d_handler.tag)
                     if not os.path.exists(noisy_dir): rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=noisy_dir)
+                    # TODO DELETE? TODO
 
                 # ============================================================================>
                 #####
@@ -844,7 +850,7 @@ def pandda_main(args):
                 # Link outputs for datasets with hits
                 # ============================================================================>
                 # Create a link to the interesting directories in the initial results directory
-                hit_dir = os.path.join(pandda.output_handler.get_dir('interesting_datasets'), d_handler.name)
+                hit_dir = os.path.join(pandda.output_handler.get_dir('interesting_datasets'), d_handler.tag)
                 if not os.path.exists(hit_dir): rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=hit_dir)
                 # Flag the dataset as interesting 
                 pandda.datasets.all_masks().set_mask_value(mask_name='interesting', entry_id=d_handler.tag, value=True)
@@ -866,7 +872,7 @@ def pandda_main(args):
                     # ============================================================================>
                     # Extract sites for this cluster and estimate the occupancy of the event
                     pandda.log('===================================>>>', True)
-                    pandda.log('Estimating Event {!s} Occupancy'.format(event_num), True)
+                    pandda.log('Estimating Event {!s} Background Correction'.format(event_num), True)
                     # Generate custom grid mask for this dataset
                     event_mask = grid_mask( cart_sites = flex.vec3_double(point_cluster.points)*pandda.reference_grid().grid_spacing(),
                                             grid_size  = pandda.reference_grid().grid_size(),
@@ -883,12 +889,12 @@ def pandda_main(args):
                         query_map        = m_handler.map,
                         feature_region   = expanded_points,
                         reference_region = reference_points,
-                        min_occ          = pandda.params.occupancy_estimation.min_occ,
-                        max_occ          = pandda.params.occupancy_estimation.max_occ,
-                        occ_increment    = pandda.params.occupancy_estimation.occ_increment,
+                        min_occ          = 1.0-pandda.params.background_correction.max_bdc,
+                        max_occ          = 1.0-pandda.params.background_correction.min_bdc,
+                        occ_increment    = pandda.params.background_correction.increment,
                         method           = 'value',
                         verbose          = pandda.args.settings.verbose)
-                    pandda.log('=> Event occupancy estimated as {!s}'.format(event_occ_est), True)
+                    pandda.log('=> Event Background Correction estimated as {!s}'.format(1-event_occ_est), True)
                     # ============================================================================>
                     # Calculate occupancy map at this occupancy
                     # ============================================================================>
@@ -899,15 +905,15 @@ def pandda_main(args):
                     # Normalise the event map
                     #event_occ_map = event_occ_map / event_occ_est
                     # Write out this array
-                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('occupancy_map').format(event_num, event_occ_est), 
+                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('event_map').format(event_num, event_occ_est), 
                                                 map_data    = event_occ_map )    
-                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('native_occupancy_map').format(event_num, event_occ_est),
+                    pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('native_event_map').format(event_num, event_occ_est),
                                                 map_data    = pandda.rotate_map(d_handler=d_handler, map_data=event_occ_map, align_on_grid_point=map(int,point_cluster.centroid)))
                     # ============================================================================>
                     # Create an event object
                     # ============================================================================>
                     event_obj = Event(id=point_cluster.id, cluster=point_cluster)
-                    event_obj.info.estimated_occupancy = event_occ_est
+                    event_obj.info.estimated_pseudo_occupancy = event_occ_est
                     # ============================================================================>
                     # Append to dataset handler
                     # ============================================================================>
@@ -956,25 +962,6 @@ def pandda_main(args):
 #
 #                    status_bar(n=blob_num, n_max=blob_num)
 # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-
-            # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-            # TODO REIMPLEMENT THIS IF WE CAN MAKE IT RUN EVEN VAGUELY QUICKLY
-            #
-            #    ##################################
-            #    # POST-PROCESS Z-MAPS            #
-            #    ##################################
-            #
-            #    mod_z_map, resamp_mod_z_map = pandda.process_z_map(z_map=z_map)
-            #
-            #    # Write map
-            #    pandda.write_array_to_map(  output_file  = d_handler.get_mtz_filename().replace('.mtz','.processed.zvalues.ccp4'),
-            #                                map_data     = flex.double(mod_z_map))
-            #    # Write down-sampled map
-            #    pandda.write_array_to_map(  output_file  = d_handler.get_mtz_filename().replace('.mtz','.resamp.processed.zvalues.ccp4'),
-            #                                map_data     = flex.double(resamp_mod_z_map),
-            #                                grid_size    = pandda.reference_grid().resampled_grid_size(),
-            #                                grid_spacing = pandda.reference_grid().resampled_grid_spacing())
-            # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
             # ============================================================================>
             #####
@@ -1049,8 +1036,10 @@ def pandda_main(args):
                 # Update the site labels in the event table
                 pandda.update_event_table_site_info(events=all_events)
                 # Plot output graph of site list 
-                graphs.multiple_bar_plot(   f_name    = pandda.output_handler.get_file('analyse_site_graph'), 
-                                            plot_vals = [sorted([e.cluster.max for e in s.children],reverse=True) for s in site_list.children]   ) 
+                graphs.multiple_bar_plot(                     f_name     = pandda.output_handler.get_file('analyse_site_graph'), 
+                                                              plot_vals  = [sorted([e.cluster.max for e in s.children],reverse=True) for s in site_list.children]   ) 
+                graphs.multiple_bar_plot_over_several_images( f_template = pandda.output_handler.get_file('analyse_site_graph_mult'), 
+                                                              plot_vals  = [sorted([e.cluster.max for e in s.children],reverse=True) for s in site_list.children]   ) 
                 # Create pictures of the sites on the protein
                 pandda.make_pymol_site_image_and_scripts(site_list=site_list, make_images=True)
                 # ==================================================>
@@ -1141,8 +1130,6 @@ def pandda_main(args):
             print '<<< Pandda exited before being initialised >>>'
             return None,   None
     except:
-        try:    pandda.exit(error=True)
-        except: pass
         raise
     else:
         try:    
@@ -1224,7 +1211,8 @@ def run_custom_analyses(pandda):
 
 if __name__ == '__main__':
 
-    welcome(os.getlogin())
+    try:    welcome(os.getlogin())
+    except: pass
 
     pandda, err = pandda_main(args=None)
 

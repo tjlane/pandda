@@ -53,7 +53,7 @@ from PANDDAs.holders import *
 FILTER_SCALING_CORRELATION_CUTOFF = 0.7
 
 class DatasetHandler(object):
-    def __init__(self, dataset_number, pdb_filename, mtz_filename, dataset_tag=None, name_prefix=''):
+    def __init__(self, dataset_number, pdb_filename, mtz_filename, dataset_tag=None):
         """Create a dataset object to allow common functions to be applied easily to a number of datasets"""
         assert os.path.exists(pdb_filename), 'PDB file does not exist!'
         assert os.path.exists(mtz_filename), 'MTZ file does not exist!'
@@ -61,13 +61,11 @@ class DatasetHandler(object):
         self.num = dataset_number
         # Store the tag for the dataset
         if dataset_tag:
-            self.tag = name_prefix + dataset_tag
+            self.tag = dataset_tag
         else:
             # If num < 0 - mark as a reference dataset
             if self.num < 0:  self.tag = 'REF{:05d}'.format(self.num)
             else:             self.tag = 'D{:05d}'.format(self.num)
-        # Store a name for the dataset
-        self.name = name_prefix + '{!s}'.format(dataset_tag)
         # Output Directories
         self.output_handler = None
         self.child = None
@@ -356,7 +354,7 @@ class PanddaMapAnalyser(object):
         """Check that all of the added maps are the same size etc..."""
 
         for mh in self.dataset_maps.all():
-            print('Checking Map {!s}'.format(mh.name))
+            print('Checking Map {!s}'.format(mh.tag))
 
     def calculate_mean_map(self, masked_idxs=None, mask_name=None):
         """Calculate the mean map from all of the different observations"""
@@ -635,8 +633,10 @@ class PanddaMultiDatasetAnalyser(object):
         """Class for the processing of datasets from a fragment soaking campaign"""
 
         # Allow the program to pull from the command line if no arguments are given
-        if args is None:
-            args = sys.argv[1:]
+        if args is None: args = sys.argv[1:]
+
+        # Log init time
+        self._init_time = time.time()
 
         # ===============================================================================>
         # PROCESS INPUT ARGUMENTS
@@ -738,6 +738,11 @@ class PanddaMultiDatasetAnalyser(object):
         else:
             self._new_pandda = True
 
+        # ===============================================================================>
+        # CHANGE INTO OUTPUT DIRECTORY
+        # ===============================================================================>
+        os.chdir(self.out_dir)
+
     def process_input_args(self, master_phil, args):
         """Process the input arguments"""
 
@@ -777,7 +782,7 @@ class PanddaMultiDatasetAnalyser(object):
         # Input
         assert p.input.data_dirs is not None, 'pandda.input.data_dirs IS NOT DEFINED'
         assert p.input.pdb_style, 'pandda.input.pdb_style IS NOT DEFINED'
-        assert p.input.pdb_regex or p.input.mtz_regex or p.input.dir_regex or \
+        assert p.input.regex.pdb_regex or p.input.regex.mtz_regex or p.input.regex.dir_regex or \
                (p.input.pdb_style and ('*' in p.input.pdb_style)) or \
                (p.input.mtz_style and ('*' in p.input.mtz_style)) or \
                (p.input.data_dirs and ('*' in p.input.data_dirs))
@@ -786,6 +791,7 @@ class PanddaMultiDatasetAnalyser(object):
         assert p.output.out_dir, 'pandda.output.out_dir IS NOT DEFINED'
 
         # Make fullpath so we can run on the eff file from anywhere
+        # and change directories without worrying about relative paths
         p.input.data_dirs = os.path.abspath(p.input.data_dirs)
         p.output.out_dir  = os.path.abspath(p.output.out_dir)
 
@@ -838,13 +844,13 @@ class PanddaMultiDatasetAnalyser(object):
         # REPOPULATE PANDDA FROM PREVIOUS RUNS
         # ===============================================================================>
 
-        if os.path.exists(self.output_handler.get_file('reference_structure')) and os.path.exists(self.output_handler.get_file('reference_dataset')):
+        # Load any objects from previous runs
+        self.load_pickled_objects()
+
+        if (not self.reference_dataset()) and os.path.exists(self.output_handler.get_file('reference_structure')) and os.path.exists(self.output_handler.get_file('reference_dataset')):
             self.log('===================================>>>', True)
             self.log('Loading Reference Dataset', True)
             self.load_reference_dataset(ref_pdb=self.output_handler.get_file('reference_structure'), ref_mtz=self.output_handler.get_file('reference_dataset'))
-
-        # Load any objects from previous runs
-        self.load_pickled_objects()
 
         # ===============================================================================>
         # LOOK FOR MATPLOTLIB TO SEE IF WE CAN GENERATE GRAPHS
@@ -871,7 +877,6 @@ class PanddaMultiDatasetAnalyser(object):
         # ===============================================================================>
 
         # Store start time and print to log
-        self._init_time = time.time()
         self.log('===================================>>>', True)
         self.log('Analysis Started: {!s}'.format(time.strftime("%a, %d %b %Y %H:%M:%S", time.gmtime(self._init_time))), True)
 
@@ -915,32 +920,43 @@ class PanddaMultiDatasetAnalyser(object):
         # ================================================>
         # Somewhere to store the analyses/summaries
         # ================================================>
-        self.output_handler.add_dir(dir_name='analyses', dir_tag='analyses', top_dir_tag='root')
+        # Dynamically name the directories by the time of running
+        analysis_time_name = 'analyses-{}'.format(time.strftime("%Y-%m-%d-%H%M", time.gmtime(self._init_time)))
+        analysis_link_path = os.path.join(self.output_handler.get_dir('root'), 'analyses')
+        print('{} -> {}'.format(analysis_link_path, analysis_time_name))
+        # Create the time-stamped directory
+        self.output_handler.add_dir(dir_name=analysis_time_name, dir_tag='analyses', top_dir_tag='root')
+        # Remove link if it exists
+        if os.path.exists(analysis_link_path) and os.path.islink(analysis_link_path): os.unlink(analysis_link_path)
+        # Link it to the constant directory
+        rel_symlink(orig=self.output_handler.get_dir('analyses'), link=analysis_link_path)
+
         # Store dataset summary graphs
         self.output_handler.add_dir(dir_name='dataset_graph_summaries', dir_tag='d_graphs', top_dir_tag='analyses')
-        self.output_handler.add_file(file_name='dataset_resolutions.png',           file_tag='d_resolutions',        dir_tag='d_graphs')
-        self.output_handler.add_file(file_name='dataset_rfactors.png',              file_tag='d_rfactors',           dir_tag='d_graphs')
-        self.output_handler.add_file(file_name='dataset_global_rmsd_to_ref.png',    file_tag='d_global_rmsd_to_ref', dir_tag='d_graphs')
-        self.output_handler.add_file(file_name='dataset_cell_axes.png',             file_tag='d_cell_axes',          dir_tag='d_graphs')
-        self.output_handler.add_file(file_name='dataset_cell_angles.png',           file_tag='d_cell_angles',        dir_tag='d_graphs')
-        self.output_handler.add_file(file_name='dataset_cell_volumes.png',          file_tag='d_cell_volumes',       dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_resolutions.png',           file_tag='d_resolutions',           dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_rfactors.png',              file_tag='d_rfactors',              dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_global_rmsd_to_ref.png',    file_tag='d_global_rmsd_to_ref',    dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_cell_axes.png',             file_tag='d_cell_axes',             dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_cell_angles.png',           file_tag='d_cell_angles',           dir_tag='d_graphs')
+        self.output_handler.add_file(file_name='dataset_cell_volumes.png',          file_tag='d_cell_volumes',          dir_tag='d_graphs')
         # Somewhere to store the dataset information (general values)
         self.output_handler.add_file(file_name=f.dataset_info,                      file_tag='dataset_info',            dir_tag='analyses')
         self.output_handler.add_file(file_name=f.dataset_map_info,                  file_tag='dataset_map_info',        dir_tag='analyses')
         self.output_handler.add_file(file_name=f.dataset_combined_info,             file_tag='dataset_combined_info',   dir_tag='analyses')
         # Somewhere to store the dataset information (identified events + sites)
-        self.output_handler.add_file(file_name=f.event_info,                        file_tag='event_info',          dir_tag='analyses')
-        self.output_handler.add_file(file_name=f.site_info,                         file_tag='site_info',           dir_tag='analyses')
-        self.output_handler.add_file(file_name='_point_distributions.csv',          file_tag='point_distributions', dir_tag='analyses')
+        self.output_handler.add_file(file_name=f.event_info,                        file_tag='event_info',              dir_tag='analyses')
+        self.output_handler.add_file(file_name=f.site_info,                         file_tag='site_info',               dir_tag='analyses')
+        self.output_handler.add_file(file_name='_point_distributions.csv',          file_tag='point_distributions',     dir_tag='analyses')
         # Somewhere to store the analysis summaries - for the user
         self.output_handler.add_dir(dir_name='results_summaries', dir_tag='output_summaries', top_dir_tag='root')
-        self.output_handler.add_file(file_name=f.initial_html,                      file_tag='initial_html',        dir_tag='output_summaries')
-        self.output_handler.add_file(file_name=f.analyse_html,                      file_tag='analyse_html',        dir_tag='output_summaries')
-        self.output_handler.add_file(file_name=f.analyse_site_graph,                file_tag='analyse_site_graph',  dir_tag='output_summaries')
-        self.output_handler.add_file(file_name=f.pymol_sites_py,                    file_tag='pymol_sites_py',      dir_tag='output_summaries')
-        self.output_handler.add_file(file_name=f.pymol_sites_pml,                   file_tag='pymol_sites_pml',     dir_tag='output_summaries')
-        self.output_handler.add_file(file_name=f.pymol_sites_png_1,                 file_tag='pymol_sites_png_1',   dir_tag='output_summaries')
-        self.output_handler.add_file(file_name=f.pymol_sites_png_2,                 file_tag='pymol_sites_png_2',   dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.initial_html,                      file_tag='initial_html',            dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.analyse_html,                      file_tag='analyse_html',            dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.analyse_site_graph,                file_tag='analyse_site_graph',      dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.analyse_site_graph_mult,           file_tag='analyse_site_graph_mult', dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.pymol_sites_py,                    file_tag='pymol_sites_py',          dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.pymol_sites_pml,                   file_tag='pymol_sites_pml',         dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.pymol_sites_png_1,                 file_tag='pymol_sites_png_1',       dir_tag='output_summaries')
+        self.output_handler.add_file(file_name=f.pymol_sites_png_2,                 file_tag='pymol_sites_png_2',       dir_tag='output_summaries')
 
         # Somewhere to store the pickled objects
         self.output_handler.add_dir(dir_name='pickled_panddas', dir_tag='pickle', top_dir_tag='root')
@@ -1296,12 +1312,24 @@ class PanddaMultiDatasetAnalyser(object):
         self.log('===================================>>>', True)
         self.log('Loading Reference Dataset: {!s}'.format(ref_mtz), True)
 
-        self.set_reference_dataset(ReferenceDatasetHandler(dataset_number=-1, pdb_filename=ref_pdb, mtz_filename=ref_mtz, dataset_tag='reference'))
+        link_ref_pdb = self.output_handler.get_file('reference_structure')
+        link_ref_mtz = self.output_handler.get_file('reference_dataset')
 
-        if not os.path.exists(self.output_handler.get_file('reference_structure')):
-            rel_symlink(orig=ref_pdb, link=self.output_handler.get_file('reference_structure'))
-        if not os.path.exists(self.output_handler.get_file('reference_dataset')):
-            rel_symlink(orig=ref_mtz, link=self.output_handler.get_file('reference_dataset'))
+        # Remove old links?
+        if os.path.abspath(ref_pdb) != os.path.abspath(link_ref_pdb):
+            if os.path.exists(link_ref_pdb): os.unlink(link_ref_pdb)
+            if os.path.exists(link_ref_mtz): os.unlink(link_ref_mtz)
+        # Create links to dataset
+        if not os.path.exists(link_ref_pdb): rel_symlink(orig=ref_pdb, link=link_ref_pdb)
+        if not os.path.exists(link_ref_mtz): rel_symlink(orig=ref_mtz, link=link_ref_mtz)
+
+        # Create and set reference dataset
+        ref_handler = ReferenceDatasetHandler(
+                        dataset_number = -1,
+                        pdb_filename   = os.path.relpath(link_ref_pdb, start=self.out_dir),
+                        mtz_filename   = os.path.relpath(link_ref_mtz, start=self.out_dir),
+                        dataset_tag    = 'reference')
+        self.set_reference_dataset(ref_handler)
 
         # Calculate the shift required to move the reference structure into the positive quadrant
         total_border_padding = self.params.maps.padding + self.params.masks.outer_mask
@@ -1465,8 +1493,8 @@ class PanddaMultiDatasetAnalyser(object):
                 # Do regex matching on the file pairs
                 if '*' in pdb_style:
                     pdb_base = os.path.basename(new_pdb)
-                    if self.args.input.pdb_regex:
-                        pdb_regex = self.args.input.pdb_regex
+                    if self.args.input.regex.pdb_regex:
+                        pdb_regex = self.args.input.regex.pdb_regex
                     else:
                         pdb_regex = pdb_style.replace('*', '(.*)')
                     pdb_tag = re.findall(pdb_regex, pdb_base)
@@ -1478,8 +1506,8 @@ class PanddaMultiDatasetAnalyser(object):
 
                 if '*' in mtz_style:
                     mtz_base = os.path.basename(new_mtz)
-                    if self.args.input.mtz_regex:
-                        mtz_regex = self.args.input.mtz_regex
+                    if self.args.input.regex.mtz_regex:
+                        mtz_regex = self.args.input.regex.mtz_regex
                     else:
                         mtz_regex = mtz_style.replace('*', '(.*)')
                     mtz_tag = re.findall(mtz_regex, mtz_base)
@@ -1491,8 +1519,8 @@ class PanddaMultiDatasetAnalyser(object):
 
                 if '*' in dir_style:
                     dir_base = os.path.dirname(pdb_files[0])
-                    if self.args.input.dir_regex:
-                        dir_regex = self.args.input.dir_regex
+                    if self.args.input.regex.dir_regex:
+                        dir_regex = self.args.input.regex.dir_regex
                     else:
                         dir_regex = dir_style.replace('*', '(.*)')
                     dir_tag = re.findall(dir_regex, dir_base)
@@ -1509,6 +1537,10 @@ class PanddaMultiDatasetAnalyser(object):
                 if   dir_tag: dataset_tag = dir_tag
                 elif pdb_tag: dataset_tag = pdb_tag
                 elif mtz_tag: dataset_tag = mtz_tag
+
+                # Add prefix
+                if isinstance(dataset_tag[0], str): dataset_tag = [self.args.output.dataset_prefix + dataset_tag[0]]
+                else:                               assert dataset_tag[0] is None
 
                 new_files.append(pdb_files+mtz_files+dataset_tag)
 
@@ -1597,7 +1629,7 @@ class PanddaMultiDatasetAnalyser(object):
         else:                         n_offset = 0
 
         # Generate arg_list for loading
-        arg_list = [{'dataset_number':dnum+n_offset, 'pdb_filename':pdb, 'mtz_filename':mtz, 'dataset_tag':dtag, 'name_prefix':self.args.output.dataset_prefix} for dnum, (pdb, mtz, dtag) in enumerate(self.new_files())]
+        arg_list = [{'dataset_number':dnum+n_offset, 'pdb_filename':pdb, 'mtz_filename':mtz, 'dataset_tag':dtag} for dnum, (pdb, mtz, dtag) in enumerate(self.new_files())]
 
         start = time.time()
         self.log('===================================>>>', True)
@@ -1615,7 +1647,7 @@ class PanddaMultiDatasetAnalyser(object):
         for d_handler in loaded_datasets:
 
             # Create a file manager object
-            d_handler.initialise_output_directory(outputdir=os.path.join(self.output_handler.get_dir('processed_datasets'), d_handler.name))
+            d_handler.initialise_output_directory(outputdir=os.path.join(self.output_handler.get_dir('processed_datasets'), d_handler.tag))
 
             # Main input/output files
             d_handler.output_handler.add_file(file_name=f.input_structure.format(d_handler.tag),                    file_tag='input_structure'              )
@@ -1632,7 +1664,7 @@ class PanddaMultiDatasetAnalyser(object):
             d_handler.output_handler.add_file(file_name=f.z_map_uncertainty_norm.format(d_handler.tag),             file_tag='z_map_uncertainty_normalised' )
             d_handler.output_handler.add_file(file_name=f.z_map_corrected.format(d_handler.tag),                    file_tag='z_map_corrected'              )
             d_handler.output_handler.add_file(file_name=f.z_map_corrected_norm.format(d_handler.tag),               file_tag='z_map_corrected_normalised'   )
-            d_handler.output_handler.add_file(file_name=f.occupancy_map.format(d_handler.tag, '{!s}', '{!s}'),      file_tag='occupancy_map'                )
+            d_handler.output_handler.add_file(file_name=f.event_map.format(d_handler.tag, '{!s}', '{!s}'),          file_tag='event_map'                    )
 
             # Miscellaneous files
             d_handler.output_handler.add_file(file_name=f.high_z_mask.format(d_handler.tag), file_tag='high_z_mask')
@@ -1647,7 +1679,7 @@ class PanddaMultiDatasetAnalyser(object):
             # Native (back-rotated/transformed) maps
             d_handler.output_handler.add_file(file_name=f.native_obs_map.format(d_handler.tag),                     file_tag='native_obs_map'       )
             d_handler.output_handler.add_file(file_name=f.native_z_map.format(d_handler.tag),                       file_tag='native_z_map'         )
-            d_handler.output_handler.add_file(file_name=f.native_occupancy_map.format(d_handler.tag,'{!s}','{!s}'), file_tag='native_occupancy_map' )
+            d_handler.output_handler.add_file(file_name=f.native_event_map.format(d_handler.tag,'{!s}','{!s}'),     file_tag='native_event_map'     )
 
             # Fitted structures when modelled with pandda.inspect
             d_handler.output_handler.add_dir(dir_name='modelled_structures', dir_tag='models', top_dir_tag='root')
@@ -1664,7 +1696,7 @@ class PanddaMultiDatasetAnalyser(object):
             d_handler.output_handler.add_file(file_name=p.z_map_corrected_png.format(d_handler.tag),                file_tag='z_map_corrected_png',              dir_tag='images')
             d_handler.output_handler.add_file(file_name=p.z_map_corrected_norm_png.format(d_handler.tag),           file_tag='z_map_corrected_normalised_png',   dir_tag='images')
             d_handler.output_handler.add_file(file_name=p.z_map_qq_plot_png.format(d_handler.tag),                  file_tag='z_map_qq_plot_png',                dir_tag='images')
-            d_handler.output_handler.add_file(file_name=p.occ_corr_png.format(d_handler.tag, '{!s}'),               file_tag='occ_corr_png',                     dir_tag='images')
+            d_handler.output_handler.add_file(file_name=p.bdc_est_png.format(d_handler.tag, '{!s}'),                file_tag='bdc_est_png',                     dir_tag='images')
             d_handler.output_handler.add_file(file_name=p.unc_qqplot_png.format(d_handler.tag),                     file_tag='unc_qqplot_png',                   dir_tag='images')
             d_handler.output_handler.add_file(file_name=p.obs_qqplot_sorted_png.format(d_handler.tag),              file_tag='obs_qqplot_sorted_png',            dir_tag='images')
             d_handler.output_handler.add_file(file_name=p.obs_qqplot_unsorted_png.format(d_handler.tag),            file_tag='obs_qqplot_unsorted_png',          dir_tag='images')
@@ -1687,16 +1719,19 @@ class PanddaMultiDatasetAnalyser(object):
 
             ##############################################################################################################
 
+            # Links for the dataset input files
+            link_pdb = d_handler.output_handler.get_file('input_structure')
+            link_mtz = d_handler.output_handler.get_file('input_data')
             # Link the input files to the output folder
-            if not os.path.exists(d_handler.output_handler.get_file('input_structure')):
-                os.symlink(d_handler.pdb_filename(), d_handler.output_handler.get_file('input_structure'))
-            if not os.path.exists(d_handler.output_handler.get_file('input_data')):
-                os.symlink(d_handler.mtz_filename(), d_handler.output_handler.get_file('input_data'))
+            rel_symlink(orig=d_handler.pdb_filename(), link=link_pdb)
+            rel_symlink(orig=d_handler.mtz_filename(), link=link_mtz)
+            # Update the pointer to the new path (relative to the pandda directory)
+            d_handler._pdb_file = os.path.relpath(link_pdb, start=self.out_dir)
+            d_handler._mtz_file = os.path.relpath(link_mtz, start=self.out_dir)
 
             # Search for ligand files and link them to the output ligands folder
             lig_glob  = os.path.join(os.path.dirname(d_handler.pdb_filename()), lig_style)
             lig_files = glob.glob(lig_glob)
-
             for lig_file in lig_files:
                 # Find all files with the same basename but allowing for different extensions. Then link to output folder.
                 lig_base = os.path.splitext(lig_file)[0] + '.*'
@@ -1934,7 +1969,7 @@ class PanddaMultiDatasetAnalyser(object):
 
         # Link all rejected datasets into the rejected directory
         for d_handler in self.datasets.mask(mask_name='rejected - total'):
-            reject_dir = os.path.join(self.output_handler.get_dir('rejected_datasets'), d_handler.name)
+            reject_dir = os.path.join(self.output_handler.get_dir('rejected_datasets'), d_handler.tag)
             if not os.path.exists(reject_dir):
                 rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=reject_dir)
 
@@ -1989,7 +2024,7 @@ class PanddaMultiDatasetAnalyser(object):
 
         # Link all rejected datasets into the rejected directory
         for d_handler in self.datasets.mask(mask_name='rejected - total'):
-            reject_dir = os.path.join(self.output_handler.get_dir('rejected_datasets'), d_handler.name)
+            reject_dir = os.path.join(self.output_handler.get_dir('rejected_datasets'), d_handler.tag)
             if not os.path.exists(reject_dir):
                 rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=reject_dir)
 
@@ -2788,7 +2823,7 @@ class PanddaMultiDatasetAnalyser(object):
                 pymol_str += 'cmd.pseudoatom("{}", pos={}, vdw=2.5)\n'.format(lab, com)
                 pymol_str += 'cmd.show("sphere", "{}")\n'.format(lab)
                 pymol_str += 'cmd.label("{}", "{}")\n'.format(lab, site.id)
-                pymol_str += 'cmd.color("blue", "{}")\n'.format(lab)
+                pymol_str += 'cmd.color("purple", "{}")\n'.format(lab)
                 pymol_str += 'cmd.set("label_color", "white", "{}")\n'.format(lab)
             # Label events as smaller spheres
             for event in site.children:
@@ -2796,7 +2831,7 @@ class PanddaMultiDatasetAnalyser(object):
                 com = tuple(flex.double(event.cluster.centroid)*self.reference_grid().grid_spacing())
                 pymol_str += 'cmd.pseudoatom("{}", pos={}, vdw=0.5)\n'.format(lab, com)
                 pymol_str += 'cmd.show("sphere", "{}")\n'.format(lab)
-                pymol_str += 'cmd.color("green", "{}")\n'.format(lab)
+                pymol_str += 'cmd.color("blue", "{}")\n'.format(lab)
         # Set label things...
         pymol_str += 'cmd.set("label_size", 30)\n'
         pymol_str += 'cmd.set("label_position", (0,0,4))\n'
@@ -2839,7 +2874,7 @@ class PanddaMultiDatasetAnalyser(object):
         else:               site_idx = 0
         self.tables.event_info.set_value(event.id, 'site_idx', site_idx)
         # Event and cluster information
-        self.tables.event_info.set_value(event.id, 'est_occupancy', event.info.estimated_occupancy)
+        self.tables.event_info.set_value(event.id, '1-BDC',  event.info.estimated_pseudo_occupancy)
         self.tables.event_info.set_value(event.id, 'z_peak', event.cluster.max)
         self.tables.event_info.set_value(event.id, 'z_mean', event.cluster.mean)
         self.tables.event_info.set_value(event.id, 'cluster_size', event.cluster.size)
@@ -2889,7 +2924,7 @@ class PanddaMultiDatasetAnalyser(object):
         if (align_on_grid_point is not None) and self.params.alignment.method=='local':
             # For the local alignment transformation
             rt_lab = self.reference_grid().partition().query_by_grid_points([align_on_grid_point])[0]
-            self.log('=> Aligning Occupancy Map to: Chain {}, Residue {}'.format(rt_lab[0], rt_lab[1].strip()))
+            self.log('=> Aligning Event Map to: Chain {}, Residue {}'.format(rt_lab[0], rt_lab[1].strip()))
             rt = d_handler.local_alignment_transforms()[rt_lab]
         else:
             # For the global alignment transformation
