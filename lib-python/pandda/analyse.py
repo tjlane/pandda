@@ -27,6 +27,7 @@ from scitbx.math.distributions import normal_distribution
 from Bamboo.Common import Meta, Info
 from Bamboo.Common.Logs import Log
 from Bamboo.Common.File import output_file_object, easy_directory
+from Bamboo.Common.command import commandManager
 
 from Giant.Grid import grid_handler
 from Giant.Grid.Masks import spherical_mask, atomic_mask, grid_mask
@@ -41,13 +42,11 @@ from Giant.Structure.align import perform_flexible_alignment, find_nearest_calph
 
 from Giant.Utils import status_bar, status_bar_2, rel_symlink
 
-from PANDDAs import graphs
-
-from PANDDAs.phil import pandda_phil_def
-from PANDDAs.html import PANDDA_HTML_ENV
-from PANDDAs.settings import PANDDA_TOP, PANDDA_TEXT, PANDDA_VERSION
-from PANDDAs.constants import *
-from PANDDAs.holders import *
+from pandda import analyse_graphs
+from pandda.phil import pandda_phil_def
+from pandda.settings import PANDDA_TOP, PANDDA_TEXT, PANDDA_VERSION
+from pandda.constants import *
+from pandda.holders import *
 
 # SET FILTERING CONSTANTS
 FILTER_SCALING_CORRELATION_CUTOFF = 0.7
@@ -71,8 +70,8 @@ class DatasetHandler(object):
         self.child = None
         ########################################################
         # Store filenames
-        self._pdb_file = os.path.abspath(pdb_filename)
-        self._mtz_file = os.path.abspath(mtz_filename)
+        self._pdb_file = pdb_filename
+        self._mtz_file = mtz_filename
         # PDB Objects
         self._structure = self.new_structure()
         # Data summaries
@@ -194,7 +193,9 @@ class DatasetHandler(object):
         symmetry_root = combine_hierarchies(sym_hierarchies)
         # Transform to reference frame?
         if rt_method: symmetry_root.atoms().set_xyz(self.transform_to_reference(points=symmetry_root.atoms().extract_xyz(), method=rt_method))
-        return symmetry_root
+        # Save coordinates
+        self.symmetry_copies = symmetry_root
+        return self.symmetry_copies
 
 class ReferenceDatasetHandler(DatasetHandler):
     _origin_shift = (0,0,0)
@@ -415,6 +416,7 @@ class PanddaMapAnalyser(object):
                 import matplotlib
                 matplotlib.interactive(0)
                 from matplotlib import pyplot
+                pyplot.style.use('ggplot')
             except:
                 output_graphs = False
 
@@ -464,20 +466,20 @@ class PanddaMapAnalyser(object):
 
             if output_graphs and mh.parent:
 
-                graphs.mean_obs_scatter( f_name    = mh.parent.output_handler.get_file('obs_qqplot_unsorted_png'),
-                                         mean_vals = masked_mean_vals,
-                                         obs_vals  = masked_map_vals     )
+                analyse_graphs.mean_obs_scatter( f_name    = mh.parent.output_handler.get_file('obs_qqplot_unsorted_png'),
+                                                 mean_vals = masked_mean_vals,
+                                                 obs_vals  = masked_map_vals     )
 
-                graphs.sorted_mean_obs_scatter( f_name    = mh.parent.output_handler.get_file('obs_qqplot_sorted_png'),
-                                                mean_vals = sorted_mean_vals,
-                                                obs_vals  = sorted_observed_vals    )
+                analyse_graphs.sorted_mean_obs_scatter( f_name    = mh.parent.output_handler.get_file('obs_qqplot_sorted_png'),
+                                                        mean_vals = sorted_mean_vals,
+                                                        obs_vals  = sorted_observed_vals    )
 
-                graphs.diff_mean_qqplot( f_name   = mh.parent.output_handler.get_file('unc_qqplot_png'),
-                                         map_off  = map_off,
-                                         map_unc  = map_unc,
-                                         q_cut    = q_cut,
-                                         obs_diff = sorted_observed_diff_vals,
-                                         quantile = expected_diff_vals  )
+                analyse_graphs.diff_mean_qqplot( f_name   = mh.parent.output_handler.get_file('unc_qqplot_png'),
+                                                 map_off  = map_off,
+                                                 map_unc  = map_unc,
+                                                 q_cut    = q_cut,
+                                                 obs_diff = sorted_observed_diff_vals,
+                                                 quantile = expected_diff_vals  )
 
         t2 = time.time()
         self.log('> MAP UNCERTAINTY CALCULATION > Time Taken: {!s} seconds'.format(int(t2-t1)))
@@ -861,11 +863,15 @@ class PanddaMultiDatasetAnalyser(object):
                 import matplotlib
                 # Setup so that we can write without a display connected
                 matplotlib.interactive(0)
+                # Find the backend
                 default_backend, validate_function = matplotlib.defaultParams['backend']
                 self.log('===================================>>>')
                 self.log('MATPLOTLIB LOADED. Using Backend: {!s}'.format(default_backend))
                 from matplotlib import pyplot
+                # Test non-interactive-ness
                 assert not pyplot.isinteractive(), 'PYPLOT IS STILL IN INTERACTIVE MODE'
+                # Set the style to ggplot (the prettiest)
+                pyplot.style.use('ggplot')
                 self.log('PYPLOT loaded successfully')
             except:
                 self.log('===================================>>>', True)
@@ -1339,6 +1345,7 @@ class PanddaMultiDatasetAnalyser(object):
         ref_hierarchy = self.reference_dataset().hierarchy()
         ref_hierarchy.atoms().set_xyz(ref_hierarchy.atoms().extract_xyz() + self.reference_dataset().origin_shift())
 
+        # Save this output -- this is essentially defines the reference frame
         if not os.path.exists(self.output_handler.get_file('reference_on_origin')):
             ref_hierarchy.write_pdb_file(self.output_handler.get_file('reference_on_origin'))
 
@@ -1347,6 +1354,12 @@ class PanddaMultiDatasetAnalyser(object):
         t = scitbx.matrix.rec(self.reference_dataset().origin_shift(), (3,1))
         rt = scitbx.matrix.rt((r,t))
         self.reference_dataset().set_global_alignment(alignment=rt)
+
+        # Create neighbouring symmetry copies of the reference structures
+        ref_sym_copies = self.reference_dataset().generate_symmetry_copies(rt_method='global', save_operators=True, buffer=self.params.masks.outer_mask+5)
+        # Write out the symmetry sites
+        if not os.path.exists(self.output_handler.get_file('reference_symmetry')):
+            ref_sym_copies.write_pdb_file(self.output_handler.get_file('reference_symmetry'))
 
         return self.reference_dataset()
 
@@ -1387,12 +1400,9 @@ class PanddaMultiDatasetAnalyser(object):
         self.log('Masking Reference Grid', True)
 
         # ============================================================================>
-        # Create neighbouring symmetry copies of the reference structures
+        # Get neighbouring symmetry copies of the reference structures
         # ============================================================================>
-        ref_sym_copies = self.reference_dataset().generate_symmetry_copies(rt_method='global', save_operators=True, buffer=self.params.masks.outer_mask+5)
-        # Write out the symmetry sites
-        if not os.path.exists(self.output_handler.get_file('reference_symmetry')):
-            ref_sym_copies.write_pdb_file(self.output_handler.get_file('reference_symmetry'))
+        ref_sym_copies = self.reference_dataset().symmetry_copies
         # ============================================================================>
         # Local mask used for forming groups of points around a grid point
         # ============================================================================>
@@ -1723,11 +1733,8 @@ class PanddaMultiDatasetAnalyser(object):
             link_pdb = d_handler.output_handler.get_file('input_structure')
             link_mtz = d_handler.output_handler.get_file('input_data')
             # Link the input files to the output folder
-            rel_symlink(orig=d_handler.pdb_filename(), link=link_pdb)
-            rel_symlink(orig=d_handler.mtz_filename(), link=link_mtz)
-            # Update the pointer to the new path (relative to the pandda directory)
-            d_handler._pdb_file = os.path.relpath(link_pdb, start=self.out_dir)
-            d_handler._mtz_file = os.path.relpath(link_mtz, start=self.out_dir)
+            if not os.path.exists(link_pdb): rel_symlink(orig=d_handler.pdb_filename(), link=link_pdb)
+            if not os.path.exists(link_mtz): rel_symlink(orig=d_handler.mtz_filename(), link=link_mtz)
 
             # Search for ligand files and link them to the output ligands folder
             lig_glob  = os.path.join(os.path.dirname(d_handler.pdb_filename()), lig_style)
@@ -1741,6 +1748,10 @@ class PanddaMultiDatasetAnalyser(object):
                     if not os.path.exists(out_path):
                         os.symlink(lig, out_path)
 
+            # Lastly: Update the pointer to the new path (relative to the pandda directory)
+            d_handler._pdb_file = os.path.relpath(link_pdb, start=self.out_dir)
+            d_handler._mtz_file = os.path.relpath(link_mtz, start=self.out_dir)
+
         self.datasets.add(loaded_datasets)
         self.log('{!s} Datasets Loaded (New).          '.format(len(loaded_datasets), True))
         self.log('{!s} Datasets Loaded (Total).        '.format(self.datasets.size(), True))
@@ -1748,13 +1759,8 @@ class PanddaMultiDatasetAnalyser(object):
     def load_reflection_data(self, ampl_label, phas_label):
         """Extract amplitudes and phases for creating map"""
 
-        if self.args.input.reference.ampl_label:    ref_ampl_label = self.args.input.reference.ampl_label
-        else:                                       ref_ampl_label = ampl_label
-        if self.args.input.reference.phas_label:    ref_phas_label = self.args.input.reference.phas_label
-        else:                                       ref_phas_label = phas_label
-
         # Extract reflection data for the reference dataset
-        self.reference_dataset().sfs = extract_structure_factors(self.reference_dataset().reflection_data(), ampl_label=ref_ampl_label, phas_label=ref_phas_label)
+        self.reference_dataset().sfs = extract_structure_factors(self.reference_dataset().reflection_data(), ampl_label=ampl_label, phas_label=phas_label)
 
         t1 = time.time()
         self.log('===================================>>>', True)
@@ -1880,7 +1886,7 @@ class PanddaMultiDatasetAnalyser(object):
         self.log('Calculating RMSDs (Calphas) to Reference Structure')
         for d in self.datasets.mask(mask_name='rejected - total', invert=True):
             rmsd = d.get_calpha_sites().rms_difference(d.transform_from_reference(points=self.reference_dataset().get_calpha_sites(), method='global'))
-            self.tables.dataset_info.set_value(d.tag, 'global_rmsd_to_ref', rmsd)
+            self.tables.dataset_info.set_value(d.tag, 'rmsd_to_reference', rmsd)
 
     def filter_datasets_1(self):
         """Filter out the datasets which contain different protein models (i.e. protein length, sequence, etc)"""
@@ -2124,11 +2130,13 @@ class PanddaMultiDatasetAnalyser(object):
 
         # TODO WRITE HISTOGRAMS OF RESOLUTIONS?!
 
-    def load_reference_map(self, map_resolution=0):
+    def load_reference_map(self, map_resolution=0, ref_handler=None):
         """Load the reference map, and calculate some map statistics"""
 
-        # Reference dataset handler
-        ref_handler = self.reference_dataset()
+        # Use reference dataset handler if none supplied
+        if ref_handler is None:
+            ref_handler = self.reference_dataset()
+
         # Take the scaled diffraction data for the dataset and create fft
         fft_map = ref_handler.tr_sfs.fft_map( resolution_factor = self.params.maps.resolution_factor,
                                               d_min = map_resolution,
@@ -2405,29 +2413,24 @@ class PanddaMultiDatasetAnalyser(object):
         if not self.args.output.plot_graphs: return
         if plot_indices: plot_vals = [map_vals[i] for i in plot_indices]
         else:            plot_vals = list(map_vals)
-        graphs.map_value_distribution(f_name=output_file, plot_vals=plot_vals, plot_normal=plot_normal)
+        analyse_graphs.map_value_distribution(f_name=output_file, plot_vals=plot_vals, plot_normal=plot_normal)
 
     def write_qq_plot_against_normal(self, map_vals, output_file, plot_indices=None):
         """Plot the values in map_vals against those expected from a normal distribution"""
         if not self.args.output.plot_graphs: return
         if plot_indices: plot_vals = [map_vals[i] for i in plot_indices]
         else:            plot_vals = list(map_vals)
-        graphs.qq_plot_against_normal(f_name=output_file, plot_vals=plot_vals)
+        analyse_graphs.qq_plot_against_normal(f_name=output_file, plot_vals=plot_vals)
 
-    def write_map_analyser_summary(self, map_analyser, analysis_mask_name):
+    def write_map_analyser_maps(self, map_analyser, analysis_mask_name):
         """Write statistical maps for a map_analyser object"""
-
-        if self.args.output.plot_graphs:
-            import matplotlib
-            matplotlib.interactive(0)
-            from matplotlib import pyplot
 
         ########################################################
 
         map_res = map_analyser.meta.resolution
 
         self.log('===================================>>>')
-        self.log('=> Writing Summary of Analysis @ {!s}A'.format(map_res))
+        self.log('=> Writing Statistical Maps of Analysis @ {!s}A'.format(map_res))
 
         ########################################################
 
@@ -2445,321 +2448,6 @@ class PanddaMultiDatasetAnalyser(object):
                                 map_data    = map_analyser.statistical_maps.kurt_map     )
         self.write_array_to_map(output_file = self.output_handler.get_file('bimo_map').format(map_res),
                                 map_data    = map_analyser.statistical_maps.bimo_map     )
-
-        ########################################################
-
-        # Statistical Map Values
-        masked_idxs = self.reference_grid().global_mask().outer_mask_indices()
-        mean_map_vals = list(map_analyser.statistical_maps.mean_map.select(masked_idxs))
-        try:    medn_map_vals = list(map_analyser.statistical_maps.medn_map.select(masked_idxs))
-        except: medn_map_vals = mean_map_vals
-        stds_map_vals = list(map_analyser.statistical_maps.stds_map.select(masked_idxs))
-        sadj_map_vals = list(map_analyser.statistical_maps.sadj_map.select(masked_idxs))
-
-        ########################################################
-
-        # Dataset info
-        d_info = self.tables.dataset_info
-        # All datasets
-        high_res = [d_info['high_resolution'][mh.tag] for mh in map_analyser.dataset_maps.all()]
-        low_res =  [d_info['low_resolution'][mh.tag]  for mh in map_analyser.dataset_maps.all()]
-        rfree =    [d_info['r_free'][mh.tag]          for mh in map_analyser.dataset_maps.all()]
-        rwork =    [d_info['r_work'][mh.tag]          for mh in map_analyser.dataset_maps.all()]
-
-        # Map info
-        m_info = self.tables.dataset_map_info
-        # All datasets
-        map_uncties = [m_info['map_uncertainty'][mh.tag] for mh in map_analyser.dataset_maps.all()]
-        # Analysed datasets only
-        z_map_mean  = [m_info['z_map_mean'][mh.tag] for mh in map_analyser.dataset_maps.mask(mask_name=analysis_mask_name)]
-        z_map_std   = [m_info['z_map_std'][mh.tag]  for mh in map_analyser.dataset_maps.mask(mask_name=analysis_mask_name)]
-        z_map_skew  = [m_info['z_map_skew'][mh.tag] for mh in map_analyser.dataset_maps.mask(mask_name=analysis_mask_name)]
-        z_map_kurt  = [m_info['z_map_kurt'][mh.tag] for mh in map_analyser.dataset_maps.mask(mask_name=analysis_mask_name)]
-
-        ########################################################
-
-        # Get the output directory to write the graphs into
-        img_out_dir = os.path.join(self.output_handler.get_dir('analyses'), '{!s}A Maps'.format(map_analyser.meta.resolution))
-        if not os.path.exists(img_out_dir): os.mkdir(img_out_dir)
-
-        n_bins = 30
-
-        ########################################################
-
-        if not self.args.output.plot_graphs: return
-
-        self.log('=> Writing Statistical Map Distributions')
-
-        ##################################
-        # STATISTICAL MAP HISTOGRAMS
-        ##################################
-        fig = pyplot.figure()
-        pyplot.title('STATISTICAL MAP VALUES')
-        # MEAN MAP
-        pyplot.subplot(2, 1, 1)
-        pyplot.hist(x=mean_map_vals, bins=n_bins)
-        pyplot.xlabel('MEAN MAP DISTRIBUTION')
-        pyplot.ylabel('COUNT')
-        # MEDIAN MAP
-        pyplot.subplot(2, 1, 2)
-        pyplot.hist(x=medn_map_vals, bins=n_bins)
-        pyplot.xlabel('MEDIAN MAP DISTRIBUTION')
-        pyplot.ylabel('COUNT')
-        # Apply tight layout to prevent overlaps
-        pyplot.tight_layout()
-        # Save both
-        pyplot.savefig(os.path.join(img_out_dir, '{!s}A-mean_medn_map_vals.png'.format(map_res)))
-        pyplot.close(fig)
-
-        ##################################
-        # MEAN Values v MEDIAN Values
-        ##################################
-        fig = pyplot.figure()
-        pyplot.title('MEAN v MEDIAN MAP')
-        pyplot.scatter(x=mean_map_vals, y=medn_map_vals)
-        # Plot straight line between the min and max values
-        min_val = min(mean_map_vals+medn_map_vals)
-        max_val = max(mean_map_vals+medn_map_vals)
-        pyplot.plot([min_val, max_val], [min_val, max_val], 'b--')
-        # Axis labels
-        pyplot.xlabel('MEAN MAP')
-        pyplot.ylabel('MEDIAN MAP')
-        # Apply tight layout to prevent overlaps
-        pyplot.tight_layout()
-        # Save
-        pyplot.savefig(os.path.join(img_out_dir, '{!s}A-mean_v_median_scatter.png'.format(map_res)))
-        pyplot.close(fig)
-
-        ##################################
-        # MEAN Values v MEDIAN Values
-        ##################################
-        graphs.med_mean_diff_hist(  f_name=os.path.join(img_out_dir, '{!s}A-mean_median_diff_hist.png'.format(map_res)),
-                                    plot_vals=numpy.abs(flex.double(mean_map_vals)-flex.double(medn_map_vals)))
-
-        ##################################
-        # STATISTICAL MAP HISTOGRAMS
-        ##################################
-        fig = pyplot.figure()
-        pyplot.title('STATISTICAL MAP VALUES')
-        # STANDARD DEVIATION MAPS
-        pyplot.subplot(2, 1, 1)
-        pyplot.hist(x=stds_map_vals, bins=n_bins)
-        pyplot.xlabel('STDS MAP DISTRIBUTION')
-        pyplot.ylabel('COUNT')
-        # ADJUSTED STANDARD DEVIATION MAPS
-        pyplot.subplot(2, 1, 2)
-        pyplot.hist(x=sadj_map_vals, bins=n_bins)
-        pyplot.xlabel('ADJUSTED STDS MAP DISTRIBUTION')
-        pyplot.ylabel('COUNT')
-        # Apply tight layout to prevent overlaps
-        pyplot.tight_layout()
-        # Save both
-        pyplot.savefig(os.path.join(img_out_dir, '{!s}A-stds_sadj_map_vals.png'.format(map_res)))
-        pyplot.close(fig)
-
-        ##################################
-        # STD Values v ADJ STD Values
-        ##################################
-        fig = pyplot.figure()
-        pyplot.title('RAW v ADJUSTED STDS')
-        pyplot.scatter(x=stds_map_vals, y=sadj_map_vals)
-        # Plot straight line between the min and max values
-        min_val = min(stds_map_vals+sadj_map_vals)
-        max_val = max(stds_map_vals+sadj_map_vals)
-        pyplot.plot([min_val, max_val], [min_val, max_val], 'b--')
-        # Axis labels
-        pyplot.xlabel('RAW STDS')
-        pyplot.ylabel('ADJUSTED STDS')
-        # Apply tight layout to prevent overlaps
-        pyplot.tight_layout()
-        # Save
-        pyplot.savefig(os.path.join(img_out_dir, '{!s}A-std_v_adj_std_scatter.png'.format(map_res)))
-        pyplot.close(fig)
-
-        ########################################################
-
-        self.log('=> Writing Map Uncertainties')
-
-        # MAP PARAMS
-        fig = pyplot.figure()
-        pyplot.title('MAP STATISTICS')
-        # MAP UNCERTAINTIES
-        pyplot.hist(x=map_uncties, bins=n_bins, range=(min(map_uncties)-0.1,max(map_uncties)+0.1))
-        pyplot.xlabel('UNCERTAINTY OF MAP VALUES')
-        pyplot.ylabel('COUNT')
-        # Apply tight layout to prevent overlaps
-        pyplot.tight_layout()
-        # Save
-        pyplot.savefig(os.path.join(img_out_dir, '{!s}A-d_map_uncertainties.png'.format(map_res)))
-        pyplot.close(fig)
-
-        ########################################################
-
-        self.log('=> Scatter Plots')
-
-        # MAP RESOLUTION V UNCERTAINTY
-        fig = pyplot.figure()
-        pyplot.title('HIGH RES LIMIT AGAINST MAP UNCERTAINTY')
-        pyplot.scatter(x=high_res, y=map_uncties)
-        pyplot.xlabel('RESOLUTION')
-        pyplot.ylabel('UNCERTAINTY')
-        # Apply tight layout to prevent overlaps
-        pyplot.tight_layout()
-        # Save
-        pyplot.savefig(os.path.join(img_out_dir, '{!s}A-resolution_v_uncertainty.png'.format(map_res)))
-        pyplot.close(fig)
-
-        # MAP RESOLUTION V UNCERTAINTY
-        fig = pyplot.figure()
-        pyplot.title('HIGH RES LIMIT AGAINST RFREE')
-        pyplot.scatter(x=high_res, y=rfree)
-        pyplot.xlabel('RESOLUTION')
-        pyplot.ylabel('RFREE')
-        # Apply tight layout to prevent overlaps
-        pyplot.tight_layout()
-        # Save
-        pyplot.savefig(os.path.join(img_out_dir, '{!s}A-resolution_v_rfree.png'.format(map_res)))
-        pyplot.close(fig)
-
-        # RFREE V UNCERTAINTY
-        fig = pyplot.figure()
-        pyplot.title('RFREE AGAINST UNCERTAINTY')
-        pyplot.scatter(x=rfree, y=map_uncties)
-        pyplot.xlabel('RFREE')
-        pyplot.ylabel('UNCERTAINTY')
-        # Apply tight layout to prevent overlaps
-        pyplot.tight_layout()
-        # Save
-        pyplot.savefig(os.path.join(img_out_dir, '{!s}A-rfree_v_uncertainty.png'.format(map_res)))
-        pyplot.close(fig)
-
-        ########################################################
-
-        self.log('=> Z-Map Distribution')
-
-        # R-FACTORS
-        fig = pyplot.figure()
-        pyplot.title('Z-MAP DISTRIBUTION HISTOGRAMS')
-        # RFree
-        pyplot.subplot(2, 1, 1)
-        pyplot.hist(x=z_map_mean, bins=n_bins, range=(min(z_map_mean)-0.1,max(z_map_mean)+0.1))
-        pyplot.xlabel('Z-MAP MEAN')
-        pyplot.ylabel('COUNT')
-        # RWork
-        pyplot.subplot(2, 1, 2)
-        pyplot.hist(x=z_map_std, bins=n_bins, range=(0, max(z_map_std)+0.1))
-        pyplot.xlabel('Z_MAP_STD')
-        pyplot.ylabel('COUNT')
-        # Apply tight layout to prevent overlaps
-        pyplot.tight_layout()
-        # Save both
-        pyplot.savefig(os.path.join(img_out_dir, '{!s}A-z_map_statistics.png'.format(map_res)))
-        pyplot.close(fig)
-
-        # Z-MAP SKEW V UNCERTAINTY
-        fig = pyplot.figure()
-        pyplot.title('DATASET NORMALITY')
-        pyplot.scatter(x=z_map_skew, y=z_map_kurt)
-        pyplot.xlabel('SKEW')
-        pyplot.ylabel('KURTOSIS')
-        # Apply tight layout to prevent overlaps
-        pyplot.tight_layout()
-        # Save
-        pyplot.savefig(os.path.join(img_out_dir, '{!s}A-z_map_skew_v_kurtosis.png'.format(map_res)))
-        pyplot.close(fig)
-
-    def write_dataset_summary_graphs(self):
-        """Write out graphs of dataset variables"""
-
-        if self.args.output.plot_graphs:
-            import matplotlib
-            matplotlib.interactive(0)
-            from matplotlib import pyplot
-        else: return
-
-        def filter_nans(x):
-            return [v for v in x if not numpy.isnan(v)]
-
-        self.log('===================================>>>')
-        self.log('Generating Summary Graphs')
-        d_info = self.tables.dataset_info
-        n_bins = 30
-        # ================================================>
-        fig = pyplot.figure()
-        pyplot.title('RESOLUTION HISTOGRAMS')
-        pyplot.subplot(2, 1, 1)
-        pyplot.hist(x=d_info['high_resolution'], bins=n_bins)
-        pyplot.xlabel('HIGH RESOLUTION LIMIT (A)')
-        pyplot.ylabel('COUNT')
-        pyplot.subplot(2, 1, 2)
-        pyplot.hist(x=d_info['low_resolution'], bins=n_bins)
-        pyplot.xlabel('LOW RESOLUTION LIMIT (A)')
-        pyplot.ylabel('COUNT')
-        pyplot.tight_layout()
-        pyplot.savefig(self.output_handler.get_file('d_resolutions'))
-        pyplot.close(fig)
-        # ================================================>
-        fig = pyplot.figure()
-        pyplot.title('R-FACTOR HISTOGRAMS')
-        pyplot.subplot(2, 1, 1)
-        pyplot.hist(x=d_info['r_free'], bins=n_bins)
-        pyplot.xlabel('R-FREE')
-        pyplot.ylabel('COUNT')
-        pyplot.subplot(2, 1, 2)
-        pyplot.hist(x=d_info['r_work'], bins=n_bins)
-        pyplot.xlabel('R-WORK')
-        pyplot.ylabel('COUNT')
-        pyplot.tight_layout()
-        pyplot.savefig(self.output_handler.get_file('d_rfactors'))
-        pyplot.close(fig)
-        # ================================================>
-        fig = pyplot.figure()
-        pyplot.title('RMSDS TO REFERENCE STRUCTURE HISTOGRAM')
-        pyplot.hist(x=filter_nans(d_info['global_rmsd_to_ref']), bins=n_bins)
-        pyplot.xlabel('RMSD (A)')
-        pyplot.ylabel('COUNT')
-        pyplot.tight_layout()
-        pyplot.savefig(self.output_handler.get_file('d_global_rmsd_to_ref'))
-        pyplot.close(fig)
-        # ================================================>
-        fig = pyplot.figure()
-        pyplot.title('UNIT CELL AXES')
-        pyplot.subplot(3, 1, 1)
-        pyplot.hist(x=d_info['uc_a'], bins=n_bins)
-        pyplot.xlabel('A (A)')
-        pyplot.subplot(3, 1, 2)
-        pyplot.hist(x=d_info['uc_b'], bins=n_bins)
-        pyplot.xlabel('B (A)')
-        pyplot.subplot(3, 1, 3)
-        pyplot.hist(x=d_info['uc_c'], bins=n_bins)
-        pyplot.xlabel('C (A)')
-        pyplot.tight_layout()
-        pyplot.savefig(self.output_handler.get_file('d_cell_axes'))
-        pyplot.close(fig)
-        # ================================================>
-        fig = pyplot.figure()
-        pyplot.title('UNIT CELL ANGLES')
-        pyplot.subplot(3, 1, 1)
-        pyplot.hist(x=d_info['uc_alpha'], bins=n_bins)
-        pyplot.xlabel('ALPHA')
-        pyplot.subplot(3, 1, 2)
-        pyplot.hist(x=d_info['uc_beta'], bins=n_bins)
-        pyplot.xlabel('BETA')
-        pyplot.subplot(3, 1, 3)
-        pyplot.hist(x=d_info['uc_gamma'], bins=n_bins)
-        pyplot.xlabel('GAMMA')
-        pyplot.tight_layout()
-        pyplot.savefig(self.output_handler.get_file('d_cell_angles'))
-        pyplot.close(fig)
-        # ================================================>
-        fig = pyplot.figure()
-        pyplot.title('UNIT CELL VOLUME HISTOGRAM')
-        pyplot.hist(x=d_info['uc_vol'], bins=n_bins)
-        pyplot.xlabel('VOLUME (A^3)')
-        pyplot.ylabel('COUNT')
-        pyplot.tight_layout()
-        pyplot.savefig(self.output_handler.get_file('d_cell_volumes'))
-        pyplot.close(fig)
 
     def write_output_csvs(self):
         """Write CSV file of dataset variables"""
@@ -2811,9 +2499,9 @@ class PanddaMultiDatasetAnalyser(object):
         pymol_str =  '# Mark the identified sites on the protein\n'
         pymol_str += 'from pymol import cmd\n'
         pymol_str += 'from pymol.cgo import *\n'
-        pymol_str += 'cmd.load("{}", "reference")\n'.format(self.output_handler.get_file('reference_on_origin'))
+        pymol_str += 'cmd.load("{}", "reference")\n'.format(os.path.relpath(self.output_handler.get_file('reference_on_origin'), start=self.output_handler.get_dir('output_summaries')))
         pymol_str += 'cmd.show_as("cartoon", "reference")\n'
-        pymol_str += 'cmd.color("gray", "reference")\n'
+        pymol_str += 'cmd.color("cyan", "reference")\n'
         # Add sphere at each of the sites
         for site in site_list.children:
             # Only print the site if it has more than one event
@@ -2823,7 +2511,7 @@ class PanddaMultiDatasetAnalyser(object):
                 pymol_str += 'cmd.pseudoatom("{}", pos={}, vdw=2.5)\n'.format(lab, com)
                 pymol_str += 'cmd.show("sphere", "{}")\n'.format(lab)
                 pymol_str += 'cmd.label("{}", "{}")\n'.format(lab, site.id)
-                pymol_str += 'cmd.color("purple", "{}")\n'.format(lab)
+                pymol_str += 'cmd.color("deepteal", "{}")\n'.format(lab)
                 pymol_str += 'cmd.set("label_color", "white", "{}")\n'.format(lab)
             # Label events as smaller spheres
             for event in site.children:
@@ -2833,7 +2521,7 @@ class PanddaMultiDatasetAnalyser(object):
                 pymol_str += 'cmd.show("sphere", "{}")\n'.format(lab)
                 pymol_str += 'cmd.color("blue", "{}")\n'.format(lab)
         # Set label things...
-        pymol_str += 'cmd.set("label_size", 30)\n'
+        pymol_str += 'cmd.set("label_size", 25)\n'
         pymol_str += 'cmd.set("label_position", (0,0,4))\n'
         pymol_str += 'cmd.bg_color(color="white")\n'
         # Write as python script
@@ -2843,21 +2531,25 @@ class PanddaMultiDatasetAnalyser(object):
         # Run Pymol to generate images and output to pngs
         if make_images:
             pymol_str =  '# Load the protein representation and output images of sites\n'
-            pymol_str += 'run {}\n'.format(self.output_handler.get_file(file_tag='pymol_sites_py'))
+            pymol_str += 'run {}\n'.format(os.path.relpath(self.output_handler.get_file(file_tag='pymol_sites_py'), start=self.output_handler.get_dir('output_summaries')))
             pymol_str += 'set ray_opaque_background, off\n'
+            pymol_str += 'set specular, off\n'
             pymol_str += 'orient\n'
-            pymol_str += 'png {}, width=10cm, dpi=300, ray=1\n'.format(self.output_handler.get_file(file_tag='pymol_sites_png_1'))
+            pymol_str += 'png {}, width=1200, dpi=300, ray=1\n'.format(os.path.relpath(self.output_handler.get_file(file_tag='pymol_sites_png_1'), start=self.output_handler.get_dir('output_summaries')))
             pymol_str += 'rotate y, 180\n'
-            pymol_str += 'png {}, width=10cm, dpi=300, ray=1\n'.format(self.output_handler.get_file(file_tag='pymol_sites_png_2'))
+            pymol_str += 'png {}, width=1200, dpi=300, ray=1\n'.format(os.path.relpath(self.output_handler.get_file(file_tag='pymol_sites_png_2'), start=self.output_handler.get_dir('output_summaries')))
             pymol_str += 'quit'
 
             with open(self.output_handler.get_file(file_tag='pymol_sites_pml'), 'w') as fh:
                 fh.write(pymol_str)
 
-            from Bamboo.Common.command import commandManager
+            # Change into directory as script runs off of relative paths
+            os.chdir(self.output_handler.get_dir('output_summaries'))
             c = commandManager('pymol')
             c.add_command_line_arguments(['-c', self.output_handler.get_file(file_tag='pymol_sites_pml')])
             c.run()
+            # Change back to top directory
+            os.chdir(self.out_dir)
 
         #os.remove(self.output_handler.get_file(file_tag='pymol_sites_pml'))
         #os.remove(self.output_handler.get_file(file_tag='pymol_sites_py'))
@@ -2941,7 +2633,7 @@ class PanddaMultiDatasetAnalyser(object):
                                         unit_cell   = self.reference_grid().unit_cell(),
                                         space_group = self.reference_grid().space_group(),
                                         map_data    = map_data,
-                                        labels      = flex.std_string(['Map from PANDDAs'])     )
+                                        labels      = flex.std_string(['Map from pandda'])     )
 
     def pickle(self, pickle_file, pickle_object, overwrite=True):
         """Takes an object and pickles it"""

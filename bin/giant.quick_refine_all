@@ -14,11 +14,9 @@ for d in proc_dirs:
     print 'Processing {}'.format(d)
     os.chdir(d)
     if os.path.exists('./refine.pdb'):
-        os.system('giant.quick-refine program=phenix *.cif refine.pdb refine.mtz')
+        continue
     else:
-#        os.system('phenix.geometry_minimization *.cif *-ensemble-model.pdb')
-#        os.system('giant.quick-refine program=phenix *.cif *-ensemble-model_minimized.pdb *-pandda-input.mtz create_occupancy_params=True')
-        os.system('giant.quick-refine program=phenix *.cif *-ensemble-model.pdb *-pandda-input.mtz create_occupancy_params=True')
+        os.system('giant.quick_refine program=phenix *.cif *-ensemble-model.pdb *-pandda-input.mtz')
 
 
 

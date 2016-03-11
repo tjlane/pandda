@@ -1,7 +1,7 @@
 import os, glob
 
-from PANDDAs.settings import PANDDA_TOP, PANDDA_TEXT
-from PANDDAs.html import PANDDA_HTML_ENV, path2url
+from pandda.settings import PANDDA_TEXT
+from pandda.html import PANDDA_HTML_ENV
 
 def write_initial_html(pandda):
     # Get template to be filled in
@@ -13,10 +13,16 @@ def write_initial_html(pandda):
 
     # ===========================================================>
     # Construct the data object to populate the template
-    output_data = {'PANDDA_TOP' : path2url(PANDDA_TOP)}
+    output_data = {}
     output_data['header'] = 'PANDDA Dataset Summaries'
     output_data['title'] = 'PANDDA Dataset Summaries'
     output_data['introduction'] = 'Summary of Added Datasets'
+    # ===========================================================>
+    # Summary bar
+    output_data['summary_bar'] = []
+    output_data['summary_bar'].append({'colour':'info',    'text':'Datasets Loaded:   {}'.format(pandda.datasets.size())                                            })
+    output_data['summary_bar'].append({'colour':'danger',  'text':'Datasets Rejected: {}'.format(pandda.datasets.size(mask_name='rejected - total'))                })
+    output_data['summary_bar'].append({'colour':'success', 'text':'Datasets Accepted: {}'.format(pandda.datasets.size(mask_name='rejected - total', invert=True))   })
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
@@ -59,10 +65,24 @@ def write_analyse_html(pandda):
 
     # ===========================================================>
     # Construct the data object to populate the template
-    output_data = {'PANDDA_TOP' : path2url(PANDDA_TOP)}
+    output_data = {}
     output_data['header'] = 'PANDDA Processing Output'
     output_data['title'] = 'PANDDA Processing Output'
     output_data['introduction'] = 'Summary of Processing of Datasets'
+    # ===========================================================>
+    # Summary bar
+    output_data['summary_bar'] = []
+    output_data['summary_bar'].append({'colour':'info',    'text':'Analysed: {}'.format(num_analysed)               })
+    output_data['summary_bar'].append({'colour':'danger',  'text':'Not Analysed: {}'.format(num_not_analysed)       })
+    output_data['summary_bar'].append({'colour':'success', 'text':'Interesting: {}'.format(num_interesting)         })
+    output_data['summary_bar'].append({'colour':'warning', 'text':'Not Interesting: {}'.format(num_not_interesting) })
+    # Progress Bars
+    output_data['progress_bar'] = []
+    output_data['progress_bar'].append({'title':'Dataset Summary', 'data':[]})
+    output_data['progress_bar'][0]['data'].append({'text':'Interesting',     'colour':'success', 'size':100.0*num_interesting/len_data})
+    output_data['progress_bar'][0]['data'].append({'text':'Not Interesting', 'colour':'info',    'size':100.0*num_not_interesting/len_data})
+    output_data['progress_bar'][0]['data'].append({'text':'Not Analysed',    'colour':'warning', 'size':100.0*num_not_analysed/len_data})
+    output_data['progress_bar'][0]['data'].append({'text':'Rejected',        'colour':'danger',  'size':100.0*num_rejected/len_data})
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
@@ -74,27 +94,19 @@ def write_analyse_html(pandda):
         output_data['top_images'].append({ 'path': './'+os.path.relpath(path=png, start=out_dir),
                                            'title': 'Identified Site Summary ({})'.format(i_png+1) })
     # ===========================================================>
-    # Progress Bars
-    output_data['progress_bar'] = []
-    output_data['progress_bar'].append({'title':'Dataset Summary', 'data':[]})
-    output_data['progress_bar'][0]['data'].append({'text':'Interesting',     'colour':'success', 'size':100.0*num_interesting/len_data})
-    output_data['progress_bar'][0]['data'].append({'text':'Not Interesting', 'colour':'info',    'size':100.0*num_not_interesting/len_data})
-    output_data['progress_bar'][0]['data'].append({'text':'Not Analysed',    'colour':'warning', 'size':100.0*num_not_analysed/len_data})
-    output_data['progress_bar'][0]['data'].append({'text':'Rejected',        'colour':'danger',  'size':100.0*num_rejected/len_data})
-    # ===========================================================>
     # Tables
     output_data['table'] = {}
-    output_data['table']['column_headings'] = ['Crystal', 'Structure', 'RFree/RWork', 'Resolution', 'Reference RMSD', 'Map Uncertainty', 'Overall', 'Interesting Areas']
+    output_data['table']['column_headings'] = ['Dataset', 'Crystal', 'Structure', 'RFree/RWork', 'Resolution', 'Reference RMSD', 'Map Uncertainty', 'Overall', 'Interesting Areas', 'Result']
     output_data['table']['rows'] = []
     # Add the datasets as rows
     for d in pandda.datasets.all():
 
         d_data = all_d_info[d.tag]
         m_data = all_m_info[d.tag]
-        rmsd  = round(d_data['rmsd_to_mean'], 3)
+        rmsd  = round(d_data['rmsd_to_reference'], 2)
         rfree = round(d_data['r_free'], 3)
         rwork = round(d_data['r_work'], 3)
-        res_h = round(d_data['high_resolution'], 3)
+        res_h = round(d_data['high_resolution'], 2)
         uncty = round(m_data['map_uncertainty'], 3)
 
         # colour choices - 'success', 'muted', 'danger'

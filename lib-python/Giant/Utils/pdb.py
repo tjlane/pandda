@@ -34,3 +34,11 @@ def reset_pdb_to_file(input_pdb, output_pdb=None, remove_ter=False, remove_end=F
                                 remove_end = remove_end   )
     inp.hierarchy.write_pdb_file(file_name=output_pdb)
 
+def get_pdb_header(pdb_file):
+    """Read the header of the pdb file (up to the atom records)"""
+
+    contents = open(pdb_file, 'r').read().split('\n')
+    marker = [i for i,l in enumerate(contents) if l.startswith('ATOM')][0]
+    stripped = contents[:marker]
+    return '\n'.join(stripped)+'\n'
+

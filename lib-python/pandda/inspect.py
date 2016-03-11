@@ -3,8 +3,9 @@ import os, sys, glob, copy, itertools
 import gtk
 import pandas
 
-from PANDDAs import graphs, inspect_html
-from PANDDAs.constants import PanddaAnalyserFilenames, PanddaDatasetFilenames, PanddaDatasetPNGFilenames
+from Bamboo.plot import bar
+from pandda.constants import PanddaAnalyserFilenames, PanddaDatasetFilenames, PanddaDatasetPNGFilenames
+from pandda import inspect_html
 
 try:
     set_nomenclature_errors_on_read("ignore")
@@ -211,7 +212,7 @@ class PanddaInspector(object):
         # Working Directory
         self.top_dir = top_dir
         # Output csv from pandda.inspect
-        self.output_csv = os.path.join(self.top_dir, 'pandda_inspect.csv')
+        self.output_csv = os.path.join(self.top_dir, 'analyses', 'pandda_inspect.csv')
 
         # Load previous data or create new table from site list, so we can record inspection data
         self.initialise_output_table(in_csv=csv, out_csv=self.output_csv)
@@ -233,13 +234,13 @@ class PanddaInspector(object):
         colr_vals = ['limegreen' if m else 'red' if v else 'blue' for m,v in zip(modl_vals,view_vals)]
         site_idxs = self.log_table['site_idx']
         groups = [list(g[1]) for g in itertools.groupby(range(len(site_idxs)), key=lambda i: site_idxs[i])]
-        graphs.multiple_bar_plot(   f_name      = os.path.join(self.top_dir, 'results_summaries', PanddaAnalyserFilenames.inspect_site_graph),
-                                    plot_vals   = [[plot_vals[i] for i in g] for g in groups],
-                                    colour_vals = [[colr_vals[i] for i in g] for g in groups]   )
-        graphs.multiple_bar_plot_over_several_images(
-                                    f_template  = os.path.join(self.top_dir, 'results_summaries', PanddaAnalyserFilenames.inspect_site_graph_mult),
-                                    plot_vals   = [[plot_vals[i] for i in g] for g in groups],
-                                    colour_vals = [[colr_vals[i] for i in g] for g in groups]   )
+        bar.multiple_bar_plot(  f_name      = os.path.join(self.top_dir, 'results_summaries', PanddaAnalyserFilenames.inspect_site_graph),
+                                plot_vals   = [[plot_vals[i] for i in g] for g in groups],
+                                colour_vals = [[colr_vals[i] for i in g] for g in groups]   )
+        bar.multiple_bar_plot_over_several_images(
+                                f_template  = os.path.join(self.top_dir, 'results_summaries', PanddaAnalyserFilenames.inspect_site_graph_mult),
+                                plot_vals   = [[plot_vals[i] for i in g] for g in groups],
+                                colour_vals = [[colr_vals[i] for i in g] for g in groups]   )
         # Write output html
         inspect_html.write_inspect_html(top_dir=self.top_dir, inspector=self)
 
@@ -349,7 +350,7 @@ class PanddaInspector(object):
 
     def initialise_output_table(self, in_csv, out_csv):
         if os.path.exists(out_csv):
-            # Output csv already exists from previous run -- reload
+            # Output csv already exists from previous run -- reload (but merge with in_csv)
             self.log_table = pandas.read_csv(out_csv, sep=',', dtype={'dtag':str})
         else:
             # Create new table from input csv
@@ -479,8 +480,13 @@ class PanddaGUI(object):
         self.buttons = {}
         self.objects = {}
 
-    def on_destroy(self,  widget=None, *data):
+    def quit(self):
+        self.store()
+        self.parent.update_html()
         gtk.main_quit()
+
+    def on_destroy(self,  widget=None, *data):
+        self.quit()
 
     def error_msg(self, msg):
         """Display an error window"""
@@ -566,7 +572,8 @@ class PanddaGUI(object):
         self.buttons['prev-site'].connect("clicked", lambda x: [self.store(), self.parent.load_prev_site()])
 
         # Quit
-        self.buttons['quit'].connect("clicked", lambda x: [self.store(), gtk.main_quit()])
+        self.buttons['quit'].connect("clicked", lambda x: [self.quit()])
+        self.buttons['summary'].connect("clicked", lambda x: [self.store(), self.update_html(), os.system('pandda.show_summary')])
 
         # Structure Buttons
         self.buttons['save'].connect("clicked",  lambda x: self.parent.save_current())
@@ -589,7 +596,6 @@ class PanddaGUI(object):
         """Record information from the gui to the pandas table in the main object"""
         self.parent.set_log_value(col='Comment', value=self.objects['comment text'].get_text())
         self.parent.set_log_value(col='Viewed', value=True)
-        self.parent.update_html()
 
     def _navi_buttons_1(self):
         box = gtk.HBox(homogeneous=False, spacing=2)
@@ -753,8 +759,11 @@ class PanddaGUI(object):
         self.buttons['quit'] = b
         vbox_1.pack_start(b)
         # ---
-        vbox_1.pack_start(gtk.HSeparator(), expand=False, padding=5)
-        vbox_1.pack_start(gtk.HBox())
+        vbox_1.pack_start(gtk.HSeparator(), expand=False, padding=2)
+        # ---
+        b = gtk.Button(label="Summary")
+        self.buttons['summary'] = b
+        vbox_1.pack_start(b)
         # ---
         hbox_main = gtk.HBox(spacing=5)
         hbox_main.pack_start(vbox_1)

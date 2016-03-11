@@ -1,5 +1,4 @@
 
-
 def welcome(current_user):
 
     try:
@@ -11,4 +10,4 @@ def welcome(current_user):
     except:
         pass
 
-    print 'Hi {!s}. Welcome to PANDDAs.'.format(current_user.upper())
+    print 'Hi {!s}. Welcome to Pandda.'.format(current_user.upper())

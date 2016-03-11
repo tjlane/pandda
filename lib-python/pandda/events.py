@@ -41,7 +41,7 @@ class PointCluster(object):
         return '\n'.join(out)
 
 class Event(object):
-    _attributes = ['estimated_occupancy']
+    _attributes = ['estimated_pseudo_occupancy']
     def __init__(self, id, cluster, info=None):
         """Class to hold information about an event in a dataset"""
         # Process cluster object (points and values for Event)

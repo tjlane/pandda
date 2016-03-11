@@ -5,12 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <!-- Bootstrap -->
-    <!--    <link href="{{ PANDDA_TOP }}/html/bootstrap/css/bootstrap.min.css" rel="stylesheet">    -->
     <link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
     <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
     <!-- Include all compiled plugins (below), or include individual files as needed -->
-    <!--    <script src="{{ PANDDA_TOP }}/html/bootstrap/js/bootstrap.min.js"></script>     -->
     <script src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
 
     <!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
@@ -62,6 +60,16 @@
         {% endfor -%}
       </div>
       {% endif %}
+      {% if small_images is defined %}
+      <div class="row">
+        {% for img in small_images -%}
+        <div class="col-xs-12 col-sm-6 col-md-4 col-lg-4">
+           <p>{{ img.title }}</p>
+           <img class="img-responsive" src="{{ img.path }}" alt="No Image">
+        </div>
+        {% endfor -%}
+      </div>
+      {% endif %}
       {% if table is defined %}
       <div class="table-responsive" style="height:600px">
         <table class="table table-bordered table-striped">
@@ -87,24 +95,9 @@
         </table>
       </div>
       {% endif %}
-      <div class="alert alert-info" role="alert">PANDDAs. Written by Nicholas M Pearce in 2015/2016.</div>
+      <div class="alert alert-info" role="alert">Written by Nicholas M Pearce in 2015/2016.</div>
     </div>
 
   </body>
 </html>
 
-<!--
-test_data = {
-                'PANDDA_TOP' : '/home/npearce/bin/PANDDAs/',
-                'header': 'A WebPage-thingy',
-                'title' : 'A Title-thingy',
-                'introduction' : 'A Intro-thingy',
-                'table':{
-                            'column_headings' : ['Col1','Col2'],
-                            'rows' : [
-                                            {'heading' : 'Row1', 'success':0, 'columns':[{'success':0,'message':'1,1'},{'success':1,'message':'1,2'}]},
-                                            {'heading' : 'Row2', 'success':2, 'columns':[{'success':2,'message':'2,1'},{'success':1,'message':'2,2'}]}
-                                     ]
-                        }
-}
--->

@@ -3,7 +3,7 @@
 import os, sys
 
 from Giant.jiffies import parse_phil_args
-from PANDDAs.jiffies.pandda_migrate import master_phil, run
+from pandda.jiffies.pandda_migrate import master_phil, run
 
 if __name__ == '__main__':
 

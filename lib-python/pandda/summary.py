@@ -4,10 +4,6 @@ from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from PyQt4.QtWebKit import *
 
-import urlparse, urllib
-def path2url(path):
-    return urlparse.urljoin('file:', urllib.pathname2url(path))
-
 class panddaHtmlWidget(QWidget):
     def __init__(self, name, content):
         super(panddaHtmlWidget, self).__init__()

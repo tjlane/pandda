@@ -5,26 +5,26 @@ import libtbx.phil
 
 import numpy
 
-from PANDDAs.jiffies import transform_coordinates
-from PANDDAs.constants import PanddaDatasetFilenames
+from pandda.jiffies import transform_coordinates
+from pandda.constants import PanddaDatasetFilenames
 from Giant.jiffies import merge_conformations, create_occupancy_params
 
 ############################################################################
 
-blank_arg_prepend = {None:'export_dir='}
+blank_arg_prepend = {None:'select_dir='}
 
 master_phil = libtbx.phil.parse("""
 input {
     pandda_dir = ./pandda
         .help = 'Path to the pandda directory to export files from'
         .type = str
-    export_dir = None
+    select_dir = None
         .help = 'Manually specify directories to export'
         .type = str
         .multiple = True
 }
 output {
-    out_dir = ./pandda-export
+    export_dir = ./pandda-export
         .type = str
 
     dir_prefix = ''
@@ -34,6 +34,9 @@ output {
     file_prefix = ''
         .help = 'Prefix to be added to each output file'
         .type = str
+
+    generate_occupancy_groupings = False
+        .type = bool
 }
 export {
     datasets_to_export = *interesting_datasets processed_datasets
@@ -44,6 +47,9 @@ export {
         .multiple = True
 
     export_defaults = True
+        .type = bool
+
+    export_ligands = True
         .type = bool
 
     required_file_for_export = *model None
@@ -61,9 +67,6 @@ process_and_export {
     pdbs_to_transform_and_export = None
         .type = path
         .multiple = True
-
-    generate_occupancy_groupings = True
-        .type = bool
 }
 templates {
     temp_prefix = 'temp-'
@@ -96,9 +99,11 @@ def set_defaults(params):
         # Add default files to list
         params.export.files_to_export.append('*-pandda-input.pdb')
         params.export.files_to_export.append('*-pandda-input.mtz')
+        params.export.files_to_export.append('*.native.ccp4')
+    # Export ligands files?
+    if params.export.export_ligands:
         params.export.files_to_export.append('ligand_files/*.cif')
         params.export.files_to_export.append('ligand_files/*.pdb')
-        params.export.files_to_export.append('*.native.ccp4')
 
     # Transform and Export default files?
     if params.process_and_export.transform_and_export_defaults:
@@ -109,7 +114,7 @@ def set_defaults(params):
         params.process_and_export.pdbs_to_transform_and_export.append(PanddaDatasetFilenames.ensemble_structure)
 
     # Export occupancy groupings + refinement parameter files?
-    if params.process_and_export.generate_occupancy_groupings:
+    if params.output.generate_occupancy_groupings:
         params.export.files_to_export.append(params.templates.refmac_refinement)
         params.export.files_to_export.append(params.templates.phenix_refinement)
     # Add files to be transformed to those to be exported
@@ -123,7 +128,7 @@ def export_folder(dir, params):
     dir_name = os.path.basename(dir)
     if params.verbose: print 'Processing Folder: {!s}'.format(dir_name)
     # Create output dir
-    export_dir = os.path.join(params.output.out_dir, params.output.dir_prefix+dir_name)
+    export_dir = os.path.join(params.output.export_dir, params.output.dir_prefix+dir_name)
     if not os.path.exists(export_dir):  os.mkdir(export_dir)
     # Export files
     if params.verbose: print 'Exporting files from {!s} to {!s}'.format(dir, export_dir)
@@ -220,7 +225,7 @@ def process_and_export_folder(dir, params):
 
     ############################################################################
 
-    if params.process_and_export.generate_occupancy_groupings:
+    if params.output.generate_occupancy_groupings:
         print '=========================+>'
         print 'GENERATING OCCUPANCY REFINEMENT PARAMETERS'
 
@@ -253,7 +258,7 @@ def process_and_export_folder(dir, params):
     # Go through the files and remove the temp_prefix prefix
     print '=========================+>'
     print 'Renaming Temporary Files'
-    for root, dirs, files in os.walk(os.path.join(params.output.out_dir, dir_name)):
+    for root, dirs, files in os.walk(os.path.join(params.output.export_dir, dir_name)):
         for f in files:
             if f.startswith(params.templates.temp_prefix):
                 new_f = os.path.join(root, f[len(params.templates.temp_prefix):])
@@ -277,8 +282,8 @@ def run(params):
     set_defaults(params)
 
     # Change paths to absolute paths
-    params.input.pandda_dir = os.path.abspath(params.input.pandda_dir)
-    params.output.out_dir   = os.path.abspath(params.output.out_dir)
+    params.input.pandda_dir  = os.path.abspath(params.input.pandda_dir)
+    params.output.export_dir = os.path.abspath(params.output.export_dir)
 
     # Must be in the pandda directory (pandda objects use relative paths)
     os.chdir(params.input.pandda_dir)
@@ -286,8 +291,8 @@ def run(params):
     ############################################################################
 
     # Find the dataset directories to be exported
-    if params.input.export_dir:
-        export_dirs = sorted([os.path.join(params.input.pandda_dir, params.export.datasets_to_export, p) for p in params.input.export_dir])
+    if params.input.select_dir:
+        export_dirs = sorted([os.path.join(params.input.pandda_dir, params.export.datasets_to_export, p) for p in params.input.select_dir])
         export_dirs = [p for p in export_dirs if os.path.exists(p)]
         print 'Exporting:\n\t', '\n\t'.join(export_dirs)
     else:
@@ -295,7 +300,7 @@ def run(params):
     assert export_dirs, 'No Export Directories Found'
 
     # Create output directory
-    if not os.path.exists(params.output.out_dir): os.mkdir(params.output.out_dir)
+    if not os.path.exists(params.output.export_dir): os.mkdir(params.output.export_dir)
 
     # Merge the fitted structures
     for dir in export_dirs:

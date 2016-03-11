@@ -1,8 +1,9 @@
 import os, glob
 
-from PANDDAs.settings import PANDDA_TOP, PANDDA_TEXT
-from PANDDAs.html import PANDDA_HTML_ENV, path2url
-from PANDDAs.constants import PanddaAnalyserFilenames
+from pandda.settings import PANDDA_TOP, PANDDA_TEXT
+from pandda.html import PANDDA_HTML_ENV
+from Bamboo.html import path2url
+from pandda.constants import PanddaAnalyserFilenames
 
 def write_inspect_html(top_dir, inspector):
 
@@ -29,7 +30,7 @@ def write_inspect_html(top_dir, inspector):
 
     # ===========================================================>
     # Construct the data object to populate the template
-    output_data = {'PANDDA_TOP' : path2url(PANDDA_TOP)}
+    output_data = {}
     output_data['header'] = 'PANDDA Inspect Summary'
     output_data['title'] = 'PANDDA Inspect Summary'
     output_data['introduction'] = 'Summary of Inspection of Datasets'
@@ -60,7 +61,7 @@ def write_inspect_html(top_dir, inspector):
     # ===========================================================>
     # Tables
     output_data['table'] = {}
-    output_data['table']['column_headings'] = ['Viewed','Interesting','Lig. Placed','Event','Site','1 - BDC','Z-Peak','Map Res.','Map Unc.','Confidence','Comment']
+    output_data['table']['column_headings'] = ['Dataset','Viewed','Interesting','Lig. Placed','Event','Site','1 - BDC','Z-Peak','Map Res.','Map Unc.','Confidence','Comment','']
     output_data['table']['rows'] = []
     # Add the datasets as rows
     for i_d in range(len(all_data.index)):

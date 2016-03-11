@@ -6,16 +6,17 @@ import numpy
 from scitbx.array_family import flex
 from scitbx.math import basic_statistics
 
+from Bamboo.plot import bar
 from Bamboo.Common import Meta, Info
-from Giant.Utils import rel_symlink
 
+from Giant.Utils import rel_symlink
 from Giant.Grid.Masks import grid_mask
 from Giant.Xray.Maps.Occupancy import calculate_occupancy_subtracted_map, estimate_event_occupancy
 
-from PANDDAs import welcome, graphs
-from PANDDAs.analyse import PanddaMultiDatasetAnalyser, PanddaMapAnalyser, PanddaZMapAnalyser, MapHolder
-from PANDDAs.analyse_html import write_initial_html, write_analyse_html
-from PANDDAs.events import PointCluster, Event, cluster_events 
+from pandda import welcome
+from pandda import analyse_html, analyse_graphs
+from pandda.analyse import PanddaMultiDatasetAnalyser, PanddaMapAnalyser, PanddaZMapAnalyser, MapHolder
+from pandda.events import PointCluster, Event, cluster_events 
 
 def pandda_main(args):
     """Run the PANDDA algorithm, using supplied args object"""
@@ -96,6 +97,8 @@ def pandda_main(args):
                                         phas_label=pandda.params.maps.phas_label)
             # Align structures to the reference
             pandda.align_datasets(method=pandda.params.alignment.method)
+            # Pickle the new loaded datasets
+            pandda.pickle_the_pandda(components=['datasets'], datasets=pandda.datasets.mask(mask_name='old datasets', invert=True))
         else:
             # ============================================================================>
             # Rebuild the masks of the rejected datasets (quick)
@@ -132,6 +135,12 @@ def pandda_main(args):
         # Validate/Reset the loaded datasets
         # ============================================================================>
         pandda.check_and_reset_datasets()
+
+        # ============================================================================>
+        # Re-select the reference dataset
+        # ============================================================================>
+#        highest_res_dh = sorted(pandda.datasets.mask(mask_name='rejected - total', invert=True), key=lambda d: d.reflection_data().max_min_resolution()[1])[0]
+#        pandda.log('Reselected Reference Dataset (used for map scaling): {}'.format(highest_res_dh.tag))
 
         # ============================================================================>
         #####
@@ -187,8 +196,8 @@ def pandda_main(args):
         #####
         # ============================================================================>
         pandda.write_output_csvs()
-        pandda.write_dataset_summary_graphs()
-        write_initial_html(pandda)
+        analyse_graphs.write_dataset_summary_graphs(pandda)
+        analyse_html.write_initial_html(pandda)
             
         # ============================================================================>
         #####
@@ -354,6 +363,7 @@ def pandda_main(args):
             # ============================================================================>
             # Load the reference map so that we can scale the individual maps to this
             # ============================================================================>
+#            highest_res_mh = pandda.load_reference_map( map_resolution = cut_resolution, ref_handler = highest_res_dh )
             ref_map_holder = pandda.load_reference_map( map_resolution = cut_resolution )
             # ============================================================================>
             # Load the required maps
@@ -422,13 +432,13 @@ def pandda_main(args):
             # Plot Mean Map against Reference Map - should be fairly similar...
             # ============================================================================>
             # Plot the mean map against the reference map (unsorted)
-            graphs.mean_obs_scatter(        f_name    = os.path.join(pandda.output_handler.get_dir('reference'), 'reference_against_mean_unsorted.png'),
-                                            mean_vals = map_analyser.statistical_maps.mean_map.select(pandda.reference_grid().global_mask().outer_mask_indices()),
-                                            obs_vals  = ref_map_holder.map.select(pandda.reference_grid().global_mask().outer_mask_indices())           )
+            analyse_graphs.mean_obs_scatter(        f_name    = os.path.join(pandda.output_handler.get_dir('reference'), 'reference_against_mean_unsorted.png'),
+                                                    mean_vals = map_analyser.statistical_maps.mean_map.select(pandda.reference_grid().global_mask().outer_mask_indices()),
+                                                    obs_vals  = ref_map_holder.map.select(pandda.reference_grid().global_mask().outer_mask_indices())           )
             # Plot the mean map against the reference map (sorted)
-            graphs.sorted_mean_obs_scatter( f_name    = os.path.join(pandda.output_handler.get_dir('reference'), 'reference_against_mean_sorted.png'),
-                                            mean_vals = sorted(map_analyser.statistical_maps.mean_map.select(pandda.reference_grid().global_mask().outer_mask_indices())),
-                                            obs_vals  = sorted(ref_map_holder.map.select(pandda.reference_grid().global_mask().outer_mask_indices()))   )
+            analyse_graphs.sorted_mean_obs_scatter( f_name    = os.path.join(pandda.output_handler.get_dir('reference'), 'reference_against_mean_sorted.png'),
+                                                    mean_vals = sorted(map_analyser.statistical_maps.mean_map.select(pandda.reference_grid().global_mask().outer_mask_indices())),
+                                                    obs_vals  = sorted(ref_map_holder.map.select(pandda.reference_grid().global_mask().outer_mask_indices()))   )
             # Plot the reference map distribution
             pandda.write_map_value_distribution( map_vals    = ref_map_holder.map.select(pandda.reference_grid().global_mask().outer_mask_indices()),
                                                  output_file = os.path.join(pandda.output_handler.get_dir('reference'), 'reference_map_distribution.png')     )
@@ -908,7 +918,8 @@ def pandda_main(args):
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('event_map').format(event_num, event_occ_est), 
                                                 map_data    = event_occ_map )    
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('native_event_map').format(event_num, event_occ_est),
-                                                map_data    = pandda.rotate_map(d_handler=d_handler, map_data=event_occ_map, align_on_grid_point=map(int,point_cluster.centroid)))
+                                                map_data    = pandda.rotate_map(d_handler=d_handler, map_data=event_occ_map))
+#                                                map_data    = pandda.rotate_map(d_handler=d_handler, map_data=event_occ_map, align_on_grid_point=map(int,point_cluster.centroid)))
                     # ============================================================================>
                     # Create an event object
                     # ============================================================================>
@@ -968,8 +979,15 @@ def pandda_main(args):
             # Write the summaries
             #####
             # ============================================================================>
-            pandda.write_map_analyser_summary(map_analyser=map_analyser, analysis_mask_name=analysis_mask_name)
-        
+            # Write statistical maps
+            pandda.write_map_analyser_maps( map_analyser       = map_analyser, 
+                                            analysis_mask_name = analysis_mask_name )
+            # Write output graphs for map analysis
+            if pandda.args.output.plot_graphs:
+                analyse_graphs.write_map_analyser_graphs( pandda             = pandda,
+                                                          map_analyser       = map_analyser,
+                                                          analysis_mask_name = analysis_mask_name )
+
             # ============================================================================>
             #####
             # Print summaries
@@ -1036,10 +1054,11 @@ def pandda_main(args):
                 # Update the site labels in the event table
                 pandda.update_event_table_site_info(events=all_events)
                 # Plot output graph of site list 
-                graphs.multiple_bar_plot(                     f_name     = pandda.output_handler.get_file('analyse_site_graph'), 
-                                                              plot_vals  = [sorted([e.cluster.max for e in s.children],reverse=True) for s in site_list.children]   ) 
-                graphs.multiple_bar_plot_over_several_images( f_template = pandda.output_handler.get_file('analyse_site_graph_mult'), 
-                                                              plot_vals  = [sorted([e.cluster.max for e in s.children],reverse=True) for s in site_list.children]   ) 
+                bar.multiple_bar_plot(  f_name     = pandda.output_handler.get_file('analyse_site_graph'), 
+                                        plot_vals  = [sorted([e.cluster.max for e in s.children],reverse=True) for s in site_list.children]   ) 
+                bar.multiple_bar_plot_over_several_images( 
+                                        f_template = pandda.output_handler.get_file('analyse_site_graph_mult'), 
+                                        plot_vals  = [sorted([e.cluster.max for e in s.children],reverse=True) for s in site_list.children]   ) 
                 # Create pictures of the sites on the protein
                 pandda.make_pymol_site_image_and_scripts(site_list=site_list, make_images=True)
                 # ==================================================>
@@ -1051,7 +1070,7 @@ def pandda_main(args):
                 # Update the output file
                 # ==================================================>
                 pandda.write_output_csvs()
-                write_analyse_html(pandda)
+                analyse_html.write_analyse_html(pandda)
                 # ==================================================>
             else:
                 print 'No Events Found'
@@ -1102,7 +1121,7 @@ def pandda_main(args):
         # ============================================================================>
 
         pandda.write_output_csvs()
-        write_analyse_html(pandda)
+        analyse_html.write_analyse_html(pandda)
 
         try:
             from ascii_graph import Pyasciigraph

@@ -10,7 +10,7 @@ import libtbx.phil
 from libtbx.utils import Sorry, null_out
 from scitbx.array_family import flex
 
-from Giant.Maths.geometry import pairwise_dists
+from Giant.Maths.geometry import pairwise_dists, is_within
 from Giant.Stats.Cluster import find_connected_groups, generate_group_idxs
 
 blank_arg_prepend = {'.pdb' : 'pdb='}
@@ -45,36 +45,20 @@ verbose = True
 
 """)
 
-def is_within(dist, coords_1, coords_2):
-    """Checks if any of coords_1 is within dist of coords_2"""
-
-    dist_sq = dist**2
-    if len(coords_2) < len(coords_1):
-        i1 = coords_2; i2 = coords_1
-    else:
-        i1 = coords_1; i2 = coords_2
-
-    for c1 in i1:
-        diffs = i2 - c1
-        min_d_sq = flex.min(diffs.dot())
-        if min_d_sq < dist_sq:
-            return True
-    return False
-
 def generate_phenix_occupancy_params(occupancy_groups):
     """Using pairs of sets of atom groups, generate occupancy groups for phenix"""
 
     occ_params_template = """refinement {{\n  refine {{\n    occupancies {{\n{!s}\n    }}\n  }}\n}}"""
     constrained_group_template = """      constrained_group {{\n{!s}\n      }}"""
     selection_template = '        selection = {!s}'
-    res_sel_template = '(chain {!s} and resid {!s} and altid {!s})'
+    res_sel_template = '(chain {!s} and resid {!s} and altid "{!s}")'
 
     constrained_groups = []
     for groups in occupancy_groups:
         all_g_strs = []
         for g in groups:
             # Selections for each group
-            g_sel = [res_sel_template.format(ag.parent().parent().id, ag.parent().resid(), ag.altloc) for ag in g]
+            g_sel = sorted([res_sel_template.format(ag.parent().parent().id, ag.parent().resid(), ag.altloc) for ag in g])
             g_str = selection_template.format(' or \\\n                    '.join(g_sel))
             all_g_strs.append(g_str)
         constrained_group_str = constrained_group_template.format('\n'.join(all_g_strs))
@@ -94,7 +78,7 @@ def generate_refmac_occupancy_params(occupancy_groups):
     for group in occupancy_groups:
         # Selections for each group
         for i_g, g in enumerate(group):
-            out_lines.extend([selection_template.format(g_idx+i_g, ag.parent().parent().id, ag.parent().resseq, ag.altloc) for ag in g])
+            out_lines.extend(sorted([selection_template.format(g_idx+i_g, ag.parent().parent().id, ag.parent().resseq, ag.altloc) for ag in g]))
         out_lines.append(exclude_template.format(' '.join(map(str,range(g_idx, g_idx+len(group))))))
         # Increment the group number
         g_idx += len(group)

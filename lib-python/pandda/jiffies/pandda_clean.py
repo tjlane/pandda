@@ -54,6 +54,8 @@ def delete_with_glob(glob_str):
         if os.path.islink(file):
             print 'Unlinking file: {}'.format(file)
             os.unlink(file)
+        elif os.path.isdir(file):
+            pass
         else:
             print 'Deleting file: {}'.format(file)
             os.remove(file)
@@ -90,9 +92,10 @@ def clean_datasets(top_dir, level=0, skip_interesting=True):
             delete_with_glob(os.path.join(d_dir, '*.csv'))
             delete_with_glob(os.path.join(d_dir, '*.pdb'))
             delete_with_glob(os.path.join(d_dir, '*.mtz'))
+            delete_with_glob(os.path.join(d_dir, '*_refine.params'))
             delete_with_glob(os.path.join(d_dir, 'pickles', '*.pickle'))
             delete_with_glob(os.path.join(d_dir, 'output_images', '*.png'))
-            delete_with_glob(os.path.join(d_dir, 'ligand_files',  '*.png'))
+            delete_with_glob(os.path.join(d_dir, 'ligand_files',  '*'))
 
     return
 
@@ -111,8 +114,8 @@ def clean_links(top_dir, level=0, skip_interesting=True):
     # Level 2 cleaning
     if level >= 2:
         delete_with_glob(os.path.join(top_dir, 'empty_directories', '*'))
-        if not skip_interesting:
-            delete_with_glob(os.path.join(top_dir, 'interesting_datasets', '*'))
+#        if not skip_interesting:
+#            delete_with_glob(os.path.join(top_dir, 'interesting_datasets', '*'))
 
     return
 
@@ -164,6 +167,11 @@ def run(params):
 
     print 'Cleaning Pandda in folder: {}'.format(params.input.pandda_dir)
     print 'Running at Ferocity Level of {} ({})'.format(ferocity, params.level)
+
+    clean_misc(
+        top_dir=params.input.pandda_dir,
+        level=ferocity
+    )
 
     clean_datasets(
         top_dir=params.input.pandda_dir,

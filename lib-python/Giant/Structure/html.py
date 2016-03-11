@@ -2,17 +2,17 @@ import os
 
 from scitbx.array_family import flex
 
-from PANDDAs.settings import PANDDA_TOP, PANDDA_TEXT
-from PANDDAs.html import PANDDA_HTML_ENV, path2url
+from Giant.html import GIANT_HTML_ENV
+from Bamboo.html import path2url
 
 def write_html_summary(fname, atom_group_summaries):
 
     # Get template to be filled in
-    template = PANDDA_HTML_ENV.get_template('pandda_summary.html')
+    template = GIANT_HTML_ENV.get_template('summary_page.html')
 
     # ===========================================================>
     # Construct the data object to populate the template
-    output_data = {'PANDDA_TOP' : path2url(PANDDA_TOP)}
+    output_data = {}
     output_data['header'] = 'Structure Summary'
     output_data['title'] = 'Structure Summary'
 

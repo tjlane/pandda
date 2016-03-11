@@ -1,3 +1,3 @@
 #!/usr/bin/env sh
 
-pandda.coot --no-guano --no-state-script --script $PANDDA_TOP/lib-python/PANDDAs/inspect.py $@
+pandda.coot --no-guano --no-state-script --script $PANDDA_TOP/lib-python/pandda/inspect.py $@
