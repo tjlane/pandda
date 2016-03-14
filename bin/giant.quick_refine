@@ -133,15 +133,19 @@ def run(params):
     link_pdb = params.output.link_prefix+'.pdb'
     if real_pdb:
         real_pdb = real_pdb[0]
-        if os.path.exists(link_pdb): os.unlink(link_pdb)
-        os.symlink(real_pdb, link_pdb)
+        if os.path.exists(link_pdb) and os.path.islink(link_pdb): 
+            os.unlink(link_pdb)
+        if (not os.path.exists(link_pdb)): 
+            os.symlink(real_pdb, link_pdb)
     
     real_mtz = glob.glob(output_prefix+'*.mtz')
     link_mtz = params.output.link_prefix+'.mtz'
     if real_mtz:
         real_mtz = real_mtz[0]
-        if os.path.exists(link_mtz): os.unlink(link_mtz)
-        os.symlink(real_mtz, link_mtz)
+        if os.path.exists(link_mtz) and os.path.islink(link_mtz): 
+            os.unlink(link_mtz)
+        if (not os.path.exists(link_mtz)): 
+            os.symlink(real_mtz, link_mtz)
 
     ######################## 
     # Create occupancy parameters

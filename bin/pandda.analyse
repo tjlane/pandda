@@ -1054,8 +1054,6 @@ def pandda_main(args):
                 # Update the site labels in the event table
                 pandda.update_event_table_site_info(events=all_events)
                 # Plot output graph of site list 
-                bar.multiple_bar_plot(  f_name     = pandda.output_handler.get_file('analyse_site_graph'), 
-                                        plot_vals  = [sorted([e.cluster.max for e in s.children],reverse=True) for s in site_list.children]   ) 
                 bar.multiple_bar_plot_over_several_images( 
                                         f_template = pandda.output_handler.get_file('analyse_site_graph_mult'), 
                                         plot_vals  = [sorted([e.cluster.max for e in s.children],reverse=True) for s in site_list.children]   ) 

@@ -21,8 +21,8 @@ def write_initial_html(pandda):
     # Summary bar
     output_data['summary_bar'] = []
     output_data['summary_bar'].append({'colour':'info',    'text':'Datasets Loaded:   {}'.format(pandda.datasets.size())                                            })
-    output_data['summary_bar'].append({'colour':'danger',  'text':'Datasets Rejected: {}'.format(pandda.datasets.size(mask_name='rejected - total'))                })
     output_data['summary_bar'].append({'colour':'success', 'text':'Datasets Accepted: {}'.format(pandda.datasets.size(mask_name='rejected - total', invert=True))   })
+    output_data['summary_bar'].append({'colour':'danger',  'text':'Datasets Rejected: {}'.format(pandda.datasets.size(mask_name='rejected - total'))                })
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
@@ -73,9 +73,9 @@ def write_analyse_html(pandda):
     # Summary bar
     output_data['summary_bar'] = []
     output_data['summary_bar'].append({'colour':'info',    'text':'Analysed: {}'.format(num_analysed)               })
-    output_data['summary_bar'].append({'colour':'danger',  'text':'Not Analysed: {}'.format(num_not_analysed)       })
     output_data['summary_bar'].append({'colour':'success', 'text':'Interesting: {}'.format(num_interesting)         })
     output_data['summary_bar'].append({'colour':'warning', 'text':'Not Interesting: {}'.format(num_not_interesting) })
+    output_data['summary_bar'].append({'colour':'danger',  'text':'Not Analysed: {}'.format(num_not_analysed)       })
     # Progress Bars
     output_data['progress_bar'] = []
     output_data['progress_bar'].append({'title':'Dataset Summary', 'data':[]})
