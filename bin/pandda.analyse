@@ -18,6 +18,10 @@ from pandda import analyse_html, analyse_graphs
 from pandda.analyse import PanddaMultiDatasetAnalyser, PanddaMapAnalyser, PanddaZMapAnalyser, MapHolder
 from pandda.events import PointCluster, Event, cluster_events 
 
+def process_dataset(args):
+
+    pass
+
 def pandda_main(args):
     """Run the PANDDA algorithm, using supplied args object"""
 
@@ -152,6 +156,7 @@ def pandda_main(args):
             pandda.set_low_resolution(   min(   pandda.get_low_resolution(),
                                                 max(pandda.tables.dataset_info['high_resolution']) ) )
             pandda.set_high_resolution(  max(   pandda.get_high_resolution(),
+                                                pandda.reference_dataset().mtz_summary.high_res,
                                                 min(pandda.tables.dataset_info['high_resolution']) ) )
             pandda.log('===================================>>>')
             pandda.log('UPDATED RESOLUTION LIMITS')
@@ -535,6 +540,14 @@ def pandda_main(args):
                 pandda.log('============================================================================>>>', True)
                 pandda.log('Analysing Dataset {!s} ({!s}/{!s})'.format(d_handler.tag, i_dh+1, pandda.datasets.size(mask_name=analysis_mask_name)), True)
 
+#                # Input for process function
+#                # Need to create map_analyser for each dataset (can fill with only stat maps to calculate Z-map)
+#                d_handler = args[0] 
+#                o_handler = args[1] 
+#                ref_grid  = args[2]
+#                map_alysr = args[3]
+#                params    = args[4]
+
                 # ============================================================================>
                 # Update tables, masks etc.
                 # ============================================================================>
@@ -542,17 +555,19 @@ def pandda_main(args):
                 resolution_count[cut_resolution].append(d_handler.tag)
                 # Update datasets masks flag
                 pandda.datasets.all_masks().set_mask_value(mask_name='analysed', entry_id=d_handler.tag, value=True)
-                # Create a file that says what resolution this was processed at
-                # TODO DELETE? TODO
-                link_dir = os.path.join(pandda.output_handler.get_dir('resolutions'), '{!s}-{!s}'.format(cut_resolution, d_handler.tag))
-                if not os.path.exists(link_dir): rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=link_dir)
-                # TODO DELETE? TODO
                 
                 # ============================================================================>
                 # Validate/Check/Zero the dataset
                 # ============================================================================>
                 # Dataset should not have any events
                 assert d_handler.events == []
+
+                ################################################
+                # Extract the map for this dataset    
+                ################################################
+                m_handler = map_analyser.dataset_maps.get(tag=d_handler.tag)
+
+                ### XXX ------- preprocessing for the map func above here ------- XXX ###
 
                 # ============================================================================>
                 # Generate masks for this dataset
@@ -580,11 +595,6 @@ def pandda_main(args):
 
                 # Write coordinates of symmetry copies 
                 dataset_sym_copies.write_pdb_file(d_handler.output_handler.get_file('symmetry_copies'))
-
-                ################################################
-                # Extract the map for this dataset    
-                ################################################
-                m_handler = map_analyser.dataset_maps.get(tag=d_handler.tag)
 
                 ################################################
                 # AUTOGENERATE SCRIPTS FOR VIEWING THE DATASET #
@@ -633,6 +643,10 @@ def pandda_main(args):
                 # ============================================================================>
                 # Calculate statistics of z-maps
                 z_map_stats = basic_statistics(flex.double(z_map_compl_masked))
+                m_handler.meta.z_mean = z_map_stats.mean
+                m_handler.meta.z_stdv = z_map_stats.bias_corrected_standard_deviation
+                m_handler.meta.z_skew = z_map_stats.skew
+                m_handler.meta.z_kurt = z_map_stats.kurtosis
                 
                 # ============================================================================>
                 # STORE ANALYSIS DATA IN DATASET MAP TABLE
@@ -642,11 +656,11 @@ def pandda_main(args):
                 pandda.tables.dataset_map_info.set_value(d_handler.tag, 'map_uncertainty',     m_handler.meta.map_uncertainty)
                 pandda.tables.dataset_map_info.set_value(d_handler.tag, 'obs_map_mean',        m_handler.meta.obs_map_mean)
                 pandda.tables.dataset_map_info.set_value(d_handler.tag, 'obs_map_rms',         m_handler.meta.obs_map_rms)
-                pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_mean',          z_map_stats.mean)
-                pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_std',           z_map_stats.bias_corrected_standard_deviation)
-                pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_skew',          z_map_stats.skew)
-                pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_kurt',          z_map_stats.kurtosis)
-                
+                pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_mean',          m_handler.meta.z_mean)
+                pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_std',           m_handler.meta.z_stdv)
+                pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_skew',          m_handler.meta.z_skew)
+                pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_kurt',          m_handler.meta.z_kurt)
+
                 # ============================================================================>
                 # WRITE OUT DATASET INFORMATION TO CSV FILE
                 # ============================================================================>
@@ -737,11 +751,6 @@ def pandda_main(args):
                 if num_clusters == -1:
                     # This dataset is too noisy to analyse - flag!
                     pandda.datasets.all_masks().set_mask_value(mask_name='noisy zmap', entry_id=d_handler.tag, value=True)
-                    # TODO DELETE? TODO
-                    # Link datasets to the noisy results directory
-                    noisy_dir = os.path.join(pandda.output_handler.get_dir('noisy_datasets'), d_handler.tag)
-                    if not os.path.exists(noisy_dir): rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=noisy_dir)
-                    # TODO DELETE? TODO
 
                 # ============================================================================>
                 #####
@@ -789,9 +798,6 @@ def pandda_main(args):
                     # ============================================================================>
                     # NATIVE MAPS (ROTATED)
                     # ============================================================================>
-                    # Observed map
-                    #pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('native_obs_map'),
-                    #                            map_data    = pandda.rotate_map(d_handler=d_handler, map_data=m_handler.map))
                     # Z-map
                     pandda.write_array_to_map(  output_file = d_handler.output_handler.get_file('native_z_map'),
                                                 map_data    = pandda.rotate_map(d_handler=d_handler, map_data=z_map))
@@ -938,7 +944,9 @@ def pandda_main(args):
                     # Write out the graph of the occupancy correlations
                     # ============================================================================>
 #                    if pandda.args.output.plot_graphs:
-#                        pandda.something()
+#                        pandda.something() 
+
+#                return (d_handler, m_handler)
                         
 # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 # TODO REIMPLEMENT THIS IF IT CAN BE DONE SO THAT IT LOOKS NICE

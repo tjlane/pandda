@@ -1,8 +1,7 @@
 from __future__ import print_function
 
 import os, sys, glob, time, re
-import copy, resource, gc
-import warnings
+import copy, resource, gc, tempfile, warnings
 
 import scipy.cluster
 
@@ -50,6 +49,97 @@ from pandda.holders import *
 
 # SET FILTERING CONSTANTS
 FILTER_SCALING_CORRELATION_CUTOFF = 0.7
+
+def map_statistics_map_func(arg_dict):
+    map_vals          = arg_dict['map_vals']
+    map_uncertainties = arg_dict['map_uncertainties']
+    # Starting guess for the underlying sigma is raw_std/guess_factor
+    guess_factor = 0.001
+    # Calculate statistics from extracted map values
+    stats_obj = basic_statistics(flex.double(map_vals.tolist()))
+    # Calculate Standard Deviation of the map values
+    stdv  = stats_obj.bias_corrected_standard_deviation
+    # Calculate the adjusted standard deviation
+    sadj = estimate_true_underlying_sd(obs_vals=map_vals.tolist(), obs_error=map_uncertainties, est_sigma=stdv*guess_factor)
+    # Calculate other statistics
+    skew = stats_obj.skew
+    kurt = stats_obj.kurtosis
+    bimo = (skew**2 + 1)/kurt
+    return (stdv, sadj, skew, kurt, bimo)
+
+def load_dataset_map_func(arg_dict):
+    return DatasetHandler(**arg_dict)
+
+def align_map_func(arg_dict):
+    global_mx, local_mxs = align_dataset_to_reference(
+                                    d_handler   = arg_dict['d_handler'],
+                                    ref_handler = arg_dict['r_handler'],
+                                    method      = arg_dict['method']   )
+    return (arg_dict['d_handler'].tag, (global_mx, local_mxs))
+
+def load_maps_map_func(arg_dict):
+    """Function to allow maps to be loaded in parallel"""
+
+    d_handler       = arg_dict['d_handler']
+    grid            = arg_dict['grid']
+    params          = arg_dict['params']
+    map_resolution  = arg_dict['map_resolution']
+    ref_map_holder  = arg_dict['ref_map_holder']
+    masked_idxs     = arg_dict['masked_idxs']
+    masked_cart_ref = arg_dict['masked_cart_ref']
+    masked_cart_map = arg_dict['masked_cart_map']
+    scaling_mask    = arg_dict['scaling_mask']
+
+    print('\rLoading Maps for Dataset {!s}'.format(d_handler.tag), end=''); sys.stdout.flush()
+
+    fft_map = d_handler.fft_map
+
+    # Scale the map
+    if   params.maps.scaling == 'none':   pass
+    elif params.maps.scaling == 'sigma':  fft_map.apply_sigma_scaling()
+    elif params.maps.scaling == 'volume': fft_map.apply_volume_scaling()
+
+    #################################
+    # MORPH MAPS TO REFERENCE FRAME #
+    #################################
+    # Create map handler and map to the reference frame
+    native_map_handler = map_handler(   map_data  = fft_map.real_map(),
+                                        unit_cell = fft_map.unit_cell() )
+    # Transform Coordinates
+    masked_cart_d = d_handler.transform_from_reference( points = masked_cart_ref,
+                                                        method = params.alignment.method,
+                                                        point_mappings = masked_cart_map )
+    # Sample the map at these points
+    masked_vals_d = native_map_handler.get_cart_values(masked_cart_d)
+
+    # Calculate mean and rms of map values
+    d_map_mean = masked_vals_d.min_max_mean().mean
+    d_map_rms  = masked_vals_d.standard_deviation_of_the_sample()
+    # Normalise map - Scale it to the same scale as the reference dataset on the same points
+#            masked_vals_d = (masked_vals_d - d_map_mean)*(ref_map_holder.meta.map_rms/d_map_rms) + ref_map_holder.meta.map_mean
+
+    # Calculate the sparse vector of the masked map values
+    morphed_map_sparse = scitbx.sparse.vector(grid.size_1d(), dict(zip(masked_idxs, masked_vals_d)))
+    morphed_map        = morphed_map_sparse.as_dense_vector()
+    # Reshape into right shape of the grid
+    morphed_map.reshape(grid)
+    # Scale map to reference
+    morphed_map = scale_map_to_reference(ref_map=ref_map_holder.map, map=morphed_map, mask_idxs=scaling_mask)
+    # Create map holder
+    map_holder = MapHolder( num = d_handler.num,
+                            tag = d_handler.tag,
+                            map = morphed_map,
+                            # Change these for the 'fake' grid unit_cell and a P1 space_group
+                            unit_cell   = fft_map.unit_cell(),
+                            space_group = fft_map.space_group(),
+                            meta        = Meta({'type'            : 'observed map',
+                                                'resolution'      : map_resolution,
+                                                'map_uncertainty' : None,
+                                                'obs_map_mean'    : d_map_mean,
+                                                'obs_map_rms'     : d_map_rms }),
+                            parent      = None  )
+
+    return map_holder
 
 class DatasetHandler(object):
     def __init__(self, dataset_number, pdb_filename, mtz_filename, dataset_tag=None):
@@ -325,7 +415,6 @@ def align_dataset_to_reference(d_handler, ref_handler, method):
 
 class PanddaMapAnalyser(object):
     """Class to hold dataset maps, statistical maps and meta data for a set of related maps. Also holds functions for analysing the maps."""
-    output_handler = None
     def __init__(self, dataset_maps, meta, statistical_maps=None, parent=None):
         # Validate the meta
         assert isinstance(meta, Meta), 'meta must be of type Meta. Type given: {!s}'.format(type(meta))
@@ -334,8 +423,11 @@ class PanddaMapAnalyser(object):
         assert hasattr(meta, 'grid_size_1d')
         self.meta = meta
         # Validate the dataset maps
-        assert isinstance(dataset_maps, MapHolderList), 'dataset_maps must be stored in a MapHolderList. Type given: {!s}'.format(type(dataset_maps))
-        self.dataset_maps = dataset_maps
+        if dataset_maps:
+            assert isinstance(dataset_maps, MapHolderList), 'dataset_maps must be stored in a MapHolderList. Type given: {!s}'.format(type(dataset_maps))
+            self.dataset_maps = dataset_maps
+        else:
+            self.dataset_maps = None
         if statistical_maps:
             assert isinstance(statistical_maps, PanddaStatMapList), 'statistical_maps must be of type MapList. Type given: {!s}'.format(type(statistical_maps))
             self.statistical_maps = statistical_maps
@@ -489,23 +581,6 @@ class PanddaMapAnalyser(object):
     def calculate_statistical_maps(self, masked_idxs=None, mask_name=None, cpus=1, ignore_warnings=True):
         """Take the sampled maps and calculate statistics for each grid point across the datasets"""
 
-        def map_statistics_map_func(arg_dict):
-            map_vals          = arg_dict['map_vals']
-            map_uncertainties = arg_dict['map_uncertainties']
-            # Starting guess for the underlying sigma is raw_std/guess_factor
-            guess_factor = 0.001
-            # Calculate statistics from extracted map values
-            stats_obj = basic_statistics(flex.double(map_vals.tolist()))
-            # Calculate Standard Deviation of the map values
-            stdv  = stats_obj.bias_corrected_standard_deviation
-            # Calculate the adjusted standard deviation
-            sadj = estimate_true_underlying_sd(obs_vals=map_vals.tolist(), obs_error=map_uncertainties, est_sigma=stdv*guess_factor)
-            # Calculate other statistics
-            skew = stats_obj.skew
-            kurt = stats_obj.kurtosis
-            bimo = (skew**2 + 1)/kurt
-            return (stdv, sadj, skew, kurt, bimo)
-
         # Create statistics objects for each grid point
         self.log('===================================>>>', True)
         self.log('Calculating Statistics of Grid Points (using {!s} cores)'.format(cpus), True)
@@ -539,12 +614,10 @@ class PanddaMapAnalyser(object):
             if i_chunk+1 < num_chunks:
                 assert len(p_map_vals) == self.dataset_maps.size(mask_name=mask_name)
                 assert len(p_map_vals.T) == chunk_size
-            if cpus > 1:
-                # Generate arg_list for analysis
-                arg_list = [{'map_vals':map_vals, 'map_uncertainties':all_uncertainties} for map_vals in p_map_vals.T]
-                point_statistics = easy_mp.pool_map(fixed_func=map_statistics_map_func, args=arg_list, processes=cpus)
-            else:
-                point_statistics = [map_statistics_map_func({'map_vals':map_vals, 'map_uncertainties':all_uncertainties}) for map_vals in p_map_vals.T]
+
+            # Generate arg_list for analysis
+            arg_list = [{'map_vals':map_vals, 'map_uncertainties':all_uncertainties} for map_vals in p_map_vals.T]
+            point_statistics = easy_mp.pool_map(func=map_statistics_map_func, args=arg_list, processes=cpus)
 
             masked_point_statistics.extend(point_statistics)
 
@@ -903,9 +976,7 @@ class PanddaMultiDatasetAnalyser(object):
         self.output_handler.add_dir(dir_name='processed_datasets',   dir_tag='processed_datasets',   top_dir_tag='root')
         self.output_handler.add_dir(dir_name='rejected_datasets',    dir_tag='rejected_datasets',    top_dir_tag='root')
         self.output_handler.add_dir(dir_name='interesting_datasets', dir_tag='interesting_datasets', top_dir_tag='root')
-        self.output_handler.add_dir(dir_name='noisy_datasets',       dir_tag='noisy_datasets',       top_dir_tag='root')
         self.output_handler.add_dir(dir_name='aligned_structures',   dir_tag='aligned_structures',   top_dir_tag='root')
-        self.output_handler.add_dir(dir_name='resolutions',          dir_tag='resolutions',          top_dir_tag='root')
 
         # ===============================================================================>
         # New directories that will be created for each run (so that data is not overwritten)
@@ -1624,9 +1695,6 @@ class PanddaMultiDatasetAnalyser(object):
     def load_new_datasets(self):
         """Read in maps for the input datasets"""
 
-        def load_dataset_map_func(arg_dict):
-            return DatasetHandler(**arg_dict)
-
         if not self.datasets.all() and self.is_new_pandda():
             self.log('Adding First Datasets to Pandda')
         else:
@@ -1644,7 +1712,7 @@ class PanddaMultiDatasetAnalyser(object):
         start = time.time()
         self.log('===================================>>>', True)
         print('Adding Datasets... (using {!s} cores)'.format(self.args.settings.cpus))
-        loaded_datasets = easy_mp.pool_map(fixed_func=load_dataset_map_func, args=arg_list, processes=self.args.settings.cpus)
+        loaded_datasets = easy_mp.pool_map(func=load_dataset_map_func, args=arg_list, processes=self.args.settings.cpus)
         finish = time.time()
         self.log('> Adding Datasets > Time Taken: {!s} seconds'.format(int(finish-start)), True)
 
@@ -1777,13 +1845,6 @@ class PanddaMultiDatasetAnalyser(object):
     def align_datasets(self, method):
         """Align each structure the reference structure"""
 
-        def align_map_func(arg_dict):
-            global_mx, local_mxs = align_dataset_to_reference(
-                                            d_handler   = arg_dict['d_handler'],
-                                            ref_handler = arg_dict['r_handler'],
-                                            method      = arg_dict['method']   )
-            return (arg_dict['d_handler'].tag, (global_mx, local_mxs))
-
         assert method in ['local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
 
         # Select the datasets for alignment
@@ -1801,7 +1862,7 @@ class PanddaMultiDatasetAnalyser(object):
         print('Generating Alignments (using {!s} cores) for {} datasets'.format(self.args.settings.cpus, len(align_datasets)))
         start = time.time()
         arg_list = [{'r_handler':self.reference_dataset(), 'd_handler':d_handler, 'method':method} for d_handler in align_datasets]
-        alignment_transforms = easy_mp.pool_map(fixed_func=align_map_func, args=arg_list, processes=self.args.settings.cpus)
+        alignment_transforms = easy_mp.pool_map(func=align_map_func, args=arg_list, processes=self.args.settings.cpus)
         alignment_transforms = dict(alignment_transforms)
         finish = time.time()
         self.log('\r> Generating Alignments > Time Taken: {!s} seconds'.format(int(finish-start)), True)
@@ -2185,70 +2246,6 @@ class PanddaMultiDatasetAnalyser(object):
     def load_and_morph_maps(self, dataset_handlers, ref_map_holder, map_resolution=0):
         """Create map from miller arrays. Transform map into the reference frame by sampling at the given points."""
 
-        def load_maps_map_func(arg_dict):
-            """Function to allow maps to be loaded in parallel"""
-
-            d_handler       = arg_dict['d_handler']
-            grid            = arg_dict['grid']
-            params          = arg_dict['params']
-            map_resolution  = arg_dict['map_resolution']
-            ref_map_holder  = arg_dict['ref_map_holder']
-            masked_cart_ref = arg_dict['masked_cart_ref']
-            masked_cart_map = arg_dict['masked_cart_map']
-            scaling_mask    = arg_dict['scaling_mask']
-
-            print('\rLoading Maps for Dataset {!s}'.format(d_handler.tag), end=''); sys.stdout.flush()
-
-            # Take the truncated diffraction data for each dataset and create fft
-            fft_map = d_handler.tr_sfs.fft_map( resolution_factor = params.maps.resolution_factor,
-                                                d_min             = map_resolution,
-                                                symmetry_flags    = cctbx.maptbx.use_space_group_symmetry  )
-            # Scale the map
-            if   params.maps.scaling == 'none':   pass
-            elif params.maps.scaling == 'sigma':  fft_map.apply_sigma_scaling()
-            elif params.maps.scaling == 'volume': fft_map.apply_volume_scaling()
-
-            #################################
-            # MORPH MAPS TO REFERENCE FRAME #
-            #################################
-            # Create map handler and map to the reference frame
-            native_map_handler = map_handler(   map_data  = fft_map.real_map(),
-                                                unit_cell = fft_map.unit_cell() )
-            # Transform Coordinates
-            masked_cart_d = d_handler.transform_from_reference( points = masked_cart_ref,
-                                                                method = params.alignment.method,
-                                                                point_mappings = masked_cart_map )
-            # Sample the map at these points
-            masked_vals_d = native_map_handler.get_cart_values(masked_cart_d)
-
-            # Calculate mean and rms of map values
-            d_map_mean = masked_vals_d.min_max_mean().mean
-            d_map_rms  = masked_vals_d.standard_deviation_of_the_sample()
-            # Normalise map - Scale it to the same scale as the reference dataset on the same points
-#            masked_vals_d = (masked_vals_d - d_map_mean)*(ref_map_holder.meta.map_rms/d_map_rms) + ref_map_holder.meta.map_mean
-
-            # Calculate the sparse vector of the masked map values
-            morphed_map_sparse = scitbx.sparse.vector(grid.size_1d(), dict(zip(masked_idxs, masked_vals_d)))
-            morphed_map        = morphed_map_sparse.as_dense_vector()
-            # Reshape into right shape of the grid
-            morphed_map.reshape(grid)
-            # Scale map to reference
-            morphed_map = scale_map_to_reference(ref_map=ref_map_holder.map, map=morphed_map, mask_idxs=scaling_mask)
-            # Create map holder
-            map_holder = MapHolder( num = d_handler.num,
-                                    tag = d_handler.tag,
-                                    map = morphed_map,
-                                    # Change these for the 'fake' grid unit_cell and a P1 space_group
-                                    unit_cell   = fft_map.unit_cell(),
-                                    space_group = fft_map.space_group(),
-                                    meta        = Meta({'type'            : 'observed map',
-                                                        'resolution'      : map_resolution,
-                                                        'map_uncertainty' : None,
-                                                        'obs_map_mean'    : d_map_mean,
-                                                        'obs_map_rms'     : d_map_rms }),
-                                    parent      = None  )
-            return map_holder
-
         self.log('===================================>>>', True)
         self.log('Loading Electron Density Maps @ {!s}A'.format(map_resolution), True)
 
@@ -2265,6 +2262,18 @@ class PanddaMultiDatasetAnalyser(object):
         else:
             masked_cart_map = None
 
+        self.log('===================================>>>', True)
+        self.log('FFT-ing Maps')
+        start = time.time()
+        # FFT the maps from the truncated data
+        for d_handler in dataset_handlers:
+            # Take the truncated diffraction data for each dataset and create fft
+            d_handler.fft_map = d_handler.tr_sfs.fft_map( resolution_factor = self.params.maps.resolution_factor,
+                                                          d_min             = map_resolution,
+                                                          symmetry_flags    = cctbx.maptbx.use_space_group_symmetry  )
+        finish = time.time()
+        self.log('\r> FFT-ing Maps ({!s} Datasets) > Time Taken: {!s} seconds'.format(len(dataset_handlers), int(finish-start)), True)
+
         # Load maps using multiple cores if possible
         self.log('===================================>>>', True)
         print('Loading Maps (using {!s} cores)'.format(self.args.settings.cpus))
@@ -2273,14 +2282,17 @@ class PanddaMultiDatasetAnalyser(object):
                       'grid'      : self.reference_grid().grid_indexer(),     'ref_map_holder' : ref_map_holder, \
                       'masked_cart_ref' : masked_cart_ref, \
                       'masked_cart_map' : masked_cart_map, \
+                      'masked_idxs'     : masked_idxs, \
 #                      'scaling_mask'    : self.reference_grid().global_mask().outer_mask_indices()      } for d_handler in dataset_handlers]
                       'scaling_mask'    : self.reference_grid().global_mask().inner_mask_indices()      } for d_handler in dataset_handlers]
-        map_holders = easy_mp.pool_map(fixed_func=load_maps_map_func, args=arg_list, processes=self.args.settings.cpus, chunksize=1)
+        map_holders = easy_mp.pool_map(func=load_maps_map_func, args=arg_list, processes=self.args.settings.cpus, chunksize=1)
         # Append to the map holder list
         map_holder_list.add(map_holders)
         # Go through and assign parents
         for mh in map_holder_list.all():
             mh.parent = self.datasets.get(tag=mh.tag)
+            # Clear the fft'd map
+            mh.parent.fft_map = None
 
         finish = time.time()
         self.log('\r> Loading Maps ({!s} Datasets) > Time Taken: {!s} seconds'.format(map_holder_list.size(), int(finish-start)), True)

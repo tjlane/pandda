@@ -1,5 +1,5 @@
 
-import os, sys, glob, copy, itertools
+import os, sys, glob, copy, time, itertools
 import gtk
 import pandas
 
@@ -14,6 +14,22 @@ try:
     set_recentre_on_read_pdb(0)
 except:
     pass
+
+def nonmodal_msg(msg):
+    """Display an error window - non-modal"""
+    d = gtk.MessageDialog(  type    = gtk.MESSAGE_INFO,
+                            message_format = msg )
+    d.show_all()
+    while gtk.events_pending(): gtk.main_iteration(False)
+    return d
+
+def modal_msg(msg):
+    """Display an error window - model"""
+    d = gtk.MessageDialog(  type    = gtk.MESSAGE_INFO,
+                            buttons = gtk.BUTTONS_CLOSE,
+                            message_format = msg )
+    d.run()
+    d.destroy()
 
 class PanddaEvent(object):
     def __init__(self, rank, info, top_dir):
@@ -227,7 +243,10 @@ class PanddaInspector(object):
     def update_html(self):
         """Update various parts of the class - including output graphs"""
 
+        # Post message in case this takes a long time...
+        d = nonmodal_msg('Updating html output...')
         # Plot output graph of site list
+        print 'Generating output graphs...'
         plot_vals = self.log_table['z_peak']
         view_vals = self.log_table['Viewed']
         modl_vals = self.log_table['Ligand Placed']
@@ -239,7 +258,10 @@ class PanddaInspector(object):
                                 plot_vals   = [[plot_vals[i] for i in g] for g in groups],
                                 colour_vals = [[colr_vals[i] for i in g] for g in groups]   )
         # Write output html
+        print 'Writing output html...'
         inspect_html.write_inspect_html(top_dir=self.top_dir, inspector=self)
+        # Destroy update message
+        d.destroy()
 
     def update_gui(self):
 
@@ -260,9 +282,6 @@ class PanddaInspector(object):
         # Reset the comment box
         self.gui.objects['comment text'].set_text(str(self.get_log_value('Comment')))
 
-    def raise_gui_error_and_reset(self, error_msg):
-        self.gui.error_msg(msg=error_msg)
-
     #-------------------------------------------------------------------------
 
     def save_current(self):
@@ -282,7 +301,7 @@ class PanddaInspector(object):
         if new_event is None:
             # TODO DO SOMETHING BETTER HERE TODO
             # Instead of loading new event, inform using the same model
-            self.raise_gui_error_and_reset(error_msg='Reloading Same MODEL (Unchanged)')
+            modal_msg(msg='Reloading Same MODEL (Unchanged)')
         else:
             self.current_event = self.coot.load_event(e=new_event)
         self.update_gui()
@@ -298,7 +317,7 @@ class PanddaInspector(object):
         if (new_event is not None) and skip_unmodelled and (not os.path.exists(new_event.fitted_link)):
 #            if self.site_list.at_first_event():
             if self.current_event.index == new_event.index:
-                self.raise_gui_error_and_reset(error_msg='No modelled datasets')
+                modal_msg(msg='No modelled datasets')
             else:
                 print 'SKIPPING UNMODELLED: {} - {}'.format(new_event.dtag, new_event.event_idx)
                 self.load_next_event(skip_unmodelled=skip_unmodelled, skip_viewed=skip_viewed)
@@ -340,26 +359,32 @@ class PanddaInspector(object):
             pass
         if skip_viewed == True:
             if sum(self.log_table['Viewed']) == len(self.log_table['Viewed']):
-                self.raise_gui_error_and_reset(error_msg='All models have been viewed')
+                modal_msg(msg='All models have been viewed')
                 return False
         return True
     #-------------------------------------------------------------------------
 
     def initialise_output_table(self, in_csv, out_csv):
-        if os.path.exists(out_csv):
-            # Output csv already exists from previous run -- reload (but merge with in_csv)
-            self.log_table = pandas.read_csv(out_csv, sep=',', dtype={'dtag':str})
-        else:
-            # Create new table from input csv
-            self.log_table = pandas.read_csv(in_csv, sep=',', dtype={'dtag':str})
-            # Create new columns
-            self.log_table['Interesting'] = False
-            self.log_table['Ligand Placed'] = False
-            self.log_table['Ligand Confidence'] = 'None'
-            self.log_table['Comment'] = 'None'
-            self.log_table['Viewed'] = False
-        # Set the index
+        """Read in the log table from pandda.analyse and merge with previous results form pandda.inspect"""
+
+        # Read in the log table from pandda_analyse
+        self.log_table = pandas.read_csv(in_csv, sep=',', dtype={'dtag':str})
         self.log_table = self.log_table.set_index(['dtag','event_idx'])
+        # Create new columns (filled with blanks for the moment)
+        self.log_table['Interesting'] = False
+        self.log_table['Ligand Placed'] = False
+        self.log_table['Ligand Confidence'] = 'None'
+        self.log_table['Comment'] = 'None'
+        self.log_table['Viewed'] = False
+
+        if os.path.exists(out_csv):
+            print 'Merging with existing pandda.inspect csv...'
+            # Output csv already exists from previous run - reload and merge with in_csv
+            inspect_prev = pandas.read_csv(out_csv, sep=',', dtype={'dtag':str})
+            inspect_prev = inspect_prev.set_index(['dtag','event_idx'])
+            # Merge with input table (only on the columns that should be updated)
+            self.log_table.update(inspect_prev[['Interesting','Ligand Placed','Ligand Confidence','Comment','Viewed']])
+
         # Save Table
         self.write_output_csv()
 
@@ -380,6 +405,7 @@ class PanddaInspector(object):
         print '====================>>>'
 
     def write_output_csv(self):
+        print 'Writing output csv: {}'.format(self.output_csv)
         self.log_table.to_csv(self.output_csv)
 
 #=========================================================================
@@ -485,16 +511,6 @@ class PanddaGUI(object):
     def on_destroy(self,  widget=None, *data):
         self.quit()
 
-    def error_msg(self, msg):
-        """Display an error window"""
-        d = gtk.MessageDialog(  parent  = self.window,
-                                flags   = gtk.DIALOG_DESTROY_WITH_PARENT,
-                                type    = gtk.MESSAGE_INFO,
-                                buttons = gtk.BUTTONS_CLOSE,
-                                message_format = msg )
-        d.run()
-        d.destroy()
-
     def launch(self):
         """Launch GUI window"""
 
@@ -570,7 +586,8 @@ class PanddaGUI(object):
 
         # Quit
         self.buttons['quit'].connect("clicked", lambda x: [self.quit()])
-        self.buttons['summary'].connect("clicked", lambda x: [self.store(), self.update_html(), os.system('pandda.show_summary')])
+        self.buttons['summary'].connect("clicked", lambda x: [self.store(), self.parent.update_html(), os.system('pandda.show_summary &')])
+        self.buttons['updatehtml'].connect("clicked", lambda x: [self.store(), self.parent.update_html()])
 
         # Structure Buttons
         self.buttons['save'].connect("clicked",  lambda x: self.parent.save_current())
@@ -760,6 +777,12 @@ class PanddaGUI(object):
         # ---
         b = gtk.Button(label="Summary")
         self.buttons['summary'] = b
+        vbox_1.pack_start(b)
+        # ---
+        vbox_1.pack_start(gtk.HSeparator(), expand=False, padding=2)
+        # ---
+        b = gtk.Button(label="Update HTML")
+        self.buttons['updatehtml'] = b
         vbox_1.pack_start(b)
         # ---
         hbox_main = gtk.HBox(spacing=5)
