@@ -487,6 +487,7 @@ class PanddaMapAnalyser(object):
         if output_graphs:
             try:
                 import matplotlib
+                matplotlib.use('Agg')
                 matplotlib.interactive(0)
                 from matplotlib import pyplot
                 pyplot.style.use('ggplot')
@@ -915,6 +916,7 @@ class PanddaMultiDatasetAnalyser(object):
         if self.args.output.plot_graphs:
             try:
                 import matplotlib
+                matplotlib.use('Agg')
                 # Setup so that we can write without a display connected
                 matplotlib.interactive(0)
                 # Find the backend
@@ -1489,12 +1491,12 @@ class PanddaMultiDatasetAnalyser(object):
         # ============================================================================>
         # Write protein masked map
         mask_map_file = self.output_handler.get_file('reference_dataset').replace('.mtz','.totalmask.ccp4')
-        map_mask = flex.double(self.reference_grid().global_mask().total_mask_binary())
+        map_mask = flex.double(self.reference_grid().global_mask().total_mask_binary().astype(int))
         map_mask.reshape(flex.grid(self.reference_grid().grid_size()))
         write_array_to_map(output_file=mask_map_file, map_data=map_mask, grid=self.reference_grid())
         # Write symmetry masked map
         mask_map_file = self.output_handler.get_file('reference_dataset').replace('.mtz','.symmask.ccp4')
-        map_mask = flex.double(self.reference_grid().symmetry_mask().total_mask_binary())
+        map_mask = flex.double(self.reference_grid().symmetry_mask().total_mask_binary().astype(int))
         map_mask.reshape(flex.grid(self.reference_grid().grid_size()))
         write_array_to_map(output_file=mask_map_file, map_data=map_mask, grid=self.reference_grid())
 

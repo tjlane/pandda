@@ -2,6 +2,7 @@ import os, sys
 
 try:
     import matplotlib
+    matplotlib.use('Agg')
     matplotlib.interactive(0)
     from matplotlib import pyplot
     pyplot.style.use('ggplot')

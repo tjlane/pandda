@@ -3,6 +3,12 @@
 import os, sys, glob, time, gc
 import numpy
 
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+except:
+    pass
+
 from scitbx.array_family import flex
 from scitbx.math import basic_statistics
 from libtbx import easy_mp
