@@ -506,17 +506,21 @@ class PanddaGUI(object):
     def quit(self):
         self.store()
         self.parent.update_html()
-        gtk.main_quit()
 
     def on_destroy(self,  widget=None, *data):
         self.quit()
+        gtk.main_quit()
+
+    def on_delete(self, widget=None, *data):
+        self.quit()
+        gtk.main_quit()
 
     def launch(self):
         """Launch GUI window"""
 
         # Create main window
         self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
-        self.window.connect("delete_event", self.on_destroy)
+        self.window.connect("delete_event", self.on_delete)
         self.window.connect("destroy_event", self.on_destroy)
         self.window.set_border_width(10)
         self.window.set_default_size(600, 400)

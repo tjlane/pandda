@@ -33,24 +33,24 @@ class atomic_mask(object):
                                                                     fft_n_real = grid_size, fft_m_real=grid_size,
                                                                     sites_cart = cart_sites,
                                                                     site_radii = flex.double(cart_sites.size(), max_dist))
-        outer_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=int)
-        outer_mask_binary.put(self._outer_mask_indices, 1)
-        self._outer_mask_binary = outer_mask_binary.tolist()
+        outer_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=bool)
+        outer_mask_binary.put(self._outer_mask_indices, True)
+        self._outer_mask_binary = outer_mask_binary
 
         # Calculate the masked indices defined by min distance from protein atoms
         self._inner_mask_indices = maptbx.grid_indices_around_sites(unit_cell  = unit_cell,
                                                                     fft_n_real = grid_size, fft_m_real = grid_size,
                                                                     sites_cart = cart_sites,
                                                                     site_radii = flex.double(cart_sites.size(), min_dist))
-        inner_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=int)
-        inner_mask_binary.put(self._inner_mask_indices, 1)
-        self._inner_mask_binary = inner_mask_binary.tolist()
+        inner_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=bool)
+        inner_mask_binary.put(self._inner_mask_indices, True)
+        self._inner_mask_binary = inner_mask_binary
 
         # Calculate the combination of these masks
-        total_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), int)
-        total_mask_binary.put(self._outer_mask_indices, 1)
-        total_mask_binary.put(self._inner_mask_indices, 0)
-        self._total_mask_binary = total_mask_binary.tolist()
+        total_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), bool)
+        total_mask_binary.put(self._outer_mask_indices, True)
+        total_mask_binary.put(self._inner_mask_indices, False)
+        self._total_mask_binary = total_mask_binary
         self._total_mask_indices = [idx for idx in xrange(self._grid_idxr.size_1d()) if self._total_mask_binary[idx]>0]
 
     def total_mask(self):
@@ -142,24 +142,24 @@ class grid_mask(atomic_mask):
                                                                     fft_n_real = grid_size, fft_m_real = grid_size,
                                                                     sites_cart = filt_cart_sites,
                                                                     site_radii = flex.double(filt_cart_sites.size(), max_dist))
-        outer_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=int)
-        outer_mask_binary.put(self._outer_mask_indices, 1)
-        self._outer_mask_binary = outer_mask_binary.tolist()
+        outer_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=bool)
+        outer_mask_binary.put(self._outer_mask_indices, True)
+        self._outer_mask_binary = outer_mask_binary
 
         # Calculate the masked indices defined by min distance from protein atoms
         self._inner_mask_indices = maptbx.grid_indices_around_sites(unit_cell  = unit_cell,
                                                                     fft_n_real = grid_size, fft_m_real = grid_size,
                                                                     sites_cart = filt_cart_sites,
                                                                     site_radii = flex.double(filt_cart_sites.size(), min_dist))
-        inner_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=int)
-        inner_mask_binary.put(self._inner_mask_indices, 1)
-        self._inner_mask_binary = inner_mask_binary.tolist()
+        inner_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=bool)
+        inner_mask_binary.put(self._inner_mask_indices, True)
+        self._inner_mask_binary = inner_mask_binary
 
         # Calculate the combination of these masks
-        total_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), int)
-        total_mask_binary.put(self._outer_mask_indices, 1)
-        total_mask_binary.put(self._inner_mask_indices, 0)
-        self._total_mask_binary  = total_mask_binary.tolist()
+        total_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), bool)
+        total_mask_binary.put(self._outer_mask_indices, True)
+        total_mask_binary.put(self._inner_mask_indices, False)
+        self._total_mask_binary  = total_mask_binary
         self._total_mask_indices = [idx for idx in xrange(self._grid_idxr.size_1d()) if self._total_mask_binary[idx]>0]
 
 class non_symmetrical_atomic_mask(atomic_mask):
@@ -207,19 +207,19 @@ class non_symmetrical_atomic_mask(atomic_mask):
 
         # Convert the list of points to lists of indices, and binary masks
         self._total_mask_indices = [self._grid_idxr(gp) for gp in total_mask_points]
-        total_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=int)
-        total_mask_binary.put(self._total_mask_indices, 1)
-        self._total_mask_binary = total_mask_binary.tolist()
+        total_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=bool)
+        total_mask_binary.put(self._total_mask_indices, True)
+        self._total_mask_binary = total_mask_binary
 
         self._outer_mask_indices = [self._grid_idxr(gp) for gp in outer_mask_points]
-        outer_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=int)
-        outer_mask_binary.put(self._outer_mask_indices, 1)
-        self._outer_mask_binary = outer_mask_binary.tolist()
+        outer_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=bool)
+        outer_mask_binary.put(self._outer_mask_indices, True)
+        self._outer_mask_binary = outer_mask_binary
 
         self._inner_mask_indices = [self._grid_idxr(gp) for gp in inner_mask_points]
-        inner_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=int)
-        inner_mask_binary.put(self._inner_mask_indices, 1)
-        self._inner_mask_binary = inner_mask_binary.tolist()
+        inner_mask_binary = numpy.zeros(self._grid_idxr.size_1d(), dtype=bool)
+        inner_mask_binary.put(self._inner_mask_indices, True)
+        self._inner_mask_binary = inner_mask_binary
 
 class spherical_mask(object):
     def __init__(self, grid_spacing, distance_cutoff, grid_jump=None):

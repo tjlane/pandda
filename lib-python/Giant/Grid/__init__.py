@@ -26,15 +26,11 @@ class grid_handler(object):
         self._cart_max = None
         self._cart_min = None
         self._cart_size = None
-        self._cart_points = None
 
         # Atomic Masks for partitioning the grid
         self._grid_masks = {}
         # Local mask for filtering/smoothing
         self._local_mask = None
-
-        # Manually set group of points created by combining masks
-        self._masked_grid_points = None
 
         # Partiton object for spliting the grid into sections around atoms
         self._grid_partition = None
@@ -64,7 +60,7 @@ class grid_handler(object):
         return self._cart_size
 
     def cart_points(self):
-        return self._cart_points
+        return flex.vec3_double(flex.nested_loop(grid_size)) * self.grid_spacing() + self.cart_min()
     def grid_points(self):
         return flex.nested_loop(self.grid_size())
 
@@ -118,23 +114,24 @@ class grid_handler(object):
         self._local_mask = mask
         print self.local_mask().summary()
 
-        grid_size = self.grid_size()
-        grid_jump = self.local_mask().grid_jump()
-        grid_buffer = self.local_mask().buffer_size()
-        grid_indexer = self.grid_indexer()
-
-        # Resample grid points
-        self._resampled_grid_points = [gp for gp in flex.nested_loop(grid_size) if not [1 for coord in gp if (coord%grid_jump != 0)]]
-        self._resampled_grid_size = tuple([int(1+(g-1)/grid_jump) for g in grid_size])
-        self._resampled_grid_spacing = grid_jump*self.grid_spacing()
-
-        # Create a buffer zone at the edge of the grid
-        self._buffer_mask_points = [gp for gp in flex.nested_loop(grid_size) if [1 for i_dim, coord in enumerate(gp) if (coord<grid_buffer or coord>(grid_size[i_dim]-1-grid_buffer))]]
-
-        # Create binary mask for the buffer zone
-        buffer_mask_binary = numpy.zeros(self.grid_size_1d(), int)
-        [buffer_mask_binary.put(grid_indexer(gp), 1) for gp in self._buffer_mask_points]
-        self._buffer_mask_binary = buffer_mask_binary.tolist()
+#        grid_size = self.grid_size()
+#        grid_jump = self.local_mask().grid_jump()
+#        grid_buffer = self.local_mask().buffer_size()
+#        grid_indexer = self.grid_indexer()
+#
+#        # Resample grid points
+#        self._resampled_grid_points = [gp for gp in flex.nested_loop(grid_size) if not [1 for coord in gp if (coord%grid_jump != 0)]]
+#        self._resampled_grid_size = tuple([int(1+(g-1)/grid_jump) for g in grid_size])
+#        self._resampled_grid_spacing = grid_jump*self.grid_spacing()
+#
+#        # Create a buffer zone at the edge of the grid
+#        buffer_mask_points = [gp for gp in flex.nested_loop(grid_size) if [1 for i_dim, coord in enumerate(gp) if (coord<grid_buffer or coord>(grid_size[i_dim]-1-grid_buffer))]]
+#
+#        # Create binary mask for the buffer zone
+#        buffer_mask_indices = []
+#        [buffer_mask_indices.append(grid_indexer(gp)) for gp in buffer_mask_points]
+#
+#        self._buffer_mask_indices = numpy.array(buffer_mask_indices)
 
     def local_mask(self):
         return self._local_mask
@@ -157,16 +154,16 @@ class grid_handler(object):
             raise Exception('NOT CURRENTLY CHECKED')
             assert [i>0 for i in self.cart_min()], 'ALL GRID SITES MUST BE GREATER THAN 0 IF ORIGIN INCLUDED'
             assert [i>0 for i in self.cart_max()], 'ALL GRID SITES MUST BE GREATER THAN 0 IF ORIGIN INCLUDED'
-            box_size, self._grid_size, self._cart_points = create_cartesian_grid(min_carts=(0,0,0),
+            box_size, self._grid_size, cart_points = create_cartesian_grid(min_carts=(0,0,0),
                                                                                  max_carts=self.cart_max(),
                                                                                  grid_spacing=self.grid_spacing())
         else:
-            box_size, self._grid_size, self._cart_points = create_cartesian_grid(min_carts=self.cart_min(),
+            box_size, self._grid_size, cart_points = create_cartesian_grid(min_carts=self.cart_min(),
                                                                                  max_carts=self.cart_max(),
                                                                                  grid_spacing=self.grid_spacing())
 
         # Update max/min cart sizes as the grid will be slightly larger than the requested size
-        self.set_cart_extent(cart_min=self.cart_points().min(), cart_max=self.cart_points().max())
+        self.set_cart_extent(cart_min=cart_points.min(), cart_max=cart_points.max())
 
         return self.grid_size()
 
@@ -182,7 +179,7 @@ class grid_partition(object):
 
         # Calculate partition variables
         atoms = [at for at in atomic_hierarchy.atoms_with_labels()]
-        self.grid_sites = list(flex.nested_loop(grid_size))
+        #self.grid_sites = list(flex.nested_loop(grid_size))
         self.atom_sites_grid = numpy.array([a.xyz for a in atoms])/grid_spacing
         self.atom_sites_cart = numpy.array([a.xyz for a in atoms])
         self.atom_labels = [(a.chain_id, a.resid()) for a in atoms]
@@ -192,13 +189,16 @@ class grid_partition(object):
         # Index of nearest atom to grid sites
         self.nn_groups = None
         # Label of nearest atom to grid sites
-        self.nn_atom_labels = None
+        #self.nn_atom_labels = None
+
+    def grid_sites(self):
+        return list(flex.nested_loop(self.grid_size))
 
     def partition_grid(self, cpus=1):
         """Find the nearest neighbour for each grid point"""
 
 #        tree = spatial.KDTree(data=self.atom_sites_grid)
-#        self.nn_dists, self.nn_groups = tree.query(self.grid_sites)
+#        self.nn_dists, self.nn_groups = tree.query(self.grid_sites())
 #        self.nn_atom_labels = [self.atom_labels[i] for i in self.nn_groups]
 
         def find_sites(sites_dict):
@@ -214,7 +214,7 @@ class grid_partition(object):
         # Points that define neighbourhoods
         ref_sites = self.atom_sites_grid
         # Sites that we are partitioning
-        query_sites = self.grid_sites
+        query_sites = self.grid_sites()
 
         if cpus == 1:
             output = [find_sites({'ref':ref_sites, 'query':query_sites})]
@@ -232,22 +232,25 @@ class grid_partition(object):
         assert len(output) == cpus, '{!s} != {!s}'.format(len(output), cpus)
 
         self.nn_dists = [];  [self.nn_dists.extend(t['nn_dists']) for t in output]
+        self.nn_dists = numpy.array(self.nn_dists)
         assert len(query_sites) == len(self.nn_dists)
         self.nn_groups = []; [self.nn_groups.extend(t['nn_groups']) for t in output]
+        self.nn_groups = numpy.array(self.nn_groups)
         assert len(query_sites) == len(self.nn_groups)
-        self.nn_atom_labels = [self.atom_labels[i] for i in self.nn_groups]
+        #self.nn_atom_labels = [self.atom_labels[i] for i in self.nn_groups]
 
     def query_by_grid_indices(self, idxs):
         """Return the atom label for a grid site index"""
-        if not self.nn_atom_labels: self.partition_grid()
-        return [self.nn_atom_labels[i] for i in idxs]
+        if self.nn_groups is None: self.partition_grid()
+        return [self.atom_labels[self.nn_groups[i]] for i in idxs]
+
     def query_by_grid_points(self, gps):
         """Return the atom label for a grid point"""
-        if not self.nn_atom_labels: self.partition_grid()
-        return [self.nn_atom_labels[self.grid_indexer(g)] for g in gps]
+        if self.nn_groups is None: self.partition_grid()
+        return [self.atom_labels[self.nn_groups[self.grid_indexer(g)]] for g in gps]
 
     def query_by_cart_points(self, sites_cart):
         """Dynamically calculate the nearest atom site to the input points"""
         tree = spatial.KDTree(data=self.atom_sites_cart)
-        nn_dists, nn_groups = tree.query(self.grid_sites)
+        nn_dists, nn_groups = tree.query(sites_cart)
         return [self.atom_labels[i] for i in nn_groups]

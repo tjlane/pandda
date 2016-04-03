@@ -3,19 +3,36 @@
 import os, sys, datetime
 
 class Log(object):
-    def __init__(self, log_file, stdout=sys.stdout, verbose=False):
+    def __init__(self, log_file=None, stdout=sys.stdout, verbose=False):
         """Log Object for writing to logs...?"""
         # File that the log will be written to
         self.log_file = log_file
         self.stdout = stdout
         self.verbose = verbose
-    def show(self, message, newline=True):
-        if newline:
-            self.stdout.write(message+'\n')
-        else:
-            self.stdout.write(message)
+
+    def __call__(self, message, show=False, hide=False):
+        """Log message to file, and mirror to stdout if verbose or force_print (hide overrules show)"""
+
+        # Format message
+        if not isinstance(message, str):
+            message = str(message)
+
+        # Print to stdout
+        if (not hide) and (show or self.verbose):
+            self.show(message)
+
+        if self.log_file:
+            # Remove \r from message as this spoils the log (^Ms)
+            message = message.replace('\r','')
+            # Write to file
+            self.write(message=message+'\n', mode='a')
+
+    def show(self, message):
+        print(message)
+
     def write(self, message, mode='a'):
-        open(self.log_file, mode).write(message)
+        with open(self.log_file, mode) as fh: fh.write(message)
+
     def read_all(self):
         return open(self.log_file, 'r').read()
 

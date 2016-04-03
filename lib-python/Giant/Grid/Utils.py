@@ -26,7 +26,8 @@ def create_cartesian_grid(min_carts, max_carts, grid_spacing):
     grid_point_volume = grid_spacing**3
 
     # Calculate the grid points in cartesian space
-    grid_points_cart = flex.vec3_double([tuple([min_carts[i]+grid_spacing*grid_point[i] for i in [0,1,2]]) for grid_point in flex.nested_loop(grid_size)])
+    grid_points_cart = flex.vec3_double(flex.nested_loop(grid_size)) * grid_spacing + min_carts
+#    grid_points_cart = flex.vec3_double([tuple([min_carts[i]+grid_spacing*grid_point[i] for i in [0,1,2]]) for grid_point in flex.nested_loop(grid_size)])
 
     return box_size, grid_size, grid_points_cart
 

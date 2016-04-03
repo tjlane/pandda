@@ -2,7 +2,7 @@
 import os, sys
 
 PANDDA_TOP = os.environ['PANDDA_TOP']
-PANDDA_VERSION = 0.1
+PANDDA_VERSION = 1.0
 PANDDA_TEXT = """
 ------------------------------------------------------------------>
 -
@@ -20,7 +20,7 @@ PANDDA_TEXT = """
 -  When using this software, please cite:
 -
 -       Unpublished,
--       N M Pearce, S Kelm, J Shi, C M Deane & F von Delft
+-       N Pearce, et al.
 -
 -  and include "PANDDA" in the KEYWRD section of related PDB files
 -

@@ -1,10 +1,5 @@
 
-STRUCTURE_MASK_NAMES = [    'bad structure - chain counts',
-                            'bad structure - chain ids',
-                            'bad structure - chain sequences',
-                            'bad structure - residue counts',
-                            'bad structure - atom counts',
-                            'bad structure - non-identical structures',
+STRUCTURE_MASK_NAMES = [    'bad structure - non-identical structures',
                             'bad structure - different space group'    ]
 CRYSTAL_MASK_NAMES   = [    'bad crystal - isomorphous crystal',
                             'bad crystal - isomorphous structure',
@@ -78,6 +73,7 @@ class PanddaDatasetFilenames:
     input_data             = '{!s}-pandda-input.mtz'
     # Dataset Information
     dataset_info           = '{!s}-info.csv'
+    dataset_log            = '{!s}.log'
     dataset_pickle         = 'dataset.pickle'
     # Structure Files...
     aligned_structure      = '{!s}-aligned-structure.pdb'

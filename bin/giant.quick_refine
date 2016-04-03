@@ -21,7 +21,7 @@ input {
     cif = None
         .type = str
         .multiple = True
-    params = 'phenix_refine.params'
+    params = None
         .type = str
 }
 settings {
@@ -29,6 +29,12 @@ settings {
         .type = choice
     create_occupancy_params = False
         .type = bool
+    args = None
+        .help = "Pass any additional arguments to the program? (Command Line arguments). Pass as quoted strings."
+        .type = str
+        .multiple = True
+}
+phenix {
     ordered_solvent = False
         .type = bool
     anisotropic = False
@@ -72,8 +78,10 @@ def run(params):
     if params.settings.create_occupancy_params and params.input.params:
         print 'Running giant.create_occupancy_params'
         print 'Generating occupancy model for the input pdb: {}'.format(params.input.pdb)
-        os.system('giant.create_occupancy_params pdb={} phenix_occ_out={} refmac_occ_out=None verbose=False'.format(params.input.pdb, params.input.params))
-
+        if params.settings.program == 'phenix':
+            os.system('giant.create_occupancy_params pdb={} phenix_occ_out={} refmac_occ_out=None verbose=False'.format(params.input.pdb, params.input.params))
+        elif params.settings.program == 'refmac':
+            os.system('giant.create_occupancy_params pdb={} phenix_occ_out=None refmac_occ_out={} verbose=False'.format(params.input.pdb, params.input.params))
 
     ######################## 
     # Phenix
@@ -87,11 +95,11 @@ def run(params):
             cm.add_command_line_arguments( params.input.cif )
         if params.input.params and os.path.exists(params.input.params): 
             cm.add_command_line_arguments([ params.input.params ])
-        if params.settings.ordered_solvent:
+        if params.phenix.ordered_solvent:
             cm.add_command_line_arguments([ 'ordered_solvent=True' ])
-        if params.settings.anisotropic:
+        if params.phenix.anisotropic:
             cm.add_command_line_arguments([ 'adp.individual.anisotropic="not element H"' ])
-        if params.settings.no_coords:
+        if params.phenix.no_coords:
             cm.add_command_line_arguments([ 'strategy=occupancies+individual_adp' ])
 
     elif params.settings.program == 'refmac':
@@ -103,7 +111,16 @@ def run(params):
         if params.input.cif:
             for cif in params.input.cif:
               cm.add_command_line_arguments( ['libin', cif] )
+
+        # Read in occupancy params
+        if params.input.params:
+            cm.add_standard_input( open(params.input.params).read().split('\n') )
+
         cm.add_standard_input( ['END'] )
+
+    # Pass additional command line arguments?
+    if params.settings.args:
+        cm.add_command_line_arguments( params.input.args )
 
     ######################## 
     # Print + Run

@@ -30,6 +30,10 @@ pandda_phil_def = """
                     .type = path
                 mtz = None
                     .type = path
+                amp_label = None
+                    .type = str
+                pha_label = None
+                    .type = str
             }
             flags
                 .help = "Flags for individual datasets"

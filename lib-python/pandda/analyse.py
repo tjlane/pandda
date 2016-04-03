@@ -9,7 +9,6 @@ import numpy, pandas
 
 import iotbx.pdb
 import iotbx.mtz
-import iotbx.ccp4_map
 
 from libtbx import easy_mp, easy_pickle
 from libtbx import phil
@@ -46,6 +45,7 @@ from pandda.phil import pandda_phil_def
 from pandda.settings import PANDDA_TOP, PANDDA_TEXT, PANDDA_VERSION
 from pandda.constants import *
 from pandda.holders import *
+from pandda.misc import *
 
 # SET FILTERING CONSTANTS
 FILTER_SCALING_CORRELATION_CUTOFF = 0.7
@@ -232,9 +232,6 @@ class DatasetHandler(object):
         """Get copy of self that can be pickled - some cctbx objects cannot be pickled..."""
         return self
 
-    def get_structure_summary(self):
-        return structure_summary(hierarchy=self.hierarchy())
-
     def find_nearest_calpha(self, points, hierarchy=None):
         """Returns the labels of the nearest calpha for each of the given points"""
         if hierarchy is None: hierarchy = self.hierarchy()
@@ -379,27 +376,6 @@ def map_handler(map_data, unit_cell):
 
     return basic_map
 
-def structure_summary(hierarchy):
-    """Return a summary of a structure"""
-
-    # Dictionary to be returned
-    s_dict = {}
-
-    # Counts of different things in the structure
-    o_counts = hierarchy.overall_counts()
-
-    # Chain Summaries
-    s_dict['chain_sequences'] = {}
-    s_dict['chain_classes'] = {}
-    s_dict['chain_is_protein'] = {}
-
-    for chain in hierarchy.chains():
-        s_dict['chain_sequences'][chain.id] = ''.join(chain.as_sequence())
-        s_dict['chain_classes'][chain.id] = chain.get_residue_names_and_classes()[1]
-        s_dict['chain_is_protein'][chain.id] = chain.is_protein()
-
-    return o_counts, s_dict
-
 def align_dataset_to_reference(d_handler, ref_handler, method):
     """Calculate the rotation and translation needed to align one structure to another"""
     assert method in ['both','local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
@@ -415,7 +391,7 @@ def align_dataset_to_reference(d_handler, ref_handler, method):
 
 class PanddaMapAnalyser(object):
     """Class to hold dataset maps, statistical maps and meta data for a set of related maps. Also holds functions for analysing the maps."""
-    def __init__(self, dataset_maps, meta, statistical_maps=None, parent=None):
+    def __init__(self, dataset_maps, meta, statistical_maps=None, parent=None, log=None):
         # Validate the meta
         assert isinstance(meta, Meta), 'meta must be of type Meta. Type given: {!s}'.format(type(meta))
         assert hasattr(meta, 'resolution')
@@ -438,10 +414,15 @@ class PanddaMapAnalyser(object):
         if parent:
             assert isinstance(parent, PanddaMultiDatasetAnalyser), 'parent must be of type PanddaMultiDatasetAnalyser. Type given: {!s}'.format(type(parent))
             self.parent = parent
-            self.log = self.parent.log
         else:
             self.parent = None
-            self.log = print
+
+        if log:
+            self.log = log
+        elif (self.parent and self.parent.log):
+            self.log = self.parent.log
+        else:
+            self.log = Log(verbose=False)
 
     def validate_maps(self):
         """Check that all of the added maps are the same size etc..."""
@@ -742,7 +723,7 @@ class PanddaMultiDatasetAnalyser(object):
 
         self.out_dir = easy_directory(os.path.abspath(self.args.output.out_dir))
 
-        self._log = Log(log_file=os.path.join(self.out_dir, 'pandda.log'), verbose=self.args.settings.verbose)
+        self.log = Log(log_file=os.path.join(self.out_dir, 'pandda.log'), verbose=self.args.settings.verbose)
 
         # Set up the output folders and files
         self._run_directory_setup()
@@ -1259,20 +1240,6 @@ class PanddaMultiDatasetAnalyser(object):
         except:
             self.log('FAILED TO PICKLE MYSELF')
 
-    def log(self, message, show=False, hide=False):
-        """Log message to file, and mirror to stdout if verbose or force_print (hide overrules show)"""
-        if not isinstance(message, str):    message = str(message)
-        # Print to stdout
-        if (not hide) and (show or self._log.verbose):
-            self._log.show(message)
-        # Remove \r from message as this spoils the log (^Ms)
-        message = message.replace('\r','')
-        # Write to file
-        self._log.write(message=message+'\n', mode='a')
-
-    def print_log(self):
-        self._log.show(self._log.read_all())
-
     def is_new_pandda(self):
         """Is this the first time the program has been run?"""
         return self._new_pandda
@@ -1524,12 +1491,12 @@ class PanddaMultiDatasetAnalyser(object):
         mask_map_file = self.output_handler.get_file('reference_dataset').replace('.mtz','.totalmask.ccp4')
         map_mask = flex.double(self.reference_grid().global_mask().total_mask_binary())
         map_mask.reshape(flex.grid(self.reference_grid().grid_size()))
-        self.write_array_to_map(output_file=mask_map_file, map_data=map_mask)
+        write_array_to_map(output_file=mask_map_file, map_data=map_mask, grid=self.reference_grid())
         # Write symmetry masked map
         mask_map_file = self.output_handler.get_file('reference_dataset').replace('.mtz','.symmask.ccp4')
         map_mask = flex.double(self.reference_grid().symmetry_mask().total_mask_binary())
         map_mask.reshape(flex.grid(self.reference_grid().grid_size()))
-        self.write_array_to_map(output_file=mask_map_file, map_data=map_mask)
+        write_array_to_map(output_file=mask_map_file, map_data=map_mask, grid=self.reference_grid())
 
         return
 
@@ -1731,6 +1698,7 @@ class PanddaMultiDatasetAnalyser(object):
             d_handler.output_handler.add_file(file_name=f.input_structure.format(d_handler.tag),                    file_tag='input_structure'              )
             d_handler.output_handler.add_file(file_name=f.input_data.format(d_handler.tag),                         file_tag='input_data'                   )
             d_handler.output_handler.add_file(file_name=f.dataset_info.format(d_handler.tag),                       file_tag='dataset_info'                 )
+            d_handler.output_handler.add_file(file_name=f.dataset_log.format(d_handler.tag),                        file_tag='dataset_log'                  )
             d_handler.output_handler.add_file(file_name=f.aligned_structure.format(d_handler.tag),                  file_tag='aligned_structure'            )
             d_handler.output_handler.add_file(file_name=f.symmetry_copies.format(d_handler.tag),                    file_tag='symmetry_copies'              )
             d_handler.output_handler.add_file(file_name=f.sampled_map.format(d_handler.tag),                        file_tag='sampled_map'                  )
@@ -1828,7 +1796,9 @@ class PanddaMultiDatasetAnalyser(object):
         """Extract amplitudes and phases for creating map"""
 
         # Extract reflection data for the reference dataset
-        self.reference_dataset().sfs = extract_structure_factors(self.reference_dataset().reflection_data(), ampl_label=ampl_label, phas_label=phas_label)
+        ref_ampl_label = self.args.input.reference.amp_label if self.args.input.reference.amp_label else ampl_label
+        ref_phas_label = self.args.input.reference.pha_label if self.args.input.reference.pha_label else phas_label
+        self.reference_dataset().sfs = extract_structure_factors(self.reference_dataset().reflection_data(), ampl_label=ref_ampl_label, phas_label=ref_phas_label)
 
         t1 = time.time()
         self.log('===================================>>>', True)
@@ -1837,7 +1807,7 @@ class PanddaMultiDatasetAnalyser(object):
             if d_handler.sfs != None:
                 print('\rAlready Loaded: Dataset {!s}          '.format(d_handler.tag), end=''); sys.stdout.flush()
             else:
-                print('\rLoading: Dataset {!s}                 '.format(d_handler.tag), end=''); sys.stdout.flush()
+                print('\rLoading Diffraction Data: Dataset {!s}                 '.format(d_handler.tag), end=''); sys.stdout.flush()
                 d_handler.sfs = extract_structure_factors(mtz_object=d_handler.reflection_data(), ampl_label=ampl_label, phas_label=phas_label)
         t2 = time.time()
         self.log('\r> Structure Factors Extracted > Time Taken: {!s} seconds'.format(int(t2-t1)), True)
@@ -1958,13 +1928,10 @@ class PanddaMultiDatasetAnalyser(object):
             self.log('\t{!s}'.format(failure_class), True)
         self.log('===================================>>>', True)
 
-        ref_counts, ref_dict = self.reference_dataset().get_structure_summary()
         ref_handler = self.reference_dataset()
 
         # Check that the same protein structure is present in each dataset - THIS MASK SHOULD INCLUDE ALL DATASETS AT FIRST
         for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
-
-            my_counts, my_dict = d_handler.get_structure_summary()
 
             print('\rFiltering Dataset {!s}          '.format(d_handler.tag), end=''); sys.stdout.flush()
             # Check the space group of the dataset
@@ -1978,49 +1945,9 @@ class PanddaMultiDatasetAnalyser(object):
             # Check that the hierarchies are identical
             if not d_handler.hierarchy().is_similar_hierarchy(ref_handler.hierarchy()):
                 self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
-                self.log('Non-Identical Hierarchy')
-                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_chains, d_handler.tag, my_counts.n_chains))
+                self.log('Non-Identical Structure (Structures do not contain the same atoms)')
                 self.log('===================================>>>')
                 self.datasets.all_masks().set_mask_value(mask_name='bad structure - non-identical structures', entry_id=d_handler.tag, value=True)
-            # Check the number of chains
-            elif my_counts.n_chains != ref_counts.n_chains:
-                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
-                self.log('Different Number of Chains')
-                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_chains, d_handler.tag, my_counts.n_chains))
-                self.log('===================================>>>')
-                self.datasets.all_masks().set_mask_value(mask_name='bad structure - chain counts', entry_id=d_handler.tag, value=True)
-            # Check the ids of the chains
-            elif my_counts.chain_ids != ref_counts.chain_ids:
-                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
-                self.log('Different Chain IDs')
-                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.chain_ids, d_handler.tag, my_counts.chain_ids))
-                print('===================================>>>')
-                self.datasets.all_masks().set_mask_value(mask_name='bad structure - chain ids', entry_id=d_handler.tag, value=True)
-            # Check the sequences of the chains
-            elif my_dict['chain_sequences'] != ref_dict['chain_sequences']:
-                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
-                self.log('Different Sequences')
-                for chain_id in ref_dict['chain_sequences'].keys():
-                    self.log('Chain {!s}: Reference - {!s}'.format(chain_id, ref_dict['chain_sequences'][chain_id]))
-                    self.log('Chain {!s}: {:>9s} - {!s}'.format(chain_id, my_dict['chain_sequences'][chain_id]))
-                print('===================================>>>')
-                self.datasets.all_masks().set_mask_value(mask_name='bad structure - chain sequences', entry_id=d_handler.tag, value=True)
-            # Check the number of residues - TODO not sure it can ever get here... remove?
-            elif my_counts.n_residues != ref_counts.n_residues:
-                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
-                self.log('Different Number of Residues')
-                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_residues, d_handler.tag, my_counts.n_residues))
-                print('===================================>>>')
-                self.datasets.all_masks().set_mask_value(mask_name='bad structure - residue counts', entry_id=d_handler.tag, value=True)
-            # Check the number of atoms
-            elif my_counts.n_atoms != ref_counts.n_atoms:
-                self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
-                self.log('Different Number of Atoms')
-                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_counts.n_atoms, d_handler.tag, my_counts.n_atoms))
-                print('===================================>>>')
-                self.datasets.all_masks().set_mask_value(mask_name='bad structure - atom counts', entry_id=d_handler.tag, value=True)
-            else:
-                pass
 
         # Combine structure_masks
         structure_reject_mask = self.datasets.all_masks().combine_masks(PanddaMaskNames.structure_mask_names)
@@ -2420,20 +2347,6 @@ class PanddaMultiDatasetAnalyser(object):
                 print('FAILED TO MAKE IMAGES')
                 print(c.err)
 
-    def write_map_value_distribution(self, map_vals, output_file, plot_indices=None, plot_normal=False):
-        """Write out the value distribution for a map"""
-        if not self.args.output.plot_graphs: return
-        if plot_indices: plot_vals = [map_vals[i] for i in plot_indices]
-        else:            plot_vals = list(map_vals)
-        analyse_graphs.map_value_distribution(f_name=output_file, plot_vals=plot_vals, plot_normal=plot_normal)
-
-    def write_qq_plot_against_normal(self, map_vals, output_file, plot_indices=None):
-        """Plot the values in map_vals against those expected from a normal distribution"""
-        if not self.args.output.plot_graphs: return
-        if plot_indices: plot_vals = [map_vals[i] for i in plot_indices]
-        else:            plot_vals = list(map_vals)
-        analyse_graphs.qq_plot_against_normal(f_name=output_file, plot_vals=plot_vals)
-
     def write_map_analyser_maps(self, map_analyser, analysis_mask_name):
         """Write statistical maps for a map_analyser object"""
 
@@ -2448,18 +2361,24 @@ class PanddaMultiDatasetAnalyser(object):
 
         self.log('=> Writing Statistical Maps')
 
-        self.write_array_to_map(output_file = self.output_handler.get_file('mean_map').format(map_res),
-                                map_data    = map_analyser.statistical_maps.mean_map     )
-        self.write_array_to_map(output_file = self.output_handler.get_file('stds_map').format(map_res),
-                                map_data    = map_analyser.statistical_maps.stds_map     )
-        self.write_array_to_map(output_file = self.output_handler.get_file('sadj_map').format(map_res),
-                                map_data    = map_analyser.statistical_maps.sadj_map     )
-        self.write_array_to_map(output_file = self.output_handler.get_file('skew_map').format(map_res),
-                                map_data    = map_analyser.statistical_maps.skew_map     )
-        self.write_array_to_map(output_file = self.output_handler.get_file('kurt_map').format(map_res),
-                                map_data    = map_analyser.statistical_maps.kurt_map     )
-        self.write_array_to_map(output_file = self.output_handler.get_file('bimo_map').format(map_res),
-                                map_data    = map_analyser.statistical_maps.bimo_map     )
+        write_array_to_map(output_file = self.output_handler.get_file('mean_map').format(map_res),
+                           map_data    = map_analyser.statistical_maps.mean_map,
+                           grid        = self.reference_grid()     )
+        write_array_to_map(output_file = self.output_handler.get_file('stds_map').format(map_res),
+                           map_data    = map_analyser.statistical_maps.stds_map,
+                           grid        = self.reference_grid()     )
+        write_array_to_map(output_file = self.output_handler.get_file('sadj_map').format(map_res),
+                           map_data    = map_analyser.statistical_maps.sadj_map,
+                           grid        = self.reference_grid()     )
+        write_array_to_map(output_file = self.output_handler.get_file('skew_map').format(map_res),
+                           map_data    = map_analyser.statistical_maps.skew_map,
+                           grid        = self.reference_grid()     )
+        write_array_to_map(output_file = self.output_handler.get_file('kurt_map').format(map_res),
+                           map_data    = map_analyser.statistical_maps.kurt_map,
+                           grid        = self.reference_grid()     )
+        write_array_to_map(output_file = self.output_handler.get_file('bimo_map').format(map_res),
+                           map_data    = map_analyser.statistical_maps.bimo_map,
+                           grid        = self.reference_grid()     )
 
     def write_output_csvs(self):
         """Write CSV file of dataset variables"""
@@ -2622,31 +2541,6 @@ class PanddaMultiDatasetAnalyser(object):
                 out_line = '\n'.join(map(str,out_list)) + '\n'
                 fh.write(out_line)
 
-    def rotate_map(self, d_handler, map_data, align_on_grid_point=None):
-        """Apply an RT matrix to an array on the reference grid"""
-
-        if (align_on_grid_point is not None) and self.params.alignment.method=='local':
-            # For the local alignment transformation
-            rt_lab = self.reference_grid().partition().query_by_grid_points([align_on_grid_point])[0]
-            self.log('=> Aligning Event Map to: Chain {}, Residue {}'.format(rt_lab[0], rt_lab[1].strip()))
-            rt = d_handler.local_alignment_transforms()[rt_lab]
-        else:
-            # For the global alignment transformation
-            rt = d_handler.global_alignment_transform()
-
-        return cctbx.maptbx.rotate_translate_map(   unit_cell          = self.reference_grid().unit_cell(),
-                                                    map_data           = map_data,
-                                                    rotation_matrix    = rt.r.elems,
-                                                    translation_vector = rt.t.elems    )
-
-    def write_array_to_map(self, output_file, map_data):
-        """Take array on the reference grid and write to map"""
-        iotbx.ccp4_map.write_ccp4_map(  file_name   = output_file,
-                                        unit_cell   = self.reference_grid().unit_cell(),
-                                        space_group = self.reference_grid().space_group(),
-                                        map_data    = map_data,
-                                        labels      = flex.std_string(['Map from pandda'])     )
-
     def pickle(self, pickle_file, pickle_object, overwrite=True):
         """Takes an object and pickles it"""
         if os.path.exists(pickle_file) and not overwrite:
@@ -2662,7 +2556,7 @@ class PanddaMultiDatasetAnalyser(object):
 
 class PanddaZMapAnalyser(object):
     def __init__(self, params, grid_spacing, log):
-        self._log = log
+        self.log = log
 
         self.params = params
         self.grid_spacing = grid_spacing
@@ -2670,17 +2564,6 @@ class PanddaZMapAnalyser(object):
         self.grid_clustering_cutoff = 1.1 * numpy.math.sqrt(3)
         self.real_clustering_cufoff = self.grid_clustering_cutoff * grid_spacing
         self.grid_minimum_volume = int(self.params.min_blob_volume/(grid_spacing**3))
-
-    def log(self, message, show=False, hide=False):
-        """Log message to file, and mirror to stdout if verbose or force_print (hide overrules show)"""
-        if not isinstance(message, str):    message = str(message)
-        # Print to stdout
-        if (not hide) and (show or self._log.verbose):
-            self._log.show(message)
-        # Remove \r from message as this spoils the log (^Ms)
-        message = message.replace('\r','')
-        # Write to file
-        self._log.write(message=message+'\n', mode='a')
 
     def print_settings(self):
         self.log('===================================>>>', True)
@@ -2720,7 +2603,7 @@ class PanddaZMapAnalyser(object):
             return -1, [(above_gps, above_val)]
         # Cluster points if we have found them
         else:
-            self.log('> Clustering {!s} Points.'.format(above_len), True)
+            self.log('> Clustering {!s} Points.'.format(above_len))
             # Cluster the extracted points
             t1 = time.time()
             cluster_ids = scipy.cluster.hierarchy.fclusterdata( X = above_gps,
@@ -2796,7 +2679,7 @@ class PanddaZMapAnalyser(object):
                     filtered_c_idxs.append(c_idx)
                     break
             # Report
-#            if self._log.verbose:
+#            if self.log.verbose:
 #                if filtered_c_idxs and (filtered_c_idxs[-1] == c_idx):
 #                    print('KEEPING CLUSTER:', c_idx)
 #                else:
@@ -2854,7 +2737,7 @@ class PanddaZMapAnalyser(object):
                         contacts += 1
                 # Record the number of contacts (over size of cluster)
                 c_contacts.append(1.0*contacts/len(c_points_cart))
-#                if self._log.verbose:
+#                if self.log.verbose:
 #                    print('CLUSTER:', c_idx, ', CONTACTS PER POINT:', round(c_contacts[-1],3))
 
             # Find the cluster with the most contacts
@@ -2864,7 +2747,7 @@ class PanddaZMapAnalyser(object):
             else:
                 cluster_to_keep = g_idxs[c_contacts.index(max_contacts)]
                 filt_z_clusters.append(z_clusters[cluster_to_keep])
-#                if self._log.verbose:
+#                if self.log.verbose:
 #                    print('KEEPING CLUSTER', cluster_to_keep)
         assert len(filt_z_clusters) == max(sym_equiv_groups), 'NUMBER OF UNIQUE GROUPS AND GROUPS TO BE RETURNED NOT THE SAME'
 
