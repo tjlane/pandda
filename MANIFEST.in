@@ -1,0 +1,5 @@
+recursive-include bin *
+
+exclude bin/pandda.python
+exclude bin/pandda.ipython
+exclude bin/pandda.coot
