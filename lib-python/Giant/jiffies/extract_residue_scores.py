@@ -158,7 +158,9 @@ def process_folder(dir, params, data_table=None):
         rg_confs   = [c.altloc for c in rg.conformers()]
 
         # Calculate Occupancies of atoms
-        res_occ = sum(set(rg_atoms.extract_occ()))
+        if rg_confs == ['']: res_occ = max(rg.atoms().extract_occ())
+        else:                res_occ = sum([max(c.atoms().extract_occ()) for c in rg.conformers() if c.altloc])
+
         if res_occ > 1: res_occ = None
         data_table.set_value(index=row_label, col='OCC',    value=res_occ )
 

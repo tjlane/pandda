@@ -31,6 +31,10 @@ suffix = '.stripped.pdb'
     .help = 'output suffix for input files'
     .type = str
 
+reset_altlocs = True
+    .help = 'Relabel conformers of kept residues'
+    .type = bool
+
 overwrite = False
     .type = bool
 verbose = False
@@ -92,6 +96,21 @@ def proc(ensemble_file, params, sel_resnames=None, sel_confs=None):
     sel_string = ' or '.join(['({})'.format(s) for s in [sel_string_1, sel_string_2]])
 
     conf_sel = new_ens.select(sel_cache.selection(sel_string))
+
+    if params.reset_altlocs:
+        ######################################################################
+        if params.verbose: print '===========================================>>>'
+        if params.verbose: print 'Resetting OUTPUT STRUCTURE'
+        ######################################################################
+
+        if len(confs_to_select)==1: hash = {confs_to_select[0]: ' '}
+        else:                       hash = dict(zip(confs_to_select, iotbx.pdb.systematic_chain_ids()))
+
+        if params.verbose:
+            for it_pr in hash.items(): print 'Changing ALTLOCs:', ' -> '.join(it_pr)
+
+        for ag in conf_sel.atom_groups():
+            if ag.altloc in confs_to_select: ag.altloc = hash[ag.altloc]
 
     ######################################################################
     if params.verbose: print '===========================================>>>'
