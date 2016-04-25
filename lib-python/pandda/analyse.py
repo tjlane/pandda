@@ -22,23 +22,23 @@ from scitbx.array_family import flex
 from scitbx.math import superpose, basic_statistics
 from scitbx.math.distributions import normal_distribution
 
-from Bamboo.Common import Meta, Info
-from Bamboo.Common.Logs import Log
-from Bamboo.Common.File import output_file_object, easy_directory
-from Bamboo.Common.command import commandManager
+from bamboo.common import Meta, Info
+from bamboo.common.logs import Log
+from bamboo.common.file import FileManager
+from bamboo.common.path import easy_directory, rel_symlink
+from bamboo.common.print import status_bar, status_bar_2
+from bamboo.common.command import CommandManager
 
-from Giant.Grid import grid_handler
-from Giant.Grid.Masks import spherical_mask, atomic_mask, grid_mask
+from giant.grid import grid_handler
+from giant.grid.masks import spherical_mask, atomic_mask, grid_mask
 
-from Giant.Xray.Data import crystalSummary
-from Giant.Xray.Data.utils import extract_structure_factors
-from Giant.Xray.Maps import scale_map_to_reference
-from Giant.Xray.Symmetry import combine_hierarchies, generate_adjacent_symmetry_copies, find_symmetry_equivalent_groups
-from Giant.Stats.Ospina import estimate_true_underlying_sd
-from Giant.Stats.Cluster import find_connected_groups, generate_group_idxs
-from Giant.Structure.align import perform_flexible_alignment, find_nearest_calphas, transform_coordinates_with_flexible_alignment
-
-from Giant.Utils import status_bar, status_bar_2, rel_symlink
+from giant.xray.data import crystalSummary
+from giant.xray.data.utils import extract_structure_factors
+from giant.xray.maps import scale_map_to_reference
+from giant.xray.symmetry import combine_hierarchies, generate_adjacent_symmetry_copies, find_symmetry_equivalent_groups
+from giant.stats.ospina import estimate_true_underlying_sd
+from giant.stats.cluster import find_connected_groups, generate_group_idxs
+from giant.structure.align import perform_flexible_alignment, find_nearest_calphas, transform_coordinates_with_flexible_alignment
 
 from pandda import analyse_graphs
 from pandda.phil import pandda_phil_def
@@ -188,7 +188,7 @@ class DatasetHandler(object):
     def initialise_output_directory(self, outputdir):
         """Initialise a dataset output directory"""
         # Create a file and directory organiser
-        self.output_handler = output_file_object(rootdir=easy_directory(outputdir))
+        self.output_handler = FileManager(rootdir=easy_directory(outputdir))
 
     def pdb_filename(self):
         return self._pdb_file
@@ -946,7 +946,7 @@ class PanddaMultiDatasetAnalyser(object):
         """Initialise the pandda directory system"""
 
         # Create a file and directory organiser
-        self.output_handler = output_file_object(rootdir=self.out_dir)
+        self.output_handler = FileManager(rootdir=self.out_dir)
 
         # Filename templates
         f = PanddaAnalyserFilenames
@@ -1050,7 +1050,7 @@ class PanddaMultiDatasetAnalyser(object):
         """Initialise all of the pickle filenames"""
 
         # Pickle Handler
-        self.pickle_handler = output_file_object(rootdir=self.output_handler.get_dir('pickle'))
+        self.pickle_handler = FileManager(rootdir=self.output_handler.get_dir('pickle'))
         # Pickled Reference Objects
         self.pickle_handler.add_file(file_name='reference_grid.pickle',     file_tag='reference_grid')
         self.pickle_handler.add_file(file_name='reference_dataset.pickle',  file_tag='reference_dataset')
@@ -2299,8 +2299,8 @@ class PanddaMultiDatasetAnalyser(object):
     def image_blob(self, script, image, d_handler, point, point_no, towards=[10,10,10]):
         """Take pictures of the maps with ccp4mg"""
 
-        from Bamboo.Common.Command import CommandManager
-        from Giant.Graphics import calculate_view_quaternion, multiply_quaternions
+        from bamboo.common.command import CommandManager
+        from giant.graphics import calculate_view_quaternion, multiply_quaternions
 
         # Get the template to be filled in
         template = PANDDA_HTML_ENV.get_template('ccp4mg-pic.py')
@@ -2478,7 +2478,7 @@ class PanddaMultiDatasetAnalyser(object):
 
             # Change into directory as script runs off of relative paths
             os.chdir(self.output_handler.get_dir('output_summaries'))
-            c = commandManager('pymol')
+            c = CommandManager('pymol')
             c.add_command_line_arguments(['-c', self.output_handler.get_file(file_tag='pymol_sites_pml')])
             c.run()
             # Change back to top directory
@@ -2499,7 +2499,7 @@ class PanddaMultiDatasetAnalyser(object):
         else:               site_idx = 0
         self.tables.event_info.set_value(event.id, 'site_idx', site_idx)
         # Event and cluster information
-        self.tables.event_info.set_value(event.id, '1-BDC',  event.info.estimated_pseudo_occupancy)
+        self.tables.event_info.set_value(event.id, '1-BDC',  1.0 - event.info.estimated_bdc)
         self.tables.event_info.set_value(event.id, 'z_peak', event.cluster.max)
         self.tables.event_info.set_value(event.id, 'z_mean', event.cluster.mean)
         self.tables.event_info.set_value(event.id, 'cluster_size', event.cluster.size)

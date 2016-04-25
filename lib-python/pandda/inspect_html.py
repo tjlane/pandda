@@ -1,8 +1,8 @@
 import os, glob
 
-from pandda.settings import PANDDA_TOP, PANDDA_TEXT
+from bamboo.html import path2url
 from pandda.html import PANDDA_HTML_ENV
-from Bamboo.html import path2url
+from pandda.settings import PANDDA_TOP, PANDDA_TEXT
 from pandda.constants import PanddaAnalyserFilenames
 
 def write_inspect_html(top_dir, inspector):

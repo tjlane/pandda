@@ -1,6 +1,6 @@
 #! /usr/local/python/python2.7.3-64bit/bin/python
 
-from Bamboo.Common.Parser import argParser
+from bamboo.common.parser import argParser
 
 def SoakParser():
     """Parser for Modelling Fragment-Soaking Experiments"""

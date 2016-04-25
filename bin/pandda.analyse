@@ -13,13 +13,13 @@ from scitbx.array_family import flex
 from scitbx.math import basic_statistics
 from libtbx import easy_mp
 
-from Bamboo.plot import bar
-from Bamboo.Common import Meta, Info
-from Bamboo.Common.Logs import Log
+from bamboo.plot import bar
+from bamboo.common import Meta, Info
+from bamboo.common.logs import Log
+from bamboo.common.path import rel_symlink
 
-from Giant.Utils import rel_symlink
-from Giant.Grid.Masks import grid_mask
-from Giant.Xray.Maps.Occupancy import calculate_occupancy_subtracted_map, estimate_event_occupancy
+from giant.grid.masks import grid_mask
+from giant.xray.maps.bdc import calculate_bdc_subtracted_map, estimate_event_background_correction
 
 from pandda import welcome
 from pandda import analyse_html, analyse_graphs
@@ -340,9 +340,9 @@ def process_dataset_map_func(proc_args):
         # ============================================================================>
         point_cluster = PointCluster(id=event_key, points=event_points, values=event_values)
         # ============================================================================>
-        # Estimate the occupancy of the detected feature 
+        # Estimate the background correction of the detected feature 
         # ============================================================================>
-        # Extract sites for this cluster and estimate the occupancy of the event
+        # Extract sites for this cluster and estimate the background correction for the event
         log_strs.append('===================================>>>')
         log_strs.append('Estimating Event {!s} Background Correction'.format(event_num))
         # Generate custom grid mask for this dataset
@@ -356,47 +356,46 @@ def process_dataset_map_func(proc_args):
         # Use the outer mask to provide a reference point for the correlation to the mean map
         reference_points = list(reference_grid.global_mask().inner_mask())
         # Calculate the correlation with the mean map as different amounts of the mean map are subtracted
-        event_occ_est = estimate_event_occupancy( 
+        event_remain_est = estimate_event_background_correction(
             ref_map          = map_analyser.statistical_maps.mean_map,
             query_map        = m_handler.map,
             feature_region   = expanded_points,
             reference_region = reference_points,
-            min_occ          = 1.0-params.background_correction.max_bdc,
-            max_occ          = 1.0-params.background_correction.min_bdc,
-            occ_increment    = params.background_correction.increment,
+            min_remain       = 1.0-params.background_correction.max_bdc,
+            max_remain       = 1.0-params.background_correction.min_bdc,
+            bdc_increment    = params.background_correction.increment,
             method           = 'value',
             verbose          = args.settings.verbose)
-        log_strs.append('=> Event Background Correction estimated as {!s}'.format(1-event_occ_est))
+        log_strs.append('=> Event Background Correction estimated as {!s}'.format(1-event_remain_est))
         # ============================================================================>
-        # Calculate occupancy map at this occupancy
+        # Calculate background-corrected map
         # ============================================================================>
-        event_occ_map = calculate_occupancy_subtracted_map(
-            ref_map      = map_analyser.statistical_maps.mean_map, 
-            query_map    = m_handler.map,
-            subtract_occ = 1.0 - event_occ_est)
-        # Normalise the event map
-        #event_occ_map = event_occ_map / event_occ_est
+        event_map = calculate_bdc_subtracted_map(
+            ref_map   = map_analyser.statistical_maps.mean_map, 
+            query_map = m_handler.map,
+            bdc       = 1.0 - event_remain_est)
         # Write out this array
-        write_array_to_map( output_file = d_handler.output_handler.get_file('event_map').format(event_num, event_occ_est), 
-                            map_data    = event_occ_map,    
+        write_array_to_map( output_file = d_handler.output_handler.get_file('event_map').format(event_num, event_remain_est), 
+                            map_data    = event_map,    
                             grid        = reference_grid     )
                             
-        write_array_to_map( output_file = d_handler.output_handler.get_file('native_event_map').format(event_num, event_occ_est),
-                            map_data    = rotate_map(grid=reference_grid, d_handler=d_handler, map_data=event_occ_map),
+        write_array_to_map( output_file = d_handler.output_handler.get_file('native_event_map').format(event_num, event_remain_est),
+                            map_data    = rotate_map(grid=reference_grid, d_handler=d_handler, map_data=event_map),
                             grid        = reference_grid     )
-#                            map_data    = rotate_map(grid=reference_grid, d_handler=d_handler, map_data=event_occ_map, align_on_grid_point=map(int,point_cluster.centroid)))
+#                            map_data    = rotate_map(grid=reference_grid, d_handler=d_handler, map_data=event_map, align_on_grid_point=map(int,point_cluster.centroid)))
         # ============================================================================>
         # Create an event object
         # ============================================================================>
         event_obj = Event(id=point_cluster.id, cluster=point_cluster)
-        event_obj.info.estimated_pseudo_occupancy = event_occ_est
+        event_obj.info.estimated_pseudo_occupancy = event_remain_est
+        event_obj.info.estimated_bdc              = 1.0 - event_remain_est
         # ============================================================================>
         # Append to dataset handler
         # ============================================================================>
         d_handler.events.append(event_obj)
 
         # ============================================================================>
-        # Write out the graph of the occupancy correlations
+        # Write out the graph of the background correction correlations
         # ============================================================================>
         #if pandda.args.output.plot_graphs:
         #    pandda.something() 

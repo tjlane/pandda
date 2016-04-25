@@ -1,4 +1,4 @@
-from Bamboo.Common.Masks import mask_collection
+from bamboo.common.masks import mask_collection
 
 class HolderList(object):
     """Class for grouping many holders together"""

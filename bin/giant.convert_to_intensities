@@ -3,9 +3,9 @@
 import os, sys, copy, re
 
 import libtbx.phil
-from Bamboo.Common.command import commandManager
-from Giant.jiffies import parse_phil_args
-from Giant.Xray.Data import crystalSummary
+from bamboo.common.command import CommandManager
+from giant.jiffies import parse_phil_args
+from giant.xray.data import crystalSummary
 
 blank_arg_prepend = 'mtz='
 
@@ -57,7 +57,7 @@ def run(params):
             continue
        
         if params.method.package == 'phenix':
-            cm = commandManager('phenix.reflection_file_converter')
+            cm = CommandManager('phenix.reflection_file_converter')
             cm.add_command_line_arguments([ mtz_file,
                                             '--mtz-root-label='+params.output.column,
                                             '--label='+params.input.columns,

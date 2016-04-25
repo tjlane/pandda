@@ -2,7 +2,7 @@
 
 print('IMPORTING FROM PHENIX!')
 
-from Bamboo.Common.Command import CommandManager
+from bamboo.common.command import CommandManager
 
 def find_NCS_transforms(pdbfile, mtzfile=None):
     """usesi phenix.find_ncs to find the symmetry operators required to build the ASU"""

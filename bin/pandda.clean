@@ -2,7 +2,7 @@
 
 import os, sys
 
-from Giant.jiffies import parse_phil_args
+from giant.jiffies import parse_phil_args
 from pandda.jiffies.pandda_clean import master_phil, run, blank_arg_prepend
 
 if __name__ == '__main__':

@@ -3,7 +3,7 @@ import os, sys, glob, copy, time, itertools
 import gtk
 import pandas
 
-from Bamboo.plot import bar
+from bamboo.plot import bar
 from pandda.constants import PanddaAnalyserFilenames, PanddaDatasetFilenames, PanddaDatasetPNGFilenames
 from pandda import inspect_html
 
@@ -487,6 +487,13 @@ class PanddaMolHandler(object):
             if os.path.exists(e.fitted_link): set_mol_displayed(l, 0)
             else:                             set_mol_displayed(l, 1)
             self.open_mols['l'] = l
+
+            # Set the occupancy of the ligand to 2*(1-bdc)
+            all_residue_ids = all_residues(l)
+            for res_chn, res_num, res_ins in all_residue_ids:
+                for (at_name, at_altloc), details, coords in residue_info(l, res_chn, res_num, res_ins):
+                    set_atom_attribute(l, res_chn, res_num, res_ins, at_name, at_altloc, 'occ', 2.0*e.est_1_bdc)
+                    set_atom_attribute(l, res_chn, res_num, res_ins, at_name, at_altloc, 'B',   20.0)
 
         return e
 

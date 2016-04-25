@@ -7,7 +7,7 @@ import numpy
 
 from pandda.jiffies import transform_coordinates
 from pandda.constants import PanddaDatasetFilenames
-from Giant.jiffies import merge_conformations, create_occupancy_params
+from giant.jiffies import merge_conformations, create_occupancy_params
 
 ############################################################################
 

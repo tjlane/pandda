@@ -1,15 +1,14 @@
-#! /usr/local/python/python2.7.3-64bit/bin/python
 
-from Bamboo.Common.Parser import argParser
-from Bamboo.Utils.ProgramSelector import ligand_builders, ligand_fitters, refiners
+from bamboo.common.parser import argParser
+from bamboo.wrappers.program_selector import ligand_builders, ligand_fitters, refiners
+from bamboo.common.logs import LigandRecord, PdbRecord, MtzRecord
+
 
 # Ligand Model Record
 class modelLog(object):
     """Object to store information about the ligand modelling process"""
 
     def __init__(self, ligsmile, refpdb, apopdb, inputmtz, builder, fitter, refiner, outdir, name='ModelLog', verbose=False, **kwargs):
-
-        import Bamboo.Common.Logs as Logs
 
         # Program used to generate the ligand model
         self.builder = builder
@@ -21,15 +20,15 @@ class modelLog(object):
         self.outdir = outdir
 
         # Record Objects
-        self.lig = Logs.LigandRecord(name=name+'-Ligand', builder=builder, smile=ligsmile)
-        self.mtz = Logs.MTZRecord(name=name+'-MTZ')
+        self.lig = LigandRecord(name=name+'-Ligand', builder=builder, smile=ligsmile)
+        self.mtz = MtzRecord(name=name+'-MTZ')
         if refpdb:
-            self.pdb = Logs.PDBRecord(name=name+'-PDB-FROM REFERENCE')
+            self.pdb = PdbRecord(name=name+'-PDB-FROM REFERENCE')
             self.setReferencePDB(refpdb)
             self.setRawMTZ(inputmtz)
             self.pdb.history.setOriginalFile(refpdb)
         elif apopdb:
-            self.pdb = Logs.PDBRecord(name=name+'-PDB-FROM APO FILE')
+            self.pdb = PdbRecord(name=name+'-PDB-FROM APO FILE')
             self.setApoPDB(apopdb)
             self.setApoMTZ(inputmtz)
             self.pdb.history.setOriginalFile(apopdb)

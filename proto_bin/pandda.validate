@@ -5,14 +5,14 @@ import numpy
 
 from scitbx.array_family import flex
 
-from Bamboo.Common.File import easy_directory
+from bamboo.common.path import easy_directory, rel_symlink
+from bamboo.common.print import status_bar
 
-from Giant.Stats.Cluster import cluster_data
-from Giant.Stats.Utils import calculate_roc_vals
-from Giant.Utils import status_bar, rel_symlink
+from giant.stats.cluster import cluster_data
+from giant.stats.utils import calculate_roc_vals
 
-from PANDDAs.Main import PanddaMultiDatasetAnalyser
-from PANDDAs import welcome
+from pandda.analyse import PanddaMultiDatasetAnalyser
+from pandda import welcome
 
 from libtbx import easy_pickle
 

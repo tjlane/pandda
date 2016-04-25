@@ -4,8 +4,10 @@ import os, sys, glob
 
 import libtbx.phil
 
-from Bamboo.Common.command import commandManager
-from Giant.Utils import rel_symlink
+from giant.jiffies import parse_phil_args
+
+from bamboo.common.command import CommandManager
+from bamboo.common.path import rel_symlink
 
 blank_arg_prepend = {   '.mtz':'mtz=', 
                         '.pdb':'pdb=', 
@@ -88,7 +90,7 @@ def run(params):
     if params.settings.program == 'phenix':
         ######################## 
         # Build command string
-        cm = commandManager('phenix.refine')
+        cm = CommandManager('phenix.refine')
         cm.add_command_line_arguments([ params.input.pdb, params.input.mtz ])
         cm.add_command_line_arguments([ 'output.prefix={}'.format(output_prefix) ])
         if params.input.cif: 
@@ -105,7 +107,7 @@ def run(params):
     elif params.settings.program == 'refmac':
         ######################## 
         # Build command string
-        cm = commandManager('refmac5')
+        cm = CommandManager('refmac5')
         cm.add_command_line_arguments( ['xyzin', params.input.pdb, 'hklin', params.input.mtz] )
         cm.add_command_line_arguments( ['xyzout', output_prefix+'.pdb', 'hklout', output_prefix+'.mtz'] )
         if params.input.cif:
@@ -172,8 +174,6 @@ def run(params):
         os.system('giant.create_occupancy_params pdb={} verbose=False'.format(link_pdb))
 
 ##########################
-
-from Giant.jiffies import parse_phil_args
 
 if __name__ == '__main__':
 

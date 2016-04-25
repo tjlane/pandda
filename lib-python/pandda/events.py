@@ -2,8 +2,8 @@ import os, sys
 
 import scipy.cluster
 
-from Bamboo.Common import Info
-from Giant.Stats.Cluster import find_connected_groups, generate_group_idxs
+from bamboo.common import Info
+from giant.stats.cluster import find_connected_groups, generate_group_idxs
 
 from scitbx.array_family import flex
 
@@ -41,7 +41,7 @@ class PointCluster(object):
         return '\n'.join(out)
 
 class Event(object):
-    _attributes = ['estimated_pseudo_occupancy']
+    _attributes = ['estimated_pseudo_occupancy', 'estimated_bdc']
     def __init__(self, id, cluster, info=None):
         """Class to hold information about an event in a dataset"""
         # Process cluster object (points and values for Event)

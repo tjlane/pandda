@@ -2,8 +2,8 @@
 
 import os, sys
 
-from Giant.jiffies import parse_phil_args
-from Giant.jiffies.local_align import master_phil, run, blank_arg_prepend
+from giant.jiffies import parse_phil_args
+from giant.jiffies.local_align import master_phil, run, blank_arg_prepend
 
 if __name__ == '__main__':
 

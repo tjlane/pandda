@@ -4,9 +4,9 @@ import os, sys, copy, re, shutil
 
 import libtbx.phil
 import libtbx.easy_mp
-from Bamboo.Common.command import commandManager
-from Giant.jiffies import parse_phil_args
-from Giant.Xray.Data import crystalSummary
+from bamboo.common.command import CommandManager
+from giant.jiffies import parse_phil_args
+from giant.xray.data import crystalSummary
 
 blank_arg_prepend = {'.pdb':'reference_pdb=', '.mtz':'mtz='}
 
@@ -85,7 +85,7 @@ def run(params):
             # Need to precreate the directory
             os.mkdir(output_dir)
 
-            cm = commandManager('dimple')
+            cm = CommandManager('dimple')
             if params.options.use_reference_mtz:
                 cm.add_command_line_arguments([ '--free-r-flags', ref_mtz_file ])
             cm.add_command_line_arguments([ mtz_file,

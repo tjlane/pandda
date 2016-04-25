@@ -3,9 +3,9 @@
 import os, sys, copy, re
 
 import libtbx.phil
-from Bamboo.Common.command import commandManager
-from Giant.jiffies import parse_phil_args
-from Giant.Xray.Data import crystalSummary
+from bamboo.common.command import CommandManager
+from giant.jiffies import parse_phil_args
+from giant.xray.data import crystalSummary
 
 blank_arg_prepend = 'mtz='
 
@@ -36,7 +36,7 @@ def run(params):
         ######################################
         # REINDEX
         ######################################
-        cm = commandManager('pointless')
+        cm = CommandManager('pointless')
         cm.add_command_line_arguments([ 'hklin', mtz_file,
                                         'hklref', params.input.reference_mtz,
                                         'hklout', reind_output_mtz   ])
@@ -52,7 +52,7 @@ def run(params):
         ######################################
         # Transfer Free-R Flags
         ######################################
-        cm = commandManager('cad')
+        cm = CommandManager('cad')
         cm.add_command_line_arguments([ 'hklin1', reind_output_mtz,
                                         'hklin2', params.input.reference_mtz,
                                         'hklout', cad_output_mtz   ])
@@ -71,7 +71,7 @@ def run(params):
         ######################################
         # Fill in missing reflections (nans)
         ######################################
-        cm = commandManager('uniqueify')
+        cm = CommandManager('uniqueify')
         cm.add_command_line_arguments([ '-f', 'FreeR_flag',
                                         cad_output_mtz,
                                         free_output_mtz   ])
@@ -86,7 +86,7 @@ def run(params):
 #        ######################################
 #        # Complete Free-R Flags
 #        ######################################
-#        cm = commandManager('freerflag')
+#        cm = CommandManager('freerflag')
 #        cm.add_command_line_arguments([ 'hklin', cad_output_mtz,
 #                                        'hklout', free_output_mtz   ])
 #        cm.add_standard_input([ 'COMPLETE FREE=FreeR_flag',

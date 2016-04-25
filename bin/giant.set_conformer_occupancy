@@ -2,8 +2,8 @@
 
 import os, sys
 
-from Giant.jiffies import parse_phil_args
-from Giant.jiffies.set_conformer_occupancies import master_phil, run
+from giant.jiffies import parse_phil_args
+from giant.jiffies.set_conformer_occupancies import master_phil, run
 
 if __name__ == '__main__':
 
