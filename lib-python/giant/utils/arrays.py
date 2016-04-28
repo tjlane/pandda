@@ -1,7 +1,7 @@
 import os, sys
 import numpy
 
-from bamboo.common.print import status_bar
+from bamboo.common.status import status_bar
 
 def write_numpy_array_to_file(np_array, output_file, status=True):
     """Takes numpy array and writes to file. Chooses axis of numpy array so as to maximise the number of rows of the output file"""

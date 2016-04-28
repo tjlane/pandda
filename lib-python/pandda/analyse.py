@@ -26,7 +26,7 @@ from bamboo.common import Meta, Info
 from bamboo.common.logs import Log
 from bamboo.common.file import FileManager
 from bamboo.common.path import easy_directory, rel_symlink
-from bamboo.common.print import status_bar, status_bar_2
+from bamboo.common.status import status_bar, status_bar_2
 from bamboo.common.command import CommandManager
 
 from giant.grid import grid_handler
