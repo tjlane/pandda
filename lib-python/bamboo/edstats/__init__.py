@@ -37,7 +37,7 @@ def score_with_edstats_to_list(mtzpath, pdbpath):
     temp_handle, temp_path = tempfile.mkstemp(suffix='.table', prefix='edstats_')
 
     # Find the labels in the mtzfile
-    file_obj = mtzFile(mtzpath)
+    file_obj = MtzFile(mtzpath)
     f_label = file_obj.label.f
     if not f_label:
         raise ReflectionException('MTZ Summary ERROR: No F Label Found in MTZ File: {!s}'.format(mtzpath))

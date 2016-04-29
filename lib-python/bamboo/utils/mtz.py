@@ -16,7 +16,7 @@ class MtzFile(object):
         # Read the mtzfile and create summary
         self.summary = get_mtz_summary(mtzfile)
         # Record information from summary
-        self.label = columnLabels()
+        self.label = ColumnLabels()
         self.label.f = self.summary['f_labels'][0] if self.summary['f_labels'] else None
         self.label.sigf = self.summary['sigf_labels'][0] if self.summary['sigf_labels'] else None
         self.label.i = self.summary['i_labels'][0] if self.summary['i_labels'] else None
@@ -28,7 +28,7 @@ class MtzFile(object):
         self.label.diff_f = self.summary['wtmap_f_diff'][0] if self.summary['wtmap_f_diff'] else None
         self.label.diff_p = self.summary['wtmap_p_diff'][0] if self.summary['wtmap_p_diff'] else None
         # Get some Meta
-        self.data = mtzMeta()
+        self.data = MtzMeta()
         self.data.reslow = self.summary['reslow'] if self.summary['reslow'] else None
         self.data.reshigh = self.summary['reshigh'] if self.summary['reshigh'] else None
         self.data.spacegroup = self.summary['spacegroup'] if self.summary['spacegroup'] else None
@@ -75,60 +75,60 @@ def get_mtz_summary(mtzfile):
 
     # Extract Contents of MTZ
     MTZDMP = CommandManager('mtzdmp')
-    MTZDMP.SetArguments(mtzfile)
-    MTZDMP.Run()
+    MTZDMP.add_command_line_arguments(mtzfile)
+    MTZDMP.run()
     # Check for errors
     if MTZDMP.process.returncode != 0:
-        raise RuntimeError('mtzdmp failed to read file {!s}:\nReturn: {!s}\nOut: {!s}'.format(mtzfile,MTZDMP.process.returncode,MTZDMP.out))
+        raise RuntimeError('mtzdmp failed to read file {!s}:\nReturn: {!s}\nOut: {!s}'.format(mtzfile,MTZDMP.process.returncode,MTZDMP.output))
 
     # Create empty dict to contain the summary
     summary = {}
 
     # Get the resolution range
     regex = re.compile('\*  Resolution Range :.*\n.*\n.*\((.*)A \)\n')
-    matches = regex.findall(MTZDMP.out)
+    matches = regex.findall(MTZDMP.output)
     assert matches, 'No Resolution Range found in MTZFile {!s}'.format(mtzfile)
     assert len(matches)==1, 'Too many matching lines found for Resolution Range in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
     summary['reslow'],summary['reshigh'] = map(float,matches[0].replace(' ','').split('-'))
 
     # Get the Number of Columns
     regex = re.compile('\* Number of Columns =(.*)\n')
-    matches = regex.findall(MTZDMP.out)
+    matches = regex.findall(MTZDMP.output)
     assert matches, 'No Number of Columns found for {!s}'.format(mtzfile)
     assert len(matches)==1, 'Too many matching lines found for Number of Columns in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
     summary['numcols'] = int(matches[0].strip())
 
     # Get the Number of Reflections
     regex = re.compile('\* Number of Reflections =(.*)\n')
-    matches = regex.findall(MTZDMP.out)
+    matches = regex.findall(MTZDMP.output)
     assert matches, 'No Number of Reflections found for {!s}'.format(mtzfile)
     assert len(matches)==1, 'Too many matching lines found for Number of Reflections in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
     summary['numreflections'] = int(matches[0].strip())
 
     # Get the Column Labels
     regex = re.compile('\* Column Labels :.*\n.*\n(.*)\n')
-    matches = regex.findall(MTZDMP.out)
+    matches = regex.findall(MTZDMP.output)
     assert matches, 'No Column Labels found for {!s}'.format(mtzfile)
     assert len(matches)==1, 'Too many matching lines found for Column Headings in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
     summary['colheadings'] = matches[0].strip().split()
 
     # Get the Column Types
     regex = re.compile('\* Column Types :.*\n.*\n(.*)\n')
-    matches = regex.findall(MTZDMP.out)
+    matches = regex.findall(MTZDMP.output)
     assert matches, 'No Column Types found for {!s}'.format(mtzfile)
     assert len(matches)==1, 'Too many matching lines found for Column Types in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
     summary['coltypes'] = matches[0].strip().split()
 
     # Get the different datasets
     regex = re.compile('\* Associated datasets :.*\n.*\n(.*)\n')
-    matches = regex.findall(MTZDMP.out)
+    matches = regex.findall(MTZDMP.output)
     assert matches, 'No Dataset Numbers found for {!s}'.format(mtzfile)
     assert len(matches)==1, 'Too many matching lines found for Dataset Numbers in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
     summary['coldatasets'] = matches[0].strip().split()
 
     # Get the Spacegroup
     regex = re.compile('\* Space group =.*\'(.*)\'.\(number(.*)\)')
-    matches = regex.findall(MTZDMP.out)
+    matches = regex.findall(MTZDMP.output)
     assert matches, 'No Space Group found for {!s}'.format(mtzfile)
     assert len(matches)==1, 'Too many matching lines found for Spacegroup in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
     summary['spacegroup'] = matches[0][0].strip()
@@ -136,7 +136,7 @@ def get_mtz_summary(mtzfile):
 
     # Get the Cell Dimensions
     regex = re.compile('\* Cell Dimensions :.*\n.*\n(.*)\n')
-    matches = regex.findall(MTZDMP.out)
+    matches = regex.findall(MTZDMP.output)
     assert matches, 'No Cell Dimensions found for {!s}'.format(mtzfile)
     assert len(matches)==1, 'Too many matching lines found for Cell Dimensions in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
     summary['cell'] = map(float,matches[0].split())
@@ -200,14 +200,14 @@ def get_mtz_resolution(mtzfile):
 
     # Extract Contents of MTZ
     MTZDMP = CommandManager('mtzdmp')
-    MTZDMP.SetArguments(mtzfile)
-    MTZDMP.Run()
+    MTZDMP.add_command_line_arguments(mtzfile)
+    MTZDMP.run()
     # Check for errors
     if MTZDMP.process.returncode != 0:
-        raise RuntimeError('mtzdmp failed to read file {!s}:\nReturn: {!s}\nOut: {!s}'.format(mtzfile,MTZDMP.process.returncode,MTZDMP.out))
+        raise RuntimeError('mtzdmp failed to read file {!s}:\nReturn: {!s}\nOut: {!s}'.format(mtzfile,MTZDMP.process.returncode,MTZDMP.output))
     # Search for the Column Headings
     regex = re.compile('\*  Resolution Range :.*\n.*\n.*\((.*)A \)\n')
-    matches = regex.findall(MTZDMP.out)
+    matches = regex.findall(MTZDMP.output)
     # Check for validity of matches
     assert matches, 'No Resolution Range found in MTZFile {!s}'.format(mtzfile)
     assert len(matches)==1, 'Too many matching lines found for Column Headings in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)

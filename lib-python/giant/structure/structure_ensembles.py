@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import os, sys, glob, time, re
 
 class identical_structure_ensemble(object):

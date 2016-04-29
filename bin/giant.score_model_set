@@ -3,7 +3,7 @@
 import os, sys
 
 from giant.jiffies import parse_phil_args
-from giant.jiffies.extract_residue_scores import master_phil, run, blank_arg_prepend
+from giant.jiffies.score_model_set import master_phil, run, blank_arg_prepend
 
 if __name__ == '__main__':
 
