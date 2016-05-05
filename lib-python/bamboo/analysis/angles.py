@@ -1,7 +1,7 @@
 import math
 
-from bamboo.rdkit_utils.bonds.dihedral import calculate_dihedral_angle_differences
 from bamboo.rdkit_utils.mol import check_pdb_readable
+from bamboo.rdkit_utils.bonds.dihedral import calculate_dihedral_angle_differences
 
 def calculate_dihedral_angle_rmsd_from_file(file1, file2):
     """Calculate angle rmsd between structures"""

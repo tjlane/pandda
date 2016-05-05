@@ -1,0 +1,161 @@
+#!/usr/bin/env pandda.python
+
+import os, sys, copy, re, glob
+import random
+
+import libtbx.phil
+import iotbx.pdb
+
+import numpy, pandas
+
+from scitbx.array_family import flex
+
+from bamboo.common.path import easy_directory
+from pandemic import bar
+
+blank_arg_prepend = {'.pdb':'pdb='}
+
+master_phil = libtbx.phil.parse("""
+input {
+    pdb = None
+        .type = str
+        .multiple = False
+}
+output {
+    number_of_models = 50
+        .type = int
+    resolution_mean = 1.5
+        .type = float
+    resolution_std  = 0.1
+        .type = float
+    out_dir = ./pandemic-test-data
+        .type = path
+}
+variation {
+    occupancy {
+        method = none *random preferential
+            .help = "How should the coordinates of the structure be randomised?"
+            .type = choice
+            .multiple = False
+        magnitude = 0.05
+            .help = "Magnitude of the randomisation of the occupancies"
+            .type = float
+    }
+    coordinates {
+        method = *none random
+            .help = "How should the coordinates of the structure be randomised?"
+            .type = choice
+            .multiple = False
+        magnitude = 0.1
+            .help = "Magnitude of the randomisation of the coordinates (Angstroms)"
+            .type = float
+    }
+verbose = False
+}
+""")
+
+def randomise_occupancies(hierarchy, params, verbose=False):
+    """Iterate through the structure and randomise the occupancies and coordinates of the residues"""
+
+    for rg in hierarchy.residue_groups():
+
+        # Skip if it doesn't have conformers
+        if not rg.have_conformers():    continue
+        
+        # Extract non-blank altlocs
+        ags = sorted([ag for ag in rg.atom_groups() if ag.altloc], key=lambda a: a.altloc)
+
+        # Skip if the conformer is not all the same occupancy
+        homogenous_confs = True
+        for ag in ags:
+            if not len(set(ag.atoms().extract_occ())) == 1:
+                homogenous_confs = False
+        if not homogenous_confs:        continue
+
+        #########################################################
+        #   
+        #########################################################
+
+        if verbose:
+            print 'Residue:', rg.resid(), '->', [ag.altloc for ag in ags]
+            print 'Original Occupancies:', [ag.atoms().extract_occ()[0] for ag in ags]
+        
+        # Randomise the occupancies of each of the conformers
+        if params.occupancy.method == 'random':
+            for ag in ags:
+                occ_pert = random.gauss(mu=0, sigma=params.occupancy.magnitude)
+                cur_occ = ag.atoms().extract_occ()[0]
+                new_occ = cur_occ + occ_pert
+                if new_occ < 0.0: new_occ = 0.0
+                #if new_occ > 1.0: new_occ = 1.0
+                ag.atoms().set_occ(flex.double(ag.atoms_size(), new_occ))
+                
+        # Normalise the atom_group occupancies
+        total_occ = sum([ag.atoms().extract_occ()[0] for ag in ags])
+        for ag in ags: 
+            ag.atoms().set_occ(flex.double(ag.atoms_size(), ag.atoms().extract_occ()[0]/total_occ))
+        
+        if verbose:
+            print 'Final Occupancies:   ', [round(ag.atoms().extract_occ()[0],2) for ag in ags]
+
+    return hierarchy 
+
+def run(params):
+
+    assert os.path.exists(params.input.pdb), 'PDB File does not exist: {}'.format(params.input.pdb)
+
+    out_dir = easy_directory(params.output.out_dir)
+    
+    input_hierarchy = iotbx.pdb.hierarchy.input(params.input.pdb).hierarchy
+
+    for idx in range(params.output.number_of_models):
+
+        num = idx+1
+        model_dir = easy_directory(os.path.join(out_dir, 'model_{:06}'.format(num)))
+        
+        print(bar)
+        print('Processing Model {}'.format(num))
+
+        print('>> Randomising structure')
+        # Create a copy of the hierarchy with elements randomised
+        random_hierarchy = randomise_occupancies(hierarchy=input_hierarchy.deep_copy(), params=params.variation)
+        # Write the output hierarchy
+        random_hierarchy.write_pdb_file(os.path.join(model_dir, 'perturbed.pdb'))
+
+        print('>> Generating structure factors from model'.format(num))
+        # Convert the structure to structure factors
+        dataset_resolution = random.gauss(mu=params.output.resolution_mean, sigma=params.output.resolution_std)
+        xray_s_factors = random_hierarchy.extract_xray_structure().structure_factors(d_min=dataset_resolution)
+        random_dataset = xray_s_factors.f_calc().as_mtz_dataset(column_root_label='F-CALC')
+        random_dataset.mtz_object().write(os.path.join(model_dir, 'perturbed.mtz'))
+
+#        from IPython import embed
+#        embed()
+#        break
+
+#################################################################################################
+#
+#################################################################################################
+#
+#################################################################################################
+
+from giant.jiffies import parse_phil_args
+
+if __name__ == '__main__':
+
+    # Show Defaults (just values)
+    if '--show-defaults' in sys.argv:
+        master_phil.show(attributes_level=0)
+    # Show Defaults (including information)
+    elif '--help' in sys.argv:
+        master_phil.show(attributes_level=2)
+    # ... or just run ...
+    elif '--expert' in sys.argv:
+        master_phil.show(attributes_level=4)
+    # ... or just run ...
+    else:
+        working_phil = parse_phil_args(master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
+        out = run(params=working_phil.extract())
+    # Exit (unnecessary, but eh)
+    sys.exit()
+

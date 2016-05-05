@@ -36,44 +36,44 @@ class ErrorObject(object):
 
     def __str__(self):
         """Formats error messages for printing"""
-        return self.formatWarnings()
+        return self.format_warnings()
 
-    def printWarnings(self):
+    def print_warnings(self):
         if self.warnings:
-            print(self.formatWarnings())
+            print(self.format_warnings())
         else:
             print('\n=====>\n=====> No Warnings!\n=====>\n')
 
-    def writeWarnings(self, filename):
+    def write_warnings(self, filename):
         with open(filename,'w') as logfile:
-            logfile.write(self.formatWarnings())
+            logfile.write(self.format_warnings())
         print('\n=====>\n=====> {!s} Warning(s) written to {!s}\n=====>\n'.format(len(self.warnings),filename))
 
-    def formatWarnings(self):
+    def format_warnings(self):
         """Formats the warning messages for printing"""
         warnings = ['\n=====>\n=====> {!s} Warning(s)\n=====>\n'.format(len(self.warnings))]
         warnings.extend(['\n {!s:>3} : {!s}'.format(i+1,warn) for i,warn in enumerate(self.warnings)])
         return ''.join(warnings)
 
-    def recordWarning(self, message):
+    def record_warning(self, message):
         """Records any NON-TERMINAL error message"""
         self.warnings.append(message)
         if self.verbose:
-            FlagError(message)
+            flag_error(message)
 
-    def recordFlagWarning(self, flag, message):
+    def record_flag_warning(self, flag, message):
         """Records any NON-TERMINAL error message (with a flag)"""
-        self.recordwarning(message)
+        self.record_warning(message)
         if flag in self.errorflags:
             self.errorflags[flag].append(message)
         else:
             self.errorflags[flag] = [message]
 
-    def recordError(self, message):
+    def record_error(self, message):
         """Raises any TERMINAL error message"""
         self.warnings.append(message)
-        self.printWarnings()
-        ThrowError(message)
+        self.print_warnings()
+        throw_error(message)
 
 #:::::::::::::::::::::::::::::::::#
 # ############################### #

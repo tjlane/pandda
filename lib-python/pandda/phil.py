@@ -223,10 +223,13 @@ pandda_phil_def = """
             pickling
                 .help = "Pickle Settings"
             {
-                full_pickle = False
+                pickle_complete_pandda = False
                     .help = "Pickle the entire PANDDA object for reloading - takes a lot of space"
                     .type = bool
-                pickle_maps = False
+                pickle_map_analysers = False
+                    .help = "Pickle map analysers"
+                    .type = bool
+                pickle_dataset_maps = False
                     .help = "Pickle the dataset maps as part of the dataset pickle object"
                     .type = bool
             }

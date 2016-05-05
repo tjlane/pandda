@@ -1,7 +1,7 @@
 
 from bamboo.common.command import CommandManager
+from bamboo.utils.mtz import MtzSummary
 from bamboo.wrappers.coot.scripts import *
-from bamboo.utils.mtz import MtzFile
 
 def validate_coot_script(script):
     """Performs checks on a coot script"""
@@ -29,36 +29,9 @@ def run_coot(script, graphical=False, noguano=True):
     # Initialise
     COOT = CommandManager('coot')
     # Load arguments
-    COOT.SetArguments(*coot_flags)
+    COOT.add_command_line_arguments(*coot_flags)
     # Run!
-    COOT.Run()
-
-    return COOT
-
-def coot_real_space_refine(pdbin, mtzin, pdbout, cifin=None, scriptname=None):
-    """Uses coot's regularize-zone function to real-space-refine a ligand"""
-
-    # Generate scriptname
-    if not scriptname:
-        scriptname = pdbout + '.coot_script.py'
-
-    # Get mtz summary
-    mtz_obj = MtzFile(mtzin)
-
-    coot_script = []
-
-    coot_script += ["mol1 = " + COOT_load_pdb.replace('<pdbin>',pdbin)]
-    coot_script += ["mtz1 = " + COOT_load_mtz.replace('<mtzin>',mtzin)]
-
-    coot_script += ["print('MOLLLL: ' + str(mol1))"]
-    coot_script += ["print('MTZZZZ: ' + str(mtz1))"]
-
-    coot_script += [COOT_exit]
-
-    with open(scriptname, 'w') as scrip:
-        scrip.write('\n'.join(coot_script))
-
-    COOT = run_coot(scriptname)
+    COOT.run()
 
     return COOT
 

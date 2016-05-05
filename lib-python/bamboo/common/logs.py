@@ -34,6 +34,12 @@ class Log(object):
     def read_all(self):
         return open(self.log_file, 'r').read()
 
+##################################################################
+#
+#   TODO Redo all code below this line - and move to utils TODO
+#
+##################################################################
+
 class LigandRecord(object):
 
     def __str__(self):
@@ -64,127 +70,6 @@ class LigandRecord(object):
         self.fittinglog = None
         self.refininglog = None
 
-class FileHistory(object):
-
-    def __init__(self, name=None, path=None):
-
-        # Name of object
-        self.name = name
-        # File history
-        self.history = ModelHistory('{!s} History'.format(self.name))
-        # Current Models (most recent)
-        self.current = path
-        self.previous = None
-        self.history.setOriginalFile(self.current)
-
-    def __call__(self):
-        return self.current
-
-class PdbRecord(FileHistory):
-
-    def __init__(self, name='PDBRecords', path=None):
-
-        super(pdbRecord, self).__init__(name, path)
-
-        # Reference PDB
-        self.reference = None
-        self.apo = None
-
-    def __setattr__(self, name, value):
-
-        if value is None:
-            self.__dict__[name] = value
-        elif name == 'current':
-            if isinstance(value,str):
-                self.__dict__['previous'] = self.__dict__[name]
-                self.__dict__[name] = PdbFile(value)
-                self.history.addFile(self.__dict__[name])
-            else:
-                raise ValueError('File Path must be of type str')
-        elif name == 'previous':
-            print('Cannot set self.previous - not allowed')
-        elif name in ['reference']:
-            self.__dict__[name] = PdbFile(value)
-            if not self.current:
-                self.__dict__['current'] = self.__dict__[name]
-                self.history.addFile(self.__dict__[name])
-            else:
-                self.history.addFile(self.__dict__[name], index=-1)
-        elif name in ['apo']:
-            self.__dict__[name] = PdbFile(value)
-            if not self.current:
-                # No files - add as current
-                self.__dict__['current'] = self.__dict__[name]
-                self.history.addFile(self.__dict__[name])
-            elif len(self.history.history)==1 and self.__dict__['reference']:
-                # Only reference - add as current
-                self.__dict__['current'] = self.__dict__[name]
-                self.history.addFile(self.__dict__[name])
-            elif self.current and not self.__dict__['reference']:
-                # Files present, but not reference - put as earliest file
-                self.history.addFile(self.__dict__[name], index=-1)
-            else:
-                # Multiple present, as is reference - set as second file
-                self.history.addFile(self.__dict__[name], index=-2)
-        else:
-            self.__dict__[name] = value
-
-        # TODO add RDKIT autoparsing?
-
-class MtzRecord(FileHistory):
-
-    def __init__(self, name='MTZRecords', path=None):
-
-        super(mtzRecord, self).__init__(name, path)
-
-        # Raw (No Phases) & Apo (Initial Density)
-        self.raw = None
-        self.apo = None
-
-    def __setattr__(self, name, value):
-
-        if value is None:
-            self.__dict__[name] = value
-        elif name == 'current':
-            if isinstance(value,str):
-                self.__dict__['previous'] = self.__dict__[name]
-                self.__dict__[name] = MtzFile(value)
-                self.history.addFile(self.__dict__[name])
-            else:
-                raise ValueError('File Path must be of type str')
-        elif name == 'previous':
-            print('Cannot set self.previous - not allowed')
-        elif name in ['raw']:
-            self.__dict__[name] = MtzFile(value)
-            if not self.current:
-                # No files - add as current
-                self.__dict__['current'] = self.__dict__[name]
-                self.history.addFile(self.__dict__[name])
-            else:
-                self.history.addFile(self.__dict__[name], index=-1)
-        elif name in ['apo']:
-            self.__dict__[name] = MtzFile(value)
-            if not self.current:
-                self.__dict__['current'] = self.__dict__[name]
-                self.history.addFile(self.__dict__[name])
-            elif len(self.history.history)==1 and self.__dict__['raw']:
-                # Only raw - add as current
-                self.__dict__['current'] = self.__dict__[name]
-                self.history.addFile(self.__dict__[name])
-            elif self.current and not self.__dict__['raw']:
-                # Files present, but not raw - put as earliest file
-                self.history.addFile(self.__dict__[name], index=-1)
-            else:
-                # Multiple present, as is raw - set as second file
-                self.history.addFile(self.__dict__[name], index=-2)
-#        elif name in ['raw','apo']:
-#            self.__dict__[name] = MtzFile(value)
-#            if not self.current:
-#                self.__dict__['current'] = self.__dict__[name]
-#            self.history.addFile(self.__dict__[name])
-        else:
-            self.__dict__[name] = value
-
 class ModelHistory(object):
     """Class for containing the modelling history of a Model"""
 
@@ -203,14 +88,31 @@ class ModelHistory(object):
     def __iter__(self):
         return iter(self.history)
 
-    def setOriginalFile(self, origfile):
+    def set_original_file(self, origfile):
         """Marks a file as the first file"""
         self.original = origfile
 
-    def addFile(self, newfile, index=0):
+    def add_file(self, newfile, index=0):
         """Appends a new model to the beginning of the history list"""
         self.history.insert(index, newfile)
 
-    def getCurrentFile(self):
+    def get_current_file(self):
         """Returns the newest model (top of the list)"""
         return self.history[0]
+
+class FileHistory(object):
+
+    def __init__(self, name=None, path=None):
+
+        # Name of object
+        self.name = name
+        # File history
+        self.history = ModelHistory('{!s} History'.format(self.name))
+        # Current Models (most recent)
+        self.current = path
+        self.previous = None
+        self.history.set_original_file(self.current)
+
+    def __call__(self):
+        return self.current
+

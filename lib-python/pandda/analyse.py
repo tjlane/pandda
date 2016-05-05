@@ -1052,19 +1052,17 @@ class PanddaMultiDatasetAnalyser(object):
         # Pickle Handler
         self.pickle_handler = FileManager(rootdir=self.output_handler.get_dir('pickle'))
         # Pickled Reference Objects
-        self.pickle_handler.add_file(file_name='reference_grid.pickle',     file_tag='reference_grid')
-        self.pickle_handler.add_file(file_name='reference_dataset.pickle',  file_tag='reference_dataset')
+        self.pickle_handler.add_file(file_name='reference_grid.pickle',    file_tag='reference_grid')
+        self.pickle_handler.add_file(file_name='reference_dataset.pickle', file_tag='reference_dataset')
         # Pickled Datasets
-        self.pickle_handler.add_file(file_name='dataset_masks.pickle',      file_tag='dataset_masks')
-        self.pickle_handler.add_file(file_name='dataset_meta.pickle',       file_tag='dataset_meta')
-        # Pickled Information
-        self.pickle_handler.add_file(file_name='dataset_info.pickle',       file_tag='dataset_info')
-        self.pickle_handler.add_file(file_name='dataset_map_info.pickle',   file_tag='map_info')
-        # Pickled Stats
-        self.pickle_handler.add_file(file_name='statistical_maps.pickle',   file_tag='stat_maps')
-
-        # Pickled SELF
-        self.pickle_handler.add_file(file_name='my_pandda.pickle',          file_tag='my_pandda')
+        self.pickle_handler.add_file(file_name='dataset_masks.pickle',     file_tag='dataset_masks')
+        self.pickle_handler.add_file(file_name='dataset_meta.pickle',      file_tag='dataset_meta')
+        # Pickled Statistical Maps
+        self.pickle_handler.add_file(file_name='statistical_maps.pickle',  file_tag='stat_maps')
+        # Map Analysers
+        self.pickle_handler.add_file(file_name='map_analyser_{}A.pickle',  file_tag='map_analyser')
+        # Pickled Pandda -- (main object)
+        self.pickle_handler.add_file(file_name='my_pandda.pickle',         file_tag='my_pandda')
 
     def load_pickled_objects(self):
         """Loads any pickled objects it finds"""
@@ -1226,15 +1224,13 @@ class PanddaMultiDatasetAnalyser(object):
                                  'dataset_pickle_list'   : dataset_pickle_list
                             })
             # Pickle the list of locations of the dataset pickles
-            self.pickle(pickle_file   = self.pickle_handler.get_file('dataset_meta'),
-                        pickle_object = dataset_meta,
-                        overwrite = True)
+            self.pickle(pickle_file=self.pickle_handler.get_file('dataset_meta'), pickle_object=dataset_meta, overwrite=True)
         except:
             self.log('FAILED TO PICKLE META')
 
         # Lastly, pickle myself (if required)
         try:
-            if self.args.settings.pickling.full_pickle:
+            if self.args.settings.pickling.pickle_complete_pandda:
                 # Pickle myself
                 self.log('===================================>>>', True)
                 self.log('Pickling the PANDDA Results')

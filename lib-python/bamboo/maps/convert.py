@@ -1,7 +1,7 @@
 import os,sys
 
 from bamboo.maps.utils import select_factors_and_phases_for_map
-from bamboo.utils.mtz import get_mtz_summary
+from bamboo.utils.mtz import get_mtz_summary_dict
 from bamboo.wrappers.maputils import fft_mtz_to_map
 
 def convert_mtz_to_map(mtzfile, mapfile=None, method='fft', maptype='2FOFC', force=False):
@@ -18,7 +18,7 @@ def convert_mtz_to_map(mtzfile, mapfile=None, method='fft', maptype='2FOFC', for
             return None
 
     # Read the Column Headings from the MTZ File
-    cols = get_mtz_summary(mtzfile)['colheadings']
+    cols = get_mtz_summary_dict(mtzfile)['colheadings']
     selcols = select_factors_and_phases_for_map(cols,maptype)
 
     if method == 'fft':

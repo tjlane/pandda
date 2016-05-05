@@ -13,7 +13,7 @@ lg = RDLogger.logger()
 class MacroMol:
     """Class to handle a MacroMolecule"""
 
-    def __init__(self, pdbin, keepLines=-1, headerOnly=-1):
+    def __init__(self, pdbin, keep_lines=-1, header_only=-1):
         """Initialise pdbfile <pdbin> object"""
 
         self.pdbin = pdbin
@@ -22,71 +22,71 @@ class MacroMol:
         if os.path.exists(pdbin) and ('/' in pdbin or '\\' in pdbin or '.pdb' in pdbin):
             self.intype = 'file'
             self.pdbsource = pdbin
-            self._setState(1,0)
+            self._set_state(1,0)
         elif len(pdbin)==4:
             self.intype = 'web'
             self.pdbsource = 'http://www.rcsb.org/pdb/files/{!s}.pdb'.format(pdbin)
-            self._setState(1,0)
+            self._set_state(1,0)
         elif 'ATOM' in pdbin or 'HETATM' in pdbin:
             self.intype = 'block'
             self.pdbsource = 'block'
-            self._setState(1,0)
+            self._set_state(1,0)
         else:
             raise TypeError("Invalid PDBIN given. Must be a '.pdb' file or a valid PDB code: \n\n{!s}".format(pdbin))
         # Update state
-        self._setState(keepLines,headerOnly)
+        self._set_state(keep_lines,header_only)
 
         # Read & Parse File
-        self._readPdb()
-        self._parsePdb()
-        self._wipeLines()
+        self._read_pdb()
+        self._parse_pdb()
+        self._wipe_lines()
 
     def __iter__(self):
-        return iter(self.getChains())
+        return iter(self.get_chains())
 
     def __getitem__(self, id):
         if isinstance(id,int):
-            return self.getChains()[id]
+            return self.get_chains()[id]
         if isinstance(id,str):
-            return self.getChain(id)
+            return self.get_chain(id)
 
-    def _setState(self, keepLines, headerOnly):
-        if keepLines>=0: self.keepLines=keepLines
-        if headerOnly>=0: self.headerOnly=headerOnly
+    def _setState(self, keep_lines, header_only):
+        if keep_lines>=0: self.keep_lines=keep_lines
+        if header_only>=0: self.header_only=header_only
 
-    def _readPdb(self):
+    def _read_pdb(self):
         """Get and Read PDB information"""
         if self.intype=='file':
-            self.pdbLines = open(self.pdbsource,'r').readlines()
+            self.pdb_lines = open(self.pdbsource,'r').readlines()
         elif self.intype=='web':
-            self.pdbLines = urllib.urlopen(self.pdbsource).readlines()
+            self.pdb_lines = urllib.urlopen(self.pdbsource).readlines()
         elif self.intype=='block':
-            self.pdbLines = self.pdbin.replace('\n','\nZ\rX\rY\r').strip('Z\rX\rY\r').split('Z\rX\rY\r')
+            self.pdb_lines = self.pdbin.replace('\n','\nZ\rX\rY\r').strip('Z\rX\rY\r').split('Z\rX\rY\r')
             self.pdbin = ''
 
-        if len(self.pdbLines) > 100000:
+        if len(self.pdb_lines) > 100000:
             raise MacroMolError('LARGE PDB FILE: {!s}'.format(self.pdbsource))
 
-    def _parsePdb(self):
+    def _parse_pdb(self):
         """Process PDB Information"""
-        self.chainList = []
-        self.residueList = []
-        self.authorLines = []
-        self.sourceLines = []
-        self.titleLines = []
-        self.depositionDate = datetime.datetime.today()
+        self.chain_list = []
+        self.residue_list = []
+        self.author_lines = []
+        self.source_lines = []
+        self.title_lines = []
+        self.deposition_date = datetime.datetime.today()
         self.organism = ''
         self.experiment = ''
         # Record Lines that can be easily echoed to output
         self.easy_header = []
         self.easy_footer = []
         # Initialise current residue values
-        currChainID = None
-        currChain = None
-        currResnum = None
-        currRes = None
+        curr_chain_id = None
+        curr_chain = None
+        curr_resnum = None
+        curr_res = None
         # Build the lists by going through lines
-        for lineNum,line in enumerate(self.pdbLines):
+        for line_num,line in enumerate(self.pdb_lines):
             fields = line.split()
             # Record easy-header and easy-footer
             if [flag for flag in PDB_HEADERS_TO_KEEP if line.startswith(flag)]:
@@ -97,27 +97,27 @@ class MacroMol:
             if line[:4]!='ATOM' and line[:6]!='HETATM':
                 # Source
                 if line[:6]=='SOURCE':
-                    self.sourceLines.append(line)
+                    self.source_lines.append(line)
                     if 'ORGANISM_COMMON' in line:
                         self.organism = line.split(':')[1].strip()
                 # Authors
                 if line[:6]=='AUTHOR':
-                    self.authorLines.append(line)
+                    self.author_lines.append(line)
                 # Deposition Date - on first line of PDB entry
                 if line[:6]=='HEADER':
                     try:
-                        self.depositionDate = datetime.datetime.strptime(line[50:59],'%d-%b-%y')
+                        self.deposition_date = datetime.datetime.strptime(line[50:59],'%d-%b-%y')
                     except ValueError:
-                        self.depositionDate = None
+                        self.deposition_date = None
                 # Release date - on REVDAT record, the one flagged "0" on column 31
                 if line[:6]=='REVDAT':
                     if len(line)>31 and line[31]=='0':
-                        self.releaseDate = datetime.datetime.strptime(line[13:22],'%d-%b-%y')
+                        self.release_date = datetime.datetime.strptime(line[13:22],'%d-%b-%y')
                     else:
-                        self.releaseDate = None
+                        self.release_date = None
                 # Title
                 if line[:5]=='TITLE':
-                    self.titleLines.append(line)
+                    self.title_lines.append(line)
                 # Experiment type
                 if line[12:27]=='EXPERIMENT TYPE':
                     self.experiment = line[45:50].lower().replace('-','')
@@ -126,151 +126,151 @@ class MacroMol:
             # Parse atoms
             else:
                 # Bail if headerOnly
-                if self.headerOnly:
+                if self.header_only:
                     break
                 # Parse res stats
                 resname = line[17:20].strip()
-                chainID = line[21].strip()
+                chain_id = line[21].strip()
                 try:
                     resnum = int(line[22:26])
                 except ValueError:
                     resnum = 0
                 inscode = line[26].strip()
                 # New chain as needed
-                if not chainID:
-                    chainID = ' '
-                if chainID != currChainID:
-                    if isinstance(currChain,Chain) and isinstance(currRes,Residue):
+                if not chain_id:
+                    chain_id = ' '
+                if chain_id != curr_chain_id:
+                    if isinstance(curr_chain,Chain) and isinstance(curr_res,Residue):
                         # New Chain! - add the last residue to the old chain before moving on...
-                        currChain.addRes(currRes)
-                        currRes = None
-                        currResnum = None
+                        curr_chain.add_res(curr_res)
+                        curr_res = None
+                        curr_resnum = None
                     # Create a new chain
-                    currChainID=chainID
-                    if not self.chainList:
-                        currChain = Chain(chainID)
-                        self.chainList.append(currChain)
-                    elif chainID not in self.getChainIDs():
-                        currChain = Chain(chainID)
-                        self.chainList.append(currChain)
+                    curr_chain_id=chain_id
+                    if not self.chain_list:
+                        curr_chain = Chain(chain_id)
+                        self.chain_list.append(curr_chain)
+                    elif chain_id not in self.get_chain_ids():
+                        curr_chain = Chain(chain_id)
+                        self.chain_list.append(curr_chain)
                     else:
-                        currChain = self.getChain(chainID)
+                        curr_chain = self.get_chain(chain_id)
                 # New residue if needed (incl. if new chain)
-                if (resnum != currResnum) or (inscode != currInscode):
-                    if isinstance(currRes,Residue):
+                if (resnum != curr_resnum) or (inscode != curr_inscode):
+                    if isinstance(curr_res,Residue):
                         # New Residue - add the old one to the chain
-                        currChain.addRes(currRes)
+                        curr_chain.add_res(curr_res)
                     # Change resnum and create a new residue
-                    currResnum = resnum
-                    currInscode = inscode
-                    currRes = Residue(resname,chainID,resnum,inscode)
-                    self.residueList.append(currRes)
+                    curr_resnum = resnum
+                    curr_inscode = inscode
+                    curr_res = Residue(resname,chain_id,resnum,inscode)
+                    self.residue_list.append(curr_res)
                 # Add line to residue
-                currRes.addLine(line,lineNum)
+                curr_res.add_line(line,line_num)
         # At the end of the file, add the LAST Residue to the chain
-        if isinstance(currChain,Chain) and isinstance(currRes,Residue):
-            currChain.addRes(currRes)
+        if isinstance(curr_chain,Chain) and isinstance(curr_res,Residue):
+            curr_chain.add_res(curr_res)
         # Finish off
-        for chn in self.chainList:
-            chn.updateTypes()
+        for chn in self.chain_list:
+            chn.update_types()
 
-    def _wipeLines(self):
+    def _wipe_lines(self):
         """Deletes pdb text if required"""
-        if not self.keepLines:
+        if not self.keep_lines:
             print('Wiping...')
-            self.pdbLines = []
+            self.pdb_lines = []
 
-    def _forceFullRead(self):
+    def _force_full_read(self):
         """Force full parsing"""
         # Don't proceed if already in this loop
         if '_forcing' in self.__dict__ and self._forcing: return
         # Get the file lines if necessary, but then restore the state
         self._forcing=1
-        if not self.chainList:
-            state=(self.keepLines,self.headerOnly)
-            self._setState(-1,0)
-            self._readPdb()
-            self._parsePdb()
-            self._wipeLines()
-            self._setState(*state)
+        if not self.chain_list:
+            state=(self.keep_lines,self.header_only)
+            self._set_state(-1,0)
+            self._read_pdb()
+            self._parse_pdb()
+            self._wipe_lines()
+            self._set_state(*state)
         self._forcing=0
 
-    def getChains(self):
-        if not self.chainList:
-            self._forceFullRead()
-        return self.chainList
+    def get_chains(self):
+        if not self.chain_list:
+            self._force_full_read()
+        return self.chain_list
 
-    def getChain(self, chainID):
+    def get_chain(self, chain_id):
         """Returns <Chain> Object for <chainID>"""
-        subset = [c for c in self.getChains() if c.chainID==chainID]
+        subset = [c for c in self.get_chains() if c.chain_id==chain_id]
         if len(subset)==1:
             return subset[0]
         else:
-            raise Exception('More than one chain found with chainid: {!s}'.format(chainID))
+            raise Exception('More than one chain found with chainid: {!s}'.format(chain_id))
 
-    def getChainIDs(self):
-        return [c.chainID for c in self.getChains()]
+    def get_chain_ids(self):
+        return [c.chain_id for c in self.get_chains()]
 
-    def getResidues(self):
-        return [res for chn in self.getChains() for res in chn.residues]
+    def get_residues(self):
+        return [res for chn in self.get_chains() for res in chn.residues]
 
-    def getResidue(self, resid):
-        residues = [res for res in self.getResidues() if res.get_res_id()==resid]
+    def get_residue(self, resid):
+        residues = [res for res in self.get_residues() if res.get_res_id()==resid]
         if len(residues)>1: raise MacroMolError('Too Many Residues Found!')
         if len(residues)<1: raise KeyError('No Residue Found!')
         return residues[0]
 
-    def getAminos(self):
-        return [res for chn in self.getChains() for res in chn.aminos]
+    def get_aminos(self):
+        return [res for chn in self.get_chains() for res in chn.aminos]
 
-    def getWaters(self):
-        return [res for chn in self.getChains() for res in chn.waters]
+    def get_waters(self):
+        return [res for chn in self.get_chains() for res in chn.waters]
 
-    def getIons(self):
-        return [res for chn in self.getChains() for res in chn.ions]
+    def get_ions(self):
+        return [res for chn in self.get_chains() for res in chn.ions]
 
-    def getSolvent(self):
-        return [res for chn in self.getChains() for res in chn.solvent]
+    def get_solvent(self):
+        return [res for chn in self.get_chains() for res in chn.solvent]
 
-    def getUnknowns(self):
-        return [res for chn in self.getChains() for res in chn.unknowns]
+    def get_unknowns(self):
+        return [res for chn in self.get_chains() for res in chn.unknowns]
 
-    def getAtoms(self):
-        return [atm for res in self.getResidues() for atm in res.atoms]
+    def get_atoms(self):
+        return [atm for res in self.get_residues() for atm in res.atoms]
 
-    def printChains(self):
+    def print_chains(self):
         """Prints Chain IDs"""
-        for ch in self.getChains():
-            print('{!s}: {!s}'.format(ch.chainID, ch.types))
+        for ch in self.get_chains():
+            print('{!s}: {!s}'.format(ch.chain_id, ch.types))
 
-    def getType(self):
+    def get_type(self):
         """Returns types of molecule present"""
-        typesList = list(set([cTyp for c in self.getChains() for cTyp in ['AMINO','NUCLEO'] if cTyp in c.types]))
-        return ''.join(typesList)
+        types_list = list(set([c_typ for c in self.get_chains() for c_typ in ['AMINO','NUCLEO'] if c_typ in c.types]))
+        return ''.join(types_list)
 
-    def isProtein(self):
-        for chn in self.getChains():
-            if chn.isProtein():
+    def is_protein(self):
+        for chn in self.get_chains():
+            if chn.is_protein():
                 return True
         return False
 
-    def isProteinNucleoComplex(self):
-        if ('AMINO' in self.getType()) and ('NUCLEO' in self.getType()):
+    def is_protein_nucleo_complex(self):
+        if ('AMINO' in self.get_type()) and ('NUCLEO' in self.get_type()):
             return True
         else:
             return False
 
-    def getTitle(self):
-        return ''.join([l[10:].strip() for l in self.titleLines])
+    def get_title(self):
+        return ''.join([l[10:].strip() for l in self.title_lines])
 
-    def getAuthors(self):
-        return ''.join([l[10:].strip() for l in self.authorLines])
+    def get_authors(self):
+        return ''.join([l[10:].strip() for l in self.author_lines])
 
 class Chain:
     """Class to handle PDB chains"""
 
-    def __init__(self, chainID=''):
-        self.chainID = chainID.strip()
+    def __init__(self, chain_id=''):
+        self.chain_id = chain_id.strip()
         self.residues = []
         self.aminos = []
         self.waters = []
@@ -287,10 +287,10 @@ class Chain:
             return self.residues[id]
 
     def __str__(self):
-        str = 'Chain {!s}:\n\tNRes = {:d} ({:d} to {:d}), type {!s}'.format(self.chainID, len(self.residues), self.firstResnum(), self.lastResnum(), '-'.join([t for t in self.types]))
-        str += '\n\tSequence: {!s}'.format(self.getSequence())
+        str = 'Chain {!s}:\n\tNRes = {:d} ({:d} to {:d}), type {!s}'.format(self.chain_id, len(self.residues), self.first_resnum(), self.last_resnum(), '-'.join([t for t in self.types]))
+        str += '\n\tSequence: {!s}'.format(self.get_sequence())
         if len(self.residues)<5:
-            str += ' ==> '+''.join([n for n in self.getNames()])
+            str += ' ==> '+''.join([n for n in self.get_names()])
         str += '\n\tAminos: {!s}'.format(len(self.aminos))
         str += '\n\tWaters: {!s}'.format(len(self.waters))
         str += '\n\tIons: {!s}'.format(len(self.ions))
@@ -299,12 +299,12 @@ class Chain:
     def __len__(self):
         return len(self.residues)
 
-    def printInfo(self):
+    def print_info(self):
         print(str(self))
 
-    def addRes(self, residue):
+    def add_res(self, residue):
         # Check the residue is up to date
-        residue.assignTypeAndCode()
+        residue.assign_type_and_code()
         self.residues.append(residue)
         # Now sort it
         if residue.code == 'i':
@@ -319,34 +319,34 @@ class Chain:
             self.aminos.append(residue)
         [self.types.append(t) for t in residue.types if t not in self.types]
 
-    def getRes(self, resnum):
+    def get_res(self, resnum):
         subset = [r for r in self.residues if r.resnum == resnum]
         if len(subset)==1:
             return subset[0]
         else:
             raise Exception('More than one residue found with residue number {!s}'.format(resnum))
 
-    def firstResidue(self):
+    def first_residue(self):
         if self.residues:
             return self.residues[0]
 
-    def lastResidue(self):
+    def last_residue(self):
         if self.residues:
             return self.residues[-1]
 
-    def firstResnum(self):
-        return min(self.getNumbers())
+    def first_resnum(self):
+        return min(self.get_numbers())
 
-    def lastResnum(self):
-        return max(self.getNumbers())
+    def last_resnum(self):
+        return max(self.get_numbers())
 
-    def getNumbers(self):
+    def get_numbers(self):
         return [r.resnum for r in self.residues]
 
-    def getNames(self):
+    def get_names(self):
         return [r.resname for r in self.residues]
 
-    def getSequence(self):
+    def get_sequence(self):
         sequence = '-'
         for res in self.aminos:
             if len(res.code)==1:
@@ -357,26 +357,26 @@ class Chain:
                 sequence += '('+res.code+')-'
         return sequence.strip('-')
 
-    def getLongSequence(self):
+    def get_long_sequence(self):
         return '-'.join([r.resname for r in self.aminos])
 
-    def updateTypes(self):
+    def update_types(self):
         [self.types.append(t) for r in self.residues for t in r.types if t not in self.types]
 
-    def isProtein(self):
-        if self.getAACount() > LONGEST_PEPTIDE:
+    def is_protein(self):
+        if self.get_aa_count() > LONGEST_PEPTIDE:
             return True
         else:
             return False
 
-    def isPeptide(self):
-        aaCount = self.getAACount()
-        if aaCount > 0 and aaCount <= LONGEST_PEPTIDE:
+    def is_peptide(self):
+        aa_count = self.get_aa_count()
+        if aaCount > 0 and aa_count <= LONGEST_PEPTIDE:
             return True
         else:
             return False
 
-    def getAACount(self):
+    def get_aa_count(self):
         return len([r for r in self.residues if (('AMINO' in r.types) or ('AMINO-MOD' in r.types))])
 
 class Residue:
@@ -387,11 +387,11 @@ class Residue:
         self.chain = chain.strip()
         self.resnum = resnum
         self.inscode = inscode
-        self.firstLine = -1
-        self.lastLine = -1
+        self.first_line = -1
+        self.last_line = -1
         self.atoms = []
         self.smile = ''
-        self.assignTypeAndCode()
+        self.assign_type_and_code()
 
     def __iter__(self):
         return iter(self.atoms)
@@ -399,27 +399,27 @@ class Residue:
     def __len__(self):
         return len(self.atoms)
 
-    def getPdbString(self):
+    def get_pdb_string(self):
         return ''.join([atm.line for atm in self.atoms])
 
-    def printLines(self):
-        print(self.getPdbString())
+    def print_lines(self):
+        print(self.get_pdb_string())
 
-    def addLine(self, pdbLine, lineNum):
-        pdbLine = pdbLine.strip('\n')
+    def add_line(self, pdb_line, line_num):
+        pdb_line = pdb_line.strip('\n')
         # Make the right length for PDB format
-        if len(pdbLine)<80:
-            pdbLine = pdbLine + ' '*(80-len(pdbLine))
+        if len(pdb_line)<80:
+            pdb_line = pdb_line + ' '*(80-len(pdb_line))
         # Add new atom
-        self.atoms.append(Atom(pdbLine))
+        self.atoms.append(Atom(pdb_line))
         # Check for line numbers
-        if self.firstLine<0:
-            self.firstLine=lineNum
-        self.lastLine=lineNum
+        if self.first_line<0:
+            self.first_line=line_num
+        self.last_line=line_num
 
-    def assignTypeAndCode(self):
+    def assign_type_and_code(self):
         types = []
-        altCodes = []
+        alt_codes = []
         # Amino Acids
         if self.resname in AA_3_TO_1_CODES_DICT:
             types.append('AMINO')
@@ -429,55 +429,55 @@ class Residue:
             types.append('NUCLEO')
             code = NUCLEOTIDE_DICT[self.resname]
         # Waters
-        elif self.isWater():
+        elif self.is_water():
             types.append('WATER')
             code = 'o'
         # Ions
-        elif self.isIon():
+        elif self.is_ion():
             types.append('ION')
             code = 'i'
         # Solvent/Buffer
-        elif self.isSolventOrBuffer():
+        elif self.is_solvent_or_buffer():
             types.append('SOLVENT')
             code = self.resname
-            self.getSmiles()
+            self.get_smiles()
         # Modified amino acids or ligands (or unknown)
         else:
             code = self.resname
-            self.getSmiles()
+            self.get_smiles()
             if self.smile:
                 matches = match_smile_to_list(self.smile, AA_MODIFICATIONS_DICT.keys(), assignbonds=True)
                 if matches:
                     types.append('AMINO-MOD')
-                    [altCodes.extend(AA_MODIFICATIONS_DICT[s]) for s in matches]
+                    [alt_codes.extend(AA_MODIFICATIONS_DICT[s]) for s in matches]
             if not (types and code):
                 types.append('UNKNOWN')
 
         self.types = types
         self.code = code
-        if altCodes:
-            self.altCodes = altCodes
+        if alt_codes:
+            self.alt_codes = alt_codes
         else:
-            self.altCodes = [code]
+            self.alt_codes = [code]
 
-    def isWater(self):
+    def is_water(self):
         if self.resname.upper() in WATER_NAMES:
             return True
         else:
             return False
 
-    def isIon(self):
+    def is_ion(self):
         """Test if the residue is a non-water ion"""
 
         # Count number of atoms (accounting for differing alternate locations)
         if len([at for at in self.atoms if at.altloc in ['', 'A']])!=1:
             return False
-        elif self.isWater():
+        elif self.is_water():
             return False
         else:
             return True
 
-    def isSolventOrBuffer(self):
+    def is_solvent_or_buffer(self):
         """Test is the residue is a (common) solvent or buffer molecule"""
 
         # Count number of atoms (must be greater than one)
@@ -488,14 +488,11 @@ class Residue:
         else:
             return False
 
-    def getSmiles(self):
+    def get_smiles(self):
         if self.atoms:
-# THIS IS A COMMON PLACE FOR RDKIT ERROR MESSAGES
-#            print('Making Noise.')
             lg.setLevel(RDLogger.CRITICAL)
-            self.smile = get_smile_from_block(self.getPdbString())
+            self.smile = get_smile_from_block(self.get_pdb_string())
             lg.setLevel(RDLogger.ERROR)
-#            print("I'll be quiet now...")
 
     def get_res_id(self):
         """Get a tuple that identifies the residue (used as a key in other functions to refer to the residue)"""

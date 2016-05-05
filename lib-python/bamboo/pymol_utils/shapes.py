@@ -4,7 +4,7 @@ try:
 except:
     pass
 
-class shape(object):
+class Shape(object):
     def draw(self, name):
         print 'Loading %s to %s ' % (self.SHAPE, name)
         exec(self.as_cmd(name))
@@ -13,7 +13,7 @@ class shape(object):
     def as_string(self):
         raise Exception('Not Defined')
 
-class cylinder(shape):
+class Cylinder(Shape):
     SHAPE = 'Cylinder'
     def __init__(self, start, end, colors=None, radius=None):
         if (colors is None):    colors = [[1,0,0]]*2
@@ -33,7 +33,7 @@ class cylinder(shape):
         s += "]"
         return s
 
-class sphere(shape):
+class Sphere(Shape):
     SHAPE = 'Sphere'
     def __init__(self, centre, radius=None):
         if (radius is None):    radius  = 1
@@ -48,12 +48,3 @@ class sphere(shape):
         s += "]"
         return s
 
-if __name__ == '__main__':
-
-    a=cylinder((0,0,0),(1,1,1))
-    print a.as_cmd('cylinder')
-    a.draw('cylinder')
-
-    a=sphere((0,0,10),5)
-    print a.as_cmd('sphere')
-    a.draw('sphere')

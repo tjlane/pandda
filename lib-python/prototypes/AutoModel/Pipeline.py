@@ -6,7 +6,7 @@ from bamboo.wrappers.program_selector import get_ligand_builder, get_ligand_fitt
 from bamboo.maps.convert import convert_mtz_to_map
 from bamboo.maps.masking import create_masked_map
 # Scoring Density
-from bamboo.edstats.score import score_against_density_by_subset_file
+from bamboo.edstats.utils import score_against_density_by_subset_file
 # Ligand Utils
 from bamboo.rdkit_utils.mol import check_ligand_from_file_identical_to_smile, check_ligands_from_file_identical
 from bamboo.rdkit_utils.smile import check_smile_readable

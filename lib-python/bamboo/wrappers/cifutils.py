@@ -20,8 +20,8 @@ def merge_cif_libraries(incifs, outcif):
 
         # Merge current and additional to temp_path
         LIBCHK = CommandManager('libcheck')
-        LIBCHK.SetInput(['_DOC N','_FILE_L {!s}'.format(current),'_FILE_L2 {!s}'.format(additional),'_FILE_O {!s}'.format(temp_path.replace('.lib','')),'_END'])
-        LIBCHK.Run()
+        LIBCHK.add_standard_input('_DOC N','_FILE_L {!s}'.format(current),'_FILE_L2 {!s}'.format(additional),'_FILE_O {!s}'.format(temp_path.replace('.lib','')),'_END')
+        LIBCHK.run()
 
         current = temp_path
 

@@ -7,37 +7,6 @@ from bamboo.common.command import CommandManager
 ### CLASSES                                                                                                    #
 ################################################################################################################
 
-class MtzFile(object):
-    """Class for summarising an MTZ file"""
-
-    def __init__(self, mtzfile):
-        self.path = os.path.abspath(mtzfile)
-        self.file = FileObj(mtzfile)
-        # Read the mtzfile and create summary
-        self.summary = get_mtz_summary(mtzfile)
-        # Record information from summary
-        self.label = ColumnLabels()
-        self.label.f = self.summary['f_labels'][0] if self.summary['f_labels'] else None
-        self.label.sigf = self.summary['sigf_labels'][0] if self.summary['sigf_labels'] else None
-        self.label.i = self.summary['i_labels'][0] if self.summary['i_labels'] else None
-        self.label.sigi = self.summary['sigi_labels'][0] if self.summary['sigi_labels'] else None
-        self.label.phas = self.summary['p_labels'][0] if self.summary['p_labels'] else None
-        self.label.free = self.summary['r_flags'][0] if self.summary['r_flags'] else None
-        self.label.comp_f = self.summary['wtmap_f_comp'][0] if self.summary['wtmap_f_comp'] else None
-        self.label.comp_p = self.summary['wtmap_p_comp'][0] if self.summary['wtmap_p_comp'] else None
-        self.label.diff_f = self.summary['wtmap_f_diff'][0] if self.summary['wtmap_f_diff'] else None
-        self.label.diff_p = self.summary['wtmap_p_diff'][0] if self.summary['wtmap_p_diff'] else None
-        # Get some Meta
-        self.data = MtzMeta()
-        self.data.reslow = self.summary['reslow'] if self.summary['reslow'] else None
-        self.data.reshigh = self.summary['reshigh'] if self.summary['reshigh'] else None
-        self.data.spacegroup = self.summary['spacegroup'] if self.summary['spacegroup'] else None
-        self.data.spacegroupno = self.summary['spacegroupno'] if self.summary['spacegroupno'] else None
-        self.data.cell = self.summary['cell']
-        self.data.cryst = dict(zip(['A','B','C','ALPHA','BETA','GAMMA','SG'],self.data.cell+[self.data.spacegroup]))
-        self.data.a,     self.data.b,    self.data.c     = self.summary['cell'][0:3]
-        self.data.alpha, self.data.beta, self.data.gamma = self.summary['cell'][3:6]
-
 class MtzMeta(object):
     """Object to hold the meta data for an MTZ file"""
 
@@ -66,20 +35,51 @@ class ColumnLabels(object):
     def __str__(self):
         return str(self.__dict__)
 
+class MtzSummary(object):
+    """Class for summarising an MTZ file"""
+
+    def __init__(self, mtz_file):
+        self.path = os.path.abspath(mtz_file)
+        self.file = FileObj(mtz_file)
+        # Read the mtz_file and create summary
+        self.summary = get_mtz_summary_dict(mtz_file)
+        # Record information from summary
+        self.label = ColumnLabels()
+        self.label.f    = self.summary['f_labels'][0]    if self.summary['f_labels']    else None
+        self.label.sigf = self.summary['sigf_labels'][0] if self.summary['sigf_labels'] else None
+        self.label.i    = self.summary['i_labels'][0]    if self.summary['i_labels']    else None
+        self.label.sigi = self.summary['sigi_labels'][0] if self.summary['sigi_labels'] else None
+        self.label.phas = self.summary['p_labels'][0]    if self.summary['p_labels']    else None
+        self.label.free = self.summary['r_flags'][0]     if self.summary['r_flags']     else None
+        self.label.comp_f = self.summary['wtmap_f_comp'][0] if self.summary['wtmap_f_comp'] else None
+        self.label.comp_p = self.summary['wtmap_p_comp'][0] if self.summary['wtmap_p_comp'] else None
+        self.label.diff_f = self.summary['wtmap_f_diff'][0] if self.summary['wtmap_f_diff'] else None
+        self.label.diff_p = self.summary['wtmap_p_diff'][0] if self.summary['wtmap_p_diff'] else None
+        # Get some Meta
+        self.data = MtzMeta()
+        self.data.reslow        = self.summary['reslow']        if self.summary['reslow']       else None
+        self.data.reshigh       = self.summary['reshigh']       if self.summary['reshigh']      else None
+        self.data.spacegroup    = self.summary['spacegroup']    if self.summary['spacegroup']   else None
+        self.data.spacegroupno  = self.summary['spacegroupno']  if self.summary['spacegroupno'] else None
+        self.data.cell          = self.summary['cell']
+        self.data.cryst         = dict(zip(['A','B','C','ALPHA','BETA','GAMMA','SG'],self.data.cell+[self.data.spacegroup]))
+        self.data.a,     self.data.b,    self.data.c     = self.summary['cell'][0:3]
+        self.data.alpha, self.data.beta, self.data.gamma = self.summary['cell'][3:6]
+
 ################################################################################################################
 ### FUNCTIONS                                                                                                  #
 ################################################################################################################
 
-def get_mtz_summary(mtzfile):
+def get_mtz_summary_dict(mtz_file):
     """Get an MTZ Summary"""
 
     # Extract Contents of MTZ
     MTZDMP = CommandManager('mtzdmp')
-    MTZDMP.add_command_line_arguments(mtzfile)
+    MTZDMP.add_command_line_arguments(mtz_file)
     MTZDMP.run()
     # Check for errors
     if MTZDMP.process.returncode != 0:
-        raise RuntimeError('mtzdmp failed to read file {!s}:\nReturn: {!s}\nOut: {!s}'.format(mtzfile,MTZDMP.process.returncode,MTZDMP.output))
+        raise RuntimeError('mtzdmp failed to read file {!s}:\nReturn: {!s}\nOut: {!s}'.format(mtz_file,MTZDMP.process.returncode,MTZDMP.output))
 
     # Create empty dict to contain the summary
     summary = {}
@@ -87,58 +87,58 @@ def get_mtz_summary(mtzfile):
     # Get the resolution range
     regex = re.compile('\*  Resolution Range :.*\n.*\n.*\((.*)A \)\n')
     matches = regex.findall(MTZDMP.output)
-    assert matches, 'No Resolution Range found in MTZFile {!s}'.format(mtzfile)
-    assert len(matches)==1, 'Too many matching lines found for Resolution Range in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
+    assert matches, 'No Resolution Range found in MTZFile {!s}'.format(mtz_file)
+    assert len(matches)==1, 'Too many matching lines found for Resolution Range in MTZFile {!s}\n\t{!s}'.format(mtz_file,matches)
     summary['reslow'],summary['reshigh'] = map(float,matches[0].replace(' ','').split('-'))
 
     # Get the Number of Columns
     regex = re.compile('\* Number of Columns =(.*)\n')
     matches = regex.findall(MTZDMP.output)
-    assert matches, 'No Number of Columns found for {!s}'.format(mtzfile)
-    assert len(matches)==1, 'Too many matching lines found for Number of Columns in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
+    assert matches, 'No Number of Columns found for {!s}'.format(mtz_file)
+    assert len(matches)==1, 'Too many matching lines found for Number of Columns in MTZFile {!s}\n\t{!s}'.format(mtz_file,matches)
     summary['numcols'] = int(matches[0].strip())
 
     # Get the Number of Reflections
     regex = re.compile('\* Number of Reflections =(.*)\n')
     matches = regex.findall(MTZDMP.output)
-    assert matches, 'No Number of Reflections found for {!s}'.format(mtzfile)
-    assert len(matches)==1, 'Too many matching lines found for Number of Reflections in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
+    assert matches, 'No Number of Reflections found for {!s}'.format(mtz_file)
+    assert len(matches)==1, 'Too many matching lines found for Number of Reflections in MTZFile {!s}\n\t{!s}'.format(mtz_file,matches)
     summary['numreflections'] = int(matches[0].strip())
 
     # Get the Column Labels
     regex = re.compile('\* Column Labels :.*\n.*\n(.*)\n')
     matches = regex.findall(MTZDMP.output)
-    assert matches, 'No Column Labels found for {!s}'.format(mtzfile)
-    assert len(matches)==1, 'Too many matching lines found for Column Headings in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
+    assert matches, 'No Column Labels found for {!s}'.format(mtz_file)
+    assert len(matches)==1, 'Too many matching lines found for Column Headings in MTZFile {!s}\n\t{!s}'.format(mtz_file,matches)
     summary['colheadings'] = matches[0].strip().split()
 
     # Get the Column Types
     regex = re.compile('\* Column Types :.*\n.*\n(.*)\n')
     matches = regex.findall(MTZDMP.output)
-    assert matches, 'No Column Types found for {!s}'.format(mtzfile)
-    assert len(matches)==1, 'Too many matching lines found for Column Types in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
+    assert matches, 'No Column Types found for {!s}'.format(mtz_file)
+    assert len(matches)==1, 'Too many matching lines found for Column Types in MTZFile {!s}\n\t{!s}'.format(mtz_file,matches)
     summary['coltypes'] = matches[0].strip().split()
 
     # Get the different datasets
     regex = re.compile('\* Associated datasets :.*\n.*\n(.*)\n')
     matches = regex.findall(MTZDMP.output)
-    assert matches, 'No Dataset Numbers found for {!s}'.format(mtzfile)
-    assert len(matches)==1, 'Too many matching lines found for Dataset Numbers in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
+    assert matches, 'No Dataset Numbers found for {!s}'.format(mtz_file)
+    assert len(matches)==1, 'Too many matching lines found for Dataset Numbers in MTZFile {!s}\n\t{!s}'.format(mtz_file,matches)
     summary['coldatasets'] = matches[0].strip().split()
 
     # Get the Spacegroup
     regex = re.compile('\* Space group =.*\'(.*)\'.\(number(.*)\)')
     matches = regex.findall(MTZDMP.output)
-    assert matches, 'No Space Group found for {!s}'.format(mtzfile)
-    assert len(matches)==1, 'Too many matching lines found for Spacegroup in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
+    assert matches, 'No Space Group found for {!s}'.format(mtz_file)
+    assert len(matches)==1, 'Too many matching lines found for Spacegroup in MTZFile {!s}\n\t{!s}'.format(mtz_file,matches)
     summary['spacegroup'] = matches[0][0].strip()
     summary['spacegroupno'] = int(matches[0][1].strip())
 
     # Get the Cell Dimensions
     regex = re.compile('\* Cell Dimensions :.*\n.*\n(.*)\n')
     matches = regex.findall(MTZDMP.output)
-    assert matches, 'No Cell Dimensions found for {!s}'.format(mtzfile)
-    assert len(matches)==1, 'Too many matching lines found for Cell Dimensions in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
+    assert matches, 'No Cell Dimensions found for {!s}'.format(mtz_file)
+    assert len(matches)==1, 'Too many matching lines found for Cell Dimensions in MTZFile {!s}\n\t{!s}'.format(mtz_file,matches)
     summary['cell'] = map(float,matches[0].split())
 
     # Get the Cell Dimensions
@@ -195,22 +195,22 @@ def get_mtz_summary(mtzfile):
 
     return summary
 
-def get_mtz_resolution(mtzfile):
+def get_mtz_resolution(mtz_file):
     """Gets the max resolution from the file"""
 
     # Extract Contents of MTZ
     MTZDMP = CommandManager('mtzdmp')
-    MTZDMP.add_command_line_arguments(mtzfile)
+    MTZDMP.add_command_line_arguments(mtz_file)
     MTZDMP.run()
     # Check for errors
     if MTZDMP.process.returncode != 0:
-        raise RuntimeError('mtzdmp failed to read file {!s}:\nReturn: {!s}\nOut: {!s}'.format(mtzfile,MTZDMP.process.returncode,MTZDMP.output))
+        raise RuntimeError('mtzdmp failed to read file {!s}:\nReturn: {!s}\nOut: {!s}'.format(mtz_file,MTZDMP.process.returncode,MTZDMP.output))
     # Search for the Column Headings
     regex = re.compile('\*  Resolution Range :.*\n.*\n.*\((.*)A \)\n')
     matches = regex.findall(MTZDMP.output)
     # Check for validity of matches
-    assert matches, 'No Resolution Range found in MTZFile {!s}'.format(mtzfile)
-    assert len(matches)==1, 'Too many matching lines found for Column Headings in MTZFile {!s}\n\t{!s}'.format(mtzfile,matches)
+    assert matches, 'No Resolution Range found in MTZFile {!s}'.format(mtz_file)
+    assert len(matches)==1, 'Too many matching lines found for Column Headings in MTZFile {!s}\n\t{!s}'.format(mtz_file,matches)
     # Return
     return map(float,matches[0].replace(' ','').split('-'))
 

@@ -1,4 +1,5 @@
-import os, sys, math
+import os, sys
+import math
 
 from bamboo.rdkit_utils.mol import check_pdb_readable
 from bamboo.rdkit_utils.coords.utils import get_atomic_equivalences

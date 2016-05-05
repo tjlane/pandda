@@ -5,7 +5,7 @@ import libtbx.phil
 import numpy, pandas
 
 from bamboo.plot import Radar
-from bamboo.edstats import edstats
+from bamboo.edstats import Edstats
 
 from giant.utils.pdb import strip_pdb_to_input
 from giant.structure import calculate_residue_group_occupancy, calculate_residue_group_rmsd, calculate_residue_group_bfactor_ratio
@@ -115,10 +115,10 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix=''):
         h2_all = h2_all.select(h2_all.atom_selection_cache().selection('not element H'), copy_atoms=True)
 
     # Score MTZ1
-    if mtz1 is not None: mtz1_edstats_scores = edstats(mtz_file=mtz1, pdb_file=pdb1)
+    if mtz1 is not None: mtz1_edstats_scores = Edstats(mtz_file=mtz1, pdb_file=pdb1)
     else:                mtz1_edstats_scores = None
     # Score MTZ2
-    if mtz2 is not None: mtz2_edstats_scores = edstats(mtz_file=mtz2, pdb_file=pdb1)
+    if mtz2 is not None: mtz2_edstats_scores = Edstats(mtz_file=mtz2, pdb_file=pdb1)
     else:                mtz2_edstats_scores = None
 
     # Prepare output table

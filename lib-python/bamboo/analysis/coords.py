@@ -1,8 +1,8 @@
 import os, sys
 import math
 
-from bamboo.wrappers.symutils import map_to_reference_using_symmetry
 from bamboo.rdkit_utils.coords.utils import get_centroid_from_file, calculate_coordinate_differences
+from bamboo.wrappers.symutils import map_to_reference_using_symmetry
 
 from rdkit import Chem
 

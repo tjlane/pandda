@@ -2,7 +2,7 @@ import iotbx.pdb
 
 from scitbx.math import basic_statistics
 
-from bamboo.edstats import edstats
+from bamboo.edstats import Edstats
 from giant.structure.b_factors import b_factor_statistics, normalise_b_factors
 from giant.structure.html import write_html_summary
 
@@ -21,7 +21,7 @@ class structureSummary(object):
         # B-factors
         self.b_factors = b_factor_statistics(pdb_hierarchy=pdb_hierarchy)
         # Edstats
-        if mtz_file: self.edstats = edstats(mtz_file=mtz_file, pdb_file=pdb_file)
+        if mtz_file: self.edstats = Edstats(mtz_file=mtz_file, pdb_file=pdb_file)
         else:        self.edstats = None
 
     def normalise_b_factors(self, root=None):
@@ -32,9 +32,8 @@ class structureSummary(object):
         resname = atom_group.resname
         chain   = atom_group.parent().parent().id
         res_i   = atom_group.parent().resseq_as_int()
-#        conf_id = atom_group.altloc if atom_group.altloc else ' '
-        conf_id = ' '
-        return self.edstats.scores[(resname, chain, res_i, conf_id)]
+        inscode = ' '
+        return self.edstats.scores[(resname, chain, res_i, inscode)]
 
     def get_atom_group_summary(self, atom_group):
         return atomGroupSummary( atom_group = atom_group,

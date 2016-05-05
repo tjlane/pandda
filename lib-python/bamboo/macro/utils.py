@@ -1,33 +1,33 @@
 from bamboo.macro.molecule import MacroMol
 from bamboo.rdkit_utils.smile import find_structure_matches
 
-def get_residue_labels(pdbpath):
+def get_residue_labels(pdb_file):
     """Takes the PDB file and returns a list of the residues labels in the form (res.resname, res.chain, res.resnum, res.inscode) (e.g. for edstats)"""
 
     labels = []
     # Create a structure object
-    structure = MacroMol(pdbpath)
+    structure = MacroMol(pdb_file)
     # Iterate through and create labels
-    for res in structure.getResidues():
+    for res in structure.get_residues():
         labels.append(res.get_res_id())
 
     return labels
 
-def get_mean_occupancy(pdbpath, type='aminos'):
-    """Gets the mean occupancy of the structure in pdbpath. Changing `type` changes the residues that are used to calculate the occupancy. Choices are ['all','aminos','ions','waters']"""
+def get_mean_occupancy(pdb_file, type='aminos'):
+    """Gets the mean occupancy of the structure in pdb_file. Changing `type` changes the residues that are used to calculate the occupancy. Choices are ['all','aminos','ions','waters']"""
 
-    m = MacroMol(pdbpath)
+    m = MacroMol(pdb_file)
 
     occupancies = []
 
     if type=='all':
-        residues = m.getResidues()
+        residues = m.get_residues()
     elif type=='aminos':
-        residues = m.getAminos()
+        residues = m.get_aminos()
     elif type=='waters':
-        residues = m.getWaters()
+        residues = m.get_waters()
     elif type=='ions':
-        residues = m.getIons()
+        residues = m.get_ions()
 
     [occupancies.append(res.get_mean_occupancy()) for res in residues]
 
@@ -35,14 +35,14 @@ def get_mean_occupancy(pdbpath, type='aminos'):
 
     return mean_occ
 
-def get_residue_occupancies(pdbpath):
+def get_residue_occupancies(pdb_file):
     """Gets the occupancies of individual residues. Returns a dict"""
 
-    m = MacroMol(pdbpath)
+    m = MacroMol(pdb_file)
 
     occupancies = {}
 
-    for res in m.getResidues():
+    for res in m.get_residues():
         occupancies[res.get_res_id()] = res.get_mean_occupancy()
 
     return occupancies
@@ -55,12 +55,12 @@ def extract_compound_smiles(pdbin, find_boring_compounds=False):
     except MacroMolError:
         raise
 
-    cpds = m.getUnknowns()
+    cpds = m.get_unknowns()
 
     # ADD FILTERING STEP!
     if find_boring_compounds:
-        cpds.extend(m.getSolvent())
+        cpds.extend(m.get_solvent())
 
-    [c.getSmiles() for c in cpds]
+    [c.get_smiles() for c in cpds]
     return [c.smile for c in cpds if c.smile]
 

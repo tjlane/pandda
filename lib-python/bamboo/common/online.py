@@ -5,7 +5,7 @@ import threading
 
 # CONNECTION CLASSES
 
-class connectionReferenceObject(object):
+class ConnectionReferenceObject(object):
     """ Object for storing socket information """
     def __init__(self):
         self.sock = None
@@ -13,14 +13,14 @@ class connectionReferenceObject(object):
         self.lock = None
         self.addr = None
 
-class socketReferenceObject(object):
+class SocketReferenceObject(object):
     """ Object for passing Incoming and Outgoing Socket Objects """
     def __init__(self):
         """Spaces for incoming/outgoing sockets, connections, locks"""
-        self.incoming = connectionReferenceObject()
-        self.outgoing = connectionReferenceObject()
+        self.incoming = ConnectionReferenceObject()
+        self.outgoing = ConnectionReferenceObject()
 
-class threadWithReturnValue(threading.Thread):
+class ThreadWithReturnValue(threading.Thread):
     """ Define Thread so that it has a return value """
     def __init__(self, group=None, target=None, name=None,
                  args=(), kwargs={}, verbose=False):

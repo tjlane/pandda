@@ -869,10 +869,10 @@ def pandda_main(args):
                 pandda.stat_maps.add(stat_map_list=map_analyser.statistical_maps, resolution=cut_resolution, overwrite=True)
                 pandda.pickle_the_pandda(components=['stat_maps'])
             # ============================================================================>
-            # Write out Grid Point Distributions for interesting grid points (high modality, etc...)
+            # Pickle map analyser if required
             # ============================================================================>
-            # TODO TODO TODO
-            # TODO TODO TODO
+            if pandda.args.settings.pickling.pickle_map_analysers:
+                pandda.pickle(pickle_file=pandda.pickle_handler.get_file('map_analyser').format(cut_resolution), pickle_object=map_analyser, overwrite=True)
             # ============================================================================>
             # Write Grid Point Distributions - Standard Function, just to provide an output
             # ============================================================================>
@@ -887,18 +887,12 @@ def pandda_main(args):
             except:
                 print('UNIMPORTANT: FAILED TO WRITE AUTOMATIC DISTRIBUTION OF GRID POINTS')
                 raise
+            # ============================================================================>
+            # Write out Grid Point Distributions for interesting grid points (high modality, etc...)
+            # ============================================================================>
+            # TODO TODO TODO
+            # TODO TODO TODO
             
-            # ============================================================================>
-            # Create a new "dummy" map analyser for the parallel steps
-            # ============================================================================>
-            dummy_map_analyser = PanddaMapAnalyser( dataset_maps = None,
-                                                    meta         = Meta({'resolution'   : cut_resolution,
-                                                                         'grid_size'    : pandda.reference_grid().grid_size(),
-                                                                         'grid_size_1d' : pandda.reference_grid().grid_size_1d()}),
-                                                    statistical_maps = map_analyser.statistical_maps,
-                                                    parent           = None,
-                                                    log              = None   )
-
             # ============================================================================>
             #####
             # DATA PROCESSING
@@ -911,12 +905,23 @@ def pandda_main(args):
             assert cut_resolution not in resolution_count
             resolution_count[cut_resolution] = []
             # ============================================================================>
+            # Create a new "dummy" map analyser for the parallel steps
+            # ============================================================================>
+            dummy_map_analyser = PanddaMapAnalyser( dataset_maps = None,
+                                                    meta         = Meta({'resolution'   : cut_resolution,
+                                                                         'grid_size'    : pandda.reference_grid().grid_size(),
+                                                                         'grid_size_1d' : pandda.reference_grid().grid_size_1d()}),
+                                                    statistical_maps = map_analyser.statistical_maps,
+                                                    parent           = None,
+                                                    log              = None   )
+            # ============================================================================>
             # Blob Search Object
             # ============================================================================>
             blob_finder = PanddaZMapAnalyser( params = pandda.params.blob_search, 
                                               grid_spacing = pandda.reference_grid().grid_spacing(),
                                               log = pandda.log )
             blob_finder.print_settings()
+
             # ============================================================================>
             #####
             # Calculate Z-Maps
@@ -1009,8 +1014,7 @@ def pandda_main(args):
                 # WRITE OUT DATASET INFORMATION TO CSV FILE
                 # ============================================================================>
                 out_list = pandda.tables.dataset_info.loc[d_handler.tag].append(pandda.tables.dataset_map_info.loc[d_handler.tag])
-                out_list.to_csv(   path = d_handler.output_handler.get_file('dataset_info'),
-                                   header = True, index_label = 'dtag'    )
+                out_list.to_csv(path=d_handler.output_handler.get_file('dataset_info'), header=True, index_label='dtag')
 
                 # ============================================================================>
                 # Link outputs for datasets with hits
@@ -1021,7 +1025,6 @@ def pandda_main(args):
                     if not os.path.exists(hit_dir): rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=hit_dir)
                     # Flag the dataset as interesting 
                     pandda.datasets.all_masks().set_mask_value(mask_name='interesting', entry_id=d_handler.tag, value=True)
-
                     # ============================================================================>
                     # Add event to the event table
                     # ============================================================================>
@@ -1031,7 +1034,9 @@ def pandda_main(args):
                 # ============================================================================>
                 # Update the master copy of the dataset object
                 # ============================================================================>
-                pandda.datasets.get(tag=d_handler.tag).events = d_handler.events   
+                master_d_handler = pandda.datasets.get(tag=d_handler.tag)
+                master_d_handler.events = d_handler.events   
+                master_d_handler.child  = m_handler   
  
             # ============================================================================>
             #####
@@ -1039,13 +1044,10 @@ def pandda_main(args):
             #####
             # ============================================================================>
             # Write statistical maps
-            pandda.write_map_analyser_maps( map_analyser       = map_analyser, 
-                                            analysis_mask_name = analysis_mask_name )
+            pandda.write_map_analyser_maps(map_analyser=map_analyser, analysis_mask_name=analysis_mask_name)
             # Write output graphs for map analysis
             if pandda.args.output.plot_graphs:
-                analyse_graphs.write_map_analyser_graphs( pandda             = pandda,
-                                                          map_analyser       = map_analyser,
-                                                          analysis_mask_name = analysis_mask_name )
+                analyse_graphs.write_map_analyser_graphs(pandda=pandda, map_analyser=map_analyser, analysis_mask_name=analysis_mask_name)
 
             # ============================================================================>
             #####
@@ -1067,7 +1069,7 @@ def pandda_main(args):
             #####
             # ============================================================================>
             # Clear the linked maps if requested
-            if not pandda.args.settings.pickling.pickle_maps:
+            if not pandda.args.settings.pickling.pickle_dataset_maps:
                 for d_handler in pandda.datasets.mask(mask_name=analysis_mask_name):
                     d_handler.child = None           
             # Pickle the datasets 

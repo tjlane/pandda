@@ -2,7 +2,7 @@ import os, sys, shutil
 
 from rdkit import Chem
 
-from bamboo.utils.mtz import get_mtz_summary
+from bamboo.utils.mtz import get_mtz_summary_dict
 from bamboo.wrappers.symutils import generate_symmetry_mates
 from bamboo.rdkit_utils.contacts.utils import order_structures_by_minimum_distance_to_reference, order_structures_by_number_of_contacts_to_reference
 
@@ -20,7 +20,7 @@ def generate_full_unit_cell(pdbin, pdbout, mtz=None, sgno=None, cell=None):
         pass
     elif (mtz != None):
         # Get the spacegroup number from the mtzfile
-        mtzsummary = get_mtz_summary(mtz)
+        mtzsummary = get_mtz_summary_dict(mtz)
         sgno = mtzsummary['spacegroupno']
         cell = mtzsummary['cell']
     else:
@@ -45,7 +45,7 @@ def generate_symmetry_equivalent_ligands(pdbin, pdbouttemplate, mtz=None, sgno=N
         pass
     elif (mtz != None):
         # Get the spacegroup number from the mtzfile
-        mtzsummary = get_mtz_summary(mtz)
+        mtzsummary = get_mtz_summary_dict(mtz)
         sgno = mtzsummary['spacegroupno']
         cell = mtzsummary['cell']
     else:

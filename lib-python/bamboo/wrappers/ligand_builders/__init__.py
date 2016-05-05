@@ -9,7 +9,7 @@ class BuilderObject(object):
 
     def __init__(self, time=True, verbose=True):
 
-        self.allowedArgs = allowed_builder_args
+        self.allowed_args = allowed_builder_args
         self.ligname = DEFAULT_LIGAND_NAMES[0]
         # Settings
         self.time = time
@@ -31,17 +31,17 @@ class BuilderObject(object):
         else:
             cmd_line_args, std_inpt_args = self._create_program_arguments(ligsmile, outdir, outfile, flags)
             # Initialise CommandManager
-            self.Builder = CommandManager(self.program)
+            self.builder = CommandManager(self.program)
             # Set Command-Line Args
-            if cmd_line_args: self.Builder.SetArguments(cmd_line_args)
+            if cmd_line_args: self.builder.add_command_line_arguments(cmd_line_args)
             # Set Standard Input
-            if std_inpt_args: self.Builder.SetInput(std_inpt_args)
+            if std_inpt_args: self.builder.add_standard_input(std_inpt_args)
             # Set Parameters
-            self.Builder.SetParameters(timeout=self.timeout)
+            self.builder.set_timeout(timeout=self.timeout)
             # RUN
-            self.Builder.Run()
+            self.builder.run()
             # Get runtime
-            self.runtime = self.Builder.runtime
+            self.runtime = self.builder.runtime
 
             try:
                 # Could add postprocess here
@@ -72,12 +72,12 @@ class BuilderObject(object):
         with open(self.outlog,'w') as logfile:
             # Write out the input command
             logfile.write('\nCOMMAND\n\n')
-            logfile.write('\n'.join(self.Builder.command))
+            logfile.write('\n'.join(self.builder.cmd_line_args)+'\n')
             logfile.write('\nINPUT\n\n')
-            logfile.write(self.Builder.inp)
+            logfile.write('\n'.join(self.builder.std_inp_lines)+'\n')
             # Write out & err
-            logfile.write('STDOUT\n\n')
-            logfile.write(self.Builder.out)
-            logfile.write('STDERR\n\n')
-            logfile.write(self.Builder.err)
+            logfile.write('\nSTDOUT\n\n')
+            logfile.write(self.builder.output)
+            logfile.write('\nSTDERR\n\n')
+            logfile.write(self.builder.error)
 

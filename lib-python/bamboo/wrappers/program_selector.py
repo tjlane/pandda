@@ -28,66 +28,53 @@ allowed_fitter_args = []
 def get_ligand_builder(program):
     """Get Ligand Builder Object for `program`"""
 
-    # Check it's a valid program
-    if program not in ligand_builders:
-        raise LigandBuilderSelectionError('{!s} not in {!s}'.format(program, ', '.join(ligand_builders)))
+    from bamboo.wrappers.ligand_builders.elbow import ElbowObject
+    from bamboo.wrappers.ligand_builders.grade import GradeObject
+    from bamboo.wrappers.ligand_builders.prodrg import ProdrgObject
+    from bamboo.wrappers.ligand_builders.writedict import WritedictObject
 
-    if program in ['elbow','phenix.elbow']:
-        from bamboo.wrappers.ligand_builders.elbow import ElbowObject
-        return ElbowObject()
-    elif program == 'grade':
-        from bamboo.wrappers.ligand_builders.grade import GradeObject
-        return GradeObject()
-    elif program == 'prodrg':
-        from bamboo.wrappers.ligand_builders.prodrg import ProdrgObject
-        return ProdrgObject()
-    elif program in ['writedict','afitt']:
-        from bamboo.wrappers.ligand_builders.writedict import WritedictObject
-        return WritedictObject()
+    # Check it's a valid program
+    if program not in ligand_builders:      raise LigandBuilderSelectionError('{!s} not in {!s}'.format(program, ', '.join(ligand_builders)))
+
+    if program in ['elbow','phenix.elbow']:     return ElbowObject()
+    elif program == 'grade':                    return GradeObject()
+    elif program == 'prodrg':                   return ProdrgObject()
+    elif program in ['writedict','afitt']:      return WritedictObject()
     else:
         raise LigandBuilderSelectionError('MY BAD. The Code for {!s} has not been written yet...'.format(program))
 
 def get_ligand_fitter(program):
     """Get Ligand Fitter Object for `program`"""
 
-    # Check it's a valid program
-    if program not in ligand_fitters:
-        raise LigandFitterSelectionError('{!s} not in {!s}'.format(program, ', '.join(ligand_fitters)))
+    from bamboo.wrappers.ligand_fitters.ligandfit import LigandfitObject
+    from bamboo.wrappers.ligand_fitters.arpwarp import ArpwarpObject
+    from bamboo.wrappers.ligand_fitters.rhofit import RhofitObject
+    from bamboo.wrappers.ligand_fitters.flynn import FlynnObject
+    from bamboo.wrappers.ligand_fitters.coot import CootObject
 
-    if program in ['ligandfit','phenix.ligandfit']:
-        from bamboo.wrappers.ligand_fitters.ligandfit import LigandfitObject
-        return LigandfitObject()
-    elif program == 'arpwarp':
-        from bamboo.wrappers.ligand_fitters.arpwarp import ArpwarpObject
-        return ArpwarpObject()
-    elif program == 'rhofit':
-        from bamboo.wrappers.ligand_fitters.rhofit import RhofitObject
-        return RhofitObject()
-    elif program in ['flynn','afitt']:
-        from bamboo.wrappers.ligand_fitters.flynn import FlynnObject
-        return FlynnObject()
-    elif program == 'coot':
-        from bamboo.wrappers.ligand_fitters.coot import CootObject
-        return CootObject()
+    # Check it's a valid program
+    if program not in ligand_fitters:       raise LigandFitterSelectionError('{!s} not in {!s}'.format(program, ', '.join(ligand_fitters)))
+
+    if program in ['ligandfit','phenix.ligandfit']:     return LigandfitObject()
+    elif program == 'arpwarp':                          return ArpwarpObject()
+    elif program == 'rhofit':                           return RhofitObject()
+    elif program in ['flynn','afitt']:                  return FlynnObject()
+    elif program == 'coot':                             return CootObject()
     else:
         raise LigandFitterSelectionError('MY BAD. The Code for {!s} has not been written yet...'.format(program))
 
 def get_refiner(program):
     '''Returns Initialised Refiner Object'''
 
+    from bamboo.wrappers.refiners.phenix import PhenixrefineObject
+    from bamboo.wrappers.refiners.refmac import RefmacObject
+
     # Check it's a valid program
     if program not in refiners:
         raise RefinerSelectionError('{!s} not in {!s}'.format(program, ', '.join(refiners)))
 
-    if program.lower()=='phenix.refine':
-        # Get the phenix.refine refiner class
-        from bamboo.wrappers.refiners.phenix import PhenixrefineObject
-        return PhenixrefineObject()
-    elif program.lower()=='refmac':
-        # Get the refmac refiner class
-        from bamboo.wrappers.refiners.refmac import RefmacObject
-        return RefmacObject()
+    if program.lower()=='phenix.refine':                return PhenixrefineObject()
+    elif program.lower()=='refmac':                     return RefmacObject()
     else:
-        # Not Found
         raise RefinerSelectionError('MY BAD. The Code for {!s} has not been written yet...'.format(program))
 

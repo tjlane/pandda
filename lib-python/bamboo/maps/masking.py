@@ -8,11 +8,11 @@ def create_masked_map_from_file_objects(mtzobj,pdbobj,mapout=None,maptype='2FOFC
     """Takes the ligand described by ligobj and masks against the density from pdbobj & mtzobj"""
 
     # oriented and positioned structure of ligand only
-    pdbpath = pdbobj.path
+    pdb_file = pdbobj.path
     # reflection data path
-    mtzpath = mtzobj.path
+    mtz_file = mtzobj.path
     # Create the map
-    fft, masker = create_masked_map(mtzin=mtzpath, maskpdb=pdbpath, mapout=mapout, maptype=maptype)
+    fft, masker = create_masked_map(mtzin=mtz_file, maskpdb=pdb_file, mapout=mapout, maptype=maptype)
 
     return fft, masker
 

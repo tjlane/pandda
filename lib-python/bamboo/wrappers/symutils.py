@@ -19,13 +19,11 @@ def generate_symmetry_mates(pdbin, pdbout, sgno, cell):
     # Initialise Commander
     PDBSET = CommandManager('pdbset')
     # Set Command Arguments
-    PDBSET.SetArguments('XYZIN',os.path.abspath(pdbin),'XYZOUT',os.path.abspath(pdbout))
+    PDBSET.add_command_line_arguments('XYZIN',os.path.abspath(pdbin),'XYZOUT',os.path.abspath(pdbout))
     # Set inputs
-    PDBSET.SetInput(['SYMGEN {!s}'.format(sgno),'CELL {!s}'.format(' '.join(map(str,cell)))])
-    # Add Termination
-    PDBSET.AppendInput('END')
-    # Run!
-    PDBSET.Run()
+    PDBSET.add_standard_input(['SYMGEN {!s}'.format(sgno),'CELL {!s}'.format(' '.join(map(str,cell))), 'END'])
+    # run!
+    PDBSET.run()
 
     if not os.path.exists(pdbout):
         raise ExternalProgramError('PDBSET has failed to generate SYMMETRY mates. {!s}\nCOM: {!s}\nOUT: {!s}\nERR: {!s}'.format(pdbin,PDBSET.command,PDBSET.out,PDBSET.err))
@@ -47,9 +45,9 @@ def map_to_reference_using_symmetry(refpdb, movpdb, pdbout, conrad=5):
     # Initialise Commander
     CSYMMATCH = CommandManager('csymmatch')
     # Set Command Arguments
-    CSYMMATCH.SetArguments('-pdbin-ref',os.path.abspath(refpdb),'-pdbin',os.path.abspath(movpdb),'-pdbout',os.path.abspath(pdbout),'-connectivity-radius',str(conrad))
-    # Run!
-    CSYMMATCH.Run()
+    CSYMMATCH.add_command_line_arguments('-pdbin-ref',os.path.abspath(refpdb),'-pdbin',os.path.abspath(movpdb),'-pdbout',os.path.abspath(pdbout),'-connectivity-radius',str(conrad))
+    # run!
+    CSYMMATCH.run()
 
     if not os.path.exists(pdbout):
         raise ExternalProgramError('CSYMMATCH has failed to map {!s} to {!s}.\nERR: {!s}'.format(movpdb,refpdb,CSYMMATCH.err))
