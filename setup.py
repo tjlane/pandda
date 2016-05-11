@@ -1,8 +1,8 @@
 import os, sys, glob
-from setuptools import setup, find_packages
+from setuptools import setup, find_packages, findall
 
 setup(  name                = 'panddas',
-        version             = '1.0.2',
+        version             = '1.0.0',
         description         = 'Multi-dataset crystallographic analyses',
         author              = 'Nicholas M Pearce',
         author_email        = 'nicholas.pearce.0@gmail.com',
@@ -14,10 +14,13 @@ setup(  name                = 'panddas',
                                 'ascii_graph',
                                 ),
         package_dir         = {'':'lib-python'},
-        scripts             = glob.glob(os.path.join('bin','*')),
+        scripts             = findall(dir='bin'),
         packages            = find_packages(where   ='lib-python',
-                                            exclude = ( 'phenix_pandda',    'phenix_pandda.*',
-                                                        'prototypes',       'prototypes.*',
+                                            exclude = ( 'pandda*',
+                                                        'pandemic*',
+                                                        'phenix_pandda*',
+                                                        'prototypes*',
+                                                        '*egg*',
                                                         )
                                             ),
         classifiers         = ( 'Development Status :: 4 - Beta',

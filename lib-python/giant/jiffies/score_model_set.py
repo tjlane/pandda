@@ -7,25 +7,16 @@ import numpy, pandas
 
 from bamboo.html import BAMBOO_HTML_ENV
 from giant.jiffies.score_model import prepare_output_directory, score_model, make_residue_radar_plot
+from giant.stats.cluster import generate_group_idxs
 
 bar = '=======================++>'
-blank_arg_prepend = {None:'dir='}
+blank_arg_prepend = {None:'pdb='}
 
 master_phil = libtbx.phil.parse("""
 input {
-    dir = None
+    pdb = None
         .type = path
         .multiple = True
-
-    pdb_1_style = 'refine.pdb'
-        .type = str
-    mtz_1_style = 'refine.mtz'
-        .type = str
-
-    pdb_2_style = '*-ensemble-model.pdb'
-        .type = str
-    mtz_2_style = '*-input.mtz'
-        .type = str
 
     labels = basename *folder_name
         .type = choice
@@ -41,6 +32,11 @@ output {
         .type = path
     generate_summary = True
         .type = bool
+    radar_plot {
+        limits = auto *preset
+            .type = choice
+            .multiple = False
+    }
 }
 settings{
     cpus = 1
@@ -48,49 +44,9 @@ settings{
 }
 """)
 
-def process_folder_mp(args):
-    try:
-        return process_folder(*args)
-    except Exception as e:
-        raise
-        return e
-
-def process_folder(dir, params):
-    """Score the files in a folder"""
-
-    try:    pdb1 = glob.glob(os.path.join(dir, params.input.pdb_1_style))[0]
-    except: raise Exception('FAILED TO FIND FILE: {} in {}'.format(params.input.pdb_1_style, dir))
-    try:    mtz1 = glob.glob(os.path.join(dir, params.input.mtz_1_style))[0]
-    except: raise Exception('FAILED TO FIND FILE: {} in {}'.format(params.input.mtz_1_style, dir))
-    if params.input.pdb_2_style:
-        try:    pdb2 = glob.glob(os.path.join(dir, params.input.pdb_2_style))[0]
-        except: raise Exception('FAILED TO FIND FILE: {} in {}'.format(params.input.pdb_2_style, dir))
-    else: pdb2 = None
-    if params.input.mtz_2_style:
-        try:    mtz2 = glob.glob(os.path.join(dir, params.input.mtz_2_style))[0]
-        except: raise Exception('FAILED TO FIND FILE: {} in {}'.format(params.input.mtz_2_style, dir))
-    else: mtz2 = None
-
-    if   params.input.labels == 'basename':     label = os.path.split_ext(os.path.basename(pdb1))[0]
-    elif params.input.labels == 'folder_name':  label = os.path.basename(dir)
-
-    print 'Scoring Model: {}'.format(label)
-
-    data_table = score_model(   params = params,
-                                pdb1   = pdb1,
-                                mtz1   = mtz1,
-                                pdb2   = pdb2,
-                                mtz2   = mtz2,
-                                label_prefix = label
-                            )
-
-    return data_table
-
 def run(params):
 
-    assert params.input.dir, 'No directories provided'
-    assert params.input.pdb_1_style
-    assert params.input.mtz_1_style
+    assert params.input.pdb, 'No pdb files provided'
     # REMOVE THIS WHEN IMPLEMENTED
     assert params.selection.res_names
     # REMOVE THIS WHEN IMPLEMENTED
@@ -98,72 +54,57 @@ def run(params):
     else:                               params.selection.__inject__("res_names_list", None)
 
     output_dir, images_dir = prepare_output_directory(params)
-    scores_file  = os.path.join(output_dir, 'residue_scores.csv')
-    summary_file = os.path.join(output_dir, 'residue_scores.html')
+    scores_file =  os.path.join(output_dir, 'residue_scores.csv')
 
-    arg_list = []
-    # Filter directories
-    for dir in params.input.dir:
-        if not os.path.isdir(dir): continue
-        # Build arglist for mapping
-        arg_list.append((dir, params))
-    # Score files in parallel
-    print bar
-    print 'Scoring all models...'
-    returned_objs = libtbx.easy_mp.pool_map(fixed_func=process_folder_mp, args=arg_list, processes=params.settings.cpus)
-    # Extract results
-    data_table = None
-    for obj in returned_objs:
-        if isinstance(obj, pandas.DataFrame):
-            if data_table is None:  data_table = obj
-            else:                   data_table = data_table.append(obj, verify_integrity=True)
-        else:
-            print '{}: {}'.format(obj.__class__, obj.message)
+    all_data = pandas.DataFrame()
+
+    for pdb in params.input.pdb:
+
+        mtz   = pdb.replace('.pdb','.mtz')
+
+        if   params.input.labels == 'basename':    label = os.path.split_ext(os.path.basename(pdb))[0]
+        elif params.input.labels == 'folder_name': label = os.path.basename(os.path.dirname(os.path.abspath(pdb)))
+
+        print bar
+        print 'Scoring model {} against {}'.format(pdb, mtz)
+
+        data_table = score_model(   params = params,
+                                    pdb1   = pdb,
+                                    mtz1   = mtz,
+                                    label_prefix = label
+                                )
+        all_data = all_data.append(data_table, verify_integrity=True)
+
     print '...Done'
     print bar
 
-    data_table.to_csv(scores_file)
+    all_data.to_csv(scores_file)
     print 'Output written to {}'.format(scores_file)
     print bar
 
-    # Output Images
+    ###################################################################
+    # Output Images - 1 image per residue per structure
+    ###################################################################
     all_images = []
     print 'Generating Output Images...'
-    for label, row in data_table.iterrows():
-        print 'Making: {}...'.format(label)
+    for label, row in all_data.iterrows():
         image_path = os.path.join(images_dir,'{}.png'.format(label))
+        print 'Making: {}...'.format(image_path)
         make_residue_radar_plot(path=image_path, data=row.to_frame().T)
         all_images.append(image_path)
-    print '...Done'
+
+    ###################################################################
+    # Output Images - 1 image per residue (allowing comparisons)
+    ###################################################################
+    columns = {}
+    if params.output.radar_plot.limits == 'preset': pass
+    elif params.output.radar_plot.limits == 'auto': columns['limits'] = None
+
+    for res_label, index_idxs in generate_group_idxs([i.split('-')[-3:] for i in all_data.index]):
+        res_label = '-'.join(res_label)
+        image_path = os.path.join(images_dir,'compare-{}.png'.format(res_label))
+        print 'Making: {}...'.format(image_path)
+        make_residue_radar_plot(path=image_path, data=all_data.irow(index_idxs), columns=columns)
+
+    print '...Done.'
     print bar
-
-    make_residue_radar_plot(path=os.path.join(images_dir,'combined.png'), data=data_table, columns={'limits':None})
-
-    if params.output.generate_summary:
-        print 'Generating output HTML...'
-        # Get template to be filled in
-        template = BAMBOO_HTML_ENV.get_template('summary_page.html')
-        # Output directory (for relative symlinks)
-        out_dir  = os.path.abspath(os.path.dirname(summary_file))
-
-        # ===========================================================>
-        # Construct the data object to populate the template
-        output_data = {}
-        output_data['header'] = 'Residue Score Summaries'
-        output_data['title'] = 'Residue Score Summaries'
-        output_data['introduction'] = 'Model Quality and Validation checks.'
-        # ===========================================================>
-        # Header Images
-        output_data['small_images'] = []
-        for img in all_images:
-            output_data['small_images'].append({ 'path': './'+os.path.relpath(path=img, start=out_dir),
-                                                 'title': 'Scores for {}'.format(os.path.splitext(os.path.basename(img))[0]) })
-        # ===========================================================>
-        # Write Output
-        with open(summary_file, 'w') as out_html:
-            out_html.write(template.render(output_data))
-        print '...Done'
-        print bar
-
-
-

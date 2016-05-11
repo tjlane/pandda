@@ -4,7 +4,7 @@ import gtk
 import pandas
 
 from bamboo.plot import bar
-from pandda.constants import PanddaAnalyserFilenames, PanddaDatasetFilenames, PanddaDatasetPNGFilenames
+from pandda.constants import PanddaAnalyserFilenames, PanddaInspectorFilenames, PanddaDatasetFilenames, PanddaDatasetPNGFilenames
 from pandda import inspect_html
 
 try:
@@ -218,20 +218,27 @@ class PanddaSiteTracker(object):
 class PanddaInspector(object):
     """Main Object in pandda.inspect"""
 
-    def __init__(self, csv, top_dir):
+    def __init__(self, event_csv, site_csv, top_dir):
+
+        self.log_table  = None
+        self.site_table = None
 
         # List of events from pandda.analyse
-        self.site_list = PanddaSiteTracker(parent=self, csv=csv, top_dir=top_dir)
+        self.site_list = PanddaSiteTracker(parent=self, csv=event_csv, top_dir=top_dir)
         # Handling of coot commands
         self.coot = PanddaMolHandler(parent=self)
 
         # Working Directory
         self.top_dir = top_dir
         # Output csv from pandda.inspect
-        self.output_csv = os.path.join(self.top_dir, 'analyses', 'pandda_inspect.csv')
+        self.output_event_csv = os.path.join(self.top_dir, 'analyses', PanddaInspectorFilenames.event_info)
+        self.output_site_csv  = os.path.join(self.top_dir, 'analyses', PanddaInspectorFilenames.site_info)
 
         # Load previous data or create new table from site list, so we can record inspection data
-        self.initialise_output_table(in_csv=csv, out_csv=self.output_csv)
+        self.initialise_output_event_table( in_csv=event_csv, out_csv=self.output_event_csv )
+        self.initialise_output_site_table(  in_csv=site_csv,  out_csv=self.output_site_csv  )
+        # Save Tables
+        self.write_output_csvs()
 
         # Object to hold the currently loaded event
         self.current_event = None
@@ -254,7 +261,7 @@ class PanddaInspector(object):
         site_idxs = self.log_table['site_idx']
         groups = [list(g[1]) for g in itertools.groupby(range(len(site_idxs)), key=lambda i: site_idxs[i])]
         bar.multiple_bar_plot_over_several_images(
-                                f_template  = os.path.join(self.top_dir, 'results_summaries', PanddaAnalyserFilenames.inspect_site_graph_mult),
+                                f_template  = os.path.join(self.top_dir, 'results_summaries', PanddaInspectorFilenames.inspect_site_graph_mult),
                                 plot_vals   = [[plot_vals[i] for i in g] for g in groups],
                                 colour_vals = [[colr_vals[i] for i in g] for g in groups]   )
         # Write output html
@@ -279,14 +286,17 @@ class PanddaInspector(object):
         self.gui.labels['map_res'].set_label(str(self.current_event.map_resolution))
         self.gui.labels['map_unc'].set_label(str(self.current_event.map_uncertainty))
         self.gui.labels['rwork_rfree'].set_label('{} / {}'.format(*self.current_event.rwork_rfree))
-        # Reset the comment box
-        self.gui.objects['comment text'].set_text(str(self.get_log_value('Comment')))
+        # Reset the event comment boxes
+        self.gui.objects['event comment text'].set_text(str(self.get_event_log_value('Comment')))
+        # Reset the site comment boxes
+        self.gui.objects['site name text'].set_text(str(self.site_table.get_value(index=self.current_event.site_idx, col='Name')))
+        self.gui.objects['site comment text'].set_text(str(self.site_table.get_value(index=self.current_event.site_idx, col='Comment')))
 
     #-------------------------------------------------------------------------
 
     def save_current(self):
         self.current_event.write_fitted_model(protein_obj=self.coot.open_mols['p'])
-        self.write_output_csv()
+        self.write_output_csvs()
 
     def reset_current(self):
         close_molecule(self.coot.open_mols['p'])
@@ -295,7 +305,7 @@ class PanddaInspector(object):
         else:
             p = read_pdb(self.current_event.unfitted_model)
         self.coot.open_mols['p'] = p
-        self.write_output_csv()
+        self.write_output_csvs()
 
     def load_new_event(self, new_event):
         if new_event is None:
@@ -305,7 +315,6 @@ class PanddaInspector(object):
         else:
             self.current_event = self.coot.load_event(e=new_event)
         self.update_gui()
-        self.print_current_log_values()
 
     def refresh_event(self):
         self.load_new_event(new_event=self.site_list.get_new_current_event())
@@ -364,7 +373,7 @@ class PanddaInspector(object):
         return True
     #-------------------------------------------------------------------------
 
-    def initialise_output_table(self, in_csv, out_csv):
+    def initialise_output_event_table(self, in_csv, out_csv):
         """Read in the log table from pandda.analyse and merge with previous results form pandda.inspect"""
 
         # Read in the log table from pandda_analyse
@@ -378,35 +387,62 @@ class PanddaInspector(object):
         self.log_table['Viewed'] = False
 
         if os.path.exists(out_csv):
-            print 'Merging with existing pandda.inspect csv...'
+            print 'Merging with existing pandda_inspect_events.csv...'
             # Output csv already exists from previous run - reload and merge with in_csv
             inspect_prev = pandas.read_csv(out_csv, sep=',', dtype={'dtag':str})
             inspect_prev = inspect_prev.set_index(['dtag','event_idx'])
             # Merge with input table (only on the columns that should be updated)
             self.log_table.update(inspect_prev[['Interesting','Ligand Placed','Ligand Confidence','Comment','Viewed']])
 
-        # Save Table
-        self.write_output_csv()
+    def initialise_output_site_table(self, in_csv, out_csv):
+        """Read in the site definition table from pandda.analyse and merge with previous results form pandda.inspect"""
 
-    def get_log_value(self, col):
+        # Read in the log table from pandda_analyse
+        self.site_table = pandas.read_csv(in_csv, sep=',')
+        self.site_table = self.site_table.set_index('site_idx')
+        # Create new columns (filled with blanks for the moment)
+        self.site_table['Name']     = 'None'
+        self.site_table['Comment']  = 'None'
+
+        if os.path.exists(out_csv):
+            print 'Merging with existing pandda_inspect_events.csv...'
+            # Output csv already exists from previous run - reload and merge with in_csv
+            inspect_prev = pandas.read_csv(out_csv, sep=',')
+            inspect_prev = inspect_prev.set_index('site_idx')
+            # Merge with input table (only on the columns that should be updated)
+            self.site_table.update(inspect_prev[['Name','Comment']])
+
+    def get_event_log_value(self, col):
         return self.log_table.get_value(index=self.current_event.index, col=col)
 
-    def set_log_value(self, col, value):
+    def set_event_log_value(self, col, value, write=True):
         self.log_table.set_value(index=self.current_event.index, col=col, value=value)
         print '====================>>>'
-        print 'LOG TABLE UPDATED:'
-        self.print_current_log_values()
-        self.write_output_csv()
-
-    def print_current_log_values(self):
+        print 'EVENT TABLE UPDATED'
         print '====================>>>'
         print 'Current Event:'
         print self.log_table.loc[self.current_event.index]
         print '====================>>>'
+        if write: self.write_output_csvs()
 
-    def write_output_csv(self):
-        print 'Writing output csv: {}'.format(self.output_csv)
-        self.log_table.to_csv(self.output_csv)
+    def get_site_log_value(self, col):
+        return self.site_table.get_value(index=self.current_event.site_idx, col=col)
+
+    def set_site_log_value(self, col, value, write=True):
+        self.site_table.set_value(index=self.current_event.site_idx, col=col, value=value)
+        print '====================>>>'
+        print 'SITE TABLE UPDATED:'
+        print '====================>>>'
+        print 'Current Site:'
+        print self.site_table.loc[self.current_event.site_idx]
+        print '====================>>>'
+        if write: self.write_output_csvs()
+
+    def write_output_csvs(self):
+        print 'Writing output csv: {}'.format(self.output_event_csv)
+        self.log_table.to_csv(self.output_event_csv)
+        print 'Writing output csv: {}'.format(self.output_site_csv)
+        self.site_table.to_csv(self.output_site_csv)
 
 #=========================================================================
 
@@ -569,8 +605,13 @@ class PanddaGUI(object):
         main_vbox.pack_start(hbox)
         # -----------------------------------------------------
         # Create buttones to record meta about the event
-        rec_buttons = self._record_buttons()
-        frame = gtk.Frame(); frame.add(rec_buttons)
+        rec_e_buttons = self._record_event_buttons()
+        frame = gtk.Frame(); frame.add(rec_e_buttons)
+        main_vbox.pack_start(frame)
+        # -----------------------------------------------------
+        # Create buttones to record meta about the event
+        rec_s_buttons = self._record_site_buttons()
+        frame = gtk.Frame(); frame.add(rec_s_buttons)
         main_vbox.pack_start(frame)
 
         # Link the buttons to the Inspector
@@ -609,18 +650,24 @@ class PanddaGUI(object):
         self.buttons['move'].connect("clicked",  lambda x: self.parent.coot.move_ligand_here())
 
         # Meta Recording buttons
-        self.buttons['tp'].connect("clicked",         lambda x: self.parent.set_log_value(col='Interesting', value=True))
-        self.buttons['fp'].connect("clicked",         lambda x: self.parent.set_log_value(col='Interesting', value=False))
-        self.buttons['high conf'].connect("clicked",  lambda x: self.parent.set_log_value(col='Ligand Confidence', value='High'))
-        self.buttons['med conf'].connect("clicked",   lambda x: self.parent.set_log_value(col='Ligand Confidence', value='Medium'))
-        self.buttons['low conf'].connect("clicked",   lambda x: self.parent.set_log_value(col='Ligand Confidence', value='Low'))
-        self.buttons['placed'].connect("clicked",     lambda x: self.parent.set_log_value(col='Ligand Placed', value=True))
-        self.buttons['not placed'].connect("clicked", lambda x: self.parent.set_log_value(col='Ligand Placed', value=False))
+        self.buttons['tp'].connect("clicked",         lambda x: self.parent.set_event_log_value(col='Interesting', value=True))
+        self.buttons['fp'].connect("clicked",         lambda x: self.parent.set_event_log_value(col='Interesting', value=False))
+        self.buttons['high conf'].connect("clicked",  lambda x: self.parent.set_event_log_value(col='Ligand Confidence', value='High'))
+        self.buttons['med conf'].connect("clicked",   lambda x: self.parent.set_event_log_value(col='Ligand Confidence', value='Medium'))
+        self.buttons['low conf'].connect("clicked",   lambda x: self.parent.set_event_log_value(col='Ligand Confidence', value='Low'))
+        self.buttons['placed'].connect("clicked",     lambda x: self.parent.set_event_log_value(col='Ligand Placed', value=True))
+        self.buttons['not placed'].connect("clicked", lambda x: self.parent.set_event_log_value(col='Ligand Placed', value=False))
 
     def store(self):
         """Record information from the gui to the pandas table in the main object"""
-        self.parent.set_log_value(col='Comment', value=self.objects['comment text'].get_text())
-        self.parent.set_log_value(col='Viewed', value=True)
+        # Event records
+        self.parent.set_event_log_value(col='Comment', value=self.objects['event comment text'].get_text(), write=False)
+        self.parent.set_event_log_value(col='Viewed',  value=True, write=False)
+        # Site records
+        self.parent.set_site_log_value(col='Name',    value=self.objects['site name text'].get_text(),    write=False)
+        self.parent.set_site_log_value(col='Comment', value=self.objects['site comment text'].get_text(), write=False)
+        # Write csvs only once
+        self.parent.write_output_csvs()
 
     def _navi_buttons_1(self):
         box = gtk.HBox(homogeneous=False, spacing=2)
@@ -719,14 +766,27 @@ class PanddaGUI(object):
 
         return hbox_main
 
-    def _record_buttons(self):
+    def _record_event_buttons(self):
         # ---------------------------------------------
-        hbox_1 = gtk.HBox(homogeneous=True, spacing=5)
-        hbox_1.set_border_width(3)
+        hbox_1 = gtk.HBox(homogeneous=False, spacing=5)
+        # ---
+        hbox_1.pack_start(gtk.HBox(), expand=False, fill=False, padding=10)
+        # ---
+        l = gtk.Label('Event Comment:')
+        hbox_1.pack_start(l, expand=False, fill=False, padding=5)
+        # ---
+        e = gtk.Entry(max=200)
+        self.objects['event comment text'] = e
+        hbox_1.pack_start(e, expand=True, fill=True, padding=5)
+        # ---
+        hbox_1.pack_start(gtk.HBox(), expand=False, fill=False, padding=10)
+        # ---------------------------------------------
+        hbox_2 = gtk.HBox(homogeneous=True, spacing=5)
+        hbox_2.set_border_width(3)
         vbox_1_1 = gtk.VBox(homogeneous=True, spacing=2)
         vbox_1_2 = gtk.VBox(homogeneous=True, spacing=2)
         vbox_1_3 = gtk.VBox(homogeneous=True, spacing=2)
-        hbox_1.add(vbox_1_1); hbox_1.add(vbox_1_2); hbox_1.add(vbox_1_3)
+        hbox_2.add(vbox_1_1); hbox_2.add(vbox_1_2); hbox_2.add(vbox_1_3)
         # ---
         b = gtk.Button(label="Mark Event as Interesting")
         self.buttons['tp'] = b
@@ -756,6 +816,28 @@ class PanddaGUI(object):
         self.buttons['not placed'] = b
         vbox_1_3.add(b)
         # ---------------------------------------------
+        vbox_main = gtk.VBox(spacing=0)
+        vbox_main.pack_start(gtk.Label('Record Event Information (this event only)'), expand=False, fill=False, padding=5)
+        vbox_main.pack_start(hbox_1, padding=0)
+        vbox_main.pack_start(hbox_2, padding=5)
+
+        return vbox_main
+
+    def _record_site_buttons(self):
+        # ---------------------------------------------
+        hbox_1 = gtk.HBox(homogeneous=False, spacing=5)
+        # ---
+        hbox_1.pack_start(gtk.HBox(), expand=False, fill=False, padding=10)
+        # ---
+        l = gtk.Label('Name:')
+        hbox_1.pack_start(l, expand=False, fill=False, padding=5)
+        # ---
+        e = gtk.Entry(max=200)
+        self.objects['site name text'] = e
+        hbox_1.pack_start(e, expand=True, fill=True, padding=5)
+        # ---
+        hbox_1.pack_start(gtk.HBox(), expand=False, fill=False, padding=10)
+        # ---------------------------------------------
         hbox_2 = gtk.HBox(homogeneous=False, spacing=5)
         # ---
         hbox_2.pack_start(gtk.HBox(), expand=False, fill=False, padding=10)
@@ -764,13 +846,14 @@ class PanddaGUI(object):
         hbox_2.pack_start(l, expand=False, fill=False, padding=5)
         # ---
         e = gtk.Entry(max=200)
-        self.objects['comment text'] = e
+        self.objects['site comment text'] = e
         hbox_2.pack_start(e, expand=True, fill=True, padding=5)
         # ---
         hbox_2.pack_start(gtk.HBox(), expand=False, fill=False, padding=10)
         # ---------------------------------------------
         vbox_main = gtk.VBox(spacing=0)
-        vbox_main.pack_start(hbox_1, padding=0)
+        vbox_main.pack_start(gtk.Label('Record Site Information (for all events with this site)'), expand=False, fill=False, padding=5)
+        vbox_main.pack_start(hbox_1, padding=5)
         vbox_main.pack_start(hbox_2, padding=5)
 
         return vbox_main
@@ -1002,9 +1085,10 @@ class PanddaGUI(object):
 #############################################################################################
 
 work_dir = os.getcwd()
-hit_list = os.path.join(work_dir, 'analyses', 'pandda_analyse_events.csv')
+hit_list = os.path.join(work_dir, 'analyses', PanddaAnalyserFilenames.event_info)
+site_csv = os.path.join(work_dir, 'analyses', PanddaAnalyserFilenames.site_info)
 
-inspector = PanddaInspector(csv=hit_list, top_dir=work_dir)
+inspector = PanddaInspector(event_csv=hit_list, site_csv=site_csv, top_dir=work_dir)
 inspector.start_gui()
 
 inspector.refresh_event()

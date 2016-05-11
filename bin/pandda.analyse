@@ -433,18 +433,19 @@ def pandda_main(args):
         # Check that some datasets have been found or already loaded
         if (not pandda.datasets.all()) and (not input_files):
             pandda.exit()
-            raise SystemExit('NO DATASETS LOADED')
+            raise SystemExit('NO DATASETS HAVE BEEN SELECTED FOR ANALYSIS OR LOADED FROM PREVIOUS RUNS')
         # Check to see if we're reusing statistical maps
         if (not pandda.args.method.recalculate_statistical_maps) and pandda.stat_maps.get_resolutions():
             pandda.log('===================================>>>', True)
-            pandda.log('REUSING STATISTICAL MAPS AT: {!s}'.format(', '.join(map(str,pandda.stat_maps.get_resolutions()))), True)
+            pandda.log('Pre-existing statistical maps (from previous runs) have been found and will be reused:', True)
+            pandda.log('Resolutions of reloaded maps: {!s}'.format(', '.join(map(str,pandda.stat_maps.get_resolutions()))), True)
         # Check that enough datasets have been found
         elif pandda.datasets.size() + len(input_files) < pandda.params.analysis.min_build_datasets:
             pandda.log('===================================>>>', True)
-            pandda.log('NOT ENOUGH DATASETS TO BUILD DISTRIBUTIONS!', True)
+            pandda.log('NOT ENOUGH DATASETS HAVE BEEN LOADED FOR ANALYSIS', True)
             pandda.log('Number loaded ({!s}) is less than the {!s} needed.'.format(pandda.datasets.size()+len(input_files), pandda.params.analysis.min_build_datasets), True)
-            pandda.log('This value is defined by pandda.params.analysis.min_build_datasets', True)
-            raise SystemExit('NOT ENOUGH DATASETS LOADED')
+            pandda.log('This value is controlled by changing pandda.params.analysis.min_build_datasets', True)
+            raise SystemExit('NOT ENOUGH DATASETS HAVE BEEN LOADED FOR ANALYSIS')
         # If dry_run, exit after initial search
         if pandda.args.settings.exit_flags.dry_run:
             return pandda, None
@@ -458,6 +459,7 @@ def pandda_main(args):
             pandda.add_new_files(input_files)
             pandda.load_new_datasets()
             pandda.initialise_analysis()
+            pandda.check_loaded_datasets(datasets=pandda.datasets.all())
             # ============================================================================>
             #####
             # Set Reference Dataset
@@ -488,6 +490,7 @@ def pandda_main(args):
             # Rebuild the masks of the rejected datasets (quick)
             # ============================================================================>
             pandda.initialise_analysis()
+            pandda.check_loaded_datasets(datasets=pandda.datasets.all())
             pandda.filter_datasets_1()
 
         # ============================================================================>
@@ -518,7 +521,7 @@ def pandda_main(args):
         # ============================================================================>
         # Validate/Reset the loaded datasets
         # ============================================================================>
-        pandda.check_and_reset_datasets()
+        pandda.reset_loaded_datasets()
 
         # ============================================================================>
         # Re-select the reference dataset
@@ -845,6 +848,7 @@ def pandda_main(args):
                     print(l)
             except ImportError:
                 print('IMPORT ERROR (ascii_graph) - CANNOT GENERATE UNCERTAINTY GRAPH')
+            except:
                 pass
             # ============================================================================>
             # Calculate the statistics of the maps
@@ -1190,6 +1194,7 @@ def pandda_main(args):
                 print(l)
         except ImportError:
             print('IMPORT ERROR (ascii_graph) - CANNOT GENERATE MAP ANALYSIS GRAPH')
+        except:
             pass
 
         pandda.log('============================================================================>>>', True)

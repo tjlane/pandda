@@ -1,4 +1,45 @@
+import cctbx.sgtbx
+import cctbx.uctbx
+
+from scitbx.array_family import flex
+
 from bamboo.common.masks import mask_collection
+from bamboo.common import Meta
+
+from pandda.handlers import DatasetHandler
+
+########################################################################################################
+#
+#   HOLDER CLASSES
+#
+########################################################################################################
+
+class MapHolder(object):
+    """Class to hold map values and meta data"""
+    def __init__(self, num, tag, map, unit_cell, space_group, meta, parent=None, child=None):
+        assert isinstance(num, int), 'Num must be int. Type given: {!s}'.format(type(num))
+        self.num = num
+        assert isinstance(tag, str), 'Tag must be str. Type given: {!s}'.format(type(tag))
+        self.tag = tag
+        assert isinstance(map, flex.double), 'Map data must be flex.double. Type given: {!s}'.format(type(map))
+        self.map = map
+        assert isinstance(unit_cell, cctbx.uctbx.ext.unit_cell), 'Unit cell must be of type unit_cell. Type given: {!s}'.format(type(unit_cell))
+        self.unit_cell = unit_cell
+        assert isinstance(space_group, cctbx.sgtbx.ext.space_group), 'Space group must be of type space_group. Type given: {!s}'.format(type(space_group))
+        self.space_group = space_group
+        assert isinstance(meta, Meta), 'Meta must be dict. Type given: {!s}'.format(type(meta))
+        self.meta = meta
+        if parent:
+            assert isinstance(parent, DatasetHandler) or isinstance(parent, MapHolder), 'parent must be of type DatasetHandler or MapHolder. Type given: {!s}'.format(type(parent))
+            self.parent = parent
+        if child:
+            self.child = child
+
+########################################################################################################
+#
+#   HOLDER LIST CLASSES
+#
+########################################################################################################
 
 class HolderList(object):
     """Class for grouping many holders together"""
@@ -72,4 +113,24 @@ class HolderList(object):
         if len(matching) == 0: raise Exception('NO MATCHING HOLDER FOUND - NUM: {!s}, TAG: {!s}'.format(num, tag))
         if len(matching) != 1: raise Exception('MORE THAN ONE MATCHING HOLDER FOUND - NUM: {!s}, TAG: {!s}'.format(num, tag))
         return matching[0]
+
+########################################################################################################
+#
+#   HOLDER LIST SUBCLASSES
+#
+########################################################################################################
+
+class DatasetHandlerList(HolderList):
+    """Class for grouping many dataset handlers together"""
+    _holder_class = DatasetHandler
+
+    def __custom_init__(self, *args):
+        print(args)
+
+class MapHolderList(HolderList):
+    """Class for grouping many MapHolder objects together"""
+    _holder_class = MapHolder
+
+    def __custom_init__(self, *args):
+        print(args)
 

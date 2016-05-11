@@ -64,7 +64,7 @@ def multiple_bar_plot_over_several_images(f_template, plot_vals, graphs_per_imag
             s_axis = all_axes[i_plot]
             # Change X-axis
             s_axis.set_xlim([0,max_x+2])
-            s_axis.set_xticks(range(1,max_x+1,5))
+            s_axis.set_xticks([1]+range(5,max_x,5)+[max_x])
             # Past the end of the data?
             if i_site >= num_sites:
                 s_axis.set_yticks([])

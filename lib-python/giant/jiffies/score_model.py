@@ -243,7 +243,7 @@ def run(params):
     else:                               params.selection.__inject__("res_names_list", None)
 
     output_dir, images_dir = prepare_output_directory(params)
-    scores_file =  os.path.join(output_dir, 'residue_scores.csv')
+    scores_file = os.path.join(output_dir, 'residue_scores.csv')
 
     print bar
     print 'Scoring model...'

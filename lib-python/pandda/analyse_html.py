@@ -1,5 +1,6 @@
 import os, glob
 
+from bamboo.html import png2base64str
 from pandda.settings import PANDDA_TEXT
 from pandda.html import PANDDA_HTML_ENV
 
@@ -26,17 +27,17 @@ def write_initial_html(pandda):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_resolutions'), start=out_dir),
+    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.output_handler.get_file(file_tag='d_resolutions'))),
                                        'title': 'Dataset Resolutions' })
-    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_rfactors'), start=out_dir),
+    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.output_handler.get_file(file_tag='d_rfactors'))),
                                        'title': 'Dataset R-Factors' })
-    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_global_rmsd_to_ref'), start=out_dir),
+    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.output_handler.get_file(file_tag='d_global_rmsd_to_ref'))),
                                        'title': 'Dataset RMSD to Mean Structure' })
-    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_cell_volumes'), start=out_dir),
+    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.output_handler.get_file(file_tag='d_cell_volumes'))),
                                        'title': 'Dataset Cell Volumes' })
-    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_cell_axes'), start=out_dir),
+    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.output_handler.get_file(file_tag='d_cell_axes'))),
                                        'title': 'Dataset Cell Axis Lengths' })
-    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=pandda.output_handler.get_file(file_tag='d_cell_angles'), start=out_dir),
+    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.output_handler.get_file(file_tag='d_cell_angles'))),
                                        'title': 'Dataset Cell Angles' })
     # ===========================================================>
     # Write Output
@@ -86,12 +87,12 @@ def write_analyse_html(pandda):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=pandda.output_handler.get_file(file_tag='pymol_sites_png_1'), start=out_dir),
+    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.output_handler.get_file(file_tag='pymol_sites_png_1'))),
                                        'title': 'Identified Sites (Front)' })
-    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=pandda.output_handler.get_file(file_tag='pymol_sites_png_2'), start=out_dir),
+    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.output_handler.get_file(file_tag='pymol_sites_png_2'))),
                                        'title': 'Identified Sites (Back)' })
     for i_png, png in enumerate(sorted(glob.glob(pandda.output_handler.get_file(file_tag='analyse_site_graph_mult').format('*')))):
-        output_data['top_images'].append({ 'path': './'+os.path.relpath(path=png, start=out_dir),
+        output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=png)),
                                            'title': 'Identified Site Summary ({})'.format(i_png+1) })
     # ===========================================================>
     # Tables

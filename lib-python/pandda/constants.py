@@ -134,9 +134,6 @@ class PanddaAnalyserFilenames:
     analyse_html            = 'pandda_analyse.html'
     analyse_site_graph      = 'pandda_analyse_sites_graph.png'
     analyse_site_graph_mult = 'pandda_analyse_sites_graph_{!s}.png'
-    inspect_html            = 'pandda_inspect.html'
-    inspect_site_graph      = 'pandda_inspect_sites_graph.png'
-    inspect_site_graph_mult = 'pandda_inspect_sites_graph_{!s}.png'
     # Output csvs
     event_info              = 'pandda_analyse_events.csv'
     site_info               = 'pandda_analyse_sites.csv'
@@ -162,3 +159,10 @@ class PanddaAnalyserFilenames:
     pymol_sites_py          = 'pandda_analyse_sites_pymol.py'
     pymol_sites_pml         = 'pandda_analyse_sites_pymol.pml'
 
+class PanddaInspectorFilenames:
+    inspect_html            = 'pandda_inspect.html'
+    inspect_site_graph      = 'pandda_inspect_sites_graph.png'
+    inspect_site_graph_mult = 'pandda_inspect_sites_graph_{!s}.png'
+    # output csvs
+    event_info              = 'pandda_inspect_events.csv'
+    site_info               = 'pandda_inspect_sites.csv'

@@ -1,32 +1,41 @@
 import os, glob
 
-from bamboo.html import path2url
+from bamboo.html import png2base64str
 from pandda.html import PANDDA_HTML_ENV
 from pandda.settings import PANDDA_TOP, PANDDA_TEXT
-from pandda.constants import PanddaAnalyserFilenames
+from pandda.constants import PanddaAnalyserFilenames, PanddaInspectorFilenames
 
 def write_inspect_html(top_dir, inspector):
 
     # Get template to be filled in
     template = PANDDA_HTML_ENV.get_template('pandda_summary.html')
     # Output file
-    out_file = os.path.join(top_dir, 'results_summaries', 'pandda_inspect.html')
+    out_file = os.path.join(top_dir, 'results_summaries', PanddaInspectorFilenames.inspect_html)
     # Output directory (for relative symlinks)
     out_dir  = os.path.abspath(os.path.dirname(out_file))
 
     all_data = inspector.log_table
     len_data = len(all_data.index)
 
+    # Pandda Analysis outputs
+    num_blobs = len_data
+    num_sites = len(set(all_data['site_idx']))
+
+    # Datasets Inspected/Modelled/Empty
     num_fitted = sum(all_data['Ligand Placed'])
     num_viewed = sum(all_data['Viewed'])
     num_empty  = num_viewed - num_fitted
     num_unviewed = len_data - num_viewed
 
-    num_blobs = len_data
-    num_sites = len(set(all_data['site_idx']))
     # Number of datasets with hits
     try:    num_d_hit = len(set(zip(*all_data.index[all_data['Ligand Placed'] == True])[0]))
     except: num_d_hit = 0
+
+    # Site Hits
+    site_hits = []
+    for site_idx in range(1, num_sites+1):
+        site_placed = sum(all_data["Ligand Placed"][all_data['site_idx']==site_idx])
+        if site_placed > 0: site_hits.append((site_idx, site_placed))
 
     # ===========================================================>
     # Construct the data object to populate the template
@@ -37,12 +46,12 @@ def write_inspect_html(top_dir, inspector):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=os.path.join(top_dir, 'results_summaries', PanddaAnalyserFilenames.pymol_sites_png_1), start=out_dir),
+    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=os.path.join(top_dir, 'results_summaries', PanddaAnalyserFilenames.pymol_sites_png_1))),
                                        'title': 'Identified Sites (Front)' })
-    output_data['top_images'].append({ 'path': './'+os.path.relpath(path=os.path.join(top_dir, 'results_summaries', PanddaAnalyserFilenames.pymol_sites_png_2), start=out_dir),
+    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=os.path.join(top_dir, 'results_summaries', PanddaAnalyserFilenames.pymol_sites_png_2))),
                                        'title': 'Identified Sites (Back)' })
-    for i_png, png in enumerate(sorted(glob.glob(os.path.join(top_dir, 'results_summaries', PanddaAnalyserFilenames.inspect_site_graph_mult).format('*')))):
-        output_data['top_images'].append({ 'path': './'+os.path.relpath(path=png, start=out_dir),
+    for i_png, png in enumerate(sorted(glob.glob(os.path.join(top_dir, 'results_summaries', PanddaInspectorFilenames.inspect_site_graph_mult).format('*')))):
+        output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=png)),
                                            'title': 'Identified Site Summary ({})'.format(i_png+1) })
     # ===========================================================>
     # Summary Bar
@@ -54,10 +63,17 @@ def write_inspect_html(top_dir, inspector):
     # ===========================================================>
     # Progress Bars
     output_data['progress_bar'] = []
+    # Fitting Progress
     output_data['progress_bar'].append({'title':'Fitting Progress', 'data':[]})
-    output_data['progress_bar'][0]['data'].append({'text':'Fitted',           'colour':'success', 'size':100.0*num_fitted/len_data})
-    output_data['progress_bar'][0]['data'].append({'text':'Unviewed',         'colour':'warning', 'size':100.0*num_unviewed/len_data})
-    output_data['progress_bar'][0]['data'].append({'text':'No Ligand Fitted', 'colour':'danger',  'size':100.0*num_empty/len_data})
+    output_data['progress_bar'][0]['data'].append({'text':'Fitted - {} Events'.format(num_fitted),          'colour':'success', 'size':100.0*num_fitted/len_data})
+    output_data['progress_bar'][0]['data'].append({'text':'Unviewed - {} Events'.format(num_unviewed),      'colour':'warning', 'size':100.0*num_unviewed/len_data})
+    output_data['progress_bar'][0]['data'].append({'text':'No Ligand Fitted - {} Events'.format(num_empty), 'colour':'danger',  'size':100.0*num_empty/len_data})
+    # Ligand Distribution
+    if num_fitted > 0:
+        output_data['progress_bar'].append({'title':'Identified Ligands', 'data':[]})
+        for site_idx, n_hits in site_hits:
+            colour = ('info', 'none')[site_idx%2]
+            output_data['progress_bar'][1]['data'].append({'text':'Site {} - {} Ligand(s)'.format(site_idx, n_hits), 'colour':colour, 'size':100.0*n_hits/num_fitted})
     # ===========================================================>
     # Tables
     output_data['table'] = {}
