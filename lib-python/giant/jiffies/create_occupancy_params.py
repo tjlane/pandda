@@ -13,6 +13,8 @@ from scitbx.array_family import flex
 from giant.maths.geometry import pairwise_dists, is_within
 from giant.stats.cluster import find_connected_groups, generate_group_idxs
 
+#######################################
+
 blank_arg_prepend = {'.pdb' : 'pdb='}
 
 master_phil = libtbx.phil.parse("""
@@ -44,6 +46,8 @@ verbose = True
     .type = bool
 
 """)
+
+#######################################
 
 def generate_phenix_occupancy_params(occupancy_groups):
     """Using pairs of sets of atom groups, generate occupancy groups for phenix"""
@@ -86,6 +90,8 @@ def generate_refmac_occupancy_params(occupancy_groups):
     out_lines.append(final_line)
     occ_params = '\n'.join(out_lines)
     return occ_params
+
+#######################################
 
 def run(params):
 
@@ -240,3 +246,8 @@ def run(params):
     if params.phenix_occ_out:
         with open(params.phenix_occ_out, 'w') as fh: fh.write(occ_params)
 
+#######################################
+
+if __name__=='__main__':
+    from giant.jiffies import run_default
+    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)

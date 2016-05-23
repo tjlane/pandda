@@ -42,7 +42,7 @@ from pandda.lists import MapList, PanddaStatMapList, PanddaMultipleStatMapList
 from pandda.holders import MapHolder, MapHolderList, DatasetHandlerList
 from pandda.handlers import DatasetHandler, ReferenceDatasetHandler, map_handler, align_dataset_to_reference
 
-from pandda.settings import PANDDA_TOP, PANDDA_TEXT, PANDDA_VERSION
+from pandda import PANDDA_TOP, PANDDA_TEXT, PANDDA_VERSION
 from pandda.constants import *
 
 def map_statistics_map_func(arg_dict):

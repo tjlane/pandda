@@ -9,7 +9,12 @@ from bamboo.html import BAMBOO_HTML_ENV
 from giant.jiffies.score_model import prepare_output_directory, score_model, make_residue_radar_plot
 from giant.stats.cluster import generate_group_idxs
 
+#######################################
+
 bar = '=======================++>'
+
+#######################################
+
 blank_arg_prepend = {None:'pdb='}
 
 master_phil = libtbx.phil.parse("""
@@ -43,6 +48,8 @@ settings{
         .type = int
 }
 """)
+
+#######################################
 
 def run(params):
 
@@ -108,3 +115,9 @@ def run(params):
 
     print '...Done.'
     print bar
+
+#######################################
+
+if __name__=='__main__':
+    from giant.jiffies import run_default
+    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)

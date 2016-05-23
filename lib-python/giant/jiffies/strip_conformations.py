@@ -10,7 +10,7 @@ from scitbx.array_family import flex
 
 from giant.utils.pdb import strip_pdb_to_input, get_pdb_header
 
-############################################################################
+#######################################
 
 blank_arg_prepend = {'.pdb':'pdb='}
 
@@ -41,7 +41,7 @@ verbose = False
     .type = bool
 """)
 
-############################################################################
+#######################################
 
 def proc(ensemble_file, params, sel_resnames=None, sel_confs=None):
 
@@ -124,6 +124,8 @@ def proc(ensemble_file, params, sel_resnames=None, sel_confs=None):
     # Write output file
     conf_sel.write_pdb_file(output_file, open_append=True)
 
+#######################################
+
 def run(params):
 
     ######################################################################
@@ -158,3 +160,8 @@ def run(params):
 
     return
 
+#######################################
+
+if __name__=='__main__':
+    from giant.jiffies import run_default
+    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)

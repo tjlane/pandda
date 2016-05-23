@@ -11,6 +11,8 @@ import scipy.spatial
 from scitbx.array_family import flex
 from giant.structure.align import perform_flexible_alignment, find_nearest_calphas, transform_coordinates_with_flexible_alignment
 
+#######################################
+
 blank_arg_prepend = 'pdb='
 
 master_phil = libtbx.phil.parse("""
@@ -30,6 +32,8 @@ output {
         .type = path
 }
 """)
+
+#######################################
 
 def run(params):
 
@@ -111,4 +115,8 @@ def run(params):
     t_end = time.time()
     print 'Total Runtime: {!s}'.format(time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(t_end-t_start)))
 
+#######################################
 
+if __name__ == '__main__':
+    from giant.jiffies import run_default
+    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)

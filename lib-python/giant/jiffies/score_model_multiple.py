@@ -8,7 +8,12 @@ import numpy, pandas
 from bamboo.html import BAMBOO_HTML_ENV
 from giant.jiffies.score_model import prepare_output_directory, score_model, make_residue_radar_plot
 
+#######################################
+
 bar = '=======================++>'
+
+#######################################
+
 blank_arg_prepend = {None:'dir='}
 
 master_phil = libtbx.phil.parse("""
@@ -48,6 +53,8 @@ settings{
 }
 """)
 
+#######################################
+
 def process_folder_mp(args):
     try:
         return process_folder(*args)
@@ -85,6 +92,8 @@ def process_folder(dir, params):
                             )
 
     return data_table
+
+#######################################
 
 def run(params):
 
@@ -163,5 +172,8 @@ def run(params):
         print '...Done'
         print bar
 
+#######################################
 
-
+if __name__=='__main__':
+    from giant.jiffies import run_default
+    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)

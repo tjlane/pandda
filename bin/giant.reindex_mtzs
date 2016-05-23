@@ -1,0 +1,2 @@
+#!/bin/sh
+pandda.python -Qnew -m giant.jiffies.reindex_mtzs "$@"

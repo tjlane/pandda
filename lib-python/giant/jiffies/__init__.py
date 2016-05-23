@@ -49,3 +49,22 @@ def parse_phil_args(master_phil, args, home_scope=None, blank_arg_prepend=None):
     working_phil = master_phil.fetch(sources=phil_objects)
 
     return working_phil
+
+def run_default(run, master_phil, args, blank_arg_prepend=None):
+
+    # Show Defaults (just values)
+    if '--show-defaults' in args:
+        master_phil.show(attributes_level=0)
+    # Show Defaults (including information)
+    elif '--help' in args:
+        master_phil.show(attributes_level=2)
+    # ... or just run ...
+    elif '--expert' in args:
+        master_phil.show(attributes_level=4)
+    # ... or just run ...
+    else:
+        working_phil = parse_phil_args(master_phil=master_phil, args=args, blank_arg_prepend=blank_arg_prepend)
+        out = run(params=working_phil.extract())
+
+    return 0
+

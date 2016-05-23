@@ -1109,6 +1109,7 @@ def pandda_main(args):
                 t_event_cluster_start = time.time()
                 # ==================================================>
                 # Cluster events to sites 
+                pandda.log('Clustering {} Event(s)'.format(len(all_events)))
                 site_list = cluster_events(events=all_events, cutoff=15.0/pandda.reference_grid().grid_spacing(), linkage='average')
                 # Sort sites by largest Z-Value
                 site_list.sort(key=lambda s: (s.info.num_events, max([e.cluster.max for e in s.children])), reverse=True).renumber()

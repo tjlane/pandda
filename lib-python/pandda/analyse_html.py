@@ -1,7 +1,6 @@
 import os, glob
 
 from bamboo.html import png2base64str
-from pandda.settings import PANDDA_TEXT
 from pandda.html import PANDDA_HTML_ENV
 
 def write_initial_html(pandda):

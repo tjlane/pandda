@@ -8,6 +8,8 @@ import pandas
 from giant.xray.data import crystalSummary
 from giant.xray.data.cluster import crystalGroup
 
+#######################################
+
 blank_arg_prepend = 'mtz='
 
 master_phil = libtbx.phil.parse("""
@@ -28,6 +30,8 @@ output {
         .type = path
 }
 """)
+
+#######################################
 
 def run(params):
 
@@ -76,7 +80,7 @@ def run(params):
     print 'LOWEST VOLUME: {:.2f}'.format(low_vol_crystal.unit_cell.volume())
     print 'DATASET + PATH: {} - {}'.format(low_vol_crystal.id, low_vol_crystal.mtz_file)
 
-#########################################################################################################
+    #########################################################################################################
 
     for c in cg.crystals:
 
@@ -85,6 +89,8 @@ def run(params):
                 if lab not in c.column_labels:
                     print 'COLUMN NOT IN FILE ({}): {}'.format(lab, c.mtz_file)
 
+#######################################
 
-
-
+if __name__=='__main__':
+    from giant.jiffies import run_default
+    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)

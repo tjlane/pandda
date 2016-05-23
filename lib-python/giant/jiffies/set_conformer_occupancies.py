@@ -10,7 +10,9 @@ from scitbx.array_family import flex
 
 from giant.structure.occupancy import normalise_occupancies, set_conformer_occupancy
 
-############################################################################
+#######################################
+
+blank_arg_prepend = None
 
 master_phil = libtbx.phil.parse("""
 
@@ -38,7 +40,7 @@ verbose = False
     .type = bool
 """)
 
-############################################################################
+#######################################
 
 def run(params):
 
@@ -102,3 +104,8 @@ def run(params):
 
     return
 
+#######################################
+
+if __name__=='__main__':
+    from giant.jiffies import run_default
+    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)

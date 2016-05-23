@@ -1,11 +1,10 @@
-#!/usr/bin/env pandda.python
-
 import os, sys, copy, re
 
 import libtbx.phil
 from bamboo.common.command import CommandManager
-from giant.jiffies import parse_phil_args
 from giant.xray.data import crystalSummary
+
+#######################################
 
 blank_arg_prepend = 'mtz='
 
@@ -22,6 +21,8 @@ options {
         .type = str
 }
 """)
+
+#######################################
 
 def run(params):
 
@@ -99,21 +100,8 @@ def run(params):
 #        print cm.error
 #        print '============================>'
 
-if __name__ == '__main__':
+#######################################
 
-    # Show Defaults (just values)
-    if '--show-defaults' in sys.argv:
-        master_phil.show(attributes_level=0)
-    # Show Defaults (including information)
-    elif '--help' in sys.argv:
-        master_phil.show(attributes_level=2)
-    # ... or just run ...
-    elif '--expert' in sys.argv:
-        master_phil.show(attributes_level=4)
-    # ... or just run ...
-    else:
-        working_phil = parse_phil_args(master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
-        out = run(params=working_phil.extract())
-    # Exit (unnecessary, but eh)
-    sys.exit()
-
+if __name__=='__main__':
+    from giant.jiffies import run_default
+    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)

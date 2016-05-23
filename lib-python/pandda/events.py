@@ -167,6 +167,8 @@ class SiteList(object):
 
 def cluster_events(events, cutoff=10, linkage='average'):
 
+    if len(events) == 1: return SiteList([Site(events)])
+
     centroids = [e.cluster.centroid for e in events]
     cluster_ids = scipy.cluster.hierarchy.fclusterdata( X = centroids,
                                                         t = cutoff,

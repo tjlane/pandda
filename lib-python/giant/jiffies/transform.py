@@ -15,6 +15,10 @@ from giant.structure.align import align_chains
 
 from mmtbx.maps.superpose import mask_grid, generate_p1_box
 
+#######################################
+
+blank_arg_prepend = None
+
 master_phil = libtbx.phil.parse("""
 align {
     reference = None
@@ -50,6 +54,8 @@ output {
         .type = str
 }
 """)
+
+#######################################
 
 def run(params):
 
@@ -154,3 +160,8 @@ def run(params):
 #            file_name=output_map,
 #            buffer=10)
 
+#######################################
+
+if __name__=='__main__':
+    from giant.jiffies import run_default
+    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)

@@ -306,3 +306,8 @@ def run(params):
     for dir in export_dirs:
         process_and_export_folder(dir=dir, params=params)
 
+#######################################
+
+if __name__ == '__main__':
+    from giant.jiffies import run_default
+    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)

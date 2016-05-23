@@ -1,12 +1,11 @@
-#!/usr/bin/env pandda.python
-
 import os, sys, copy, re, shutil
 
 import libtbx.phil
 import libtbx.easy_mp
 from bamboo.common.command import CommandManager
-from giant.jiffies import parse_phil_args
 from giant.xray.data import crystalSummary
+
+#######################################
 
 blank_arg_prepend = {'.pdb':'reference_pdb=', '.mtz':'mtz='}
 
@@ -22,7 +21,7 @@ input {
         .multiple = True
 }
 options {
-    use_reference_mtz = False
+    use_reference_rfree_flags = False
         .type = bool
     cpus = 1
         .type = int
@@ -34,6 +33,8 @@ output {
         .type = str
 }
 """)
+
+#######################################
 
 def run(params):
 
@@ -58,14 +59,15 @@ def run(params):
     if ref_mtz_file: ref_mtz_file = os.path.abspath(ref_mtz_file)
 
     for ref_pdb_file in params.input.reference_pdb:
-            
+
         commands = []
 
         ref_pdb_file = os.path.abspath(ref_pdb_file)
-        
-        if params.options.use_reference_mtz:
+
+        if params.options.use_reference_rfree_flags:
             if not ref_mtz_file: ref_mtz_file = os.path.abspath(ref_pdb_file.replace('.pdb','.mtz'))
-            assert os.path.exists(ref_mtz_file), 'Reference MTZ does not exist: {}'.format(ref_mtz_file)
+
+        assert os.path.exists(ref_mtz_file), 'Reference MTZ does not exist: {}'.format(ref_mtz_file)
 
         output_dirname = os.path.basename(ref_pdb_file).replace('.pdb', params.output.dir_suffix)
         print 'Placing all dimple runs for {} into directories called {}'.format(ref_pdb_file, output_dirname)
@@ -86,7 +88,7 @@ def run(params):
             os.mkdir(output_dir)
 
             cm = CommandManager('dimple')
-            if params.options.use_reference_mtz:
+            if params.options.use_reference_rfree_flags:
                 cm.add_command_line_arguments([ '--free-r-flags', ref_mtz_file ])
             cm.add_command_line_arguments([ mtz_file,
                                             ref_pdb_file,
@@ -101,24 +103,10 @@ def run(params):
         returned = libtbx.easy_mp.pool_map(fixed_func=run_dimple, args=commands, processes=params.options.cpus)
 
         print '============================>'
-        print 'Return Code Total:'
-        print sum(returned)
+        print 'Return Code Total: {}'.format(sum(returned))
 
-if __name__ == '__main__':
+#######################################
 
-    # Show Defaults (just values)
-    if '--show-defaults' in sys.argv:
-        master_phil.show(attributes_level=0)
-    # Show Defaults (including information)
-    elif '--help' in sys.argv:
-        master_phil.show(attributes_level=2)
-    # ... or just run ...
-    elif '--expert' in sys.argv:
-        master_phil.show(attributes_level=4)
-    # ... or just run ...
-    else:
-        working_phil = parse_phil_args(master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
-        out = run(params=working_phil.extract())
-    # Exit (unnecessary, but eh)
-    sys.exit()
-
+if __name__=='__main__':
+    from giant.jiffies import run_default
+    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)

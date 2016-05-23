@@ -71,3 +71,9 @@ def run(params):
 
     print 'Migrating Pandda from {} to {}'.format(params.input.pandda_dir, params.output.out_dir)
     migrate_pandda(params)
+
+#######################################
+
+if __name__ == '__main__':
+    from giant.jiffies import run_default
+    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)

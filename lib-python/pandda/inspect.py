@@ -830,6 +830,7 @@ class PanddaGUI(object):
         hbox_1.pack_start(gtk.HBox(), expand=False, fill=False, padding=10)
         # ---
         l = gtk.Label('Name:')
+        l.set_width_chars(10)
         hbox_1.pack_start(l, expand=False, fill=False, padding=5)
         # ---
         e = gtk.Entry(max=200)
@@ -843,6 +844,7 @@ class PanddaGUI(object):
         hbox_2.pack_start(gtk.HBox(), expand=False, fill=False, padding=10)
         # ---
         l = gtk.Label('Comment:')
+        l.set_width_chars(10)
         hbox_2.pack_start(l, expand=False, fill=False, padding=5)
         # ---
         e = gtk.Entry(max=200)

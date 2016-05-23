@@ -19,6 +19,9 @@ pyplot.style.use('ggplot')
 #################################
 
 bar = '=======================++>'
+
+#######################################
+
 blank_arg_prepend = {'.pdb':'pdb1=', '.mtz':'mtz1='}
 
 master_phil = libtbx.phil.parse("""
@@ -51,6 +54,8 @@ output {
         .type = path
 }
 """)
+
+#######################################
 
 def sanitise_hierarchy(hierarchy):
     hierarchy.atoms().set_chemical_element_simple_if_necessary()
@@ -232,6 +237,8 @@ def make_residue_radar_plot(path, data, columns=None):
 
     return
 
+#######################################
+
 def run(params):
 
     assert params.input.pdb1, 'No pdb1 provided'
@@ -271,3 +278,9 @@ def run(params):
         all_images.append(image_path)
     print '...Done.'
     print bar
+
+#######################################
+
+if __name__=='__main__':
+    from giant.jiffies import run_default
+    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
