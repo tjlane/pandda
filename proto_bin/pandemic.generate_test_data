@@ -4,7 +4,7 @@ import os, sys, copy, re, glob
 import random
 
 import libtbx.phil
-import iotbx.pdb
+import iotbx.pdb, iotbx.mtz
 
 import numpy, pandas
 
@@ -13,7 +13,7 @@ from scitbx.array_family import flex
 from bamboo.common.path import easy_directory
 from pandemic import bar
 
-blank_arg_prepend = {'.pdb':'pdb='}
+blank_arg_prepend = {'.pdb':'pdb=', '.mtz':'mtz='}
 
 master_phil = libtbx.phil.parse("""
 input {
@@ -34,7 +34,7 @@ output {
 variation {
     occupancy {
         method = none *random preferential
-            .help = "How should the coordinates of the structure be randomised?"
+            .help = "How should the coordinates of the structure be randomised? Randomised: random perturbation of each occupancy. Preferential: occupancy removed from conformers B-* is transferred to conformer A."
             .type = choice
             .multiple = False
         magnitude = 0.05
@@ -48,6 +48,18 @@ variation {
             .multiple = False
         magnitude = 0.1
             .help = "Magnitude of the randomisation of the coordinates (Angstroms)"
+            .type = float
+    }
+    unit_cell {
+        method = *none random correlated
+            .help = "How should the unit cell parameters be randomised?"
+            .type = choice
+            .multiple = False
+        magnitude_angles = 0.0
+            .help = "Magnitude of the randomisation of the unit cell axis angles (fractional)"
+            .type = float
+        magnitude_lengths = 0.01
+            .help = "Magnitude of the randomisation of the unit cell axis lengths (fractional)"
             .type = float
     }
 verbose = False
@@ -70,7 +82,8 @@ def randomise_occupancies(hierarchy, params, verbose=False):
         for ag in ags:
             if not len(set(ag.atoms().extract_occ())) == 1:
                 homogenous_confs = False
-        if not homogenous_confs:        continue
+        if not homogenous_confs:        
+            continue
 
         #########################################################
         #   
@@ -89,6 +102,8 @@ def randomise_occupancies(hierarchy, params, verbose=False):
                 if new_occ < 0.0: new_occ = 0.0
                 #if new_occ > 1.0: new_occ = 1.0
                 ag.atoms().set_occ(flex.double(ag.atoms_size(), new_occ))
+        else:
+            raise Sorry('Invalid occupancy randomisation method selected: {}'.format(params.occupancy.method))
                 
         # Normalise the atom_group occupancies
         total_occ = sum([ag.atoms().extract_occ()[0] for ag in ags])
@@ -116,9 +131,10 @@ def run(params):
         print(bar)
         print('Processing Model {}'.format(num))
 
-        print('>> Randomising structure')
-        # Create a copy of the hierarchy with elements randomised
-        random_hierarchy = randomise_occupancies(hierarchy=input_hierarchy.deep_copy(), params=params.variation)
+        if params.variation.occupancy.method != 'none':
+            print('>> Randomising occupancies')
+            random_hierarchy = randomise_occupancies(hierarchy=input_hierarchy.deep_copy(), params=params.variation)
+
         # Write the output hierarchy
         random_hierarchy.write_pdb_file(os.path.join(model_dir, 'perturbed.pdb'))
 
@@ -126,12 +142,9 @@ def run(params):
         # Convert the structure to structure factors
         dataset_resolution = random.gauss(mu=params.output.resolution_mean, sigma=params.output.resolution_std)
         xray_s_factors = random_hierarchy.extract_xray_structure().structure_factors(d_min=dataset_resolution)
-        random_dataset = xray_s_factors.f_calc().as_mtz_dataset(column_root_label='F-CALC')
+        random_dataset = xray_s_factors.f_calc().as_mtz_dataset(column_root_label='FMODEL')
         random_dataset.mtz_object().write(os.path.join(model_dir, 'perturbed.mtz'))
-
-#        from IPython import embed
-#        embed()
-#        break
+        
 
 #################################################################################################
 #

@@ -6,23 +6,25 @@ class FileManager(object):
 
         self.topdir = rootdir
         self.output_dirs = {'root':rootdir}
+        self.dir_parents = {'root':None}
         self.output_files = {}
 
-        # Check root exists
-        assert os.path.exists(rootdir)
-
-    def add_dir(self, dir_name, dir_tag, top_dir_tag=None):
+    def add_dir(self, dir_name, dir_tag, top_dir_tag=None, create=True, exists=True):
         """Store a directory `dir_name` under `dir_tag` in directory under `top_dir_tag`"""
         # Check that it hasn't been created already
         assert dir_tag not in self.output_dirs.keys()
-        # Check the directory that it's being added to exists
+        # If no directory given, put in roots
         if top_dir_tag is None: top_dir_tag = 'root'
-        top_dir_name = self.output_dirs[top_dir_tag]
+        # Record the directory's parent
+        self.dir_parents[dir_tag] = top_dir_tag
+        # Get the path of the parent directory
+        top_dir_path = self.output_dirs[top_dir_tag]
         # Create dirname and store
-        self.output_dirs[dir_tag] = os.path.join(top_dir_name, dir_name)
+        self.output_dirs[dir_tag] = os.path.join(top_dir_path, dir_name)
         # Create if it doesn't exist
-        if not os.path.exists(self.output_dirs[dir_tag]):
-            os.mkdir(self.output_dirs[dir_tag])
+        if create and (not os.path.exists(self.output_dirs[dir_tag])):
+            self._make_directory_if_necessary(dir_tag)
+        if exists:
             assert os.path.exists(self.output_dirs[dir_tag])
 
     def get_dir(self, dir_tag):
@@ -44,6 +46,17 @@ class FileManager(object):
         """Retrieve a filename by it's file_tag"""
         assert file_tag in self.output_files.keys()
         return self.output_files[file_tag]
+
+    def check_and_create_directories(self):
+        """Check that all directories exist and create them where necessary"""
+        for dir_tag in self.output_dirs.keys():
+            self._make_directory_if_necessary(dir_tag=dir_tag)
+
+    def _make_directory_if_necessary(self, dir_tag):
+        if (dir_tag != 'root') and (not os.path.exists(self.output_dirs[self.dir_parents[dir_tag]])):
+            self.make_directory_if_necessary(self.dir_parents[dir_tag])
+        if not os.path.exists(self.output_dirs[dir_tag]):
+            os.mkdir(self.output_dirs[dir_tag])
 
 class FileObj(object):
     def __init__(self, file):

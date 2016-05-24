@@ -1,8 +1,26 @@
 import os, sys, copy
 
+import libtbx.phil
 from libtbx.utils import Sorry
 
-def parse_phil_args(master_phil, args, home_scope=None, blank_arg_prepend=None):
+def show_defaults_and_exit_maybe(master_phil, args):
+    """Show master_phil and exit if requested"""
+
+    # Show Defaults (just values)
+    if '--show-defaults' in args:
+        master_phil.show(attributes_level=0)
+    # Show Defaults (including information)
+    elif '--help' in args:
+        master_phil.show(attributes_level=2)
+    # Show Defaults (everything)
+    elif '--expert' in args:
+        master_phil.show(attributes_level=4)
+    else:
+        return
+
+    raise SystemExit('Defaults Shown. Now Exiting.')
+
+def parse_phil_args(master_phil, args, blank_arg_prepend=None, home_scope=None):
 
     if blank_arg_prepend is None:
         pass
@@ -18,8 +36,16 @@ def parse_phil_args(master_phil, args, home_scope=None, blank_arg_prepend=None):
     args = copy.copy(args)
     # Construct interpreter
     cmd_interpr = master_phil.command_line_argument_interpreter(home_scope=home_scope)
+
+    # Process any args that are eff files
+    eff_files = [f for f in args if ((f.endswith('.eff') or f.endswith('.def')) and (not f.count('=')) and os.path.isfile(f))]
+    # Remove them from the original lists
+    [args.remove(f) for f in eff_files]
+    # Parse the 'eff' files - these should contain phils
+    eff_sources = [libtbx.phil.parse(open(f, 'r').read()) for f in eff_files]
+
     # Process input arguments
-    phil_objects = []
+    arg_sources = []
     for arg in args:
         try:
             # Prepend if blank
@@ -44,27 +70,20 @@ def parse_phil_args(master_phil, args, home_scope=None, blank_arg_prepend=None):
         except Exception:
             raise Sorry("Unknown file or keyword: %s" % arg)
         else:
-            phil_objects.append(cmd_line_args)
-    # Extract Scope object
-    working_phil = master_phil.fetch(sources=phil_objects)
+            arg_sources.append(cmd_line_args)
+    # Extract Scope object (putting eff sources first so that they're overridden if double-defined)
+    working_phil = master_phil.fetch(sources=eff_sources+arg_sources)
 
     return working_phil
 
+def extract_params_default(master_phil, args, blank_arg_prepend=None, home_scope=None):
+    """Extract the parameters by a default script"""
+    show_defaults_and_exit_maybe(master_phil, args)
+    working_phil = parse_phil_args(master_phil, args, blank_arg_prepend=blank_arg_prepend, home_scope=home_scope)
+    return working_phil
+
 def run_default(run, master_phil, args, blank_arg_prepend=None):
-
-    # Show Defaults (just values)
-    if '--show-defaults' in args:
-        master_phil.show(attributes_level=0)
-    # Show Defaults (including information)
-    elif '--help' in args:
-        master_phil.show(attributes_level=2)
-    # ... or just run ...
-    elif '--expert' in args:
-        master_phil.show(attributes_level=4)
-    # ... or just run ...
-    else:
-        working_phil = parse_phil_args(master_phil=master_phil, args=args, blank_arg_prepend=blank_arg_prepend)
-        out = run(params=working_phil.extract())
-
+    """Run a program via a standard setup of functions and objects"""
+    working_phil = extract_params_default(master_phil=master_phil, args=args, blank_arg_prepend=blank_arg_prepend)
+    out = run(params=working_phil.extract())
     return 0
-

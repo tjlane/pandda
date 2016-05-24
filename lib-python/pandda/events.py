@@ -71,12 +71,12 @@ class Event(object):
 class Site(object):
     _attributes = [ 'centroid', 'num_events', 'approx_size',
                     'nearest_residues', 'near_crystal_contacts']
-    def __init__(self, events=None, info=None):
+    def __init__(self, events=None, id=None, info=None):
         """Class to hold information about an identified site (collection of events)"""
         # List of Events
         self.children = []
         self.parent = None
-        self.id = None
+        self.id = id
         # Add Meta to the object
         if info:
             assert isinstance(info, Info)
@@ -96,6 +96,11 @@ class Site(object):
             assert isinstance(events, Event), 'Added events must be of class Event'
             self.children.append(events)
         if update: self.update()
+        return self
+
+    def apply_parentage(self):
+        """Set the site as the parents of the events"""
+        for e in self.children: e.parent = self
         return self
 
     def update(self):
@@ -167,7 +172,8 @@ class SiteList(object):
 
 def cluster_events(events, cutoff=10, linkage='average'):
 
-    if len(events) == 1: return SiteList([Site(events)])
+    if len(events) == 1:
+        return SiteList([Site(events=events, id=1).apply_parentage()])
 
     centroids = [e.cluster.centroid for e in events]
     cluster_ids = scipy.cluster.hierarchy.fclusterdata( X = centroids,
@@ -179,11 +185,8 @@ def cluster_events(events, cutoff=10, linkage='average'):
 
     sites = []
     for s_idx, e_idxs in generate_group_idxs(cluster_ids):
-        new_site = Site([events[i] for i in e_idxs])
-        new_site.id = s_idx
         assert s_idx > 0
-        for e in new_site.children:
-            e.parent = new_site
+        new_site = Site([events[i] for i in e_idxs], id=s_idx).apply_parentage()
         sites.append(new_site)
 
     return SiteList(sites)
@@ -193,24 +196,4 @@ def event_distance_centroid(event1, event2):
 
 def event_distance_min_cluster_distance(event1, event2):
     return min([min((event1.cluster.points-x).norms()) for x in event2.cluster.points])
-
-def cluster_events_old(events, cutoff=3, linkage='single', dist_func=event_distance_centroid):
-    """Cluster events into sites. Returns a SiteList object. Appends new sites to existing SiteList if given"""
-
-    # Create hierarchical clustering of the events
-    cl = libtbx.cluster.HierarchicalClustering(data=events, distance_function=dist_func, linkage=linkage)
-    # Group the events
-    clusters = cl.getlevel(cutoff)
-    # Turn lists of events into sites
-    sites = map(Site, clusters)
-    for i_site, site in enumerate(sites):
-        site.id = i_site+1
-        for event in site.children:
-            event.parent = site
-    # Merge into site list
-    site_list = SiteList(sites)
-    return site_list
-
-
-
 

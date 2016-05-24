@@ -1,3 +1,2 @@
-#!/usr/bin/env pandda.python
-
-
+#!/bin/sh
+pandda.python -Qnew -m pandemic.analyse "$@"

@@ -13,6 +13,7 @@ from giant.xray.edstats import extract_residue_group_density_scores
 
 #################################
 import matplotlib
+matplotlib.use('Agg')
 matplotlib.interactive(0)
 from matplotlib import pyplot
 pyplot.style.use('ggplot')
