@@ -39,6 +39,10 @@ overwrite = False
     .type = bool
 verbose = False
     .type = bool
+
+log = None
+    .type = path
+    .multiple = False
 """)
 
 #######################################
@@ -97,6 +101,12 @@ def proc(ensemble_file, params, sel_resnames=None, sel_confs=None):
 
     conf_sel = new_ens.select(sel_cache.selection(sel_string))
 
+    if params.log:
+        fh = open(params.log, 'w')
+        fh.write('>>> Residues where the conformer will be reset\n')
+    else:
+        fh = None
+
     if params.reset_altlocs:
         ######################################################################
         if params.verbose: print '===========================================>>>'
@@ -110,7 +120,11 @@ def proc(ensemble_file, params, sel_resnames=None, sel_confs=None):
             for it_pr in hash.items(): print 'Changing ALTLOCs:', ' -> '.join(it_pr)
 
         for ag in conf_sel.atom_groups():
-            if ag.altloc in confs_to_select: ag.altloc = hash[ag.altloc]
+            if ag.altloc in confs_to_select:
+                # Reset the altloc
+                ag.altloc = hash[ag.altloc]
+                # Log this atom group
+                if fh: fh.write('> Chain {}, Residue {}, (New) Conformer {}\n'.format(ag.parent().parent().id, ag.parent().resid(), ag.altloc))
 
     ######################################################################
     if params.verbose: print '===========================================>>>'
@@ -157,6 +171,7 @@ def run(params):
             proc(ensemble_file, params, sel_resnames=sel_resnames, sel_confs=sel_confs)
         except:
             print "Failed:", ensemble_file
+            raise
 
     return
 

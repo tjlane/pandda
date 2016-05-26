@@ -8,17 +8,24 @@ def show_defaults_and_exit_maybe(master_phil, args):
 
     # Show Defaults (just values)
     if '--show-defaults' in args:
-        master_phil.show(attributes_level=0)
-    # Show Defaults (including information)
+        print('=========>\nShowing Default Parameters\n=========>')
+        master_phil.show(expert_level=0, attributes_level=0)
+    # Show Defaults (including help)
     elif '--help' in args:
-        master_phil.show(attributes_level=2)
+        print('=========>\nShowing Default Parameters & Help\n=========>')
+        master_phil.show(expert_level=0, attributes_level=1)
+    # Show Defaults (including help and types)
+    elif '--help-and-types' in args:
+        print('=========>\nShowing Default Parameters & Help+Types\n=========>')
+        master_phil.show(expert_level=0, attributes_level=2)
     # Show Defaults (everything)
     elif '--expert' in args:
-        master_phil.show(attributes_level=4)
+        print('=========>\nShowing Default Parameters (Expert Level)\n=========>')
+        master_phil.show(expert_level=3, attributes_level=3)
     else:
         return
 
-    raise SystemExit('Defaults Shown. Now Exiting.')
+    raise SystemExit('=========>\nNow Exiting.\n=========>')
 
 def parse_phil_args(master_phil, args, blank_arg_prepend=None, home_scope=None):
 

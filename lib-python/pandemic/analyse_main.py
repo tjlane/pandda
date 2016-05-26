@@ -108,6 +108,11 @@ class PandemicMultiDatasetAnalyser(Program):
         self.output_handler.add_file(file_name='pandemic.eff',        file_tag='settings',         dir_tag='root')
         self.output_handler.add_file(file_name='pandemic.{}',         file_tag='status',           dir_tag='root')
 
+        self.output_handler.add_dir(dir_name='residue_maps', dir_tag='residue_maps', top_dir_tag='root', create=False, exists=False)
+        self.output_handler.add_file(file_name='{}_residue_{}.ccp4',  file_tag='residue_map',      dir_tag='residue_maps')
+        self.output_handler.add_dir(dir_name='dataset_maps', dir_tag='dataset_maps', top_dir_tag='root', create=False, exists=False)
+        self.output_handler.add_file(file_name='dataset_{}.ccp4',     file_tag='dataset_map',      dir_tag='dataset_maps')
+
 
     def _pickle_setup(self):
         """Initialise all of the pickle filenames"""
@@ -220,9 +225,28 @@ class PandemicMultiDatasetAnalyser(Program):
                                                       ref_map_holder   = ref_map_holder,
                                                       map_resolution   = high_res_large_cutoff )
 
-        from IPython import embed; embed()
-
         return map_holder_list
+
+    def find_residue_locales(self, pandda):
+        """Mask each residue on the grid, and convolve with the grid partition for each residue"""
+
+        # Extract grid objects
+        ref_grid = pandda.reference_grid()
+        ref_part = ref_grid.partition()
+        out_mask = ref_grid.global_mask().outer_mask_binary()
+
+        # Hash for assigning grid points to each residue
+        residue_grid_hash = {}
+
+        # Iterate through each residue and find the grid points assigned to each residue
+        for i_res, res in enumerate(pandda.reference_dataset().alignment_labels):
+
+            # Get the indices for this residue from the partition
+            res_idxs = numpy.multiply(out_mask, ref_part.nn_groups==i_res).nonzero()
+            # Record the indices for this residue (only need the first element since 1d array)
+            residue_grid_hash[res] = res_idxs[0]
+
+        return residue_grid_hash
 
     def pickle_the_pandemic(self, components=None, all=False, datasets=None):
         pass
@@ -236,6 +260,7 @@ class PandemicMultiDatasetAnalyser(Program):
         # If error, don't make meta or self pickle
         if error:
             self.update_status('errored')
+            self.log('===================================>>>', True)
             self.log('PANDEMIC exited with an error')
             self.log('===================================>>>', True)
             self.log('Error Traceback: ')

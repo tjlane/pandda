@@ -11,7 +11,9 @@ import numpy, pandas
 from scitbx.array_family import flex
 
 from bamboo.common.path import easy_directory
-from pandemic import bar
+from bamboo import div_bar
+
+bar = div_bar(30)
 
 blank_arg_prepend = {'.pdb':'pdb=', '.mtz':'mtz='}
 
@@ -121,7 +123,9 @@ def run(params):
 
     out_dir = easy_directory(params.output.out_dir)
     
-    input_hierarchy = iotbx.pdb.hierarchy.input(params.input.pdb).hierarchy
+    s = iotbx.pdb.hierarchy.input(params.input.pdb)
+    s_input     = s.input
+    s_hierarchy = s.hierarchy
 
     for idx in range(params.output.number_of_models):
 
@@ -133,15 +137,15 @@ def run(params):
 
         if params.variation.occupancy.method != 'none':
             print('>> Randomising occupancies')
-            random_hierarchy = randomise_occupancies(hierarchy=input_hierarchy.deep_copy(), params=params.variation)
+            random_hierarchy = randomise_occupancies(hierarchy=s_hierarchy.deep_copy(), params=params.variation)
 
         # Write the output hierarchy
-        random_hierarchy.write_pdb_file(os.path.join(model_dir, 'perturbed.pdb'))
+        random_hierarchy.write_pdb_file(os.path.join(model_dir, 'perturbed.pdb'), crystal_symmetry=s_input.crystal_symmetry())
 
         print('>> Generating structure factors from model'.format(num))
         # Convert the structure to structure factors
         dataset_resolution = random.gauss(mu=params.output.resolution_mean, sigma=params.output.resolution_std)
-        xray_s_factors = random_hierarchy.extract_xray_structure().structure_factors(d_min=dataset_resolution)
+        xray_s_factors = random_hierarchy.extract_xray_structure(crystal_symmetry=s_input.crystal_symmetry()).structure_factors(d_min=dataset_resolution)
         random_dataset = xray_s_factors.f_calc().as_mtz_dataset(column_root_label='FMODEL')
         random_dataset.mtz_object().write(os.path.join(model_dir, 'perturbed.mtz'))
         

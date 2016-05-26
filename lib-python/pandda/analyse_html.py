@@ -103,11 +103,11 @@ def write_analyse_html(pandda):
 
         d_data = all_d_info[d.tag]
         m_data = all_m_info[d.tag]
-        rmsd  = round(d_data['rmsd_to_reference'], 2)
-        rfree = round(d_data['r_free'], 3)
-        rwork = round(d_data['r_work'], 3)
-        res_h = round(d_data['high_resolution'], 2)
-        uncty = round(m_data['map_uncertainty'], 3)
+        rmsd  = d_data['rmsd_to_reference']
+        rfree = d_data['r_free']
+        rwork = d_data['r_work']
+        res_h = d_data['high_resolution']
+        uncty = m_data['map_uncertainty']
 
         # colour choices - 'success', 'muted', 'danger'
         # icon choices   - 'ok', 'flag', 'remove'

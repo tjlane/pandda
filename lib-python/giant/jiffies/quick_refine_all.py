@@ -18,5 +18,5 @@ if __name__=='__main__':
         if os.path.exists('./refine.pdb'):
             continue
         else:
-            os.system('giant.quick_refine program=phenix *.cif *-ensemble-model.pdb *-pandda-input.mtz')
+            os.system('giant.quick_refine params=phenix.params program=phenix *.cif *-ensemble-model.pdb *-pandda-input.mtz')
 

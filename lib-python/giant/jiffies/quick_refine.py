@@ -59,6 +59,7 @@ def run(params):
 
     assert params.input.pdb is not None, 'No PDB given for refinement'
     assert params.input.mtz is not None, 'No MTZ given for refinement'
+    if params.settings.create_occupancy_params: assert params.input.params, 'settings.create_occupancy_params is True, but you must also define input.params.'
 
     ########################
     current_dirs = sorted(glob.glob(params.output.dir_prefix+'*'))
@@ -69,6 +70,11 @@ def run(params):
         out_dir = params.output.dir_prefix + str(sorted(map(int, current_dirs))[-1]+1)
     print 'Outputting to {}'.format(out_dir)
     os.mkdir(out_dir)
+
+    ########################
+    # Link input
+    rel_symlink(params.input.pdb, os.path.abspath(os.path.join(out_dir, 'input.pdb')))
+    rel_symlink(params.input.mtz, os.path.abspath(os.path.join(out_dir, 'input.mtz')))
 
     ########################
     output_prefix = os.path.join(out_dir, params.output.out_prefix)
@@ -140,11 +146,6 @@ def run(params):
         fh.write(cm.output)
         fh.write('\n\nSTDERR\n\n')
         fh.write(cm.error)
-
-    ########################
-    # Link input
-    rel_symlink(params.input.pdb, os.path.abspath(os.path.join(out_dir, 'input.pdb')))
-    rel_symlink(params.input.mtz, os.path.abspath(os.path.join(out_dir, 'input.mtz')))
 
     ########################
     # Link output

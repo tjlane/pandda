@@ -5,13 +5,6 @@ from pandda.summary import panddaWindow, panddaHtmlWidget
 
 #######################################
 
-try:
-    sys.path.append(os.path.join(os.environ['PANDDA_TOP'], 'lib-python'))
-except:
-    pass
-
-#######################################
-
 blank_arg_prepend = None
 
 master_phil = None
@@ -34,11 +27,10 @@ def show_summary():
 
 #######################################
 
-def run(run=None, master_phil=None, args=None, blank_arg_prepend=None):
+def run():
     show_summary()
 
 #######################################
 
 if __name__=='__main__':
-    from giant.jiffies import run_default
-    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
+    run()

@@ -1,4 +1,12 @@
+from __future__ import print_function
+
 import os, sys, glob, time, gc
+
+from scipy import * # So that it doesn't crash...
+
+import numpy
+
+from scitbx.array_family import flex
 
 from giant.jiffies import extract_params_default
 
@@ -25,7 +33,6 @@ def sanitise_params(params):
 
 def load_pandda_for_pandemic(params, pandemic):
     """Load a pre-calculated pandda using the parameters for pandemic"""
-
 
     pandemic.log('===================================>>>', True)
     pandemic.log('==>>>', True)
@@ -62,8 +69,11 @@ def load_pandda_for_pandemic(params, pandemic):
 def pandemic_setup(pandemic, pandda):
     """Prepare for analysis"""
 
-    pandemic.initialise_dataset_masks_and_tables(pandda)
-    pandemic.initialise_residue_masks_and_tables(pandda)
+    # Create blank tables and masks
+    pandemic.initialise_dataset_masks_and_tables(pandda=pandda)
+    pandemic.initialise_residue_masks_and_tables(pandda=pandda)
+    # Populate the basic fields
+#    pandemic.populate_residue_masks_and_tables(pandda=pandda)
 
 # ============================================================================>
 #
@@ -73,12 +83,118 @@ def pandemic_setup(pandemic, pandda):
 
 def pandemic_main_loop(pandemic, pandda):
 
-    # Variation of the centre of mass of the protein -- measure of non-isomorphism
+    # Mask each residue to find the block to analyse
+    residue_grid_hash = pandemic.find_residue_locales(pandda=pandda)
+
+    pandda.settings.cpus=7
+    pandemic.params.resolution = 1.65
 
     # Load and analyse the variation in the maps
     map_holder_list = pandemic.select_datasets_and_load_maps( pandda = pandda,
                                                               high_res_large_cutoff = pandemic.params.resolution,
                                                               high_res_small_cutoff = 0 )
+
+    all_pcas = {}
+
+    for i_res, res in enumerate(pandda.reference_dataset().alignment_labels):
+
+        print('\rExtracting map information for residue {}'.format(''.join(res)), end=''); sys.stdout.flush()
+
+        # Get the indices for this residue
+        res_idxs = flex.size_t(residue_grid_hash[res])
+
+        # Output array of all of the map values
+        map_value_array = numpy.empty((len(map_holder_list.all()), len(res_idxs)))
+
+        # Iterate through the maps
+        for i_mh, mh in enumerate(map_holder_list.all()):
+
+            # Get the dataset handler
+            dh = mh.parent
+
+            print('\rExtracting map information for residue {} from dataset {}          '.format(res, dh.tag), end=''); sys.stdout.flush()
+
+            # Select the map values for this residue block
+            map_values = mh.map.select(res_idxs)
+
+            # Put the values in the complete array
+            map_value_array[i_mh,:] = map_values.as_numpy_array()
+
+#            print('')
+#            print(i_mh, dh.tag, map_values.as_numpy_array())
+#            print('')
+
+            ########################################################
+            # Write out maps for each dataset?
+            ########################################################
+            if i_res==0:
+                from pandda.misc import write_array_to_map
+                write_array_to_map( output_file=pandemic.output_handler.get_file(file_tag='dataset_map').format(dh.tag),
+                                    map_data=mh.map,
+                                    grid=pandda.reference_grid() )
+            ########################################################
+
+            ########################################################
+            # Write out maps for each residue?
+            ########################################################
+            if i_mh==0:
+                b = flex.bool(mh.map.size()).set_selected(res_idxs, True)
+                res_map = flex.double(b.accessor()).set_selected(b, map_values)
+                res_map.reshape(mh.map.accessor())
+                from pandda.misc import write_array_to_map
+                write_array_to_map( output_file=pandemic.output_handler.get_file(file_tag='residue_map').format(dh.tag, ''.join(res)),
+                                    map_data=res_map,
+                                    grid=pandda.reference_grid() )
+            ########################################################
+
+        def perform_pandemic_pca(array):
+            """Perform PCA on a map value array to determine the heterogeneity. Each row is a different observation"""
+
+            from sklearn.decomposition import PCA
+
+            pca = PCA()
+            pca.fit(array)
+
+            return pca
+
+        # Perform PCA to calculate the number of conformers
+        results = perform_pandemic_pca(map_value_array)
+
+        all_pcas[res] = results
+
+        pandemic.log('\rExtracting map information for residue {}: Done                              '.format(''.join(res)))
+
+    pandemic.log('Residue-by-residue electron densities across the datasets have been extracted')
+
+    confs = {}
+
+    for rg in pandda.reference_dataset().hierarchy().residue_groups():
+        print(rg)
+        confs[(rg.parent().id, rg.resid())] = len(rg.conformers())
+
+
+    for res in pandda.reference_dataset().alignment_labels:
+        pca = all_pcas[res]
+
+        print('====================================>>>')
+        print(res)
+        print('====================================>>>')
+        print('Number of Conformers: {}'.format(confs[res]))
+        print('====================================>>>')
+        print((pca.explained_variance_ratio_/pca.explained_variance_ratio_[0]).round(3))
+        print('====================================>>>')
+        from ascii_graph import Pyasciigraph
+        g=Pyasciigraph()
+        graph_data = [(i+1, val) for i,val in enumerate((pca.explained_variance_ratio_/pca.explained_variance_ratio_[0]).round(3))]
+        for l in g.graph(label='Sorted PCA components (Ascending Order)', data=graph_data, sort=0):
+            pandemic.log(l.replace(u"\u2588", '#'), True)
+
+    from IPython import embed; embed(); raise SystemExit()
+
+
+
+    # Variation of the centre of mass of the protein -- measure of non-isomorphism
+
 
 # ============================================================================>
 #
@@ -149,7 +265,7 @@ def pandemic_analyse_main(args):
         try:
             pandemic.exit(error=False)
         except:
-            print '<<< Pandemic exited before being initialised >>>'
+            print('<<< Pandemic exited before being initialised >>>')
     except:
         pandemic.exit(error=True)
     else:

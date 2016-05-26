@@ -46,6 +46,10 @@ from pandda.handlers import DatasetHandler, ReferenceDatasetHandler, map_handler
 from pandda import PANDDA_TOP, PANDDA_TEXT, PANDDA_VERSION
 from pandda.constants import *
 
+def round_no_fail(a, decimals=0):
+    try:    return numpy.round(a, decimals)
+    except: return None
+
 def map_statistics_map_func(arg_dict):
     map_vals          = arg_dict['map_vals']
     map_uncertainties = arg_dict['map_uncertainties']
@@ -855,6 +859,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # If error, don't make meta or self pickle
         if error:
             self.update_status('errored')
+            self.log('===================================>>>', True)
             self.log('PANDDA exited with an error')
             self.log('===================================>>>', True)
             self.log('Error Traceback: ')
@@ -1083,8 +1088,12 @@ class PanddaMultiDatasetAnalyser(Program):
         if self.params.alignment.method == 'local':
             self.log('===================================>>>', True)
             self.log('Partitioning Reference Grid', True)
+
             # Pull out the calphas
             calpha_hierarchy = self.reference_dataset().hierarchy().select(self.reference_dataset().hierarchy().atom_selection_cache().selection('pepnames and name CA'))
+            # Save the labels of the atoms to the reference dataset
+            self.reference_dataset().alignment_labels = [(a.chain_id, a.resid()) for a in calpha_hierarchy.atoms_with_labels()]
+
             t1 = time.time()
             # Calculate the nearest residue for each point on the grid
             self.reference_grid().create_grid_partition(atomic_hierarchy=calpha_hierarchy)
@@ -1569,16 +1578,16 @@ class PanddaMultiDatasetAnalyser(Program):
 
         for d in self.datasets.all():
             # Resolution info
-            self.tables.dataset_info.set_value(d.tag, 'high_resolution', d.mtz_summary.high_res)
-            self.tables.dataset_info.set_value(d.tag, 'low_resolution', d.mtz_summary.low_res)
+            self.tables.dataset_info.set_value(d.tag, 'high_resolution', numpy.round(d.mtz_summary.high_res,3))
+            self.tables.dataset_info.set_value(d.tag, 'low_resolution',  numpy.round(d.mtz_summary.low_res,3))
             # Unit cell info
-            self.tables.dataset_info.set_value(d.tag, ['uc_a','uc_b','uc_c','uc_alpha','uc_beta','uc_gamma'], d.mtz_summary.unit_cell.parameters())
-            self.tables.dataset_info.set_value(d.tag, 'uc_vol', d.mtz_summary.unit_cell.volume())
+            self.tables.dataset_info.set_value(d.tag, ['uc_a','uc_b','uc_c','uc_alpha','uc_beta','uc_gamma'],   numpy.round(d.mtz_summary.unit_cell.parameters(),3))
+            self.tables.dataset_info.set_value(d.tag, 'uc_vol',                                                 numpy.round(d.mtz_summary.unit_cell.volume()),3)
             # Spacegroup info
             self.tables.dataset_info.set_value(d.tag, 'space_group', d.mtz_summary.space_group.info().type().lookup_symbol())
             # Quality info
-            self.tables.dataset_info.set_value(d.tag, 'r_work', d.input().get_r_rfree_sigma().r_work)
-            self.tables.dataset_info.set_value(d.tag, 'r_free', d.input().get_r_rfree_sigma().r_free)
+            self.tables.dataset_info.set_value(d.tag, 'r_work', round_no_fail(d.input().get_r_rfree_sigma().r_work,3))
+            self.tables.dataset_info.set_value(d.tag, 'r_free', round_no_fail(d.input().get_r_rfree_sigma().r_free,3))
 
     def calculate_dataset_rmsds_to_reference(self):
         """Go through all of the datasets and collect lots of different characteristics of the datasets for identifying odd datasets"""
@@ -1590,7 +1599,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Now calculate the variation in the structure, from the reference
         for d in self.datasets.mask(mask_name='rejected - total', invert=True):
             rmsd = d.get_calpha_sites().rms_difference(d.transform_from_reference(points=self.reference_dataset().get_calpha_sites(), method='global'))
-            self.tables.dataset_info.set_value(d.tag, 'rmsd_to_reference', rmsd)
+            self.tables.dataset_info.set_value(d.tag, 'rmsd_to_reference', numpy.round(rmsd,3))
 
     def filter_datasets_1(self):
         """Filter out the datasets which contain different protein models (i.e. protein length, sequence, etc)"""

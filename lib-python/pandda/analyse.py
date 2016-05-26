@@ -1010,13 +1010,13 @@ def pandda_main_loop(pandda):
             # ============================================================================>
             # Add to the dataset map summary table
             pandda.tables.dataset_map_info.set_value(d_handler.tag, 'analysed_resolution', m_handler.meta.resolution)
-            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'map_uncertainty',     m_handler.meta.map_uncertainty)
-            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'obs_map_mean',        m_handler.meta.obs_map_mean)
-            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'obs_map_rms',         m_handler.meta.obs_map_rms)
-            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_mean',          m_handler.meta.z_mean)
-            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_std',           m_handler.meta.z_stdv)
-            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_skew',          m_handler.meta.z_skew)
-            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_kurt',          m_handler.meta.z_kurt)
+            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'map_uncertainty',     numpy.round(m_handler.meta.map_uncertainty,3))
+            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'obs_map_mean',        numpy.round(m_handler.meta.obs_map_mean,3))
+            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'obs_map_rms',         numpy.round(m_handler.meta.obs_map_rms,3))
+            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_mean',          numpy.round(m_handler.meta.z_mean,3))
+            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_std',           numpy.round(m_handler.meta.z_stdv,3))
+            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_skew',          numpy.round(m_handler.meta.z_skew,3))
+            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_kurt',          numpy.round(m_handler.meta.z_kurt,3))
 
             # ============================================================================>
             # WRITE OUT DATASET INFORMATION TO CSV FILE

@@ -60,6 +60,7 @@ pandda
             .type = str
         pickling
             .help = "Pickle Settings"
+            .expert_level = 1
         {
             pickle_complete_pandda = False
                 .help = "Pickle the entire PANDDA object for reloading - takes a lot of space"
@@ -73,6 +74,7 @@ pandda
         }
         developer
             .help = "Development Settings (Not needed by most users)"
+            .expert_level = 3
         {
             write_maps_for_empty_datasets = False
                 .help = "Output maps for all datasets, not just datasets marked as interesting"
@@ -173,6 +175,7 @@ pandda
         }
         z_map
             .help = "Settings to control the calculation of z-maps"
+            .expert_level = 3
         {
             map_type = naive adjusted uncertainty *adjusted+uncertainty
                 .help = 'Type of Z-map to calculate'
@@ -180,6 +183,7 @@ pandda
         }
         blob_search
             .help = "Settings to control the finding of blobs"
+            .expert_level = 1
         {
             contour_level = 2.5
                 .help = 'Contour level when looking for blobs'
@@ -190,12 +194,10 @@ pandda
             min_blob_z_peak = 3.0
                 .help = 'Blob Z-peak filter for detecting blobs'
                 .type = float
-            blobs_to_image = 2
-                .help = 'Maximum number of blobs to image per dataset'
-                .type = int
         }
         background_correction
             .help = "Parameters to control the estimation of feature background corrections"
+            .expert_level = 3
         {
             min_bdc = 0.0
                 .type = float

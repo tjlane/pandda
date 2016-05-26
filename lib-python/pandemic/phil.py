@@ -18,7 +18,7 @@ pandemic
     }
     params
     {
-        resolution = 1.7
+        resolution = 2.0
             .type = float
             .multiple = False
     }
