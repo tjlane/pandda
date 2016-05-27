@@ -1,0 +1,94 @@
+#!/usr/bin/env python
+
+import os, sys, stat
+
+from distutils.spawn import find_executable
+
+from pandda import PANDDA_LIB_TOP
+
+##########################################################
+# Get the path of this script
+##########################################################
+script_path = find_executable('pandda.configure_ccp4')
+print('=====================================+>')
+print 'RUNNING: {}'.format(script_path)
+##########################################################
+# Get the path of the PANDDAs top folder
+##########################################################
+PANDDA_TOP = os.path.realpath(os.path.abspath(os.path.join(os.path.dirname(script_path), '..')))
+print 'PANDDAs RUNNING FROM: {}'.format(PANDDA_TOP)
+
+PANDDA_BIN = os.path.join(PANDDA_TOP, 'bin')
+assert os.path.exists(PANDDA_BIN)
+
+pandda_sh      = os.path.join(PANDDA_BIN, 'pandda.setup-sh')
+pandda_csh     = os.path.join(PANDDA_BIN, 'pandda.setup-csh')
+
+##########################################################
+# Make pandda.python
+##########################################################
+ccp4_python = os.path.join(PANDDA_BIN, 'ccp4-python')
+assert os.path.exists(ccp4_python), 'CCP4 PYTHON DOES NOT EXIST'
+pandda_python  = os.path.join(PANDDA_BIN, 'pandda.python')
+if not os.path.exists(pandda_python):
+    print('Making pandda.python: {}'.format(pandda_python))
+    os.symlink(os.path.relpath(ccp4_python, start=os.path.dirname(pandda_python)), pandda_python)
+
+##########################################################
+# Make pandda.ipython
+##########################################################
+#pandda_ipython = os.path.join(PANDDA_BIN, 'pandda.ipython')
+#libtbx_ipython = os.path.abspath(find_executable('libtbx.ipython'))
+#if libtbx_ipython and (not os.path.exists(pandda_ipython)):
+#    print('Making pandda.ipython: {}'.format(pandda_ipython))
+#    os.symlink(os.path.relpath(ccp4_python, start=os.path.dirname(pandda_python)), pandda_python)
+
+##########################################################
+# Make pandda.coot
+##########################################################
+coot = os.path.join(PANDDA_BIN, 'coot')
+assert os.path.exists(coot), 'COOT DOES NOT EXIST'
+pandda_coot = os.path.join(PANDDA_BIN, 'pandda.coot')
+if not os.path.exists(pandda_coot):
+    print('Making pandda.coot: {}'.format(pandda_coot))
+    with open(pandda_coot, 'w') as fh:
+        fh.write("#!/usr/bin/env sh\n")
+        fh.write("{} --python $@\n".format(coot))
+os.chmod(pandda_coot, stat.S_IRWXU+stat.S_IRWXG+stat.S_IROTH+ stat.S_IXOTH)
+##########################################################
+print('=====================================+>')
+##########################################################
+# Write bashrc
+##########################################################
+print('Writing pandda bash script.')
+with open(pandda_sh, 'w') as fh:
+    fh.write('# Setup for PANDDAs\n')
+    fh.write('export PANDDA_TOP={}\n'.format(PANDDA_TOP))
+    fh.write('export PANDDA_LIB_TOP={}\n'.format(PANDDA_LIB_TOP))
+##########################################################
+# Write cshrc
+##########################################################
+print('Writing pandda csh script.')
+with open(pandda_csh, 'w') as fh:
+    fh.write('# Setup for PANDDAs\n')
+    fh.write('setenv PANDDA_TOP {}\n'.format(PANDDA_TOP))
+    fh.write('setenv PANDDA_LIB_TOP {}\n'.format(PANDDA_LIB_TOP))
+
+##########################################################
+# Print lines to be added to bashrc, cshrc
+##########################################################
+
+print('')
+print('=====================================+>')
+print('Add following lines to bashrc:')
+print('=====================================+>')
+print('source {}'.format(pandda_sh))
+print('=====================================+>')
+print('Add following lines to cshrc:')
+print('=====================================+>')
+print('source {}'.format(pandda_csh))
+print('=====================================+>')
+
+
+
+

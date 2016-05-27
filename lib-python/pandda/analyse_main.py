@@ -43,7 +43,7 @@ from pandda.lists import MapList, PanddaStatMapList, PanddaMultipleStatMapList
 from pandda.holders import MapHolder, MapHolderList, DatasetHandlerList
 from pandda.handlers import DatasetHandler, ReferenceDatasetHandler, map_handler, align_dataset_to_reference
 
-from pandda import PANDDA_TOP, PANDDA_TEXT, PANDDA_VERSION
+from pandda import PANDDA_TEXT, PANDDA_VERSION
 from pandda.constants import *
 
 def round_no_fail(a, decimals=0):
@@ -1090,9 +1090,7 @@ class PanddaMultiDatasetAnalyser(Program):
             self.log('Partitioning Reference Grid', True)
 
             # Pull out the calphas
-            calpha_hierarchy = self.reference_dataset().hierarchy().select(self.reference_dataset().hierarchy().atom_selection_cache().selection('pepnames and name CA'))
-            # Save the labels of the atoms to the reference dataset
-            self.reference_dataset().alignment_labels = [(a.chain_id, a.resid()) for a in calpha_hierarchy.atoms_with_labels()]
+            calpha_hierarchy = self.reference_dataset().calphas()
 
             t1 = time.time()
             # Calculate the nearest residue for each point on the grid
@@ -1598,7 +1596,7 @@ class PanddaMultiDatasetAnalyser(Program):
 
         # Now calculate the variation in the structure, from the reference
         for d in self.datasets.mask(mask_name='rejected - total', invert=True):
-            rmsd = d.get_calpha_sites().rms_difference(d.transform_from_reference(points=self.reference_dataset().get_calpha_sites(), method='global'))
+            rmsd = d.calpha_sites().rms_difference(d.transform_from_reference(points=self.reference_dataset().calpha_sites(), method='global'))
             self.tables.dataset_info.set_value(d.tag, 'rmsd_to_reference', numpy.round(rmsd,3))
 
     def filter_datasets_1(self):
@@ -1670,10 +1668,10 @@ class PanddaMultiDatasetAnalyser(Program):
                 self.log('===================================>>>')
                 self.datasets.all_masks().set_mask_value(mask_name='bad crystal - rfree', entry_id=d_handler.tag, value=True)
             # Check the deviation from the average sites
-            elif d_handler.get_calpha_sites().rms_difference(d_handler.transform_from_reference(points=self.reference_dataset().get_calpha_sites(), method='global')) > self.params.filtering.max_rmsd_to_reference:
+            elif d_handler.calpha_sites().rms_difference(d_handler.transform_from_reference(points=self.reference_dataset().calpha_sites(), method='global')) > self.params.filtering.max_rmsd_to_reference:
                 self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('C-alpha RMSD is too large')
-                self.log('Aligned (Calpha) RMSD: {!s}'.format(d_handler.get_calpha_sites().rms_difference(d_handler.transform_from_reference(points=self.reference_dataset().get_calpha_sites(), method='global'))))
+                self.log('Aligned (Calpha) RMSD: {!s}'.format(d_handler.calpha_sites().rms_difference(d_handler.transform_from_reference(points=self.reference_dataset().calpha_sites(), method='global'))))
                 self.log('===================================>>>')
                 self.datasets.all_masks().set_mask_value(mask_name='bad crystal - isomorphous structure', entry_id=d_handler.tag, value=True)
             else:

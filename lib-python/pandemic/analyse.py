@@ -96,7 +96,7 @@ def pandemic_main_loop(pandemic, pandda):
 
     all_pcas = {}
 
-    for i_res, res in enumerate(pandda.reference_dataset().alignment_labels):
+    for i_res, res in enumerate(pandda.reference_dataset().calpha_labels()):
 
         print('\rExtracting map information for residue {}'.format(''.join(res)), end=''); sys.stdout.flush()
 
@@ -173,7 +173,7 @@ def pandemic_main_loop(pandemic, pandda):
         confs[(rg.parent().id, rg.resid())] = len(rg.conformers())
 
 
-    for res in pandda.reference_dataset().alignment_labels:
+    for res in pandda.reference_dataset().calpha_labels():
         pca = all_pcas[res]
 
         print('====================================>>>')
@@ -185,9 +185,9 @@ def pandemic_main_loop(pandemic, pandda):
         print('====================================>>>')
         from ascii_graph import Pyasciigraph
         g=Pyasciigraph()
-        graph_data = [(i+1, val) for i,val in enumerate((pca.explained_variance_ratio_/pca.explained_variance_ratio_[0]).round(3))]
+        graph_data = [(i+1, val) for i,val in enumerate((pca.explained_variance_ratio_/pca.explained_variance_ratio_[0]).round(3))][0:10]
         for l in g.graph(label='Sorted PCA components (Ascending Order)', data=graph_data, sort=0):
-            pandemic.log(l.replace(u"\u2588", '#'), True)
+            pandemic.log(l.replace(u"\u2588", '=').replace('= ','> ') True)
 
     from IPython import embed; embed(); raise SystemExit()
 

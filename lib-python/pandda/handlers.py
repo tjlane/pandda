@@ -62,15 +62,31 @@ class DatasetHandler(object):
         # Map of the clusters in the dataset
         self.events = []
 
+    #####################################################################
+    #                                                                   #
+    #                       UTILITY FUNCTIONS                           #
+    #                                                                   #
+    #####################################################################
+
     def initialise_output_directory(self, outputdir):
         """Initialise a dataset output directory"""
         # Create a file and directory organiser
         self.output_handler = FileManager(rootdir=easy_directory(outputdir))
 
+    def get_pickle_copy(self):
+        """Get copy of self that can be pickled - some cctbx objects cannot be pickled..."""
+        return self
+
     def pdb_filename(self):
         return self._pdb_file
     def mtz_filename(self):
         return self._mtz_file
+
+    #####################################################################
+    #                                                                   #
+    #                       HIGH LEVEL OBJECTS                          #
+    #                                                                   #
+    #####################################################################
 
     def input(self):
         return self._structure.input
@@ -85,15 +101,39 @@ class DatasetHandler(object):
         """Return an object containing the reflection data"""
         return iotbx.mtz.object(self._mtz_file)
 
-    def get_heavy_atom_sites(self):
+    #####################################################################
+    #                                                                   #
+    #                        STRUCTURE STUFF                            #
+    #                                                                   #
+    #####################################################################
+
+    def heavy_atom_sites(self):
         xray_structure = self.input().xray_structure_simple()
         return xray_structure.sites_cart().select(xray_structure.heavy_selection())
-    def get_calpha_sites(self):
+    def calpha_sites(self):
         xray_structure = self.input().xray_structure_simple()
         return xray_structure.sites_cart().select(xray_structure.backbone_selection(atom_names=['CA']))
-    def get_backbone_sites(self):
+    def backbone_sites(self):
         xray_structure = self.input().xray_structure_simple()
         return xray_structure.sites_cart().select(xray_structure.backbone_selection())
+
+    def calphas(self):
+        """Get the cAlphas for the structure"""
+        return self.hierarchy().select(self.hierarchy().atom_selection_cache().selection('pepnames and name CA'))
+    def calpha_labels(self):
+        """Return the labels of the calphas of the structure"""
+        return [(a.chain_id, a.resid()) for a in self.calphas().atoms_with_labels()]
+
+    def find_nearest_calpha(self, points, hierarchy=None):
+        """Returns the labels of the nearest calpha for each of the given points"""
+        if hierarchy is None: hierarchy = self.hierarchy()
+        return find_nearest_calphas(hierarchy, coordinates=points)
+
+    #####################################################################
+    #                                                                   #
+    #                        ALIGNMENT STUFF                            #
+    #                                                                   #
+    #####################################################################
 
     def set_global_alignment(self, alignment):
         self._global_rt_transform = alignment
@@ -104,15 +144,6 @@ class DatasetHandler(object):
         self._local_rt_transforms = alignment
     def local_alignment_transforms(self):
         return self._local_rt_transforms
-
-    def get_pickle_copy(self):
-        """Get copy of self that can be pickled - some cctbx objects cannot be pickled..."""
-        return self
-
-    def find_nearest_calpha(self, points, hierarchy=None):
-        """Returns the labels of the nearest calpha for each of the given points"""
-        if hierarchy is None: hierarchy = self.hierarchy()
-        return find_nearest_calphas(hierarchy, coordinates=points)
 
     def transform_coordinates(self, points, method, point_mappings=None, inverse=False):
         """Transform coordinates using contained alignments"""
@@ -142,6 +173,12 @@ class DatasetHandler(object):
                                             method         = method,
                                             point_mappings = point_mappings,
                                             inverse        = False  )
+
+    #####################################################################
+    #                                                                   #
+    #                         SYMMETRY STUFF                            #
+    #                                                                   #
+    #####################################################################
 
     def generate_symmetry_copies(self, rt_method=None, save_operators=True, buffer=10):
         """Generate the symmetry copies of the reference structure in the reference frame"""
@@ -207,8 +244,8 @@ def align_dataset_to_reference(d_handler, ref_handler, method):
     assert method in ['both','local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
     global_rt_transform = local_rt_transforms = None
     if method == 'global' or method == 'both':
-        my_sites = d_handler.get_calpha_sites()
-        ref_sites = ref_handler.get_calpha_sites()
+        my_sites = d_handler.calpha_sites()
+        ref_sites = ref_handler.calpha_sites()
         assert len(my_sites) == len(ref_sites)
         global_rt_transform = scitbx.math.superpose.least_squares_fit(reference_sites=ref_sites, other_sites=my_sites).rt()
     if method == 'local' or method == 'both':

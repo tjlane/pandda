@@ -148,6 +148,7 @@ def run(params):
         xray_s_factors = random_hierarchy.extract_xray_structure(crystal_symmetry=s_input.crystal_symmetry()).structure_factors(d_min=dataset_resolution)
         random_dataset = xray_s_factors.f_calc().as_mtz_dataset(column_root_label='FMODEL')
         random_dataset.mtz_object().write(os.path.join(model_dir, 'perturbed.mtz'))
+        from IPython import embed; embed(); SystemExit()
         
 
 #################################################################################################
@@ -156,23 +157,7 @@ def run(params):
 #
 #################################################################################################
 
-from giant.jiffies import parse_phil_args
-
 if __name__ == '__main__':
-
-    # Show Defaults (just values)
-    if '--show-defaults' in sys.argv:
-        master_phil.show(attributes_level=0)
-    # Show Defaults (including information)
-    elif '--help' in sys.argv:
-        master_phil.show(attributes_level=2)
-    # ... or just run ...
-    elif '--expert' in sys.argv:
-        master_phil.show(attributes_level=4)
-    # ... or just run ...
-    else:
-        working_phil = parse_phil_args(master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
-        out = run(params=working_phil.extract())
-    # Exit (unnecessary, but eh)
-    sys.exit()
+    from giant.jiffies import run_default
+    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
 

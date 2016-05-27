@@ -632,7 +632,7 @@ def pandda_main_loop(pandda):
             shell_width = pandda.params.analysis.high_res_increment
             res_limits = [round(x, 4) for x in numpy.arange(min_limit, max_limit, shell_width).tolist()]
             # Append the rounded max_limit to the end to ensure that the last dataset is processed
-            if res_limits[-1] != max_limit:
+            if (not res_limits) or (res_limits[-1] != max_limit):
                 res_limits.append(max_limit)
     # ==================================================>
     #####

@@ -1,6 +1,6 @@
 import os, sys
 
-PANDDA_TOP = os.path.join(__path__[0], '..', '..')
+PANDDA_LIB_TOP = os.path.realpath(os.path.abspath(os.path.join(__path__[0], '..')))
 PANDDA_VERSION = 1.0
 PANDDA_TEXT = """
 ------------------------------------------------------------------>

@@ -239,7 +239,7 @@ class PandemicMultiDatasetAnalyser(Program):
         residue_grid_hash = {}
 
         # Iterate through each residue and find the grid points assigned to each residue
-        for i_res, res in enumerate(pandda.reference_dataset().alignment_labels):
+        for i_res, res in enumerate(pandda.reference_dataset().calpha_labels()):
 
             # Get the indices for this residue from the partition
             res_idxs = numpy.multiply(out_mask, ref_part.nn_groups==i_res).nonzero()
