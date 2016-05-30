@@ -12,3 +12,13 @@ settings
         .type = bool
 }
 """
+
+image_phil = """
+image
+    .help = "Settings for image generation"
+{
+    size = 300x200
+        .help = "image size of width x height (inches)"
+        .type = str
+}
+"""

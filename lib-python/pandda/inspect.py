@@ -541,14 +541,13 @@ class PanddaGUI(object):
     def quit(self):
         self.store()
         self.parent.update_html()
+        gtk.main_quit()
 
     def on_destroy(self,  widget=None, *data):
         self.quit()
-        gtk.main_quit()
 
     def on_delete(self, widget=None, *data):
         self.quit()
-        gtk.main_quit()
 
     def launch(self):
         """Launch GUI window"""

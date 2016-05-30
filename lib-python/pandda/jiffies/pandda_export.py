@@ -72,10 +72,10 @@ templates {
     temp_prefix = 'temp-'
         .help = 'Prefix to append to temporary files'
         .type = str
-    refmac_refinement = 'refmac_refine.params'
+    refmac_refinement = 'occ_refmac.params'
         .help = 'refmac occupancy groupings/refinement parameters'
         .type = str
-    phenix_refinement = 'phenix_refine.params'
+    phenix_refinement = 'occ_phenix.params'
         .help = 'phenix occupancy groupings/refinement parameters'
         .type = str
 }

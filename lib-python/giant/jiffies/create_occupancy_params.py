@@ -21,14 +21,14 @@ master_phil = libtbx.phil.parse("""
 pdb = None
     .help = 'The major conformation of the protein (normally the unbound or reference structure)'
     .type = str
-lig = LIG,UNL,DRG
+lig = LIG,UNL,DRG,FRG
     .help = 'Residues to be occupancy refined (comma separated list of residue identifiers, i.e. lig=LIG or lig=LIG,UNL)'
     .type = str
 
-phenix_occ_out = 'phenix_refine.params'
+phenix_occ_out = 'occ_phenix.params'
     .help = 'Output occupancy coupling parameter file for phenix (allowing refinement of the water model in superposition with the ligand)'
     .type = path
-refmac_occ_out = None
+refmac_occ_out = 'occ_refmac.params'
     .help = 'Output occupancy coupling parameter file for phenix (allowing refinement of the water model in superposition with the ligand)'
     .type = path
 

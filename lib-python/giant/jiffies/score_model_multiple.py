@@ -127,7 +127,8 @@ def run(params):
             if data_table is None:  data_table = obj
             else:                   data_table = data_table.append(obj, verify_integrity=True)
         else:
-            print '{}: {}'.format(obj.__class__, obj.message)
+            try:    print '{}: {}'.format(obj.__class__, obj.message)
+            except: print 'Unknown Error: {}'.format(str(obj))
     print '...Done'
     print bar
 
