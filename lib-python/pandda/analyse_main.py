@@ -21,9 +21,11 @@ from scitbx.math.distributions import normal_distribution
 from bamboo.common import Meta, Info
 from bamboo.common.logs import Log
 from bamboo.common.file import FileManager
-from bamboo.common.path import easy_directory, rel_symlink
+from bamboo.common.path import easy_directory, rel_symlink, delete_with_glob
 from bamboo.common.status import status_bar, status_bar_2
 from bamboo.common.command import CommandManager
+
+from bamboo.plot import bar
 
 from giant.manager import Program
 
@@ -40,6 +42,7 @@ from pandda import analyse_graphs
 from pandda.phil import pandda_phil
 from pandda.misc import write_map_value_distribution, write_qq_plot_against_normal, write_array_to_map, rotate_map
 from pandda.lists import MapList, PanddaStatMapList, PanddaMultipleStatMapList
+from pandda.events import cluster_events
 from pandda.holders import MapHolder, MapHolderList, DatasetHandlerList
 from pandda.handlers import DatasetHandler, ReferenceDatasetHandler, map_handler, align_dataset_to_reference
 
@@ -1150,7 +1153,7 @@ class PanddaMultiDatasetAnalyser(Program):
                                       grid_size  = self.reference_grid().grid_size(),
                                       unit_cell  = self.reference_grid().unit_cell(),
                                       max_dist   = self.params.masks.outer_mask,
-                                      min_dist   = self.params.masks.inner_mask )
+                                      min_dist   = self.params.masks.inner_mask_symmetry )
             self.reference_grid().set_symmetry_mask(symmetry_mask)
 
         # ============================================================================>
@@ -1959,66 +1962,89 @@ class PanddaMultiDatasetAnalyser(Program):
 
         return event_total, event_num, all_dataset_events
 
-#    def write_pymol_scripts(self, d_handler):
-#        """Autogenerate pymol scripts"""
+    def cluster_events_and_update(self, events=[], update_tables=True, update_output=True):
+        """Cluster events to sites and add information to the pandda tables"""
+
+        if not events:
+            print('No Events Found')
+            return None
+
+        self.log('===================================>>>', True)
+        self.log('Clustering identified events: {} Event(s)'.format(len(events)))
+        # Cluster events to sites
+        site_list = cluster_events(events=events, cutoff=15.0/self.reference_grid().grid_spacing(), linkage='average')
+        # Sort sites by largest Z-Value
+        site_list.sort(key=lambda s: (s.info.num_events, max([e.cluster.max for e in s.children])), reverse=True).renumber()
+        # Add meta to the site list TODO implement this function -- blank at the moment TODO
+        [s.find_protein_context(hierarchy=self.reference_dataset().hierarchy()) for s in site_list.children]
+        # Update the pandda tables?
+        if update_tables:
+            self.update_site_table(site_list=site_list, clear_table=True)
+            self.update_event_table_site_info(events=events)
+        # Generate output images and graphs?
+        if update_output:
+            # Plot output graph of site list
+            self.log('Deleting old images: ')
+            delete_with_glob(glob_str=self.output_handler.get_file('analyse_site_graph_mult').format('*'))
+            bar.multiple_bar_plot_over_several_images(
+                                    f_template = self.output_handler.get_file('analyse_site_graph_mult'),
+                                    plot_vals  = [sorted([e.cluster.max for e in s.children],reverse=True) for s in site_list.children]   )
+            # Create pictures of the sites on the protein
+            self.make_pymol_site_image_and_scripts(site_list=site_list, make_images=True)
+
+        return site_list
+
+#    def image_blob(self, script, image, d_handler, point, point_no, towards=[10,10,10]):
+#        """Take pictures of the maps with ccp4mg"""
 #
-#        # Get template to be filled in
-#        template = PANDDA_HTML_ENV.get_template('load_pandda_maps.pml')
+#        from giant.graphics import calculate_view_quaternion, multiply_quaternions
 #
-#        with open(d_handler.output_handler.get_file(file_tag='pymol_script'), 'w') as out_pml:
-#            out_pml.write(template.render({'file_dict':d_handler.output_handler.output_files}))
-
-    def image_blob(self, script, image, d_handler, point, point_no, towards=[10,10,10]):
-        """Take pictures of the maps with ccp4mg"""
-
-        from giant.graphics import calculate_view_quaternion, multiply_quaternions
-
-        # Get the template to be filled in
-        template = PANDDA_HTML_ENV.get_template('ccp4mg-pic.py')
-
-        orientation = calculate_view_quaternion(towards, point)
-        rotate_1 = multiply_quaternions(orientation, (0.0, 0.5**0.5, 0.0, 0.5**0.5))
-        rotate_2 = multiply_quaternions(orientation, (0.5**0.5, 0.0, 0.0, 0.5**0.5))
-
-        for view_no, view in enumerate([orientation, rotate_1, rotate_2]):
-
-            view_script = script.format(point_no, view_no)
-            view_image  = image.format(point_no, view_no)
-
-            ccp4mg_script = template.render({
-                                                'view'  :{
-                                                                'camera_centre' : [-1*c for c in point],
-                                                                'orientation'   : list(view)
-                                                            },
-                                                'mol'   :{
-                                                                'path'  : d_handler.output_handler.get_file('aligned_structure'),
-                                                                'name'  : 'aligned_structure'
-                                                            },
-                                         #       'map'   :{
-                                         #                       'path'    : d_handler.output_handler.get_file('sampled_map'),
-                                         #                       'name'    : 'sampled_map',
-                                         #                       'contour' : [1]
-                                         #                   },
-                                                'diff_map' :{
-                                                                'path'    : d_handler.output_handler.get_file('z_map_corrected_normalised'),
-                                                                'name'    : 'diff_map',
-                                                            #    'neg-contour' : -3,
-                                                                'pos-contour' : [2,3,4,5]
-                                                            }
-                                            })
-
-            # Write out the ccp4mg script to the dataset's scripts folder
-            with open(view_script, 'w') as fh:
-                fh.write(ccp4mg_script)
-
-            # Make the images
-            c = CommandManager('ccp4mg')
-            c.SetArguments(['-norestore','-picture', view_script, '-R', view_image, '-RO', """'{"size":"1500x1500"}'""", '-quit'])
-            c.Run()
-
-            if not os.path.exists(view_image):
-                print('FAILED TO MAKE IMAGES')
-                print(c.err)
+#        # Get the template to be filled in
+#        template = PANDDA_HTML_ENV.get_template('ccp4mg-pic.py')
+#
+#        orientation = calculate_view_quaternion(towards, point)
+#        rotate_1 = multiply_quaternions(orientation, (0.0, 0.5**0.5, 0.0, 0.5**0.5))
+#        rotate_2 = multiply_quaternions(orientation, (0.5**0.5, 0.0, 0.0, 0.5**0.5))
+#
+#        for view_no, view in enumerate([orientation, rotate_1, rotate_2]):
+#
+#            view_script = script.format(point_no, view_no)
+#            view_image  = image.format(point_no, view_no)
+#
+#            ccp4mg_script = template.render({
+#                                                'view'  :{
+#                                                                'camera_centre' : [-1*c for c in point],
+#                                                                'orientation'   : list(view)
+#                                                            },
+#                                                'mol'   :{
+#                                                                'path'  : d_handler.output_handler.get_file('aligned_structure'),
+#                                                                'name'  : 'aligned_structure'
+#                                                            },
+#                                         #       'map'   :{
+#                                         #                       'path'    : d_handler.output_handler.get_file('sampled_map'),
+#                                         #                       'name'    : 'sampled_map',
+#                                         #                       'contour' : [1]
+#                                         #                   },
+#                                                'diff_map' :{
+#                                                                'path'    : d_handler.output_handler.get_file('z_map_corrected_normalised'),
+#                                                                'name'    : 'diff_map',
+#                                                            #    'neg-contour' : -3,
+#                                                                'pos-contour' : [2,3,4,5]
+#                                                            }
+#                                            })
+#
+#            # Write out the ccp4mg script to the dataset's scripts folder
+#            with open(view_script, 'w') as fh:
+#                fh.write(ccp4mg_script)
+#
+#            # Make the images
+#            c = CommandManager('ccp4mg')
+#            c.SetArguments(['-norestore','-picture', view_script, '-R', view_image, '-RO', """'{"size":"1500x1500"}'""", '-quit'])
+#            c.Run()
+#
+#            if not os.path.exists(view_image):
+#                print('FAILED TO MAKE IMAGES')
+#                print(c.err)
 
     def write_map_analyser_maps(self, map_analyser, analysis_mask_name):
         """Write statistical maps for a map_analyser object"""
@@ -2074,11 +2100,11 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log('Writing Event+Site Summary CSVs')
 
         # Sort the event data by z-peak and write out
-        sort_eve = self.tables.event_info.sort(columns=['site_idx','z_peak'], ascending=[1,0])
+        sort_eve = self.tables.event_info.sort(columns=['site_idx',self.args.results.events.order_by], ascending=[1,0])
         sort_eve = sort_eve.join(comb_tab, how='right')
         sort_eve.to_csv(path_or_buf=self.output_handler.get_file('event_info'))
         # Sort the sites by number of events and write out
-        sort_sit = self.tables.site_info.sort(columns=['num_events'],ascending=[0])
+        sort_sit = self.tables.site_info.sort(columns=[self.args.results.sites.order_by],ascending=[0])
         sort_sit.to_csv( path_or_buf=self.output_handler.get_file('site_info'))
 
     def update_site_table(self, site_list, clear_table=True):
@@ -2151,7 +2177,8 @@ class PanddaMultiDatasetAnalyser(Program):
             os.chdir(self.output_handler.get_dir('output_summaries'))
             c = CommandManager('pymol')
             c.add_command_line_arguments(['-c', self.output_handler.get_file(file_tag='pymol_sites_pml')])
-            c.run()
+            try:    c.run()
+            except: print("Failed to start pymol - maybe it's not available?")
             # Change back to top directory
             os.chdir(self.out_dir)
 
@@ -2170,9 +2197,9 @@ class PanddaMultiDatasetAnalyser(Program):
         else:               site_idx = 0
         self.tables.event_info.set_value(event.id, 'site_idx', site_idx)
         # Event and cluster information
-        self.tables.event_info.set_value(event.id, '1-BDC',  1.0 - event.info.estimated_bdc)
-        self.tables.event_info.set_value(event.id, 'z_peak', event.cluster.max)
-        self.tables.event_info.set_value(event.id, 'z_mean', event.cluster.mean)
+        self.tables.event_info.set_value(event.id, '1-BDC',  round(1.0-event.info.estimated_bdc,2))
+        self.tables.event_info.set_value(event.id, 'z_peak', round(event.cluster.max,2))
+        self.tables.event_info.set_value(event.id, 'z_mean', round(event.cluster.mean,2))
         self.tables.event_info.set_value(event.id, 'cluster_size', event.cluster.size)
         self.tables.event_info.set_value(event.id, ['refx','refy','refz'], list(flex.double(event.cluster.peak)*self.reference_grid().grid_spacing()))
         if self.params.alignment.method=='local': mappings = self.reference_grid().partition().query_by_grid_points([map(int,event.cluster.peak)])

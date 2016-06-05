@@ -1,5 +1,13 @@
 import os, sys, copy, re, glob
 
+#################################
+import matplotlib
+matplotlib.use('Agg')
+matplotlib.interactive(0)
+from matplotlib import pyplot
+pyplot.style.use('ggplot')
+#################################
+
 import libtbx.phil
 
 import numpy, pandas
@@ -11,13 +19,7 @@ from giant.utils.pdb import strip_pdb_to_input
 from giant.structure import calculate_residue_group_occupancy, calculate_residue_group_rmsd, calculate_residue_group_bfactor_ratio
 from giant.xray.edstats import extract_residue_group_density_scores
 
-#################################
-import matplotlib
-matplotlib.use('Agg')
-matplotlib.interactive(0)
-from matplotlib import pyplot
-pyplot.style.use('ggplot')
-#################################
+#######################################
 
 bar = '=======================++>'
 

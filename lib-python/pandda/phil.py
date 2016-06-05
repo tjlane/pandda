@@ -87,6 +87,18 @@ pandda
                 .type = bool
         }
     }
+    results {
+        events {
+            order_by = *z_peak z_mean cluster_size
+                .help = "How should events be ordered within each site?"
+                .type = choice
+        }
+        sites {
+            order_by = *num_events
+                .help = "How should sites be ordered?"
+                .type = choice
+        }
+    }
     method
         .help = "High Level control of algorithm"
     {
@@ -110,20 +122,24 @@ pandda
             .help = "Settings to control the alignment of the structures"
         {
             method = global *local
+                .help = "How should the structures be aligned? 'global' is fast, but requires high structural conservation, whereas local is slower and accounts for structural variation"
                 .type = choice
+                .multiple = False
         }
         filtering
             .help = "Settings to control when datasets are rejected from the analysis"
         {
             max_rmsd_to_reference = 1.5
-                .help = "Reject datasets that have a calpha rmsd of greater than this to the reference (after alignment)"
+                .help = "Reject datasets that have a calpha rmsd of greater than this to the reference (after global alignment)"
                 .type = float
+                .multiple = False
             max_rfree = 0.4
                 .help = 'Maximum allowed rfree for a structure (datasets above this are rejected)'
                 .type = float
+                .multiple = False
         }
         maps
-            .help = "Settings to control the generation of the dataset maps"
+            .help = "Settings to control how maps are generated and analysed"
         {
             ampl_label = 2FOFCWT
                 .type = str
@@ -146,6 +162,9 @@ pandda
         {
             inner_mask = 1.8
                 .help = "Points are masked within this distance of protein atoms"
+                .type = float
+            inner_mask_symmetry = 3.0
+                .help = "Points are masked within this distance of neighbouring symmetry copies of protein atoms"
                 .type = float
             outer_mask = 6
                 .help = "Points are masked outside this distance of protein atoms"

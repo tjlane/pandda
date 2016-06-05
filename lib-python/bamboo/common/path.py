@@ -1,4 +1,4 @@
-import os, sys, shutil
+import os, sys, shutil, glob
 
 #:::::::::::::::::::::::::::::::::#
 # ############################### #
@@ -20,6 +20,18 @@ def rel_symlink(orig, link):
     link = os.path.abspath(link)
     assert not link.endswith('/'), 'LINK CANNOT END WITH /'
     os.symlink(os.path.relpath(orig, start=os.path.dirname(link)), link)
+
+def delete_with_glob(glob_str, verbose=True):
+    for file in sorted(glob.glob(glob_str)):
+        # I know that unlink is the same as remove...
+        if os.path.islink(file):
+            if verbose: print('Deleting link: {}'.format(file))
+            os.unlink(file)
+        elif os.path.isdir(file):
+            pass
+        else:
+            if verbose: print('Deleting file: {}'.format(file))
+            os.remove(file)
 
 def delete_temporary_directory(tempdir):
     """Delete A Temporary Directory"""

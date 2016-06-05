@@ -1,5 +1,6 @@
 import os, sys
 
+#################################
 try:
     import matplotlib
     matplotlib.use('Agg')
@@ -8,6 +9,7 @@ try:
     pyplot.style.use('ggplot')
 except:
     pass
+#################################
 
 import numpy
 

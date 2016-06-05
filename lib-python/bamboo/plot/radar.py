@@ -1,5 +1,7 @@
-import numpy
 from matplotlib import pyplot
+pyplot.style.use('ggplot')
+
+import numpy
 
 class Radar(object):
 

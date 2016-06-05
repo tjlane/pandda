@@ -5,6 +5,8 @@ import libtbx.phil
 
 import numpy
 
+from bamboo.common.path import delete_with_glob
+
 ############################################################################
 
 master_phil = libtbx.phil.parse("""
@@ -47,18 +49,6 @@ Directories are also NEVER deleted (only files are deleted).
 """
 
 ############################################################################
-
-def delete_with_glob(glob_str):
-    for file in sorted(glob.glob(glob_str)):
-        # I know that unlink is the same as remove...
-        if os.path.islink(file):
-            print 'Unlinking file: {}'.format(file)
-            os.unlink(file)
-        elif os.path.isdir(file):
-            pass
-        else:
-            print 'Deleting file: {}'.format(file)
-            os.remove(file)
 
 def clean_misc(top_dir, level=0):
     print '============================================================>>>'

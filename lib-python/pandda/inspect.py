@@ -516,12 +516,12 @@ class PanddaMolHandler(object):
             else:                             set_mol_displayed(l, 1)
             self.open_mols['l'] = l
 
+            # Set the b-factors of the ligand to 20
+            set_b_factor_molecule(l, 20)
             # Set the occupancy of the ligand to 2*(1-bdc)
             all_residue_ids = all_residues(l)
             for res_chn, res_num, res_ins in all_residue_ids:
-                for (at_name, at_altloc), details, coords in residue_info(l, res_chn, res_num, res_ins):
-                    set_atom_attribute(l, res_chn, res_num, res_ins, at_name, at_altloc, 'occ', 2.0*e.est_1_bdc)
-                    set_atom_attribute(l, res_chn, res_num, res_ins, at_name, at_altloc, 'B',   20.0)
+                set_alt_conf_occ(l, res_chn, res_num, res_ins, [['', 2.0*e.est_1_bdc]])
 
         return e
 

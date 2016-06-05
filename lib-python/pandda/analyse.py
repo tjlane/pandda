@@ -1,17 +1,22 @@
 import os, sys, glob, time, gc
-import numpy
 
+#################################
 try:
     import matplotlib
     matplotlib.use('Agg')
+    matplotlib.interactive(0)
+    from matplotlib import pyplot
+    pyplot.style.use('ggplot')
 except:
     pass
+#################################
+
+import numpy
 
 from scitbx.array_family import flex
 from scitbx.math import basic_statistics
 from libtbx import easy_mp
 
-from bamboo.plot import bar
 from bamboo.common import Meta, Info
 from bamboo.common.logs import Log
 from bamboo.common.path import rel_symlink
@@ -24,7 +29,7 @@ from pandda import welcome
 from pandda import analyse_html, analyse_graphs
 from pandda.phil import pandda_phil
 from pandda.analyse_main import PanddaMultiDatasetAnalyser, PanddaMapAnalyser, PanddaZMapAnalyser, MapHolder
-from pandda.events import PointCluster, Event, cluster_events
+from pandda.events import PointCluster, Event
 from pandda.misc import *
 
 # ============================================================================>
@@ -74,7 +79,7 @@ def process_dataset_map_func(proc_args):
                                         grid_size  = reference_grid.grid_size(),
                                         unit_cell  = reference_grid.unit_cell(),
                                         max_dist   = params.masks.outer_mask,
-                                        min_dist   = params.masks.inner_mask )
+                                        min_dist   = params.masks.inner_mask_symmetry )
     # Combine the standard mask with the custom mask
     grid_idxr = reference_grid.grid_indexer()
     dataset_total_mask = [gp for gp in reference_grid.global_mask().total_mask() if dataset_contact_mask.inner_mask_binary()[grid_idxr(gp)] < 0.5]
@@ -1010,13 +1015,13 @@ def pandda_main_loop(pandda):
             # ============================================================================>
             # Add to the dataset map summary table
             pandda.tables.dataset_map_info.set_value(d_handler.tag, 'analysed_resolution', m_handler.meta.resolution)
-            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'map_uncertainty',     numpy.round(m_handler.meta.map_uncertainty,3))
-            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'obs_map_mean',        numpy.round(m_handler.meta.obs_map_mean,3))
-            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'obs_map_rms',         numpy.round(m_handler.meta.obs_map_rms,3))
-            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_mean',          numpy.round(m_handler.meta.z_mean,3))
-            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_std',           numpy.round(m_handler.meta.z_stdv,3))
-            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_skew',          numpy.round(m_handler.meta.z_skew,3))
-            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_kurt',          numpy.round(m_handler.meta.z_kurt,3))
+            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'map_uncertainty',     round(m_handler.meta.map_uncertainty,3))
+            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'obs_map_mean',        round(m_handler.meta.obs_map_mean,3))
+            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'obs_map_rms',         round(m_handler.meta.obs_map_rms,3))
+            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_mean',          round(m_handler.meta.z_mean,3))
+            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_std',           round(m_handler.meta.z_stdv,3))
+            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_skew',          round(m_handler.meta.z_skew,3))
+            pandda.tables.dataset_map_info.set_value(d_handler.tag, 'z_map_kurt',          round(m_handler.meta.z_kurt,3))
 
             # ============================================================================>
             # WRITE OUT DATASET INFORMATION TO CSV FILE
@@ -1107,42 +1112,37 @@ def pandda_main_loop(pandda):
         # ============================================================================>
         # Extract all events from datasets
         all_events=[]; [all_events.extend(d.events) for d in pandda.datasets.all()]
-        # Process the events if some have been found
+        # Process any identified events and update output files
         if all_events:
             # ==================================================>
-            t_event_cluster_start = time.time()
+            # Cluster events and add to pandda tables
             # ==================================================>
-            # Cluster events to sites
-            pandda.log('Clustering {} Event(s)'.format(len(all_events)))
-            site_list = cluster_events(events=all_events, cutoff=15.0/pandda.reference_grid().grid_spacing(), linkage='average')
-            # Sort sites by largest Z-Value
-            site_list.sort(key=lambda s: (s.info.num_events, max([e.cluster.max for e in s.children])), reverse=True).renumber()
-            # Add meta to the site list TODO implement this function -- blank at the moment TODO
-            [s.find_protein_context(hierarchy=pandda.reference_dataset().hierarchy()) for s in site_list.children]
-            # Add the site information to the site table
-            pandda.update_site_table(site_list=site_list, clear_table=True)
-            # Update the site labels in the event table
-            pandda.update_event_table_site_info(events=all_events)
-            # Plot output graph of site list
-            # TODO DELETE EXISTING IMAGES TODO
-            bar.multiple_bar_plot_over_several_images(
-                                    f_template = pandda.output_handler.get_file('analyse_site_graph_mult'),
-                                    plot_vals  = [sorted([e.cluster.max for e in s.children],reverse=True) for s in site_list.children]   )
-            # Create pictures of the sites on the protein
-            pandda.make_pymol_site_image_and_scripts(site_list=site_list, make_images=True)
+            site_list = pandda.cluster_events_and_update(events=all_events)
             # ==================================================>
-            t_event_cluster_end = time.time()
-            # ==================================================>
-            pandda.log('============================================================================>>>', True)
-            pandda.log('Event Clustering: {!s}'.format(time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(t_event_cluster_end - t_event_cluster_start))), True)
-            # ==================================================>
-            # Update the output file
+            # Update the output analysis files
             # ==================================================>
             pandda.write_output_csvs()
             analyse_html.write_analyse_html(pandda)
             # ==================================================>
-        else:
-            print 'No Events Found'
+
+    # ============================================================================>
+    # Ensure that the collation step happens even if no resolutions are processed
+    # ============================================================================>
+    if not resolution_count:
+        # Extract all events from datasets
+        all_events=[]; [all_events.extend(d.events) for d in pandda.datasets.all()]
+        # Process any identified events and update output files
+        if all_events:
+            # ==================================================>
+            # Cluster events and add to pandda tables
+            # ==================================================>
+            site_list = pandda.cluster_events_and_update(events=all_events)
+            # ==================================================>
+            # Update the output analysis files
+            # ==================================================>
+            pandda.write_output_csvs()
+            analyse_html.write_analyse_html(pandda)
+            # ==================================================>
 
     # ============================================================================>
     #####
@@ -1200,20 +1200,29 @@ def pandda_end(pandda):
     #####
     # ============================================================================>
 
+    pandda.log('===================================>>>', True)
+    pandda.log('Writing final output files', True)
     pandda.write_output_csvs()
     analyse_html.write_analyse_html(pandda)
 
-    try:
-        from ascii_graph import Pyasciigraph
-        g=Pyasciigraph()
-        resolution_counts = pandda.tables.dataset_map_info['analysed_resolution'].value_counts().sort_index()
-        graph_data = [(r, c) for r,c in resolution_counts.iteritems()]
-        for l in g.graph(label='Datasets Processed at Each Resolution', data=graph_data, sort=0):
-            pandda.log(l.replace(u"\u2588", '=').replace('= ','> '), True)
-    except ImportError:
-        print('IMPORT ERROR (ascii_graph) - CANNOT GENERATE MAP ANALYSIS GRAPH')
-    except:
-        pass
+    # ============================================================================>
+    # SCREEN GRAPHS -------------------------->>>
+    # ============================================================================>
+
+    pandda.log('===================================>>>', True)
+    resolution_counts = pandda.tables.dataset_map_info['analysed_resolution'].value_counts().sort_index()
+    graph_data = [(str(r), c) for r,c in resolution_counts.iteritems()]
+    if graph_data:
+        try:
+            from ascii_graph import Pyasciigraph
+            g=Pyasciigraph()
+            for l in g.graph(label='Datasets analysed at each resolution:', data=graph_data, sort=0):
+                if l.startswith('#######'): continue
+                pandda.log(l.replace(u"\u2588", '=').replace('= ','> '), True)
+        except ImportError: print('IMPORT ERROR (ascii_graph) - CANNOT GENERATE MAP ANALYSIS GRAPH')
+        except:             pass
+    else:
+        pandda.log('> No Resolutions Analysed')
 
     pandda.log('============================================================================>>>', True)
     pandda.log('Datasets Processed: {!s}'.format(sum(resolution_counts)))

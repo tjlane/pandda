@@ -122,7 +122,8 @@ class Site(object):
         return '\n'.join(out)
 
     def sort(self, key, reverse=True):
-        self.children.sort(key=key, reverse=True)
+        self.children.sort(key=key, reverse=reverse)
+        return self
 
     def find_protein_context(self, hierarchy):
         return
