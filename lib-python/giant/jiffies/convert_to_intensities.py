@@ -2,7 +2,7 @@ import os, sys
 
 import libtbx.phil
 from bamboo.common.command import CommandManager
-from giant.xray.data import crystalSummary
+from giant.xray.data import CrystalSummary
 
 #######################################
 
@@ -38,7 +38,7 @@ def run(params):
 
         output_mtz = os.path.join(os.path.dirname(mtz_file), params.output.file_prefix+os.path.basename(mtz_file))
 
-        cs = crystalSummary.from_mtz(mtz_file=mtz_file)
+        cs = CrystalSummary.from_mtz(mtz_file=mtz_file)
 
         if params.output.column in cs.column_labels:
             print 'OUTPUT COLUMN ALREADY PRESENT IN MTZ_FILE: {}'.format(mtz_file)

@@ -2,7 +2,7 @@ from __future__ import print_function
 
 import os, sys, glob, time, re
 
-class identical_structure_ensemble(object):
+class IdenticalStructureEnsemble(object):
     """Class for collating and comparing multiple observations of the same structure"""
 
     def __init__(self, ref_hierarchy):

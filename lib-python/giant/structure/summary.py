@@ -3,10 +3,10 @@ import iotbx.pdb
 from scitbx.math import basic_statistics
 
 from bamboo.edstats import Edstats
-from giant.structure.b_factors import b_factor_statistics, normalise_b_factors
+from giant.structure.b_factors import BfactorStatistics, normalise_b_factors_to_z_scores
 from giant.structure.html import write_html_summary
 
-class structureSummary(object):
+class StructureSummary(object):
 
     def __init__(self, pdb_input=None, pdb_hierarchy=None, pdb_file=None, mtz_file=None):
         """Summarise some characteristics of a structure"""
@@ -19,14 +19,14 @@ class structureSummary(object):
         self.pdb_input      = pdb_input
         self.pdb_hierarchy  = pdb_hierarchy
         # B-factors
-        self.b_factors = b_factor_statistics(pdb_hierarchy=pdb_hierarchy)
+        self.b_factors = BfactorStatistics.from_pdb(pdb_hierarchy=pdb_hierarchy)
         # Edstats
         if mtz_file: self.edstats = Edstats(mtz_file=mtz_file, pdb_file=pdb_file)
         else:        self.edstats = None
 
     def normalise_b_factors(self, root=None):
         if root is None: root = self.pdb_hierarchy
-        return normalise_b_factors(pdb_hierarchy=root, b_factor_summary=self.b_factors)
+        return normalise_b_factors_to_z_scores(pdb_hierarchy=root, b_factor_summary=self.b_factors)
 
     def _get_atom_group_edstats_scores(self, atom_group):
         resname = atom_group.resname
@@ -44,7 +44,7 @@ class structureSummary(object):
     def to_html(self, fname):
         write_html_summary(fname=fname, atom_group_summaries=[self.get_atom_group_summary(ag) for ag in self.pdb_hierarchy.atom_groups()])
 
-class atomGroupSummary(object):
+class AtomGroupSummary(object):
 
     def __init__(self, atom_group, global_b_facs_stats=None):
 

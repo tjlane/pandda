@@ -6,14 +6,14 @@ import iotbx.mtz
 import scipy.cluster.hierarchy
 
 from giant.stats.cluster import generate_group_idxs
-from giant.xray.data import crystalSummary, unitCellVariation
+from giant.xray.data import CrystalSummary, UnitCellVariation
 from giant.xray.unit_cell import lcv_from_unit_cells, pairwise_lcv, pairwise_ecv
 
-class crystalGroup(object):
+class CrystalGroup(object):
     def __init__(self, crystals):
         """Class to hold multiple related crystals"""
         self.crystals = crystals
-        self.uc_stats = unitCellVariation([c.unit_cell for c in self.crystals])
+        self.uc_stats = UnitCellVariation([c.unit_cell for c in self.crystals])
         self.space_groups = list(set([c.space_group.info().symbol_and_number() for c in self.crystals]))
     def size(self):
         return len(self.crystals)
@@ -30,12 +30,12 @@ class crystalGroup(object):
     ######################################################
     @classmethod
     def by_space_group(cls, crystals):
-        """Group crystals by space group and return crystalGroup for each group"""
+        """Group crystals by space group and return CrystalGroup for each group"""
         sg_func = lambda c: c.space_group.info().symbol_and_number()
         return [cls(list(x[1])) for x in itertools.groupby(sorted(crystals, key=sg_func), key=sg_func)]
     @classmethod
     def by_unit_cell(cls, crystals, method='lcv', cutoff=0.5):
-        """Cluster crystals by unit cell and return crystalGroup for each cluster"""
+        """Cluster crystals by unit cell and return CrystalGroup for each cluster"""
         if len(crystals) == 1: return [cls(crystals)]
         assert method in ['lcv'], 'method not recognised'
 #        # Method 1
@@ -88,9 +88,9 @@ def sort_pdbs_by_space_group(pdb_files=None, pdb_inputs=None, labels=None):
     if labels: assert len(labels) == len(pdb_files), 'labels must be the same length as pdb_files/pdb_objects'
     else:      labels = range(len(pdb_files))
     # Create summary objects
-    pdb_summaries = [crystalSummary.from_pdb(pdb_file=p_f, pdb_input=p_o, id=lab) for p_f,p_o,lab in zip(pdb_files, pdb_inputs, labels)]
+    pdb_summaries = [CrystalSummary.from_pdb(pdb_file=p_f, pdb_input=p_o, id=lab) for p_f,p_o,lab in zip(pdb_files, pdb_inputs, labels)]
     # Group by SpaceGroup
-    return crystalGroup.by_space_group(pdb_summaries)
+    return CrystalGroup.by_space_group(pdb_summaries)
 
 def sort_mtzs_by_spacegroup(mtz_files=None, mtz_objects=None, labels=None):
     """Group the mtzfiles by spacegroup"""
@@ -101,7 +101,7 @@ def sort_mtzs_by_spacegroup(mtz_files=None, mtz_objects=None, labels=None):
     if labels: assert len(labels) == len(mtz_files), 'labels must be the same length as mtz_files/mtz_objects'
     else:      labels = range(len(mtz_files))
     # Create summary objects
-    mtz_summaries = [crystalSummary.from_mtz(mtz_file=m_f, mtz_object=m_o, id=lab) for m_f,m_o,lab in zip(mtz_files, mtz_objects, labels)]
+    mtz_summaries = [CrystalSummary.from_mtz(mtz_file=m_f, mtz_object=m_o, id=lab) for m_f,m_o,lab in zip(mtz_files, mtz_objects, labels)]
     # Group by SpaceGroup
-    return crystalGroup.by_space_group(mtz_summaries)
+    return CrystalGroup.by_space_group(mtz_summaries)
 

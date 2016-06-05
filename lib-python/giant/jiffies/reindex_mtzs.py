@@ -2,7 +2,7 @@ import os, sys, copy, re
 
 import libtbx.phil
 from bamboo.common.command import CommandManager
-from giant.xray.data import crystalSummary
+from giant.xray.data import CrystalSummary
 
 #######################################
 

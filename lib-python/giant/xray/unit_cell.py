@@ -25,11 +25,15 @@ def lcv_from_diagonals(uc1_diags, uc2_diags):
     chg_diags = fractional_change_for_diagonals(uc1_diags=uc1_diags, uc2_diags=uc2_diags)
     return max(chg_diags)
 
+def lcv_from_unit_cell_parameters(uc1_params, uc2_params):
+    """Calculate the Linear Cell Variation for two sets of unit cell parameters (a,b,c,alpha,beta,gamma)"""
+    uc1_diags = unit_cell_diagonals(*uc1_params)
+    uc2_diags = unit_cell_diagonals(*uc2.params)
+    return lcv_from_diagonals(uc1_diags=uc1_diags, uc2_diags=uc2_diags)
+
 def lcv_from_unit_cells(uc1, uc2):
     """Calculate the Linear Cell Variation for two unit cells"""
-    uc1_diags = unit_cell_diagonals(*uc1.parameters())
-    uc2_diags = unit_cell_diagonals(*uc2.parameters())
-    return lcv_from_diagonals(uc1_diags=uc1_diags, uc2_diags=uc2_diags)
+    return lcv_from_unit_cell_parameters(uc1_params=uc1.parameters(), uc2_params=uc2.parameters())
 
 #############################################################################
 

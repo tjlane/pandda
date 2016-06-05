@@ -1,5 +1,17 @@
 from scitbx.array_family import flex
-#from mmtbx.command_line.super import extract_sequence_and_sites
+
+########################################################################################
+
+def extract_backbone_atoms(residue):
+    """Extract N, CA, C triplets for a residue"""
+    residue_int = residue.residue_name_plus_atom_names_interpreter().atom_name_interpretation.expected
+    residue_ats = residue.atoms().build_dict()
+    n  = residue_ats[residue_int['N'][0]]
+    ca = residue_ats[residue_int['CA'][0]]
+    c  = residue_ats[residue_int['C'][0]]
+    return (n, ca, c)
+
+########################################################################################
 
 #def get_backbone_atoms(atom_group):
 #    """Get the backbone atoms for the atom_group"""
@@ -13,6 +25,8 @@ from scitbx.array_family import flex
 #
 #    return
 
+########################################################################################
+
 def get_calpha_sites(input_hierarchy):
     """Gets the coordinates of alpha carbons from the structure"""
     return flex.vec3_double([a.xyz for a in get_atom_selection(input_hierarchy, atom_names=[' CA '], atom=True, hetero=False)])
@@ -22,6 +36,8 @@ def get_backbone_sites(input_hierarchy, cbeta=True):
     if cbeta: atoms = [' C  ',' N  ',' CA ',' O  ',' CB ']
     else:     atoms = [' C  ',' N  ',' CA ',' O  ']
     return flex.vec3_double([a.xyz for a in get_atom_selection(input_hierarchy, atom_names=[' C  ',' N  ',' CA ',' O  '], atom=True, hetero=False)])
+
+########################################################################################
 
 def get_atom_selection(input_hierarchy, chain_names=None, res_names=None, atom_names=None, atom=True, hetero=False, proteinonly=True):
     """Iterate through atoms in input_hierarchy and select atoms matching the criteria"""

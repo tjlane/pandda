@@ -1,5 +1,5 @@
 
-class selectionSummary(object):
+class SelectionSummary(object):
 
     def __init__(self, ref_hierarchy, sub_hierarchy=None, selection=None):
         """Summarise a selection of a hierarchy relative to the whole hierarchy"""

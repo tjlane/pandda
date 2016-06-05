@@ -2,7 +2,7 @@ import numpy
 import iotbx.mtz, iotbx.pdb
 from bamboo.common import Info
 
-class crystalSummary(object):
+class CrystalSummary(object):
 
     def __init__(self, id=None):
         self.id = id
@@ -67,7 +67,7 @@ class crystalSummary(object):
         new_cls.unit_cell = new_cls.symmetry.unit_cell()
         return new_cls
 
-class unitCellVariation(Info):
+class UnitCellVariation(Info):
     def __init__(self, unit_cells):
         unit_cell_params = numpy.array([uc.parameters() for uc in unit_cells])
         self.mean  = tuple(unit_cell_params.mean(axis=0))

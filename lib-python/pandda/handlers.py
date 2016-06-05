@@ -9,7 +9,7 @@ from bamboo.common.file import FileManager
 from bamboo.common.path import easy_directory
 
 from giant.structure.align import perform_flexible_alignment, find_nearest_calphas, transform_coordinates_with_flexible_alignment
-from giant.xray.data import crystalSummary
+from giant.xray.data import CrystalSummary
 from giant.xray.symmetry import combine_hierarchies, generate_adjacent_symmetry_copies
 
 ########################################################################################################
@@ -43,7 +43,7 @@ class DatasetHandler(object):
         self._structure = self.new_structure()
         # Data summaries
         self.pdb_summary = None
-        self.mtz_summary = crystalSummary.from_mtz(mtz_file=self._mtz_file)
+        self.mtz_summary = CrystalSummary.from_mtz(mtz_file=self._mtz_file)
         ########################################################
         # All Structure factors
         self.sfs = None

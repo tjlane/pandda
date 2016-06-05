@@ -5,8 +5,8 @@ import libtbx.phil
 import numpy
 import pandas
 
-from giant.xray.data import crystalSummary
-from giant.xray.data.cluster import crystalGroup
+from giant.xray.data import CrystalSummary
+from giant.xray.data.cluster import CrystalGroup
 
 #######################################
 
@@ -51,7 +51,7 @@ def run(params):
     print '============================================>'
     print 'GROUPING BY SPACE GROUP'
 
-    cg = crystalGroup([crystalSummary.from_mtz(mtz_file=f, id=lab) for f,lab in zip(params.input.mtz, labels)])
+    cg = CrystalGroup([CrystalSummary.from_mtz(mtz_file=f, id=lab) for f,lab in zip(params.input.mtz, labels)])
 
     #########################################################################################################
 
