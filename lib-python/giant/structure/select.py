@@ -2,6 +2,33 @@ from scitbx.array_family import flex
 
 ########################################################################################
 
+def non_h(hierarchy, cache=None, copy=True):
+    if not cache: cache=hierarchy.atom_selection_cache()
+    sel = cache.selection('(not element H)')
+    return hierarchy.select(sel, copy_atoms=copy)
+
+def protein(hierarchy, cache=None, copy=True):
+    if not cache: cache=hierarchy.atom_selection_cache()
+    sel = cache.selection('(not element H) and pepnames')
+    return hierarchy.select(sel, copy_atoms=copy)
+
+def calphas(hierarchy, cache=None, copy=True):
+    if not cache: cache=hierarchy.atom_selection_cache()
+    sel = cache.selection('(not element H) and pepnames and (name CA)')
+    return hierarchy.select(sel, copy_atoms=copy)
+
+def backbone(hierarchy, cache=None, copy=True):
+    if not cache: cache=hierarchy.atom_selection_cache()
+    sel = cache.selection('(not element H) and pepnames and (name C or name CA or name N or name O)')
+    return hierarchy.select(sel, copy_atoms=copy)
+
+def sidechains(hierarchy, cache=None, copy=True):
+    if not cache: cache=hierarchy.atom_selection_cache()
+    sel = cache.selection('(not element H) and pepnames and not (name C or name CA or name N or name O)')
+    return hierarchy.select(sel, copy_atoms=copy)
+
+########################################################################################
+
 def extract_backbone_atoms(residue):
     """Extract N, CA, C triplets for a residue"""
     residue_int = residue.residue_name_plus_atom_names_interpreter().atom_name_interpretation.expected

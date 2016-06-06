@@ -1,6 +1,10 @@
-#! python
+#! pandda.python 
 
 import os, sys, glob
+
+import matplotlib
+matplotlib.interactive(0)
+from matplotlib import pyplot
 
 import numpy
 import pandas
@@ -8,16 +12,6 @@ import iotbx.pdb
 import scipy.linalg
 
 from scitbx.array_family import flex
-
-import matplotlib
-matplotlib.interactive(0)
-from matplotlib import pyplot
-
-def extract_dihedrals(hierarchy):
-    
-#    tuple_list = [(res_lab, phi, psi)]
-
-    return tuple_list
 
 def calc_com():
     # Calculate centre of mass of the reference dataset
@@ -64,7 +58,6 @@ def calculate_mean_structure_and_protein_masks(self, deviation_cutoff):
     self._average_calpha_sites = flex.vec3_double(mean_sites)
     self._residue_deviation_masks = residue_deviation_masks
 
-
 def analyse_ensemble(pdbs):
 
     # Load the ensemble into hierarchies and sort them
@@ -76,10 +69,6 @@ def analyse_ensemble(pdbs):
     reference = hierarchies[0]
 
     # Create pandas object to hold residue information (items=atom_labels, major_axis=structure_labels, minor_axis=variables)
-    ags_panel = pandas.Panel(   data       = None,
-                                items      = [ag.id_str()+ag.altloc for ag in reference.atom_groups()], 
-                                major_axis = range(len(hierarchies)),
-                                minor_axis = ['All-Mean-B','All-Mean-X','All-Mean-Y','All-Mean-Z']     )
     ats_panel = pandas.Panel(   data       = None,
                                 items      = [at.pdb_label_columns() for at in reference.atoms()], 
                                 major_axis = range(len(hierarchies)),
@@ -114,51 +103,6 @@ def analyse_ensemble(pdbs):
             ats_panel[at.pdb_label_columns()]['Z'][i_h] = at.xyz[2]
 
     return hierarchies, ags_panel, ats_panel
-
-
-
-if __name__ == '__main__':
-
-    pdbs = glob.glob('./test_data/*')
-    
-    hierarchies, ags_panel, ats_panel = analyse_ensemble(pdbs=pdbs[0:10])
-
-    # Calculate the PCAs of the coordinates of each atom
-    for at_label in ats_panel.items:
-        print at_label
-        at_coords = ats_panel[at_label][['X','Y']]
-        at_coords = at_coords.as_matrix()
-
-        # 2 subplots sharing x-axis
-        fig, (axis_1_1, axis_2_1) = pyplot.subplots(2, sharex=False)
-        # 1st Plot - 1st Y-Axis
-        line_1_1, = axis_1_1.plot(at_coords[:,0], at_coords[:,1])
-        axis_1_1.set_xlabel('X')
-        axis_1_1.set_ylabel('Y', color='k')
-        # Joint legend
-#        axis_1_1.legend(handles=[line_1_1, line_1_2, line_1_3], loc=4)
-        # Title
-        axis_1_1.set_title('Coord Plot')
-        pyplot.savefig('./outfig1.png')
-        pyplot.close(fig)
-
-        # SVD
-        U, s, Vt = scipy.linalg.svd(at_coords)
-        V = Vt.T
-#        vectors = (V[0], V[1], V[2])
-
-        at_coords = at_coords.T
-
-        # Manual
-        cov_mat = numpy.cov(at_coords)
-        eig_val_cov, eig_vec_cov = numpy.linalg.eig(cov_mat)
-
-
-        print cov_mat
-
-
-        break
-
 
 def analyse_structure_variability_1(self):
     """Go through all of the datasets and collect lots of different structural characteristics of the datasets for identifying odd datasets"""
@@ -274,4 +218,52 @@ def analyse_structure_variability_2(self):
                     delimiter=',', newline='\n' )
 
     # Do some other stuff...
+
+
+
+if __name__ == '__main__':
+
+    pdbs = glob.glob('*.pdb')
+    out_dir = 'reduce_ensembles'
+    
+    from giant.structure.ensemble
+
+    hierarchies, ags_panel, ats_panel = analyse_ensemble(pdbs=pdbs[0:10])
+
+    # Calculate the PCAs of the coordinates of each atom
+    for at_label in ats_panel.items:
+        print at_label
+        at_coords = ats_panel[at_label][['X','Y']]
+        at_coords = at_coords.as_matrix()
+
+        # 2 subplots sharing x-axis
+        fig, (axis_1_1, axis_2_1) = pyplot.subplots(2, sharex=False)
+        # 1st Plot - 1st Y-Axis
+        line_1_1, = axis_1_1.plot(at_coords[:,0], at_coords[:,1])
+        axis_1_1.set_xlabel('X')
+        axis_1_1.set_ylabel('Y', color='k')
+        # Joint legend
+#        axis_1_1.legend(handles=[line_1_1, line_1_2, line_1_3], loc=4)
+        # Title
+        axis_1_1.set_title('Coord Plot')
+        pyplot.savefig('./outfig1.png')
+        pyplot.close(fig)
+
+        # SVD
+        U, s, Vt = scipy.linalg.svd(at_coords)
+        V = Vt.T
+#        vectors = (V[0], V[1], V[2])
+
+        at_coords = at_coords.T
+
+        # Manual
+        cov_mat = numpy.cov(at_coords)
+        eig_val_cov, eig_vec_cov = numpy.linalg.eig(cov_mat)
+
+
+        print cov_mat
+
+
+        break
+
 

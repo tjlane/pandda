@@ -3,6 +3,7 @@ import iotbx.pdb
 from scitbx.math import dihedral_angle
 
 from giant.structure.select import extract_backbone_atoms
+from giant.structure.iterators import generate_residue_triplets
 
 ########################################################################################
 
@@ -11,28 +12,6 @@ def get_all_phi_psi_for_hierarchy(pdb_h, deg=True):
     for prev, current, next in generate_residue_triplets(pdb_h):
         phi, psi = calculate_residue_phi_psi_angles(prev=prev, current=current, next=next, deg=deg)
         yield (current, (phi,psi))
-
-def generate_residue_triplets(pdb_h):
-    """Generate groups of three residues (this is an iterator)"""
-    for chain in pdb_h.chains():
-        # Skip if not protein
-        if not chain.is_protein(): continue
-        for conf in chain.conformers():
-            # Reset for each conformer
-            prev = current = next = None
-            for res in conf.residues():
-                # Shuffle all variables down one
-                prev = current
-                current = next
-                next = res
-                # Do we have three residues?
-                if not (prev and current and next):
-                    continue
-                # Are they continuous residues
-                if not (prev.resseq_as_int()+1 == current.resseq_as_int() == next.resseq_as_int()-1):
-                    continue
-                # Return the residue triplet
-                yield (prev, current, next)
 
 ########################################################################################
 
