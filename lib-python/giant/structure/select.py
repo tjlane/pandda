@@ -54,10 +54,12 @@ def extract_backbone_atoms(residue):
 
 ########################################################################################
 
+# Deprecated
 def get_calpha_sites(input_hierarchy):
     """Gets the coordinates of alpha carbons from the structure"""
     return flex.vec3_double([a.xyz for a in get_atom_selection(input_hierarchy, atom_names=[' CA '], atom=True, hetero=False)])
 
+# Deprecated
 def get_backbone_sites(input_hierarchy, cbeta=True):
     """Gets the coordinates of backbone atoms"""
     if cbeta: atoms = [' C  ',' N  ',' CA ',' O  ',' CB ']
@@ -66,6 +68,7 @@ def get_backbone_sites(input_hierarchy, cbeta=True):
 
 ########################################################################################
 
+# Deprecated
 def get_atom_selection(input_hierarchy, chain_names=None, res_names=None, atom_names=None, atom=True, hetero=False, proteinonly=True):
     """Iterate through atoms in input_hierarchy and select atoms matching the criteria"""
 

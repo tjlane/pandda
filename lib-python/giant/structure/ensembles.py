@@ -177,6 +177,7 @@ class StructureCollection(object):
 
         self.tables.residues.loc[:,:,'num_conformers'] = numpy.nan
         self.tables.residues.loc[:,:,'num_atoms']      = numpy.nan
+        self.tables.residues.loc[:,:,'occupancy'] = numpy.nan
 
         for lab_h, pdb_h in zip(self.structures.labels, self.structures.hierarchies):
             print('Extracting Residue Info: Structure: {}'.format(lab_h))
@@ -184,6 +185,10 @@ class StructureCollection(object):
                 res_lab = (c.parent().id,c.only_residue().resid(),c.altloc)
                 self.tables.residues.set_value(res_lab, lab_h, 'num_conformers', len(c.parent().conformers()))
                 self.tables.residues.set_value(res_lab, lab_h, 'num_atoms', c.atoms_size())
+
+                p_occ = [o for o in c.atoms().extract_occ() if o<1.0]
+                if c.altloc and (len(set(p_occ)) == 1):
+                    self.tables.residues.set_value(res_lab, lab_h, 'occupancy', p_occ[0])
 
     def calculate_residue_mean_b_factors(self):
         """Extract Mean-B values in each of the structures"""
@@ -220,7 +225,7 @@ class StructureCollection(object):
 
         for lab_h, pdb_h in zip(self.structures.labels, self.structures.hierarchies):
             print('Calculating Local Normalised Mean B-Factors: Structure: {}'.format(lab_h))
-            pdb_h_z = normalise_b_factors_to_z_scores(pdb_hierarchy=pdb_h, method='backbone')
+            pdb_h_z = normalise_b_factors_to_z_scores(pdb_hierarchy=pdb_h, method='all')
             cache = pdb_h_z.atom_selection_cache()
             # Non-Hydrogens
             for c in conformers_via_residue_groups(non_h(hierarchy=pdb_h_z, cache=cache)):
@@ -242,14 +247,6 @@ class StructureCollection(object):
         """Calculate twice-normalised residue b-factors"""
 
         pass
-
-    def write_normalised_b_factor_structures(self):
-        """Write out the normalised b-factor structures"""
-
-        for lab_h, pdb_h in zip(self.structures.labels, self.structures.hierarchies):
-            print('Writing Normalised B-Factors: Structure: {}'.format(lab_h))
-            pdb_h_z = normalise_b_factors_to_z_scores(pdb_hierarchy=pdb_h, method='backbone')
-            pdb_h_z.write_pdb_file(file_name='{}-normalised-b.pdb'.format(lab_h))
 
     def calculate_residue_phi_psi_angles(self):
         """Extract phi-psi angles for each of the structures"""
@@ -276,5 +273,12 @@ class StructureCollection(object):
                 if numpy.isnan(self.tables.residues.get_value(res_lab, lab_h, 'psi')):
                     self.tables.residues.set_value(res_lab, lab_h, 'psi', psi)
 
+    def write_normalised_b_factor_structures(self):
+        """Write out the normalised b-factor structures"""
+
+        for lab_h, pdb_h in zip(self.structures.labels, self.structures.hierarchies):
+            print('Writing Normalised B-Factors: Structure: {}'.format(lab_h))
+            pdb_h_z = normalise_b_factors_to_z_scores(pdb_hierarchy=pdb_h, method='backbone')
+            pdb_h_z.write_pdb_file(file_name='{}-normalised-b.pdb'.format(lab_h))
 
 

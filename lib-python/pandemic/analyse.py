@@ -24,10 +24,8 @@ from pandemic.analyse_main import PandemicMultiDatasetAnalyser
 
 def sanitise_params(params):
     """Ensure continuity in the params as some are redundant"""
-
     # Change the pandda parameters to match the pandemic parameters
     params.pandda.output.out_dir = params.pandemic.input.pandda_dir
-
     # This must be set to True so that "old" datasets are analysed
     params.pandda.method.reprocess_existing_datasets = True
 
@@ -187,7 +185,7 @@ def pandemic_main_loop(pandemic, pandda):
         g=Pyasciigraph()
         graph_data = [(i+1, val) for i,val in enumerate((pca.explained_variance_ratio_/pca.explained_variance_ratio_[0]).round(3))][0:10]
         for l in g.graph(label='Sorted PCA components (Ascending Order)', data=graph_data, sort=0):
-            pandemic.log(l.replace(u"\u2588", '=').replace('= ','> ') True)
+            pandemic.log(l.replace(u"\u2588", '=').replace('= ','> '), True)
 
     from IPython import embed; embed(); raise SystemExit()
 
