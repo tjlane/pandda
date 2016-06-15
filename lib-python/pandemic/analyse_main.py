@@ -11,6 +11,7 @@ from bamboo.common.file import FileManager
 from bamboo.common.path import easy_directory, rel_symlink
 
 from giant.manager import Program
+from giant.structure import make_label
 
 from pandda.constants import PanddaMaskNames
 
@@ -199,7 +200,7 @@ class PandemicMultiDatasetAnalyser(Program):
         self.log('Initialising PanDEMIC Residue Information Tables.', True)
 
         # Extract the residue labels for the reference structure
-        residue_labels = [(rg.parent().id, rg.resid()) for rg in pandda.reference_dataset().hierarchy().residue_groups()]
+        residue_labels = [make_label(rg) for rg in pandda.reference_dataset().hierarchy().residue_groups()]
         for res_lab in residue_labels: self.tables.residue_info.loc[res_lab,:]=None
 
     def select_datasets_and_load_maps(self, pandda, high_res_large_cutoff, high_res_small_cutoff=0):
@@ -240,7 +241,6 @@ class PandemicMultiDatasetAnalyser(Program):
 
         # Iterate through each residue and find the grid points assigned to each residue
         for i_res, res in enumerate(pandda.reference_dataset().calpha_labels()):
-
             # Get the indices for this residue from the partition
             res_idxs = numpy.multiply(out_mask, ref_part.nn_groups==i_res).nonzero()
             # Record the indices for this residue (only need the first element since 1d array)

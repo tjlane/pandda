@@ -30,7 +30,7 @@ output {
         .type = float
     resolution_std  = 0.1
         .type = float
-    out_dir = ./pandemic-test-data
+    out_dir = ./test-data
         .type = path
 }
 variation {
@@ -64,8 +64,8 @@ variation {
             .help = "Magnitude of the randomisation of the unit cell axis lengths (fractional)"
             .type = float
     }
-verbose = False
 }
+verbose = False
 """)
 
 def randomise_occupancies(hierarchy, params, verbose=False):
@@ -137,7 +137,7 @@ def run(params):
 
         if params.variation.occupancy.method != 'none':
             print('>> Randomising occupancies')
-            random_hierarchy = randomise_occupancies(hierarchy=s_hierarchy.deep_copy(), params=params.variation)
+            random_hierarchy = randomise_occupancies(hierarchy=s_hierarchy.deep_copy(), params=params.variation, verbose=params.verbose)
 
         # Write the output hierarchy
         random_hierarchy.write_pdb_file(os.path.join(model_dir, 'perturbed.pdb'), crystal_symmetry=s_input.crystal_symmetry())

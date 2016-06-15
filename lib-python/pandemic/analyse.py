@@ -9,6 +9,7 @@ import numpy
 from scitbx.array_family import flex
 
 from giant.jiffies import extract_params_default
+from giant.structure import make_label
 
 from pandda.analyse_main import PanddaMultiDatasetAnalyser
 
@@ -81,8 +82,20 @@ def pandemic_setup(pandemic, pandda):
 
 def pandemic_main_loop(pandemic, pandda):
 
+    ##################################################################################
+
+    confs = {}
+    for rg in pandda.reference_dataset().hierarchy().residue_groups():
+        confs[make_label(rg)] = len(rg.conformers())
+
+    ##################################################################################
+
     # Mask each residue to find the block to analyse
     residue_grid_hash = pandemic.find_residue_locales(pandda=pandda)
+    residue_grid_keys = sorted(residue_grid_hash.keys())
+
+#    for key1,key2 in zip(residue_grid_keys, pandda.reference_dataset().calpha_labels()):
+#        print(key1, key2)
 
     pandda.settings.cpus=7
     pandemic.params.resolution = 1.65
@@ -94,15 +107,26 @@ def pandemic_main_loop(pandemic, pandda):
 
     all_pcas = {}
 
-    for i_res, res in enumerate(pandda.reference_dataset().calpha_labels()):
+    for i_res, res_group in enumerate(pandda.reference_dataset().calphas().residue_groups()):
 
         print('\rExtracting map information for residue {}'.format(''.join(res)), end=''); sys.stdout.flush()
 
-        # Get the indices for this residue
-        res_idxs = flex.size_t(residue_grid_hash[res])
+        # Create a label for the residue
+        res_lab = make_label(res_group)
+
+        combined_idxs = numpy.array()
+        # Get the indices for this residue (including any conformers)
+        for cnf in res_group.conformers():
+            res = make_label(cnf)
+            combined_idxs = combined_idxs.append(residue_grid_hash[res])
+        # Convert to flex
+        res_idxs = flex.size_t(combined_idxs)
 
         # Output array of all of the map values
         map_value_array = numpy.empty((len(map_holder_list.all()), len(res_idxs)))
+        print(map_value_array.shape)
+
+        ##################################################################################
 
         # Iterate through the maps
         for i_mh, mh in enumerate(map_holder_list.all()):
@@ -110,17 +134,12 @@ def pandemic_main_loop(pandemic, pandda):
             # Get the dataset handler
             dh = mh.parent
 
-            print('\rExtracting map information for residue {} from dataset {}          '.format(res, dh.tag), end=''); sys.stdout.flush()
+            print('\rExtracting map information for residue {} from dataset {}          '.format(res_lab, dh.tag), end=''); sys.stdout.flush()
 
             # Select the map values for this residue block
             map_values = mh.map.select(res_idxs)
-
             # Put the values in the complete array
             map_value_array[i_mh,:] = map_values.as_numpy_array()
-
-#            print('')
-#            print(i_mh, dh.tag, map_values.as_numpy_array())
-#            print('')
 
             ########################################################
             # Write out maps for each dataset?
@@ -131,8 +150,6 @@ def pandemic_main_loop(pandemic, pandda):
                                     map_data=mh.map,
                                     grid=pandda.reference_grid() )
             ########################################################
-
-            ########################################################
             # Write out maps for each residue?
             ########################################################
             if i_mh==0:
@@ -140,44 +157,65 @@ def pandemic_main_loop(pandemic, pandda):
                 res_map = flex.double(b.accessor()).set_selected(b, map_values)
                 res_map.reshape(mh.map.accessor())
                 from pandda.misc import write_array_to_map
-                write_array_to_map( output_file=pandemic.output_handler.get_file(file_tag='residue_map').format(dh.tag, ''.join(res)),
+                write_array_to_map( output_file=pandemic.output_handler.get_file(file_tag='residue_map').format(dh.tag, ''.join(res_lab)),
                                     map_data=res_map,
                                     grid=pandda.reference_grid() )
-            ########################################################
+
+        ##################################################################################
 
         def perform_pandemic_pca(array):
             """Perform PCA on a map value array to determine the heterogeneity. Each row is a different observation"""
 
             from sklearn.decomposition import PCA
 
+            ##################################################################################
+
             pca = PCA()
             pca.fit(array)
 
+            ##################################################################################
+
+            # Pairwise differences between datasets
+            num_datasets = pandda.datasets.size()
+            # Indexing: (pair-number idx, map-values idx)
+            pairwise_diffs = numpy.zeros(((num_datasets**2-num_datasets)/2,array.shape[1]))
+
+#            for i_1, vals in enumerate(array):
+#                pass
+
+            ##################################################################################
+
             return pca
+
+        ##################################################################################
 
         # Perform PCA to calculate the number of conformers
         results = perform_pandemic_pca(map_value_array)
+        # Record in the output dictionary
+        all_pcas[res_lab] = results
 
-        all_pcas[res] = results
+        ##################################################################################
 
         pandemic.log('\rExtracting map information for residue {}: Done                              '.format(''.join(res)))
 
     pandemic.log('Residue-by-residue electron densities across the datasets have been extracted')
 
-    confs = {}
+    ##################################################################################
 
-    for rg in pandda.reference_dataset().hierarchy().residue_groups():
-        print(rg)
-        confs[(rg.parent().id, rg.resid())] = len(rg.conformers())
+    # Structure to write where b-factors are the elements of the PCA
+    pca_structure = pandda.reference_dataset().hierarchy().deep_copy()
+    pca_structure.atoms().set_b(flex.double([0]*pca_structure.atoms_size()))
+    pca_cache = pca_structure.atom_selection_cache()
 
+    for res_group in pandda.reference_dataset().calphas().residue_groups():
 
-    for res in pandda.reference_dataset().calpha_labels():
+        res_lab = #####
         pca = all_pcas[res]
 
-        print('====================================>>>')
+        print('\n====================================>>>')
         print(res)
         print('====================================>>>')
-        print('Number of Conformers: {}'.format(confs[res]))
+        print('Number of Conformers: {}'.format(confs[(res[0],res[1])]))
         print('====================================>>>')
         print((pca.explained_variance_ratio_/pca.explained_variance_ratio_[0]).round(3))
         print('====================================>>>')
@@ -186,6 +224,32 @@ def pandemic_main_loop(pandemic, pandda):
         graph_data = [(i+1, val) for i,val in enumerate((pca.explained_variance_ratio_/pca.explained_variance_ratio_[0]).round(3))][0:10]
         for l in g.graph(label='Sorted PCA components (Ascending Order)', data=graph_data, sort=0):
             pandemic.log(l.replace(u"\u2588", '=').replace('= ','> '), True)
+        print('====================================>>>\n')
+        selection = 'chain {0} and resid {1}'.format(*res)
+        residue = pca_structure.select(pca_cache.selection(selection))
+        pca_sum = sum(pca.explained_variance_ratio_/pca.explained_variance_ratio_[0]) - 1.0
+        residue.atoms().set_b(residue.atoms().extract_b()+pca_sum)
+
+        print('====================================>>>\n')
+
+    pca_path = os.path.join(pandemic.output_handler.get_dir('root'), 'pca_structure.pdb')
+    pca_structure.write_pdb_file(pca_path)
+
+    ##################################################################################
+
+    # For each residue, take grid within 6A of backbone (of all conformers)
+
+    # PCA to find number of conformers
+
+
+
+
+
+
+
+
+
+    ##################################################################################
 
     from IPython import embed; embed(); raise SystemExit()
 

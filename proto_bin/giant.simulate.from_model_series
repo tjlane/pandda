@@ -28,7 +28,7 @@ output {
         .type = float
     resolution_std  = 0.1
         .type = float
-    out_dir = ./pandemic-test-data
+    out_dir = ./test-data
         .type = path
 }
 verbose = False
