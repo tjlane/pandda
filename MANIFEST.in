@@ -2,6 +2,7 @@ exclude bin/pandda.python
 exclude bin/pandda.ipython
 exclude bin/pandda.coot
 
+recursive-include lib-python/bamboo/misc *
 recursive-include lib-python/bamboo/templates *
 recursive-include lib-python/giant/templates *
 recursive-include lib-python/pandda/templates *

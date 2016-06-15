@@ -11,6 +11,7 @@ from scitbx.array_family import flex
 from bamboo.common import Meta, Info
 from bamboo.plot.histogram import simple_histogram
 
+from giant.structure import make_label
 from giant.structure.dihedrals import get_all_phi_psi_for_hierarchy
 from giant.structure.b_factors import BfactorStatistics, normalise_b_factors_to_z_scores
 from giant.structure.select import non_h, backbone, sidechains
@@ -65,7 +66,7 @@ class StructureCollection(object):
     def _initialise_residue_table(self):
         """Initialise the tables.residues object with residue labels"""
 
-        residue_labels = [(c.parent().id,c.only_residue().resid(),c.altloc) for c in conformers_via_residue_groups(self.structures.hierarchies[0])]
+        residue_labels = [make_label(c) for c in conformers_via_residue_groups(self.structures.hierarchies[0])]
         self.tables.residues = pandas.Panel( data       = None,
                                              items      = pandas.Index(data=residue_labels, name=['chain','residue','altloc'], tupleize_cols=True),
                                              major_axis = pandas.Index(data=self.structures.labels, name='structure label'),
@@ -182,7 +183,7 @@ class StructureCollection(object):
         for lab_h, pdb_h in zip(self.structures.labels, self.structures.hierarchies):
             print('Extracting Residue Info: Structure: {}'.format(lab_h))
             for c in conformers_via_residue_groups(pdb_h):
-                res_lab = (c.parent().id,c.only_residue().resid(),c.altloc)
+                res_lab = make_label(c)
                 self.tables.residues.set_value(res_lab, lab_h, 'num_conformers', len(c.parent().conformers()))
                 self.tables.residues.set_value(res_lab, lab_h, 'num_atoms', c.atoms_size())
 
@@ -202,17 +203,17 @@ class StructureCollection(object):
             cache = pdb_h.atom_selection_cache()
             # Non-Hydrogens
             for c in conformers_via_residue_groups(non_h(hierarchy=pdb_h, cache=cache)):
-                res_lab = (c.parent().id,c.only_residue().resid(),c.altloc)
+                res_lab = make_label(c)
                 res_mean_b = flex.mean_weighted(c.atoms().extract_b(), c.atoms().extract_occ())
                 self.tables.residues.set_value(res_lab, lab_h, 'mean-b-all', res_mean_b)
             # Backbone Atoms
             for c in conformers_via_residue_groups(backbone(hierarchy=pdb_h, cache=cache)):
-                res_lab = (c.parent().id,c.only_residue().resid(),c.altloc)
+                res_lab = make_label(c)
                 res_mean_b = flex.mean_weighted(c.atoms().extract_b(), c.atoms().extract_occ())
                 self.tables.residues.set_value(res_lab, lab_h, 'mean-b-backbone', res_mean_b)
             # Sidechain Atoms
             for c in conformers_via_residue_groups(sidechains(hierarchy=pdb_h, cache=cache)):
-                res_lab = (c.parent().id,c.only_residue().resid(),c.altloc)
+                res_lab = make_label(c)
                 res_mean_b = flex.mean_weighted(c.atoms().extract_b(), c.atoms().extract_occ())
                 self.tables.residues.set_value(res_lab, lab_h, 'mean-b-sidechain', res_mean_b)
 
@@ -229,17 +230,17 @@ class StructureCollection(object):
             cache = pdb_h_z.atom_selection_cache()
             # Non-Hydrogens
             for c in conformers_via_residue_groups(non_h(hierarchy=pdb_h_z, cache=cache)):
-                res_lab = (c.parent().id,c.only_residue().resid(),c.altloc)
+                res_lab = make_label(c)
                 res_mean_b = flex.mean_weighted(c.atoms().extract_b(), c.atoms().extract_occ())
                 self.tables.residues.set_value(res_lab, lab_h, 'mean-bz-all', res_mean_b)
             # Backbone Atoms
             for c in conformers_via_residue_groups(backbone(hierarchy=pdb_h_z, cache=cache)):
-                res_lab = (c.parent().id,c.only_residue().resid(),c.altloc)
+                res_lab = make_label(c)
                 res_mean_b = flex.mean_weighted(c.atoms().extract_b(), c.atoms().extract_occ())
                 self.tables.residues.set_value(res_lab, lab_h, 'mean-bz-backbone', res_mean_b)
             # Sidechain Atoms
             for c in conformers_via_residue_groups(sidechains(hierarchy=pdb_h_z, cache=cache)):
-                res_lab = (c.parent().id,c.only_residue().resid(),c.altloc)
+                res_lab = make_label(c)
                 res_mean_b = flex.mean_weighted(c.atoms().extract_b(), c.atoms().extract_occ())
                 self.tables.residues.set_value(res_lab, lab_h, 'mean-bz-sidechain', res_mean_b)
 

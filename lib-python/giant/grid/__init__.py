@@ -10,6 +10,7 @@ import iotbx.crystal_symmetry_from_any
 
 from cctbx import crystal
 
+from giant.structure import make_label
 from giant.grid.utils import create_cartesian_grid
 
 class grid_handler(object):
@@ -182,7 +183,9 @@ class grid_partition(object):
         #self.grid_sites = list(flex.nested_loop(grid_size))
         self.atom_sites_grid = numpy.array([a.xyz for a in atoms])/grid_spacing
         self.atom_sites_cart = numpy.array([a.xyz for a in atoms])
-        self.atom_labels = [(a.chain_id, a.resid()) for a in atoms]
+        self.atom_labels = [make_label(a) for a in atoms]
+
+        self._atoms = atomic_hierarchy.deep_copy()
 
         # Distances from grid sites to nearest atom site
         self.nn_dists = None

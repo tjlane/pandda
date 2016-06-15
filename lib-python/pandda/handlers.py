@@ -8,6 +8,7 @@ import scitbx.math.superpose
 from bamboo.common.file import FileManager
 from bamboo.common.path import easy_directory
 
+from giant.structure import make_label
 from giant.structure.align import perform_flexible_alignment, find_nearest_calphas, transform_coordinates_with_flexible_alignment
 from giant.xray.data import CrystalSummary
 from giant.xray.symmetry import combine_hierarchies, generate_adjacent_symmetry_copies
@@ -19,10 +20,10 @@ from giant.xray.symmetry import combine_hierarchies, generate_adjacent_symmetry_
 ########################################################################################################
 
 class DatasetHandler(object):
-    def __init__(self, dataset_number, pdb_filename, mtz_filename, dataset_tag=None):
+    def __init__(self, dataset_number, pdb_filename, mtz_filename=None, dataset_tag=None):
         """Create a dataset object to allow common functions to be applied easily to a number of datasets"""
-        assert os.path.exists(pdb_filename), 'PDB file does not exist!'
-        assert os.path.exists(mtz_filename), 'MTZ file does not exist!'
+        if pdb_filename: assert os.path.exists(pdb_filename), 'PDB file does not exist!'
+        if mtz_filename: assert os.path.exists(mtz_filename), 'MTZ file does not exist!'
         # Store dataset number
         self.num = dataset_number
         # Store the tag for the dataset
@@ -42,8 +43,8 @@ class DatasetHandler(object):
         # PDB Objects
         self._structure = self.new_structure()
         # Data summaries
-        self.pdb_summary = None
-        self.mtz_summary = CrystalSummary.from_mtz(mtz_file=self._mtz_file)
+        if self._pdb_file: self.pdb_summary = None
+        if self._mtz_file: self.mtz_summary = CrystalSummary.from_mtz(mtz_file=self._mtz_file)
         ########################################################
         # All Structure factors
         self.sfs = None
@@ -118,11 +119,11 @@ class DatasetHandler(object):
         return xray_structure.sites_cart().select(xray_structure.backbone_selection())
 
     def calphas(self):
-        """Get the cAlphas for the structure"""
+        """Get the calphas for the structure"""
         return self.hierarchy().select(self.hierarchy().atom_selection_cache().selection('pepnames and name CA'))
     def calpha_labels(self):
         """Return the labels of the calphas of the structure"""
-        return [(a.chain_id, a.resid()) for a in self.calphas().atoms_with_labels()]
+        return [make_label(a) for a in self.calphas().atoms_with_labels()]
 
     def find_nearest_calpha(self, points, hierarchy=None):
         """Returns the labels of the nearest calpha for each of the given points"""

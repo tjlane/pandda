@@ -5,6 +5,69 @@ import iotbx.pdb
 from scitbx.array_family import flex
 from giant.maths.geometry import is_within
 
+import iotbx.pdb.hierarchy as iotbx_pdbh
+
+#---------------------------------------------------->
+
+def make_label(obj):
+    """Return the relevant label for a supplied hierarchy/atom object"""
+    if isinstance(obj, iotbx_pdbh.residue_group):
+        return label_from_residue_group(obj)
+    elif isinstance(obj, iotbx_pdbh.atom_group):
+        return label_from_atom_group(obj)
+    elif isinstance(obj, iotbx_pdbh.conformer):
+        return label_from_conformer(obj)
+    elif isinstance(obj, iotbx_pdbh.residue):
+        return label_from_residue(obj)
+    elif isinstance(obj, iotbx.pdbh.atom):
+        return label_from_atom(obj)
+    elif isinstance(obj, iotbx.pdbh.atom_with_labels):
+        return label_from_atom_with_labels(obj)
+    else:
+        raise Exception('Invalid object type provided: {}'.format(type(obj)))
+
+#---------------------------------------------------->
+
+def label_from_residue_group(rg):
+    """Return (chain_id, resid)"""
+    ch = rg.parent()
+    return (ch.id, rg.resid())
+
+def label_from_atom_group(ag):
+    """Return (chain_id, resid, altloc)"""
+    rg = ag.parent()
+    ch = rg.parent()
+    return (ch.id, rg.resid(), ag.altloc)
+
+#---------------------------------------------------->
+
+def label_from_conformer(cnf):
+    """Return (chain_id, resid, altloc). Must only have one residue."""
+    ch = cnf.parent()
+    res = cnf.only_residue()
+    return (ch.id, res.resid(), cnf.altloc)
+
+def label_from_residue(res):
+    """Return (chain_id, resid, altloc)."""
+    cnf = res.parent()
+    ch = cnf.parent()
+    return (ch.id, res.resid(), cnf.altloc)
+
+#---------------------------------------------------->
+
+def label_from_atom(at):
+    """Return (chain_id, resid, altloc)"""
+    ag = at.parent()
+    rg = ag.parent()
+    ch = rg.parent()
+    return (ch.id, rg.resid(), ag.altloc)
+
+def label_from_atom_with_labels(at):
+    """Return (chain_id, resid, altloc)"""
+    return (at.chain_id, at.resid(), at.altloc)
+
+#---------------------------------------------------->
+
 def calculate_residue_group_occupancy(residue_group):
     """
     Calculate the occupancy of a whole residue, allowing for partial occupancy of partial conformers.
