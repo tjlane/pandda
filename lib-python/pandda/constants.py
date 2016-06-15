@@ -27,7 +27,8 @@ DATASET_INFO_FIELDS  = [    'high_resolution',
                             'uc_alpha',
                             'uc_beta',
                             'uc_gamma',
-                            'uc_vol'                ]
+                            'uc_vol',
+                            'rejection_reason'                ]
 DATASET_MAP_FIELDS   = [    'analysed_resolution',
                             'map_uncertainty',
                             'obs_map_mean',

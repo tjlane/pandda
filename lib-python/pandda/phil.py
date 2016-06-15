@@ -24,8 +24,14 @@ pandda
             mtz_regex = None
                 .type = str
         }
+        filter
+            .help = "Provide a dataset to filter input datasets against"
+        {
+            pdb = None
+                .type = path
+        }
         reference
-            .help = "Manually define reference structure"
+            .help = "Manually define reference dataset to align+scale all other datasets to"
         {
             pdb = None
                 .type = path

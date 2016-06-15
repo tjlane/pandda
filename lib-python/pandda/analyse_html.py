@@ -111,6 +111,8 @@ def write_analyse_html(pandda):
         res_h = d_data['high_resolution']
         uncty = m_data['map_uncertainty']
 
+        rejection_reason = d_data['rejection_reason']
+
         # colour choices - 'success', 'muted', 'danger'
         # icon choices   - 'ok', 'flag', 'remove'
 
@@ -119,14 +121,14 @@ def write_analyse_html(pandda):
         # Test for Bad Crystal
         # ------------------------------>>>
         if pandda.datasets.all_masks().get_mask_value(mask_name='rejected - crystal', entry_id=d.tag) == True:
-            columns.append({'colour':'danger',  'icon':'remove',    'message':'Rejected'.format(None)})
+            columns.append({'colour':'danger',  'icon':'remove',    'message':rejection_reason})
         else:
             columns.append({'colour':'success', 'icon':'ok',        'message':'OK'})
         # ------------------------------>>>
         # Test for Bad Structures
         # ------------------------------>>>
         if pandda.datasets.all_masks().get_mask_value(mask_name='rejected - structure', entry_id=d.tag) == True:
-            columns.append({'colour':'danger',  'icon':'remove',    'message':'Rejected'})
+            columns.append({'colour':'danger',  'icon':'remove',    'message':rejection_reason})
         else:
             columns.append({'colour':'success', 'icon':'ok',        'message':'OK'})
         # ------------------------------>>>

@@ -29,6 +29,7 @@ from pandda import welcome
 from pandda import analyse_html, analyse_graphs
 from pandda.phil import pandda_phil
 from pandda.analyse_main import PanddaMultiDatasetAnalyser, PanddaMapAnalyser, PanddaZMapAnalyser, MapHolder
+from pandda.handlers import DatasetHandler
 from pandda.events import PointCluster, Event
 from pandda.misc import *
 
@@ -466,8 +467,20 @@ def pandda_dataset_setup(pandda):
         # Select the reference dataset
         # ============================================================================>
         if not pandda.reference_dataset():
-            # Select the reference dataset
-            ref_pdb, ref_mtz = pandda.select_reference_dataset(method='resolution')
+            # Filter datasets against the provided filter pdb if given
+            if pandda.args.input.filter.pdb is not None:
+                pandda.log('===================================>>>', True)
+                pandda.log('Filtering datasets against the provided pdb structure (defined by pandda.input.filter.pdb)', True)
+                pandda.filter_datasets_1(filter_dataset=DatasetHandler(dataset_number=0, pdb_filename=pandda.args.input.filter.pdb))
+            # Use given reference dataset, or select reference dataset
+            if pandda.args.input.reference.pdb and pandda.args.input.reference.mtz:
+                pandda.log('===================================>>>', True)
+                pandda.log('Reference Provided by User', True)
+                ref_pdb, ref_mtz = pandda.args.input.reference.pdb, pandda.args.input.reference.mtz
+            else:
+                pandda.log('===================================>>>', True)
+                pandda.log('Selecting reference dataset from loaded datasets', True)
+                ref_pdb, ref_mtz = pandda.select_reference_dataset(method='resolution')
             # Load the reference dataset
             pandda.load_reference_dataset(ref_pdb=ref_pdb, ref_mtz=ref_mtz)
         # ============================================================================>

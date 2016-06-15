@@ -693,12 +693,16 @@ class PanddaMultiDatasetAnalyser(Program):
             else: self.settings.plot_graphs = False
 
         # ===============================================================================>
+        # CHANGE INTO OUTPUT DIRECTORY
+        # ===============================================================================>
+        os.chdir(self.out_dir)
+
+        # ===============================================================================>
         # REPOPULATE PANDDA FROM PREVIOUS RUNS
         # ===============================================================================>
-
         # Load any objects from previous runs
         self.load_pickled_objects()
-
+        # Reload reference dataset
         if (not self.reference_dataset()) and os.path.exists(self.output_handler.get_file('reference_structure')) and os.path.exists(self.output_handler.get_file('reference_dataset')):
             self.log('===================================>>>', True)
             self.log('Loading Reference Dataset', True)
@@ -714,10 +718,6 @@ class PanddaMultiDatasetAnalyser(Program):
         # Update Status
         # ===============================================================================>
         self.update_status('running')
-        # ===============================================================================>
-        # CHANGE INTO OUTPUT DIRECTORY
-        # ===============================================================================>
-        os.chdir(self.out_dir)
 
     def _validate_parameters(self):
         """Validate and preprocess the loaded parameters"""
@@ -737,6 +737,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # and change directories without worrying about relative paths
         p.input.data_dirs = os.path.abspath(p.input.data_dirs)
         p.output.out_dir  = os.path.abspath(p.output.out_dir)
+        if p.input.filter.pdb: p.input.filter.pdb = os.path.abspath(p.input.filter.pdb)
 
         # If any datasets are set to be reprocessed, reload all datasets (need to change this to allow for "reload_selected_datasets")
         if p.method.reprocess_existing_datasets or self.args.method.reprocess_selected_datasets:
@@ -754,20 +755,20 @@ class PanddaMultiDatasetAnalyser(Program):
         # Load Reference Grid
         if os.path.exists(self.pickle_handler.get_file('reference_grid')):
             pickles_found = True
-            self.log('===> Loading reference grid')
+            self.log('-> Loading reference grid')
             self.set_reference_grid(self.unpickle(self.pickle_handler.get_file('reference_grid')))
 
         # Load Reference Dataset
         if os.path.exists(self.pickle_handler.get_file('reference_dataset')):
             pickles_found = True
-            self.log('===> Loading reference dataset')
+            self.log('-> Loading reference dataset')
             self.set_reference_dataset(self.unpickle(self.pickle_handler.get_file('reference_dataset')))
 
         # Load the datasets
         if os.path.exists(self.pickle_handler.get_file('dataset_meta')):
             pickles_found = True
             # Unpickle the list of the pickled datasets from the directory structure
-            self.log('===> Loading old dataset information (existing datasets)')
+            self.log('-> Loading old dataset information (existing datasets)')
             self.pickled_dataset_meta = self.unpickle(self.pickle_handler.get_file('dataset_meta'))
 
             if self.args.method.reload_existing_datasets:
@@ -777,23 +778,23 @@ class PanddaMultiDatasetAnalyser(Program):
                 for filename in pickled_dataset_list:
                     assert os.path.isfile(os.path.join(self.out_dir, filename)), 'File does not exist: {!s}'.format(filename)
                 # Unpickle the datasets and add them to the dataset handler list
-                self.log('===> Reloading old datasets')
+                self.log('-> Reloading old datasets')
                 self.datasets.add([self.unpickle(os.path.join(self.out_dir,f)) for f in pickled_dataset_list])
             else:
-                self.log('===> Not reloading old datasets')
+                self.log('-> Not reloading old datasets')
         else:
             # No datasets to load - this must be False
             self.args.method.reload_existing_datasets = False
-            self.log('===> No old datasets found')
+            self.log('-> No old datasets found')
 
         # Load Statistical Maps
         if os.path.exists(self.pickle_handler.get_file('stat_maps')):
             pickles_found = True
-            self.log('===> Loading old statistical maps')
+            self.log('-> Loading old statistical maps')
             self.stat_maps = self.unpickle(self.pickle_handler.get_file('stat_maps'))
 
         if not pickles_found:
-            self.log('===> No Pickles Found', True)
+            self.log('-> No Pickles Found', True)
 
     def pickle_the_pandda(self, components=None, all=False, datasets=None):
         """Pickles it's major components for quick loading..."""
@@ -992,38 +993,39 @@ class PanddaMultiDatasetAnalyser(Program):
 
         assert method in ['resolution','rfree'], 'METHOD FOR SELECTING THE REFERENCE DATASET NOT RECOGNISED: {!s}'.format(method)
 
-        # Filter the datasets that can be selected as the reference dataset
-        filtered_datasets = self.datasets.mask(mask_name='no_build', invert=True)
+        # Create a mask of the datasets that can be selected as the reference dataset
+        no_build_mask = self.datasets.all_masks().get_mask(mask_name='no_build')
+        rejected_mask = self.datasets.all_masks().get_mask(mask_name='rejected - total')
+        potential_reference_mask = self.datasets.all_masks().combine_masks_custom(masks=[no_build_mask,rejected_mask], invert=True)
+        self.datasets.all_masks().add_mask(mask_name='potential reference datasets', mask=potential_reference_mask)
+        # Get the potential reference datasets
+        filtered_datasets = self.datasets.mask(mask_name='potential reference datasets')
+        if not filtered_datasets: raise Exception('NO NON-REJECTED DATASETS REMAINING')
 
-        if self.args.input.reference.pdb and self.args.input.reference.pdb:
-            self.log('===================================>>>', True)
-            self.log('Reference Provided by User', True)
-            return self.args.input.reference.pdb, self.args.input.reference.mtz
-        else:
-            self.log('===================================>>>', True)
-            self.log('Selecting Reference Dataset by: {!s}'.format(method), True)
-            if method == 'rfree':
-                # Get RFrees of datasets (set to dummy value of 999 if resolution is too high so that it is not selected)
-                r_frees = [d.input().get_r_rfree_sigma().r_free if (d.reflection_data().max_min_resolution()[1] < min_resolution) else 999 for d in filtered_datasets]
-                if len(resolns) == 0: raise Exception('NO DATASETS BELOW RESOLUTION CUTOFF {!s}A - CANNOT SELECT REFERENCE DATASET'.format(min_resolution))
-                ref_dataset_index = r_frees.index(min(r_frees))
-            elif method == 'resolution':
-                # Get Resolutions of datasets (set to dummy value of 999 if r-free is too high so that it is not selected)
-                resolns = [d.reflection_data().max_min_resolution()[1] if (d.input().get_r_rfree_sigma().r_free < max_rfree) else 999 for d in filtered_datasets]
-                if len(resolns) == 0: raise Exception('NO DATASETS BELOW RFREE CUTOFF {!s} - CANNOT SELECT REFERENCE DATASET'.format(max_rfree))
-                ref_dataset_index = resolns.index(min(resolns))
+        self.log('---------->>>', True)
+        self.log('Selecting Reference Dataset by: {!s}'.format(method), True)
+        if method == 'rfree':
+            # Get RFrees of datasets (set to dummy value of 999 if resolution is too high so that it is not selected)
+            r_frees = [d.input().get_r_rfree_sigma().r_free if (d.reflection_data().max_min_resolution()[1] < min_resolution) else 999 for d in filtered_datasets]
+            if len(resolns) == 0: raise Exception('NO DATASETS BELOW RESOLUTION CUTOFF {!s}A - CANNOT SELECT REFERENCE DATASET'.format(min_resolution))
+            ref_dataset_index = r_frees.index(min(r_frees))
+        elif method == 'resolution':
+            # Get Resolutions of datasets (set to dummy value of 999 if r-free is too high so that it is not selected)
+            resolns = [d.reflection_data().max_min_resolution()[1] if (d.input().get_r_rfree_sigma().r_free < max_rfree) else 999 for d in filtered_datasets]
+            if len(resolns) == 0: raise Exception('NO DATASETS BELOW RFREE CUTOFF {!s} - CANNOT SELECT REFERENCE DATASET'.format(max_rfree))
+            ref_dataset_index = resolns.index(min(resolns))
 
-            reference = filtered_datasets[ref_dataset_index]
-            self._ref_dataset_index = reference.num
-            self.log('Reference Selected: {!s}'.format(reference.tag), True)
-            self.log('Resolution: {!s}, RFree: {!s}'.format(reference.reflection_data().max_min_resolution()[1], reference.input().get_r_rfree_sigma().r_free), True)
+        reference = filtered_datasets[ref_dataset_index]
+        self._ref_dataset_index = reference.num
+        self.log('Reference Selected: {!s}'.format(reference.tag), True)
+        self.log('Resolution: {!s}, RFree: {!s}'.format(reference.reflection_data().max_min_resolution()[1], reference.input().get_r_rfree_sigma().r_free), True)
 
-            return reference.pdb_filename(), reference.mtz_filename()
+        return reference.pdb_filename(), reference.mtz_filename()
 
     def load_reference_dataset(self, ref_pdb, ref_mtz):
         """Set the reference dataset, to which all other datasets will be aligned and scaled"""
 
-        self.log('===================================>>>', True)
+        self.log('---------->>>', True)
         self.log('Loading Reference Dataset: {!s}'.format(ref_mtz), True)
 
         link_ref_pdb = self.output_handler.get_file('reference_structure')
@@ -1089,7 +1091,7 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log(self._ref_grid.summary())
 
         if self.params.alignment.method == 'local':
-            self.log('===================================>>>', True)
+            self.log('---------->>>', True)
             self.log('Partitioning Reference Grid', True)
 
             # Pull out the calphas
@@ -1117,7 +1119,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Local mask used for forming groups of points around a grid point
         # ============================================================================>
         if self.reference_grid().local_mask() is None:
-            self.log('===================================>>>')
+            self.log('---------->>>', True)
             self.log('Generating Local Mask')
             local_mask = spherical_mask(grid_spacing    = self.reference_grid().grid_spacing(),
                                         distance_cutoff = 1.2,
@@ -1127,7 +1129,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Global mask used for removing points in the bulk solvent regions
         # ============================================================================>
         if self.reference_grid().global_mask() is None:
-            self.log('===================================>>>')
+            self.log('---------->>>', True)
             self.log('Generating Protein Mask')
             # Select the masking atoms from the reference structure
             cache = self.reference_dataset().hierarchy().atom_selection_cache()
@@ -1143,7 +1145,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Global mask used for removing points close to symmetry copies of the protein
         # ============================================================================>
         if self.reference_grid().symmetry_mask() is None:
-            self.log('===================================>>>')
+            self.log('---------->>>', True)
             self.log('Generating Symmetry Mask')
             # Pull out the cartesian sites of the symmetry mates
             cache = ref_sym_copies.atom_selection_cache()
@@ -1310,14 +1312,14 @@ class PanddaMultiDatasetAnalyser(Program):
                 raise Exception('THIS DIRECTORY SHOULD NOT EXIST: {!s}'.format(empty_dir))
 
         # Record number of empty datasets
-        self.log('===================================>>>', True)
+        self.log('---------->>>', True)
         self.log('{!s} EMPTY DIRECTORIES FOUND (TOTAL)'.format(emp_num_i+emp_num_offset), True)
         self.log('{!s} EMPTY DIRECTORIES FOUND (NEW)'.format(emp_num_i), True)
 
         # Record total number of datasets, and total number of new datasets
         if self.pickled_dataset_meta: num_old = self.pickled_dataset_meta.number_of_datasets
         else:                         num_old = 0
-        self.log('===================================>>>', True)
+        self.log('---------->>>', True)
         self.log('{!s} DATASETS FOUND (TOTAL)'.format(len(filtered_new_files)+num_old), True)
         self.log('{!s} DATASETS FOUND (NEW)'.format(len(filtered_new_files)), True)
 
@@ -1326,9 +1328,9 @@ class PanddaMultiDatasetAnalyser(Program):
     def add_new_files(self, input_files):
         """Add (pdb, mtz) file pairs to the datasets to be processed"""
 
-        self.log('===================================>>>', True)
         self._input_files = input_files
 
+        self.log('===================================>>>', True)
         self.log('{!s} Datasets Added'.format(len(input_files)), True)
 
     def load_new_datasets(self):
@@ -1575,7 +1577,6 @@ class PanddaMultiDatasetAnalyser(Program):
 
         self.log('===================================>>>', True)
         self.log('Collating Dataset Structure/Crystal Variables', True)
-        self.log('===================================>>>')
 
         for d in self.datasets.all():
             # Resolution info
@@ -1595,41 +1596,43 @@ class PanddaMultiDatasetAnalyser(Program):
 
         self.log('===================================>>>', True)
         self.log('Calculating Dataset CAlpha RMSDs to Reference', True)
-        self.log('===================================>>>')
 
         # Now calculate the variation in the structure, from the reference
         for d in self.datasets.mask(mask_name='rejected - total', invert=True):
             rmsd = d.calpha_sites().rms_difference(d.transform_from_reference(points=self.reference_dataset().calpha_sites(), method='global'))
             self.tables.dataset_info.set_value(d.tag, 'rmsd_to_reference', numpy.round(rmsd,3))
 
-    def filter_datasets_1(self):
+    def filter_datasets_1(self, filter_dataset=None):
         """Filter out the datasets which contain different protein models (i.e. protein length, sequence, etc)"""
 
         self.log('===================================>>>', True)
-        self.log('Filtering Datasets (Non-identical structures). Potential Classes:', True)
+        self.log('Filtering Datasets (Datasets that are different to the reference dataset). Potential Classes:', True)
         for failure_class in PanddaMaskNames.structure_mask_names:
             self.log('\t{!s}'.format(failure_class), True)
-        self.log('===================================>>>', True)
+        self.log('==========>>>', True)
 
-        ref_handler = self.reference_dataset()
+        # If no filtering dataset given, filter against the reference dataset
+        if not filter_dataset: filter_dataset = self.reference_dataset()
 
         # Check that the same protein structure is present in each dataset - THIS MASK SHOULD INCLUDE ALL DATASETS AT FIRST
         for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
 
             print('\rFiltering Dataset {!s}          '.format(d_handler.tag), end=''); sys.stdout.flush()
             # Check the space group of the dataset
-            if d_handler.input().crystal_symmetry().space_group().info().symbol_and_number() != ref_handler.input().crystal_symmetry().space_group().info().symbol_and_number():
+            if d_handler.input().crystal_symmetry().space_group().info().symbol_and_number() != filter_dataset.input().crystal_symmetry().space_group().info().symbol_and_number():
                 self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('Different Space Group')
-                self.log('Reference: {!s}, {!s}: {!s}'.format(ref_handler.input().crystal_symmetry().space_group().info().symbol_and_number(),
+                self.log('Reference: {!s}, {!s}: {!s}'.format(filter_dataset.input().crystal_symmetry().space_group().info().symbol_and_number(),
                                                         d_handler.tag, d_handler.input().crystal_symmetry().space_group().info().symbol_and_number()))
-                self.log('===================================>>>')
+                self.log('---------->>>', True)
+                self.tables.dataset_info.set_value(d_handler.tag, 'rejection_reason', 'Different Space Group to Reference')
                 self.datasets.all_masks().set_mask_value(mask_name='bad structure - different space group', entry_id=d_handler.tag, value=True)
             # Check that the hierarchies are identical
-            if not d_handler.hierarchy().is_similar_hierarchy(ref_handler.hierarchy()):
+            if not d_handler.hierarchy().is_similar_hierarchy(filter_dataset.hierarchy()):
                 self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('Non-Identical Structure (Structures do not contain the same atoms)')
-                self.log('===================================>>>')
+                self.log('---------->>>', True)
+                self.tables.dataset_info.set_value(d_handler.tag, 'rejection_reason', 'Atoms present in the dataset are different to atoms present in the reference structure')
                 self.datasets.all_masks().set_mask_value(mask_name='bad structure - non-identical structures', entry_id=d_handler.tag, value=True)
 
         # Combine structure_masks
@@ -1641,8 +1644,16 @@ class PanddaMultiDatasetAnalyser(Program):
         self.datasets.all_masks().add_mask(mask_name='rejected - total', mask=combined_reject_mask)
 
         self.log('\rDatasets Filtered.                          ', True)
+        self.log('===================================>>>')
         self.log('Rejected Datasets (Structure): {!s}'.format(sum(self.datasets.all_masks().get_mask(mask_name='rejected - structure'))), True)
         self.log('Rejected Datasets (Total):     {!s}'.format(sum(self.datasets.all_masks().get_mask(mask_name='rejected - total'))), True)
+        self.log('===================================>>>')
+
+        reject_reasons = self.tables.dataset_info['rejection_reason'].value_counts().sort_index()
+        if reject_reasons.any():
+            self.log('Reasons for Rejection:')
+            for reason, count in reject_reasons.iteritems():
+                self.log('{} Dataset(s) - {}'.format(count, reason))
 
         # Link all rejected datasets into the rejected directory
         for d_handler in self.datasets.mask(mask_name='rejected - total'):
@@ -1654,10 +1665,10 @@ class PanddaMultiDatasetAnalyser(Program):
         """Filter out the non-isomorphous datasets"""
 
         self.log('===================================>>>', True)
-        self.log('Filtering Datasets (Non-isomorphous datasets). Potential Classes:', True)
+        self.log('Filtering Datasets (bad-quality or large rmsd structures). Potential Classes:', True)
         for failure_class in PanddaMaskNames.crystal_mask_names:
             self.log('\t{!s}'.format(failure_class), True)
-        self.log('===================================>>>', True)
+        self.log('==========>>>', True)
 
         # Check that each dataset is similar enough to be compared
         for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
@@ -1668,14 +1679,16 @@ class PanddaMultiDatasetAnalyser(Program):
                 self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('RFree is higher than cutoff: {!s}'.format(self.params.filtering.max_rfree))
                 self.log('High RFree: {!s}'.format(d_handler.input().get_r_rfree_sigma().r_free))
-                self.log('===================================>>>')
+                self.log('---------->>>', True)
+                self.tables.dataset_info.set_value(d_handler.tag, 'rejection_reason', 'R-free is too high')
                 self.datasets.all_masks().set_mask_value(mask_name='bad crystal - rfree', entry_id=d_handler.tag, value=True)
             # Check the deviation from the average sites
             elif d_handler.calpha_sites().rms_difference(d_handler.transform_from_reference(points=self.reference_dataset().calpha_sites(), method='global')) > self.params.filtering.max_rmsd_to_reference:
                 self.log('\rRejecting Dataset: {!s}          '.format(d_handler.tag))
                 self.log('C-alpha RMSD is too large')
                 self.log('Aligned (Calpha) RMSD: {!s}'.format(d_handler.calpha_sites().rms_difference(d_handler.transform_from_reference(points=self.reference_dataset().calpha_sites(), method='global'))))
-                self.log('===================================>>>')
+                self.log('---------->>>', True)
+                self.tables.dataset_info.set_value(d_handler.tag, 'rejection_reason', 'High RMSD to aligned reference structure')
                 self.datasets.all_masks().set_mask_value(mask_name='bad crystal - isomorphous structure', entry_id=d_handler.tag, value=True)
             else:
                 pass
@@ -1689,9 +1702,17 @@ class PanddaMultiDatasetAnalyser(Program):
         self.datasets.all_masks().add_mask(mask_name='rejected - total', mask=combined_reject_mask)
 
         self.log('\rDatasets Filtered.               ', True)
+        self.log('===================================>>>')
         self.log('Rejected Datasets (Structure): {!s}'.format(sum(self.datasets.all_masks().get_mask(mask_name='rejected - structure'))), True)
         self.log('Rejected Datasets (Crystal):   {!s}'.format(sum(self.datasets.all_masks().get_mask(mask_name='rejected - crystal'))), True)
         self.log('Rejected Datasets (Total):     {!s}'.format(sum(self.datasets.all_masks().get_mask(mask_name='rejected - total'))), True)
+        self.log('===================================>>>')
+
+        reject_reasons = self.tables.dataset_info['rejection_reason'].value_counts().sort_index()
+        if reject_reasons.any():
+            self.log('Reasons for Rejection:')
+            for reason, count in reject_reasons.iteritems():
+                self.log('{} Dataset(s) - {}'.format(count, reason))
 
         # Link all rejected datasets into the rejected directory
         for d_handler in self.datasets.mask(mask_name='rejected - total'):
@@ -1751,7 +1772,7 @@ class PanddaMultiDatasetAnalyser(Program):
             if self.tables.dataset_info.get_value(index=d_handler.tag, col='high_resolution') > high_res_large_cutoff:
                 continue
             # Check the resolution of the dataset (is not too high)
-            elif self.tables.dataset_info.get_value(index=d_handler.tag, col='high_resolution') < high_res_small_cutoff:
+            elif self.tables.dataset_info.get_value(index=d_handler.tag, col='high_resolution') <= high_res_small_cutoff:
                 continue
             # Check to see if this has been excluded from building
             elif self.datasets.all_masks().get_mask_value(mask_name='no_analyse', entry_id=d_handler.tag) == True:
