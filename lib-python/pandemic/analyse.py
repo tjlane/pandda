@@ -94,8 +94,7 @@ def pandemic_main_loop(pandemic, pandda):
     residue_grid_hash = pandemic.find_residue_locales(pandda=pandda)
     residue_grid_keys = sorted(residue_grid_hash.keys())
 
-#    for key1,key2 in zip(residue_grid_keys, pandda.reference_dataset().calpha_labels()):
-#        print(key1, key2)
+#    for key1,key2 in zip(residue_grid_keys, pandda.reference_dataset().calpha_labels()): print(key1, key2)
 
     pandda.settings.cpus=7
     pandemic.params.resolution = 1.65
@@ -107,24 +106,23 @@ def pandemic_main_loop(pandemic, pandda):
 
     all_pcas = {}
 
-    for i_res, res_group in enumerate(pandda.reference_dataset().calphas().residue_groups()):
+    for i_ca, ca_rg in enumerate(pandda.reference_dataset().calphas().residue_groups()):
 
-        print('\rExtracting map information for residue {}'.format(''.join(res)), end=''); sys.stdout.flush()
+        # Create a label for the residue group
+        ca_lab = make_label(ca_rg)
 
-        # Create a label for the residue
-        res_lab = make_label(res_group)
+        print('\rExtracting map information for residue {}'.format(''.join(ca_lab)), end=''); sys.stdout.flush()
 
-        combined_idxs = numpy.array()
         # Get the indices for this residue (including any conformers)
-        for cnf in res_group.conformers():
-            res = make_label(cnf)
-            combined_idxs = combined_idxs.append(residue_grid_hash[res])
+        combined_idxs = numpy.array([], dtype=int)
+        for cnf in ca_rg.conformers():
+            combined_idxs = numpy.append(combined_idxs, residue_grid_hash[make_label(cnf)])
+
         # Convert to flex
         res_idxs = flex.size_t(combined_idxs)
 
         # Output array of all of the map values
         map_value_array = numpy.empty((len(map_holder_list.all()), len(res_idxs)))
-        print(map_value_array.shape)
 
         ##################################################################################
 
@@ -134,7 +132,7 @@ def pandemic_main_loop(pandemic, pandda):
             # Get the dataset handler
             dh = mh.parent
 
-            print('\rExtracting map information for residue {} from dataset {}          '.format(res_lab, dh.tag), end=''); sys.stdout.flush()
+            print('\rExtracting map information for residue {} from dataset {}          '.format(ca_lab, dh.tag), end=''); sys.stdout.flush()
 
             # Select the map values for this residue block
             map_values = mh.map.select(res_idxs)
@@ -144,7 +142,7 @@ def pandemic_main_loop(pandemic, pandda):
             ########################################################
             # Write out maps for each dataset?
             ########################################################
-            if i_res==0:
+            if i_ca==0:
                 from pandda.misc import write_array_to_map
                 write_array_to_map( output_file=pandemic.output_handler.get_file(file_tag='dataset_map').format(dh.tag),
                                     map_data=mh.map,
@@ -154,10 +152,11 @@ def pandemic_main_loop(pandemic, pandda):
             ########################################################
             if i_mh==0:
                 b = flex.bool(mh.map.size()).set_selected(res_idxs, True)
-                res_map = flex.double(b.accessor()).set_selected(b, map_values)
+#                res_map = flex.double(b.accessor()).set_selected(b, map_values)
+                res_map = flex.double(b.accessor()).set_selected(b, flex.double([1.0]*sum(b)))
                 res_map.reshape(mh.map.accessor())
                 from pandda.misc import write_array_to_map
-                write_array_to_map( output_file=pandemic.output_handler.get_file(file_tag='residue_map').format(dh.tag, ''.join(res_lab)),
+                write_array_to_map( output_file=pandemic.output_handler.get_file(file_tag='residue_map').format(dh.tag, ''.join(ca_lab)),
                                     map_data=res_map,
                                     grid=pandda.reference_grid() )
 
@@ -166,24 +165,38 @@ def pandemic_main_loop(pandemic, pandda):
         def perform_pandemic_pca(array):
             """Perform PCA on a map value array to determine the heterogeneity. Each row is a different observation"""
 
-            from sklearn.decomposition import PCA
+            from sklearn.decomposition import PCA, FastICA
 
             ##################################################################################
 
-            pca = PCA()
-            pca.fit(array)
+#            pca = PCA()
+#            pca.fit(array)
 
             ##################################################################################
 
             # Pairwise differences between datasets
             num_datasets = pandda.datasets.size()
             # Indexing: (pair-number idx, map-values idx)
-            pairwise_diffs = numpy.zeros(((num_datasets**2-num_datasets)/2,array.shape[1]))
+            pairwise_diffs = numpy.zeros(((num_datasets**2-num_datasets)/2, array.shape[1]))
+            pairwise_dsets = numpy.zeros(((num_datasets**2-num_datasets)/2, 2))
 
-#            for i_1, vals in enumerate(array):
-#                pass
+            i_row = 0
+            for i_1, map_vals_1 in enumerate(array):
+                for i_2, map_vals_2 in enumerate(array):
+                    if i_1 == i_2: break
+                    # Subtract one map from the other
+                    pairwise_diffs[i_row, :] = map_vals_2 - map_vals_1
+                    pairwise_dsets[i_row, :] = [i_2, i_1]
+                    # Increment counter
+                    i_row += 1
+
+            print(i_row)
+
+            pca = FastICA()
+            pca.fit(pairwise_diffs)
 
             ##################################################################################
+            from IPython import embed; embed(); raise SystemExit()
 
             return pca
 
@@ -192,11 +205,11 @@ def pandemic_main_loop(pandemic, pandda):
         # Perform PCA to calculate the number of conformers
         results = perform_pandemic_pca(map_value_array)
         # Record in the output dictionary
-        all_pcas[res_lab] = results
+        all_pcas[ca_lab] = results
 
         ##################################################################################
 
-        pandemic.log('\rExtracting map information for residue {}: Done                              '.format(''.join(res)))
+        pandemic.log('\rExtracting map information for residue {}: Done                              '.format(''.join(ca_lab)))
 
     pandemic.log('Residue-by-residue electron densities across the datasets have been extracted')
 
@@ -207,25 +220,25 @@ def pandemic_main_loop(pandemic, pandda):
     pca_structure.atoms().set_b(flex.double([0]*pca_structure.atoms_size()))
     pca_cache = pca_structure.atom_selection_cache()
 
-    for res_group in pandda.reference_dataset().calphas().residue_groups():
+    for ca_rg in pandda.reference_dataset().calphas().residue_groups():
 
-        res_lab = #####
-        pca = all_pcas[res]
+        ca_lab = make_label(ca_rg)
+        pca = all_pcas[ca_lab]
 
         print('\n====================================>>>')
-        print(res)
+        print(ca_lab)
         print('====================================>>>')
-        print('Number of Conformers: {}'.format(confs[(res[0],res[1])]))
+        print('Number of Conformers: {}'.format(confs[ca_lab]))
         print('====================================>>>')
-        print((pca.explained_variance_ratio_/pca.explained_variance_ratio_[0]).round(3))
+        print((pca.explained_variance_ratio_/pca.explained_variance_ratio_[0]).round(3)[0:10])
         print('====================================>>>')
         from ascii_graph import Pyasciigraph
         g=Pyasciigraph()
-        graph_data = [(i+1, val) for i,val in enumerate((pca.explained_variance_ratio_/pca.explained_variance_ratio_[0]).round(3))][0:10]
+        graph_data = [(i+1, val) for i,val in enumerate((pca.explained_variance_ratio_/pca.explained_variance_ratio_[0]).round(3))][0:5]
         for l in g.graph(label='Sorted PCA components (Ascending Order)', data=graph_data, sort=0):
             pandemic.log(l.replace(u"\u2588", '=').replace('= ','> '), True)
         print('====================================>>>\n')
-        selection = 'chain {0} and resid {1}'.format(*res)
+        selection = 'chain {0} and resid {1}'.format(*ca_lab)
         residue = pca_structure.select(pca_cache.selection(selection))
         pca_sum = sum(pca.explained_variance_ratio_/pca.explained_variance_ratio_[0]) - 1.0
         residue.atoms().set_b(residue.atoms().extract_b()+pca_sum)

@@ -15,7 +15,9 @@ import numpy
 
 from scitbx.array_family import flex
 from scitbx.math import basic_statistics
+
 from libtbx import easy_mp
+from libtbx.utils import Sorry, Failure
 
 from bamboo.common import Meta, Info
 from bamboo.common.logs import Log
@@ -432,8 +434,7 @@ def pandda_dataset_setup(pandda):
     input_files = pandda.build_input_list()
     # Check that some datasets have been found or already loaded
     if (not pandda.datasets.all()) and (not input_files):
-        pandda.exit()
-        raise SystemExit('NO DATASETS HAVE BEEN SELECTED FOR ANALYSIS OR LOADED FROM PREVIOUS RUNS')
+        raise Sorry('NO DATASETS HAVE BEEN SELECTED FOR ANALYSIS OR LOADED FROM PREVIOUS RUNS')
     # Check to see if we're reusing statistical maps
     if (not pandda.args.method.recalculate_statistical_maps) and pandda.stat_maps.get_resolutions():
         pandda.log('===================================>>>', True)
@@ -445,7 +446,7 @@ def pandda_dataset_setup(pandda):
         pandda.log('NOT ENOUGH DATASETS HAVE BEEN LOADED FOR ANALYSIS', True)
         pandda.log('Number loaded ({!s}) is less than the {!s} needed.'.format(pandda.datasets.size()+len(input_files), pandda.params.analysis.min_build_datasets), True)
         pandda.log('This value is controlled by changing pandda.params.analysis.min_build_datasets', True)
-        raise SystemExit('NOT ENOUGH DATASETS HAVE BEEN LOADED FOR ANALYSIS')
+        raise Sorry('NOT ENOUGH DATASETS HAVE BEEN LOADED FOR ANALYSIS')
     # If dry_run, exit after initial search
     if pandda.args.exit_flags.dry_run:
         raise SystemExit('Dry Run Only: Exiting')
@@ -516,7 +517,7 @@ def pandda_dataset_setup(pandda):
         pandda.log('NOT ENOUGH (NON-REJECTED) DATASETS TO BUILD DISTRIBUTIONS!', True)
         pandda.log('Number loaded ({!s}) is less than the {!s} needed.'.format(pandda.datasets.size(mask_name='rejected - total', invert=True), pandda.params.analysis.min_build_datasets), True)
         pandda.log('This value is defined by pandda.params.analysis.min_build_datasets', True)
-        raise SystemExit('NOT ENOUGH DATASETS LOADED')
+        raise Sorry('NOT ENOUGH DATASETS LOADED')
 
     # ============================================================================>
     #####
@@ -560,6 +561,13 @@ def pandda_grid_setup(pandda):
     # Pickle all of the large arrays so they can be reloaded
     # ============================================================================>
     pandda.pickle_the_pandda(components=['grid'])
+
+    # ============================================================================>
+    # If setup_only, exit after initial search
+    # ============================================================================>
+    if pandda.args.exit_flags.setup_only:
+        pandda.exit(error=False)
+        raise SystemExit('Setup Only: Exiting')
 
     return
 
@@ -1288,15 +1296,12 @@ def pandda_analyse_main(args):
         # ============================================================================>
     except KeyboardInterrupt:
         raise
-    except AssertionError: # TODO REMOVE THIS BEFORE DSITRIBUTION
-        raise
     except SystemExit:
-        try:
-            pandda.exit(error=False)
-        except:
-            print '<<< Pandda exited before being initialised >>>'
+        try:    pandda.log('Exited Normally')
+        except: print '<<< Pandda exited before being initialised >>>'
     except:
         pandda.exit(error=True)
+        raise
     else:
         pandda.exit(error=False)
 

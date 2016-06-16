@@ -239,10 +239,13 @@ pandda
         .help = "Flags for terminating the program early"
     {
         dry_run = False
-            .help = "Setup pandda, print working arguments, and exit"
+            .help = "Find input files on disk, but exit before loading any datasets."
+            .type = bool
+        setup_only = False
+            .help = "Load datasets and create grid partition, but exit before analysis."
             .type = bool
         calculate_first_mean_map_only = False
-           .help = "Will calculate the highest resolution mean map and then exit - used for initial reference modelling"
+           .help = "Will calculate the highest resolution mean map and then exit - used for initial reference modelling."
             .type = bool
     }
 }

@@ -119,7 +119,7 @@ def randomise_occupancies(hierarchy, params, verbose=False):
 
 def run(params):
 
-    assert os.path.exists(params.input.pdb), 'PDB File does not exist: {}'.format(params.input.pdb)
+    assert (params.input.pdb and os.path.exists(params.input.pdb)), 'PDB File does not exist: {}'.format(params.input.pdb)
 
     out_dir = easy_directory(params.output.out_dir)
     
@@ -148,7 +148,6 @@ def run(params):
         xray_s_factors = random_hierarchy.extract_xray_structure(crystal_symmetry=s_input.crystal_symmetry()).structure_factors(d_min=dataset_resolution)
         random_dataset = xray_s_factors.f_calc().as_mtz_dataset(column_root_label='FMODEL')
         random_dataset.mtz_object().write(os.path.join(model_dir, 'perturbed.mtz'))
-        from IPython import embed; embed(); SystemExit()
         
 
 #################################################################################################

@@ -37,7 +37,7 @@ verbose = False
 def run(params):
 
     assert params.input.pdb, 'No PDB Files provided: params.input.pdb'
-    assert [os.path.exists(p) for p in params.input.pdb], 'PDB File does not exist: {}'.format(p)
+    for p in params.input.pdb: assert os.path.exists(p), 'PDB File does not exist: {}'.format(p)
 
     out_dir = easy_directory(params.output.out_dir)
    

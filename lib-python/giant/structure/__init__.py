@@ -19,9 +19,9 @@ def make_label(obj):
         return label_from_conformer(obj)
     elif isinstance(obj, iotbx_pdbh.residue):
         return label_from_residue(obj)
-    elif isinstance(obj, iotbx.pdbh.atom):
+    elif isinstance(obj, iotbx_pdbh.atom):
         return label_from_atom(obj)
-    elif isinstance(obj, iotbx.pdbh.atom_with_labels):
+    elif isinstance(obj, iotbx_pdbh.atom_with_labels):
         return label_from_atom_with_labels(obj)
     else:
         raise Exception('Invalid object type provided: {}'.format(type(obj)))

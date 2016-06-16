@@ -316,7 +316,6 @@ class PanddaInspector(object):
         new_event = self.site_list.get_next()
         # Loop until we get a modelled one (if requested)
         if (new_event is not None) and skip_unmodelled and (not os.path.exists(new_event.fitted_link)):
-#            if self.site_list.at_first_event():
             if self.current_event.index == new_event.index:
                 modal_msg(msg='No modelled datasets')
             else:
@@ -352,6 +351,22 @@ class PanddaInspector(object):
 
     def load_prev_site(self):
         self.load_new_event(new_event=self.site_list.get_prev_site())
+
+    def load_dataset(self, dataset_id):
+        """Find the next dataset with the given id"""
+        new_event = self.site_list.get_next()
+        # Check if this is the right dataset
+        if (new_event is not None) and (new_event.dtag != dataset_id):
+            if self.current_event.index == new_event.index:
+                # Check if we've looped around
+                modal_msg(msg='No dataset found for this id')
+            else:
+                # Load the next dataset if this doesn't match
+                print 'Event does not match dataset id: {} - {}'.format(dataset_id, new_event.dtag)
+                self.load_dataset(dataset_id=dataset_id)
+            return
+        # Actually load the event
+        self.load_new_event(new_event=new_event)
 
     #-------------------------------------------------------------------------
 
@@ -627,6 +642,8 @@ class PanddaGUI(object):
         self.buttons['next-site'].connect("clicked", lambda x: [self.store(), self.parent.load_next_site()])
         self.buttons['prev-site'].connect("clicked", lambda x: [self.store(), self.parent.load_prev_site()])
 
+        self.buttons['go-to'].connect("clicked", lambda x: [self.store(), self.parent.load_dataset(dataset_id=self.objects['go-to-text'].get_text())])
+
         # Quit
         self.buttons['quit'].connect("clicked", lambda x: [self.quit()])
         self.buttons['summary'].connect("clicked", lambda x: [self.store(), self.parent.update_html(), os.system('pandda.show_summary &')])
@@ -687,7 +704,7 @@ class PanddaGUI(object):
     def _navi_buttons_2(self):
         main_box  = gtk.VBox(homogeneous=True, spacing=5)
         # ---
-        box1 = gtk.HBox(homogeneous=True, spacing=2)
+        box1 = gtk.HBox(homogeneous=False, spacing=2)
         box1.set_border_width(3)
         frame = gtk.Frame(); frame.add(box1)
         main_box.pack_start(frame)
@@ -697,21 +714,37 @@ class PanddaGUI(object):
         frame = gtk.Frame(); frame.add(box2)
         main_box.pack_start(frame)
         # ---
+        box3 = gtk.HBox(homogeneous=True, spacing=2)
+        box3.set_border_width(3)
+        frame = gtk.Frame(); frame.add(box3)
+        main_box.pack_start(frame)
+        # ---
+        l = gtk.Label('Go to Dataset:')
+        box1.pack_start(l, expand=False, fill=False, padding=5)
+        # ---
+        e = gtk.Entry(max=200)
+        self.objects['go-to-text'] = e
+        box1.pack_start(e, expand=True, fill=True, padding=5)
+        # ---
+        b = gtk.Button(label="Go")
+        self.buttons['go-to'] = b
+        box1.pack_start(b, expand=False, fill=False, padding=5)
+        # ---
         b = gtk.Button(label="<<< Go to Prev Site <<<")
         self.buttons['prev-site'] = b
-        box1.add(b)
+        box2.add(b)
         # ---
         b = gtk.Button(label=">>> Go to Next Site >>>")
         self.buttons['next-site'] = b
-        box1.add(b)
+        box2.add(b)
         # ---
         b = gtk.Button(label=">>> Go to Next Unviewed >>>")
         self.buttons['next-unviewed'] = b
-        box2.add(b)
+        box3.add(b)
         # ---
         b = gtk.Button(label=">>> Go to Next Modelled >>>")
         self.buttons['next-modelled'] = b
-        box2.add(b)
+        box3.add(b)
         # ---
         return main_box
 
