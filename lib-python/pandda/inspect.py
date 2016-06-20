@@ -278,11 +278,31 @@ class PanddaInspector(object):
         self.gui.labels['map_res'].set_label(str(self.current_event.map_resolution))
         self.gui.labels['map_unc'].set_label(str(self.current_event.map_uncertainty))
         self.gui.labels['rwork_rfree'].set_label('{} / {}'.format(*self.current_event.rwork_rfree))
+
         # Reset the event comment boxes
         self.gui.objects['event comment text'].set_text(str(self.get_event_log_value('Comment')))
+
         # Reset the site comment boxes
         self.gui.objects['site name text'].set_text(str(self.site_table.get_value(index=self.current_event.site_idx, col='Name')))
         self.gui.objects['site comment text'].set_text(str(self.site_table.get_value(index=self.current_event.site_idx, col='Comment')))
+
+        # Update the radio buttons - "Interesting"
+        if self.get_event_log_value('Interesting') == True:
+            self.gui.buttons['tp'].set_active(True)
+        else:
+            self.gui.buttons['fp'].set_active(True)
+        # Update the radio buttons - "Ligand Placed"
+        if self.get_event_log_value('Ligand Placed') == True:
+            self.gui.buttons['placed'].set_active(True)
+        else:
+            self.gui.buttons['not placed'].set_active(True)
+        # Update the radio buttons - "Ligand Confidence"
+        if self.get_event_log_value('Ligand Confidence') == 'High':
+            self.gui.buttons['high conf'].set_active(True)
+        elif self.get_event_log_value('Ligand Confidence') == 'Medium':
+            self.gui.buttons['med conf'].set_active(True)
+        else:
+            self.gui.buttons['low conf'].set_active(True)
 
     #-------------------------------------------------------------------------
 
@@ -386,10 +406,10 @@ class PanddaInspector(object):
         # Read in the log table from pandda_analyse
         self.log_table = pandas.read_csv(in_csv, sep=',', dtype={'dtag':str})
         self.log_table = self.log_table.set_index(['dtag','event_idx'])
-        # Create new columns (filled with blanks for the moment)
+        # Create new columns (filled with blanks or defaults)
         self.log_table['Interesting'] = False
         self.log_table['Ligand Placed'] = False
-        self.log_table['Ligand Confidence'] = 'None'
+        self.log_table['Ligand Confidence'] = 'Low'
         self.log_table['Comment'] = 'None'
         self.log_table['Viewed'] = False
 
@@ -642,7 +662,7 @@ class PanddaGUI(object):
         self.buttons['next-site'].connect("clicked", lambda x: [self.store(), self.parent.load_next_site()])
         self.buttons['prev-site'].connect("clicked", lambda x: [self.store(), self.parent.load_prev_site()])
 
-        self.buttons['go-to'].connect("clicked", lambda x: [self.store(), self.parent.load_dataset(dataset_id=self.objects['go-to-text'].get_text())])
+        self.buttons['go-to'].connect("clicked", lambda x: [self.store(), self.parent.load_dataset(dataset_id=self.objects['go-to-text'].get_text().strip())])
 
         # Quit
         self.buttons['quit'].connect("clicked", lambda x: [self.quit()])
@@ -812,32 +832,32 @@ class PanddaGUI(object):
         vbox_1_3 = gtk.VBox(homogeneous=True, spacing=2)
         hbox_2.add(vbox_1_1); hbox_2.add(vbox_1_2); hbox_2.add(vbox_1_3)
         # ---
-        b = gtk.Button(label="Mark Event as Interesting")
+        b = gtk.RadioButton(label="Mark Event as Interesting")
         self.buttons['tp'] = b
         vbox_1_1.add(b)
         # ---
-        b = gtk.Button(label="Mark Event as Not Interesting")
+        b = gtk.RadioButton(label="Mark Event as Not Interesting", group=b)
         self.buttons['fp'] = b
         vbox_1_1.add(b)
         # ---
-        b = gtk.Button(label="Model: High Confidence")
-        self.buttons['high conf'] = b
-        vbox_1_2.add(b)
-        # ---
-        b = gtk.Button(label="Model: Medium Confidence")
-        self.buttons['med conf'] = b
-        vbox_1_2.add(b)
-        # ---
-        b = gtk.Button(label="Model: Low Confidence")
-        self.buttons['low conf'] = b
-        vbox_1_2.add(b)
-        # ---
-        b = gtk.Button(label="Ligand Placed")
+        b = gtk.RadioButton(label="Ligand Placed")
         self.buttons['placed'] = b
+        vbox_1_2.add(b)
+        # ---
+        b = gtk.RadioButton(label="No Ligand Placed", group=b)
+        self.buttons['not placed'] = b
+        vbox_1_2.add(b)
+        # ---
+        b = gtk.RadioButton(label="Model: High Confidence")
+        self.buttons['high conf'] = b
         vbox_1_3.add(b)
         # ---
-        b = gtk.Button(label="No Ligand Placed")
-        self.buttons['not placed'] = b
+        b = gtk.RadioButton(label="Model: Medium Confidence", group=b)
+        self.buttons['med conf'] = b
+        vbox_1_3.add(b)
+        # ---
+        b = gtk.RadioButton(label="Model: Low Confidence", group=b)
+        self.buttons['low conf'] = b
         vbox_1_3.add(b)
         # ---------------------------------------------
         vbox_main = gtk.VBox(spacing=0)
