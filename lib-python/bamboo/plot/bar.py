@@ -1,6 +1,28 @@
 from matplotlib import pyplot
 pyplot.style.use('ggplot')
 
+import numpy
+
+def simple_bar(filename, y_vals, x_labels, title, x_lab='x', y_lab='y'):
+    """Quick histogram function"""
+
+    assert len(y_vals) == len(x_labels)
+
+    # Plot sequential bars
+    x_vals = numpy.arange(len(y_vals))
+
+    fig = pyplot.figure()
+    pyplot.title(title)
+    pyplot.bar(left=x_vals, height=y_vals, width=1)
+    pyplot.xlabel(x_lab)
+    pyplot.ylabel(y_lab)
+    pyplot.xticks(x_vals+0.5, x_labels)
+    pyplot.tight_layout()
+    pyplot.savefig(filename)
+    pyplot.close(fig)
+
+    return
+
 def multiple_bar_plot(f_name, plot_vals, colour_bool=None, colour_vals=None):
     """Plot set of bar graphs in one figure"""
     if colour_bool:

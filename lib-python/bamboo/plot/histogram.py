@@ -1,5 +1,5 @@
 
-from bamboo.plot import finite
+from bamboo.maths import finite
 
 from matplotlib import pyplot
 

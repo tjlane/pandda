@@ -1,7 +1,5 @@
 from bamboo.plot.radar import Radar
 
-import numpy
+from bamboo.plot.bar import simple_bar
+from bamboo.plot.histogram import simple_histogram
 
-def finite(x):
-    """Returns finite values of the given array"""
-    return x[numpy.isfinite(x)]
