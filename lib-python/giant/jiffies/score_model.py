@@ -27,6 +27,65 @@ bar = '=======================++>'
 
 blank_arg_prepend = {'.pdb':'pdb1=', '.mtz':'mtz1='}
 
+residue_plot_phil =  """
+plot {
+    remove_blank_entries = False
+        .type = bool
+    parameters {
+        rscc {
+            title = 'Model\nQuality\n(RSCC)'
+                .type = str
+            axis_min = 0.60
+                .type = float
+            axis_max = 0.85
+                .type = float
+            axis_invert = True
+                .type = bool
+        }
+        rszd {
+            title = 'Model\nAccuracy\n(RSZD)'
+                .type = str
+            axis_min = 1.50
+                .type = float
+            axis_max = 4.00
+                .type = float
+            axis_invert = False
+                .type = bool
+        }
+        rszo {
+            title = 'Model\nPrecision\n(RSZO/OCC)'
+                .type = str
+            axis_min = 0.00
+                .type = float
+            axis_max = 2.00
+                .type = float
+            axis_invert = True
+                .type = bool
+        }
+        b_factor_ratio {
+            title = 'B-Factor\nRatio'
+                .type = str
+            axis_min = 1.00
+                .type = float
+            axis_max = 3.00
+                .type = float
+            axis_invert = False
+                .type = bool
+        }
+        rmsd {
+            title = 'Model\nRMSD'
+                .type = str
+            axis_min = 0.00
+                .type = float
+            axis_max = 1.50
+                .type = float
+            axis_invert = False
+                .type = bool
+        }
+    }
+}
+"""
+
 master_phil = libtbx.phil.parse("""
 input {
     pdb1 = None
@@ -56,7 +115,7 @@ output {
     out_dir = ./
         .type = path
 }
-""")
+"""+residue_plot_phil, process_includes=True)
 
 #######################################
 
@@ -114,7 +173,7 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix=''):
 
     # Check residues to analyse or skip
     if not rg_for_analysis:
-        raise Exception('No residues to analyse: {}'.format(pdb1))
+        raise Exception('There are no residues called {} in {}'.format(' or '.join(params.selection.res_names_list), pdb1))
 
     # Extract PDB2
     if pdb2 is not None:
@@ -195,12 +254,12 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix=''):
 
     return data_table
 
-def make_residue_radar_plot(path, data, columns=None):
+def make_residue_radar_plot(path, data, columns=None, remove_blank_entries=False):
     "Plot radar graph. data is a list of (label, scores) tuples. label is a string. scores is a pandas Series."
 
     column_limit = [(0.6,0.85),(1.5,4),(0,2),(1,3),(0,1.5)]
     column_names = ['RSCC','RSZD','RSZO/OCC','Surroundings B-factor Ratio','Model RMSD']
-    column_title = ['Model Quality (RSCC)', 'Model Accuracy (RSZD)', 'Model Precision (RSZO/OCC)', 'B-Factor Ratio', 'Model RMSD']
+    column_title = ['Model\nQuality\n(RSCC)', 'Model\nAccuracy\n(RSZD)', 'Model\nPrecision\n(RSZO/OCC)', 'B-Factor\nRatio', 'Model\nRMSD']
     column_invse = [1,0,1,0,0]
 
     if columns:
@@ -210,12 +269,27 @@ def make_residue_radar_plot(path, data, columns=None):
         if 'titles' in columns: column_title = columns['titles']
         if 'invert' in columns: column_invse = columns['invert']
 
+    assert len(column_limit) == len(column_names) == len(column_title) == len(column_invse)
+
+    plot_data = data[column_names]
+
+    if remove_blank_entries:
+        # Filter the entries based on whether there is at least one values for each column
+        data_mask = [True if data[c].any() else False for c in column_names]
+        # Filter against the mask
+        column_limit = [column_limit[i] for i in range(len(data_mask)) if data_mask[i]]
+        column_names = [column_names[i] for i in range(len(data_mask)) if data_mask[i]]
+        column_title = [column_title[i] for i in range(len(data_mask)) if data_mask[i]]
+        column_invse = [column_invse[i] for i in range(len(data_mask)) if data_mask[i]]
+        # Reselect the plot_data
+        plot_data = data[column_names]
+
     # Round column values
     col_tick_vals = []
     col_tick_labs = []
     for col in column_names:
         tvs=[]; tls=[]
-        for i, v in enumerate(data[col]):
+        for i, v in enumerate(plot_data[col]):
             try: l = round(v, 2)
             except:
                 l = 'Error'; v = None;
@@ -226,7 +300,7 @@ def make_residue_radar_plot(path, data, columns=None):
 
     r = Radar(titles=column_title)
     # Add each row of the data frame as a separate line
-    for label, row in data.iterrows():
+    for label, row in plot_data.iterrows():
         r.add(row[column_names].tolist(), "-", label=label, lw=2)
     # Set axis meta manually
     if column_invse: r.set_inversion(column_invse)
@@ -234,11 +308,26 @@ def make_residue_radar_plot(path, data, columns=None):
     r.set_ticks(values=col_tick_vals, labels=col_tick_labs)
     # Plot, modify and save
     r.plot()
-    r.ax.legend(loc='upper center', fancybox=True, bbox_to_anchor=(0.5, 0.0))
+    r.ax.legend(loc='upper center', fancybox=True, bbox_to_anchor=(1.0, 0.0))
     r.savefig(path)
     r.close()
 
     return
+
+def format_parameters_for_plot(params):
+    """Convert plot scope parameters to parameter dict"""
+
+    p = params
+    columns = {}
+    columns['limits'] = [(p.rscc.axis_min,           p.rscc.axis_max),
+                         (p.rszd.axis_min,           p.rszd.axis_max),
+                         (p.rszo.axis_min,           p.rszo.axis_max),
+                         (p.b_factor_ratio.axis_min, p.b_factor_ratio.axis_max),
+                         (p.rmsd.axis_min,           p.rmsd.axis_max)  ]
+    columns['titles'] = [p.rscc.title,       p.rszd.title,       p.rszo.title,       p.b_factor_ratio.title,       p.rmsd.title       ]
+    columns['invert'] = [p.rscc.axis_invert, p.rszd.axis_invert, p.rszo.axis_invert, p.b_factor_ratio.axis_invert, p.rmsd.axis_invert ]
+
+    return columns
 
 #######################################
 
@@ -271,13 +360,20 @@ def run(params):
     print 'Output written to {}'.format(scores_file)
     print bar
 
+    ###################################################################
+    # Image parameters
+    ###################################################################
+    columns = format_parameters_for_plot(params=params.plot.parameters)
+
+    ###################################################################
     # Output Images
+    ###################################################################
     all_images = []
     print 'Generating Output Images...'
     for label, row in data_table.iterrows():
         print 'Making: {}...'.format(label)
         image_path = os.path.join(images_dir,'{}.png'.format(label))
-        make_residue_radar_plot(path=image_path, data=row.to_frame().T)
+        make_residue_radar_plot(path=image_path, data=row.to_frame().T, columns=columns, remove_blank_entries=params.plot.remove_blank_entries)
         all_images.append(image_path)
     print '...Done.'
     print bar

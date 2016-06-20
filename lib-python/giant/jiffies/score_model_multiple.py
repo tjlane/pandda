@@ -6,7 +6,7 @@ import libtbx.easy_mp
 import numpy, pandas
 
 from bamboo.html import BAMBOO_HTML_ENV
-from giant.jiffies.score_model import prepare_output_directory, score_model, make_residue_radar_plot
+from giant.jiffies.score_model import prepare_output_directory, score_model, make_residue_radar_plot, format_parameters_for_plot
 
 #######################################
 
@@ -47,6 +47,7 @@ output {
     generate_summary = True
         .type = bool
 }
+include scope giant.jiffies.score_model.residue_plot_phil
 settings{
     cpus = 1
         .type = int
@@ -136,13 +137,20 @@ def run(params):
     print 'Output written to {}'.format(scores_file)
     print bar
 
+    ###################################################################
+    # Image parameters
+    ###################################################################
+    columns = format_parameters_for_plot(params=params.plot.parameters)
+
+    ###################################################################
     # Output Images
+    ###################################################################
     all_images = []
     print 'Generating Output Images...'
     for label, row in data_table.iterrows():
         image_path = os.path.join(images_dir,'{}.png'.format(label))
         print 'Making: {}...'.format(image_path)
-        make_residue_radar_plot(path=image_path, data=row.to_frame().T)
+        make_residue_radar_plot(path=image_path, data=row.to_frame().T, columns=columns, remove_blank_entries=params.plot.remove_blank_entries)
         all_images.append(image_path)
     print '...Done'
     print bar

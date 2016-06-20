@@ -6,7 +6,7 @@ import libtbx.easy_mp
 import numpy, pandas
 
 from bamboo.html import BAMBOO_HTML_ENV
-from giant.jiffies.score_model import prepare_output_directory, score_model, make_residue_radar_plot
+from giant.jiffies.score_model import prepare_output_directory, score_model, make_residue_radar_plot, format_parameters_for_plot
 from giant.stats.cluster import generate_group_idxs
 
 #######################################
@@ -47,7 +47,8 @@ settings{
     cpus = 1
         .type = int
 }
-""")
+include scope giant.jiffies.score_model.residue_plot_phil
+""", process_includes=True)
 
 #######################################
 
@@ -90,6 +91,11 @@ def run(params):
     print bar
 
     ###################################################################
+    # Image parameters
+    ###################################################################
+    columns = format_parameters_for_plot(params=params.plot.parameters)
+
+    ###################################################################
     # Output Images - 1 image per residue per structure
     ###################################################################
     all_images = []
@@ -97,13 +103,12 @@ def run(params):
     for label, row in all_data.iterrows():
         image_path = os.path.join(images_dir,'{}.png'.format(label))
         print 'Making: {}...'.format(image_path)
-        make_residue_radar_plot(path=image_path, data=row.to_frame().T)
+        make_residue_radar_plot(path=image_path, data=row.to_frame().T, columns=columns, remove_blank_entries=True)
         all_images.append(image_path)
 
     ###################################################################
     # Output Images - 1 image per residue (allowing comparisons)
     ###################################################################
-    columns = {}
     if params.output.radar_plot.limits == 'preset': pass
     elif params.output.radar_plot.limits == 'auto': columns['limits'] = None
 
@@ -111,7 +116,7 @@ def run(params):
         res_label = '-'.join(res_label)
         image_path = os.path.join(images_dir,'compare-{}.png'.format(res_label))
         print 'Making: {}...'.format(image_path)
-        make_residue_radar_plot(path=image_path, data=all_data.irow(index_idxs), columns=columns)
+        make_residue_radar_plot(path=image_path, data=all_data.irow(index_idxs), columns=columns, remove_blank_entries=True)
 
     print '...Done.'
     print bar
