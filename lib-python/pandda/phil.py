@@ -14,6 +14,9 @@ pandda
             .type = str
         lig_style = *.cif
             .type = str
+        max_new_datasets = 500
+            .help = "Maximum number of new datasets that can be processed for an analysis -- used to break the analysis into chunks when processing large numbers of datasets"
+            .type = int
         regex
             .help = "Advanced dataset labelling regexs"
         {

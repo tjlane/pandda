@@ -451,7 +451,16 @@ def pandda_dataset_setup(pandda):
     if pandda.args.exit_flags.dry_run:
         raise SystemExit('Dry Run Only: Exiting')
     # Load and process input files
-    if input_files:
+    if input_files and (pandda.args.input.max_new_datasets > 0):
+        # ============================================================================>
+        # Limit the number of files that can be added at once to a pandda
+        # ============================================================================>
+        if len(input_files) > pandda.args.input.max_new_datasets:
+            pandda.log('----------------------------------->>>', True)
+            pandda.log('Limiting the number of new datasets that are added to the pandda analysis (controlled by input.max_new_datasets)')
+            pandda.log('Limiting analysis to the first {} of {} datasets'.format(pandda.args.input.max_new_datasets, len(input_files)))
+            input_files = input_files[:pandda.args.input.max_new_datasets]
+            assert len(input_files) == pandda.args.input.max_new_datasets, 'Something has gone wrong'
         # ============================================================================>
         #####
         # Add new files and load datasets
