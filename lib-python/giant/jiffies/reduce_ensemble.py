@@ -29,7 +29,7 @@ blank_arg_prepend = {'.pdb':'pdb='}
 master_phil = libtbx.phil.parse("""
 input {
     pdb = None
-        .help = 'Input structure file'
+        .help = 'Input structure files'
         .type = str
         .multiple = True
     label = file_name *folder_name
@@ -50,14 +50,15 @@ def run(params):
 
     assert params.input.pdb, 'No PDBs provided'
 
+    # Sort input files
+    params.input.pdb = sorted(params.input.pdb)
+
     if params.input.label == 'folder_name': labels = [os.path.basename(os.path.dirname(p)) for p in params.input.pdb]
     elif params.input.label == 'file_name': labels = [os.path.basename(p) for p in params.input.pdb]
 
-    e = StructureCollection.from_files(sorted(params.input.pdb), labels=labels)
+    e = StructureCollection.from_files(params.input.pdb, labels=labels)
     e.load_all()
-
-    e.write_tables(out_dir=params.output.out_dir)
-    e.write_graphs(out_dir=params.output.out_dir)
+    e.write_all(out_dir=params.output.out_dir)
 
 #######################################
 

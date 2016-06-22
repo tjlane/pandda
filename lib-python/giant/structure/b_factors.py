@@ -12,7 +12,7 @@ class BfactorStatistics(object):
         self.backbone  = backbone
         self.sidechain = sidechain
 
-    def to_z_score(self, b_vals, method='all'):
+    def to_z_score(self, b_vals, method='backbone'):
         """Convert a set of B-factors to Z-scores"""
         assert method in ['all','protein','backbone','sidechain']
         if method == 'all':       stats = self.all
