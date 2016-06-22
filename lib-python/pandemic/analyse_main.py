@@ -5,15 +5,19 @@ import copy, warnings, traceback
 
 import numpy, pandas
 
+from scitbx.array_family import flex
+
 from bamboo.common import Meta, Info
 from bamboo.common.logs import Log
 from bamboo.common.file import FileManager
 from bamboo.common.path import easy_directory, rel_symlink
 
 from giant.manager import Program
+from giant.grid.masks import atomic_mask
 from giant.structure import make_label
 
 from pandda.constants import PanddaMaskNames
+from pandda.handlers import DatasetHandler
 
 from pandemic import PANDEMIC_TOP, PANDEMIC_TEXT, PANDEMIC_VERSION
 from pandemic.phil import pandemic_phil
@@ -46,6 +50,9 @@ class PandemicMultiDatasetAnalyser(Program):
         self.params = self._input_params.pandemic.params
         # Program settings (num cpus, etc...)
         self.settings = self._input_params.settings
+
+        # Masking dataset
+        self.masking_dataset = None
 
         # ===============================================================================>
         # OUTPUT FILES STUFF
@@ -154,11 +161,11 @@ class PandemicMultiDatasetAnalyser(Program):
         # ===============================================================================>
         # PRINT SOME HELPFUL INFORMATION
         # ===============================================================================>
-        self.log('===================================>>>', True)
+        self.log('----------------------------------->>>', True)
         self.log('RUNNING FROM: {!s}'.format(sys.argv[0]), True)
-        self.log('===================================>>>', True)
+        self.log('----------------------------------->>>', True)
         self.log('READING INPUT PANDDA FROM: {!s}'.format(self.args.input.pandda_dir))
-        self.log('===================================>>>', True)
+        self.log('----------------------------------->>>', True)
         self.log('WRITING OUTPUT TO: {!s}'.format(self.out_dir), True)
 
         # ===============================================================================>
@@ -172,7 +179,7 @@ class PandemicMultiDatasetAnalyser(Program):
         # LOG THE START TIME
         # ===============================================================================>
         # Store start time and print to log
-        self.log('===================================>>>', True)
+        self.log('----------------------------------->>>', True)
         self.log('Analysis Started: {!s}'.format(time.strftime("%a, %d %b %Y %H:%M:%S", time.gmtime(self._init_time))), True)
         # ===============================================================================>
         # Update Status
@@ -184,10 +191,12 @@ class PandemicMultiDatasetAnalyser(Program):
 
         p = self.args
 
+        if p.input.masking_pdb: p.input.masking_pdb = os.path.abspath(p.input.masking_pdb)
+
     def initialise_dataset_masks_and_tables(self, pandda):
         """Use the datasets in the pandda to populate the fields in the pandemic dataset tables"""
 
-        self.log('===================================>>>', True)
+        self.log('----------------------------------->>>', True)
         self.log('Initialising PanDEMIC Dataset Information Tables.', True)
 
         # Add dataset tags as rows in the tables
@@ -196,12 +205,26 @@ class PandemicMultiDatasetAnalyser(Program):
     def initialise_residue_masks_and_tables(self, pandda):
         """Use the residues of the structures to populate the fields in the pandemic residue tables"""
 
-        self.log('===================================>>>', True)
+        self.log('----------------------------------->>>', True)
         self.log('Initialising PanDEMIC Residue Information Tables.', True)
 
         # Extract the residue labels for the reference structure
         residue_labels = [make_label(rg) for rg in pandda.reference_dataset().hierarchy().residue_groups()]
         for res_lab in residue_labels: self.tables.residue_info.loc[res_lab,:]=None
+
+    def load_masking_dataset(self, pandda):
+        """Load a dataset to mask each residue. Defaults to reference dataset if none is given."""
+
+        if self.args.input.masking_pdb and os.path.exists(self.args.input.masking_pdb):
+            self.log('Masking against masking_pdb: {}'.format(self.args.input.masking_pdb), True)
+            self.masking_dataset = DatasetHandler(dataset_number=0, pdb_filename=self.args.input.masking_pdb)
+        else:
+            self.log('Masking against reference pdb: {}'.format(pandda.reference_dataset().pdb_filename()), True)
+            self.masking_dataset = DatasetHandler(dataset_number=0, pdb_filename=pandda.reference_dataset().pdb_filename())
+
+        # Apply the origin shift for the reference dataset to the masking dataset - TODO MAKE THIS MORE RIGOROUS TODO
+        mask_hierarchy = self.masking_dataset.hierarchy()
+        mask_hierarchy.atoms().set_xyz(mask_hierarchy.atoms().extract_xyz() + pandda.reference_dataset().origin_shift())
 
     def select_datasets_and_load_maps(self, pandda, high_res_large_cutoff, high_res_small_cutoff=0):
         """Select datasets for the multi-conformer analysis and return a map analyser object for them"""
@@ -231,6 +254,9 @@ class PandemicMultiDatasetAnalyser(Program):
     def find_residue_locales(self, pandda):
         """Mask each residue on the grid, and convolve with the grid partition for each residue"""
 
+        self.log('----------------------------------->>>', True)
+        self.log('Determining Residue Local Environments')
+
         # Extract grid objects
         ref_grid = pandda.reference_grid()
         ref_part = ref_grid.partition()
@@ -239,6 +265,43 @@ class PandemicMultiDatasetAnalyser(Program):
         # Hash for assigning grid points to each residue
         residue_grid_hash = {}
 
+        #######################################################################
+
+#        # Extract masking dataset
+#        mask_h = self.masking_dataset.hierarchy()
+#        cache = mask_h.atom_selection_cache()
+#
+#        # Iterate through each residue and mask the grid against the masking dataset
+#        for i_res, res in enumerate(pandda.reference_dataset().calpha_labels()):
+#            # Create a short label ignoring altlocs
+#            short_label = (res[0], res[1])
+#
+#            # Check if it's already been done
+#            if short_label in residue_grid_hash.keys(): continue
+#
+#            # Get the residues in the masking dataset
+#            print('Selecting residue atoms')
+#            res_sel = cache.selection('chain {} and resid {}'.format(*short_label))
+#            res_atoms = mask_h.select(res_sel).atoms()
+#
+#            # Mask these residues against the reference grid from the pandda
+#            print('Masking residue {}'.format(short_label))
+#            residue_mask = atomic_mask( cart_sites   = res_atoms.extract_xyz(),
+#                                        grid_size    = pandda.reference_grid().grid_size(),
+#                                        unit_cell    = pandda.reference_grid().unit_cell(),
+#                                        max_dist     = 1.0,
+#                                        min_dist     = 0.5 )
+#            print('Done')
+#
+#            # Combine with the outer mask
+#            res_idxs = numpy.multiply(out_mask, residue_mask.outer_mask_binary()).nonzero()
+#
+#            # Record the indices for this residue
+#            residue_grid_hash[short_label] = res_idxs[0]
+#            print(residue_grid_hash[short_label][0:100])
+
+        #######################################################################
+
         # Iterate through each residue and find the grid points assigned to each residue
         for i_res, res in enumerate(pandda.reference_dataset().calpha_labels()):
             # Get the indices for this residue from the partition
@@ -246,7 +309,34 @@ class PandemicMultiDatasetAnalyser(Program):
             # Record the indices for this residue (only need the first element since 1d array)
             residue_grid_hash[res] = res_idxs[0]
 
+        #######################################################################
+
         return residue_grid_hash
+
+    def find_variable_regions(self, pandda, resolution=None, percentile=68):
+        """Identify the variable parts of the structure from the sadj map"""
+
+        # Use highest resolution if none given
+        if not resolution: resolution = min(pandda.stat_maps.get_resolutions())
+
+        # Get the statistical maps
+        stat_map = pandda.stat_maps.get(resolution)
+        # Get the map values inside the outer mask
+        sadj_map_vals = stat_map.sadj_map.select(pandda.reference_grid().global_mask().outer_mask_indices()).as_numpy_array()
+        # Determine the threshold of the sadj map (use the "1 sigma" level: ~ 68th %ile)
+        sadj_map_ptle = numpy.percentile(sadj_map_vals, percentile)
+        # Mask the map at this threshold
+        sadj_map_mask = (sadj_map_vals < sadj_map_ptle)
+        # Get the indices for the masked values
+        sadj_map_idxs = numpy.array(pandda.reference_grid().global_mask().outer_mask_indices())[sadj_map_mask]
+
+        # Make a new copy of the masked map
+        masked_sadj_map = stat_map.sadj_map.deep_copy().as_1d()
+        # Set the masked values to zero
+        masked_sadj_map = masked_sadj_map.set_selected(flex.size_t(sadj_map_idxs), flex.double([0.0]*len(sadj_map_idxs)))
+        masked_sadj_map.reshape(stat_map.sadj_map.accessor())
+
+        return masked_sadj_map
 
     def pickle_the_pandemic(self, components=None, all=False, datasets=None):
         pass
@@ -260,16 +350,18 @@ class PandemicMultiDatasetAnalyser(Program):
         # If error, don't make meta or self pickle
         if error:
             self.update_status('errored')
+            self.log('', True)
             self.log('===================================>>>', True)
             self.log('PANDEMIC exited with an error')
-            self.log('===================================>>>', True)
+            self.log('----------------------------------->>>', True)
             self.log('Error Traceback: ')
-            self.log('===================================>>>', True)
+            self.log('----------------------------------->>>', True)
             self.log(traceback.format_exc())
             self.log('===================================>>>', True)
             return
         else:
             self.update_status('done')
+            self.log('', True)
             self.log('===================================>>>', True)
             self.log('. FINISHED! PANDEMIC EXITED NORMALLY .', True)
             self.log('===================================>>>', True)

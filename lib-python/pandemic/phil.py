@@ -9,6 +9,9 @@ pandemic
         pandda_dir = './pandda'
             .type = path
             .multiple = False
+        masking_pdb = './ensemble.pdb'
+            .type = path
+            .multiple = False
     }
     output
     {

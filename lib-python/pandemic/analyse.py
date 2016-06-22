@@ -33,11 +33,11 @@ def sanitise_params(params):
 def load_pandda_for_pandemic(params, pandemic):
     """Load a pre-calculated pandda using the parameters for pandemic"""
 
-    pandemic.log('===================================>>>', True)
+    pandemic.log('----------------------------------->>>', True)
     pandemic.log('==>>>', True)
     pandemic.log('==>>>   Loading the existing PanDDA', True)
     pandemic.log('==>>>', True)
-    pandemic.log('===================================>>>', True)
+    pandemic.log('----------------------------------->>>', True)
 
     # Initialise the pandda object
     pandda = PanddaMultiDatasetAnalyser(params)
@@ -74,6 +74,9 @@ def pandemic_setup(pandemic, pandda):
     # Populate the basic fields
 #    pandemic.populate_residue_masks_and_tables(pandda=pandda)
 
+    # Load the masking pdb
+    pandemic.load_masking_dataset(pandda=pandda)
+
 # ============================================================================>
 #
 ###                 PanDEMIC Processing Functions
@@ -94,10 +97,16 @@ def pandemic_main_loop(pandemic, pandda):
     residue_grid_hash = pandemic.find_residue_locales(pandda=pandda)
     residue_grid_keys = sorted(residue_grid_hash.keys())
 
-#    for key1,key2 in zip(residue_grid_keys, pandda.reference_dataset().calpha_labels()): print(key1, key2)
-
     pandda.settings.cpus=7
     pandemic.params.resolution = 1.65
+
+    # Identify the variable parts of the map
+    masked_sadj_map = pandemic.find_variable_regions(pandda=pandda)
+
+    from pandda.misc import write_array_to_map
+    write_array_to_map( output_file=os.path.join(pandemic.output_handler.get_dir('root'), 'masked_sadj_map_values.ccp4'),
+                        map_data=masked_sadj_map,
+                        grid=pandda.reference_grid() )
 
     # Load and analyse the variation in the maps
     map_holder_list = pandemic.select_datasets_and_load_maps( pandda = pandda,
@@ -105,6 +114,9 @@ def pandemic_main_loop(pandemic, pandda):
                                                               high_res_small_cutoff = 0 )
 
     all_pcas = {}
+
+    # Analyse the variation in the maps (spatially)
+    rmsd_map_value_array = numpy.zeros(map_holder_list.all()[0].map.all())
 
     for i_ca, ca_rg in enumerate(pandda.reference_dataset().calphas().residue_groups()):
 
@@ -115,8 +127,12 @@ def pandemic_main_loop(pandemic, pandda):
 
         # Get the indices for this residue (including any conformers)
         combined_idxs = numpy.array([], dtype=int)
-        for cnf in ca_rg.conformers():
-            combined_idxs = numpy.append(combined_idxs, residue_grid_hash[make_label(cnf)])
+        for obj in [ca_rg]+ca_rg.conformers():
+            lab = make_label(obj)
+            print('')
+            if lab in residue_grid_hash.keys():
+                print('Adding Indices for {}'.format(lab))
+                combined_idxs = numpy.append(combined_idxs, residue_grid_hash[lab])
 
         # Convert to flex
         res_idxs = flex.size_t(combined_idxs)
@@ -169,34 +185,34 @@ def pandemic_main_loop(pandemic, pandda):
 
             ##################################################################################
 
-#            pca = PCA()
-#            pca.fit(array)
+            pca = PCA()
+            pca.fit(array)
 
             ##################################################################################
 
-            # Pairwise differences between datasets
-            num_datasets = pandda.datasets.size()
-            # Indexing: (pair-number idx, map-values idx)
-            pairwise_diffs = numpy.zeros(((num_datasets**2-num_datasets)/2, array.shape[1]))
-            pairwise_dsets = numpy.zeros(((num_datasets**2-num_datasets)/2, 2))
-
-            i_row = 0
-            for i_1, map_vals_1 in enumerate(array):
-                for i_2, map_vals_2 in enumerate(array):
-                    if i_1 == i_2: break
-                    # Subtract one map from the other
-                    pairwise_diffs[i_row, :] = map_vals_2 - map_vals_1
-                    pairwise_dsets[i_row, :] = [i_2, i_1]
-                    # Increment counter
-                    i_row += 1
-
-            print(i_row)
-
-            pca = FastICA()
-            pca.fit(pairwise_diffs)
+#            # Pairwise differences between datasets
+#            num_datasets = pandda.datasets.size()
+#            # Indexing: (pair-number idx, map-values idx)
+#            pairwise_diffs = numpy.zeros(((num_datasets**2-num_datasets)/2, array.shape[1]))
+#            pairwise_dsets = numpy.zeros(((num_datasets**2-num_datasets)/2, 2))
+#
+#            i_row = 0
+#            for i_1, map_vals_1 in enumerate(array):
+#                for i_2, map_vals_2 in enumerate(array):
+#                    if i_1 == i_2: break
+#                    # Subtract one map from the other
+#                    pairwise_diffs[i_row, :] = map_vals_2 - map_vals_1
+#                    pairwise_dsets[i_row, :] = [i_2, i_1]
+#                    # Increment counter
+#                    i_row += 1
+#
+#            print(i_row)
+#
+#            pca = FastICA()
+#            pca.fit(pairwise_diffs)
 
             ##################################################################################
-            from IPython import embed; embed(); raise SystemExit()
+#            from IPython import embed; embed(); raise SystemExit()
 
             return pca
 
@@ -209,9 +225,26 @@ def pandemic_main_loop(pandemic, pandda):
 
         ##################################################################################
 
+        # Output the rmsd of the maps - to detect the regions which vary
+
+        rmsd_map_values = map_value_array.std(axis=0)
+        rmsd_map_value_array.put(res_idxs, rmsd_map_values)
+
+        ##################################################################################
+
         pandemic.log('\rExtracting map information for residue {}: Done                              '.format(''.join(ca_lab)))
 
     pandemic.log('Residue-by-residue electron densities across the datasets have been extracted')
+
+    ##################################################################################
+
+    # Write the rms array
+    from pandda.misc import write_array_to_map
+    rmsd_array = flex.double(rmsd_map_value_array)
+    rmsd_array.reshape(mh.map.accessor())
+    write_array_to_map( output_file=os.path.join(pandemic.output_handler.get_dir('root'), 'rmsd_map_values.ccp4'),
+                        map_data=rmsd_array,
+                        grid=pandda.reference_grid() )
 
     ##################################################################################
 
@@ -223,6 +256,9 @@ def pandemic_main_loop(pandemic, pandda):
     for ca_rg in pandda.reference_dataset().calphas().residue_groups():
 
         ca_lab = make_label(ca_rg)
+
+        if ca_lab not in all_pcas.keys(): continue
+
         pca = all_pcas[ca_lab]
 
         print('\n====================================>>>')
