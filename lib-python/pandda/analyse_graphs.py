@@ -100,7 +100,7 @@ def diff_mean_qqplot(f_name, map_off, map_unc, q_cut, obs_diff, quantile):
 def write_dataset_summary_graphs(pandda):
     """Plot dataset summary graphs of resolution, unit cell variation, etc"""
 
-    pandda.log('===================================>>>')
+    pandda.log('----------------------------------->>>')
     pandda.log('Generating Summary Graphs')
 
     d_info = pandda.tables.dataset_info

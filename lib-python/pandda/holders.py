@@ -124,13 +124,13 @@ class DatasetHandlerList(HolderList):
     """Class for grouping many dataset handlers together"""
     _holder_class = DatasetHandler
 
-    def __custom_init__(self, *args):
-        print(args)
+    def __class_init__(self, *args):
+        pass
 
 class MapHolderList(HolderList):
     """Class for grouping many MapHolder objects together"""
     _holder_class = MapHolder
 
-    def __custom_init__(self, *args):
-        print(args)
+    def __class_init__(self, *args):
+        pass
 
