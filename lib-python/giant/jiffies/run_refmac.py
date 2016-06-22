@@ -45,13 +45,14 @@ def run(params):
     in_pdb = params.input.pdb
     assert os.path.exists(in_pdb), 'PDB does not exist: {}'.format(in_pdb)
     in_mtz = params.input.mtz
-    assert os.path.exists(in_mtz), 'MTZ does not exist: {}'.format(in_mtz)
+    if in_mtz: assert os.path.exists(in_mtz), 'MTZ does not exist: {}'.format(in_mtz)
 
     if params.output.pdb: out_pdb = params.output.pdb
     else:                 out_pdb = os.path.splitext(in_pdb)[0] + params.output.suffix + '.pdb'
 
     if params.output.mtz: out_mtz = params.output.mtz
-    else:                 out_mtz = os.path.splitext(in_mtz)[0] + params.output.suffix + '.mtz'
+    elif in_mtz:          out_mtz = os.path.splitext(in_mtz)[0] + params.output.suffix + '.mtz'
+    else:                 out_mtz = None
 
     if params.output.log: out_log = params.output.log
     else:                 out_log = os.path.splitext(in_pdb)[0] + params.output.suffix + '.log'
@@ -60,7 +61,10 @@ def run(params):
     # COMMAND LINE COMMANDS
     ###########################################
     cm = CommandManager('refmac5')
-    cm.add_command_line_arguments(['xyzin',in_pdb,'xyzout',out_pdb,'hklin',in_mtz,'hklout',out_mtz])
+    if in_pdb:  cm.add_command_line_arguments(['xyzin',in_pdb])
+    if out_pdb: cm.add_command_line_arguments(['xyzout',out_pdb])
+    if in_mtz:  cm.add_command_line_arguments(['hklin',in_mtz])
+    if out_mtz: cm.add_command_line_arguments(['hklout',out_mtz])
 
     ###########################################
     # MAIN PARAMETERS

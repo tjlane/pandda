@@ -66,8 +66,7 @@ def run(params):
 
         if params.options.use_reference_rfree_flags:
             if not ref_mtz_file: ref_mtz_file = os.path.abspath(ref_pdb_file.replace('.pdb','.mtz'))
-
-        assert os.path.exists(ref_mtz_file), 'Reference MTZ does not exist: {}'.format(ref_mtz_file)
+            assert os.path.exists(ref_mtz_file), 'Reference MTZ does not exist: {}'.format(ref_mtz_file)
 
         output_dirname = os.path.basename(ref_pdb_file).replace('.pdb', params.output.dir_suffix)
         print 'Placing all dimple runs for {} into directories called {}'.format(ref_pdb_file, output_dirname)
