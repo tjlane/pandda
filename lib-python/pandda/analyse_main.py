@@ -1613,7 +1613,7 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log('Filtering Datasets (Datasets that are different to the reference dataset). Potential Classes:', True)
         for failure_class in PanddaMaskNames.structure_mask_names:
             self.log('\t{!s}'.format(failure_class), True)
-        self.log('==========>>>', True)
+        self.log('---------->>>', True)
 
         # If no filtering dataset given, filter against the reference dataset
         if not filter_dataset: filter_dataset = self.reference_dataset()
@@ -1672,7 +1672,7 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log('Filtering Datasets (bad-quality or large rmsd structures). Potential Classes:', True)
         for failure_class in PanddaMaskNames.crystal_mask_names:
             self.log('\t{!s}'.format(failure_class), True)
-        self.log('==========>>>', True)
+        self.log('---------->>>', True)
 
         # Check that each dataset is similar enough to be compared
         for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
@@ -1710,7 +1710,6 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log('Rejected Datasets (Structure): {!s}'.format(sum(self.datasets.all_masks().get_mask(mask_name='rejected - structure'))), True)
         self.log('Rejected Datasets (Crystal):   {!s}'.format(sum(self.datasets.all_masks().get_mask(mask_name='rejected - crystal'))), True)
         self.log('Rejected Datasets (Total):     {!s}'.format(sum(self.datasets.all_masks().get_mask(mask_name='rejected - total'))), True)
-        self.log('----------------------------------->>>')
 
         reject_reasons = self.tables.dataset_info['rejection_reason'].value_counts().sort_index()
         if reject_reasons.any():
@@ -2287,7 +2286,6 @@ class PanddaZMapAnalyser(object):
         self.log('Minimum Cluster Z-Peak:      {!s}'.format(self.params.min_blob_z_peak), True)
         self.log('Minimum Cluster Volume (A):  {!s}'.format(self.params.min_blob_volume), True)
         self.log('Minimum Cluster Size:        {!s}'.format(self.grid_minimum_volume), True)
-        self.log('----------------------------------->>>', True)
 
     def cluster_high_z_values(self, z_map, point_mask):
         """Finds all the points in the z-map above `z_cutoff`, points will then be clustered into groups of cutoff `clustering_cutoff` angstroms"""

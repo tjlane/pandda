@@ -103,7 +103,10 @@ def write_dataset_summary_graphs(pandda):
     pandda.log('----------------------------------->>>')
     pandda.log('Generating Summary Graphs')
 
-    d_info = pandda.tables.dataset_info
+    # Filter the dataset to non-rejected datasets
+    non_rejected_dtags = [dh.tag for dh in pandda.datasets.mask(mask_name='rejected - total', invert=True)]
+
+    d_info = pandda.tables.dataset_info.loc[non_rejected_dtags]
     n_bins = 30
 
     # ================================================>
