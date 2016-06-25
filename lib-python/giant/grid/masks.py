@@ -95,7 +95,7 @@ class atomic_mask(object):
         return min(self.total_mask()), max(self.total_mask())
 
     def summary(self):
-        return '\n'.join([  '===================================>>>',
+        return '\n'.join([  '----------------------------------->>>',
                             'Atomic Mask Summary:',
                             'Total Mask Size (1D): {!s}'.format(self.total_size()),
                             'Outer Mask Size (1D): {!s}'.format(self.outer_size()),
@@ -256,7 +256,7 @@ class spherical_mask(object):
         return combine_grid_point_and_grid_vectors(start_point=grid_point, grid_vectors=self.mask())
 
     def summary(self):
-        return '\n'.join(['===================================>>>',
+        return '\n'.join(['----------------------------------->>>',
                           'Local Mask Summary:',
                           'Number of Mask Points:  {!s}'.format(len(self.mask())),
                           'Mask Radius (Cart):     {!s}'.format(self.radius()),

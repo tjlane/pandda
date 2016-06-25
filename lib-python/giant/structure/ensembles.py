@@ -2,6 +2,17 @@ from __future__ import print_function
 
 import os, sys, glob, time, re
 
+#################################
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+    matplotlib.interactive(0)
+    from matplotlib import pyplot
+    pyplot.style.use('ggplot')
+except:
+    pass
+#################################
+
 import numpy, pandas
 
 import iotbx.pdb

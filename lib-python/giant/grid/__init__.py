@@ -138,7 +138,7 @@ class grid_handler(object):
         return self._local_mask
 
     def summary(self):
-        return '\n'.join([  '===================================>>>',
+        return '\n'.join([  '----------------------------------->>>',
                             'Reference Grid Summary:',
                             'Grid Spacing:        {!s}'.format(round(self.grid_spacing(), 3)),
                             'Grid Point Volume:   {!s}'.format(round(self.grid_point_volume(),3)),

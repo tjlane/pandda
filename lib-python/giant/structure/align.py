@@ -15,20 +15,41 @@ def nearby_coords_bool(query, coords, cutoff):
     assert isinstance(coords, flex.vec3_double)
     return (coords-query).dot() < (cutoff**2)
 
-def perform_flexible_alignment(mov_hierarchy, ref_hierarchy, cutoff_radius=10):
+def perform_flexible_alignment(mov_hierarchy, ref_hierarchy, cutoff_radius=10, require_non_protein_identical=True):
     """Perform a flexible alignment on the two hierarchies. Will return a list of alignment metrics, one for each residue."""
 
+    try:
+        mov_hierarchy.only_model()
+        ref_hierarchy.only_model()
+    except:
+        raise Exception('structures for alignment can only have one model!')
+
+    # Filter the structures to only the protein (don't care about waters)
+    if not require_non_protein_identical:
+        # Extract caches
+        ref_cache = ref_hierarchy.atom_selection_cache()
+        mov_cache = mov_hierarchy.atom_selection_cache()
+        # Strip structures to protein only
+        ref_hierarchy = ref_hierarchy.select(ref_cache.iselection('pepnames'))
+        mov_hierarchy = mov_hierarchy.select(mov_cache.iselection('pepnames'))
+
+    # Check the structures are identical
     assert mov_hierarchy.is_similar_hierarchy(ref_hierarchy), 'HIERARCHIES MUST BE SIMILAR'
+
+    # Extract caches
+    ref_cache = ref_hierarchy.atom_selection_cache()
+    mov_cache = mov_hierarchy.atom_selection_cache()
+
     # Caches for the reference structure
-    ref_cache          = ref_hierarchy.atom_selection_cache()
     ref_backbone_hier  = ref_hierarchy.select(ref_cache.iselection('pepnames and (name CA or name C or name O or name N)'))
     ref_backbone_cache = ref_backbone_hier.atom_selection_cache()
     # Caches for the query structure
-    mov_cache          = mov_hierarchy.atom_selection_cache()
     mov_backbone_hier  = mov_hierarchy.select(mov_cache.iselection('pepnames and (name CA or name C or name O or name N)'))
     mov_backbone_cache = mov_backbone_hier.atom_selection_cache()
+
     # Tranformation dictionaries
     rts = {}
+
     # Calculate a transformation matrix for each calpha
     for calpha_at in ref_hierarchy.select(ref_cache.iselection('pepnames and name CA')).atoms_with_labels():
         # Get selection within cutoff distance

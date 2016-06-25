@@ -43,10 +43,14 @@ class Program(object):
             # Set the style to ggplot (the prettiest)
             pyplot.style.use('ggplot')
             self.log('PYPLOT loaded successfully')
+            self.log('===================================>>>', True)
+            self.log('', True)
             return True
         except:
             self.log('===================================>>>', True)
             self.log('>> COULD NOT IMPORT MATPLOTLIB. CANNOT GENERATE GRAPHS.', True)
+            self.log('===================================>>>', True)
+            self.log('', True)
             return False
 
     def update_status(self, status):
