@@ -103,6 +103,7 @@ def run(params):
     print 'Running Refmac:'
     cm.print_settings()
     ret_code = cm.run()
+    cm.write_output(log_file=out_log)
     if ret_code != 0:
         print '============================>'
         print 'Refmac returned with an error'
@@ -111,19 +112,6 @@ def run(params):
         print '============================>'
         print cm.error
         print '============================>'
-
-    with open(out_log, 'a') as fh:
-        fh.write('============================>'+'\n')
-        fh.write('Refmac Log File'+'\n')
-        fh.write('============================>'+'\n')
-        fh.write('> STDOUT'+'\n')
-        fh.write('============================>'+'\n')
-        fh.write(cm.output+'\n')
-        fh.write('============================>'+'\n')
-        fh.write('> STDERR'+'\n')
-        fh.write('============================>'+'\n')
-        fh.write(cm.error+'\n')
-        fh.write('============================>'+'\n')
 
 #######################################
 

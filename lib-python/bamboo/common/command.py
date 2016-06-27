@@ -111,3 +111,23 @@ class CommandManager(object):
         self.runtime = self.time_end-self.time_start
         # Return process exit status
         return self.process.returncode
+
+    def write_output(self, log_file):
+        """Write output to a log file"""
+
+        with open(log_file, 'a') as fh:
+            fh.write('============================>'+'\n')
+            fh.write('{} Log File'.format(self.program[0])+'\n')
+            fh.write('============================>'+'\n')
+            fh.write('> STDOUT'+'\n')
+            fh.write('============================>'+'\n')
+            fh.write(self.output+'\n')
+            fh.write('============================>'+'\n')
+            fh.write('> STDERR'+'\n')
+            fh.write('============================>'+'\n')
+            fh.write(self.error+'\n')
+            fh.write('============================>'+'\n')
+
+        print('Log file for {} written to {}'.format(self.program[0], log_file))
+
+
