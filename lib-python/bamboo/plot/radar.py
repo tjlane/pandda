@@ -46,7 +46,7 @@ class Radar(object):
 
         # Get main axis, add theta grids
         self.ax = self.axes[0]
-        self.ax.set_thetagrids(self.angles, labels=titles, fontsize=12, weight="bold", color="black")
+        self.ax.set_thetagrids(self.angles, labels=titles, frac=1.2, fontsize=14, weight="bold", color="black")
         # Remove all things from other axes
         for ax in self.axes[1:]:
             ax.patch.set_visible(False)
@@ -133,7 +133,7 @@ class Radar(object):
         tick_labs = self._ticks[1]
         tick_vals, tick_labs = self._filter_values_and_labels(tick_vals, tick_labs, filter_large=True, filter_small=True)
         for ax, angle, vals, labs in zip(self.axes, self.angles, tick_vals, tick_labs):
-            ax.set_rgrids(vals, labels=labs, angle=angle, fontsize=12)
+            ax.set_rgrids(vals, labels=labs, angle=angle, fontsize=14, weight="bold", color="black")
             ax.spines["polar"].set_visible(False)
             ax.xaxis.grid(True,color='black',linestyle='-')
 

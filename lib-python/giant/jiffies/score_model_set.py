@@ -9,6 +9,9 @@ from bamboo.html import BAMBOO_HTML_ENV
 from giant.jiffies.score_model import prepare_output_directory, score_model, make_residue_radar_plot, format_parameters_for_plot
 from giant.stats.cluster import generate_group_idxs
 
+from matplotlib import pyplot
+pyplot.rc('axes', color_cycle=['r', 'g', 'b', 'y'])
+
 #######################################
 
 bar = '=======================++>'
@@ -22,7 +25,6 @@ input {
     pdb = None
         .type = path
         .multiple = True
-
     labels = basename *folder_name
         .type = choice
         .multiple = False
@@ -37,15 +39,12 @@ output {
         .type = path
     generate_summary = True
         .type = bool
-    radar_plot {
-        limits = auto *preset
-            .type = choice
-            .multiple = False
-    }
 }
-settings{
-    cpus = 1
-        .type = int
+radar_plot {
+    limits = automatic *manual
+        .help = 'Select how the axis limits are determined'
+        .type = choice
+        .multiple = False
 }
 include scope giant.jiffies.score_model.residue_plot_phil
 """, process_includes=True)
@@ -109,8 +108,8 @@ def run(params):
     ###################################################################
     # Output Images - 1 image per residue (allowing comparisons)
     ###################################################################
-    if params.output.radar_plot.limits == 'preset': pass
-    elif params.output.radar_plot.limits == 'auto': columns['limits'] = None
+    if params.radar_plot.limits == 'automatic': columns.pop('limits', None)
+    elif params.radar_plot.limits == 'manual':  pass
 
     for res_label, index_idxs in generate_group_idxs([i.split('-')[-3:] for i in all_data.index]):
         res_label = '-'.join(res_label)

@@ -6,7 +6,7 @@ import libtbx.easy_mp
 import numpy, pandas
 
 from bamboo.html import BAMBOO_HTML_ENV
-from giant.jiffies.score_model import prepare_output_directory, score_model, make_residue_radar_plot, format_parameters_for_plot
+from giant.jiffies.score_model import prepare_output_directory, score_model, make_residue_radar_plot, format_parameters_for_plot, residue_plot_phil
 
 #######################################
 
@@ -47,12 +47,12 @@ output {
     generate_summary = True
         .type = bool
 }
-include scope giant.jiffies.score_model.residue_plot_phil
 settings{
     cpus = 1
         .type = int
 }
-""")
+include scope giant.jiffies.score_model.residue_plot_phil
+""", process_includes=True)
 
 #######################################
 
@@ -60,7 +60,6 @@ def process_folder_mp(args):
     try:
         return process_folder(*args)
     except Exception as e:
-        raise
         return e
 
 def process_folder(dir, params):

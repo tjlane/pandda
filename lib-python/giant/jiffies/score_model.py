@@ -142,7 +142,7 @@ def prepare_table():
 
 def prepare_output_directory(params):
     if not os.path.exists(params.output.out_dir): os.mkdir(params.output.out_dir)
-    images_dir =   os.path.join(params.output.out_dir, 'residue_plots')
+    images_dir = os.path.join(params.output.out_dir, 'residue_plots')
     if not os.path.exists(images_dir): os.mkdir(images_dir)
     return params.output.out_dir, images_dir
 
@@ -225,9 +225,11 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix=''):
             assert len(rg_sel_2) == 1, 'More than one residue has been selected for {} in {}'.format(rg_label, pdb2)
 
             # Calculate the RMSD between the models
-            data_table.set_value(   index = rg_label,
-                                    col   = 'Model RMSD',
-                                    value = calculate_residue_group_rmsd(residue_group_1=rg_sel, residue_group_2=rg_sel_2[0])   )
+            try:
+                rmsd = calculate_residue_group_rmsd(residue_group_1=rg_sel, residue_group_2=rg_sel_2[0])
+                data_table.set_value(index=rg_label, col='Model RMSD', value=rmsd)
+            except:
+                pass
 
         # Extract Density Scores - MTZ 1
         if mtz1 is not None:
@@ -254,36 +256,57 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix=''):
 
     return data_table
 
-def make_residue_radar_plot(path, data, columns=None, remove_blank_entries=False):
+def make_residue_radar_plot(path, data, columns, remove_blank_entries=False):
     "Plot radar graph. data is a list of (label, scores) tuples. label is a string. scores is a pandas Series."
 
-    column_limit = [(0.6,0.85),(1.5,4),(0,2),(1,3),(0,1.5)]
-    column_names = ['RSCC','RSZD','RSZO/OCC','Surroundings B-factor Ratio','Model RMSD']
-    column_title = ['Model\nQuality\n(RSCC)', 'Model\nAccuracy\n(RSZD)', 'Model\nPrecision\n(RSZO/OCC)', 'B-Factor\nRatio', 'Model\nRMSD']
-    column_invse = [1,0,1,0,0]
+#    column_limit = [(0.6,0.85),(1.5,4),(0,2),(1,3),(0,1.5)]
+#    column_names = ['RSCC','RSZD','RSZO/OCC','Surroundings B-factor Ratio','Model RMSD']
+#    column_title = ['Model\nQuality\n(RSCC)', 'Model\nAccuracy\n(RSZD)', 'Model\nPrecision\n(RSZO/OCC)', 'B-Factor\nRatio', 'Model\nRMSD']
+#    column_invse = [1,0,1,0,0]
 
-    if columns:
-        assert isinstance(columns, dict)
-        if 'limits' in columns: column_limit = columns['limits']
-        if 'names'  in columns: column_names = columns['names']
-        if 'titles' in columns: column_title = columns['titles']
-        if 'invert' in columns: column_invse = columns['invert']
+    # ----------------------->
+    assert isinstance(columns, dict)
+    # ----------------------->
+    # Column Titles are compulsory
+    column_title = columns['titles']
+    # ----------------------->
+    # Column names are compulsory (for pulling from data_frame)
+    column_names = columns['names']
+    assert len(column_names) == len(column_title)
+    # ----------------------->
+    # Limits are optional
+    if 'limits' in columns:
+        column_limit = columns['limits']
+        assert len(column_limit) == len(column_title)
+    else:
+        column_limit = None
+    # ----------------------->
+    # Inverse is optional
+    if 'invert' in columns:
+        column_invse = columns['invert']
+        assert len(column_invse) == len(column_title)
+    else:
+        column_invse = None
 
-    assert len(column_limit) == len(column_names) == len(column_title) == len(column_invse)
-
+    # ----------------------->
+    # Extract the plot data from the data_frame
     plot_data = data[column_names]
 
     if remove_blank_entries:
+        # ----------------------->
         # Filter the entries based on whether there is at least one values for each column
         data_mask = [True if data[c].any() else False for c in column_names]
+        # ----------------------->
         # Filter against the mask
-        column_limit = [column_limit[i] for i in range(len(data_mask)) if data_mask[i]]
-        column_names = [column_names[i] for i in range(len(data_mask)) if data_mask[i]]
         column_title = [column_title[i] for i in range(len(data_mask)) if data_mask[i]]
-        column_invse = [column_invse[i] for i in range(len(data_mask)) if data_mask[i]]
+        column_names = [column_names[i] for i in range(len(data_mask)) if data_mask[i]]
+        if column_invse: column_invse = [column_invse[i] for i in range(len(data_mask)) if data_mask[i]]
+        if column_limit: column_limit = [column_limit[i] for i in range(len(data_mask)) if data_mask[i]]
+        # ----------------------->
         # Reselect the plot_data
         plot_data = data[column_names]
 
+    # ----------------------->
     # Round column values
     col_tick_vals = []
     col_tick_labs = []
@@ -298,14 +321,19 @@ def make_residue_radar_plot(path, data, columns=None, remove_blank_entries=False
         # Add to column ticks
         col_tick_vals.append(tvs); col_tick_labs.append(tls)
 
+    # ----------------------->
     r = Radar(titles=column_title)
+    # ----------------------->
     # Add each row of the data frame as a separate line
     for label, row in plot_data.iterrows():
         r.add(row[column_names].tolist(), "-", label=label, lw=2)
+    # ----------------------->
     # Set axis meta manually
     if column_invse: r.set_inversion(column_invse)
     if column_limit: r.set_limits(column_limit)
+    # ----------------------->
     r.set_ticks(values=col_tick_vals, labels=col_tick_labs)
+    # ----------------------->
     # Plot, modify and save
     r.plot()
     r.ax.legend(loc='upper center', fancybox=True, bbox_to_anchor=(1.0, 0.0))
@@ -319,13 +347,14 @@ def format_parameters_for_plot(params):
 
     p = params
     columns = {}
+    columns['titles'] = [p.rscc.title,       p.rszd.title,       p.rszo.title,       p.b_factor_ratio.title,       p.rmsd.title       ]
+    columns['names']  = ['RSCC','RSZD','RSZO/OCC','Surroundings B-factor Ratio','Model RMSD']
+    columns['invert'] = [p.rscc.axis_invert, p.rszd.axis_invert, p.rszo.axis_invert, p.b_factor_ratio.axis_invert, p.rmsd.axis_invert ]
     columns['limits'] = [(p.rscc.axis_min,           p.rscc.axis_max),
                          (p.rszd.axis_min,           p.rszd.axis_max),
                          (p.rszo.axis_min,           p.rszo.axis_max),
                          (p.b_factor_ratio.axis_min, p.b_factor_ratio.axis_max),
                          (p.rmsd.axis_min,           p.rmsd.axis_max)  ]
-    columns['titles'] = [p.rscc.title,       p.rszd.title,       p.rszo.title,       p.b_factor_ratio.title,       p.rmsd.title       ]
-    columns['invert'] = [p.rscc.axis_invert, p.rszd.axis_invert, p.rszo.axis_invert, p.b_factor_ratio.axis_invert, p.rmsd.axis_invert ]
 
     return columns
 
