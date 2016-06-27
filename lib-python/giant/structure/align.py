@@ -3,12 +3,14 @@ import itertools
 import numpy
 
 import iotbx.pdb
+import iotbx.pdb.amino_acid_codes
 import mmtbx.alignment
 
 from scitbx.math import superpose
 from scitbx.array_family import flex
 
 from giant.structure import make_label
+from giant.structure.select import protein
 
 def nearby_coords_bool(query, coords, cutoff):
     """Find all points in coords within cutoff of query. Return boolean selection"""
@@ -147,6 +149,11 @@ def extract_sites_for_alignment(chain_obj):
         sites.append(xyz)
         use_sites.append(use)
     return "".join(seq), sites, use_sites
+
+def align_hierarchies(mov_hier, ref_hier):
+    """Extract c-alpha sites from the structures and align"""
+    return align_chains(mov_chain=protein(mov_hier, copy=True).models()[0].only_chain(),
+                        ref_chain=protein(ref_hier, copy=True).models()[0].only_chain() )
 
 def align_chains(mov_chain, ref_chain):
     """Takes two chains and aligns them - return rt_mx"""
