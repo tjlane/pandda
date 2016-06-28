@@ -34,7 +34,7 @@ os.remove(pandda_python)
 print('Making pandda.python: {}'.format(pandda_python))
 with open(pandda_python, 'w') as fh:
     fh.write("#!/usr/bin/env sh\n")
-    fh.write('ccp4-python "$@"')
+    fh.write('ccp4-python "$@"\n')
 os.chmod(pandda_python, stat.S_IRWXU+stat.S_IRWXG+stat.S_IROTH+ stat.S_IXOTH)
 
 ##########################################################
