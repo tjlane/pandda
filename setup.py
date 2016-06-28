@@ -2,11 +2,11 @@ import os, sys, glob
 from setuptools import setup, find_packages, findall
 
 setup(  name                = 'panddas',
-        version             = '1.0.0',
+        version             = '0.1.0',
         description         = 'Multi-dataset crystallographic analyses',
         author              = 'Nicholas M Pearce',
         author_email        = 'nicholas.pearce.0@gmail.com',
-        url                 = 'pandda.bitbucket.org',
+        url                 = 'http://pandda.bitbucket.org',
         license             = 'CC BY-SA 4.0',
         install_requires    = ( 'pandas',
                                 'jinja2',
