@@ -1,2 +1,4 @@
 #!/usr/bin/env sh
-pandda.coot --no-guano --no-state-script --script $PANDDA_LIB_TOP/pandda/inspect.py $@
+
+#pandda.coot --no-guano --no-state-script --script $PANDDA_LIB_TOP/pandda/inspect.py $@
+pandda.coot --no-guano --no-state-script --script `pandda.python -c "import pandda; print(pandda.__path__[0])"`/inspect.py "$@"

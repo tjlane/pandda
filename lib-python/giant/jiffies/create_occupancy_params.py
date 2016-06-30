@@ -1,5 +1,3 @@
-#!/usr/bin/env pandda.python
-
 import os, sys, copy
 
 import numpy
