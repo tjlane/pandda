@@ -1527,9 +1527,10 @@ class PanddaMultiDatasetAnalyser(Program):
         finish = time.time()
         self.log('\r> Generating Alignments > Time Taken: {!s} seconds'.format(int(finish-start)), True)
 
-        # Post-process the alignments (write out aligned structures etc)
         t1 = time.time()
-        for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True):
+        # Post-process the alignments (write out aligned structures etc) - only need to do it for "new" datasets
+#        for d_handler in self.datasets.mask(mask_name='old datasets', invert=True):
+        for d_handler in align_datasets:
             print('\rAligning Structures: Dataset {!s}          '.format(d_handler.tag), end=''); sys.stdout.flush()
 
             # Align to reference structure to get mapping transform
