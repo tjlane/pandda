@@ -986,11 +986,16 @@ class PanddaMultiDatasetAnalyser(Program):
             assert self.datasets.size(mask_name='old datasets', invert=True) == self.datasets.size(), 'Total datasets should be same as total new datasets'
 
         self.log('----------------------------------->>>', True)
-        self.log('Initialising Dataset Information Tables.', True)
+        self.log('Initialising dataset data-tables.', True)
 
         # Add dataset tags as rows in the tables
         self.tables.dataset_info     = self.tables.dataset_info.append(pandas.DataFrame(index=[d.tag for d in self.datasets.all()]), verify_integrity=True)
         self.tables.dataset_map_info = self.tables.dataset_map_info.append(pandas.DataFrame(index=[d.tag for d in self.datasets.all()]), verify_integrity=True)
+
+        old_datasets = self.datasets.mask(mask_name='old datasets')
+        if (not self.args.method.reprocess_existing_datasets) and old_datasets:
+            self.log('Syncing old dataset information to dataset tables.', True)
+            self.sync_datasets(datasets=old_datasets)
 
     def select_reference_dataset(self, method='resolution', max_rfree=0.4, min_resolution=5):
         """Select dataset to act as the reference - scaling, aligning etc"""
@@ -1369,6 +1374,11 @@ class PanddaMultiDatasetAnalyser(Program):
 
         for d_handler in loaded_datasets:
 
+            # Intialise the meta for the dataset
+            d_handler.meta.analysed = False
+            d_handler.meta.dataset_info = None
+            d_handler.meta.dataset_map_info = None
+
             # Create a file manager object
             d_handler.initialise_output_directory(outputdir=os.path.join(self.output_handler.get_dir('processed_datasets'), d_handler.tag))
 
@@ -1470,17 +1480,11 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log('{!s} Datasets Loaded (New).          '.format(len(loaded_datasets), True))
         self.log('{!s} Datasets Loaded (Total).        '.format(self.datasets.size(), True))
 
-    def check_loaded_datasets(self, datasets):
-        """Check that the datasets are analysable (have the right mtz columns, etc)"""
-
-        self.log('----------------------------------->>>', True)
-        self.log('Performing checks on the loaded datasets', True)
-
-        for d_handler in datasets:
-            if not d_handler.reflection_data().has_column(self.params.maps.ampl_label):
-                raise Sorry('Amplitude column {} was not found in the reflection data for dataset {}. You may need to change the pandda.params.maps.ampl_label option.'.format(self.params.maps.ampl_label, d_handler.tag))
-            if not d_handler.reflection_data().has_column(self.params.maps.phas_label):
-                raise Sorry('Phase column {} was not found in the reflection data for dataset {}. You may need to change the pandda.params.maps.phas_label option.'.format(self.params.maps.phas_label, d_handler.tag))
+    #########################################################################################################
+    #                                                                                                       #
+    #                                     Dataset loading / processing                                      #
+    #                                                                                                       #
+    #########################################################################################################
 
     def load_reflection_data(self, ampl_label, phas_label):
         """Extract amplitudes and phases for creating map"""
@@ -1516,6 +1520,11 @@ class PanddaMultiDatasetAnalyser(Program):
         else:
             # Select the datasets that don't have global alignments
             align_datasets = [d_handler for d_handler in self.datasets.mask(mask_name='rejected - total', invert=True) if not d_handler.global_alignment_transform()]
+
+        if not align_datasets:
+            self.log('----------------------------------->>>', True)
+            self.log('No datasets to align')
+            return
 
         # Align the datasets using multiple cores if possible
         self.log('----------------------------------->>>', True)
@@ -1606,6 +1615,12 @@ class PanddaMultiDatasetAnalyser(Program):
         for d in self.datasets.mask(mask_name='rejected - total', invert=True):
             rmsd = d.calpha_sites().rms_difference(d.transform_from_reference(points=self.reference_dataset().calpha_sites(), method='global'))
             self.tables.dataset_info.set_value(d.tag, 'rmsd_to_reference', numpy.round(rmsd,3))
+
+    #########################################################################################################
+    #                                                                                                       #
+    #                                             Dataset filtering                                         #
+    #                                                                                                       #
+    #########################################################################################################
 
     def filter_datasets_1(self, filter_dataset=None):
         """Filter out the datasets which contain different protein models (i.e. protein length, sequence, etc)"""
@@ -1724,6 +1739,12 @@ class PanddaMultiDatasetAnalyser(Program):
             if not os.path.exists(reject_dir):
                 rel_symlink(orig=d_handler.output_handler.get_dir('root'), link=reject_dir)
 
+    #########################################################################################################
+    #                                                                                                       #
+    #                              Dataset utility functions (e.g. reset/sync)                              #
+    #                                                                                                       #
+    #########################################################################################################
+
     def reset_loaded_datasets(self):
         """Check that pickled datasets are ready for reprocessing, etc, if required"""
 
@@ -1732,8 +1753,56 @@ class PanddaMultiDatasetAnalyser(Program):
 
         for d_handler in self.datasets.all():
             if self.args.method.reprocess_existing_datasets or (d_handler.tag in datasets_for_reprocessing):
+
+                # Reset the meta objects
+                d_hander.meta.analysed = False
+                d_handler.meta.dataset_map_info = None
+
                 # Delete events from before
                 d_handler.events = []
+
+                # Reset the map information for the dataset
+                self.tables.dataset_map_info.loc[d_handler.tag] = numpy.nan
+
+    def check_loaded_datasets(self, datasets):
+        """Check that the datasets are analysable (have the right mtz columns, etc)"""
+
+        self.log('----------------------------------->>>', True)
+        self.log('Performing checks on the loaded datasets', True)
+
+        for d_handler in datasets:
+            if not d_handler.reflection_data().has_column(self.params.maps.ampl_label):
+                raise Sorry('Amplitude column {} was not found in the reflection data for dataset {}. You may need to change the pandda.params.maps.ampl_label option.'.format(self.params.maps.ampl_label, d_handler.tag))
+            if not d_handler.reflection_data().has_column(self.params.maps.phas_label):
+                raise Sorry('Phase column {} was not found in the reflection data for dataset {}. You may need to change the pandda.params.maps.phas_label option.'.format(self.params.maps.phas_label, d_handler.tag))
+
+    def sync_datasets(self, datasets=None, overwrite_dataset_meta=False):
+        """Sync the loaded datasets and the pandda dataset tables"""
+
+        if not datasets: datasets = self.datasets.all()
+
+        for d_handler in datasets:
+            # Copy data from pandda dataset tables to dataset
+            if (d_handler.meta.dataset_info is None) or overwrite_dataset_meta:
+                d_handler.meta.dataset_info = self.tables.dataset_info.loc[d_handler.tag]
+            # Copy data from dataset to pandda dataset tables
+            else:
+                for col,val in d_handler.meta.dataset_info.iteritems():
+                    self.tables.dataset_info.set_value(index=d_handler.tag, col=col, value=val)
+
+            # Copy data from pandda dataset tables to dataset
+            if (d_handler.meta.dataset_map_info is None) or overwrite_dataset_meta:
+                d_handler.meta.dataset_map_info = self.tables.dataset_map_info.loc[d_handler.tag]
+            # Copy data from dataset to pandda dataset tables
+            else:
+                for col,val in d_handler.meta.dataset_map_info.iteritems():
+                    self.tables.dataset_map_info.set_value(index=d_handler.tag, col=col, value=val)
+
+    #########################################################################################################
+    #                                                                                                       #
+    #                                Analysis functions (Dataset selection)                                 #
+    #                                                                                                       #
+    #########################################################################################################
 
     def select_for_building_distributions(self, high_res_cutoff, building_mask_name):
         """Select all datasets with resolution better than high_res_cutoff"""

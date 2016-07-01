@@ -12,7 +12,6 @@ REJECT_MASK_NAMES    = [    'rejected - total',
                             'rejected - structure',
                             'rejected - unknown'  ]
 FLAG_MASK_NAMES      = [    'noisy zmap',
-                            'interesting',
                             'analysed'  ]
 
 DATASET_INFO_FIELDS  = [    'high_resolution',

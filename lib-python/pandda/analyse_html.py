@@ -57,9 +57,9 @@ def write_analyse_html(pandda):
     all_m_info = pandda.tables.dataset_map_info.transpose().to_dict()
 
     len_data = len(pandda.tables.dataset_info.index)
-    num_interesting = sum(pandda.datasets.all_masks().get_mask(mask_name='interesting'))
-    num_analysed    = sum(pandda.datasets.all_masks().get_mask(mask_name='analysed'))
-    num_rejected    = sum(pandda.datasets.all_masks().get_mask(mask_name='rejected - total'))
+    num_interesting = len([d for d in pandda.datasets.mask(mask_name='rejected - total', invert=True) if d.events])
+    num_analysed    = len([d for d in pandda.datasets.mask(mask_name='rejected - total', invert=True) if d.meta.analysed])
+    num_rejected    = pandda.datasets.size(mask_name='rejected - total')
     num_not_interesting = num_analysed - num_interesting
     num_not_analysed    = len_data - num_analysed - num_rejected
 
@@ -160,21 +160,21 @@ def write_analyse_html(pandda):
         else:
             columns.append({'colour':'success', 'icon':'ok',        'message':'{}'.format(uncty)})
         # ------------------------------>>>
-        # Test for Structure movement
+        # Analysed
         # ------------------------------>>>
-        if pandda.datasets.all_masks().get_mask_value(mask_name='analysed', entry_id=d.tag) == True:
+        if d.meta.analysed == True:
             columns.append({'colour':'success', 'icon':'ok',        'message':'Analysed'})
         else:
             columns.append({'colour':'danger',  'icon':'remove',    'message':'Not Analysed'})
         # ------------------------------>>>
         # Test for if it's interesting
         # ------------------------------>>>
-        if pandda.datasets.all_masks().get_mask_value(mask_name='interesting', entry_id=d.tag) == True:
+        if d.events:
             columns.append({'colour':'success', 'icon':'ok',        'message':'{} Clusters'.format(len(d.events))})
         else:
             columns.append({'colour':'default', 'icon':'remove',    'message':''})
 
-        row_message = 'Z-Blobs Found' if pandda.datasets.all_masks().get_mask_value(mask_name='interesting', entry_id=d.tag) == True else \
+        row_message = 'Z-Blobs Found' if d.events else \
                       ''
         row_colour  = 'success' if row_message else \
                       'danger' if pandda.datasets.all_masks().get_mask_value(mask_name='rejected - total', entry_id=d.tag) == True else \

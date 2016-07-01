@@ -5,6 +5,7 @@ import iotbx.mtz
 import cctbx.maptbx
 import scitbx.math.superpose
 
+from bamboo.common import Meta, Info
 from bamboo.common.file import FileManager
 from bamboo.common.path import easy_directory
 
@@ -36,6 +37,7 @@ class DatasetHandler(object):
         # Output Directories
         self.output_handler = None
         self.child = None
+        self.meta = Meta()
         ########################################################
         # Store filenames
         self._pdb_file = pdb_filename
