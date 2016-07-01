@@ -30,7 +30,8 @@ pandda_csh     = os.path.join(PANDDA_BIN, 'pandda.setup-csh')
 ccp4_python = os.path.join(PANDDA_BIN, 'ccp4-python')
 assert os.path.exists(ccp4_python), 'CCP4 PYTHON DOES NOT EXIST'
 pandda_python  = os.path.join(PANDDA_BIN, 'pandda.python')
-os.remove(pandda_python)
+if os.path.exists(pandda_python):
+    os.remove(pandda_python)
 print('Making pandda.python: {}'.format(pandda_python))
 with open(pandda_python, 'w') as fh:
     fh.write("#!/usr/bin/env sh\n")
@@ -43,7 +44,8 @@ os.chmod(pandda_python, stat.S_IRWXU+stat.S_IRWXG+stat.S_IROTH+ stat.S_IXOTH)
 coot = os.path.join(PANDDA_BIN, 'coot')
 assert os.path.exists(coot), 'COOT DOES NOT EXIST'
 pandda_coot = os.path.join(PANDDA_BIN, 'pandda.coot')
-os.remove(pandda_coot)
+if os.path.exists(pandda_coot):
+    os.remove(pandda_coot)
 print('Making pandda.coot: {}'.format(pandda_coot))
 with open(pandda_coot, 'w') as fh:
     fh.write("#!/usr/bin/env sh\n")
