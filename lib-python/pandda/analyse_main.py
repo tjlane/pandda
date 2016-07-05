@@ -1004,6 +1004,11 @@ class PanddaMultiDatasetAnalyser(Program):
         if (not self.args.method.reprocess_existing_datasets) and old_datasets:
             self.log('Syncing old dataset information to dataset tables.', True)
             self.sync_datasets(datasets=old_datasets)
+            self.log('Syncing old dataset events to output tables.', True)
+            for d_handler in old_datasets:
+                if d_handler.events:
+                    for e in d_handler.events:
+                        self.add_event_to_event_table(d_handler=d_handler, event=e)
 
     def select_reference_dataset(self, method='resolution', max_rfree=0.4, min_resolution=5):
         """Select dataset to act as the reference - scaling, aligning etc"""
