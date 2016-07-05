@@ -727,6 +727,12 @@ class PanddaMultiDatasetAnalyser(Program):
     def _validate_parameters(self):
         """Validate and preprocess the loaded parameters"""
 
+        self.log('')
+        self.log('===================================>>>', True)
+        self.log('Validating Input Parameters:', True)
+        self.log('===================================>>>', True)
+        self.log('')
+
         p = self.args
 
         # Input
@@ -738,19 +744,23 @@ class PanddaMultiDatasetAnalyser(Program):
                (p.input.data_dirs and ('*' in p.input.data_dirs))
         assert p.input.lig_style, 'pandda.input.lig_style IS NOT DEFINED'
 
-        # Make fullpath so we can run on the eff file from anywhere
-        # and change directories without worrying about relative paths
+        # Make fullpath so we can run on the eff file from anywhere and change directories without worrying about relative paths
         p.input.data_dirs = os.path.abspath(p.input.data_dirs)
         p.output.out_dir  = os.path.abspath(p.output.out_dir)
-        if p.input.filter.pdb: p.input.filter.pdb = os.path.abspath(p.input.filter.pdb)
+        if p.input.filter.pdb:
+            p.input.filter.pdb = os.path.abspath(p.input.filter.pdb)
 
         # If any datasets are set to be reprocessed, reload all datasets (need to change this to allow for "reload_selected_datasets")
         if p.method.reprocess_existing_datasets or self.args.method.reprocess_selected_datasets:
+            self.log('----------------------------------->>>', True)
             self.log('Setting method.reload_existing_datasets = True')
+            self.log('Old (previously processed) datasets will be reloaded')
             p.method.reload_existing_datasets = True
 
         if self.is_new_pandda() or self.method.reprocess_existing_datasets:
+            self.log('----------------------------------->>>', True)
             self.log('Setting output.new_analysis_dir = True')
+            self.log('A new output analysis directory will be created')
             p.output.new_analysis_dir = True
 
     def load_pickled_objects(self):
