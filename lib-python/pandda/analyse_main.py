@@ -1779,7 +1779,7 @@ class PanddaMultiDatasetAnalyser(Program):
             if self.args.method.reprocess_existing_datasets or (d_handler.tag in datasets_for_reprocessing):
 
                 # Reset the meta objects
-                d_hander.meta.analysed = False
+                d_handler.meta.analysed = False
                 d_handler.meta.dataset_map_info = None
 
                 # Delete events from before
