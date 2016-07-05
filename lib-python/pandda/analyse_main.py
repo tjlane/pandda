@@ -707,6 +707,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ===============================================================================>
         # Load any objects from previous runs
         self.load_pickled_objects()
+
         # Reload reference dataset
         if (not self.reference_dataset()) and os.path.exists(self.output_handler.get_file('reference_structure')) and os.path.exists(self.output_handler.get_file('reference_dataset')):
             self.log('----------------------------------->>>', True)

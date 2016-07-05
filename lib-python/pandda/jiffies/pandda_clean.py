@@ -134,6 +134,7 @@ def clean_pickles(top_dir, level=0):
     # Level 2 cleaning - clean meta
     if level >= 2:
         delete_with_glob(os.path.join(top_dir, 'pickled_panddas', 'dataset_meta.pickle'))
+        delete_with_glob(os.path.join(top_dir, 'pickled_panddas', 'reference_dataset.pickle'))
 
     # Level 3 cleaning - delete everthing
     if level >= 3:
