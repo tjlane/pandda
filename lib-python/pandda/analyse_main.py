@@ -468,7 +468,7 @@ class PanddaMultiDatasetAnalyser(Program):
         self.out_dir = easy_directory(os.path.abspath(self.args.output.out_dir))
 
         # Create a log for the object
-        self.log = Log(log_file=os.path.join(self.out_dir, 'pandda.log'), verbose=self.settings.verbose)
+        self.log = Log(log_file=os.path.join(self.out_dir, 'pandda-{}.log'.format(time.strftime("%Y-%m-%d-%H%M", time.gmtime()))), verbose=self.settings.verbose)
 
         # ===============================================================================>
         # SETTINGS STUFF
@@ -644,12 +644,15 @@ class PanddaMultiDatasetAnalyser(Program):
         # Create a new analysis directory for analyses/summaries
         # ================================================>
         # New directories will be created for each run (so that data is not overwritten) by the time of the run
-        analysis_time_name = 'analyses-{}'.format(time.strftime("%Y-%m-%d-%H%M", time.gmtime(self._init_time)))
-        analysis_time_path = easy_directory(os.path.join(self.output_handler.get_dir('root'), analysis_time_name))
-        analysis_link_path = self.output_handler.get_dir('analyses')
-        # Remove old analysis link if it exists and link in the new analysis directory
-        if os.path.exists(analysis_link_path) and os.path.islink(analysis_link_path): os.unlink(analysis_link_path)
-        rel_symlink(orig=analysis_time_path, link=analysis_link_path)
+        if self.args.output.new_analysis_dir or (not os.path.exists(self.output_handler.get_dir('analyses'))):
+            analysis_time_name = 'analyses-{}'.format(time.strftime("%Y-%m-%d-%H%M", time.gmtime(self._init_time)))
+            analysis_time_path = easy_directory(os.path.join(self.output_handler.get_dir('root'), analysis_time_name))
+            analysis_link_path = self.output_handler.get_dir('analyses')
+            # Remove old analysis link if it exists and link in the new analysis directory
+            if os.path.exists(analysis_link_path) and os.path.islink(analysis_link_path): os.unlink(analysis_link_path)
+            rel_symlink(orig=analysis_time_path, link=analysis_link_path)
+
+        assert os.path.exists(self.output_handler.get_dir('analyses')), 'Output analysis directory does not exist'
 
         # ===============================================================================>
         # Update the FileManager to make sure all directories are now created
@@ -743,7 +746,12 @@ class PanddaMultiDatasetAnalyser(Program):
 
         # If any datasets are set to be reprocessed, reload all datasets (need to change this to allow for "reload_selected_datasets")
         if p.method.reprocess_existing_datasets or self.args.method.reprocess_selected_datasets:
+            self.log('Setting method.reload_existing_datasets = True')
             p.method.reload_existing_datasets = True
+
+        if self.is_new_pandda() or self.method.reprocess_existing_datasets:
+            self.log('Setting output.new_analysis_dir = True')
+            p.output.new_analysis_dir = True
 
     def load_pickled_objects(self):
         """Loads any pickled objects it finds"""

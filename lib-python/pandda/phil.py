@@ -64,6 +64,9 @@ pandda
     {
         out_dir = './pandda'
             .type = path
+        new_analysis_dir = False
+            .help = "Create a new analysis directory to prevent overwriting previous results"
+            .type = bool
         dataset_prefix = ''
             .help = "Prefix to be attached to each dataset name"
             .type = str
@@ -185,7 +188,7 @@ pandda
             min_build_datasets = 40
                 .help = 'Minimum number of datasets needed to build distributions'
                 .type = int
-            max_build_datasets = 75
+            max_build_datasets = 60
                 .help = 'Maximum number of datasets used to build distributions'
                 .type = int
             dynamic_res_limits = True
