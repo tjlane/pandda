@@ -758,7 +758,7 @@ class PanddaMultiDatasetAnalyser(Program):
             self.log('Old (previously processed) datasets will be reloaded')
             p.method.reload_existing_datasets = True
 
-        if self.is_new_pandda() or self.method.reprocess_existing_datasets:
+        if self.is_new_pandda() or self.args.method.reprocess_existing_datasets:
             self.log('----------------------------------->>>', True)
             self.log('Setting output.new_analysis_dir = True')
             self.log('A new output analysis directory will be created')

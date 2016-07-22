@@ -303,12 +303,12 @@ def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
     # STANDARD DEVIATION MAPS
     pyplot.subplot(2, 1, 1)
     pyplot.hist(x=stds_map_vals, bins=n_bins)
-    pyplot.xlabel('STD Map Value')
+    pyplot.xlabel('"Raw" Variation of Map Values')
     pyplot.ylabel('Count')
     # ADJUSTED STANDARD DEVIATION MAPS
     pyplot.subplot(2, 1, 2)
     pyplot.hist(x=sadj_map_vals, bins=n_bins)
-    pyplot.xlabel('Adjusted STD Map Value')
+    pyplot.xlabel('"Adjusted" Variation of Map Values')
     pyplot.ylabel('Count')
     # Apply tight layout to prevent overlaps
     pyplot.tight_layout()
@@ -320,15 +320,15 @@ def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
     # STD Values v ADJ STD Values
     ##################################
     fig = pyplot.figure()
-    pyplot.title('Raw v Adjusted STDs')
+    pyplot.title('Raw v Adjusted Map Variation')
     pyplot.scatter(x=stds_map_vals, y=sadj_map_vals)
     # Plot straight line between the min and max values
     min_val = min(stds_map_vals+sadj_map_vals)
     max_val = max(stds_map_vals+sadj_map_vals)
     pyplot.plot([min_val, max_val], [min_val, max_val], 'b--')
     # Axis labels
-    pyplot.xlabel('Raw STDs')
-    pyplot.ylabel('Adjusted STDs')
+    pyplot.xlabel('"Raw" Variation of Map Values')
+    pyplot.ylabel('"Adjusted" Variation of Map Values')
     # Apply tight layout to prevent overlaps
     pyplot.tight_layout()
     # Save

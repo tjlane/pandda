@@ -2,7 +2,11 @@ import os, sys
 import pkg_resources
 
 PANDDA_LIB_TOP = os.path.realpath(os.path.abspath(os.path.join(__path__[0], '..')))
-PANDDA_VERSION = pkg_resources.get_distribution("panddas").version
+try:
+    PANDDA_VERSION = pkg_resources.get_distribution("panddas").version
+except:
+    PANDDA_VERSION = 'xxx'
+
 PANDDA_TEXT = """
 ------------------------------------------------------------------>
 -
