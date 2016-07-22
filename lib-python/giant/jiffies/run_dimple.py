@@ -41,17 +41,17 @@ def run(params):
     def run_dimple(c):
         print '============================>'
         print 'Running New Dimple'
-        cm.print_settings()
+        c.print_settings()
         ret_code = c.run()
         if ret_code != 0:
             print '============================>'
             print 'Dimple returned with an error'
             print '============================>'
-            cm.print_settings()
+            c.print_settings()
             print '============================>'
-            print cm.output
+            print c.output
             print '============================>'
-            print cm.error
+            print c.error
             print '============================>'
         return ret_code
 
