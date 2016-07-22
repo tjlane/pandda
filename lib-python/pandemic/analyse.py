@@ -33,23 +33,29 @@ def sanitise_params(params):
 def load_pandda_for_pandemic(params, pandemic):
     """Load a pre-calculated pandda using the parameters for pandemic"""
 
+    pandemic.log('', True)
     pandemic.log('----------------------------------->>>', True)
     pandemic.log('==>>>', True)
     pandemic.log('==>>>   Loading the existing PanDDA', True)
     pandemic.log('==>>>', True)
     pandemic.log('----------------------------------->>>', True)
+    pandemic.log('', True)
 
+    # ===============================================================================>
     # Initialise the pandda object
+    # ===============================================================================>
     pandda = PanddaMultiDatasetAnalyser(params)
-    # Transfer custom objects from pandemic > pandda
     pandda.log = pandemic.log
-    # Load the elements that we need
     pandda.load_pickled_objects()
+
     # ===============================================================================>
     # CHANGE INTO OUTPUT DIRECTORY (NEEDED FOR READING PICKLES)
     # ===============================================================================>
     os.chdir(pandda.out_dir)
+
+    # ===============================================================================>
     # Rebuild the pandda masks (quick)
+    # ===============================================================================>
     pandda.initialise_dataset_masks_and_tables()
     pandda.check_loaded_datasets(datasets=pandda.datasets.all())
     pandda.filter_datasets_1()
@@ -71,8 +77,6 @@ def pandemic_setup(pandemic, pandda):
     # Create blank tables and masks
     pandemic.initialise_dataset_masks_and_tables(pandda=pandda)
     pandemic.initialise_residue_masks_and_tables(pandda=pandda)
-    # Populate the basic fields
-#    pandemic.populate_residue_masks_and_tables(pandda=pandda)
 
     # Load the masking pdb
     pandemic.load_masking_dataset(pandda=pandda)
@@ -124,12 +128,12 @@ def pandemic_main_loop(pandemic, pandda):
         ca_lab = make_label(ca_rg)
 
         print('\rExtracting map information for residue {}'.format(''.join(ca_lab)), end=''); sys.stdout.flush()
+        print('')
 
         # Get the indices for this residue (including any conformers)
         combined_idxs = numpy.array([], dtype=int)
         for obj in [ca_rg]+ca_rg.conformers():
             lab = make_label(obj)
-            print('')
             if lab in residue_grid_hash.keys():
                 print('Adding Indices for {}'.format(lab))
                 combined_idxs = numpy.append(combined_idxs, residue_grid_hash[lab])

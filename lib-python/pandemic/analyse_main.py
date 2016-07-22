@@ -15,6 +15,7 @@ from bamboo.common.path import easy_directory, rel_symlink
 from giant.manager import Program
 from giant.grid.masks import atomic_mask
 from giant.structure import make_label
+from giant.structure.align import align_hierarchies
 
 from pandda.constants import PanddaMaskNames
 from pandda.handlers import DatasetHandler
@@ -121,7 +122,6 @@ class PandemicMultiDatasetAnalyser(Program):
         self.output_handler.add_dir(dir_name='dataset_maps', dir_tag='dataset_maps', top_dir_tag='root', create=False, exists=False)
         self.output_handler.add_file(file_name='dataset_{}.ccp4',     file_tag='dataset_map',      dir_tag='dataset_maps')
 
-
     def _pickle_setup(self):
         """Initialise all of the pickle filenames"""
 
@@ -161,12 +161,14 @@ class PandemicMultiDatasetAnalyser(Program):
         # ===============================================================================>
         # PRINT SOME HELPFUL INFORMATION
         # ===============================================================================>
-        self.log('----------------------------------->>>', True)
+        self.log('===================================>>>', True)
         self.log('RUNNING FROM: {!s}'.format(sys.argv[0]), True)
         self.log('----------------------------------->>>', True)
         self.log('READING INPUT PANDDA FROM: {!s}'.format(self.args.input.pandda_dir))
         self.log('----------------------------------->>>', True)
         self.log('WRITING OUTPUT TO: {!s}'.format(self.out_dir), True)
+        self.log('===================================>>>', True)
+        self.log('', True)
 
         # ===============================================================================>
         # LOOK FOR MATPLOTLIB TO SEE IF WE CAN GENERATE GRAPHS
@@ -215,16 +217,24 @@ class PandemicMultiDatasetAnalyser(Program):
     def load_masking_dataset(self, pandda):
         """Load a dataset to mask each residue. Defaults to reference dataset if none is given."""
 
+        self.log('----------------------------------->>>', True)
+        self.log('Loading Masking Dataset (defines which areas of the map are analysed for each residue)', True)
+
         if self.args.input.masking_pdb and os.path.exists(self.args.input.masking_pdb):
-            self.log('Masking against masking_pdb: {}'.format(self.args.input.masking_pdb), True)
+            self.log('Masking against masking pdb: {}'.format(self.args.input.masking_pdb), True)
             self.masking_dataset = DatasetHandler(dataset_number=0, pdb_filename=self.args.input.masking_pdb)
         else:
             self.log('Masking against reference pdb: {}'.format(pandda.reference_dataset().pdb_filename()), True)
             self.masking_dataset = DatasetHandler(dataset_number=0, pdb_filename=pandda.reference_dataset().pdb_filename())
 
+        # Align the masking dataset to the reference dataset (global alignment)
+        fit = align_hierarchies(mov_hier=self.masking_dataset.hierarchy(), ref_hier=pandda.reference_dataset().hierarchy())
+
         # Apply the origin shift for the reference dataset to the masking dataset - TODO MAKE THIS MORE RIGOROUS TODO
         mask_hierarchy = self.masking_dataset.hierarchy()
-        mask_hierarchy.atoms().set_xyz(mask_hierarchy.atoms().extract_xyz() + pandda.reference_dataset().origin_shift())
+        mask_hierarchy.atoms().set_xyz(fit.rt()*mask_hierarchy.atoms().extract_xyz())
+
+        mask_hierarchy.write_pdb_file(os.path.join(self.output_handler.get_dir('root'), 'masking_structure.pdb'))
 
     def select_datasets_and_load_maps(self, pandda, high_res_large_cutoff, high_res_small_cutoff=0):
         """Select datasets for the multi-conformer analysis and return a map analyser object for them"""

@@ -1,7 +1,7 @@
 import os, sys
 
 PANDEMIC_TOP = os.path.join(__path__[0], '..', '..')
-PANDEMIC_VERSION = 0.0
+PANDEMIC_VERSION = 0.0.0
 PANDEMIC_TEXT = """
 ------------------------------------------------------------------>
 -
