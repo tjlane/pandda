@@ -19,7 +19,7 @@ options {
         .type = choice
         .multiple = False
     column {
-        label = F
+        label = None
             .help = 'columns to be extracted from the input mtz files'
             .type = str
             .multiple = True
@@ -58,6 +58,7 @@ def run(params):
         # Create an mtz suffix
         if   params.options.label_suffix == 'incremental': suffix = '-{}'.format(n_mtz)
         elif params.options.label_suffix == 'filename':    suffix = '-{}'.format(os.path.splitext(os.path.basename(mtz))[0])
+        elif params.options.label_suffix == 'foldername':  suffix = '-{}'.format(os.path.basename(os.path.dirname(mtz)))
         else:                                              raise Exception('Not yet implemented, sorry')
         # Add to the command line
         cm.add_command_line_arguments(['hklin{}'.format(n_mtz), mtz])
