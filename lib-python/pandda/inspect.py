@@ -304,18 +304,27 @@ class PanddaInspector(object):
         else:
             self.gui.buttons['low conf'].set_active(True)
 
+        # Reset the merge button
+        self.gui.buttons['merge'].child.set_text("Merge Ligand\nWith Model")
+
     #-------------------------------------------------------------------------
 
     def save_current(self):
         self.current_event.write_fitted_model(protein_obj=self.coot.open_mols['p'])
         self.write_output_csvs()
 
-    def reset_current(self):
+    def reset_current_to_last_model(self):
         close_molecule(self.coot.open_mols['p'])
         if os.path.exists(self.current_event.fitted_link):
             p = read_pdb(self.current_event.fitted_link)
         else:
             p = read_pdb(self.current_event.unfitted_model)
+        self.coot.open_mols['p'] = p
+        self.write_output_csvs()
+
+    def reset_current_to_orig_model(self):
+        close_molecule(self.coot.open_mols['p'])
+        p = read_pdb(self.current_event.unfitted_model)
         self.coot.open_mols['p'] = p
         self.write_output_csvs()
 
@@ -555,8 +564,9 @@ class PanddaMolHandler(object):
             set_b_factor_molecule(l, 20)
             # Set the occupancy of the ligand to 2*(1-bdc)
             all_residue_ids = all_residues(l)
-            for res_chn, res_num, res_ins in all_residue_ids:
-                set_alt_conf_occ(l, res_chn, res_num, res_ins, [['', 2.0*e.est_1_bdc]])
+            if all_residue_ids:
+                for res_chn, res_num, res_ins in all_residue_ids:
+                    set_alt_conf_occ(l, res_chn, res_num, res_ins, [['', 2.0*e.est_1_bdc]])
 
         return e
 
@@ -671,10 +681,11 @@ class PanddaGUI(object):
 
         # Structure Buttons
         self.buttons['save'].connect("clicked",  lambda x: self.parent.save_current())
-        self.buttons['reset'].connect("clicked",  lambda x: self.parent.reset_current())
+        self.buttons['reload'].connect("clicked", lambda x: self.parent.reset_current_to_last_model())
+        self.buttons['reset'].connect("clicked",  lambda x: self.parent.reset_current_to_orig_model())
 
         # Ligand Buttons
-        self.buttons['merge'].connect("clicked", lambda x: self.parent.coot.merge_ligand_with_protein())
+        self.buttons['merge'].connect("clicked", lambda x: [self.buttons['merge'].child.set_text('Already Merged\n(Click to Repeat)'), self.parent.coot.merge_ligand_with_protein()])
         self.buttons['move'].connect("clicked",  lambda x: self.parent.coot.move_ligand_here())
 
         # Meta Recording buttons
@@ -772,9 +783,9 @@ class PanddaGUI(object):
         box1 = gtk.VBox(homogeneous=True, spacing=2)
         box1.set_border_width(3)
         # ---
-        b = gtk.Button(label="Merge Ligand With Model")
+        b = gtk.Button(label="Merge Ligand\nWith Model")
         b.child.set_line_wrap(True)
-        b.child.props.width_chars = 10
+        b.child.props.width_chars = 15
         b.child.set_justify(gtk.JUSTIFY_CENTER)
         self.buttons['merge'] = b
         box1.add(b)
@@ -796,9 +807,16 @@ class PanddaGUI(object):
         self.buttons['save'] = b
         box2.add(b)
         # ---
-        b = gtk.Button(label="Reset Model")
+        b = gtk.Button(label="Reload Last Saved Model")
         b.child.set_line_wrap(True)
-        b.child.props.width_chars = 10
+        b.child.props.width_chars = 15
+        b.child.set_justify(gtk.JUSTIFY_CENTER)
+        self.buttons['reload'] = b
+        box2.add(b)
+        # ---
+        b = gtk.Button(label="Reset to Unfitted Model")
+        b.child.set_line_wrap(True)
+        b.child.props.width_chars = 15
         b.child.set_justify(gtk.JUSTIFY_CENTER)
         self.buttons['reset'] = b
         box2.add(b)
