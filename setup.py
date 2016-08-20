@@ -2,7 +2,7 @@ import os, sys, glob
 from setuptools import setup, find_packages, findall
 
 setup(  name                = 'panddas',
-        version             = '0.1.3',
+        version             = '0.1.7',
         description         = 'Multi-dataset crystallographic analyses',
         author              = 'Nicholas M Pearce',
         author_email        = 'nicholas.pearce.0@gmail.com',
