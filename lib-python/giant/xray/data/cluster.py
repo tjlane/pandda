@@ -50,13 +50,13 @@ class CrystalGroup(object):
         clusters = scipy.cluster.hierarchy.fcluster(link_mat, t=cutoff, criterion='distance')
         return [cls([crystals[idx] for idx in g]) for i_g,g in generate_group_idxs(clusters)]
 
-def dendrogram(fname, link_mat, labels=None, ylab=None, xlab=None, ylim=None, annotate_y_min=0.25):
+def dendrogram(fname, link_mat, labels=None, ylab=None, xlab=None, ylim=None, annotate_y_min=0.25, num_nodes=20):
     from matplotlib import pyplot
     fig = pyplot.figure()
     ax1 = pyplot.subplot(1,1,1)
-    dend = scipy.cluster.hierarchy.dendrogram(link_mat)
+    dend = scipy.cluster.hierarchy.dendrogram(link_mat, p=num_nodes, truncate_mode='lastp', labels=labels)
     # Change labels if requested
-    if labels: ax1.set_xticklabels([labels[i] for i in dend['leaves']])
+#    if labels: ax1.set_xticklabels([labels[i] for i in dend['leaves']])
     if xlab:   ax1.set_xlabel(xlab)
     if ylab:   ax1.set_ylabel(ylab)
     if ylim:   ax1.set_ylim(ylim)
