@@ -107,7 +107,7 @@ def estimate_event_background_correction(ref_map, query_map, feature_region, min
     elif method == 'gradient':
         # Calculate the maximum discrepancy in the correlation gradients as an estimation of event correction
         remain_est = calculate_maximum_series_discrepancy(
-            labels   = event_remainss[1:-1],
+            labels   = event_remains[1:-1],
             series_1 = [event_corrs[i+1] - event_corrs[i-1] for i in range(1, len(event_corrs)-1)],
             series_2 = [global_corrs[i+1] - global_corrs[i-1] for i in range(1, len(global_corrs)-1)])
 

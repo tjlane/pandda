@@ -427,48 +427,36 @@ def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
     pyplot.savefig(os.path.join(img_out_dir, '{!s}A-z_map_skew_v_kurtosis.png'.format(map_res)))
     pyplot.close(fig)
 
-def write_occupancy_graph(occ_est_data, d_handler):
+def write_occupancy_graph(x_values, global_values, local_values, diff_values, out_file):
     """Write output graph from occupancy estimation"""
+
+    # Get the x-value of the maximum difference
+    max_x = x_values[diff_values.index(max(diff_values))]
+
     fig, (axis_1_1, axis_2_1) = pyplot.subplots(2, sharex=True)
     # 1st Plot - 1st Y-Axis
-    line_1_1, = axis_1_1.plot(occ_est_data.occ_values, occ_est_data.global_corr_vals, 'g--', label='GLOBAL')
-    line_1_2, = axis_1_1.plot(occ_est_data.occ_values, occ_est_data.local_corr_vals, 'k--', label='EVENT')
-    axis_1_1.set_xlabel('Event Occupancy')
-    axis_1_1.set_ylabel('Correlation to Mean Map', color='k')
+    line_1_1, = axis_1_1.plot(x_values, global_values, 'g--', label='GLOBAL CORRELATION', linewidth=2)
+    line_1_2, = axis_1_1.plot(x_values, local_values, 'k--', label='LOCAL CORRELATION', linewidth=2)
+    axis_1_1.set_ylabel('CORRELATION\nTO GROUND STATE', color='k', size=16)
     axis_1_1.set_ylim((-1, 1))
-    # 1st Plot - 2nd Y-Axis
-    axis_1_2 = axis_1_1.twinx()
-    line_1_3, = axis_1_2.plot(occ_est_data.occ_values, occ_est_data.corr_vals_diffs, 'b-', label='DISCREP')
-    axis_1_2.set_ylabel('Correlation Differences', color='b')
-    # Plot line at the maximum
-    line_1_4, = axis_1_2.plot([occ_est_data.feature_occ_est,occ_est_data.feature_occ_est],[-1,1], 'k-')
-    text_1_1 = axis_1_2.text(0.02+occ_est_data.feature_occ_est, 0.0, str(occ_est_data.feature_occ_est))
-    # Joint legend
-    axis_1_1.legend(handles=[line_1_1, line_1_2, line_1_3], loc=4)
-    # Title
-    axis_1_1.set_title('Estimating Occupancy by Correlation Value Differences')
     # 2nd Plot - 1st Y-Axis
-    line_2_1, = axis_2_1.plot(occ_est_data.occ_values, occ_est_data.global_corr_grads, 'g--', label='GLOBAL')
-    line_2_2, = axis_2_1.plot(occ_est_data.occ_values, occ_est_data.local_corr_grads, 'k--', label='EVENT')
-    axis_2_1.set_xlabel('Event Occupancy')
-    axis_2_1.set_ylabel('Correlation to Mean Map', color='k')
-    axis_2_1.set_ylim((-1, 1))
-    # 1st Plot - 2nd Y-Axis
-    axis_2_2 = axis_2_1.twinx()
-    line_2_3, = axis_2_2.plot(occ_est_data.occ_values, occ_est_data.corr_vals_diffs, 'b-', label='DISCREP')
-    axis_2_2.set_ylabel('Correlation Differences', color='b')
+    line_2_1, = axis_2_1.plot(x_values, diff_values, 'b-', label='DIFFERENCE', linewidth=2)
+    axis_2_1.set_ylabel('CORRELATION\nDIFFERENCE', color='k', size=16)
+    axis_2_1.set_xlabel('1-BDC', color='k', size=16)
+    axis_2_1.set_ylim((min(diff_values)-0.2, max(diff_values)+0.2))
     # Plot line at the maximum
-    line_2_4, = axis_2_2.plot([occ_est_data.feature_occ_est,occ_est_data.feature_occ_est],[-1,1], 'k-')
-    text_2_1 = axis_2_2.text(0.02+occ_est_data.feature_occ_est, 0.0, str(occ_est_data.feature_occ_est))
+    line_2_2, = axis_2_1.plot([max_x,max_x],[-1,1], 'k-', linewidth=2)
+    text_2_1 = axis_2_1.text(0.02+max_x, 0.0, 'BDC='+str(1-max_x), size=14)
     # Joint legend
-    axis_2_1.legend(handles=[line_2_1, line_2_2, line_2_3], loc=4)
-    # Title
-    axis_2_1.set_title('Estimating Occupancy by Correlation Gradient Differences')
+    axis_1_1.legend(handles=[line_1_1, line_1_2, line_2_1], loc=4, fontsize=16)
+#    # Title
+#    axis_2_1.set_title('Estimating Occupancy by Correlation Gradient Differences')
     # Remove spacing between subplots
     pyplot.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible=False)
     pyplot.setp([axis_2_1.get_xticklabels()], visible=True)
     # Apply tight layout to prevent overlaps
-    #pyplot.tight_layout()
+    pyplot.tight_layout()
     # Save
-    pyplot.savefig(d_handler.output_handler.get_file('occ_corr_png').format(event_key))
+#    pyplot.savefig(d_handler.output_handler.get_file('occ_corr_png').format(event_key))
+    pyplot.savefig(out_file)
     pyplot.close(fig)

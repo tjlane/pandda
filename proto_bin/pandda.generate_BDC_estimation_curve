@@ -15,7 +15,8 @@ import iotbx.map_tools
 import numpy 
 
 from giant.grid.utils import get_grid_points_within_index_cutoff_of_grid_sites
-from giant.xray.maps.bdc import calculate_occupancy_correlations, estimate_event_occupancy
+from giant.xray.maps.bdc import calculate_varying_bdc_correlations, estimate_event_background_correction
+from pandda.analyse_graphs import write_occupancy_graph
 
 ############################################################################
 
@@ -105,8 +106,9 @@ try:    map_uncertainty = dataset.child.meta.map_uncertainty
 except: map_uncertainty = 'NONE'
 
 # Extract FEATURE REGION
-if dataset.hit_clusters:
-    feature_sites = dataset.hit_clusters.get_points()[0]
+if dataset.events:
+    feature_sites = dataset.events[0].cluster.points
+    print feature_sites
     # Expand these points by 10 grid points
     tot_sites, max_sites, min_sites = get_grid_points_within_index_cutoff_of_grid_sites(feature_sites, max_grid_dist=3)
     expanded_sites = max_sites
@@ -129,14 +131,14 @@ reference_region = [gp for gp in flex.nested_loop(mean_map.data.all()) if mean_m
 
 #####################################################################
 
-lig_occs, feature_corrs, global_corrs = calculate_occupancy_correlations(
+lig_occs, feature_corrs, global_corrs = calculate_varying_bdc_correlations(
     ref_map=mean_map.data.as_double(),
     query_map=query_map.data.as_double(),
     feature_region=feature_region,
     reference_region=reference_region,
-    min_occ=params.min_occ,
-    max_occ=params.max_occ,
-    occ_increment=params.occ_increment)
+    min_remain=params.min_occ,
+    max_remain=params.max_occ,
+    bdc_increment=params.occ_increment)
 
 # Calculate occupancy by correlation discrepancy
 corr_discrep = [global_corrs[i] - feature_corrs[i] for i in range(len(feature_corrs))]
@@ -154,24 +156,24 @@ max_corr_grad_discrep = max(corr_gradient_discrep)
 lig_occ_est_grad = gradient_occs[corr_gradient_discrep.index(max_corr_grad_discrep)]
 print '   GRADIENT-DISCREPANCY OCCUPANCY ESTIMATE:', lig_occ_est_grad
 
-occ_est = estimate_event_occupancy(
+occ_est = estimate_event_background_correction(
     ref_map=mean_map.data.as_double(),
     query_map=query_map.data.as_double(),
     feature_region=feature_region,
     reference_region=reference_region,
-    min_occ=params.min_occ,
-    max_occ=params.max_occ,
-    occ_increment=params.occ_increment,
+    min_remain=params.min_occ,
+    max_remain=params.max_occ,
+    bdc_increment=params.occ_increment,
     method='value')
 print 'FUNCTION:', occ_est
-occ_est = estimate_event_occupancy(
+occ_est = estimate_event_background_correction(
     ref_map=mean_map.data.as_double(),
     query_map=query_map.data.as_double(),
     feature_region=feature_region,
     reference_region=reference_region,
-    min_occ=params.min_occ,
-    max_occ=params.max_occ,
-    occ_increment=params.occ_increment,
+    min_remain=params.min_occ,
+    max_remain=params.max_occ,
+    bdc_increment=params.occ_increment,
     method='gradient')
 print 'FUNCTION:', occ_est
 
@@ -215,6 +217,8 @@ if params.outcsv:
     with open(params.outcsv, 'a') as fh:    
         fh.write(outstr)
 #####################################################################
+
+write_occupancy_graph(x_values=lig_occs, global_values=global_corrs, local_values=feature_corrs, diff_values=corr_discrep, out_file='new_occupancy.png')
 
 #####################################################################
 import matplotlib
