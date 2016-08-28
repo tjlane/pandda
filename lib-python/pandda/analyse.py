@@ -549,6 +549,8 @@ def pandda_dataset_setup(pandda):
     pandda.filter_datasets_2()
     # Calculate the calpha rmsd to the reference dataset
     pandda.calculate_dataset_rmsds_to_reference()
+    # Calculate the variation between the alignments of neighbouring C-alphas
+    pandda.analyse_alignment_variation()
 
     return
 
