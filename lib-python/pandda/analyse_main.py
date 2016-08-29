@@ -1656,12 +1656,10 @@ class PanddaMultiDatasetAnalyser(Program):
             self.log('GLOBAL ALIGNMENT SELECTED - NOT ANALYSING ROTATION MATRICES')
             return
 
-        if self.args.output.plot_graphs:
+        if self.settings.plot_graphs:
             import matplotlib
             matplotlib.interactive(0)
             from matplotlib import pyplot
-
-        rot_identity = scitbx.matrix.identity(3)
 
         # Select datasets to analyse
         used_datasets = self.datasets.mask(mask_name='rejected - total', invert=True)
@@ -1676,40 +1674,51 @@ class PanddaMultiDatasetAnalyser(Program):
 
         # Iterate through the datasets and pull out the alignment matrices
         for d_num, d_handler in enumerate(used_datasets):
-
+            # Extract and sort dataset alignments
             alignments = d_handler.local_alignment_transforms()
             alignment_keys = sorted(alignments.keys())
-
             assert alignment_keys == ref_c_alpha_labels
 
             # Iterate through adjacent pairs of matrices
             for i in range(0, num_pairs):
-
                 # Label and lsq fit for the current calpha
                 calpha_1 = alignment_keys[i]
-                assert calpha_1 == ref_c_alpha_labels[i]
-                rt_1 = alignments[calpha_1].rt()
+                rt_1 = alignments[calpha_1]
                 # And for the next calpha
                 calpha_2 = alignment_keys[i+1]
-                assert calpha_2 == ref_c_alpha_labels[i+1]
-                rt_2 = alignments[calpha_2].rt()
+                rt_2 = alignments[calpha_2]
 
-                # Calculate the mapping from one frame to the other
-                rt_1_2 = rt_1 * rt_2.inverse()
-                # Calculate the angle of the rotation matrix
-                theta_rad = scitbx.math.math.acos((rt_1_2.r.trace()-1)/2.0)
+                assert calpha_1 == ref_c_alpha_labels[i]
+                assert calpha_2 == ref_c_alpha_labels[i+1]
+
+                # Calculate the difference in the angles of the alignment matrices
+                theta_1 = scitbx.math.math.acos((rt_1.r.trace()-1)/2.0)
+                theta_2 = scitbx.math.math.acos((rt_2.r.trace()-1)/2.0)
+                # XXX Should we calculate the absolute of the difference?
+                theta_rad = theta_2-theta_1
                 theta_deg = theta_rad * 180.0/scitbx.math.math.pi
-                # Calculate the length of the shift
-                t_shift =  rt_1_2.t.norm_sq()**0.5
+                # Calculate the difference in the translation
+                t_shift = (rt_2.t-rt_1.t).norm_sq()**0.5
+
+#                # Calculate the angles from the multiplication of one by the inverse of the other
+#                rt_1_2 = rt_1 * rt_2.inverse()
+#                # Calculate the angle of the rotation matrix
+#                theta_rad = scitbx.math.math.acos((rt_1_2.r.trace()-1)/2.0)
+#                theta_deg = theta_rad * 180.0/scitbx.math.math.pi
+#                # Calculate the length of the shift
+#                t_shift =  rt_1_2.t.norm_sq()**0.5
 
                 # Append to the array
                 output_diffs[d_num, i, :] = theta_deg, t_shift
 
         # Directory to write the output to
         var_out_dir = self.output_handler.get_dir('analyses')
+        # Write out to file
+        numpy.savetxt(  fname = os.path.join(var_out_dir, 'calpha_rt_r_variation.csv'), X=output_diffs[:,:,0], delimiter=',', newline='\n' )
+        numpy.savetxt(  fname = os.path.join(var_out_dir, 'calpha_rt_t_variation.csv'), X=output_diffs[:,:,1], delimiter=',', newline='\n' )
 
         # Write out graphs
-        if self.args.output.plot_graphs:
+        if self.settings.plot_graphs:
 
             # Create labels
             labels = ['']*num_pairs
@@ -1721,28 +1730,22 @@ class PanddaMultiDatasetAnalyser(Program):
 
             # BOX PLOT OF ROTATION AND TRANSLATION SHIFTS
             fig = pyplot.figure()
-            pyplot.title('ROTATION-TRANSLATION MATRIX VARIATION')
+            pyplot.title('Rotation-translation alignment matrix variation between adjacent C-alpha')
             # ADJACENT ANGLE VARIATION
             pyplot.subplot(2, 1, 1)
             pyplot.boxplot(x=output_diffs[:,:,0], notch=True, sym='.', widths=0.5, whis=[5,95], whiskerprops={'ls':'-'}, flierprops={'ms':1}, labels=labels) # whis='range'
-            pyplot.xlabel('C-ALPHA')
-            pyplot.ylabel('ANGLE CHANGE (DEGREES)')
+            pyplot.xlabel('C-alpha index')
+            pyplot.ylabel('Angle Difference\n(degrees)')
             # ADJACENT SHIFT VARIATION
             pyplot.subplot(2, 1, 2)
             pyplot.boxplot(x=output_diffs[:,:,1], notch=True, sym='.', widths=0.5, whis=[5,95], whiskerprops={'ls':'-'}, flierprops={'ms':1}, labels=labels) # whis='range'
-            pyplot.xlabel('C-ALPHA')
-            pyplot.ylabel('TRANSLATION CHANGE (ANGSTROMS)')
+            pyplot.xlabel('C-alpha Index')
+            pyplot.ylabel('Translation Difference\n(angstroms)')
             # Apply tight layout to prevent overlaps
             pyplot.tight_layout()
             # Save both
             pyplot.savefig(os.path.join(var_out_dir, 'calpha_rt_variation.png'), format='png')
             pyplot.close(fig)
-
-        # Write out to file
-        numpy.savetxt(  fname = os.path.join(var_out_dir, 'calpha_rt_r_variation.csv'), X=output_diffs[:,:,0],
-                        delimiter=',', newline='\n' )
-        numpy.savetxt(  fname = os.path.join(var_out_dir, 'calpha_rt_t_variation.csv'), X=output_diffs[:,:,1],
-                        delimiter=',', newline='\n' )
 
     #########################################################################################################
     #                                                                                                       #
