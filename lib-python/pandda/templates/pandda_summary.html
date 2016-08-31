@@ -44,9 +44,9 @@ $(document).ready(function() {
           <p>{{ bar.title }}</p>
           <div class="progress">
             {% for seg in bar.data -%}
-            <div class="progress-bar progress-bar-striped progress-bar-{{ seg.colour }}" style="width: {{ seg.size }}%">
+            <div class="progress-bar progress-bar-{{ seg.colour }}" style="width:{{ seg.size }}%">
               <span class="sr-only">{{ seg.text }}</span>
-              {{ seg.text ~ " (" ~ seg.size|int() ~ "%)" }}
+              <strong>{{ seg.text ~ " (" ~ seg.size|int() ~ "%)" }}</strong>
             </div>
             {% endfor -%}
           </div>

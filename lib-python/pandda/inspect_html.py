@@ -66,15 +66,17 @@ def write_inspect_html(top_dir, inspector):
     output_data['progress_bar'] = []
     # Fitting Progress
     output_data['progress_bar'].append({'title':'Fitting Progress', 'data':[]})
-    output_data['progress_bar'][0]['data'].append({'text':'Fitted - {} Events'.format(num_fitted),          'colour':'success', 'size':100.0*num_fitted/len_data})
-    output_data['progress_bar'][0]['data'].append({'text':'Unviewed - {} Events'.format(num_unviewed),      'colour':'warning', 'size':100.0*num_unviewed/len_data})
-    output_data['progress_bar'][0]['data'].append({'text':'No Ligand Fitted - {} Events'.format(num_empty), 'colour':'danger',  'size':100.0*num_empty/len_data})
+    output_data['progress_bar'][-1]['data'].append({'text':'Fitted - {} Events'.format(num_fitted),          'colour':'success', 'size':100.0*num_fitted/len_data})
+    output_data['progress_bar'][-1]['data'].append({'text':'Unviewed - {} Events'.format(num_unviewed),      'colour':'warning', 'size':100.0*num_unviewed/len_data})
+    output_data['progress_bar'][-1]['data'].append({'text':'No Ligand Fitted - {} Events'.format(num_empty), 'colour':'danger',  'size':100.0*num_empty/len_data})
     # Ligand Distribution
     if num_fitted > 0:
-        output_data['progress_bar'].append({'title':'Identified Ligands', 'data':[]})
-        for site_idx, n_hits in site_hits:
-            colour = ('info', 'none')[site_idx%2]
-            output_data['progress_bar'][1]['data'].append({'text':'Site {} - {} Ligand(s)'.format(site_idx, n_hits), 'colour':colour, 'size':100.0*n_hits/num_fitted})
+        import math
+        weighting = sum([math.log1p(v[1]) for v in site_hits])
+        output_data['progress_bar'].append({'title':'Identified Ligands by Site', 'data':[]})
+        for i_block, (site_idx, n_hits) in enumerate(sorted(site_hits, key=lambda x: x[1], reverse=True)):
+            colour = ('info','default')[i_block%2]
+            output_data['progress_bar'][-1]['data'].append({'text':('S{}: {} hit'+'s'*bool(n_hits-1)).format(site_idx, n_hits), 'colour':colour, 'size':100.0*math.log1p(n_hits)/weighting})
     # ===========================================================>
     # Tables
     output_data['table'] = {}
