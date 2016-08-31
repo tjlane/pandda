@@ -1,2 +1,0 @@
-#!/bin/sh
-pandda.python -Qnew -m giant.jiffies.quick_refine_all "$@"
