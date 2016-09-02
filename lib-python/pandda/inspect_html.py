@@ -16,9 +16,14 @@ def write_inspect_html(top_dir, inspector):
     all_data = inspector.log_table
     len_data = len(all_data.index)
 
+    #####################################################
+    #                 Organise Data                     #
+    #####################################################
+
     # Pandda Analysis outputs
     num_blobs = len_data
     num_sites = len(set(all_data['site_idx']))
+    num_datasets = len(set(zip(*all_data.index)[0]))
 
     # Datasets Inspected/Modelled/Empty
     num_fitted = sum(all_data['Ligand Placed'])
@@ -26,15 +31,30 @@ def write_inspect_html(top_dir, inspector):
     num_empty  = num_viewed - num_fitted
     num_unviewed = len_data - num_viewed
 
+    # Interesting unfitted (bookmarked)
+    num_interesting_unfitted = sum(all_data["Interesting"][all_data['Ligand Placed']==False])
+
+    # Number of Confident Ligand Models
+    hgh_conf = sum(all_data["Ligand Placed"][all_data['Ligand Confidence']=='High'])
+    med_conf = sum(all_data["Ligand Placed"][all_data['Ligand Confidence']=='Medium'])
+    low_conf = sum(all_data["Ligand Placed"][all_data['Ligand Confidence']=='Low'])
+
     # Number of datasets with hits
     try:    num_d_hit = len(set(zip(*all_data.index[all_data['Ligand Placed'] == True])[0]))
     except: num_d_hit = 0
+    # Number of sites with hits
+    try:    num_s_hit = len(set(all_data[all_data['Ligand Placed'] == True]['site_idx']))
+    except: num_s_hit = 0
 
     # Site Hits
     site_hits = []
     for site_idx in range(1, num_sites+1):
         site_placed = sum(all_data["Ligand Placed"][all_data['site_idx']==site_idx])
         if site_placed > 0: site_hits.append((site_idx, site_placed))
+
+    #####################################################
+    #               Prepare html data                   #
+    #####################################################
 
     # ===========================================================>
     # Construct the data object to populate the template
@@ -57,10 +77,14 @@ def write_inspect_html(top_dir, inspector):
     # ===========================================================>
     # Summary Bar
     output_data['summary_bar'] = []
-    output_data['summary_bar'].append({'colour':'info',    'text':'PANDDA-Identified Blobs: {}'.format(num_blobs)})
-    output_data['summary_bar'].append({'colour':'info',    'text':'PANDDA-Identified Sites: {}'.format(num_sites)})
-    output_data['summary_bar'].append({'colour':'success', 'text':'Number of Ligands Fitted: {}'.format(num_fitted)})
-    output_data['summary_bar'].append({'colour':'success', 'text':'Datasets w. Fitted Ligands: {}'.format(num_d_hit)})
+    output_data['summary_bar'].append({'width':'4', 'colour':'success', 'text':'Datasets w. Fitted Ligands: {} (of {})'.format(num_d_hit, num_datasets)})
+    output_data['summary_bar'].append({'width':'4', 'colour':'success', 'text':'Sites w. Fitted Ligands: {} (of {})'.format(num_s_hit, num_sites)})
+    output_data['summary_bar'].append({'width':'4', 'colour':'warning', 'text':'Unfitted Events Marked as Interesting: {}'.format(num_interesting_unfitted)})
+
+    output_data['summary_bar'].append({'width':'3', 'colour':'info',    'text':'Total Number of Events: {}'.format(num_blobs)})
+    output_data['summary_bar'].append({'width':'3', 'colour':'success', 'text':'High Confidence Hits:   {}'.format(hgh_conf)})
+    output_data['summary_bar'].append({'width':'3', 'colour':'warning', 'text':'Medium Confidence Hits: {}'.format(med_conf)})
+    output_data['summary_bar'].append({'width':'3', 'colour':'danger',  'text':'Low Confidence Hits:    {}'.format(low_conf)})
     # ===========================================================>
     # Progress Bars
     output_data['progress_bar'] = []
@@ -77,6 +101,19 @@ def write_inspect_html(top_dir, inspector):
         for i_block, (site_idx, n_hits) in enumerate(sorted(site_hits, key=lambda x: x[1], reverse=True)):
             colour = ('info','default')[i_block%2]
             output_data['progress_bar'][-1]['data'].append({'text':('S{}: {} hit'+'s'*bool(n_hits-1)).format(site_idx, n_hits), 'colour':colour, 'size':100.0*math.log1p(n_hits)/weighting})
+    # ===========================================================>
+    # Panels
+    output_data['top_panels'] = []
+    # Site summaries
+    for site_idx, site_info in inspector.site_table.iterrows():
+        if (site_info['Name'], site_info['Comment']) != ('None','None'):
+            output_data['top_panels'].append({  'width':'6','color':'primary',
+                                                'title':'<strong>Site {}</strong>: {}'.format(site_idx, site_info['Name']),
+                                                'text':'<p><strong>Comment:</strong> '+site_info['Comment']+'</p>'  })
+    if num_interesting_unfitted:
+        output_data['top_panels'].append({  'width':'12','color':'primary',
+                                            'title':'<strong>Interesting Datasets with No Ligand Placed</strong>',
+                                            'text':'<p><strong>Datasets:</strong> '+', '.join(['<strong>{}</strong> (Event {})'.format(*i) for i in all_data[(all_data['Ligand Placed']==False)&(all_data['Interesting']==True)].index])+'</p>'  })
     # ===========================================================>
     # Tables
     output_data['table'] = {}

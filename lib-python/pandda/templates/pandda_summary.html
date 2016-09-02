@@ -57,7 +57,23 @@ $(document).ready(function() {
       {% if summary_bar is defined %}
       <div class="row">
         {% for bar in summary_bar -%}
-        <div class="col-xs-12 col-sm-6 col-md-4 col-lg-3"><div class="alert alert-{{ bar.colour }}" role="alert">{{ bar.text }}</div></div>
+        <div class="col-xs-12 col-sm-12 col-md-{{ bar.width }}"><div class="alert alert-{{ bar.colour }}" role="alert"><strong>{{ bar.text }}</strong></div></div>
+        {% endfor -%}
+      </div>
+      {% endif %}
+      {% if top_panels is defined %}
+      <div class="row">
+        {% for panel in top_panels %}
+        <div class="col col-xs-12 col-md-{{ panel.width }}">
+          <div class="panel panel-{{ panel.color }}">
+            <div class="panel-heading">
+              <h3 class="panel-title">{{ panel.title }}</h3>
+            </div> 
+            <div class="panel-body">
+              <p>{{ panel.text }}</p>
+            </div>
+          </div>
+        </div>
         {% endfor -%}
       </div>
       {% endif %}

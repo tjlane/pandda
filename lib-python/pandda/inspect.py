@@ -672,7 +672,7 @@ class PanddaGUI(object):
         self.buttons['next-site'].connect("clicked", lambda x: [self.store(), self.parent.load_next_site()])
         self.buttons['prev-site'].connect("clicked", lambda x: [self.store(), self.parent.load_prev_site()])
 
-        self.buttons['go-to'].connect("clicked", lambda x: [self.store(), self.parent.load_dataset(dataset_id=self.objects['go-to-text'].get_text().strip())])
+        self.buttons['go-to'].connect("clicked", lambda x: [self.store(), self.parent.load_dataset(dataset_id=self.objects['go-to-text'].get_text().strip()), self.objects['go-to-text'].set_text('')])
 
         # Quit
         self.buttons['quit'].connect("clicked", lambda x: [self.quit()])
