@@ -1,0 +1,20 @@
+
+##############################################
+
+To install, simply run 
+
+> /path/to/python setup.py install
+
+##############################################
+
+After installing: 
+
+To run within ccp4, you will then need to run
+> pandda.configure_ccp4
+
+There is currently no other configure script for other pythons. These will be added shortly (developers will be able to edit the pandda.configure_ccp4 script).
+
+##############################################
+
+
+
