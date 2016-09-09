@@ -1494,8 +1494,9 @@ class PanddaMultiDatasetAnalyser(Program):
                 lig_matches = glob.glob(lig_base)
                 for lig in lig_matches:
                     out_path = os.path.join(d_handler.output_handler.get_dir('ligand'), os.path.basename(lig))
-                    if not os.path.exists(out_path):
-                        os.symlink(lig, out_path)
+                    if os.path.exists(lig) and (not os.path.exists(out_path)):
+                        try: os.symlink(lig, out_path)
+                        except: pass
 
             # Lastly: Update the pointer to the new path (relative to the pandda directory)
             d_handler._pdb_file = os.path.relpath(link_pdb, start=self.out_dir)
