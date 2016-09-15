@@ -258,19 +258,16 @@ def merge_hierarchies(ref_hierarchy, mov_hierarchy):
     # Create another copy of the ref conformation
     final_struct = new_ref.deep_copy()
 
+    ref_chain_ids = [c.id for c in new_ref.chains()]
+
     # Iterate through chains
     for ch_min in new_mov.chains():
 
-        # Find the matching chain in the ref conformation
-        ch_fin = [c for c in final_struct.chains() if c.id==ch_min.id]
-        # MORE THAN ONE MATCHING RESIDUE -- ERROR?
-        if len(ch_fin) > 1:     raise Exception('MORE THAN ONE MATCHING')
         # If not a matching chain, add to a new chain
-        elif len(ch_fin) == 0:  final_struct.models()[0].append_chain(ch_min.detached_copy())
-        # One matching chain, so transfer the residue groups
-        elif len(ch_fin) == 1:
-            ch_fin = ch_fin[0]
-            # Iterate through residue groups
+        if ch_min.id not in ref_chain_ids:
+            final_struct.models()[0].append_chain(ch_min.detached_copy())
+        # Iterate through residue groups
+        else:
             for rg_mov in ch_min.residue_groups():
                 # Extract label for this residue
                 resid = rg_mov.resid()
@@ -278,11 +275,19 @@ def merge_hierarchies(ref_hierarchy, mov_hierarchy):
                 # If residue has not changed - do not transfer
                 if (chainid, resid) in ref_same:    continue
                 # Find the matching residue group in the ref conformation
-                rg_fin = [rg for rg in ch_fin.residue_groups() if resid==rg.resid()]
+                rg_fin = [rg for rg in final_struct.residue_groups() if (resid==rg.resid() and chainid==rg.parent().id)]
                 # MORE THAN ONE MATCHING RESIDUE -- ERROR?
                 if len(rg_fin) > 1:     raise Exception('MORE THAN ONE MATCHING')
                 # If not a matching residue group, add to a new residue group
-                elif len(rg_fin)==0:    ch_fin.append_residue_group(rg_mov.detached_copy())
+                elif len(rg_fin)==0:
+                    # Get the class name of the residue so that we can identify an appropriate chain object
+                    res_class = [iotbx.pdb.common_residue_names_get_class(n) for n in rg_mov.unique_resnames()][0]
+                    # Get the chains that already contain a residue with the same class
+                    ch_fin = [c for c in final_struct.chains() if (res_class in c.get_residue_names_and_classes()[1].keys())]
+                    # If can't find one, then just select all
+                    if not ch_fin: ch_fin = final_struct.chains()
+                    # Append the residue group to the first identified chain
+                    ch_fin[0].append_residue_group(rg_mov.detached_copy())
                 # One matching residue, so transfer the atom groups (don't have to worry about clashes as altlocs have already been changed)
                 elif len(rg_fin)==1:
                     rg_fin = rg_fin[0]
