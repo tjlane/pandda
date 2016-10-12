@@ -77,14 +77,14 @@ def write_inspect_html(top_dir, inspector):
     # ===========================================================>
     # Summary Bar
     output_data['summary_bar'] = []
-    output_data['summary_bar'].append({'width':'4', 'colour':'success', 'text':'Datasets w. Fitted Ligands: {} (of {})'.format(num_d_hit, num_datasets)})
-    output_data['summary_bar'].append({'width':'4', 'colour':'success', 'text':'Sites w. Fitted Ligands: {} (of {})'.format(num_s_hit, num_sites)})
-    output_data['summary_bar'].append({'width':'4', 'colour':'warning', 'text':'Unfitted Events Marked as Interesting: {}'.format(num_interesting_unfitted)})
+    output_data['summary_bar'].append({'width':'4', 'colour':'success', 'text':'Datasets w. ligands: {} (of {})'.format(num_d_hit, num_datasets)})
+    output_data['summary_bar'].append({'width':'4', 'colour':'success', 'text':'Sites w. ligands: {} (of {})'.format(num_s_hit, num_sites)})
+    output_data['summary_bar'].append({'width':'4', 'colour':'warning', 'text':'Marked as interesting (unfitted): {}'.format(num_interesting_unfitted)})
 
-    output_data['summary_bar'].append({'width':'3', 'colour':'info',    'text':'Total Number of Events: {}'.format(num_blobs)})
-    output_data['summary_bar'].append({'width':'3', 'colour':'success', 'text':'High Confidence Hits:   {}'.format(hgh_conf)})
-    output_data['summary_bar'].append({'width':'3', 'colour':'warning', 'text':'Medium Confidence Hits: {}'.format(med_conf)})
-    output_data['summary_bar'].append({'width':'3', 'colour':'danger',  'text':'Low Confidence Hits:    {}'.format(low_conf)})
+    output_data['summary_bar'].append({'width':'3', 'colour':'info',    'text':'Total number of events: {}'.format(num_blobs)})
+    output_data['summary_bar'].append({'width':'3', 'colour':'success', 'text':'High confidence hits:   {}'.format(hgh_conf)})
+    output_data['summary_bar'].append({'width':'3', 'colour':'warning', 'text':'Medium confidence hits: {}'.format(med_conf)})
+    output_data['summary_bar'].append({'width':'3', 'colour':'danger',  'text':'Low confidence hits:    {}'.format(low_conf)})
     # ===========================================================>
     # Progress Bars
     output_data['progress_bar'] = []
