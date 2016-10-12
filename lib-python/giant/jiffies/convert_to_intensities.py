@@ -62,6 +62,7 @@ def run(params):
             cm.add_command_line_arguments([ mtz_file,
                                             '--mtz-root-label='+params.output.column,
                                             '--label='+params.input.columns,
+                                            '--non-anomalous',
                                             '--write-mtz-intensities',
                                             '--mtz='+output_mtz     ])
         elif params.method.package == 'ccp4':
