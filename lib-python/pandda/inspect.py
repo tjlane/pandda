@@ -5,6 +5,7 @@ import pandas
 
 from bamboo.plot import bar
 from pandda.constants import PanddaInspectorFilenames, PanddaDatasetFilenames
+from pandda.jiffies import pandda_summary
 from pandda import inspect_html
 
 def nonmodal_msg(msg):
@@ -109,7 +110,7 @@ class PanddaEvent(object):
         print 'SAVED PROTEIN MOL {!s} TO {!s}'.format(protein_obj, new_fitted)
         print '======================>'
         if os.path.exists(self.fitted_link):
-            assert os.path.islink(self.fitted_link), 'FILE IS NOT A LINK'
+#            assert os.path.islink(self.fitted_link), 'FILE IS NOT A LINK'
             # Delete the symbolic link
             os.unlink(self.fitted_link)
         print 'Linking {!s} -> {!s}'.format(new_fitted, self.fitted_link)
@@ -676,7 +677,9 @@ class PanddaGUI(object):
 
         # Quit
         self.buttons['quit'].connect("clicked", lambda x: [self.quit()])
-        self.buttons['summary'].connect("clicked", lambda x: [self.store(), self.parent.update_html(), os.system('pandda.show_summary &')])
+#        self.buttons['summary'].connect("clicked", lambda x: [self.store(), self.parent.update_html(), os.system('pandda.show_summary &')])
+        self.buttons['summary'].connect("clicked", lambda x: [self.store(), self.parent.update_html(), pandda_summary.run()])
+
         self.buttons['updatehtml'].connect("clicked", lambda x: [self.store(), self.parent.update_html()])
 
         # Structure Buttons
