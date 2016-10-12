@@ -27,7 +27,7 @@ else:
 #####################################################################################
 
 setup(  name                = 'panddas',
-        version             = '0.1.8',
+        version             = '0.1.9',
         description         = 'Multi-dataset crystallographic analyses',
         author              = 'Nicholas M Pearce',
         author_email        = 'nicholas.pearce.0@gmail.com',
