@@ -149,7 +149,11 @@ def run(params):
     for label, row in data_table.iterrows():
         image_path = os.path.join(images_dir,'{}.png'.format(label))
         print 'Making: {}...'.format(image_path)
-        make_residue_radar_plot(path=image_path, data=row.to_frame().T, columns=columns, remove_blank_entries=params.plot.remove_blank_entries)
+        make_residue_radar_plot(path = image_path,
+                                data = row.to_frame().T,
+                                columns = columns,
+                                remove_blank_entries = params.plot.remove_blank_entries,
+                                print_axis_values    = params.plot.print_axis_values  )
         all_images.append(image_path)
     print '...Done'
     print bar

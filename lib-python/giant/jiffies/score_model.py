@@ -31,6 +31,8 @@ residue_plot_phil =  """
 plot {
     remove_blank_entries = False
         .type = bool
+    print_axis_values = True
+        .type = bool
     parameters {
         rscc {
             title = 'Model\nQuality\n(RSCC)'
@@ -256,7 +258,7 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix=''):
 
     return data_table
 
-def make_residue_radar_plot(path, data, columns, remove_blank_entries=False):
+def make_residue_radar_plot(path, data, columns, linetype=None, remove_blank_entries=False, print_axis_values=True):
     "Plot radar graph. data is a list of (label, scores) tuples. label is a string. scores is a pandas Series."
 
 #    column_limit = [(0.6,0.85),(1.5,4),(0,2),(1,3),(0,1.5)]
@@ -325,18 +327,20 @@ def make_residue_radar_plot(path, data, columns, remove_blank_entries=False):
     r = Radar(titles=column_title)
     # ----------------------->
     # Add each row of the data frame as a separate line
+    if not linetype: linetype = ['-']*plot_data.index.size
     for label, row in plot_data.iterrows():
-        r.add(row[column_names].tolist(), "-", label=label, lw=2)
+        r.add(row[column_names].tolist(), linetype.pop(0), label=label, lw=2)
     # ----------------------->
     # Set axis meta manually
     if column_invse: r.set_inversion(column_invse)
     if column_limit: r.set_limits(column_limit)
     # ----------------------->
-    r.set_ticks(values=col_tick_vals, labels=col_tick_labs)
+    if print_axis_values: r.set_ticks(values=col_tick_vals, labels=col_tick_labs)
+    else:                 r.set_ticks(values=col_tick_vals, labels=[' ']*len(col_tick_vals))
     # ----------------------->
     # Plot, modify and save
     r.plot()
-    r.ax.legend(loc='upper center', fancybox=True, bbox_to_anchor=(1.0, 0.0))
+    r.ax.legend(loc='lower center', fancybox=True, bbox_to_anchor=(1.0, 1.0))
     r.savefig(path)
     r.close()
 
@@ -402,7 +406,11 @@ def run(params):
     for label, row in data_table.iterrows():
         print 'Making: {}...'.format(label)
         image_path = os.path.join(images_dir,'{}.png'.format(label))
-        make_residue_radar_plot(path=image_path, data=row.to_frame().T, columns=columns, remove_blank_entries=params.plot.remove_blank_entries)
+        make_residue_radar_plot(path = image_path,
+                                data = row.to_frame().T,
+                                columns = columns,
+                                remove_blank_entries = params.plot.remove_blank_entries,
+                                print_axis_values    = params.plot.print_axis_values  )
         all_images.append(image_path)
     print '...Done.'
     print bar

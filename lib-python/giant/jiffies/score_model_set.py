@@ -25,6 +25,9 @@ input {
     pdb = None
         .type = path
         .multiple = True
+    ref_pdb = None
+        .type = path
+        .multiple = False
     labels = basename *folder_name
         .type = choice
         .multiple = False
@@ -78,6 +81,7 @@ def run(params):
         data_table = score_model(   params = params,
                                     pdb1   = pdb,
                                     mtz1   = mtz,
+                                    pdb2   = params.input.ref_pdb,
                                     label_prefix = label
                                 )
         all_data = all_data.append(data_table, verify_integrity=True)
@@ -102,7 +106,11 @@ def run(params):
     for label, row in all_data.iterrows():
         image_path = os.path.join(images_dir,'{}.png'.format(label))
         print 'Making: {}...'.format(image_path)
-        make_residue_radar_plot(path=image_path, data=row.to_frame().T, columns=columns, remove_blank_entries=True)
+        make_residue_radar_plot(path = image_path,
+                                data = row.to_frame().T,
+                                columns = columns,
+                                remove_blank_entries = params.plot.remove_blank_entries,
+                                print_axis_values    = params.plot.print_axis_values  )
         all_images.append(image_path)
 
     ###################################################################
@@ -115,7 +123,11 @@ def run(params):
         res_label = '-'.join(res_label)
         image_path = os.path.join(images_dir,'compare-{}.png'.format(res_label))
         print 'Making: {}...'.format(image_path)
-        make_residue_radar_plot(path=image_path, data=all_data.irow(index_idxs), columns=columns, remove_blank_entries=True)
+        make_residue_radar_plot(path = image_path,
+                                data = all_data.irow(index_idxs),
+                                columns = columns,
+                                remove_blank_entries = params.plot.remove_blank_entries,
+                                print_axis_values    = params.plot.print_axis_values  )
 
     print '...Done.'
     print bar
