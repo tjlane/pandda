@@ -1,4 +1,5 @@
 import os, sys
+import threading
 
 from PyQt4.QtGui import QApplication
 from pandda.summary import panddaWindow, panddaHtmlWidget
@@ -28,7 +29,10 @@ def show_summary():
 #######################################
 
 def run():
-    show_summary()
+    t = threading.Thread(target=show_summary, args=())
+    t.daemon = True
+    t.start()
+    t.join()
 
 #######################################
 

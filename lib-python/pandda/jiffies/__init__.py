@@ -1,4 +1,8 @@
 import os, sys, copy
 
-from libtbx.utils import Sorry
+# Will fail inside coot
+try:
+    from libtbx.utils import Sorry
+except:
+    pass
 

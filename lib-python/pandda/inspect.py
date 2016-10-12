@@ -677,8 +677,9 @@ class PanddaGUI(object):
 
         # Quit
         self.buttons['quit'].connect("clicked", lambda x: [self.quit()])
+        self.buttons['summary'].connect("clicked", lambda x: [self.store(), self.parent.update_html(), os.system('ccp4-python -Qnew -m pandda.jiffies.pandda_summary &')])
 #        self.buttons['summary'].connect("clicked", lambda x: [self.store(), self.parent.update_html(), os.system('pandda.show_summary &')])
-        self.buttons['summary'].connect("clicked", lambda x: [self.store(), self.parent.update_html(), pandda_summary.run()])
+#        self.buttons['summary'].connect("clicked", lambda x: [self.store(), self.parent.update_html(), pandda_summary.run()])
 
         self.buttons['updatehtml'].connect("clicked", lambda x: [self.store(), self.parent.update_html()])
 
