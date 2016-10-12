@@ -1,4 +1,4 @@
-from bamboo.macro.molecule import MacroMol
+from bamboo.macro.molecule import MacroMol, MacroMolError
 from bamboo.rdkit_utils.smile import find_structure_matches
 
 def get_residue_labels(pdb_file):

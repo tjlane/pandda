@@ -10,6 +10,9 @@ from bamboo.rdkit_utils.smile import get_smile_from_block, match_smile_to_list
 from rdkit import RDLogger
 lg = RDLogger.logger()
 
+class MacroMolError(Exception):
+    pass
+
 class MacroMol:
     """Class to handle a MacroMolecule"""
 
@@ -50,7 +53,7 @@ class MacroMol:
         if isinstance(id,str):
             return self.get_chain(id)
 
-    def _setState(self, keep_lines, header_only):
+    def _set_state(self, keep_lines, header_only):
         if keep_lines>=0: self.keep_lines=keep_lines
         if header_only>=0: self.header_only=header_only
 
@@ -371,7 +374,7 @@ class Chain:
 
     def is_peptide(self):
         aa_count = self.get_aa_count()
-        if aaCount > 0 and aa_count <= LONGEST_PEPTIDE:
+        if aa_count > 0 and aa_count <= LONGEST_PEPTIDE:
             return True
         else:
             return False
@@ -491,7 +494,16 @@ class Residue:
     def get_smiles(self):
         if self.atoms:
             lg.setLevel(RDLogger.CRITICAL)
-            self.smile = get_smile_from_block(self.get_pdb_string())
+
+            altlocs = sorted(set([at.altloc for at in self.atoms if at.altloc]))
+            for alt in altlocs:
+                atms = [atm for atm in self.atoms if ((not atm.altloc) or (atm.altloc == alt))]
+                pdb_string = ''.join([atm.line[0:16]+' '+atm.line[17:] for atm in atms])
+                smile = get_smile_from_block(pdb_string)
+                if smile:
+                    self.smile = smile
+                    break
+#            self.smile = get_smile_from_block(self.get_pdb_string())
             lg.setLevel(RDLogger.ERROR)
 
     def get_res_id(self):
