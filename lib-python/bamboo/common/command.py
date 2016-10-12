@@ -19,6 +19,9 @@ class CommandManager(object):
     def __init__(self, program, cmd_line_args=None, std_inp_lines=None):
         # Name of program
         self.program = shlex.split(program)
+        # Check the program exists
+        if self.program and not find_executable(self.program[0]):
+            raise Exception("Can't find the program '{!s}'. Is it available?".format(self.program[0]))
         # Command line args and standard input args
         if cmd_line_args:
             self.cmd_line_args = cmd_line_args
