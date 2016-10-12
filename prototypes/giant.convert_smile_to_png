@@ -1,0 +1,13 @@
+#!/usr/bin/env pandda.python
+
+import os, sys
+
+from bamboo.common.command import CommandManager
+
+smiles = sys.argv[1]
+try:    name = sys.argv[2]
+except: name = 'compound'
+
+out_file = name+'.svg'
+
+os.system('obabel -:"{} {}" -O {}'.format(smiles, name, out_file))

@@ -1,0 +1,101 @@
+
+import scipy.linalg
+
+def analyse_alignment_variation(self):
+    """Look at all of the rotation matrices for the local alignments and calculate the rms between neighbours"""
+
+    assert self.params.alignment.method in ['global', 'local']
+
+    if self.params.alignment.method == 'global':
+        self.log('GLOBAL ALIGNMENT SELECTED - NOT ANALYSING ROTATION MATRICES')
+        return
+
+    if self.args.output.plot_graphs:
+        import matplotlib
+        matplotlib.interactive(0)
+        from matplotlib import pyplot
+
+    rot_identity = scitbx.matrix.identity(3)
+
+    # Select datasets to analyse
+    used_datasets = self.datasets.mask(mask_name='rejected - total', invert=True)
+
+    # Reference c_alpha labels
+    ref_c_alpha_labels = sorted(used_datasets[0].local_alignment_transforms().keys())
+
+    # Array to hold the output data
+    num_datasets = len(used_datasets)
+    num_pairs =  len(ref_c_alpha_labels)-1
+    output_diffs = numpy.zeros((num_datasets, num_pairs, 2))
+
+    # Iterate through the datasets and pull out the alignment matrices
+    for d_num, d_handler in enumerate(used_datasets):
+
+        alignments = d_handler.local_alignment_transforms()
+        alignment_keys = sorted(alignments.keys())
+
+        assert alignment_keys == ref_c_alpha_labels
+
+        # Iterate through adjacent pairs of matrices
+        for i in range(0, num_pairs):
+
+            # Label and lsq fit for the current calpha
+            calpha_1 = alignment_keys[i]
+            assert calpha_1 == ref_c_alpha_labels[i]
+            rt_1 = alignments[calpha_1].rt()
+            # And for the next calpha
+            calpha_2 = alignment_keys[i+1]
+            assert calpha_2 == ref_c_alpha_labels[i+1]
+            rt_2 = alignments[calpha_2].rt()
+
+            # Calculate the mapping from one frame to the other
+            rt_1_2 = rt_1 * rt_2.inverse()
+            # Calculate the angle of the rotation matrix
+            theta_rad = scitbx.math.math.acos((rt_1_2.r.trace()-1)/2.0)
+            theta_deg = theta_rad * 180.0/scitbx.math.math.pi
+            # Calculate the length of the shift
+            t_shift =  rt_1_2.t.norm_sq()**0.5
+
+            # Append to the array
+            output_diffs[d_num, i, :] = theta_deg, t_shift
+
+    # Directory to write the output to
+    var_out_dir = self.output_handler.get_dir('analyses')
+
+    # Write out graphs
+    if self.args.output.plot_graphs:
+
+        # Create labels
+        labels = ['']*num_pairs
+        for i in range(0, num_pairs, 5)+[num_pairs-1]:
+            labels[i] = i+1
+        # Clear the last n before the last one
+        n = 4
+        labels[-1-n:-1] = ['']*n
+
+        # BOX PLOT OF ROTATION AND TRANSLATION SHIFTS
+        fig = pyplot.figure()
+        pyplot.title('ROTATION-TRANSLATION MATRIX VARIATION')
+        # ADJACENT ANGLE VARIATION
+        pyplot.subplot(2, 1, 1)
+        pyplot.boxplot(x=output_diffs[:,:,0], notch=True, sym='.', widths=0.5, whis=[5,95], whiskerprops={'ls':'-'}, flierprops={'ms':1}, labels=labels) # whis='range'
+        pyplot.xlabel('C-ALPHA')
+        pyplot.ylabel('ANGLE CHANGE')
+        # ADJACENT SHIFT VARIATION
+        pyplot.subplot(2, 1, 2)
+        pyplot.boxplot(x=output_diffs[:,:,1], notch=True, sym='.', widths=0.5, whis=[5,95], whiskerprops={'ls':'-'}, flierprops={'ms':1}, labels=labels) # whis='range'
+        pyplot.xlabel('C-ALPHA')
+        pyplot.ylabel('TRANSLATION CHANGE')
+        # Apply tight layout to prevent overlaps
+        pyplot.tight_layout()
+        # Save both
+        pyplot.savefig(os.path.join(var_out_dir, 'calpha_rt_variation.png'), format='png')
+        pyplot.close(fig)
+
+    # Write out to file
+    numpy.savetxt(  fname = os.path.join(var_out_dir, 'calpha_rt_r_variation.csv'), X=output_diffs[:,:,0],
+                    delimiter=',', newline='\n' )
+    numpy.savetxt(  fname = os.path.join(var_out_dir, 'calpha_rt_t_variation.csv'), X=output_diffs[:,:,1],
+                    delimiter=',', newline='\n' )
+
+

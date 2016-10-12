@@ -1,4 +1,4 @@
-#! pandda.python 
+#! pandda.python
 
 import os, sys, glob
 
@@ -70,7 +70,7 @@ def analyse_ensemble(pdbs):
 
     # Create pandas object to hold residue information (items=atom_labels, major_axis=structure_labels, minor_axis=variables)
     ats_panel = pandas.Panel(   data       = None,
-                                items      = [at.pdb_label_columns() for at in reference.atoms()], 
+                                items      = [at.pdb_label_columns() for at in reference.atoms()],
                                 major_axis = range(len(hierarchies)),
                                 minor_axis = ['B','X','Y','Z']          )
 
@@ -120,16 +120,16 @@ def analyse_structure_variability_1(self):
     self.log(ensemble_log, hide=True)
 
 
-def analyse_structure_variability_2(self):
+def analyse_alignment_rt_variability(pandda):
     """Look at all of the rotation matrices for the local alignments and calculate the rms between neighbours"""
 
-    assert self.params.alignment.method in ['global', 'local']
+    assert pandda.params.alignment.method in ['global', 'local']
 
-    if self.params.alignment.method == 'global':
-        self.log('GLOBAL ALIGNMENT SELECTED - NOT ANALYSING ROTATION MATRICES')
+    if pandda.params.alignment.method == 'global':
+        pandda.log('GLOBAL ALIGNMENT SELECTED - NOT ANALYSING ROTATION MATRICES')
         return
 
-    if self.args.output.plot_graphs:
+    if pandda.args.output.plot_graphs:
         import matplotlib
         matplotlib.interactive(0)
         from matplotlib import pyplot
@@ -137,7 +137,7 @@ def analyse_structure_variability_2(self):
     rot_identity = scitbx.matrix.identity(3)
 
     # Select datasets to analyse
-    used_datasets = self.datasets.mask(mask_name='rejected - total', invert=True)
+    used_datasets = pandda.datasets.mask(mask_name='rejected - total', invert=True)
 
     # Reference c_alpha labels
     ref_c_alpha_labels = sorted(used_datasets[0].local_alignment_transforms().keys())
@@ -179,10 +179,10 @@ def analyse_structure_variability_2(self):
             output_diffs[d_num, i, :] = theta_deg, t_shift
 
     # Directory to write the output to
-    var_out_dir = self.output_handler.get_dir('analyses')
+    var_out_dir = pandda.output_handler.get_dir('analyses')
 
     # Write out graphs
-    if self.args.output.plot_graphs:
+    if pandda.args.output.plot_graphs:
 
         # Create labels
         labels = ['']*num_pairs
@@ -225,7 +225,7 @@ if __name__ == '__main__':
 
     pdbs = glob.glob('*.pdb')
     out_dir = 'reduce_ensembles'
-    
+
     from giant.structure.ensemble
 
     hierarchies, ags_panel, ats_panel = analyse_ensemble(pdbs=pdbs[0:10])

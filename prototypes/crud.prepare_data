@@ -1,0 +1,145 @@
+#!/usr/bin/env pandda.python
+
+import os, sys, glob, shutil
+import pandas 
+
+import iotbx.mtz
+import iotbx.cif
+
+in_dir = raw_input('Enter Path to Input Directory: ')
+output_dir = raw_input('Enter Name for Output Directory: ')
+output_csv = output_dir+'.csv'
+os.mkdir(output_dir)
+
+protein_name = raw_input('Enter Protein Name: ')
+protein_desc = raw_input('Enter Protein Description: ')
+protein_seq  = raw_input('Paste in Protein Sequence: ')
+
+collection_name = raw_input('Enter a Name for the Collection: ')
+collection_ref  = raw_input('Enter path to the Reference Structure: ')
+
+solvents = []
+solvent_mol = solvent_smi = None
+while solvent_mol != '':
+    solvent_mol = raw_input('Enter Solvent Name: ')
+    solvent_smi = raw_input('Enter Solvent Smiles: ')
+    if solvent_mol != '': solvents.append((solvent_mol, solvent_smi))
+
+# ===================================================>>>
+
+if solvents:
+    solvent_mol = ':'.join(zip(*solvents)[0])
+    solvent_smi = ':'.join(zip(*solvents)[1])
+else:
+    solvent_mol = None
+    solvent_smi = None
+
+# ===================================================>>>
+
+ligand_csv = raw_input('Enter the path to the ligand csv file (leave blank to skip): ')
+if ligand_csv:
+    ligand_data = pandas.DataFrame.from_csv(ligand_csv)
+else:
+    ligand_data = None
+
+# ===================================================>>>
+
+out_table = pandas.DataFrame()
+
+for i, proc_dir in enumerate(sorted(glob.glob(os.path.join(in_dir,'*')))):
+    print proc_dir
+
+    dataset_name = os.path.basename(proc_dir)
+    # Merged data
+    dataset_merged_mtz  = os.path.join(proc_dir, dataset_name+'.mtz')
+    dataset_merged_log  = os.path.join(proc_dir, dataset_name+'.log')
+    if not os.path.exists(dataset_merged_log): dataset_merged_log = os.path.join(proc_dir, 'aimless.log')
+    # Refined Data
+    dataset_refined_pdb = os.path.join(proc_dir, 'Dimple', 'dimple', 'final.pdb')
+    dataset_refined_mtz = os.path.join(proc_dir, 'Dimple', 'dimple', 'final.mtz')
+
+    try:
+        xtal_obj = iotbx.mtz.object(dataset_refined_mtz)
+        xtal_uc  = xtal_obj.crystals()[0].unit_cell().parameters()
+        xtal_sg  = xtal_obj.space_group().info().symbol_and_number()
+    except:
+        print 'Failed:', proc_dir
+        continue
+    
+    # Generate output paths
+    out_proc_dir = os.path.join(output_dir, dataset_name)
+    os.mkdir(out_proc_dir)
+
+    # Output filenames
+    out_merged_mtz  = os.path.join(out_proc_dir, 'merged.mtz')
+    out_merged_log  = os.path.join(out_proc_dir, 'merged.log')
+    out_refined_pdb = os.path.join(out_proc_dir, 'refined.pdb')
+    out_refined_mtz = os.path.join(out_proc_dir, 'refined.mtz')
+
+    # Generate output hierarchy
+    shutil.copy(dataset_merged_mtz,  out_merged_mtz)
+    shutil.copy(dataset_merged_log,  out_merged_log)
+    shutil.copy(dataset_refined_pdb, out_refined_pdb)
+    shutil.copy(dataset_refined_mtz, out_refined_mtz)
+
+    data_type = 'diffraction'
+
+    if ligand_data is not None:
+        ligand_mol = 'ligand' 
+        ligand_smi = ligand_data.loc[dataset_name][' Soaked Compound'] 
+    else:
+        ligand_mol = None
+        ligand_smi = None
+
+    out_row = pandas.DataFrame(
+                columns=[   'protein_name'   ,
+                            'protein_desc'   ,
+                            'protein_seq'    ,
+                            'collection_name',
+                            'collection_ref' ,
+                            'solvent_mol'    ,
+                            'solvent_smi'    ,
+                            'ligand_mol'    ,
+                            'ligand_smi'    ,
+                            'dataset_name'   ,
+                            'merged_mtz'     ,
+                            'merged_log'     ,
+                            'refined_pdb'    ,
+                            'refined_mtz'    ,
+                            'xtal_uc_a'      ,
+                            'xtal_uc_b'      ,
+                            'xtal_uc_c'      ,
+                            'xtal_uc_alpha'  ,
+                            'xtal_uc_beta'   ,
+                            'xtal_uc_gamma'  ,
+                            'xtal_sg'        ,
+                            'data_type'      ],
+                data=   [[   protein_name    , 
+                             protein_desc    , 
+                             protein_seq     , 
+                             collection_name ,
+                             collection_ref  ,
+                             solvent_mol     ,
+                             solvent_smi     ,
+                             ligand_mol      ,
+                             ligand_smi      ,
+                             dataset_name    ,
+                             out_merged_mtz  ,
+                             out_merged_log  ,
+                             out_refined_pdb ,
+                             out_refined_mtz ] +
+                             list(xtal_uc)     + [
+                             xtal_sg         ,
+                             data_type       ]]
+            ) 
+
+
+    out_table = out_table.append(out_row, ignore_index=True)
+
+print('=================================>')
+print('Generating csv file...')
+out_table.to_csv(output_csv)
+
+print('Generating tar file...')
+os.system('tar -zcf {} {}'.format(output_dir+'.tar.gz', output_dir))
+

@@ -1,0 +1,152 @@
+#!/usr/bin/env pandda.python
+
+import os, sys, glob, shutil
+import wget
+
+import pandas
+import iotbx.pdb
+import libtbx.easy_mp
+
+from giant.maths.geometry import is_within
+
+def process_line_wrap(line):
+
+    if not line: return None
+
+    try:
+        ret = process_line(line)
+        return ret
+    except KeyboardInterrupt:
+        raise SystemExit()
+    except Exception as e:
+        print e.__class__, e.message.strip('\n')+'\n'
+        raise 
+
+def process_line(line):
+
+    pdb_id, pdb_type, pdb_method = line.split('\t')
+        
+    print 'Processing {}'.format(pdb_id)
+
+    if pdb_type != 'prot':
+        return
+    elif pdb_method != 'diffraction':
+        return
+
+    out_dir = 'pdbs'
+    pdb_dir = os.path.join(out_dir, pdb_id[0])        
+    pdb_file = os.path.join(pdb_dir, pdb_id+'.pdb')
+
+    try: 
+        if not os.path.exists(pdb_dir): os.mkdir(pdb_dir)
+    except: 
+        pass
+
+    if not os.path.exists(pdb_file):
+        try:
+            filename = wget.download('http://www.rcsb.org/pdb/files/{}.pdb'.format(pdb_id))
+        except:
+            print 'Failed to download:', filename
+            raise 
+        shutil.move(filename, pdb_file) 
+        assert os.path.exists(pdb_file)
+   
+    try: 
+        h = iotbx.pdb.hierarchy.input(file_name=pdb_file).hierarchy
+    except:
+        print 'Bad PDB File'
+        return
+
+    cache = h.atom_selection_cache()
+    sel = cache.selection('(not pepnames) and (not water) and (not element H)')
+    # Skip if nothing selected
+    if sum(sel) == 0: return
+    new_h = h.select(sel)
+    
+    sel_c = []
+
+    for lig_rg in new_h.residue_groups():
+
+        # Total occupancy for the residue
+        total_occ = 0
+        # Mark residue initially to be recorded
+        record_residue = True
+
+        # Iterate through conformers of the residue
+        for lig_conf in lig_rg.conformers():
+
+            # Skip if single atom
+            if lig_conf.atoms().size() < 5: 
+                record_residue = False
+                break
+            # Skip if common small molecule
+            if iotbx.pdb.common_residue_names_get_class(lig_conf.only_residue().resname) == 'common_small_molecule': 
+                record_residue = False
+                break
+            # Skip if different occupancies in same residue
+            if lig_conf.atoms().extract_occ().standard_deviation_of_the_sample() != 0.0: 
+                record_residue = False
+                break
+
+            total_occ += lig_conf.atoms().extract_occ()[0]
+
+        # Skip if not to be recorded
+        if not record_residue: continue
+
+        # Append ligand object
+        sel_c.append((lig_rg.conformers()[0], total_occ))
+
+    if not sel_c: 
+        return
+   
+    ret_tab = pandas.DataFrame(columns=['pdbid','chain','resid','resname','occ','altid'])
+    for c, total_occ in sel_c:
+        ret_tab = ret_tab.append([{ 'pdbid':    pdb_id,
+                                    'chain':    c.parent().id,
+                                    'resid':    c.only_residue().resid(),
+                                    'resname':  c.only_residue().resname,
+                                    'altid':    c.altloc,
+                                    'occ':      total_occ           }], ignore_index=True)
+ 
+    print ret_tab
+    return ret_tab
+
+def run():
+    pdb_dir = 'pdbs'
+    if not os.path.exists(pdb_dir): os.mkdir(pdb_dir)
+
+    pdb_index = "pdb_entry_type.txt"
+    if not os.path.exists("pdb_entry_type.txt"):
+        print 'Downloading index of the pdb...'
+        os.system("wget ftp://ftp.wwpdb.org/pub/pdb/derived_data/pdb_entry_type.txt")
+        print '...Done'
+    print 'Using PDB file index from {}'.format(pdb_index)
+
+    pdb_entries = open(pdb_index, 'r').read().split('\n')
+    num_entries = len(pdb_entries)
+    print 'Found {} codes'.format(num_entries)
+ 
+    output = libtbx.easy_mp.pool_map(func=process_line_wrap, args=pdb_entries, processes=7)
+      
+    print '\n'*5
+    print '==========================================================>'        
+    print '===> FINISHED'
+    print '==========================================================>'        
+    out_tab = pandas.DataFrame(columns=['pdbid','chain','resid','resname','occ','altid'])
+
+    for ret in output:
+        if ret is None: 
+            continue
+
+        if isinstance(ret, Exception):
+            print ret.__type__, ret.message.strip('\n')+'\n'
+            continue       
+ 
+        out_tab = out_tab.append(ret, ignore_index=True)
+        print ret
+
+    out_tab.to_csv('./all_pdb_het_molecules.csv')
+
+if __name__=="__main__":
+    run()
+
