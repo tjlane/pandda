@@ -61,7 +61,7 @@ class Program(object):
         existing_files = [self.output_handler.get_file('status').format(f) for f in self._allowed_statuses]
         [os.remove(f) for f in existing_files if os.path.exists(f)]
         # Create the new  status file
-        os.mknod(self.output_handler.get_file('status').format(status))
+        with open(self.output_handler.get_file('status').format(status), 'w') as fh: fh.write('')
 
     def pickle(self, pickle_file, pickle_object, overwrite=True):
         """Takes an object and pickles it"""
