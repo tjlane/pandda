@@ -1,5 +1,6 @@
 
 import os, sys, subprocess, threading, shlex, time
+from distutils.spawn import find_executable
 
 # Code here adapted from code by Sebastian Kelm
 
