@@ -1,0 +1,123 @@
+#!/usr/bin/env ccp4-python
+
+import os, sys, glob, shutil
+import wget, json
+
+import pandas
+import iotbx.pdb
+
+def write_json_data(data, filename):
+    with open(filename, 'w') as fh: fh.write(json.dumps(data))
+
+def read_json_data(filename):
+    return json.loads(open(filename, 'r').read())
+
+def run():
+
+    # Output directory
+    pdb_dir = 'pdbs-groups-of-related-structures'
+    if not os.path.exists(pdb_dir): os.mkdir(pdb_dir)
+    
+    store_file = os.path.join(pdb_dir, 'store.json')
+    if os.path.exists(store_file):
+        print('=======================================>')
+        print('Reading JSON data from previous run') 
+        print('=======================================>')
+        reject_list, used_list, out_dict = read_json_data(store_file)
+        print('Previously rejected structures: {}'.format(len(reject_list)))
+        print('Previously grouped structures: {}'.format(len(used_list)))
+    else:
+        out_dict = {}
+        reject_list = []
+        used_list = [] 
+
+    #################################################################
+
+    # Input PDB codes
+    pdb_index = "pdb_entry_type.txt"
+    pdb_index_file = os.path.join(pdb_dir, pdb_index)
+    if not os.path.exists(pdb_index_file):
+        print 'Downloading index of the pdb...'
+        os.system("wget ftp://ftp.wwpdb.org/pub/pdb/derived_data/{}".format(pdb_index))
+        print '...Done'
+        shutil.move(pdb_index, pdb_index_file)
+    print 'Using PDB file index from {}'.format(pdb_index_file)
+
+    pdb_entries = open(pdb_index_file, 'r').read().split('\n')
+    num_entries = len(pdb_entries)
+    print 'Found {} codes'.format(num_entries)
+
+    #################################################################
+    
+    # Connect to the PDBe webservice
+    from pdbe import pyPDBeREST
+    p = pyPDBeREST() 
+
+    #################################################################
+    #################################################################
+
+    for i, pdb_line in enumerate(pdb_entries):
+
+        if i%100 == 0:
+            print('=======================================>')
+            print('Writing JSON data checkpoint') 
+            print('=======================================>')
+            write_json_data(data=[reject_list, used_list, out_dict], filename=store_file)
+        
+        pdb_id, pdb_type, pdb_method = pdb_line.split('\t')
+
+        # Skip if already processed
+        if pdb_id in reject_list: continue
+        # Skip if not diffraction
+        if pdb_method != 'diffraction': continue
+        # Skip if already in the "related" list of structures
+        if pdb_id in used_list: continue
+
+        print pdb_id
+
+        # Get related structures
+        pdb_summary = json.loads(p.PDB.getSummary(pdbid=pdb_id))
+        pdb_summary = pdb_summary[pdb_id]
+
+        reject = True
+        for d in pdb_summary:
+            # Check to see if there are any related structures
+            if not d['related_structures']: 
+                continue
+            else:
+                print('> Related Structures for {}: {}'.format(pdb_id, d['related_structures']))
+
+            # Has related structures - do not reject
+            reject = False
+            # Log the related structures
+            out_dict[pdb_id] = d['related_structures']
+            used_list.extend(d['related_structures'])
+
+        if reject: reject_list.append(pdb_id)
+
+    write_json_data([reject_list, used_list, out_dict], filename=store_file)
+ 
+    #################################################################
+
+    print '\n'*5
+    print '==========================================================>'        
+    print '===> FINISHED'
+    print '==========================================================>'        
+#    out_tab = pandas.DataFrame()
+#    for ret in output:
+#        if ret is None: 
+#            continue
+#
+#        if isinstance(ret, Exception):
+#            print ret.__type__, ret.message
+#            continue       
+# 
+#        pdb_id, ret_str, ret_tab = ret
+#        print '================================================>'        
+#        print 'PDB CODE: {}'.format(pdb_id)
+#        print '====================>'        
+#        print ret_str
+    
+if __name__=="__main__":
+    run()
+

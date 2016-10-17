@@ -25,7 +25,7 @@ echo $bar
 echo "cd ccp4-nightly"
 cd ccp4-nightly
 
-if [ ! -e ccp4-main ]; then
+if [ ! -e ccp4 ]; then
     if   [ $(uname) == 'Linux' ]; then
       echo "System is Linux"
       echo $bar
@@ -43,8 +43,8 @@ if [ ! -e ccp4-main ]; then
       tar -xf ccp4-linux${pkg}-latest.tar  
       echo $bar
       echo "Creating soft link to ccp4"
-      echo "ln -s ./ccp4-linux${pkg}-*/ ccp4-main"
-      ln -s ./ccp4-linux${pkg}-*/ ./ccp4-main
+      echo "ln -s ./ccp4-linux${pkg}-*/ ccp4"
+      ln -s ./ccp4-linux${pkg}-*/ ./ccp4
     elif [ $(uname) == 'Darwin' ]; then
       echo "System is MacOSX"
       echo $bar
@@ -58,8 +58,8 @@ if [ ! -e ccp4-main ]; then
       tar -zxf ccp4-osx-clang-latest.tar.gz
       echo $bar
       echo "Creating soft link to ccp4"
-      echo "ln -s ccp4-osx-clang-latest ccp4-main"
-      ln -s ./ccp4-osx-clang-*/ ./ccp4-main
+      echo "ln -s ccp4-osx-clang-latest ccp4"
+      ln -s ./ccp4-osx-clang-*/ ./ccp4
     else
       echo "Can't install"
       exit 1
@@ -67,39 +67,12 @@ if [ ! -e ccp4-main ]; then
 
     echo $bar
     echo "Setting up the fresh copy of ccp4"
-    echo "./ccp4-main/BINARY.setup"
-    ./ccp4-main/BINARY.setup
+    echo "./ccp4/BINARY.setup"
+    ./ccp4/BINARY.setup
 fi
 
-echo "source ./ccp4-main/bin/ccp4.setup-sh"
-source ./ccp4-main/bin/ccp4.setup-sh
-
-echo $bar
-echo "Linking panddas into the ccp4 bin"
-if [ ! -e ./ccp4-main/bin/pandda.python ]; then
-    echo "ln -s ccp4-python ./ccp4-main/bin/pandda.python"
-    ln -s ccp4-python ./ccp4-main/bin/pandda.python
-fi
-if [ ! -e ./ccp4-main/bin/pandda.coot ]; then
-    echo "ln -s coot ./ccp4-main/bin/pandda.coot"
-    ln -s coot ./ccp4-main/bin/pandda.coot
-fi
-
-echo "TRYING to install additional packages"
-echo $bar
-echo "TRYING to install markupsafe..."
-wget https://pypi.python.org/packages/source/M/MarkupSafe/MarkupSafe-0.23.tar.gz
-tar -zxf MarkupSafe-0.23.tar.gz
-cd MarkupSafe-0.23
-ccp4-python setup.py install
-cd ..
-echo $bar
-echo "TRYING to install ascii_graph..."
-wget https://pypi.python.org/packages/source/a/ascii_graph/ascii_graph-0.2.1.tar.gz
-tar -zxf ascii_graph-0.2.1.tar.gz
-cd ascii_graph-0.2.1
-ccp4-python setup.py install
-cd ..
+echo "source ./ccp4/bin/ccp4.setup-sh"
+source ./ccp4/bin/ccp4.setup-sh
 
 echo ""
 echo $bar
@@ -111,10 +84,10 @@ echo "Installation complete."
 echo "You will need to source the scripts below to use panddas:"
 echo $bar
 echo "bash users:"
-echo "source $(pwd)/ccp4-main/bin/ccp4.setup-sh"
+echo "source $(pwd)/ccp4/bin/ccp4.setup-sh"
 echo $bar
 echo "csh users:"
-echo "source $(pwd)/ccp4-main/bin/ccp4.setup-csh"
+echo "source $(pwd)/ccp4/bin/ccp4.setup-csh"
 echo $bar
 
 echo "You may encounter problems with missing packages in ccp4 that are required for panddas and may have to add them manually"

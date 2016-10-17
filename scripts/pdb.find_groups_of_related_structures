@@ -1,3 +1,177 @@
+#!/usr/bin/env ccp4-python
 
+import os, sys, glob, shutil
+import wget
 
+import pandas
+import iotbx.pdb
+import libtbx.easy_mp
+
+from bamboo.pdb_utils import get_pdb_index, download_and_organise_pdb_as_necessary
+
+def process_line_wrap(line):
+
+    if not line: return None
+
+    try:
+        ret = process_line(line)
+        return ret
+    except KeyboardInterrupt:
+        raise SystemExit()
+    except Exception as e:
+        print e.__class__, e.message.strip('\n')+'\n'
+        raise 
+
+def process_line(line):
+    """Download and extract sequence information from the pdb file"""
+    
+    pdb_id, pdb_type, pdb_method = line.split('\t')
+        
+    print 'Processing {}'.format(pdb_id)
+
+    if pdb_type != 'prot':
+        return
+    elif pdb_method != 'diffraction':
+        return
+
+    # Download and organise files as necessary
+    pdb_file = download_and_organise_pdb_as_necessary(pdb_id=pdb_id)
+   
+    try: 
+        inp = iotbx.pdb.input(file_name=pdb_file)
+    except:
+        print 'Bad PDB File'
+        return
+
+    chain_data = inp.sequence_from_SEQRES()
+
+    print chain_data
+
+    ret_tab = pandas.DataFrame(columns=['pdbid','seqres'])
+    ret_tab = ret_tab.append([{ 'pdbid':    pdb_id,
+                                'seqres':   chain_data.replace('\n',':')  }], ignore_index=True)
+ 
+    return ret_tab
+
+def run():
+
+    pdb_index = get_pdb_index()
+    print 'Using PDB file index from {}'.format(pdb_index)
+
+    pdb_entries = open(pdb_index, 'r').read().split('\n')
+    num_entries = len(pdb_entries)
+    print 'Found {} codes'.format(num_entries)
+    
+    ####################################################################################
+    ####################################################################################
+    ####################################################################################
+    
+    all_seq_file = './pdb_sequences_all.csv' 
+    
+    if not os.path.exists(all_seq_file):
+        print '==========================================================>'
+        print '===> Extracting Sequences'
+        print '==========================================================>'
+        # Get the sequences from the PDB files
+        output = libtbx.easy_mp.pool_map(func=process_line_wrap, args=pdb_entries, processes=7)
+        # Collate sequences into one table
+        all_tab = pandas.DataFrame(columns=['pdbid','seqres'])
+        for ret in output:
+            # Nothing returned
+            if ret is None: continue
+            # Errors
+            if isinstance(ret, Exception):
+                print ret.__type__, ret.message.strip('\n')+'\n'
+                continue       
+            # Append to output table
+            all_tab = all_tab.append(ret, ignore_index=True)
+            print ret
+        # Write output
+        all_tab.to_csv(all_seq_file)
+        print '==========================================================>'
+        print '===> Extracted sequences'
+        print '==========================================================>'        
+    else:
+        all_tab = pandas.DataFrame.from_csv(all_seq_file)   
+        print '==========================================================>'
+        print '===> Sequences already extracted - file reloaded: {}'.format(all_seq_file)
+        print '==========================================================>'        
+ 
+    ####################################################################################
+    ####################################################################################
+    ####################################################################################
+    
+    group_seq_file = './pdb_sequences_grouped.csv'
+
+    if not os.path.exists(group_seq_file):
+        print '==========================================================>'
+        print '===> Clustering Sequences'
+        print '==========================================================>'
+        group_tab = pandas.DataFrame(columns=['seqres','n_datasets','n_chains','pdb_ids'])
+
+        # Generate groups of sequences
+        for i_group, (seq, seq_group) in enumerate(all_tab.groupby('seqres')):
+            if len(seq_group) < 5: continue
+            print i_group, seq[0:30].replace('\n',':'), len(seq_group)
+
+            group_tab = group_tab.append([{ 'seqres':       seq.replace('\n',':'),
+                                            'n_datasets':   len(seq_group),
+                                            'n_chains':     seq.count('chain'),
+                                            'pdb_ids':      ':'.join(seq_group['pdbid'])    }], ignore_index=True)
+
+        # Write output
+        group_tab.to_csv(group_seq_file)
+        print '==========================================================>'
+        print '===> Clustered sequences'
+        print '==========================================================>'        
+    else:
+        group_tab = pandas.DataFrame.from_csv(group_seq_file)
+        print '==========================================================>'
+        print '===> Sequences already clustered - file reloaded: {}'.format(group_seq_file)
+        print '==========================================================>'        
+    
+    ####################################################################################
+    ####################################################################################
+    ####################################################################################
+
+    group_dir = './pdb-sequence-groups'
+
+    if not os.path.exists(group_dir):
+        print '==========================================================>'
+        print '===> Ordering output files'
+        print '==========================================================>'
+        
+        # Create output directory
+        os.mkdir(group_dir)
+        # Iterate through the group of structures with the same sequences
+        for i_seq, seq_data in group_tab.iterrows():
+            print 'Processing group {}: {}'.format(i_seq, str(seq_data['seqres'])[:30])
+            # Create directory for these sequences
+            seq_dir = os.path.join(group_dir, '{:010}'.format(i_seq))
+            if not os.path.exists(seq_dir): os.mkdir(seq_dir)
+            print('Copying files: {}...'.format(seq_data['pdb_ids'][:30]))
+            for p in seq_data['pdb_ids'].split(':'):
+                pdb_file_in = os.path.join('pdb-download', p[0], p+'.pdb')
+                assert os.path.exists(pdb_file_in)
+                pdb_file_out = os.path.join(seq_dir, p+'.pdb')
+                shutil.copy(pdb_file_in, pdb_file_out)
+
+#            if i_seq > 10: break
+ 
+        print '==========================================================>'
+        print '===> Files sorted into directories: {}'.format(group_dir)
+        print '==========================================================>'
+    else:
+        print '==========================================================>'
+        print '===> Sequences already clustered into folders in: {}'.format(group_dir)
+        print '==========================================================>'        
+
+    #from IPython import embed; embed()
+    
+    print '==========================================================>'
+    print '===> FINISHED'
+    print '==========================================================>'
+
+if __name__=="__main__":
+    run()
 

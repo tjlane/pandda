@@ -1,4 +1,4 @@
-#!/usr/bin/env pandda.python
+#!/usr/bin/env ccp4-python
 
 import os, sys, glob, shutil
 import wget
@@ -7,7 +7,7 @@ import pandas
 import iotbx.pdb
 import libtbx.easy_mp
 
-from giant.maths.geometry import is_within
+from bamboo.pdb_utils import get_pdb_index, download_and_organise_pdb_as_necessary
 
 def process_line_wrap(line):
 
@@ -23,7 +23,8 @@ def process_line_wrap(line):
         raise 
 
 def process_line(line):
-
+    """Download and extract the het molecules from the pdb file"""
+    
     pdb_id, pdb_type, pdb_method = line.split('\t')
         
     print 'Processing {}'.format(pdb_id)
@@ -33,23 +34,8 @@ def process_line(line):
     elif pdb_method != 'diffraction':
         return
 
-    out_dir = 'pdbs'
-    pdb_dir = os.path.join(out_dir, pdb_id[0])        
-    pdb_file = os.path.join(pdb_dir, pdb_id+'.pdb')
-
-    try: 
-        if not os.path.exists(pdb_dir): os.mkdir(pdb_dir)
-    except: 
-        pass
-
-    if not os.path.exists(pdb_file):
-        try:
-            filename = wget.download('http://www.rcsb.org/pdb/files/{}.pdb'.format(pdb_id))
-        except:
-            print 'Failed to download:', filename
-            raise 
-        shutil.move(filename, pdb_file) 
-        assert os.path.exists(pdb_file)
+    # Download and organise files as necessary
+    pdb_file = download_and_organise_pdb_as_necessary(pdb_id=pdb_id)
    
     try: 
         h = iotbx.pdb.hierarchy.input(file_name=pdb_file).hierarchy
@@ -112,40 +98,46 @@ def process_line(line):
     return ret_tab
 
 def run():
-    pdb_dir = 'pdbs'
-    if not os.path.exists(pdb_dir): os.mkdir(pdb_dir)
 
-    pdb_index = "pdb_entry_type.txt"
-    if not os.path.exists("pdb_entry_type.txt"):
-        print 'Downloading index of the pdb...'
-        os.system("wget ftp://ftp.wwpdb.org/pub/pdb/derived_data/pdb_entry_type.txt")
-        print '...Done'
+    pdb_index = get_pdb_index()
     print 'Using PDB file index from {}'.format(pdb_index)
 
     pdb_entries = open(pdb_index, 'r').read().split('\n')
     num_entries = len(pdb_entries)
     print 'Found {} codes'.format(num_entries)
- 
+    
+    print '==========================================================>'
+    print '===> Extracting HET Molecules'
+    print '==========================================================>'
+
+    # Get the HET molecules from the PDB files
     output = libtbx.easy_mp.pool_map(func=process_line_wrap, args=pdb_entries, processes=7)
       
-    print '\n'*5
     print '==========================================================>'        
-    print '===> FINISHED'
+    print 'Extracted molecules'
     print '==========================================================>'        
+    print '\n'*2
+    print '==========================================================>'        
+    print '===> Compiling output'
+    print '==========================================================>'        
+
     out_tab = pandas.DataFrame(columns=['pdbid','chain','resid','resname','occ','altid'])
-
     for ret in output:
-        if ret is None: 
-            continue
-
+        # Nothing returned
+        if ret is None: continue
+        # Errors
         if isinstance(ret, Exception):
             print ret.__type__, ret.message.strip('\n')+'\n'
             continue       
- 
+        # Append to output table 
         out_tab = out_tab.append(ret, ignore_index=True)
         print ret
+    # Write output
+    out_tab.to_csv('./pdb_het_molecules.csv')
 
-    out_tab.to_csv('./all_pdb_het_molecules.csv')
+    print '==========================================================>'
+    print '===> FINISHED'
+    print '==========================================================>'
 
 if __name__=="__main__":
     run()
