@@ -7,12 +7,9 @@ To install, simply run
 
 ##############################################
 
-After installing: 
+To install the minimal set of scripts, run with the "--for-ccp4" flag
 
-To run within ccp4, you will then need to run
-> pandda.configure_ccp4
-
-There is currently no other configure script for other pythons. These will be added shortly (developers will be able to edit the pandda.configure_ccp4 script).
+To install with a custom copy of python (e.g. cctbx.python) pass "--python cctbx.python" as part of the command. The default python command is "ccp4-python", regardless of the python that is used to run the setup.py script.
 
 ##############################################
 
