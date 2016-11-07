@@ -2401,7 +2401,7 @@ class PanddaMultiDatasetAnalyser(Program):
             # Change into directory as script runs off of relative paths
             os.chdir(self.output_handler.get_dir('output_summaries'))
             c = CommandManager('pymol')
-            c.add_command_line_arguments(['-c', self.output_handler.get_file(file_tag='pymol_sites_pml')])
+            c.add_command_line_arguments(['-k', '-q', '-c', self.output_handler.get_file(file_tag='pymol_sites_pml')])
             try:    c.run()
             except: print("Failed to start pymol - maybe it's not available?")
             # Change back to top directory
