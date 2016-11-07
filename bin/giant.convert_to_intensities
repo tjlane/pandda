@@ -1,2 +1,2 @@
 #!/bin/sh
-pandda.python -Qnew -m giant.jiffies.convert_to_intensities "$@"
+ccp4-python -Qnew -m giant.jiffies.convert_to_intensities "$@"

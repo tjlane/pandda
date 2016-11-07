@@ -1,2 +1,2 @@
 #!/bin/sh
-pandda.python -Qnew -m giant.jiffies.score_model "$@"
+ccp4-python -Qnew -m giant.jiffies.score_model "$@"

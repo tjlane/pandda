@@ -1,0 +1,2 @@
+#!/bin/sh
+ccp4-python -Qnew -m giant.jiffies.cluster_mtzs_and_pdbs "$@"

@@ -1,2 +1,2 @@
 #!/bin/sh
-pandda.python -Qnew -m giant.jiffies.initial_pandda_refine "$@"
+ccp4-python -Qnew -m giant.jiffies.initial_pandda_refine "$@"

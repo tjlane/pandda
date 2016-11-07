@@ -1,2 +1,2 @@
 #!/bin/sh
-pandda.python -Qnew -m giant.jiffies.strip_conformations "$@"
+ccp4-python -Qnew -m giant.jiffies.strip_conformations "$@"
