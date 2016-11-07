@@ -112,6 +112,11 @@ def calculate_residue_group_bfactor_ratio(residue_group, hierarchy, data_table=N
     # Select nearby atom_group for scoring
     near_ags = [ag for ag in hierarchy.atom_groups() if (is_within(4, rg_sel_coords, ag.atoms().extract_xyz()) and (ag not in rg_sel_ags))]
     if near_ags:
+        # Extract the names of the nearby residues
+        near_ag_names = ':'.join(sorted(set([ag.parent().parent().id+'-'+ag.parent().resseq.strip()+ag.parent().icode.strip()+'-'+ag.resname for ag in near_ags])))
+        data_table.set_value(   index = rg_label,
+                                col   = 'Surrounding Residues Names'+column_suffix,
+                                value = near_ag_names )
         # Extract atoms from nearby groups
         near_ats = iotbx.pdb.hierarchy.af_shared_atom()
         [near_ats.extend(ag.detached_copy().atoms()) for ag in near_ags]
