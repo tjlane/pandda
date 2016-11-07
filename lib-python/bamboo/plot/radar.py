@@ -46,7 +46,8 @@ class Radar(object):
 
         # Get main axis, add theta grids
         self.ax = self.axes[0]
-        self.ax.set_thetagrids(self.angles, labels=titles, frac=1.2, fontsize=14, weight="bold", color="black")
+        self.ax.set_thetagrids(self.angles, labels=titles, frac=1.3, fontsize=20, weight="bold", color="black")
+        self.ax.set_axis_bgcolor('lightgrey')
         # Remove all things from other axes
         for ax in self.axes[1:]:
             ax.patch.set_visible(False)
@@ -132,8 +133,11 @@ class Radar(object):
         tick_vals = self._normalise(self._ticks[0])
         tick_labs = self._ticks[1]
         tick_vals, tick_labs = self._filter_values_and_labels(tick_vals, tick_labs, filter_large=True, filter_small=True)
-        for ax, angle, vals, labs in zip(self.axes, self.angles, tick_vals, tick_labs):
-            ax.set_rgrids(vals, labels=labs, angle=angle, fontsize=14, weight="bold", color="black")
+        for i, (ax, angle, vals, labs) in enumerate(zip(self.axes, self.angles, tick_vals, tick_labs)):
+            ha = 'center' if (i==0                   or i==0.50*len(self.axes)) else 'right'  if i<0.50*len(self.axes)                            else 'left'
+            va = 'middle' if (i==0.25*len(self.axes) or i==0.75*len(self.axes)) else 'bottom' if (i<0.25*len(self.axes) or i>0.75*len(self.axes)) else 'top'
+            ax.set_rgrids([v+0.08 for v in vals], labels=labs, angle=angle, fontsize=20, ha=ha, va=va, bbox=dict(boxstyle="round,pad=0.3",facecolor='lightcoral'),  weight="bold", color="black")
+            ax.tick_params(axis='both', which='major', pad=15)
             ax.spines["polar"].set_visible(False)
             ax.xaxis.grid(True,color='black',linestyle='-')
 
@@ -157,6 +161,8 @@ class Radar(object):
         self._plotted = True
         norm_vals = numpy.array(self._normalise(numpy.array(self._data).T.tolist())).T.tolist()
         filt_vals, dummy = self._filter_values_and_labels(norm_vals, norm_vals, filter_large=False, filter_small=True)
+        self.ax.fill_between(numpy.deg2rad(numpy.r_[self.angles, self.angles[0]]), 0, self._fixed_offset, lw=0, facecolor='white')
+        self.ax.fill_between(numpy.deg2rad(numpy.r_[self.angles, self.angles[0]]), 1+self._fixed_buffer, 10, lw=0, facecolor='white')
         for values, args, kwgs in zip(filt_vals, self._args, self._kwgs):
             angle = numpy.deg2rad(numpy.r_[self.angles, self.angles[0]])
             vals = numpy.r_[values, values[0]]

@@ -127,7 +127,7 @@ def sanitise_hierarchy(hierarchy):
 def prepare_table():
 
     columns_fix = ['Model RMSD']
-    columns_num = ['RSCC','RSZD','RSZO','OCC','RSR',
+    columns_num = ['RSCC','RSZD','RSZO','RSR',
                     'Average B-factor (Residue)',
                     'Average B-factor (Surroundings)',
                     'Surroundings B-factor Ratio']
@@ -196,7 +196,8 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix=''):
     for rg_sel in rg_for_analysis:
 
         # Create label for the output table
-        rg_label = (label_prefix+rg_sel.unique_resnames()[0]+'-'+rg_sel.parent().id+'-'+rg_sel.resseq+rg_sel.icode).replace(' ','')
+        #rg_label = (label_prefix+rg_sel.unique_resnames()[0]+'-'+rg_sel.parent().id+'-'+rg_sel.resseq+rg_sel.icode).replace(' ','')
+        rg_label = (label_prefix+rg_sel.parent().id+'-'+rg_sel.resseq+rg_sel.icode).replace(' ','')
 
         if len(rg_sel.unique_resnames()) != 1:
             raise Exception(rg_label+': More than one residue name associated with residue group -- cannot process')
@@ -223,8 +224,11 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix=''):
                                                             and (rg.parent().id       == rg_sel.parent().id)
                                                             and (rg.resseq            == rg_sel.resseq)
                                                             and (rg.icode             == rg_sel.icode)              ]
-            assert rg_sel_2, 'Residue is not present in pdb file: {} not in {}'.format(rg_label, pdb2)
-            assert len(rg_sel_2) == 1, 'More than one residue has been selected for {} in {}'.format(rg_label, pdb2)
+            try:
+                assert rg_sel_2, 'Residue is not present in pdb file: {} not in {}'.format(rg_label, pdb2)
+                assert len(rg_sel_2) == 1, 'More than one residue has been selected for {} in {}'.format(rg_label, pdb2)
+            except:
+                pass
 
             # Calculate the RMSD between the models
             try:
@@ -315,7 +319,7 @@ def make_residue_radar_plot(path, data, columns, linetype=None, remove_blank_ent
     for col in column_names:
         tvs=[]; tls=[]
         for i, v in enumerate(plot_data[col]):
-            try: l = round(v, 2)
+            try: l = round(v, 1)
             except:
                 l = 'Error'; v = None;
             # Add point marker
@@ -340,7 +344,8 @@ def make_residue_radar_plot(path, data, columns, linetype=None, remove_blank_ent
     # ----------------------->
     # Plot, modify and save
     r.plot()
-    r.ax.legend(loc='lower center', fancybox=True, bbox_to_anchor=(1.0, 1.0))
+    #r.ax.legend(loc='lower center', fancybox=True, bbox_to_anchor=(1.0, 1.0), fontsize=20)
+    r.ax.legend(loc='lower left', bbox_to_anchor=(0.65, 0.95), bbox_transform=pyplot.gcf().transFigure, fontsize=20)
     r.savefig(path)
     r.close()
 
