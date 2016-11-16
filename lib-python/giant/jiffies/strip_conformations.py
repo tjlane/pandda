@@ -93,7 +93,7 @@ def proc(ensemble_file, params, sel_resnames=None, sel_confs=None):
 
     # Select amino acids with no conformer overlapping with confs_to_select
     sel_ags = [ag for ag in new_ens.atom_groups() if (iotbx.pdb.common_residue_names_get_class(ag.resname)=='common_amino_acid') and not set(confs_to_select).intersection([a.altloc for a in ag.parent().atom_groups()])]
-    sel_string_2 = ' or '.join(['(chain {!s} and resid {!s} and altid "{!s}")'.format(ag.parent().parent().id, ag.parent().resid(), ag.altloc) for ag in sel_ags])
+    sel_string_2 = ' or '.join(['(chain {!s} and resid {!s} and altid "{!s:1}")'.format(ag.parent().parent().id, ag.parent().resid(), ag.altloc) for ag in sel_ags])
     print 'Selection 2: \n\t'+sel_string_2.replace('or ','or\n\t')[:500]+'...'
 
     sel_cache = new_ens.atom_selection_cache()

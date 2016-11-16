@@ -53,7 +53,7 @@ def generate_phenix_occupancy_params(occupancy_groups):
     occ_params_template = """refinement {{\n  refine {{\n    occupancies {{\n{!s}\n    }}\n  }}\n}}"""
     constrained_group_template = """      constrained_group {{\n{!s}\n      }}"""
     selection_template = '        selection = {!s}'
-    res_sel_template = '(chain {!s} and resid {!s} and altid "{!s}")'
+    res_sel_template = '(chain {!s} and resid {!s} and altid "{!s:1}")'
 
     constrained_groups = []
     for groups in occupancy_groups:
@@ -71,7 +71,7 @@ def generate_phenix_occupancy_params(occupancy_groups):
 def generate_refmac_occupancy_params(occupancy_groups):
     """Using pairs of sets of atom groups, generate occupancy groups for refmac"""
 
-    selection_template = 'occupancy group id {!s} chain {!s} residue {!s} alt {!s}'
+    selection_template = 'occupancy group id {!s} chain {!s} residue {!s} alt "{!s:1}"'
     exclude_template = 'occupancy group alts incomplete {!s}'
     final_line = 'occupancy refine'
 
