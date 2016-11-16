@@ -71,11 +71,11 @@ def run(params):
 
     try:
         if   params.input.pdb_label=='filename':   p_labels = [os.path.basename(os.path.splitext(f)[0]) for f in params.input.pdb]
-        elif params.input.pdb_label=='foldername': p_labels = [os.path.basename(os.path.dirname(f)      for f in params.input.pdb]
+        elif params.input.pdb_label=='foldername': p_labels = [os.path.basename(os.path.dirname(f))     for f in params.input.pdb]
         elif params.input.pdb_regex:               p_labels = [re.findall(params.input.pdb_regex, f)[0] for f in params.input.pdb]
         else:                                      p_labels = ['PDB-{:06d}'.format(i) for i in range(len(params.input.pdb))]
         if   params.input.mtz_label=='filename':   m_labels = [os.path.basename(os.path.splitext(f)[0]) for f in params.input.mtz]
-        elif params.input.mtz_label=='foldername': m_labels = [os.path.basename(os.path.dirname(f)      for f in params.input.mtz]
+        elif params.input.mtz_label=='foldername': m_labels = [os.path.basename(os.path.dirname(f))     for f in params.input.mtz]
         elif params.input.mtz_regex:               m_labels = [re.findall(params.input.mtz_regex, f)[0] for f in params.input.mtz]
         else:                                      m_labels = ['MTZ-{:06d}'.format(i) for i in range(len(params.input.mtz))]
     except:
