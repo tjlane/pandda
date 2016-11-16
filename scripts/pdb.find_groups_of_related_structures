@@ -7,7 +7,7 @@ import pandas
 import iotbx.pdb
 import libtbx.easy_mp
 
-from bamboo.pdb_utils import get_pdb_index, download_and_organise_pdb_as_necessary
+from bamboo.pdb_utils import get_pdb_index, download_and_organise_pdb_as_necessary, download_structure_factors
 
 def process_line_wrap(line):
 
@@ -165,6 +165,28 @@ def run():
         print '==========================================================>'
         print '===> Sequences already clustered into folders in: {}'.format(group_dir)
         print '==========================================================>'        
+
+    print '==========================================================>'
+    print '===> Downloading crystallographic data: {}'.format(group_dir)
+    print '==========================================================>'
+
+    import ssl
+    ssl._create_default_https_context = ssl._create_unverified_context
+
+    for d in sorted(glob.glob(os.path.join(group_dir, '*'))):
+        for p in glob.iglob(os.path.join(d, '*.pdb')):
+            pdb_id = os.path.basename(p)[:4]
+            cif_out = p.replace('.pdb','-sf.cif.gz')
+            if os.path.exists(cif_out): continue
+            print '\r'+pdb_id, cif_out[-30:]
+            try:
+                download_structure_factors(pdb_id, filename=cif_out, zipped=True)
+            except:
+                pass
+ 
+    print '==========================================================>'
+    print '===> All crystallographic data downloaded'
+    print '==========================================================>'
 
     #from IPython import embed; embed()
     
