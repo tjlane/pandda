@@ -9,7 +9,10 @@ import iotbx.pdb
 import scipy.spatial
 
 from scitbx.array_family import flex
-from giant.structure.align import perform_flexible_alignment, find_nearest_calphas, transform_coordinates_with_flexible_alignment
+from libtbx.utils import Sorry, Failure
+from bamboo.common.colours import pretty_string
+from giant.structure.align import align_structures_flexible
+from giant.structure.sequence import pairwise_chain_sequence_identity
 
 #######################################
 
@@ -24,69 +27,100 @@ input {
         .multiple = True
 }
 alignment {
+    conformer = 'A'
+        .type = str
+        .help = 'Which conformer to use for alignment. Always uses the main chain "" and the conformer given here (max 1)'
     cutoff_radius = 10.0
         .type = float
+        .help = 'The sphere around each c-alpha used to align the local environment'
+    sequence_identity_threshold = 0.95
+        .type = float
+        .help = 'Minimum sequence identity for two chains to be aligned'
+    one_to_one_chain_alignment = True
+        .type = bool
+        .help = 'If True: Align the chains in the input structures to different chains in the reference structure. If False: Align each chain in the input structures to the first chain in the reference structure with a sequence identity > 95%'
+    similar_structures_only = False
+        .type = bool
+        .help = 'Require that the structures contain the same atoms before alignment'
 }
 output {
     prefix = aligned_
         .type = path
 }
+verbose = True
 """)
 
 #######################################
 
 def run(params):
 
-    assert params.input.reference_pdb is not None, 'No reference_pdb provided'
+    assert params.input.reference_pdb is not None, 'No reference structure provided: input.reference_pdb='
+    assert params.input.pdb, 'No structures provided for alignment: input.pdb='
+    for p in params.input.pdb:
+        if not os.path.exists(p): raise Sorry('Input file "{}" does not exists'.format(p))
+
+    if params.alignment.conformer:
+        assert isinstance(params.alignment.conformer, str), 'params.alignment.conformer must be one letter or None'
+        assert len(params.alignment.conformer) < 2, 'Can only supply one conformer for alignment, not {}'.format(params.alignment.conformer)
+        confs_to_align = ['', params.alignment.conformer]
+    else:
+        confs_to_align = ['']
+
+    print pretty_string('===========================>').bold()
+    print pretty_string('giant.local_align').bold()
+    print pretty_string('===========================>').bold()
+    print pretty_string('Aligning {} structure(s) to {}'.format(len(params.input.pdb),params.input.reference_pdb))
+    print pretty_string('Aligning conformers: {}'.format('"'+'" and "'.join(confs_to_align)+'"'))
+    print pretty_string('===========================>').bold()
+
+    t_start = time.time()
 
     # =================================================>
     # Load structure
     # =================================================>
-    ref_hierarchy = iotbx.pdb.hierarchy.input(params.input.reference_pdb).hierarchy
+    h_ref = iotbx.pdb.hierarchy.input(params.input.reference_pdb).hierarchy
 
-    t_start = time.time()
-
-    for mov_pdb in params.input.pdb:
-
-        print 'ALIGNING: {}'.format(mov_pdb)
+    for p_mov in params.input.pdb:
 
         # =================================================>
         # Load structure
         # =================================================>
-        mov_hierarchy = iotbx.pdb.hierarchy.input(mov_pdb).hierarchy
-#        mov_hierarchy_trimmed = mov_hierarchy.select(mov_hierarchy.atom_selection_cache().selection('pepnames and (name CA or name C or name O or name N)'))
+        h_mov = iotbx.pdb.hierarchy.input(p_mov).hierarchy
 
-        # =================================================>
-        # Calculate alignments
-        # =================================================>
-        alignments = perform_flexible_alignment( mov_hierarchy = ref_hierarchy,
-                                                 ref_hierarchy = mov_hierarchy,
-                                                 cutoff_radius = params.alignment.cutoff_radius    )
+        print pretty_string('\n===========================>').blue()
+        print pretty_string('Aligning {} to {}'.format(p_mov,params.input.reference_pdb)).blue()
+        print pretty_string('===========================>').blue()
 
-        # =================================================>
-        # Find which alignments should be used for coords
-        # =================================================>
-        mappings = find_nearest_calphas( hierarchy   = mov_hierarchy,
-                                         coordinates = mov_hierarchy.atoms().extract_xyz()   )
+        combined_alignment = align_structures_flexible(mov_hierarchy=h_mov, ref_hierarchy=h_ref,
+                                conformers=confs_to_align, cutoff_radius=params.alignment.cutoff_radius,
+                                sequence_identity_threshold=params.alignment.sequence_identity_threshold,
+                                one_to_one_mapping=params.alignment.one_to_one_chain_alignment,
+                                require_hierarchies_identical=params.alignment.similar_structures_only,
+                                verbose=params.verbose)
 
         # =================================================>
         # Transform coordinates
         # =================================================>
-        aligned_coords = transform_coordinates_with_flexible_alignment( alignments  = alignments,
-                                                                        coordinates = mov_hierarchy.atoms().extract_xyz(),
-                                                                        mappings    = mappings,
-                                                                        inverse     = True   )
+        aligned_coords = combined_alignment.nat2ref(coordinates=h_mov.atoms().extract_xyz())
+        if params.verbose:
+            rmsd = (h_mov.atoms().extract_xyz() - aligned_coords).rms_length()
+            print 'All-atom RMSD (before v after alignment): {}'.format(rmsd)
 
         # =================================================>
         # Output structure
         # =================================================>
-        # Copy the input structure
-        new_hierarchy = mov_hierarchy.deep_copy()
-        new_hierarchy.atoms().set_xyz(aligned_coords)
-        new_hierarchy.write_pdb_file(file_name=os.path.join(os.path.dirname(mov_pdb), params.output.prefix+os.path.basename(mov_pdb)))
+        h_mov_new = h_mov.deep_copy()
+        h_mov_new.atoms().set_xyz(aligned_coords)
+        h_mov_new_fname = os.path.join(os.path.dirname(p_mov), params.output.prefix+os.path.basename(p_mov))
+        print 'Saving output structure to {}'.format(h_mov_new_fname)
+        h_mov_new.write_pdb_file(file_name=h_mov_new_fname)
 
     t_end = time.time()
-    print 'Total Runtime: {!s}'.format(time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(t_end-t_start)))
+    print pretty_string('\n===========================>').bold()
+    print pretty_string('Finished!').bold()
+    print pretty_string('Total Runtime: {!s}'.format(time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(t_end-t_start)))).bold()
+    print pretty_string('Avg/Structure: {!s}'.format(time.strftime("%H hours:%M minutes:%S seconds", time.gmtime((t_end-t_start)/len(params.input.pdb))))).bold()
+    print pretty_string('===========================>').bold()
 
 #######################################
 
