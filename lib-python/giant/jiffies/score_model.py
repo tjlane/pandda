@@ -55,7 +55,7 @@ plot {
                 .type = bool
         }
         rszo {
-            title = 'Model\nPrecision\n(RSZO/OCC)'
+            title = 'Density\nPrecision\n(RSZO/OCC)'
                 .type = str
             axis_min = 0.00
                 .type = float
@@ -65,7 +65,7 @@ plot {
                 .type = bool
         }
         b_factor_ratio {
-            title = 'B-Factor\nRatio'
+            title = 'B-Factor\nStability\n(B-factor Ratio)'
                 .type = str
             axis_min = 1.00
                 .type = float
@@ -75,7 +75,7 @@ plot {
                 .type = bool
         }
         rmsd {
-            title = 'Model\nRMSD'
+            title = 'Coordinate\nStability\n(RMSD)'
                 .type = str
             axis_min = 0.00
                 .type = float
@@ -319,7 +319,7 @@ def make_residue_radar_plot(path, data, columns, linetype=None, remove_blank_ent
     for col in column_names:
         tvs=[]; tls=[]
         for i, v in enumerate(plot_data[col]):
-            try: l = round(v, 1)
+            try: l = round(v, 2)
             except:
                 l = 'Error'; v = None;
             # Add point marker
@@ -328,12 +328,37 @@ def make_residue_radar_plot(path, data, columns, linetype=None, remove_blank_ent
         col_tick_vals.append(tvs); col_tick_labs.append(tls)
 
     # ----------------------->
+    # Prepare markers
+    # ----------------------->
+    if plot_data.index.size > 1:
+        mrs = ['o','^','s','D','*']
+        markers = mrs*(1+(plot_data.index.size-1)//len(mrs))
+        markersize = 10
+    else:
+        markers = [None]
+        markersize = None
+
+    # ----------------------->
+    # Prepare linetypes
+    # ----------------------->
+    if not linetype:
+        if plot_data.index.size > 1:
+            #lts = ['-']*len(mrs)+['--']*len(mrs)
+            #lts = ['--','-','-.',':']
+            lts = ['-','-','--']
+        else:
+            lts = ['-']
+        linetype = lts*(1+(plot_data.index.size-1)//len(lts))
+    elif not isinstance(linetype, list):
+        linetype = [linetype]*plot_data.index.size
+    assert len(linetype) >= plot_data.index.size
+
+    # ----------------------->
     r = Radar(titles=column_title)
     # ----------------------->
     # Add each row of the data frame as a separate line
-    if not linetype: linetype = ['-']*plot_data.index.size
     for label, row in plot_data.iterrows():
-        r.add(row[column_names].tolist(), linetype.pop(0), label=label, lw=2)
+        r.add(row[column_names].tolist(), linetype.pop(0), marker=markers.pop(0), markersize=markersize, label=label, lw=3)
     # ----------------------->
     # Set axis meta manually
     if column_invse: r.set_inversion(column_invse)
@@ -345,6 +370,7 @@ def make_residue_radar_plot(path, data, columns, linetype=None, remove_blank_ent
     # Plot, modify and save
     r.plot()
     #r.ax.legend(loc='lower center', fancybox=True, bbox_to_anchor=(1.0, 1.0), fontsize=20)
+    r.ax.patch.set_facecolor('lightgray')
     r.ax.legend(loc='lower left', bbox_to_anchor=(0.65, 0.95), bbox_transform=pyplot.gcf().transFigure, fontsize=20)
     r.savefig(path)
     r.close()
@@ -356,7 +382,7 @@ def format_parameters_for_plot(params):
 
     p = params
     columns = {}
-    columns['titles'] = [p.rscc.title,       p.rszd.title,       p.rszo.title,       p.b_factor_ratio.title,       p.rmsd.title       ]
+    columns['titles'] = [p.rscc.title, p.rszd.title, p.rszo.title, p.b_factor_ratio.title, p.rmsd.title]
     columns['names']  = ['RSCC','RSZD','RSZO/OCC','Surroundings B-factor Ratio','Model RMSD']
     columns['invert'] = [p.rscc.axis_invert, p.rszd.axis_invert, p.rszo.axis_invert, p.b_factor_ratio.axis_invert, p.rmsd.axis_invert ]
     columns['limits'] = [(p.rscc.axis_min,           p.rscc.axis_max),

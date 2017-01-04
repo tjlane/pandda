@@ -38,7 +38,8 @@ def process_line(line):
     pdb_file = download_and_organise_pdb_as_necessary(pdb_id=pdb_id)
    
     try: 
-        h = iotbx.pdb.hierarchy.input(file_name=pdb_file).hierarchy
+        i = iotbx.pdb.hierarchy.input(file_name=pdb_file)
+        h = i.hierarchy
     except:
         print 'Bad PDB File'
         return
@@ -49,6 +50,9 @@ def process_line(line):
     if sum(sel) == 0: return
     new_h = h.select(sel)
     
+    # Extract resolution of file
+    res = i.input.get_r_rfree_sigma().high
+
     sel_c = []
 
     for lig_rg in new_h.residue_groups():
@@ -80,19 +84,20 @@ def process_line(line):
         if not record_residue: continue
 
         # Append ligand object
-        sel_c.append((lig_rg.conformers()[0], total_occ))
+        sel_c.append((lig_rg.conformers()[0], {'occ':total_occ, 'res':res}))
 
     if not sel_c: 
         return
    
-    ret_tab = pandas.DataFrame(columns=['pdbid','chain','resid','resname','occ','altid'])
-    for c, total_occ in sel_c:
+    ret_tab = pandas.DataFrame(columns=['pdbid','chain','resid','resname','altid','occ','res'])
+    for c, info_dict in sel_c:
         ret_tab = ret_tab.append([{ 'pdbid':    pdb_id,
                                     'chain':    c.parent().id,
                                     'resid':    c.only_residue().resid(),
                                     'resname':  c.only_residue().resname,
                                     'altid':    c.altloc,
-                                    'occ':      total_occ           }], ignore_index=True)
+                                    'occ':      info_dict['occ'],
+                                    'res':      info_dict['res']           }], ignore_index=True)
  
     print ret_tab
     return ret_tab
@@ -121,7 +126,7 @@ def run():
     print '===> Compiling output'
     print '==========================================================>'        
 
-    out_tab = pandas.DataFrame(columns=['pdbid','chain','resid','resname','occ','altid'])
+    out_tab = pandas.DataFrame(columns=['pdbid','chain','resid','resname','altid','occ','res'])
     for ret in output:
         # Nothing returned
         if ret is None: continue

@@ -1,0 +1,24 @@
+import os, sys
+
+import libtbx.easy_pickle
+
+from giant.xray.local_align_maps import *
+
+#####################################################
+
+datasets = sys.argv[1:]
+print datasets
+
+for d in datasets: 
+
+    d_path = os.path.join('pandda','processed_datasets',d,'pickles','dataset.pickle')
+
+    d_handler = libtbx.easy_pickle.load(d_path)
+
+    create_native_map(  native_unit_cell   = d_handler.unit_cell(), 
+                        native_space_group = d_handler.space_group(), 
+                        native_hierarchy   = d_handler.hierarchy(), 
+                        dataset_handler    = d_handler, 
+                        reference_frame_map_handler = map_handler(map_data=map_data, unit_cell=native_unit_cell), 
+                        gridding_step = 0.7, 
+                        filename = filename)

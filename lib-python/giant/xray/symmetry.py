@@ -72,26 +72,24 @@ def find_symmetry_equivalent_groups(points_frac, sym_ops, unit_cell, cutoff_cart
     sym_groups = find_connected_groups(connection_matrix=equiv_sites.max(axis=0))
     return sym_groups
 
-def get_symmetry_operations_to_generate_crystal_contacts(ref_hierarchy, crystal_symmetry, buffer_thickness):
+def get_crystal_contact_operators(hierarchy, crystal_symmetry, distance_cutoff):
     """Use an alternate method to identify the symmetry operations required to generate crystal contacts"""
 
     # Extract the xray structure from the reference hierarchy
-    ref_struc = ref_hierarchy.extract_xray_structure(crystal_symmetry=crystal_symmetry)
-    ref_atoms = ref_hierarchy.atoms()
+    struc = hierarchy.extract_xray_structure(crystal_symmetry=crystal_symmetry)
+    atoms = hierarchy.atoms()
 
     # Extract the mappings that will tell us the adjacent symmetry copies
-    asu_mappings = ref_struc.asu_mappings(buffer_thickness=buffer_thickness)
+    asu_mappings = struc.asu_mappings(buffer_thickness=distance_cutoff)
     uc = asu_mappings.unit_cell()
     # Symmetry operations for each atom
     mappings = asu_mappings.mappings()
 
     # There should be one mappings list per atom
-    assert len(ref_struc.scatterers()) == len(mappings)
+    assert len(struc.scatterers()) == len(mappings)
 
     # Get all atom pairs within distance_cutoff distance
-    pair_generator = crystal.neighbors_fast_pair_generator(
-        asu_mappings,
-        distance_cutoff=buffer_thickness)
+    pair_generator = crystal.neighbors_fast_pair_generator(asu_mappings, distance_cutoff=distance_cutoff)
     sym_operations = []
     for pair in pair_generator:
       # obtain rt_mx_ji - symmetry operator that should be applied to j-th atom
@@ -106,47 +104,47 @@ def get_symmetry_operations_to_generate_crystal_contacts(ref_hierarchy, crystal_
 
     return sym_operations
 
-def generate_crystal_copies_from_operations(ref_hierarchy, crystal_symmetry, sym_ops_mat):
-    """Take a list of symmetry operations and apply them to reference hierarchy"""
+def apply_symmetry_operators(hierarchy, crystal_symmetry, sym_ops_mat):
+    """Take a list of symmetry operations and apply them to hierarchy"""
 
     # Extract the xray structure from the reference hierarchy
-    ref_struc = ref_hierarchy.extract_xray_structure(crystal_symmetry=crystal_symmetry)
+    struc = hierarchy.extract_xray_structure(crystal_symmetry=crystal_symmetry)
 
     # Create a list of chain ids for the new symmetry copies
     # Already existing chain ids
-    ref_chains = [c.id for c in ref_hierarchy.chains()]
+    chains = [c.id for c in hierarchy.chains()]
     # Number of new chains needed - one for each reference chain for each symmetry operation
-    num_new_chains = len(ref_chains)*len(sym_ops_mat)
+    num_new_chains = len(chains)*len(sym_ops_mat)
     # Select the new chains, ignoring the ones already in the reference
-    new_chain_ids = [c for c in iotbx.pdb.systematic_chain_ids()[0:(num_new_chains+len(ref_chains))] if c not in ref_chains][0:num_new_chains]
+    new_chain_ids = [c for c in iotbx.pdb.systematic_chain_ids()[0:(num_new_chains+len(chains))] if c not in chains][0:num_new_chains]
 
-    assert not [c for c in new_chain_ids if c in ref_chains], 'GENERATED CHAIN IDS ARE NOT UNIQUE'
+    assert not [c for c in new_chain_ids if c in chains], 'GENERATED CHAIN IDS ARE NOT UNIQUE'
 
     # Create combinations of the different symmetry operations and the reference chains and map them to new chain ids
-    sym_op_ref_chain_combinations = []
+    sym_op_chain_combinations = []
     for sym_op in sym_ops_mat:
-        for r_chain in ref_chains:
-            sym_op_ref_chain_combinations.append((sym_op.as_xyz(), r_chain))
+        for r_chain in chains:
+            sym_op_chain_combinations.append((sym_op.as_xyz(), r_chain))
     # Dictionary to map symmetry operations and reference chain ids to new chain ids
-    new_chain_ids_hash = dict(zip(sym_op_ref_chain_combinations, new_chain_ids))
+    new_chain_ids_hash = dict(zip(sym_op_chain_combinations, new_chain_ids))
 
     # Hierarchies to be returned
     sym_hierarchies = []
-    chain_mappings = dict([(c, []) for c in ref_chains])
+    chain_mappings = dict([(c, []) for c in chains])
 
     for sym_op in sym_ops_mat:
 
         sym_op_rt = sym_op.as_rational().as_float()
 
         # Transform all of the coordinates in the reference structure
-        transformed_coords = sym_op_rt * ref_struc.sites_frac()
+        transformed_coords = sym_op_rt * struc.sites_frac()
 
         # Create copy of the xray structure to play with, and set the transformed coordinates
-        new_struc = ref_struc.customized_copy()
+        new_struc = struc.customized_copy()
         new_struc.set_sites_frac(transformed_coords)
 
         # Transfer the sites to a new hierarchy
-        new_hierarchy = ref_hierarchy.deep_copy()
+        new_hierarchy = hierarchy.deep_copy()
         new_hierarchy.adopt_xray_structure(new_struc)
 
         # Update the chain ids in the new structure
@@ -160,17 +158,11 @@ def generate_crystal_copies_from_operations(ref_hierarchy, crystal_symmetry, sym
 
     return sym_hierarchies, chain_mappings
 
-def generate_adjacent_symmetry_copies(ref_hierarchy, crystal_symmetry, buffer_thickness=0, method=2):
+def generate_crystal_contacts(hierarchy, crystal_symmetry, distance_cutoff=10):
     """Find symmetry copies of the protein in contact with the asu and generate these copies"""
 
-    sym_ops_mat = get_symmetry_operations_to_generate_crystal_contacts( ref_hierarchy=ref_hierarchy,
-                                                                        crystal_symmetry=crystal_symmetry,
-                                                                        buffer_thickness=buffer_thickness   )
-
-    sym_hierarchies, chain_mappings = generate_crystal_copies_from_operations(ref_hierarchy=ref_hierarchy,
-                                                                              crystal_symmetry=crystal_symmetry,
-                                                                              sym_ops_mat=sym_ops_mat)
-
+    sym_ops_mat = get_crystal_contact_operators(hierarchy=hierarchy,crystal_symmetry=crystal_symmetry, distance_cutoff=distance_cutoff)
+    sym_hierarchies, chain_mappings = apply_symmetry_operators(hierarchy=hierarchy,crystal_symmetry=crystal_symmetry,sym_ops_mat=sym_ops_mat)
     return sym_ops_mat, sym_hierarchies, chain_mappings
 
 if __name__=='__main__':

@@ -2,41 +2,15 @@ import numpy
 from scitbx.array_family import flex
 from libtbx.math_utils import ifloor, iceil
 
-def get_bounding_box_for_structure(structure):
-    return (structure.sites_cart().min(), structure.sites_cart().max())
-
 def calculate_grid_size(min_carts, max_carts, grid_spacing):
     """Calculate the number of points to be sampled for a box size and sampling distance. Returns the size of the box in A, and the number of points to be sampled along each axis."""
-
-    # Extent of the box (dX, dY, dZ)
     cart_size = tuple([max_c-min_c for min_c, max_c in zip(min_carts, max_carts)])
-
-    # Calculate the number of grid points from the grid sampling
     grid_size = tuple([iceil((1.0*c_size)/grid_spacing)+1 for c_size in cart_size])
-
-    return cart_size, grid_size
-
-def create_cartesian_grid(min_carts, max_carts, grid_spacing):
-    """Create the grid of cartesian sites to be sampled based on a spacing between sampling points (in A)"""
-
-    # Calculate the size of the grid (cartesian) and the number of points to be sampled along each axis
-    box_size, grid_size = calculate_grid_size(min_carts, max_carts, grid_spacing)
-
-    # Grid point volume
-    grid_point_volume = grid_spacing**3
-
-    # Calculate the grid points in cartesian space
-    grid_points_cart = flex.vec3_double(flex.nested_loop(grid_size)) * grid_spacing + min_carts
-#    grid_points_cart = flex.vec3_double([tuple([min_carts[i]+grid_spacing*grid_point[i] for i in [0,1,2]]) for grid_point in flex.nested_loop(grid_size)])
-
-    return box_size, grid_size, grid_points_cart
+    return grid_size
 
 def get_grid_points_within_distance_cutoff_of_origin(grid_spacing, distance_cutoff):
     """Find all points on isotropic grid within distance_cutoff of the origin"""
-
-    # Normalise the cutoff to make the grid spacing grid-independent
     grid_index_cutoff = (1.0*distance_cutoff)/grid_spacing
-
     return get_grid_points_within_index_cutoff_of_origin(grid_index_cutoff=grid_index_cutoff)
 
 def get_grid_points_within_index_cutoff_of_origin(grid_index_cutoff):

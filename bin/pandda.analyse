@@ -1,2 +1,2 @@
 #!/bin/sh
-ccp4-python -Qnew -m pandda.analyse "$@"
+ccp4-python -Qnew -m pandda.analyse.__init__ "$@"

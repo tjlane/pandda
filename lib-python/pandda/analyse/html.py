@@ -7,7 +7,7 @@ def write_initial_html(pandda):
     # Get template to be filled in
     template = PANDDA_HTML_ENV.get_template('pandda_summary.html')
     # Output file
-    out_file = pandda.output_handler.get_file(file_tag='initial_html')
+    out_file = pandda.file_manager.get_file(file_tag='initial_html')
     # Output directory (for relative symlinks)
     out_dir  = os.path.abspath(os.path.dirname(out_file))
 
@@ -26,17 +26,17 @@ def write_initial_html(pandda):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.output_handler.get_file(file_tag='d_resolutions'))),
+    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.file_manager.get_file(file_tag='d_resolutions'))),
                                        'title': 'Dataset Resolutions' })
-    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.output_handler.get_file(file_tag='d_rfactors'))),
+    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.file_manager.get_file(file_tag='d_rfactors'))),
                                        'title': 'Dataset R-Factors' })
-    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.output_handler.get_file(file_tag='d_global_rmsd_to_ref'))),
+    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.file_manager.get_file(file_tag='d_global_rmsd_to_ref'))),
                                        'title': 'Dataset RMSD to Mean Structure' })
-    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.output_handler.get_file(file_tag='d_cell_volumes'))),
+    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.file_manager.get_file(file_tag='d_cell_volumes'))),
                                        'title': 'Dataset Cell Volumes' })
-    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.output_handler.get_file(file_tag='d_cell_axes'))),
+    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.file_manager.get_file(file_tag='d_cell_axes'))),
                                        'title': 'Dataset Cell Axis Lengths' })
-    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.output_handler.get_file(file_tag='d_cell_angles'))),
+    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.file_manager.get_file(file_tag='d_cell_angles'))),
                                        'title': 'Dataset Cell Angles' })
     # ===========================================================>
     # Write Output
@@ -48,7 +48,7 @@ def write_analyse_html(pandda):
     # Get template to be filled in
     template = PANDDA_HTML_ENV.get_template('pandda_summary.html')
     # Output file
-    out_file = pandda.output_handler.get_file(file_tag='analyse_html')
+    out_file = pandda.file_manager.get_file(file_tag='analyse_html')
     # Output directory (for relative symlinks)
     out_dir  = os.path.abspath(os.path.dirname(out_file))
 
@@ -86,13 +86,13 @@ def write_analyse_html(pandda):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    if os.path.exists(pandda.output_handler.get_file(file_tag='pymol_sites_png_1')):
-        output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.output_handler.get_file(file_tag='pymol_sites_png_1'))),
+    if os.path.exists(pandda.file_manager.get_file(file_tag='pymol_sites_png_1')):
+        output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.file_manager.get_file(file_tag='pymol_sites_png_1'))),
                                            'title': 'Identified Sites (Front)' })
-    if os.path.exists(pandda.output_handler.get_file(file_tag='pymol_sites_png_2')):
-        output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.output_handler.get_file(file_tag='pymol_sites_png_2'))),
+    if os.path.exists(pandda.file_manager.get_file(file_tag='pymol_sites_png_2')):
+        output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.file_manager.get_file(file_tag='pymol_sites_png_2'))),
                                            'title': 'Identified Sites (Back)' })
-    for i_png, png in enumerate(sorted(glob.glob(pandda.output_handler.get_file(file_tag='analyse_site_graph_mult').format('*')))):
+    for i_png, png in enumerate(sorted(glob.glob(pandda.file_manager.get_file(file_tag='analyse_site_graph_mult').format('*')))):
         output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=png)),
                                            'title': 'Identified Site Summary ({})'.format(i_png+1) })
     # ===========================================================>

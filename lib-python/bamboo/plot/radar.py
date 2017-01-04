@@ -42,18 +42,22 @@ class Radar(object):
         self.titles = titles
         # Create and store angles and axes
         self.angles = [a if a <=360. else a - 360. for a in numpy.arange(90, 90+360, 360.0/self.n)]
-        self.axes   = [self.fig.add_axes(rect, projection="polar", label="axes%d" % i) for i in range(self.n)]
 
-        # Get main axis, add theta grids
-        self.ax = self.axes[0]
-        self.ax.set_thetagrids(self.angles, labels=titles, frac=1.3, fontsize=20, weight="bold", color="black")
+        # Create main plotting axis (all others are only used for axis labels)
+        self.ax = self.fig.add_axes(rect, projection="polar", label="main-axis")
         self.ax.set_axis_bgcolor('lightgrey')
+        self.ax.set_thetagrids(self.angles, labels=titles, frac=1.3, fontsize=20, weight="bold", color="black")
+        self.ax.xaxis.grid(color='black',linestyle='-', lw=1)
+        self.ax.yaxis.grid(False)
+        self.ax.yaxis.set_visible(False)
+
+        self.axes = [self.fig.add_axes(rect, projection="polar", label="axes%d" % i) for i in range(self.n)]
         # Remove all things from other axes
-        for ax in self.axes[1:]:
+        for ax in self.axes:
             ax.patch.set_visible(False)
-            ax.grid("off")
             ax.xaxis.set_visible(False)
-            self.ax.yaxis.grid(False)
+#            ax.yaxis.set_visible(False)
+            ax.grid("off")
 
     def _normalise(self, vals):
         """Normalise values to the scaled axis"""
@@ -108,9 +112,11 @@ class Radar(object):
 
     def _apply_limits(self):
         """Scale the axes to {0,1}"""
-        norm_limits = self._normalise(self._limits)
-        for ax, (min, max) in zip(self.axes, norm_limits):
+        for ax in [self.ax]+self.axes:
             ax.set_ylim(0.0, 1.0+self._fixed_offset+self._fixed_buffer)
+#        norm_limits = self._normalise(self._limits)
+#        for ax, (min, max) in zip(self.axes, norm_limits):
+#            ax.set_ylim(0.0, 1.0+self._fixed_offset+self._fixed_buffer)
 
     def _filter_values_and_labels(self, values, labels, filter_large=True, filter_small=True):
         """Filter values and labels - apply floors and ceilings to allowed values"""
@@ -153,16 +159,19 @@ class Radar(object):
         self.fig.show()
 
     def plot(self):
+        # Calculate defaults where appropriate
         if not self._limits: self._default_limits()
         if not self._scales: self._calculate_scales()
         if not self._ticks:  self._default_ticks()
+        # Fill graph backgrounds
+        self.ax.fill_between(numpy.deg2rad(numpy.r_[self.angles, self.angles[0]]), 0, self._fixed_offset, lw=0, facecolor='white')
+        self.ax.fill_between(numpy.deg2rad(numpy.r_[self.angles, self.angles[0]]), 1+self._fixed_buffer, 10, lw=0, facecolor='white')
+        # Apply limits, ticks and plot
         self._apply_limits()
         self._apply_ticks()
         self._plotted = True
         norm_vals = numpy.array(self._normalise(numpy.array(self._data).T.tolist())).T.tolist()
         filt_vals, dummy = self._filter_values_and_labels(norm_vals, norm_vals, filter_large=False, filter_small=True)
-        self.ax.fill_between(numpy.deg2rad(numpy.r_[self.angles, self.angles[0]]), 0, self._fixed_offset, lw=0, facecolor='white')
-        self.ax.fill_between(numpy.deg2rad(numpy.r_[self.angles, self.angles[0]]), 1+self._fixed_buffer, 10, lw=0, facecolor='white')
         for values, args, kwgs in zip(filt_vals, self._args, self._kwgs):
             angle = numpy.deg2rad(numpy.r_[self.angles, self.angles[0]])
             vals = numpy.r_[values, values[0]]

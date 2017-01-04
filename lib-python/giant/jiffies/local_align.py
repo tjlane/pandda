@@ -44,8 +44,10 @@ alignment {
         .help = 'Require that the structures contain the same atoms before alignment'
 }
 output {
-    prefix = aligned_
-        .type = path
+    prefix = ''
+        .type = str
+    suffix = '.aligned'
+        .type = str
 }
 verbose = True
 """)
@@ -104,14 +106,15 @@ def run(params):
         aligned_coords = combined_alignment.nat2ref(coordinates=h_mov.atoms().extract_xyz())
         if params.verbose:
             rmsd = (h_mov.atoms().extract_xyz() - aligned_coords).rms_length()
-            print 'All-atom RMSD (before v after alignment): {}'.format(rmsd)
+            print 'All-atom RMSD (before v after alignment): {}'.format(round(rmsd,3))
 
         # =================================================>
         # Output structure
         # =================================================>
         h_mov_new = h_mov.deep_copy()
         h_mov_new.atoms().set_xyz(aligned_coords)
-        h_mov_new_fname = os.path.join(os.path.dirname(p_mov), params.output.prefix+os.path.basename(p_mov))
+        h_mov_new_fname = os.path.join(os.path.dirname(p_mov), params.output.prefix+params.output.suffix.join(os.path.splitext(os.path.basename(p_mov))))
+        assert os.path.abspath(h_mov_new_fname) != os.path.abspath(p_mov), 'output filename is same as input filename'
         print 'Saving output structure to {}'.format(h_mov_new_fname)
         h_mov_new.write_pdb_file(file_name=h_mov_new_fname)
 

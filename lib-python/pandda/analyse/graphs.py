@@ -121,7 +121,7 @@ def write_dataset_summary_graphs(pandda):
     pyplot.xlabel('Low Resolution Limit (A)')
     pyplot.ylabel('Count')
     pyplot.tight_layout()
-    pyplot.savefig(pandda.output_handler.get_file('d_resolutions'))
+    pyplot.savefig(pandda.file_manager.get_file('d_resolutions'))
     pyplot.close(fig)
     # ================================================>
     try:
@@ -136,12 +136,12 @@ def write_dataset_summary_graphs(pandda):
         pyplot.xlabel('R-Work')
         pyplot.ylabel('Count')
         pyplot.tight_layout()
-        pyplot.savefig(pandda.output_handler.get_file('d_rfactors'))
+        pyplot.savefig(pandda.file_manager.get_file('d_rfactors'))
         pyplot.close(fig)
     except:
         fig = pyplot.figure()
         pyplot.title('Failed to make R-Factor Histograms')
-        pyplot.savefig(pandda.output_handler.get_file('d_rfactors'))
+        pyplot.savefig(pandda.file_manager.get_file('d_rfactors'))
         pyplot.close(fig)
     # ================================================>
     fig = pyplot.figure()
@@ -150,7 +150,7 @@ def write_dataset_summary_graphs(pandda):
     pyplot.xlabel('RMSD (A)')
     pyplot.ylabel('Count')
     pyplot.tight_layout()
-    pyplot.savefig(pandda.output_handler.get_file('d_global_rmsd_to_ref'))
+    pyplot.savefig(pandda.file_manager.get_file('d_global_rmsd_to_ref'))
     pyplot.close(fig)
     # ================================================>
     fig = pyplot.figure()
@@ -165,7 +165,7 @@ def write_dataset_summary_graphs(pandda):
     pyplot.hist(x=d_info['uc_c'], bins=n_bins)
     pyplot.xlabel('C (A)')
     pyplot.tight_layout()
-    pyplot.savefig(pandda.output_handler.get_file('d_cell_axes'))
+    pyplot.savefig(pandda.file_manager.get_file('d_cell_axes'))
     pyplot.close(fig)
     # ================================================>
     fig = pyplot.figure()
@@ -180,7 +180,7 @@ def write_dataset_summary_graphs(pandda):
     pyplot.hist(x=d_info['uc_gamma'], bins=n_bins)
     pyplot.xlabel('Gamma')
     pyplot.tight_layout()
-    pyplot.savefig(pandda.output_handler.get_file('d_cell_angles'))
+    pyplot.savefig(pandda.file_manager.get_file('d_cell_angles'))
     pyplot.close(fig)
     # ================================================>
     fig = pyplot.figure()
@@ -189,13 +189,13 @@ def write_dataset_summary_graphs(pandda):
     pyplot.xlabel('Volume (A^3)')
     pyplot.ylabel('Count')
     pyplot.tight_layout()
-    pyplot.savefig(pandda.output_handler.get_file('d_cell_volumes'))
+    pyplot.savefig(pandda.file_manager.get_file('d_cell_volumes'))
     pyplot.close(fig)
 
 def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
 
     # Get the output directory to write the graphs into
-    img_out_dir = os.path.join(pandda.output_handler.get_dir('analyses'), '{!s}A Maps'.format(map_analyser.meta.resolution))
+    img_out_dir = os.path.join(pandda.file_manager.get_dir('analyses'), '{!s}A Maps'.format(map_analyser.meta.resolution))
     if not os.path.exists(img_out_dir): os.mkdir(img_out_dir)
 
     # Map Analyser Variables
@@ -205,15 +205,12 @@ def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
 
     # Statistical Map Values
 
-    # Points to extract from the grid
-    grid_mask = pandda.reference_grid().global_mask().outer_mask_indices()
-
     # Extract map values for plotting
-    mean_map_vals = list(map_analyser.statistical_maps.mean_map.select(grid_mask))
-    try:    medn_map_vals = list(map_analyser.statistical_maps.medn_map.select(grid_mask))
+    mean_map_vals = list(map_analyser.statistical_maps.mean_map.data)
+    try:    medn_map_vals = list(map_analyser.statistical_maps.medn_map.data)
     except: medn_map_vals = mean_map_vals
-    stds_map_vals = list(map_analyser.statistical_maps.stds_map.select(grid_mask))
-    sadj_map_vals = list(map_analyser.statistical_maps.sadj_map.select(grid_mask))
+    stds_map_vals = list(map_analyser.statistical_maps.stds_map.data)
+    sadj_map_vals = list(map_analyser.statistical_maps.sadj_map.data)
 
     ########################################################
 
@@ -457,6 +454,6 @@ def write_occupancy_graph(x_values, global_values, local_values, diff_values, ou
     # Apply tight layout to prevent overlaps
     pyplot.tight_layout()
     # Save
-#    pyplot.savefig(d_handler.output_handler.get_file('occ_corr_png').format(event_key))
+#    pyplot.savefig(d_handler.file_manager.get_file('occ_corr_png').format(event_key))
     pyplot.savefig(out_file)
     pyplot.close(fig)

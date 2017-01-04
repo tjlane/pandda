@@ -119,12 +119,12 @@ def run(params):
     if params.radar_plot.limits == 'automatic': columns.pop('limits', None)
     elif params.radar_plot.limits == 'manual':  pass
 
-    for res_label, index_idxs in generate_group_idxs([i.split('-')[-3:] for i in all_data.index]):
+    for res_label, index_idxs in generate_group_idxs([i.split('-')[-2:] for i in all_data.index]):
         res_label = '-'.join(res_label)
         image_path = os.path.join(images_dir,'compare-{}.png'.format(res_label))
         print 'Making: {}...'.format(image_path)
         make_residue_radar_plot(path = image_path,
-                                data = all_data.irow(index_idxs),
+                                data = all_data.iloc[index_idxs],
                                 columns = columns,
                                 remove_blank_entries = params.plot.remove_blank_entries,
                                 print_axis_values    = params.plot.print_axis_values  )

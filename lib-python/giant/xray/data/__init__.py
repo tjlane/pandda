@@ -22,12 +22,16 @@ class CrystalSummary(object):
         # PDB-Specific
 
     def mtz_object(self):
-        if self._mtz_object: return self._mtz_object
-        else: return iotbx.mtz.object(self.mtz_file)
+        if self._mtz_object:
+            return self._mtz_object
+        else:
+            return iotbx.mtz.object(self.mtz_file)
 
     def pdb_input(self):
-        if self._pdb_input: return self._pdb_input
-        else: return iotbx.pdb.input(self.pdb_file)
+        if self._pdb_input:
+            return self._pdb_input
+        else:
+            return iotbx.pdb.input(self.pdb_file)
 
     ######################################################
     @classmethod

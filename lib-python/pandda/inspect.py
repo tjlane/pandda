@@ -83,9 +83,8 @@ class PanddaEvent(object):
         self.dataset_symmetry   = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.symmetry_copies.format(dtag)     )
 
         # Ligand Files
-        lig_files = glob.glob(os.path.join(self.ligand_dir, '*'))
-        self.lig_pdbs = [f for f in lig_files if f.endswith('.pdb')]
-        self.lig_cifs = [f for f in lig_files if f.endswith('.cif')]
+        self.lig_pdbs = sorted(glob.glob(os.path.join(self.ligand_dir, '*.pdb')))
+        self.lig_cifs = [os.path.splitext(f)[0]+'.cif' for f in self.lig_pdbs]
 
     def find_current_fitted_model(self):
         """Get the most recent saved model of this protein"""
@@ -306,7 +305,7 @@ class PanddaInspector(object):
             self.gui.buttons['low conf'].set_active(True)
 
         # Reset the merge button
-        self.gui.buttons['merge'].child.set_text("Merge Ligand\nWith Model")
+        self.gui.buttons['merge-ligand'].child.set_text("Merge Ligand\nWith Model")
 
     #-------------------------------------------------------------------------
 
@@ -490,6 +489,7 @@ class PanddaMolHandler(object):
     def __init__(self, parent):
         self.parent = parent
         self.open_mols = {}
+        self.ligand_index = 0
 
     def close_all(self):
         for mol in molecule_number_list():
@@ -553,23 +553,32 @@ class PanddaMolHandler(object):
         self.open_mols['o'] = o
         self.open_mols['r'] = r
 
-        # Ligand Files
-        if (len(e.lig_pdbs) == 1) and (len(e.lig_cifs) == 1):
-            l_dict = read_cif_dictionary(e.lig_cifs[0])
-            l = handle_read_draw_molecule_and_move_molecule_here(e.lig_pdbs[0])
-            if os.path.exists(e.fitted_link): set_mol_displayed(l, 0)
-            else:                             set_mol_displayed(l, 1)
-            self.open_mols['l'] = l
-
-            # Set the b-factors of the ligand to 20
-            set_b_factor_molecule(l, 20)
-            # Set the occupancy of the ligand to 2*(1-bdc)
-            all_residue_ids = all_residues(l)
-            if all_residue_ids:
-                for res_chn, res_num, res_ins in all_residue_ids:
-                    set_alt_conf_occ(l, res_chn, res_num, res_ins, [['', 2.0*e.est_1_bdc]])
+        self.ligand_index = 0
+        if e.lig_pdbs and e.lig_cifs:
+            self.open_mols['l'] = self.open_ligand(event=e, index=self.ligand_index)
+            if os.path.exists(e.fitted_link): set_mol_displayed(self.open_mols['l'], 0)
+        else:
+            self.open_mols['l'] = None
 
         return e
+
+    def next_ligand(self, event):
+        self.ligand_index = (self.ligand_index + 1)%len(event.lig_pdbs)
+        if self.open_mols['l']: close_molecule(self.open_mols['l'])
+        self.open_mols['l'] = self.open_ligand(event=event, index=self.ligand_index)
+
+    def open_ligand(self, event, index):
+        print 'Loading ligand {} of {}'.format(index+1, len(event.lig_pdbs))
+        l_dict = read_cif_dictionary(event.lig_cifs[index])
+        l = handle_read_draw_molecule_and_move_molecule_here(event.lig_pdbs[index])
+        set_mol_displayed(l, 1)
+        set_b_factor_molecule(l, 20)
+        # Set the occupancy of the ligand to 2*(1-bdc)
+        all_residue_ids = all_residues(l)
+        if all_residue_ids:
+            for res_chn, res_num, res_ins in all_residue_ids:
+                set_alt_conf_occ(l, res_chn, res_num, res_ins, [['', 2.0*event.est_1_bdc]])
+        return l
 
 class PanddaGUI(object):
 
@@ -689,8 +698,9 @@ class PanddaGUI(object):
         self.buttons['reset'].connect("clicked",  lambda x: self.parent.reset_current_to_orig_model())
 
         # Ligand Buttons
-        self.buttons['merge'].connect("clicked", lambda x: [self.buttons['merge'].child.set_text('Already Merged\n(Click to Repeat)'), self.parent.coot.merge_ligand_with_protein()])
-        self.buttons['move'].connect("clicked",  lambda x: self.parent.coot.move_ligand_here())
+        self.buttons['merge-ligand'].connect("clicked", lambda x: [self.buttons['merge-ligand'].child.set_text('Already Merged\n(Click to Repeat)'), self.parent.coot.merge_ligand_with_protein()])
+        self.buttons['move-ligand'].connect("clicked",  lambda x: self.parent.coot.move_ligand_here())
+        self.buttons['next-ligand'].connect("clicked", lambda x: self.parent.coot.next_ligand(event=self.parent.current_event))
 
         # Meta Recording buttons
         self.buttons['tp'].connect("clicked",         lambda x: self.parent.set_event_log_value(col='Interesting', value=True))
@@ -791,14 +801,21 @@ class PanddaGUI(object):
         b.child.set_line_wrap(True)
         b.child.props.width_chars = 15
         b.child.set_justify(gtk.JUSTIFY_CENTER)
-        self.buttons['merge'] = b
+        self.buttons['merge-ligand'] = b
         box1.add(b)
         # ---
         b = gtk.Button(label="Move New Ligand Here")
         b.child.set_line_wrap(True)
         b.child.props.width_chars = 10
         b.child.set_justify(gtk.JUSTIFY_CENTER)
-        self.buttons['move'] = b
+        self.buttons['move-ligand'] = b
+        box1.add(b)
+        # ---
+        b = gtk.Button(label="Open Next Ligand")
+        b.child.set_line_wrap(True)
+        b.child.props.width_chars = 10
+        b.child.set_justify(gtk.JUSTIFY_CENTER)
+        self.buttons['next-ligand'] = b
         box1.add(b)
         # ---
         box2 = gtk.VBox(homogeneous=True, spacing=2)

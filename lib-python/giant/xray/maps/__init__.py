@@ -1,11 +1,14 @@
 import numpy
 
-def scale_map_to_reference(ref_map, map, mask_idxs):
+def scale_map_to_reference(ref_map, map, mask_idxs=None):
     """Scale given map to reference over the point_mask"""
 
-    # Select values for the masked points
-    ref_vals = ref_map.select(mask_idxs)
-    map_vals =     map.select(mask_idxs)
+    if mask_idxs:
+        ref_vals = ref_map.select(mask_idxs)
+        map_vals = map.select(mask_idxs)
+    else:
+        ref_vals = ref_map
+        map_vals = map
 
     # Fit ref = a*map + b
     # a, b

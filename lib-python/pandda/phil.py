@@ -40,9 +40,7 @@ pandda
                 .type = path
             mtz = None
                 .type = path
-            amp_label = None
-                .type = str
-            pha_label = None
+            structure_factors = None
                 .type = str
         }
         flags
@@ -153,9 +151,7 @@ pandda
         maps
             .help = "Settings to control how maps are generated and analysed"
         {
-            ampl_label = 2FOFCWT
-                .type = str
-            phas_label = PH2FOFCWT
+            structure_factors = '2FOFCWT,PH2FOFCWT'
                 .type = str
             scaling = none *sigma volume
                 .type = choice

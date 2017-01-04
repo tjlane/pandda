@@ -33,50 +33,80 @@ class Alignment(object):
 class GlobalAlignment(Alignment):
 
 
-    def __init__(self, alignment_mx, id=None):
-        self._alignment_mx = alignment_mx
+    def __init__(self, alignment_mx, alignment_sites, reference_sites=None, id=None):
+        """
+        Object to hold the output of a global (rigid) alignment - performs coordinate transformations using a single alignment matrix
+
+        alignment_mx    : alignment matrix.
+        alignment_sites : sites used for the alignment (in the "native frame")
+        reference_sites : corresponding reference sites used for the alignment (in the "reference" frame)
+        """
+
         self.id = id
+        self._alignment = alignment_mx
+        self.alignment_sites_nat = flex.vec3_double(alignment_sites)
+        self.alignment_sites_ref = flex.vec3_double(self.nat2ref(coordinates=self.alignment_sites_nat))
+        self.reference_sites = flex.vec3_double(reference_sites)
 
-    def nat2ref(self, coordinates):
-        return self._alignment_mx * coordinates
+    def nat2ref(self, coordinates, **kw_args):
+        return self._alignment * coordinates
 
-    def ref2nat(self, coordinates):
-        return self._alignment_mx.inverse() * coordinates
+    def ref2nat(self, coordinates, **kw_args):
+        return self._alignment.inverse() * coordinates
+
+    def alignment_rmsd(self):
+        return self.reference_sites.rms_difference(self.alignment_sites_ref)
 
     def show(self):
         print('Global Alignment - ID {}'.format(self.id))
-        print(self._alignment_mx)
+        print(self._alignment)
 
 
 class LocalAlignment(Alignment):
 
 
-    def __init__(self, alignments, alignment_sites, id=None):
+    def __init__(self, alignments, alignment_sites, reference_sites, id=None):
         """
         Object to hold the output of a local alignment - performs coordinate transformations using the alignment matrices
 
         alignment       : list of alignment matrices.
         alignment_sites : list of sites associated with the alignment matrices
         """
-        assert len(alignments) == len(alignment_sites)
-        self._alignments          = list(alignments)
-        self._nat_alignment_sites = flex.vec3_double(alignment_sites)
-        self._ref_alignment_sites = flex.vec3_double([m*s for m,s in zip(alignments,alignment_sites)])
-        self._trees = { 'nat': scipy.spatial.KDTree(data=self._nat_alignment_sites),
-                        'ref': scipy.spatial.KDTree(data=self._ref_alignment_sites) }
+
         self.id = id
+        assert len(alignments) == len(alignment_sites)
+        self._alignments         = list(alignments)
+        self.alignment_sites_nat = flex.vec3_double(alignment_sites)
+        self.alignment_sites_ref = flex.vec3_double([m*s for m,s in zip(alignments,alignment_sites)])
+        self._tree_sites = { 'nat': self.alignment_sites_nat,
+                             'ref': self.alignment_sites_ref }
+        self.reference_sites = flex.vec3_double(reference_sites)
+
+    def _tree(self, coordinate_frame):
+        assert coordinate_frame in self._tree_sites.keys()
+        return scipy.spatial.KDTree(data=self._tree_sites[coordinate_frame])
 
     def _get_alignment_indices_for_points(self, coordinates, coordinate_frame):
         """Get the index of the closes alignment_site for each point"""
-        return self._trees[coordinate_frame].query(coordinates)[1]
+        return self._tree(coordinate_frame=coordinate_frame).query(coordinates)[1]
 
-    def nat2ref(self, coordinates):
-        return transform_coordinates_with_multiple_alignments(coordinates=coordinates, alignments=self._alignments,
-                    mappings=self._get_alignment_indices_for_points(coordinates=coordinates, coordinate_frame='nat'), inverse=False)
+    def _validate_mappings(self, mappings):
+        assert not (mappings<0).nonzero()[0].any(), 'Invalid alignment mapping: Cannot use mappings that are less than zero'
+        assert not (mappings>len(self._alignments)).nonzero()[0].any(), 'Invalid alignment mapping: Trying to use more mappings than there are alignments'
 
-    def ref2nat(self, coordinates):
-        return transform_coordinates_with_multiple_alignments(coordinates=coordinates, alignments=self._alignments,
-                    mappings=self._get_alignment_indices_for_points(coordinates=coordinates, coordinate_frame='ref'), inverse=True)
+    def nat2ref(self, coordinates, mappings=None, **kw_args):
+        if not mappings: mappings=self._get_alignment_indices_for_points(coordinates=coordinates, coordinate_frame='nat')
+        else:            self._validate_mappings(mappings)
+        return transform_coordinates_with_multiple_alignments(coordinates=coordinates, alignments=self._alignments, mappings=mappings, inverse=False)
+
+    def ref2nat(self, coordinates, mappings=None, **kw_args):
+        if not mappings: mappings=self._get_alignment_indices_for_points(coordinates=coordinates, coordinate_frame='ref')
+        else:            self._validate_mappings(mappings)
+        return transform_coordinates_with_multiple_alignments(coordinates=coordinates, alignments=self._alignments, mappings=mappings, inverse=True)
+
+    def alignment_rmsd(self):
+        return self.reference_sites.rms_difference(self.alignment_sites_ref)
+
 
 
 class MultipleLocalAlignment(LocalAlignment):
@@ -90,13 +120,14 @@ class MultipleLocalAlignment(LocalAlignment):
         local_alignments       : list of LocalAlignment objects.
         """
 
-        # Initialise object to hold all of the individual alignments
-        self._local_alignments = []
         self.id = id
-        # Initialise normal objects to hold the collated values of the alignments
+        self._local_alignments = []
         self._alignments = None
-        self._nat_alignment_sites = None
-        self._ref_alignment_sites = None
+        self.alignment_sites_nat = None
+        self.alignment_sites_ref = None
+        self._tree_sites = None
+        self.reference_sites = None
+
         # Add objects to the class
         for l in local_alignments: self.add(l, update=False)
         self._update()
@@ -106,16 +137,18 @@ class MultipleLocalAlignment(LocalAlignment):
 
         # Reset these to their empty values
         self._alignments = []
-        self._nat_alignment_sites = flex.vec3_double()
-        self._ref_alignment_sites = flex.vec3_double()
+        self.alignment_sites_nat = flex.vec3_double()
+        self.alignment_sites_ref = flex.vec3_double()
+        self.reference_sites     = flex.vec3_double()
         # Add data from the alignments
         for l in self._local_alignments:
             self._alignments.extend(l._alignments)
-            self._nat_alignment_sites.extend(l._nat_alignment_sites)
-            self._ref_alignment_sites.extend(l._ref_alignment_sites)
+            self.alignment_sites_nat.extend(l.alignment_sites_nat)
+            self.alignment_sites_ref.extend(l.alignment_sites_ref)
+            self.reference_sites.extend(l.reference_sites)
         # Create new query trees
-        self._trees = { 'nat': scipy.spatial.KDTree(data=self._nat_alignment_sites),
-                        'ref': scipy.spatial.KDTree(data=self._ref_alignment_sites) }
+        self._tree_sites = { 'nat': self.alignment_sites_nat,
+                             'ref': self.alignment_sites_ref }
 
     def add(self, local_alignment, update=True):
         assert isinstance(local_alignment, LocalAlignment), 'Supplied object must be a LocalAlignment'
@@ -191,8 +224,8 @@ def align_structures_flexible(mov_hierarchy, ref_hierarchy,
         l_ali = align_chains_flexible(chn_mov=chn_mov, chn_ref=chn_ref, conf=conformers, cutoff_radius=cutoff_radius)
         # Add aligned chains as the ID of the LocalAlignment object
         l_ali.id = (chn_mov.id, chn_ref.id)
-        l_ali.mov = chn_mov
-        l_ali.ref = chn_ref
+        l_ali.mov = chn_mov.id
+        l_ali.ref = chn_ref.id
         # Append to the alignments
         local_alignments.append(l_ali)
     # Print which chains were aligned to which
@@ -233,7 +266,7 @@ def align_chains_flexible(chn_mov, chn_ref, conf=['','A'], cutoff_radius=15):
     c_mov.atoms().extract_name()    == c_ref.atoms().extract_name(),    'chn_mov and chn_ref must contain the same atoms'
 
     # List of output alignments and alignment sites
-    o_rts = []; o_xyz = []
+    o_rts = []; o_xyz = []; r_xyz = []
 
     # Extract xyz coords
     xyz_mov = c_mov.atoms().extract_xyz()
@@ -252,8 +285,9 @@ def align_chains_flexible(chn_mov, chn_ref, conf=['','A'], cutoff_radius=15):
         # Save the rotation matrix and the coordinates of the c-alpha
         o_xyz.append(ca_atm.xyz)
         o_rts.append(rt_atm)
+        r_xyz.append(xyz_ref_sel.select(((xyz_mov_sel-ca_atm.xyz).dot() == 0.0))[0])
     # Return LocalAlignment object
-    return LocalAlignment(alignments=o_rts, alignment_sites=o_xyz)
+    return LocalAlignment(alignments=o_rts, alignment_sites=o_xyz, reference_sites=r_xyz)
 
 def transform_coordinates_with_multiple_alignments(coordinates, alignments, mappings, inverse=False):
     """
@@ -320,10 +354,11 @@ def extract_sites_for_alignment(chain_obj):
         use_sites.append(use)
     return "".join(seq), sites, use_sites
 
-def align_hierarchies_rigid(mov_hier, ref_hier):
+def align_structures_rigid(mov_hier, ref_hier):
     """Extract c-alpha sites from the structures and align"""
-    return align_chains_rigid(mov_chain=protein(mov_hier, copy=True).models()[0].only_chain(),
-                              ref_chain=protein(ref_hier, copy=True).models()[0].only_chain() )
+    lsq_rt, alignment_sites, reference_sites = align_chains_rigid(mov_chain=protein(mov_hier, copy=True).models()[0].only_chain(),
+                                                                  ref_chain=protein(ref_hier, copy=True).models()[0].only_chain())
+    return GlobalAlignment(alignment_mx=lsq_rt, alignment_sites=alignment_sites, reference_sites=reference_sites, id=None)
 
 def align_chains_rigid(mov_chain, ref_chain):
     """Takes two chains and aligns them - return rt_mx"""
@@ -367,12 +402,8 @@ def align_chains_rigid(mov_chain, ref_chain):
     if (ref_sites_sel.size() == 0):
       raise Exception("No matching C-alpha atoms.")
 
-    # Create LSQ
-    lsq_fit = superpose.least_squares_fit(
-        reference_sites = ref_sites_sel,
-        other_sites     = mov_sites_sel)
-
-    return lsq_fit
+    lsq_rt = superpose.least_squares_fit(reference_sites=ref_sites_sel, other_sites=mov_sites_sel).rt()
+    return lsq_rt, mov_sites_sel, ref_sites_sel
 
 ####################################################################################
 ###                                                                              ###

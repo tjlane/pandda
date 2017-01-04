@@ -3,7 +3,7 @@ import cctbx.maptbx
 
 from scitbx.array_family import flex
 
-from pandda import analyse_graphs
+from pandda.analyse import graphs as analyse_graphs
 
 def write_map_value_distribution(map_vals, output_file, plot_indices=None, plot_normal=False):
     """Write out the value distribution for a map"""

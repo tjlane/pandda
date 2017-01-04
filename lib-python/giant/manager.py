@@ -3,6 +3,7 @@ import os
 from libtbx import easy_pickle
 
 from bamboo.common.logs import Log
+from bamboo.common.file import FileManager
 
 class Program(object):
     """Class meant to provide basic functionality for programs and pipelines"""
@@ -14,6 +15,8 @@ class Program(object):
     _allowed_statuses = ['running','done','errored']
 
     log = Log()
+
+    file_manager = None
 
     def write_running_parameters_to_log(self):
         self.log('===================================>>>', True)
@@ -53,15 +56,19 @@ class Program(object):
             self.log('', True)
             return False
 
+    def initialise_file_manager(self, rootdir):
+        self.file_manager = FileManager(rootdir=rootdir)
+        return self.file_manager
+
     def update_status(self, status):
         """Set log files to indicate the status of the program"""
 
         assert status in self._allowed_statuses
         # Delete any that may exist
-        existing_files = [self.output_handler.get_file('status').format(f) for f in self._allowed_statuses]
+        existing_files = [self.file_manager.get_file('status').format(f) for f in self._allowed_statuses]
         [os.remove(f) for f in existing_files if os.path.exists(f)]
         # Create the new  status file
-        with open(self.output_handler.get_file('status').format(status), 'w') as fh: fh.write('')
+        with open(self.file_manager.get_file('status').format(status), 'w') as fh: fh.write('')
 
     def pickle(self, pickle_file, pickle_object, overwrite=True):
         """Takes an object and pickles it"""

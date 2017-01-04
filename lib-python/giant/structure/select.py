@@ -116,6 +116,21 @@ def extract_backbone_atoms(residue):
     return (n, ca, c)
 
 ####################################################################################
+###                              DISTANCE FUNCTIONS                              ###
+####################################################################################
+
+def find_nearest_atoms(atoms, query):
+    """Find the nearest atom for each coordinate in query"""
+    label_indices = find_closest_points(reference_points=atoms.extract_xyz(), query=query)
+    return [atoms[i] for i in indices]
+
+def find_closest_points(points, query):
+    """Find and return the index of the closest point in points for each coordinate in query"""
+    tree = scipy.spatial.KDTree(data=points)
+    nn_dists, nn_groups = tree.query(query)
+    return nn_groups
+
+####################################################################################
 ###                           DEPRECATED FUNCTIONS                               ###
 ####################################################################################
 
