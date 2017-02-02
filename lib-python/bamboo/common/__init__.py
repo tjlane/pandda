@@ -1,7 +1,30 @@
 
+
+class ListStream:
+
+
+    def __init__(self):
+        self.data = []
+
+    def __str__(self):
+        return ''.join(self.data)
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __iter__(self):
+        return iter(self.data)
+
+    def write(self, s):
+        self.data.append(s)
+
+
 class Meta(object):
     """Object for storing random data - can be edited and added to as required"""
+
+
     _initialized = False
+
     def __init__(self, args=None):
         if isinstance(args, dict):
             for k in args:
@@ -19,12 +42,16 @@ class Meta(object):
             out.append('{!s}: {!s}'.format(k, self.__dict__[k]))
         return '\n'.join(out)
 
+
 class Info(Meta):
     """Same as Meta, but cannot change variables after setting _initialized=True"""
+
+
     def __setattr__(self, name, value):
         if self._initialized and (not hasattr(self, name)):
             raise AttributeError('Cannot set new attributes after initialisation: {!s}'.format(name))
         object.__setattr__(self, name, value)
+
 
 def compare_dictionaries(dict1, dict2):
     """Check differences between dicts. Returns tuple(differences in the keys, and differences in the values)."""

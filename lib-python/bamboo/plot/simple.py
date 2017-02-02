@@ -1,8 +1,12 @@
 import numpy
 
 from matplotlib import pyplot
-
 from bamboo.maths import finite
+
+try:
+    pyplot.style.use('ggplot')
+except:
+    pass
 
 def simple_histogram(filename, data, title, x_lab='x', n_bins=30):
     """Quick histogram function"""
