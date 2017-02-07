@@ -11,9 +11,11 @@ from libtbx.utils import Sorry, Failure
 from scitbx.math import superpose
 from scitbx.array_family import flex
 
+from bamboo.common import ListStream
+
 from giant.structure import make_label
-from giant.structure.select import protein, complete_backbone, common_residues, extract_conformer, extract_atom
-from giant.structure.sequence import pairwise_chain_sequence_identity
+from giant.structure.select import protein, complete_backbone, common_residues, extract_atom
+from giant.structure.sequence import pairwise_chain_sequence_identity, align_sequences_default
 
 ####################################################################################
 ###                                                                              ###
@@ -27,7 +29,8 @@ class Alignment(object):
 
     def nat2ref(self, *args, **arg_dict): raise Exception('Function not implemented for class of this type: {}'.format(self.__class__))
     def ref2nat(self, *args, **arg_dict): raise Exception('Function not implemented for class of this type: {}'.format(self.__class__))
-    def show(self, *args, **arg_dict): raise Exception('Function not implemented for class of this type: {}'.format(self.__class__))
+    def summary(self, *args, **arg_dict): raise Exception('Function not implemented for class of this type: {}'.format(self.__class__))
+    def alignment_rmsd(self, *args, **arg_dict): raise Exception('Function not implemented for class of this type: {}'.format(self.__class__))
 
 
 class GlobalAlignment(Alignment):
@@ -43,23 +46,31 @@ class GlobalAlignment(Alignment):
         """
 
         self.id = id
+        self.mov_id = None
+        self.ref_id = None
         self._alignment = alignment_mx
         self.alignment_sites_nat = flex.vec3_double(alignment_sites)
         self.alignment_sites_ref = flex.vec3_double(self.nat2ref(coordinates=self.alignment_sites_nat))
         self.reference_sites = flex.vec3_double(reference_sites)
 
     def nat2ref(self, coordinates, **kw_args):
+        if not isinstance(coordinates, flex.vec3_double):
+            coordinates = flex.vec3_double(coordinates)
         return self._alignment * coordinates
 
     def ref2nat(self, coordinates, **kw_args):
+        if not isinstance(coordinates, flex.vec3_double):
+            coordinates = flex.vec3_double(coordinates)
         return self._alignment.inverse() * coordinates
 
     def alignment_rmsd(self):
         return self.reference_sites.rms_difference(self.alignment_sites_ref)
 
-    def show(self):
-        print('Global Alignment - ID {}'.format(self.id))
-        print(self._alignment)
+    def summary(self):
+        o  = 'Global Alignment - {}\n'.format(self.id)
+        o += '  {} residues used for alignment\n'.format(len(self.reference_sites))
+        o += '  Post-alignment c-alpha RMSD: {}\n'.format(round(self.alignment_rmsd(),2))
+        return o.strip('\n')
 
 
 class LocalAlignment(Alignment):
@@ -72,8 +83,10 @@ class LocalAlignment(Alignment):
         alignment       : list of alignment matrices.
         alignment_sites : list of sites associated with the alignment matrices
         """
-
         self.id = id
+        self.mov_id = None
+        self.ref_id = None
+        self.seq_ali = None
         assert len(alignments) == len(alignment_sites)
         self._alignments         = list(alignments)
         self.alignment_sites_nat = flex.vec3_double(alignment_sites)
@@ -95,18 +108,26 @@ class LocalAlignment(Alignment):
         assert not (mappings>len(self._alignments)).nonzero()[0].any(), 'Invalid alignment mapping: Trying to use more mappings than there are alignments'
 
     def nat2ref(self, coordinates, mappings=None, **kw_args):
-        if not mappings: mappings=self._get_alignment_indices_for_points(coordinates=coordinates, coordinate_frame='nat')
-        else:            self._validate_mappings(mappings)
+        if mappings is None: mappings=self._get_alignment_indices_for_points(coordinates=coordinates, coordinate_frame='nat')
+        else:                self._validate_mappings(mappings)
         return transform_coordinates_with_multiple_alignments(coordinates=coordinates, alignments=self._alignments, mappings=mappings, inverse=False)
 
     def ref2nat(self, coordinates, mappings=None, **kw_args):
-        if not mappings: mappings=self._get_alignment_indices_for_points(coordinates=coordinates, coordinate_frame='ref')
-        else:            self._validate_mappings(mappings)
+        if mappings is None: mappings=self._get_alignment_indices_for_points(coordinates=coordinates, coordinate_frame='ref')
+        else:                self._validate_mappings(mappings)
         return transform_coordinates_with_multiple_alignments(coordinates=coordinates, alignments=self._alignments, mappings=mappings, inverse=True)
+
+    def summary(self):
+        o  = 'Local alignment: {}\n'.format(self.id)
+        o += '  Labels: {}-{} (Mov-Ref)\n'.format(self.mov_id, self.ref_id)
+        o += '  Residues used for alignment: {}\n'.format(len(self.reference_sites))
+        o += '  Post-alignment c-alpha RMSD: {}\n'.format(round(self.alignment_rmsd(),2))
+        if self.seq_ali:
+            o += '    '+str(self.seq_ali.pretty_print(out=ListStream(), top_name='ref', bottom_name='mov', show_ruler=False, block_size=80)).strip('\n ').replace('\n', '\n    ')
+        return o.strip('\n')
 
     def alignment_rmsd(self):
         return self.reference_sites.rms_difference(self.alignment_sites_ref)
-
 
 
 class MultipleLocalAlignment(LocalAlignment):
@@ -156,6 +177,14 @@ class MultipleLocalAlignment(LocalAlignment):
         self._local_alignments.append(local_alignment)
         if update: self._update()
 
+    def summary(self):
+        o  = 'Multiple local alignment: {}\n'.format(self.id)
+        o += '  Number of alignments: {}\n'.format(len(self._local_alignments))
+        o += '  Alignment Summaries:\n'
+        for la in self._local_alignments:
+            o += '    '+la.summary().replace('\n','\n    ')+'\n'
+        return o.strip('\n')
+
 ####################################################################################
 ###                                                                              ###
 ###                          GENERAL ALIGNMENT FUNCTIONS                         ###
@@ -173,10 +202,8 @@ def nearby_coords_bool(query, coords, cutoff):
 ###                                                                              ###
 ####################################################################################
 
-def align_structures_flexible(mov_hierarchy, ref_hierarchy,
-                                conformers=['','A'], cutoff_radius=15,
-                                sequence_identity_threshold=0.95, one_to_one_mapping=True,
-                                require_hierarchies_identical=True, verbose=False):
+def align_structures_flexible(mov_hierarchy, ref_hierarchy, altlocs=['','A'], cutoff_radius=15, sequence_identity_threshold=0.95,
+                              one_to_one_mapping=True, require_hierarchies_identical=True, verbose=False):
     """
     Perform a flexible alignment on two hierarchies. Alignments are performed on a chain-by-chain basis.
     Each chain of mov_hierarchy is aligned
@@ -221,11 +248,12 @@ def align_structures_flexible(mov_hierarchy, ref_hierarchy,
             raise Failure('Unable to align chain {} from mov_hierarchy: there is no suitable chain in ref_hierarchy. \nThis may be fixed by setting one_to_one_mapping to False or decreasing sequence_identity_threshold.'.format(chn_mov.id))
             continue
         # Align the selected chains
-        l_ali = align_chains_flexible(chn_mov=chn_mov, chn_ref=chn_ref, conf=conformers, cutoff_radius=cutoff_radius)
+        l_ali = align_chains_flexible(chn_mov=chn_mov, chn_ref=chn_ref, altlocs=altlocs, cutoff_radius=cutoff_radius)
         # Add aligned chains as the ID of the LocalAlignment object
-        l_ali.id = (chn_mov.id, chn_ref.id)
-        l_ali.mov = chn_mov.id
-        l_ali.ref = chn_ref.id
+        l_ali.id = 'chain {} to chain {}'.format(chn_mov.id, chn_ref.id)
+        l_ali.mov_id = chn_mov.id
+        l_ali.ref_id = chn_ref.id
+        l_ali.seq_ali = align_sequences_default(seq_a=chn_ref.as_sequence(), seq_b=chn_mov.as_sequence())
         # Append to the alignments
         local_alignments.append(l_ali)
     # Print which chains were aligned to which
@@ -237,24 +265,21 @@ def align_structures_flexible(mov_hierarchy, ref_hierarchy,
     # Combine all of the local alignments
     return MultipleLocalAlignment(local_alignments=local_alignments)
 
-def align_chains_flexible(chn_mov, chn_ref, conf=['','A'], cutoff_radius=15):
+def align_chains_flexible(chn_mov, chn_ref, altlocs=['','A'], cutoff_radius=15):
     """
     Take two chains and perform flexible alignment on them.
-    Only conformers supplied in (e.g. conf=['','A']) will be used for alignment (maximum one conformer).
-    Residues are removed that do not contain a full set of backbone atoms (N,CA,C,O) for the conformers selected (e.g. conf=['','A'])
+    Only alternate conformations supplied in (e.g. altlocs=['','A']) will be used for alignment (maximum one conformer).
+    Residues are removed that do not contain a full set of backbone atoms (N,CA,C,O) for the conformers selected (e.g. altlocs=['','A'])
     Chains will be truncated so that the chains contain an "aligned" set of residues (currently sequence-identical)
 
     returns LocalAlignment
     """
 
-    # Trim to the selected conformers of the chain
-    chn_mov_co = extract_conformer(chn_mov, conf=conf)
-    chn_ref_co = extract_conformer(chn_ref, conf=conf)
     # Trim both chains to residues with complete backbones
-    chn_mov_cb = complete_backbone(chn_mov_co, conf=conf)
-    chn_ref_cb = complete_backbone(chn_ref_co, conf=conf)
+    chn_mov_cb = complete_backbone(chn_mov, altlocs=altlocs)
+    chn_ref_cb = complete_backbone(chn_ref, altlocs=altlocs)
     # Trim both chains to the same set of residues
-    chn_mov_cr, chn_ref_cr = common_residues(chn_mov_cb, chn_ref_cb)
+    chn_ref_cr, chn_mov_cr = common_residues(chn_ref_cb, chn_mov_cb)
     # Create new hierarchies to perform most processing
     h_mov = iotbx.pdb.hierarchy.new_hierarchy_from_chain(chn_mov_cr); h_mov.sort_atoms_in_place();
     h_ref = iotbx.pdb.hierarchy.new_hierarchy_from_chain(chn_ref_cr); h_ref.sort_atoms_in_place();

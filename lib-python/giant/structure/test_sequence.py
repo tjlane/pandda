@@ -4,7 +4,10 @@ import numpy
 
 from giant.structure.sequence import *
 
+
 class TestSequence(unittest.TestCase):
+
+
     def setUp(self):
         # Reference sequence
         self.seq_a = 'SMSVKKPKRDDSKDLALCSMILTEMETHEDAWPFLLPVNLKLVPGYKKVIKKPMDFSTIREKLSSGQYPNLETFALDVRLVFDNCETFNEDDSDIGRAGHNMRKYFEKKWTDTFK'

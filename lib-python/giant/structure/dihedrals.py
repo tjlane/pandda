@@ -1,7 +1,9 @@
+import numpy
 
 import iotbx.pdb
 from scitbx.math import dihedral_angle
 
+from giant.maths.angles import angle_difference
 from giant.structure.select import extract_backbone_atoms
 from giant.structure.iterators import generate_residue_triplets
 
@@ -49,3 +51,29 @@ def extract_phi_atoms(prev, current):
 
 ########################################################################################
 
+def get_peptide_bond_type(prev_Ca, prev_C, curr_N, curr_Ca):
+    "Return the type of peptide bond"
+
+    assert prev_Ca.name.strip() == 'CA'
+    assert prev_C.name.strip() == 'C'
+    assert curr_N.name.strip() == 'N'
+    assert curr_Ca.name.strip() == 'CA'
+
+    ang = dihedral_angle(sites=[a.xyz for a in (prev_Ca, prev_C, curr_N, curr_Ca)], deg=True)
+    ang = numpy.round(ang, 2)
+
+    if curr_N.parent().resname == 'PRO':
+        cis, trans = ('PCIS','PTRANS')
+    else:
+        cis, trans = ('CIS', 'TRANS')
+
+    # Use lenient angle tolerances to detect CIS or TRANS
+    if angle_difference(a1=0, a2=ang, deg=True, abs_val=True) < 45:
+        bond_type = cis
+    elif angle_difference(a1=180, a2=ang, deg=True, abs_val=True) < 45:
+        bond_type = trans
+    else:
+        print 'WARNING: BOND IS NOT CIS OR TRANS (angle {:7}) for link between {} and {} - DEFAULTING TO TRANS'.format(ang, prev_C.id_str(), curr_N.id_str())
+        bond_type = trans
+
+    return bond_type

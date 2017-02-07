@@ -7,7 +7,11 @@ from giant.maths.geometry import is_within
 
 import iotbx.pdb.hierarchy as iotbx_pdbh
 
-#---------------------------------------------------->
+###############################################################################
+###                                                                         ###
+###                                LABELS                                   ###
+###                                                                         ###
+###############################################################################
 
 def make_label(obj):
     """Return the relevant label for a supplied hierarchy/atom object"""
@@ -26,8 +30,6 @@ def make_label(obj):
     else:
         raise Exception('Invalid object type provided: {}'.format(type(obj)))
 
-#---------------------------------------------------->
-
 def label_from_residue_group(rg):
     """Return (chain_id, resid)"""
     ch = rg.parent()
@@ -38,8 +40,6 @@ def label_from_atom_group(ag):
     rg = ag.parent()
     ch = rg.parent()
     return (ch.id, rg.resid(), ag.altloc)
-
-#---------------------------------------------------->
 
 def label_from_conformer(cnf):
     """Return (chain_id, resid, altloc). Must only have one residue."""
@@ -53,8 +53,6 @@ def label_from_residue(res):
     ch = cnf.parent()
     return (ch.id, res.resid(), cnf.altloc)
 
-#---------------------------------------------------->
-
 def label_from_atom(at):
     """Return (chain_id, resid, altloc)"""
     ag = at.parent()
@@ -66,7 +64,25 @@ def label_from_atom_with_labels(at):
     """Return (chain_id, resid, altloc)"""
     return (at.chain_id, at.resid(), at.altloc)
 
-#---------------------------------------------------->
+###############################################################################
+###                                                                         ###
+###                         CONVENIENCE FUNCTIONS                           ###
+###                                                                         ###
+###############################################################################
+
+def get_atom_pairs(residue_1, residue_2, fetch_labels=True):
+    atom_pairs = []
+    a1 = residue_1.atoms()
+    a2 = residue_2.atoms()
+    a1_d = a1.build_dict()
+    a2_d = a2.build_dict()
+    for a_name in a1.extract_name():
+        if a_name not in a2_d: continue
+        if fetch_labels:
+            atom_pairs.append((a1_d[a_name].fetch_labels(),a2_d[a_name].fetch_labels()))
+        else:
+            atom_pairs.append((a1_d[a_name],a2_d[a_name]))
+    return atom_pairs
 
 def calculate_residue_group_occupancy(residue_group):
     """
@@ -95,45 +111,42 @@ def calculate_residue_group_rmsd(residue_group_1, residue_group_2):
     rmsd = (ats_1.extract_xyz()-ats_2.extract_xyz()).rms_length()
     return rmsd
 
-def calculate_residue_group_bfactor_ratio(residue_group, hierarchy, data_table=None, rg_label=None, column_suffix=''):
-    """Calculate bfactor quality metrics of the residue to surrounding residues"""
+def calculate_rmsd(atoms_1, atoms_2, sort=True, truncate_to_common_set=True, remove_H=True):
+    """
+    Calculate the RMSD between two sets of atoms
+    - sort                   - sort atoms prior to rmsd calculation (so that equivalent atoms are compared)
+    - truncate_to_common_set - only calculate rmsd over the common_set of atoms, return None if different atoms are provided. Setting this will set sort to true.
+    """
 
-    rg_sel = residue_group
-    # Set defaults
-    if rg_label is None:    rg_label = (rg_sel.unique_resnames()[0]+'-'+rg_sel.parent().id+'-'+rg_sel.resseq+rg_sel.icode).replace(' ','')
-    if data_table is None:  data_table = pandas.DataFrame(index=[rg_label], column=[])
-    # Check validity
-    if len(rg_sel.unique_resnames()) != 1: raise Exception(rg_label+': More than one residue name associated with residue group -- cannot process')
+    # Need to sort by atoms to check if atoms are the same in both sets
+    if truncate_to_common_set:
+        sort=True
 
-    # Extract rg_sel objects
-    rg_sel_ags    = rg_sel.atom_groups()
-    rg_sel_atoms  = rg_sel.atoms()
-    rg_sel_coords = rg_sel_atoms.extract_xyz()
-    # Select nearby atom_group for scoring
-    near_ags = [ag for ag in hierarchy.atom_groups() if (is_within(4, rg_sel_coords, ag.atoms().extract_xyz()) and (ag not in rg_sel_ags))]
-    if near_ags:
-        # Extract the names of the nearby residues
-        near_ag_names = ':'.join(sorted(set([ag.parent().parent().id+'-'+ag.parent().resseq.strip()+ag.parent().icode.strip()+'-'+ag.resname for ag in near_ags])))
-        data_table.set_value(   index = rg_label,
-                                col   = 'Surrounding Residues Names'+column_suffix,
-                                value = near_ag_names )
-        # Extract atoms from nearby groups
-        near_ats = iotbx.pdb.hierarchy.af_shared_atom()
-        [near_ats.extend(ag.detached_copy().atoms()) for ag in near_ags]
-        # Calculate B-factors of the residue
-        res_mean_b = flex.mean_weighted(rg_sel_atoms.extract_b(), rg_sel_atoms.extract_occ())
-        data_table.set_value(   index = rg_label,
-                                col   = 'Average B-factor (Residue)'+column_suffix,
-                                value = res_mean_b )
-        # Calculate B-factors of the surrounding atoms
-        sch_mean_b = flex.mean_weighted(near_ats.extract_b(), near_ats.extract_occ())
-        data_table.set_value(   index = rg_label,
-                                col   = 'Average B-factor (Surroundings)'+column_suffix,
-                                value = sch_mean_b )
-        # Store the ratio of the b-factors
-        data_table.set_value(   index = rg_label,
-                                col   = 'Surroundings B-factor Ratio'+column_suffix,
-                                value = res_mean_b/sch_mean_b )
+    # Sort atoms by name if required
+    if sort:
+        # Extract atom names
+        names_1 = list(atoms_1.extract_name())
+        names_2 = list(atoms_2.extract_name())
+        # Get name overlap between atom sets
+        common_atoms = list(set(names_1).intersection(names_2))
+        if (not truncate_to_common_set):
+            if not (len(common_atoms)==len(atoms_1)==len(atoms_2)):
+                return None
+        # Get reorderings of atoms
+        sort_1 = flex.size_t([names_1.index(an) for an in common_atoms])
+        sort_2 = flex.size_t([names_2.index(an) for an in common_atoms])
+        # Reorder the atoms
+        atoms_1 = atoms_1.select(sort_1)
+        atoms_2 = atoms_2.select(sort_2)
 
-    return data_table
+    # Remove hydrogen atoms
+    if remove_H:
+        sel_h = (atoms_1.extract_element() != ' H')
+        atoms_1 = atoms_1.select(sel_h)
+        atoms_2 = atoms_2.select(sel_h)
+    # Check selection working as it should
+    if not atoms_1.extract_name().all_eq(atoms_2.extract_name()):
+        return None
+    # Calculate RMSD and return
+    return flex.mean((atoms_1.extract_xyz() - atoms_2.extract_xyz()).dot())**0.5
 

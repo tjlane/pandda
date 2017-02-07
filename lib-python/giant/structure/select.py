@@ -1,4 +1,6 @@
 
+import scipy.spatial
+
 import iotbx.pdb
 from scitbx.array_family import flex
 
@@ -34,6 +36,13 @@ def sidechains(hierarchy, cache=None, copy=True):
     return hierarchy.select(sel, copy_atoms=copy)
 
 ####################################################################################
+
+def sel_altloc(hierarchy, altlocs=['','A'], cache=None, copy=True):
+    if not cache: cache=hierarchy.atom_selection_cache()
+    sel = cache.selection('(not element H) and ({})'.format(' or '.join(['altid "{:1}"'.format(c) for c in altlocs])))
+    return hierarchy.select(sel, copy_atoms=copy)
+
+####################################################################################
 ###                              CHAIN FUNCTIONS                                 ###
 ####################################################################################
 
@@ -46,14 +55,19 @@ def _truncate_by_idx(chn, i_rg_sel):
     resid_sel = ' or '.join(['resid {}'.format(rg_all[i].resid()) for i in i_rg_sel])
     return new_h.select(cache.selection(resid_sel)).only_chain()
 
+def chain_conformer(chn, altlocs=['','A']):
+    if isinstance(altlocs, str): altlocs = [altlocs]
+    if not altlocs: altlocs = ['']
+    assert (altlocs == ['']) or ( (len(altlocs)-altlocs.count(''))==1 ), 'Supply up to one non-blank altloc (e.g. ["","A"], [""] or ["A"]): {}'.format(altlocs)
+    return sel_altloc(hierarchy=iotbx.pdb.hierarchy.new_hierarchy_from_chain(chn), altlocs=altlocs).only_chain()
+
 def common_residues(chn_1, chn_2):
     """
     Truncates input chains to the common set of residues in chn_1 and chn_2 after sequence alignment.
     Returns both truncated chains.
     """
     # Apply default quick alignment
-    alignment = align_sequences_default(seq_a=chn_1.as_sequence(),
-                                        seq_b=chn_2.as_sequence())
+    alignment = align_sequences_default(seq_a=chn_1.as_sequence(), seq_b=chn_2.as_sequence())
     # Flags for which residues to use
     m_seq_1, m_seq_2 = alignment.exact_match_selections()
     assert len(m_seq_1) == len(m_seq_2), 'Something has gone wrong: these should be the same length!'
@@ -63,27 +77,17 @@ def common_residues(chn_1, chn_2):
     out_c_2 = _truncate_by_idx(chn_2, m_seq_2)
     return out_c_1, out_c_2
 
-def extract_conformer(chn, conf=['','A']):
-    h = iotbx.pdb.hierarchy.new_hierarchy_from_chain(chn)
-    c = h.atom_selection_cache()
-    s = c.selection(' or '.join(['altid "{:1}"'.format(i) for i in conf]))
-    return h.select(s, copy_atoms=False).only_chain()
-
-def complete_backbone(chn, conf=['','A']):
+def complete_backbone(chn, altlocs=['','A']):
     """
     Truncate a chn to only residues with a complete set of backbone atoms.
     Return chn object composing of residues with a complete set of backbone atoms
     """
-    # If string given, put in list
-    if isinstance(conf, str): conf = [conf]
-    # If nothing given, default to blank conformer
-    if not conf: conf = ['']
-    # Check that there's a maximum of one non-blank conformer ID
-    assert (conf == ['']) or ( (len(conf)-conf.count(''))==1 ), 'Supply up to one non-blank conformer (e.g. ["","A"], [""] or ["A"]): {}'.format(conf)
+    # Extract only the requested conformers
+    chn = chain_conformer(chn, altlocs=altlocs)
     # Iterate through and record indices of complete residues
     i_sel = []
     for i_rg,rg in enumerate(chn.residue_groups()):
-        confs = [c for c in rg.conformers() if c.altloc in conf]
+        confs = [c for c in rg.conformers() if c.altloc in altlocs]
         if not confs: continue
         assert len(confs) == 1, 'Something has gone wrong here. This should never be longer than 1.'
         # Extract the residue (as this has atom name interpretation)
@@ -101,19 +105,16 @@ def check_backbone_atoms(residue):
     return not bool(residue.residue_name_plus_atom_names_interpreter() \
                         .atom_name_interpretation.missing_atom_names().intersection(['N','CA','C','O']))
 
+def extract_backbone_atoms(residue, atoms=('N','CA','C')):
+    """Extract N, CA, C triplets for a residue"""
+    residue_int = residue.residue_name_plus_atom_names_interpreter().atom_name_interpretation.expected
+    residue_ats = residue.atoms().build_dict()
+    return tuple([residue_ats[residue_int[a][0]] for a in atoms])
+
 def extract_atom(residue, atom='CA'):
     i = residue.residue_name_plus_atom_names_interpreter().atom_name_interpretation.expected
     d = residue.atoms().build_dict()
     return d[i[atom][0]]
-
-def extract_backbone_atoms(residue):
-    """Extract N, CA, C triplets for a residue"""
-    residue_int = residue.residue_name_plus_atom_names_interpreter().atom_name_interpretation.expected
-    residue_ats = residue.atoms().build_dict()
-    n  = residue_ats[residue_int['N'][0]]
-    ca = residue_ats[residue_int['CA'][0]]
-    c  = residue_ats[residue_int['C'][0]]
-    return (n, ca, c)
 
 ####################################################################################
 ###                              DISTANCE FUNCTIONS                              ###
@@ -121,8 +122,10 @@ def extract_backbone_atoms(residue):
 
 def find_nearest_atoms(atoms, query):
     """Find the nearest atom for each coordinate in query"""
-    label_indices = find_closest_points(reference_points=atoms.extract_xyz(), query=query)
-    return [atoms[i] for i in indices]
+    if isinstance(atoms, list): xyz = [a.xyz for a in atoms]
+    else:                       xyz = atoms.extract_xyz()
+    label_indices = find_closest_points(points=xyz, query=query)
+    return [atoms[i] for i in label_indices]
 
 def find_closest_points(points, query):
     """Find and return the index of the closest point in points for each coordinate in query"""

@@ -1,5 +1,9 @@
+import iotbx.pdb
+
+from scitbx.array_family import flex
 from scitbx.math import basic_statistics
 
+from giant.maths.geometry import is_within
 from giant.structure.select import non_h, protein, backbone, sidechains
 
 ########################################################################################
@@ -62,6 +66,7 @@ class BfactorStatistics(object):
             print 'Sidechain Atoms:'
             print self.sidechain.show()
 
+
 ########################################################################################
 
 def normalise_b_factors_to_z_scores(pdb_input=None, pdb_hierarchy=None, b_factor_statistics=None, method='backbone'):
@@ -77,6 +82,48 @@ def normalise_b_factors_to_z_scores(pdb_input=None, pdb_hierarchy=None, b_factor
     output_h.atoms().set_b(new_b)
 
     return output_h
+
+def calculate_residue_group_bfactor_ratio(residue_group, hierarchy, data_table=None, rg_label=None, column_suffix=''):
+    """Calculate bfactor quality metrics of the residue to surrounding residues"""
+
+    rg_sel = residue_group
+    # Set defaults
+    if rg_label is None:    rg_label = (rg_sel.unique_resnames()[0]+'-'+rg_sel.parent().id+'-'+rg_sel.resseq+rg_sel.icode).replace(' ','')
+    if data_table is None:  data_table = pandas.DataFrame(index=[rg_label], column=[])
+    # Check validity
+    if len(rg_sel.unique_resnames()) != 1: raise Exception(rg_label+': More than one residue name associated with residue group -- cannot process')
+
+    # Extract rg_sel objects
+    rg_sel_ags    = rg_sel.atom_groups()
+    rg_sel_atoms  = rg_sel.atoms()
+    rg_sel_coords = rg_sel_atoms.extract_xyz()
+    # Select nearby atom_group for scoring
+    near_ags = [ag for ag in hierarchy.atom_groups() if (is_within(4, rg_sel_coords, ag.atoms().extract_xyz()) and (ag not in rg_sel_ags))]
+    if near_ags:
+        # Extract the names of the nearby residues
+        near_ag_names = ':'.join(sorted(set([ag.parent().parent().id+'-'+ag.parent().resseq.strip()+ag.parent().icode.strip()+'-'+ag.resname for ag in near_ags])))
+        data_table.set_value(   index = rg_label,
+                                col   = 'Surrounding Residues Names'+column_suffix,
+                                value = near_ag_names )
+        # Extract atoms from nearby groups
+        near_ats = iotbx.pdb.hierarchy.af_shared_atom()
+        [near_ats.extend(ag.detached_copy().atoms()) for ag in near_ags]
+        # Calculate B-factors of the residue
+        res_mean_b = flex.mean_weighted(rg_sel_atoms.extract_b(), rg_sel_atoms.extract_occ())
+        data_table.set_value(   index = rg_label,
+                                col   = 'Average B-factor (Residue)'+column_suffix,
+                                value = res_mean_b )
+        # Calculate B-factors of the surrounding atoms
+        sch_mean_b = flex.mean_weighted(near_ats.extract_b(), near_ats.extract_occ())
+        data_table.set_value(   index = rg_label,
+                                col   = 'Average B-factor (Surroundings)'+column_suffix,
+                                value = sch_mean_b )
+        # Store the ratio of the b-factors
+        data_table.set_value(   index = rg_label,
+                                col   = 'Surroundings B-factor Ratio'+column_suffix,
+                                value = res_mean_b/sch_mean_b )
+
+    return data_table
 
 ########################################################################################
 
