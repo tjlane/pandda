@@ -338,7 +338,8 @@ def make_occupancy_constraints(params, input_hierarchy):
         if params.verbose: print ''
         simple_groups = simple_occupancy_groups(hierarchy   = input_hierarchy.hierarchy,
                                                 verbose     = params.verbose)
-        occupancy_complete += [True]*len(simple_groups)
+        num_alts = len([a for a in input_hierarchy.hierarchy.altloc_indices() if a!=''])
+        occupancy_complete += [True if len(g)==num_alts else False for g in simple_groups]
         occupancy_groups += simple_groups
         if params.verbose: print ''
         print 'Increased number of occupancy groups to {}'.format(len(occupancy_groups))
