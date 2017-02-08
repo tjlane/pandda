@@ -12,6 +12,16 @@ from giant.utils.pdb import strip_pdb_to_input, get_pdb_header
 
 #######################################
 
+PROGRAM = 'giant.strip_conformations'
+DESCRIPTION = """
+    A tool to remove unwanted conformations of a multi-conformer model.
+        Conformations to keep can be kept can be declared explicity (using conf=...) or implicitly,
+        through keeping the conformations associated with certain residue names (res=...).
+
+    1) Simple usage:
+        > giant.strip_conformations input.pdb
+"""
+
 blank_arg_prepend = {'.pdb':'pdb='}
 
 master_phil = libtbx.phil.parse("""
@@ -179,4 +189,10 @@ def run(params):
 
 if __name__=='__main__':
     from giant.jiffies import run_default
-    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION)

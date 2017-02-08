@@ -14,6 +14,19 @@ from giant.structure.formatting import RefmacFormatter, PhenixFormatter
 
 #######################################
 
+PROGRAM = 'giant.make_restraints'
+DESCRIPTION = """
+    A tool to simplify the generation of restraints for use during refinement with REFMAC or PHENIX.
+
+    The output ".params" files may be passed to giant.quick_refine for use in refinement.
+
+    1) Simple usage:
+        > giant.make_restraints input.pdb
+
+    2) With all modes active
+        > giant.make_restraints input.pdb all=True
+"""
+
 blank_arg_prepend = {'.pdb' : 'pdb='}
 
 master_phil = libtbx.phil.parse("""
@@ -26,6 +39,7 @@ input {
 modes {
     all = False
         .help = "Turn on all funcationality"
+        .multiple = False
         .type = bool
     peptide_bond_links = True
         .help = "Make continuity records for alternate conformations of the peptide backbone to ensure no discontinuities"
@@ -97,6 +111,15 @@ occupancy {
     overlap_dist = 2
         .type = float
         .help = 'Distance to use when clustering atoms that should have occupancies that SUM TO LESS THAN ONE'
+    complete_groups = True
+        .help = 'Generate a set of fully constrained groups (that sum to unitary occupancy) when True. Generate a set of weaker constraints for overlapping atoms when False.'
+        .type = bool
+    simple_groups = False
+        .help = 'Generate the set of default occupancy groups (conformers of the same residue, connected sets of residues)'
+        .type = bool
+    exclude_altlocs = None
+        .help = 'Exclude certain altlocs from occupancy groups (e.g. A or A,B)'
+        .type = str
 }
 
 b_factors
@@ -291,7 +314,14 @@ def make_occupancy_constraints(params, input_hierarchy):
                                                     resnames        = resnames,
                                                     group_dist      = params.occupancy.group_dist,
                                                     overlap_dist    = params.occupancy.overlap_dist,
+                                                    complete_groups = params.occupancy.complete_groups,
+                                                    exclude_altlocs = params.occupancy.exclude_altlocs.split(',') if params.occupancy.exclude_altlocs else [],
                                                     verbose         = params.verbose)
+    # Record whether the occupancy groups are complete (occs sum to 1)
+    if params.occupancy.complete_groups:
+        occupancy_complete = [True]*len(occupancy_groups)
+    else:
+        occupancy_complete = [False]*len(occupancy_groups)
 
     if not occupancy_groups:
         print 'No matching residues were found (no occupancy constraints created)'
@@ -301,19 +331,22 @@ def make_occupancy_constraints(params, input_hierarchy):
     print ''
     print 'Created {} occupancy groups for overlapping conformers'.format(len(occupancy_groups))
     print ''
-    print 'Remaking default occupancy restraints for residues'
-    if params.verbose: print ''
 
-    # Ref-make the default occupancy groups
-    occupancy_groups += simple_occupancy_groups(hierarchy   = input_hierarchy.hierarchy,
+    # Ref-make the default occupancy groups?
+    if params.occupancy.simple_groups:
+        print 'simple_groups=={}: Remaking default occupancy restraints for residues'.format(params.occupancy.simple_groups)
+        if params.verbose: print ''
+        simple_groups = simple_occupancy_groups(hierarchy   = input_hierarchy.hierarchy,
                                                 verbose     = params.verbose)
-
-    if params.verbose: print ''
-    print 'Increased number of occupancy groups to {}'.format(len(occupancy_groups))
-    print ''
+        occupancy_complete += [True]*len(simple_groups)
+        occupancy_groups += simple_groups
+        if params.verbose: print ''
+        print 'Increased number of occupancy groups to {}'.format(len(occupancy_groups))
+        print ''
 
     if params.output.refmac:
-        restraint_list = RefmacFormatter.make_occupancy_restraints(list_of_lists_of_groups=occupancy_groups)
+        restraint_list = RefmacFormatter.make_occupancy_restraints(list_of_lists_of_groups  = occupancy_groups,
+                                                                   group_completeness       = occupancy_complete)
         rest_block = RefmacFormatter.format_occupancy_restraints(restraint_list=restraint_list)
         with open(params.output.refmac, 'a') as fh: fh.write(rest_block+'\n')
         if params.verbose:
@@ -325,7 +358,8 @@ def make_occupancy_constraints(params, input_hierarchy):
             print ''
 
     if params.output.phenix:
-        restraint_list = PhenixFormatter.make_occupancy_restraints(occupancy_groups)
+        restraint_list = PhenixFormatter.make_occupancy_restraints(list_of_lists_of_groups  = occupancy_groups,
+                                                                   group_completeness       = occupancy_complete)
         rest_block = PhenixFormatter.format_occupancy_restraints(restraint_list=restraint_list)
         with open(params.output.phenix, 'a') as fh: fh.write(rest_block+'\n')
         if params.verbose:
@@ -338,6 +372,8 @@ def make_occupancy_constraints(params, input_hierarchy):
 
 def make_b_factor_restraints(params, input_hierarchy):
     pass
+
+#######################################
 
 def run(params):
 
@@ -401,4 +437,10 @@ def run(params):
 
 if __name__=='__main__':
     from giant.jiffies import run_default
-    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION)

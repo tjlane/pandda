@@ -42,14 +42,16 @@ def simple_occupancy_groups(hierarchy, include_single_conformer_groups=False, ve
         occupancy_groups.append(selections)
     return occupancy_groups
 
+def overlapping_occupancy_groups(hierarchy, resnames, group_dist, overlap_dist, complete_groups=True, exclude_altlocs=[], verbose=False):
 
-def overlapping_occupancy_groups(hierarchy, resnames, group_dist, overlap_dist, verbose=False):
+    if exclude_altlocs is None: exclude_altlocs = []
+    if exclude_altlocs == ['']: exclude_altlocs = []
 
     # Remove hydrogens to prevent ridiculous amounts of restraints
     hierarchy = non_h(hierarchy)
     # Extract all altlocs and ags with altlocs
-    all_altlocs = list(hierarchy.altloc_indices())
-    all_alt_ags = [ag for ag in hierarchy.atom_groups() if ag.altloc]
+    sel_altlocs = [a for a in hierarchy.altloc_indices() if (a!='') and (a not in exclude_altlocs)]
+    sel_alt_ags = [ag for ag in hierarchy.atom_groups() if (ag.altloc in sel_altlocs)]
 
     # Record for each altloc
     # - atom groups for each altloc
@@ -60,23 +62,24 @@ def overlapping_occupancy_groups(hierarchy, resnames, group_dist, overlap_dist, 
         print '-------------------------------------->'
         print ''
         print 'Generating groups of nearby alternate conformers (cutoff {}A)'.format(group_dist)
+        if exclude_altlocs:
+            print 'Excluding conformer(s): {}'.format(','.join(exclude_altlocs))
         print ''
 
-    for altloc in all_altlocs:
-        if altloc=='': continue
+    for altloc in sel_altlocs:
         # Select atom groups with this altloc
-        altloc_ags = filter_by_altloc(all_alt_ags, altloc)
+        altloc_ags = filter_by_altloc(sel_alt_ags, altloc)
         # Cluster the atom groups
         altloc_clusters = cluster_atom_groups(altloc_ags, cutoff=group_dist)
         # Dictionary mapping altlocs to ags to clusters
         cluster_dict[altloc] = (altloc_ags, altloc_clusters)
         if verbose:
-            print '- altloc {}: {} residues clustered into {} clusters'.format(altloc, len(altloc_ags), len(set(altloc_clusters)))
+            print '- altloc {}: {} residues clustered into {} groups'.format(altloc, len(altloc_ags), len(set(altloc_clusters)))
     if verbose:
         print ''
 
     # Find atom_groups with the selected resnames
-    seed_ags = [ag for ag in all_alt_ags if (ag.resname in resnames)]
+    seed_ags = [ag for ag in sel_alt_ags if (ag.resname in resnames)]
     # List of 2-length tuples (containing constrained pairs)
     constrain_groups = []
 
@@ -99,13 +102,13 @@ def overlapping_occupancy_groups(hierarchy, resnames, group_dist, overlap_dist, 
             print ''
             print 'Creating occupancy group based on: {}'.format(GenericSelection.to_str(focus_ag))
             print '- this residue is part of alternate conformer {}'.format(focus_ag.altloc)
-            print '- there are {} atom groups in this cluster'.format(len(group_ags))
+            print '- there are {} atom_groups in this group'.format(len(group_ags))
             print ''
             print 'Looking for overlapping groups of residues with different alternate conformers:'
             print ''
 
         tmp_constrain_groups = []
-        for altloc in all_altlocs:
+        for altloc in sel_altlocs:
             # Skip blank altloc or the selected altloc
             if altloc=='' or altloc==focus_ag.altloc:
                 continue
@@ -120,13 +123,23 @@ def overlapping_occupancy_groups(hierarchy, resnames, group_dist, overlap_dist, 
             for cluster in overlap_clusts:
                 tmp_constrain_groups.append(((focus_ag.altloc, focus_clust),(altloc, cluster)))
 
+            # Remove any used seed groups in the overlapping group
+            [seed_ags.remove(ag) for ag in overlap_ags if ag in seed_ags]
+        # Remove any used seed groups in the seed group
+        [seed_ags.remove(ag) for ag in group_ags if ag in seed_ags]
+
+        if verbose:
+            print ''
+            print 'Occupancy groups for this residue'
+            print '- {} overlapping group(s) found'.format(len(tmp_constrain_groups))
+
         # Add to the complete list
         if tmp_constrain_groups:
-            if verbose:
-                print ''
-                print 'Occupancy groups for this residue'
-                print '- {} overlapping group(s) found'.format(len(tmp_constrain_groups))
-                print '- creating {} occupancy group constraints'.format(len(tmp_constrain_groups))
+            if complete_groups:
+                if verbose:
+                    print '- complete_groups=={}: concatenating occupancy groups'.format(complete_groups)
+                tmp_constrain_groups = [ tuple([(focus_ag.altloc, focus_clust)]+[t[1] for t in tmp_constrain_groups]) ]
+            print '- creating {} occupancy group constraint(s)'.format(len(tmp_constrain_groups))
             constrain_groups.extend(tmp_constrain_groups)
         else:
             if verbose:
@@ -134,9 +147,6 @@ def overlapping_occupancy_groups(hierarchy, resnames, group_dist, overlap_dist, 
                 print '- not creating any occupancy groups for this residue'
         if verbose:
             print ''
-
-        # Remove any used seed groups
-        [seed_ags.remove(ag) for ag in group_ags if ag in seed_ags]
 
     # Filter duplicated restraint groups
     tmp = []
@@ -147,9 +157,10 @@ def overlapping_occupancy_groups(hierarchy, resnames, group_dist, overlap_dist, 
     # Format to generic residue selections
     occupancy_groups = []
     for g in constrain_groups:
-        ags_1 = [GenericSelection.to_dict(ag) for ag,c in zip(*cluster_dict[g[0][0]]) if c==g[0][1]]
-        ags_2 = [GenericSelection.to_dict(ag) for ag,c in zip(*cluster_dict[g[1][0]]) if c==g[1][1]]
-        occupancy_groups.append([ags_1,ags_2])
+        ag_groups = {}
+        for altloc, cluster in g:
+            ag_groups.setdefault(altloc,[]).extend([GenericSelection.to_dict(ag) for ag,c in zip(*cluster_dict[altloc]) if c==cluster])
+        occupancy_groups.append([ag_groups[a] for a in sorted(ag_groups.keys())])
 
     return occupancy_groups
 

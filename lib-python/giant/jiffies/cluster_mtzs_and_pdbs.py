@@ -10,6 +10,17 @@ from giant.xray.data.cluster import CrystalGroup
 
 #######################################
 
+PROGRAM = 'giant.data.cluster'
+DESCRIPTION = """
+    A tool to cluster sets of pdb and/or mtz files.
+
+    1) Simple usage:
+        > giant.data.cluster *.pdb pdb_label=filename
+    or
+        > giant.data.cluster */model.pdb pdb_label=foldername
+
+"""
+
 blank_arg_prepend = {'.mtz':'mtz=', '.pdb':'pdb='}
 
 master_phil = libtbx.phil.parse("""
@@ -198,4 +209,10 @@ def run(params):
 
 if __name__=='__main__':
     from giant.jiffies import run_default
-    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION)

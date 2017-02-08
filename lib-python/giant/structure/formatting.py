@@ -245,10 +245,13 @@ class _Formatter:
         return cls._occupancy_restraint_format.format(cls.selection.join_custom(strings=restraint_list, join=cls._occupancy_restraint_format_join))
 
     @classmethod
-    def make_occupancy_restraints(cls, list_of_lists_of_groups, idx=1):
+    def make_occupancy_restraints(cls, list_of_lists_of_groups, group_completeness=None, idx=1):
+        if group_completeness is None:
+            group_completeness = [False]*len(list_of_lists_of_groups)
+        assert len(group_completeness) == len(list_of_lists_of_groups)
         r_list = []
-        for list_of_groups in list_of_lists_of_groups:
-            r_list.append(cls.occupancy_restraint(list_of_groups=list_of_groups, idx=idx))
+        for list_of_groups, complete in zip(list_of_lists_of_groups, group_completeness):
+            r_list.append(cls.occupancy_restraint(list_of_groups=list_of_groups, complete=complete, idx=idx))
             idx += len(list_of_groups)
         return r_list
 
@@ -272,14 +275,15 @@ class RefmacFormatter(_Formatter):
 
     _occupancy_restraint_format = """{}\noccupancy refine"""
     _occupancy_restraint_format_join = "\n"
-    _occupancy_restraint = '{}\noccupancy group alts incomplete {}'
+    _occupancy_restraint = '{}\noccupancy group alts {} {}'
     _occupancy_restraint_join = '\n'
     _occupancy_group = "occupancy group id {} {}"
 
     @classmethod
-    def occupancy_restraint(cls, list_of_groups, idx=1):
+    def occupancy_restraint(cls, list_of_groups, complete=False, idx=1):
         r_list = [cls.occupancy_group(objects=g, idx=idx+i) for i,g in enumerate(list_of_groups)]
         return cls._occupancy_restraint.format(cls.selection.join_custom(strings=r_list, join=cls._occupancy_restraint_join),
+                                               'complete' if complete is True else 'incomplete',
                                                ' '.join(map(str,range(idx,idx+len(list_of_groups)))))
     @classmethod
     def occupancy_group(cls, objects, idx):
@@ -313,7 +317,7 @@ class PhenixFormatter(_Formatter):
     _occupancy_group = """selection = {!s}"""
 
     @classmethod
-    def occupancy_restraint(cls, list_of_groups, idx=1):
+    def occupancy_restraint(cls, list_of_groups, complete=False, idx=1):
         r_list = [cls.occupancy_group(objects=g) for g in list_of_groups]
         return cls._occupancy_restraint.format(cls.selection.join_custom(strings=r_list, join=cls._occupancy_restraint_join))
     @classmethod

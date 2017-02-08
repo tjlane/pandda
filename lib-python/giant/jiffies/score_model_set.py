@@ -16,7 +16,17 @@ pyplot.rc('axes', color_cycle=['r', 'g', 'b', 'y'])
 
 bar = '=======================++>'
 
-#######################################
+PROGRAM = 'giant.score_model_set'
+DESCRIPTION = """
+    A tool to quickly score a set of related ligand models against crystallographic electron density
+    The radar plots for the ligands will be output on the same graph for comparison
+
+    1) Simple usage:
+        (mtz files must be named the same as the pdb files, e.g. structure_1.mtz)
+        > giant.score_model structure_1.pdb structure_2.pdb structure_2.pdb
+
+    See giant.score_model for more information.
+"""
 
 blank_arg_prepend = {None:'pdb='}
 
@@ -136,4 +146,10 @@ def run(params):
 
 if __name__=='__main__':
     from giant.jiffies import run_default
-    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION)

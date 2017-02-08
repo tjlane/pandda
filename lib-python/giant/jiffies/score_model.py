@@ -24,7 +24,19 @@ from giant.xray.edstats import extract_residue_group_density_scores
 
 bar = '=======================++>'
 
-#######################################
+PROGRAM = 'giant.score_model'
+DESCRIPTION = """
+    A tool to quickly score a ligand model against crystallographic electron density
+
+    1) Simple usage (for ligand called LIG or UNL):
+        > giant.score_model refined.pdb refined.mtz
+
+    2) Score a residue in the file (replace XXX with ligand 3-letter ID)
+        > giant.score_model ... res_names=XX1,XX2,XX3
+
+    3) Define a "fitted" model to compare the refined model against
+        > giant.score_model ... pdb1=fitted.pdb mtz1=fitted.mtz
+"""
 
 blank_arg_prepend = {'.pdb':'pdb1=', '.mtz':'mtz1='}
 
@@ -451,4 +463,10 @@ def run(params):
 
 if __name__=='__main__':
     from giant.jiffies import run_default
-    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION)

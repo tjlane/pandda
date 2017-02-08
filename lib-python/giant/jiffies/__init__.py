@@ -3,29 +3,31 @@ import os, sys, copy
 import libtbx.phil
 from libtbx.utils import Sorry
 
+from giant import HEADER_TEXT
+
 def show_defaults_and_exit_maybe(master_phil, args):
     """Show master_phil and exit if requested"""
 
     # Show Defaults (just values)
-    if '--show-defaults' in args:
-        print('=========>\nShowing Default Parameters\n=========>')
+    if '--show-defaults' in args or (not args):
+        print('\n====================== Showing Default Parameters =====================\n')
         master_phil.show(expert_level=0, attributes_level=0)
     # Show Defaults (including help)
     elif '--help' in args:
-        print('=========>\nShowing Default Parameters & Help\n=========>')
+        print('\n================== Showing Default Parameters & Help ==================\n')
         master_phil.show(expert_level=0, attributes_level=1)
     # Show Defaults (including help and types)
     elif '--help-and-types' in args:
-        print('=========>\nShowing Default Parameters & Help+Types\n=========>')
+        print('\n=============== Showing Default Parameters & Help+Types ===============\n')
         master_phil.show(expert_level=0, attributes_level=2)
     # Show Defaults (everything)
     elif '--expert' in args:
-        print('=========>\nShowing Default Parameters (Expert Level)\n=========>')
+        print('\n============== Showing Default Parameters (Expert Level) ==============\n')
         master_phil.show(expert_level=3, attributes_level=3)
     else:
         return
 
-    raise SystemExit('=========>\nNow Exiting.\n=========>')
+    raise SystemExit('\n============================= Now Exiting =============================\n')
 
 def parse_phil_args(master_phil, args, blank_arg_prepend=None, home_scope=None):
 
@@ -89,8 +91,9 @@ def extract_params_default(master_phil, args, blank_arg_prepend=None, home_scope
     working_phil = parse_phil_args(master_phil, args, blank_arg_prepend=blank_arg_prepend, home_scope=home_scope)
     return working_phil
 
-def run_default(run, master_phil, args, blank_arg_prepend=None):
+def run_default(run, master_phil, args, blank_arg_prepend=None, program='', description=''):
     """Run a program via a standard setup of functions and objects"""
+    print(HEADER_TEXT.format(program=program, description=description))
     working_phil = extract_params_default(master_phil=master_phil, args=args, blank_arg_prepend=blank_arg_prepend)
     out = run(params=working_phil.extract())
     return 0

@@ -6,9 +6,21 @@ import libtbx.phil
 from giant.utils.pdb import strip_pdb_to_input
 from giant.structure.utils import resolve_residue_id_clashes, transfer_residue_groups_from_other
 from giant.structure.altlocs import expand_alternate_conformations, find_next_conformer_idx, increment_altlocs, prune_redundant_alternate_conformations
-from giant.structure.occupancy import normalise_occupancies
+from giant.structure.occupancy import set_conformer_occupancy
 
 ############################################################################
+
+PROGRAM = 'giant.merge_conformations'
+DESCRIPTION = """
+    A tool to merge two models of the same crystal into one structure.
+        The alternate conformers of the two models are generated and merged. Any common sections are then
+        converted back into a single conformer model. This tool is therefore particularly useful when one
+        model is an edited version of the other as many of the residues will be identical and the output
+        structure will not contain too many alternate conformations.
+
+    1) Simple usage:
+        > giant.merge_conformations major=structure_1.pdb minor=structure_2.pdb
+"""
 
 blank_arg_prepend = None
 
@@ -108,9 +120,16 @@ def merge_complementary_hierarchies(hierarchy_1, hierarchy_2, verbose=False):
         rmsd_cutoff         = 0.1,
         in_place            = True,
         verbose             = verbose)
-    print 'Normalising output occupancies in the merged structure'
-    hierarchy_1 = normalise_occupancies(
-        hierarchy=hierarchy_1)
+    print ''
+    altlocs = [a for a in hierarchy_1.altloc_indices() if a]
+    new_occ = 1.0/len(altlocs)
+    print 'Setting all conformer ({}) occupancies to {}'.format(','.join(altlocs), new_occ)
+    hierarchy_1 = set_conformer_occupancy(
+        hierarchy   = hierarchy_1,
+        altlocs     = altlocs,
+        occupancy   = new_occ,
+        in_place    = True,
+        verbose     = verbose)
 
     return hierarchy_1
 
@@ -118,13 +137,11 @@ def merge_complementary_hierarchies(hierarchy_1, hierarchy_2, verbose=False):
 
 def run(params):
 
-    ######################################################################
     print ''
     print '============================================ *** ============================================'
     print '                         Validating input parameters and input files'
     print '============================================ *** ============================================'
     print ''
-    ######################################################################
 
     assert params.major
     assert params.minor
@@ -132,8 +149,6 @@ def run(params):
     if os.path.exists(params.output):
         if params.overwrite: os.remove(params.output)
         else: raise Exception('File already exists: {}'.format(params.output))
-
-    ######################################################################
 
     # Read in the ligand file and set each residue to the requested conformer
     maj_obj = strip_pdb_to_input(params.major, remove_ter=True)
@@ -146,16 +161,12 @@ def run(params):
     except:
         raise Sorry('Structures may only have one model')
 
-    ######################################################################
-
     final_struct = merge_complementary_hierarchies(
         hierarchy_1 = maj_obj.hierarchy,
         hierarchy_2 = min_obj.hierarchy,
         verbose     = params.verbose)
 
-    ######################################################################
     print 'Writing output structure'
-    ######################################################################
 
     # Update the atoms numbering
     final_struct.sort_atoms_in_place()
@@ -173,4 +184,10 @@ def run(params):
 
 if __name__=='__main__':
     from giant.jiffies import run_default
-    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION)

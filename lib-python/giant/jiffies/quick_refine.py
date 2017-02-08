@@ -7,6 +7,20 @@ from bamboo.common.path import rel_symlink
 
 #######################################
 
+PROGRAM = 'giant.quick_refine'
+DESCRIPTION = """
+    A tool to simplify the launching of standard refinement jobs in REFMAC or PHENIX.
+
+    1) Simple usage:
+        > giant.quick_refine input.pdb input.mtz ligand.cif
+
+    2) Defining custom names for the output folder and the output files
+        > giant.quick_refine ... dir_prefix='XXX' out_prefix='XXX'
+
+    3) Specify additonal parameter file (see giant.make_restraints)
+        > giant.quick_refine ... params=restraints.params
+"""
+
 blank_arg_prepend = {   '.mtz':'mtz=',
                         '.pdb':'pdb=',
                         '.cif':'cif=',
@@ -28,9 +42,6 @@ input {
 settings {
     program = phenix *refmac
         .type = choice
-    auto_generate_restraints = False
-        .help = "Auto-generate and use a params file from giant.make_restraints?"
-        .type = bool
     args = None
         .help = "Pass any additional arguments to the program? (Command Line arguments). Pass as quoted strings."
         .type = str
@@ -61,7 +72,6 @@ def run(params):
 
     assert params.input.pdb is not None, 'No PDB given for refinement'
     assert params.input.mtz is not None, 'No MTZ given for refinement'
-    if params.settings.auto_generate_restraints: assert params.input.params, 'settings.auto_generate_restraints is True, but you must also define input.params.'
 
     ########################
     current_dirs = sorted(glob.glob(params.output.dir_prefix+'*'))
@@ -82,16 +92,6 @@ def run(params):
     output_prefix = os.path.join(out_dir, params.output.out_prefix)
     print 'Output Real Prefix = {}'.format(output_prefix)
     print 'Output Link Prefix = {}'.format(params.output.link_prefix)
-
-    ########################
-    # Create occupancy parameters
-    if params.settings.auto_generate_restraints and params.input.params:
-        print 'Running giant.make_restraints'
-        print 'Generating occupancy model for the input pdb: {}'.format(params.input.pdb)
-        if params.settings.program == 'phenix':
-            os.system('giant.make_restraints pdb={} output.phenix={} output.refmac=None verbose=False'.format(params.input.pdb, params.input.params))
-        elif params.settings.program == 'refmac':
-            os.system('giant.make_restraints pdb={} output.phenix=None output.refmac={} verbose=False'.format(params.input.pdb, params.input.params))
 
     ########################
     # Phenix
@@ -169,18 +169,14 @@ def run(params):
         if (not os.path.exists(link_mtz)):
             os.symlink(real_mtz, link_mtz)
 
-#    ########################
-#    # Create occupancy parameters
-#    if os.path.exists(link_pdb) and params.settings.create_occupancy_params and params.input.params:
-#        print 'Running giant.create_occupancy_params'
-#        print 'Generating occupancy model for the input pdb: {}'.format(link_pdb)
-#        if params.settings.program == 'phenix':
-#            os.system('giant.create_occupancy_params pdb={} phenix_occ_out={} refmac_occ_out=None verbose=False'.format(link_pdb, params.input.params))
-#        elif params.settings.program == 'refmac':
-#            os.system('giant.create_occupancy_params pdb={} phenix_occ_out=None refmac_occ_out={} verbose=False'.format(link_pdb, params.input.params))
-
 #######################################
 
 if __name__=='__main__':
     from giant.jiffies import run_default
-    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION)

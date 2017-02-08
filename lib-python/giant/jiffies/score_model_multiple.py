@@ -12,7 +12,15 @@ from giant.jiffies.score_model import prepare_output_directory, score_model, mak
 
 bar = '=======================++>'
 
-#######################################
+PROGRAM = 'giant.score_model_multiple'
+DESCRIPTION = """
+    A tool to quickly score multiple ligand models against crystallographic electron density
+
+    1) Simple usage (for ligand called LIG or UNL, and files in each folder called refine.pdb, refine.mtz)
+        > giant.score_model dir='/path/to/directories/*'
+
+    See giant.score_model for more information.
+"""
 
 blank_arg_prepend = {None:'dir='}
 
@@ -188,4 +196,10 @@ def run(params):
 
 if __name__=='__main__':
     from giant.jiffies import run_default
-    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION)

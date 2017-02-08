@@ -12,7 +12,17 @@ from giant.structure.occupancy import normalise_occupancies, set_conformer_occup
 
 #######################################
 
-blank_arg_prepend = None
+PROGRAM = 'giant.set_occupancies'
+DESCRIPTION = """
+    A tool to allow the occupancies of particular conformers in a model, either by
+        conformer id   - set the occupancy of conformer explicitly
+        residue altloc - set the occupancy of conformer associated with a residue
+
+    1) Simple usage:
+        > giant.set_occupancies input.pdb
+"""
+
+blank_arg_prepend = {'.pdb':'input='}
 
 master_phil = libtbx.phil.parse("""
 
@@ -108,4 +118,10 @@ def run(params):
 
 if __name__=='__main__':
     from giant.jiffies import run_default
-    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION)

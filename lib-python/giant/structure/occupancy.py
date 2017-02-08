@@ -1,11 +1,9 @@
 from scitbx.array_family import flex
+from giant.structure.formatting import ShortSelection
 
 def normalise_occupancies(hierarchy, exclude_conformers=None, max_occ=1.0, min_occ=0.0, in_place=False):
     """Normalise the occupancies of a hierarchy so that the occupancies for a residue sum to 1.0"""
-
     if exclude_conformers is None: exclude_conformers = []
-
-    # Edit original copy or create new one?
     if (not in_place): hierarchy = hierarchy.deep_copy()
     # Iterate through the output structure, and normalise the occupancies if necessary
     for rg in hierarchy.residue_groups():
@@ -36,15 +34,14 @@ def normalise_occupancies(hierarchy, exclude_conformers=None, max_occ=1.0, min_o
 
     return hierarchy
 
-def set_conformer_occupancy(hierarchy, conf_id, conf_occ, in_place=False):
+def set_conformer_occupancy(hierarchy, altlocs, occupancy, in_place=False, verbose=False):
     """Normalise the occupancies of a hierarchy so that the occupancies for a residue sum to 1.0"""
-
-    # Edit original copy or create new one?
+    if isinstance(altlocs, str): altlocs=[altlocs]
+    else: assert isinstance(altlocs, list), 'conf_id must be either str or list'
     if (not in_place): hierarchy = hierarchy.deep_copy()
-    # Iterate through the output structure, and set the occupancies where selected
-    for rg in hierarchy.residue_groups():
-        # Calculate the total occupancy for this residue group
-        for ag in rg.atom_groups():
-            if ag.altloc == conf_id: ag.atoms().set_occ(flex.double([conf_occ]*len(ag.atoms())))
+    for ag in hierarchy.atom_groups():
+        if ag.altloc in altlocs:
+            if verbose: print '{} - setting occupancy to {}'.format(ShortSelection.format(ag), occupancy)
+            ag.atoms().set_occ(flex.double([occupancy]*len(ag.atoms())))
     return hierarchy
 
