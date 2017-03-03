@@ -5,6 +5,7 @@ from scitbx.math import basic_statistics
 
 from giant.maths.geometry import is_within
 from giant.structure.select import non_h, protein, backbone, sidechains
+from giant.structure.formatting import ShortLabeller
 
 ########################################################################################
 
@@ -101,7 +102,7 @@ def calculate_residue_group_bfactor_ratio(residue_group, hierarchy, data_table=N
     near_ags = [ag for ag in hierarchy.atom_groups() if (is_within(4, rg_sel_coords, ag.atoms().extract_xyz()) and (ag not in rg_sel_ags))]
     if near_ags:
         # Extract the names of the nearby residues
-        near_ag_names = ':'.join(sorted(set([ag.parent().parent().id+'-'+ag.parent().resseq.strip()+ag.parent().icode.strip()+'-'+ag.resname for ag in near_ags])))
+        near_ag_names = ':'.join(sorted(set([ShortLabeller.format(ag) for ag in near_ags])))
         data_table.set_value(   index = rg_label,
                                 col   = 'Surrounding Residues Names'+column_suffix,
                                 value = near_ag_names )

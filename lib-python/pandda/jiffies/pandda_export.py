@@ -39,9 +39,6 @@ output {
         .type = bool
 }
 export {
-    datasets_to_export = *interesting_datasets processed_datasets
-        .type = choice
-
     files_to_export = None
         .type = path
         .multiple = True
@@ -53,7 +50,7 @@ export {
         .type = bool
 
     required_file_for_export = *model None
-        .help = 'only export folder if this file exists (set to None to turn off)'
+        .help = 'only export folder if this file exists (otherwise export all folders)'
         .type = choice
 }
 process_and_export {
@@ -292,11 +289,11 @@ def run(params):
 
     # Find the dataset directories to be exported
     if params.input.select_dir:
-        export_dirs = sorted([os.path.join(params.input.pandda_dir, params.export.datasets_to_export, p) for p in params.input.select_dir])
+        export_dirs = sorted([os.path.join(params.input.pandda_dir, 'processed_datasets', p) for p in params.input.select_dir])
         export_dirs = [p for p in export_dirs if os.path.exists(p)]
         print 'Exporting:\n\t', '\n\t'.join(export_dirs)
     else:
-        export_dirs = sorted(glob.glob(os.path.join(params.input.pandda_dir, params.export.datasets_to_export, '*')))
+        export_dirs = sorted(glob.glob(os.path.join(params.input.pandda_dir, 'processed_datasets', '*')))
     assert export_dirs, 'No Export Directories Found'
 
     # Create output directory

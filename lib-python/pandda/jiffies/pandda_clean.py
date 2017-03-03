@@ -44,8 +44,8 @@ DEVASTATING - Remove almost everything                - re-run pandda to remake:
 Running with DEVASTATING essentially requires the pandda to be run again from scratch.
 
 Modelled Stuctures (in the modelled_structures folders) are NEVER deleted by pandda.clean.
-Files in the "analyses" and "results_summaries" folders are NEVER deleted by pandda.clean.
-Directories are also NEVER deleted (only files are deleted).
+Files in the "analyses" folders are NEVER deleted by pandda.clean. Directories are also
+NEVER deleted (only files are deleted).
 """
 
 ############################################################################
@@ -67,8 +67,8 @@ def clean_datasets(top_dir, level=0, skip_interesting=True):
         d_name = os.path.basename(d_dir)
         print '=======================================>>>'
 
-        if skip_interesting and os.path.exists(os.path.join(top_dir, 'interesting_datasets', d_name)):
-            print 'Not Cleaning Interesting Dataset: {}'.format(d_name)
+        if skip_interesting and glob.glob(os.path.join(d_dir, '*event_*.ccp4')):
+            print 'Not cleaning interesting dataset (folder containing event maps): {}'.format(d_name)
             continue
         else:
             print 'Cleaning folder: {}'.format(d_dir)
@@ -89,25 +89,25 @@ def clean_datasets(top_dir, level=0, skip_interesting=True):
 
     return
 
-def clean_links(top_dir, level=0, skip_interesting=True):
-    print '============================================================>>>'
-    print 'Cleaning Soft Links:'
-
-    # Level 0 cleaning
-    if level >= 0:
-        delete_with_glob(os.path.join(top_dir, 'resolutions', '*'))
-
-    # Level 1 cleaning
-    if level >= 1:
-        pass
-
-    # Level 2 cleaning
-    if level >= 2:
-        delete_with_glob(os.path.join(top_dir, 'empty_directories', '*'))
+#def clean_links(top_dir, level=0, skip_interesting=True):
+#    print '============================================================>>>'
+#    print 'Cleaning Soft Links:'
+#
+#    # Level 0 cleaning
+#    if level >= 0:
+#        delete_with_glob(os.path.join(top_dir, 'resolutions', '*'))
+#
+#    # Level 1 cleaning
+#    if level >= 1:
+#        pass
+#
+#    # Level 2 cleaning
+#    if level >= 2:
+#        delete_with_glob(os.path.join(top_dir, 'empty_directories', '*'))
 #        if not skip_interesting:
 #            delete_with_glob(os.path.join(top_dir, 'interesting_datasets', '*'))
-
-    return
+#
+#    return
 
 def clean_statistical_maps(top_dir, level=0):
     print '============================================================>>>'
@@ -133,12 +133,12 @@ def clean_pickles(top_dir, level=0):
 
     # Level 2 cleaning - clean meta
     if level >= 2:
-        delete_with_glob(os.path.join(top_dir, 'pickled_panddas', 'dataset_meta.pickle'))
-        delete_with_glob(os.path.join(top_dir, 'pickled_panddas', 'reference_dataset.pickle'))
+        delete_with_glob(os.path.join(top_dir, 'pickled_data', 'dataset_meta.pickle'))
+        delete_with_glob(os.path.join(top_dir, 'pickled_data', 'reference_dataset.pickle'))
 
     # Level 3 cleaning - delete everthing
     if level >= 3:
-        delete_with_glob(os.path.join(top_dir, 'pickled_panddas', '*.pickle'))
+        delete_with_glob(os.path.join(top_dir, 'pickled_data', '*.pickle'))
 
 def run(params):
 
@@ -170,11 +170,11 @@ def run(params):
         skip_interesting=params.skip_interesting
     )
 
-    clean_links(
-        top_dir=params.input.pandda_dir,
-        level=ferocity,
-        skip_interesting=params.skip_interesting
-    )
+#    clean_links(
+#        top_dir=params.input.pandda_dir,
+#        level=ferocity,
+#        skip_interesting=params.skip_interesting
+#    )
 
     clean_statistical_maps(
         top_dir=params.input.pandda_dir,

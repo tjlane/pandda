@@ -43,8 +43,7 @@ class Grid(object):
         return self._origin
 
     def cart_points(self, origin=True):
-        assert isinstance(origin, bool)
-        return flex.vec3_double(flex.nested_loop(grid_size))*self.grid_spacing() + self.cart_origin()*origin
+        return self.grid2cart(self.grid_points(), origin=origin)
     def grid_points(self):
         return flex.nested_loop(self.grid_size())
 
@@ -53,6 +52,11 @@ class Grid(object):
         if origin: shift = self.cart_origin()
         else:      shift = (0,0,0)
         return flex.vec3_double(sites_grid)*self.grid_spacing() + shift
+    def cart2grid(self, sites_cart, origin=True):
+        assert isinstance(origin, bool)
+        if origin: shift = self.cart_origin()
+        else:      shift = (0,0,0)
+        return (flex.vec3_double(sites_cart) - shift)*(1.0/self.grid_spacing())
 
     def indexer(self):
         """Translates between 3d grid coordinates and 1d array coordinates"""
@@ -106,6 +110,13 @@ class Grid(object):
                             'Size of Grid (Cart): {!s}'.format(tuple([round(x,3) for x in self.cart_size()]))
                         ])
 
+    @staticmethod
+    def index_on_other(query, other, assume_unique=True):
+        """Find indices of query relative to other (all query must be contained within other)"""
+        query = numpy.array(query)
+        other = numpy.array(other)
+        return numpy.where(numpy.in1d(other, query, assume_unique=assume_unique))[0]
+
 
 class GridPartition(object):
 
@@ -113,9 +124,9 @@ class GridPartition(object):
     def __init__(self, grid, sites_cart):
         """Partition a grid based on the nearest neighbour calpha atom for each grid site"""
         assert isinstance(grid, Grid), 'grid must be of type Grid'
-        self.parent=grid
-        self.sites_cart=sites_cart
-        self.sites_grid=(sites_cart-self.parent.cart_origin())*(1.0/self.parent.grid_spacing())
+        self.parent = grid
+        self.sites_cart = sites_cart
+        self.sites_grid = grid.cart2grid(sites_cart=sites_cart, origin=True)
 
     def partition(self, mask=None, cpus=1):
         """Find the nearest neighbour for each grid point (or the subset defined by mask.outer_mask() if mask is not None)"""
@@ -138,7 +149,7 @@ class GridPartition(object):
             # Chunk the points into groups
             chunk_size = iceil(1.0*len(query_sites)/cpus)
             chunked_points = [query_sites[i:i + chunk_size] for i in range(0, len(query_sites), chunk_size)]
-            assert sum([len(a) for a in chunked_points]) == len(query_sites)
+            assert sum(map(len,chunked_points)) == len(query_sites)
             assert len(chunked_points) == cpus
             # Map to cpus
             arg_list = [(self.sites_grid, chunk) for chunk in chunked_points]
@@ -166,10 +177,11 @@ class GridPartition(object):
     def query_by_grid_points(self, gps):
         """Return the atom label for a grid point"""
         assert self.nn_groups is not None, 'Grid not yet partitioned'
-        return numpy.array([self.nn_groups[self.grid_indexer(g)] for g in gps])
+        indxr = self.grid.indexer()
+        return numpy.array([self.nn_groups[indxr(g)] for g in gps])
 
     def query_by_cart_points(self, sites_cart):
         """Dynamically calculate the nearest atom site to the input points"""
-        tree = spatial.KDTree(data=self.sites)
+        tree = spatial.KDTree(data=self.sites_cart)
         nn_dists, nn_groups = tree.query(sites_cart)
         return numpy.array(nn_groups)

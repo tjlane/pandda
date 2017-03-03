@@ -2,6 +2,19 @@ import numpy
 from scitbx.array_family import flex
 from libtbx.math_utils import ifloor, iceil
 
+def idx_to_grid(idx, grid_size):
+    """Return the grid point for the index"""
+    gp = []
+    tot = idx
+    for i,j in enumerate(grid_size):
+        # Whats the multiplier on this row
+        mult = int(numpy.prod(grid_size[i+1:]))
+        # How many of this can we get
+        val=tot//mult
+        tot-=val*mult
+        gp.append(val)
+    return tuple(gp)
+
 def calculate_grid_size(min_carts, max_carts, grid_spacing):
     """Calculate the number of points to be sampled for a box size and sampling distance. Returns the size of the box in A, and the number of points to be sampled along each axis."""
     cart_size = tuple([max_c-min_c for min_c, max_c in zip(min_carts, max_carts)])

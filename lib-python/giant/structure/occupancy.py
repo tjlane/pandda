@@ -1,5 +1,5 @@
 from scitbx.array_family import flex
-from giant.structure.formatting import ShortSelection
+from giant.structure.formatting import Labeller
 
 def normalise_occupancies(hierarchy, exclude_conformers=None, max_occ=1.0, min_occ=0.0, in_place=False):
     """Normalise the occupancies of a hierarchy so that the occupancies for a residue sum to 1.0"""
@@ -41,7 +41,7 @@ def set_conformer_occupancy(hierarchy, altlocs, occupancy, in_place=False, verbo
     if (not in_place): hierarchy = hierarchy.deep_copy()
     for ag in hierarchy.atom_groups():
         if ag.altloc in altlocs:
-            if verbose: print '{} - setting occupancy to {}'.format(ShortSelection.format(ag), occupancy)
+            if verbose: print '{} - setting occupancy to {}'.format(Labeller.format(ag), occupancy)
             ag.atoms().set_occ(flex.double([occupancy]*len(ag.atoms())))
     return hierarchy
 

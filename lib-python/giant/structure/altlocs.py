@@ -6,7 +6,7 @@ import iotbx.pdb
 from scitbx.array_family import flex
 
 from giant.structure import get_atom_pairs, calculate_rmsd
-from giant.structure.formatting import ShortSelection
+from giant.structure.formatting import Labeller
 
 #####################################################
 ###             HIERARCHY FUNCTIONS               ###
@@ -31,7 +31,7 @@ def increment_altlocs(hierarchy, offset=1, in_place=False, verbose=False):
             print '{} -> {}'.format(a, new_altlocs[a])
         print '------------------>'
     for atom_group in hierarchy.atom_groups():
-        if verbose: print '{} - updating altloc: {} -> {}'.format(ShortSelection.format(atom_group), atom_group.altloc, new_altlocs[atom_group.altloc])
+        if verbose: print '{} - updating altloc: {} -> {}'.format(Labeller.format(atom_group), atom_group.altloc, new_altlocs[atom_group.altloc])
         assert atom_group.altloc != ''
         atom_group.altloc = new_altlocs[atom_group.altloc]
     return hierarchy
@@ -49,14 +49,14 @@ def expand_alternate_conformations(hierarchy, in_place=False, verbose=False):
         for residue_group in chain.residue_groups():
             # If has conformers but has blank altloc atoms (add blank ag to all other ags)
             if residue_group.have_conformers() and residue_group.move_blank_altloc_atom_groups_to_front():
-                if verbose: print '{} - expanding to pure conformer (altlocs {})'.format(ShortSelection.format(residue_group), [a.altloc for a in residue_group.atom_groups()])
+                if verbose: print '{} - expanding to pure conformer (altlocs {})'.format(Labeller.format(residue_group), [a.altloc for a in residue_group.atom_groups()])
                 # Convert all residue_groups to pure alt-conf
                 create_pure_alt_conf_from_proper_alt_conf(residue_group=residue_group, in_place=True)
             # Only want to expand conformers for protein atoms (which should be present in all conformers)
             # or where the residue group is only present in one conformation (single conformer water)
             # but DO NOT want to expand waters in conformer A to A,B,C etc...
             if chain.is_protein() or (not residue_group.have_conformers()):
-                if verbose: print '{} - populating missing conformers (current altlocs {})'.format(ShortSelection.format(residue_group), [a.altloc for a in residue_group.atom_groups()])
+                if verbose: print '{} - populating missing conformers (current altlocs {})'.format(Labeller.format(residue_group), [a.altloc for a in residue_group.atom_groups()])
                 # Populate missing conformers (from the other conformers)
                 populate_missing_conformers(residue_group=residue_group, full_altloc_set=full_altloc_set, in_place=True)
     if verbose: print '------------------>'
@@ -96,7 +96,7 @@ def prune_redundant_alternate_conformations(hierarchy, required_altlocs=[], rmsd
             if prune is False: break
         if prune is False: continue
         # All rmsds below cutoff - prune!
-        if verbose: print 'Pruning {}: altlocs {}'.format(ShortSelection.format(residue_group), [ag.altloc for ag in alt_ags])
+        if verbose: print 'Pruning {}: altlocs {}'.format(Labeller.format(residue_group), [ag.altloc for ag in alt_ags])
         if main_ag:
             # Merge one alt group with the main atom_group
             new_main_ag = alt_ags[0].detached_copy()

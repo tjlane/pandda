@@ -18,6 +18,7 @@ from bamboo.edstats import Edstats
 from giant.utils.pdb import strip_pdb_to_input
 from giant.structure import calculate_residue_group_occupancy, calculate_residue_group_rmsd
 from giant.structure.b_factors import calculate_residue_group_bfactor_ratio
+from giant.structure.formatting import ShortLabeller
 from giant.xray.edstats import extract_residue_group_density_scores
 
 #######################################
@@ -130,6 +131,7 @@ output {
     out_dir = ./
         .type = path
 }
+include scope giant.phil.settings_phil
 """+residue_plot_phil, process_includes=True)
 
 #######################################
@@ -139,12 +141,14 @@ def sanitise_hierarchy(hierarchy):
 
 def prepare_table():
 
-    columns_fix = ['Model RMSD']
-    columns_num = ['RSCC','RSZD','RSZO','RSR',
+    columns_fix = [ 'Model RMSD' ]
+    columns_num = [ 'RSCC','RSZD','RSZO','RSR',
+                    'RSZO/OCC', 'Occupancy',
+                    'Surroundings B-factor Ratio',
+                    'Surroundings Residue Labels',
                     'Average B-factor (Residue)',
-                    'Average B-factor (Surroundings)',
-                    'Surroundings B-factor Ratio']
-    columns_end = ['PDB','MTZ']
+                    'Average B-factor (Surroundings)' ]
+    columns_end = [ 'PDB','MTZ' ]
 
     columns = []
     columns.extend(columns_fix)
@@ -161,7 +165,7 @@ def prepare_output_directory(params):
     if not os.path.exists(images_dir): os.mkdir(images_dir)
     return params.output.out_dir, images_dir
 
-def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix=''):
+def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix='', verbose=False):
     """
     Score residues against density, and generate other model quality indicators.
     Identified residues in pdb1 are scored against mtz1 (and mtz2, if provided) using edstats.
@@ -174,6 +178,8 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix=''):
     # Extract the residues to look for
     res_names = params.selection.res_names_list
 
+    print 'Reading input structure:', pdb1
+
     # Extract Structure
     h1_all = strip_pdb_to_input(pdb1, remove_ter=True, remove_end=True).hierarchy
     sanitise_hierarchy(h1_all)
@@ -183,8 +189,12 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix=''):
     h1_sch = h1_pro.select(h1_pro.atom_selection_cache().selection('not (name CA or name C or name O or name N)'), copy_atoms=True)
 
     # Pull out residues to analyse
-    if res_names: rg_for_analysis = [rg for rg in h1_all.residue_groups() if [n for n in rg.unique_resnames() if n in res_names]]
-    else:         rg_for_analysis = h1_all.residue_groups()
+    if res_names:
+        rg_for_analysis = [rg for rg in h1_all.residue_groups() if [n for n in rg.unique_resnames() if n in res_names]]
+        print 'Selecting residues named {}: {} residue(s)'.format(' or '.join(res_names), len(rg_for_analysis))
+    else:
+        rg_for_analysis = h1_all.residue_groups()
+        print 'Analysing all residues ({} residues)'.format(len(rg_for_analysis))
 
     # Check residues to analyse or skip
     if not rg_for_analysis:
@@ -192,16 +202,25 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix=''):
 
     # Extract PDB2
     if pdb2 is not None:
+        print 'Reading input structure:', pdb2
         h2_all = strip_pdb_to_input(pdb2, remove_ter=True, remove_end=True).hierarchy
         sanitise_hierarchy(h2_all)
         h2_all = h2_all.select(h2_all.atom_selection_cache().selection('not element H'), copy_atoms=True)
 
     # Score MTZ1
-    if mtz1 is not None: mtz1_edstats_scores = Edstats(mtz_file=mtz1, pdb_file=pdb1)
-    else:                mtz1_edstats_scores = None
+    if mtz1 is not None:
+        print 'Scoring model against mtz file'
+        print 'Scoring {} >>> {}'.format(pdb1, mtz1)
+        mtz1_edstats_scores = Edstats(mtz_file=mtz1, pdb_file=pdb1)
+    else:
+        mtz1_edstats_scores = None
     # Score MTZ2
-    if mtz2 is not None: mtz2_edstats_scores = Edstats(mtz_file=mtz2, pdb_file=pdb1)
-    else:                mtz2_edstats_scores = None
+    if mtz2 is not None:
+        print 'Scoring model against mtz file'
+        print 'Scoring {} >>> {}'.format(pdb1, mtz2)
+        mtz2_edstats_scores = Edstats(mtz_file=mtz2, pdb_file=pdb1)
+    else:
+        mtz2_edstats_scores = None
 
     # Prepare output table
     data_table = prepare_table()
@@ -210,42 +229,50 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix=''):
 
         # Create label for the output table
         #rg_label = (label_prefix+rg_sel.unique_resnames()[0]+'-'+rg_sel.parent().id+'-'+rg_sel.resseq+rg_sel.icode).replace(' ','')
-        rg_label = (label_prefix+rg_sel.parent().id+'-'+rg_sel.resseq+rg_sel.icode).replace(' ','')
+        #rg_label = (label_prefix+rg_sel.parent().id+'-'+rg_sel.resseq+rg_sel.icode).replace(' ','')
+        rg_label = ShortLabeller.format(rg_sel)
 
         if len(rg_sel.unique_resnames()) != 1:
             raise Exception(rg_label+': More than one residue name associated with residue group -- cannot process')
 
         # Append empty row to output table
-        data_table = data_table.append(pandas.DataFrame(index=[rg_label]), verify_integrity=True)
+        data_table.loc[rg_label] = None
 
-        data_table.set_value(   index = rg_label, col='PDB', value=pdb1 )
-        data_table.set_value(   index = rg_label,
-                                col   = 'Occupancy',
-                                value = calculate_residue_group_occupancy(residue_group=rg_sel) )
+        data_table.set_value(index = rg_label,
+                             col   = 'PDB',
+                             value = pdb1 )
+        data_table.set_value(index = rg_label,
+                             col   = 'Occupancy',
+                             value = calculate_residue_group_occupancy(residue_group=rg_sel) )
 
-        data_table = calculate_residue_group_bfactor_ratio( residue_group   = rg_sel,
-                                                            hierarchy       = h1_sch,
-                                                            data_table      = data_table,
-                                                            rg_label        = rg_label
-                                                        )
+        data_table = calculate_residue_group_bfactor_ratio(residue_group = rg_sel,
+                                                           hierarchy     = h1_sch,
+                                                           data_table    = data_table,
+                                                           rg_label      = rg_label)
 
         if pdb2 is not None:
-            data_table.set_value(   index = rg_label, col='PDB-2', value=pdb2 )
+            data_table.set_value(index = rg_label,
+                                 col   = 'PDB-2',
+                                 value = pdb2 )
 
             # Extract the equivalent residue in pdb2
-            rg_sel_2 = [rg for rg in h2_all.residue_groups() if (rg.unique_resnames() == rg_sel.unique_resnames())
-                                                            and (rg.parent().id       == rg_sel.parent().id)
-                                                            and (rg.resseq            == rg_sel.resseq)
-                                                            and (rg.icode             == rg_sel.icode)              ]
+            rg_sel_2 = [rg for rg in h2_all.residue_groups() if ShortLabeller.format(rg) == rg_label]
+
             try:
                 assert rg_sel_2, 'Residue is not present in pdb file: {} not in {}'.format(rg_label, pdb2)
                 assert len(rg_sel_2) == 1, 'More than one residue has been selected for {} in {}'.format(rg_label, pdb2)
             except:
-                pass
+                raise
+
+            # Exctract occupancy
+            data_table.set_value(index = rg_label,
+                                 col   = 'Occupancy-2',
+                                 value = calculate_residue_group_occupancy(residue_group=rg_sel_2) )
 
             # Calculate the RMSD between the models
             try:
-                rmsd = calculate_residue_group_rmsd(residue_group_1=rg_sel, residue_group_2=rg_sel_2[0])
+                rmsd = calculate_residue_group_rmsd(residue_group_1=rg_sel,
+                                                    residue_group_2=rg_sel_2[0])
                 data_table.set_value(index=rg_label, col='Model RMSD', value=rmsd)
             except:
                 pass
@@ -271,7 +298,7 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix=''):
                                                                 rg_label       = rg_label,
                                                                 column_suffix  = '-2' )
             # Normalise the RSZO by the Occupancy of the ligand
-            data_table['RSZO/OCC-2'] = data_table['RSZO-2']/data_table['Occupancy']
+            data_table['RSZO/OCC-2'] = data_table['RSZO-2']/data_table['Occupancy-2']
 
     return data_table
 
@@ -428,7 +455,8 @@ def run(params):
                                 mtz1   = params.input.mtz1,
                                 pdb2   = params.input.pdb2,
                                 mtz2   = params.input.mtz2,
-                                label_prefix = params.input.label
+                                label_prefix = params.input.label,
+                                verbose = params.settings.verbose
                             )
     print '...Done'
     print bar

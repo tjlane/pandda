@@ -1,18 +1,20 @@
 import numpy
 
-def scale_map_to_reference(ref_map, map, mask_idxs=None):
+from scitbx.array_family import flex
+
+def scale_map_to_reference(ref_vals, vals, mask_idxs=None):
     """Scale given map to reference over the point_mask"""
 
-    if mask_idxs:
-        ref_vals = ref_map.select(mask_idxs)
-        map_vals = map.select(mask_idxs)
+    if mask_idxs is not None:
+        s_ref_vals = ref_vals.select(mask_idxs)
+        s_vals     = vals.select(mask_idxs)
     else:
-        ref_vals = ref_map
-        map_vals = map
+        s_ref_vals = ref_vals
+        s_vals     = vals
 
     # Fit ref = a*map + b
     # a, b
-    scale, offset = numpy.polyfit(x=map_vals, y=ref_vals, deg=1)
+    scale, offset = numpy.polyfit(x=s_vals, y=s_ref_vals, deg=1)
 #    print '\nScale: {}\tOffset: {}'.format(scale, offset)
 
-    return (map*scale) + offset
+    return (vals*scale) + offset

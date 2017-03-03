@@ -68,6 +68,19 @@ pandda
         dataset_prefix = ''
             .help = "Prefix to be attached to each dataset name"
             .type = str
+        maps
+            .help = "Control which maps are output by the program"
+        {
+            write_mean_map = none *interesting all
+                .help = "Output the mean map in the native frame of datasets containing events"
+                .type = choice
+            write_z_maps = none *interesting all
+                .help = "Output z-maps for all datasets, not just datasets marked as interesting"
+                .type = choice
+            write_statistical_maps = False
+                .help = "Output statistical maps in the native frame of the reference dataset"
+                .type = bool
+        }
         pickling
             .help = "Pickle Settings"
             .expert_level = 1
@@ -147,6 +160,14 @@ pandda
                 .help = 'Maximum allowed rfree for a structure (datasets above this are rejected)'
                 .type = float
                 .multiple = False
+            flags {
+                same_space_group_only = True
+                    .help = "Reject datasets that are a different spacegroup to the reference/filter dataset - NOT YET IMPLEMENTED - MUST BE SET TO TRUE"
+                    .type = bool
+                similar_models_only = False
+                    .help = "Reject datasets that have a different model composition to the reference/filter dataset. All models must have the same number and identity of atoms."
+                    .type = bool
+            }
         }
         maps
             .help = "Settings to control how maps are generated and analysed"
@@ -215,6 +236,9 @@ pandda
             contour_level = 2.5
                 .help = 'Contour level when looking for blobs'
                 .type = float
+            negative_values = False
+                .help = 'Look for large negative values as well?'
+                .type = bool
             min_blob_volume = 10.0
                 .help = 'Blob volume filter for detecting blobs'
                 .type = float

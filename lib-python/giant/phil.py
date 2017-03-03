@@ -10,6 +10,11 @@ settings
     plot_graphs = True
         .help = "Output graphs using matplotlib"
         .type = bool
+    plotting {
+        backend = 'agg'
+            .help = "Backend to use in matplotlib"
+            .type = str
+    }
 }
 """
 

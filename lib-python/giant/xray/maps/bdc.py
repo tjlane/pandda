@@ -24,6 +24,8 @@ def calculate_varying_bdc_correlations(ref_map_data, query_map_data, feature_idx
     assert isinstance(reference_idxs, flex.size_t), 'grid_point_selection must be of type flex.size_t'
     assert ref_map_data.all() == query_map_data.all(), 'ref_map_data and query_map_data are not the same size: {!s} != {!s}'.format(ref_map_data.all(), query_map_data.all())
 
+    assert 1.0 >= max_remain > min_remain >= 0.0, 'Min ({}) and Max ({}) remain values are not valid'.format(min_remain, max_remain)
+
     # Extract the reference map values around the site of interest
     feature_vals_ref = ref_map_data.as_1d().select(feature_idxs)
     # Extract the reference map values for the correlation correction
@@ -34,15 +36,14 @@ def calculate_varying_bdc_correlations(ref_map_data, query_map_data, feature_idx
 
     return_vals = []
 
+    print(min_remain, max_remain)
     # Create list of fractions to subtract
-    all_feature_remains = numpy.arange(min_remain, max_remain, bdc_increment)
-    if all_feature_remains[-1] != max_remain:
-        all_feature_remains = all_feature_remains + [max_remain]
+    all_feature_remains = numpy.arange(min_remain, max_remain+bdc_increment, bdc_increment)
 
     # Iterate through different amounts of reference map subtraction to estimate feature correction
     for i_remain, feature_remain in enumerate(all_feature_remains):
         # Calculate how much of the reference map to take away
-        bdc = 1 - feature_remain
+        bdc = 1.0 - feature_remain
         # Calculate the background-subtracted difference map
         diff_map_data = calculate_bdc_subtracted_map(ref_map_data=ref_map_data, query_map_data=query_map_data, bdc=bdc)
         # Extract feature idxs values

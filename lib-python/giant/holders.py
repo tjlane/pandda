@@ -47,17 +47,15 @@ class HolderList(object):
         """Return the mask object"""
         return self._masks
 
-    def mask(self, mask_name, invert=False):
-        """Retrieve a masked list of datasets"""
-        if not mask_name:
-            return self.all()
-        else:
-            return self._masks.mask(mask_name=mask_name, input_list=self.all(), invert=invert)
-
     def size(self, mask_name=None, invert=False):
         """Return the number of holders in the list (with optional mask applied)"""
-        if mask_name:   return len(self.mask(mask_name=mask_name, invert=invert))
-        else:           return len(self.all())
+        if mask_name: return len(self.mask(mask_name=mask_name, invert=invert))
+        else:         return len(self.all())
+
+    def mask(self, mask_name, invert=False):
+        """Retrieve a masked list of datasets"""
+        if mask_name: return self._masks.mask_list(name=mask_name, input_list=self.all(), invert=invert)
+        else:         return self.all()
 
     def add(self, new):
         """Add new datasets"""

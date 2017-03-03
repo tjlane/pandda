@@ -98,7 +98,7 @@ def write_analyse_html(pandda):
     # ===========================================================>
     # Tables
     output_data['table'] = {}
-    output_data['table']['column_headings'] = ['Dataset', 'Crystal', 'Structure', 'RFree/RWork', 'Resolution', 'Reference RMSD', 'Map Uncertainty', 'Overall', 'Interesting Areas', 'Result']
+    output_data['table']['column_headings'] = ['Dataset', 'Dataset Checks', 'RFree/RWork', 'Resolution', 'Reference RMSD', 'Map Uncertainty', 'Overall', 'Interesting Areas', 'Result']
     output_data['table']['rows'] = []
     # Add the datasets as rows
     for d in pandda.datasets.all():
@@ -118,23 +118,16 @@ def write_analyse_html(pandda):
 
         columns = []
         # ------------------------------>>>
-        # Test for Bad Crystal
+        # Whether dataset was rejected
         # ------------------------------>>>
-        if pandda.datasets.all_masks().get_mask_value(mask_name='rejected - crystal', entry_id=d.tag) == True:
-            columns.append({'colour':'danger',  'icon':'remove',    'message':rejection_reason})
-        else:
-            columns.append({'colour':'success', 'icon':'ok',        'message':'OK'})
-        # ------------------------------>>>
-        # Test for Bad Structures
-        # ------------------------------>>>
-        if pandda.datasets.all_masks().get_mask_value(mask_name='rejected - structure', entry_id=d.tag) == True:
+        if pandda.datasets.all_masks().get_value(name='rejected - total', id=d.tag) == True:
             columns.append({'colour':'danger',  'icon':'remove',    'message':rejection_reason})
         else:
             columns.append({'colour':'success', 'icon':'ok',        'message':'OK'})
         # ------------------------------>>>
         # Test for Refinement Success - some test on r-free
         # ------------------------------>>>
-        if pandda.datasets.all_masks().get_mask_value(mask_name='bad crystal - rfree', entry_id=d.tag) == True:
+        if pandda.datasets.all_masks().get_value(name='rejected - rfree', id=d.tag) == True:
             columns.append({'colour':'danger',  'icon':'remove',    'message':'{}/{}'.format(rfree,rwork)})
         else:
             columns.append({'colour':'success', 'icon':'default',   'message':'{}/{}'.format(rfree,rwork)})
@@ -148,7 +141,7 @@ def write_analyse_html(pandda):
         # ------------------------------>>>
         # Test for Structure movement
         # ------------------------------>>>
-        if pandda.datasets.all_masks().get_mask_value(mask_name='bad crystal - isomorphous structure', entry_id=d.tag) == True:
+        if pandda.datasets.all_masks().get_value(name='rejected - rmsd to reference', id=d.tag) == True:
             columns.append({'colour':'danger',  'icon':'remove',    'message':'{}'.format(rmsd)})
         else:
             columns.append({'colour':'success', 'icon':'ok',        'message':'{}'.format(rmsd)})
@@ -177,7 +170,7 @@ def write_analyse_html(pandda):
         row_message = 'Z-Blobs Found' if d.events else \
                       ''
         row_colour  = 'success' if row_message else \
-                      'danger' if pandda.datasets.all_masks().get_mask_value(mask_name='rejected - total', entry_id=d.tag) == True else \
+                      'danger' if pandda.datasets.all_masks().get_value(name='rejected - total', id=d.tag) == True else \
                       'default'
 
         output_data['table']['rows'].append({'heading' : d.tag,

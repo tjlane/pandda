@@ -10,18 +10,22 @@ blank_arg_prepend = None
 
 master_phil = None
 
+HTML_1 = './analyses/html_summaries/pandda_initial.html'
+HTML_2 = './analyses/html_summaries/pandda_analyse.html'
+HTML_3 = './analyses/html_summaries/pandda_inspect.html'
+
 #######################################
 
 def show_summary():
     app = QApplication(sys.argv)
     window = panddaWindow()
-    window.add_tab(panddaHtmlWidget(name='Dataset Summary', content='./results_summaries/pandda_initial.html'))
-    window.add_tab(panddaHtmlWidget(name='Results Summary', content='./results_summaries/pandda_analyse.html'))
-    window.add_tab(panddaHtmlWidget(name='Inspect Summary', content='./results_summaries/pandda_inspect.html'))
+    window.add_tab(panddaHtmlWidget(name='Dataset Summary', content=HTML_1))
+    window.add_tab(panddaHtmlWidget(name='Results Summary', content=HTML_2))
+    window.add_tab(panddaHtmlWidget(name='Inspect Summary', content=HTML_3))
     # Choose which window is initally open
-    if   os.path.exists('./results_summaries/pandda_inspect.html'):
+    if os.path.exists(HTML_3):
         window.setCurrentIndex(2)
-    elif os.path.exists('./results_summaries/pandda_analyse.html'):
+    elif os.path.exists(HTML_2):
         window.setCurrentIndex(1)
     window.show()
     app.exec_()

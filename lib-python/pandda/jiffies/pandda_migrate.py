@@ -58,8 +58,8 @@ def migrate_pandda(params):
 
     # Copy across pickles (copying the file if it's a softlink)
     copy_directory_contents(
-        in_dir  = os.path.join(params.input.pandda_dir, 'pickled_panddas'),
-        out_dir = os.path.join(params.output.out_dir,   'pickled_panddas'),
+        in_dir  = os.path.join(params.input.pandda_dir, 'pickled_data'),
+        out_dir = os.path.join(params.output.out_dir,   'pickled_data'),
         regex   = ['reference*.pickle', 'statistical*.pickle']
     )
 

@@ -102,6 +102,37 @@ class _Selection:
         return [ cls.__dict__.get(l).format(obj_dict.get(l)) for l in cls._labels if (l in obj_dict.keys()) ]
 
 
+class Labeller(_Selection):
+
+
+    _join_and = '-'
+    _join_or  = None    # Refmac has no equivalent atom selection syntax
+    _sep_and  = '{}'
+    _sep_or   = None    # Refmac has no equivalent atom selection syntax
+
+    remove = ['',' ']
+
+    model       = 'mod({})'
+    chain       = 'chn({})'
+    resseq      = 'res({})'
+    icode       = 'ins({})'
+    resname     = '{}'
+    altloc      = 'alt({})'
+    name        = '[{}]'
+
+
+class ShortLabeller(Labeller):
+
+
+    model       = ''
+    chain       = '{}'
+    resseq      = '{}'
+    icode       = '{}'
+    resname     = '{}'
+    altloc      = '({})'
+    name        = '[{}]'
+
+
 class GenericSelection(_Selection):
 
 
@@ -161,25 +192,6 @@ class GenericSelection(_Selection):
 
         assert len(labs) == len(info)
         return dict(zip(labs, info))
-
-
-class ShortSelection(_Selection):
-
-
-    _join_and = '-'
-    _join_or  = None    # Refmac has no equivalent atom selection syntax
-    _sep_and  = '{}'
-    _sep_or   = None    # Refmac has no equivalent atom selection syntax
-
-    remove = ['',' ']
-
-    model       = ''
-    chain       = 'chn({})'
-    resseq      = 'res({})'
-    icode       = '{}'
-    resname     = '{}'
-    altloc      = 'alt({})'
-    name        = '[{}]'
 
 
 class RefmacSelection(_Selection):

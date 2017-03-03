@@ -4,9 +4,13 @@ import gtk
 import pandas
 
 from bamboo.plot import bar
-from pandda.constants import PanddaInspectorFilenames, PanddaDatasetFilenames
-from pandda.jiffies import pandda_summary
+
+from pandda import LOGO_PATH
 from pandda import inspect_html
+from pandda.jiffies import pandda_summary
+from pandda.constants import PanddaInspectorFilenames, PanddaDatasetFilenames
+
+IMG_DIR = os.path.dirname(LOGO_PATH)
 
 def nonmodal_msg(msg):
     """Display an error window - non-modal"""
@@ -23,6 +27,162 @@ def modal_msg(msg):
                             message_format = msg )
     d.run()
     d.destroy()
+
+def catchup():
+    while gtk.events_pending():
+        gtk.main_iteration(False)
+
+#=========================================================================
+
+
+class Notices:
+    def __init__(self):
+        self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
+        self.window.set_position(gtk.WIN_POS_CENTER)
+        self.window.set_border_width(10)
+        self.window.set_title("Map contouring and interpretation")
+        # ---------------------------
+        main_vbox = gtk.VBox(spacing=5)
+        # ---------------------------
+        box = gtk.HBox(spacing=5)
+        label = gtk.Label('Maps from PanDDA are pre-scaled, so the rmsd value given by coot is not informative. The value given in e/A^3 is actually the sigma-scaled value')
+        label.props.width_chars = 100
+        label.set_justify(gtk.JUSTIFY_CENTER)
+        label.set_line_wrap(True)
+        box.pack_start(label, expand=True)
+        # ---------------------------
+        main_vbox.pack_start(box)
+        # ---------------------------
+        box = gtk.HBox(spacing=5)
+        label = gtk.Label('NOTE: This only applies to the PanDDA maps (those loaded from files ending with *.ccp4)')
+        label.props.width_chars = 100
+        label.set_justify(gtk.JUSTIFY_CENTER)
+        label.set_line_wrap(True)
+        box.pack_start(label, expand=True)
+        # ---------------------------
+        main_vbox.pack_start(box)
+        main_vbox.pack_start(gtk.HSeparator())
+        # ---------------------------
+        image = gtk.Image()
+        image.set_from_file(os.path.join(IMG_DIR, '1-sigma-anno.png'))
+        image.show()
+        label = gtk.Label('This map is contoured at 1 sigma')
+        vbox_1 = gtk.VBox(spacing=5)
+        vbox_1.pack_start(image)
+        vbox_1.pack_start(label)
+        image = gtk.Image()
+        image.set_from_file(os.path.join(IMG_DIR, '0.2-sigma-anno.png'))
+        image.show()
+        label = gtk.Label('This map is contoured at 0.2 sigma')
+        vbox_2 = gtk.VBox(spacing=5)
+        vbox_2.pack_start(image, expand=False)
+        vbox_2.pack_start(label, expand=False)
+        box = gtk.HBox(spacing=5, homogeneous=True)
+        box.pack_start(vbox_1, expand=True)
+        box.pack_start(vbox_2, expand=True)
+        # ---------------------------
+        main_vbox.pack_start(box)
+        main_vbox.pack_start(gtk.HSeparator())
+        # ---------------------------
+        box = gtk.HBox(spacing=5)
+        label = gtk.Label('However, things are further complicated when looking at event maps. Since these are partial-difference maps, the EFFECTIVE sigma-value is calculated by dividing the contour level by the (1-BDC) value.')
+        label.props.width_chars = 100
+        label.set_line_wrap(True)
+        box.pack_start(label)
+        main_vbox.pack_start(box)
+        # ---------------------------
+        main_vbox.pack_start(gtk.HSeparator())
+        # ---------------------------
+        box = gtk.HBox(spacing=5)
+        label = gtk.Label('For event maps where (1-BDC) = 0.1:')
+        box.pack_start(label)
+        # ---------------------------
+        main_vbox.pack_start(box)
+        # ---------------------------
+        image = gtk.Image()
+        image.set_from_file(os.path.join(IMG_DIR, '1-sigma-anno.png'))
+        image.show()
+        label = gtk.Label('The event map is contoured at an effective value of 10 Sigma')
+        label.props.width_chars = 30
+        label.set_line_wrap(True)
+        vbox_1 = gtk.VBox(spacing=5)
+        vbox_1.pack_start(image)
+        vbox_1.pack_start(label)
+        image = gtk.Image()
+        image.set_from_file(os.path.join(IMG_DIR, '0.2-sigma-anno.png'))
+        image.show()
+        label = gtk.Label('The event map is contoured at an effecive value of 2 Sigma')
+        label.props.width_chars = 30
+        label.set_line_wrap(True)
+        vbox_2 = gtk.VBox(spacing=5)
+        vbox_2.pack_start(image)
+        vbox_2.pack_start(label)
+        box = gtk.HBox(spacing=5, homogeneous=True)
+        box.pack_start(vbox_1, expand=True)
+        box.pack_start(vbox_2, expand=True)
+        # ---------------------------
+        main_vbox.pack_start(box)
+        # ---------------------------
+        self.window.add(main_vbox)
+        self.window.show_all()
+        self.window.set_keep_above(True)
+        catchup()
+
+class splashScreen:
+    def __init__(self):
+        # Create main window
+        self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
+        self.window.set_position(gtk.WIN_POS_CENTER)
+        self.window.set_border_width(10)
+        self.window.set_default_size(300,300)
+        self.window.set_title("Welcome to PanDDA Inspect")
+        # ---------------------------
+        main_hbox = gtk.HBox(spacing=5)
+        # ---------------------------
+        image = gtk.Image()
+        image.set_from_file(LOGO_PATH)
+        image.show()
+        main_hbox.pack_start(image)
+        # ---------------------------
+        box = gtk.VBox(spacing=10)
+        box.pack_start(gtk.Label(''), expand=True)
+        # ---------------------------
+        label = gtk.Label('New to PanDDA Inspect?')
+        label.set_justify(gtk.JUSTIFY_CENTER)
+        box.pack_start(label, expand=False)
+        # ---------------------------
+        button = gtk.Button(label='Important information regarding contouring and interpreting maps')
+        button.child.set_padding(10, 10)
+        button.child.set_justify(gtk.JUSTIFY_CENTER)
+        button.child.set_line_wrap(True)
+        button.connect("clicked", lambda x: Notices())
+        box.pack_start(button, expand=False)
+        # ---------------------------
+        button = gtk.Button(label='Useful Features')
+        button.child.set_padding(10, 10)
+        button.child.set_justify(gtk.JUSTIFY_CENTER)
+        button.child.set_line_wrap(True)
+        box.pack_start(button, expand=False)
+        # ---------------------------
+        box.pack_start(gtk.Label(''), expand=True)
+        # ---------------------------
+        button = gtk.Button(label='Close window')
+        button.child.set_padding(10, 10)
+        button.child.set_justify(gtk.JUSTIFY_CENTER)
+        button.child.set_line_wrap(True)
+        button.connect("clicked", lambda x: self.window.destroy())
+        box.pack_end(button, expand=False)
+        # ---------------------------
+        main_hbox.pack_start(box)
+        # ---------------------------
+        self.window.add(main_hbox)
+        self.window.show_all()
+        self.window.set_keep_above(True)
+        catchup()
+
+
+#=========================================================================
+
 
 class PanddaEvent(object):
     def __init__(self, rank, info, top_dir):
@@ -61,9 +221,8 @@ class PanddaEvent(object):
         self.stat_map_dir = os.path.join(top_dir, 'statistical_maps')
         self.ref_dir      = os.path.join(top_dir, 'reference')
         # Find the directory for the dataset
-        self.dataset_dir  = glob.glob(os.path.join(top_dir, 'interesting_datasets/{!s}'.format(dtag)))
-        assert len(self.dataset_dir) == 1, 'Non-unique dataset directory found: {!s}'.format(dtag)
-        self.dataset_dir  = self.dataset_dir[0]
+        self.dataset_dir  = os.path.join(top_dir, 'processed_datasets', dtag)
+        assert os.path.exists(self.dataset_dir), 'Directory does not exist: {}'.format(dtag)
 
         # Identify dataset subdirectories and files
         self.ligand_dir = os.path.join(self.dataset_dir, 'ligand_files')
@@ -116,7 +275,9 @@ class PanddaEvent(object):
         # Create new link the most recent file
         os.symlink(os.path.basename(new_fitted), self.fitted_link)
 
+
 #=========================================================================
+
 
 class PanddaSiteTracker(object):
     events = None
@@ -205,7 +366,9 @@ class PanddaSiteTracker(object):
         self.rank_idx = self.events.index.get_loc(self.events[self.events['site_idx']==new_site_val].index[0])
         return self.get_new_current_event()
 
+
 #=========================================================================
+
 
 class PanddaInspector(object):
     """Main Object in pandda.inspect"""
@@ -253,7 +416,7 @@ class PanddaInspector(object):
         site_idxs = self.log_table['site_idx']
         groups = [list(g[1]) for g in itertools.groupby(range(len(site_idxs)), key=lambda i: site_idxs[i])]
         bar.multiple_bar_plot_over_several_images(
-                                f_template  = os.path.join(self.top_dir, 'results_summaries', PanddaInspectorFilenames.inspect_site_graph_mult),
+                                f_template  = os.path.join(self.top_dir, 'analyses', 'html_summaries', PanddaInspectorFilenames.inspect_site_graph_mult),
                                 plot_vals   = [[plot_vals[i] for i in g] for g in groups],
                                 colour_vals = [[colr_vals[i] for i in g] for g in groups]   )
         # Write output html
@@ -480,7 +643,9 @@ class PanddaInspector(object):
         print 'Writing output csv: {}'.format(self.output_site_csv)
         self.site_table.to_csv(self.output_site_csv)
 
+
 #=========================================================================
+
 
 class PanddaMolHandler(object):
 
@@ -580,6 +745,7 @@ class PanddaMolHandler(object):
                 set_alt_conf_occ(l, res_chn, res_num, res_ins, [['', 2.0*event.est_1_bdc]])
         return l
 
+
 class PanddaGUI(object):
 
     """GUI Class for pandda.inspect"""
@@ -609,6 +775,7 @@ class PanddaGUI(object):
 
         # Create main window
         self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
+        self.window.set_position(gtk.WIN_POS_CENTER)
         self.window.connect("delete_event", self.on_delete)
         self.window.connect("destroy_event", self.on_destroy)
         self.window.set_border_width(10)
@@ -1163,11 +1330,8 @@ class PanddaGUI(object):
 
         return vbox_main
 
-if __name__=='__main__':
 
-#    import os
-#    from pandda.inspect_main import PanddaInspector
-    from pandda.constants import PanddaAnalyserFilenames
+if __name__=='__main__':
 
     #############################################################################################
     #
@@ -1189,6 +1353,8 @@ if __name__=='__main__':
     #
     #############################################################################################
 
+    from pandda.constants import PanddaAnalyserFilenames
+
     work_dir = os.getcwd()
     hit_list = os.path.join(work_dir, 'analyses', PanddaAnalyserFilenames.event_info)
     site_csv = os.path.join(work_dir, 'analyses', PanddaAnalyserFilenames.site_info)
@@ -1198,7 +1364,9 @@ if __name__=='__main__':
     # INITIALISE THE MAIN INSPECTOR OBJECT
     #
     #############################################################################################
-
+    Notices()
     inspector = PanddaInspector(event_csv=hit_list, site_csv=site_csv, top_dir=work_dir)
     inspector.start_gui()
     inspector.refresh_event()
+
+    splScr = splashScreen()

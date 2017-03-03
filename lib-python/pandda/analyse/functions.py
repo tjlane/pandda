@@ -1,24 +1,27 @@
 from __future__ import print_function
 
-import os, sys, copy
+import os, sys, copy, time, glob
 
 import numpy
 
 from scitbx.array_family import flex
 from scitbx.math import basic_statistics
+from scitbx.math.distributions import normal_distribution
 
 from libtbx.utils import Sorry, Failure
 
 from bamboo.common import Meta, Info
 from bamboo.common.logs import Log
 from bamboo.common.path import rel_symlink
+from bamboo.pymol_utils import PythonScript
 
 from giant.grid.masks import GridMask
 from giant.stats import quantile_quantile_scaling
 from giant.stats.ospina import estimate_true_underlying_sd
 from giant.structure.select import protein, find_nearest_atoms
 from giant.xray.maps import scale_map_to_reference
-from giant.xray.maps.bdc import calculate_bdc_subtracted_map, estimate_event_background_correction
+from giant.xray.maps.bdc import calculate_varying_bdc_correlations, calculate_maximum_series_discrepancy
+from giant.xray.maps.bdc import calculate_bdc_subtracted_map
 from giant.xray.local_align_maps import create_native_map
 
 from pandda import welcome
@@ -37,10 +40,248 @@ def wrapper_run(c):
 # ============================================================================>
 
 
-class DatasetProcesser(object):
+class DatasetAligner(object):
 
 
-    def __init__(self, dataset, dataset_map, grid, reference_dataset, map_analyser, args, verbose):
+    def __init__(self, model, other, method, id):
+        """
+        Shortcut object for aligning datasets.
+        Constructed so that the class can be initialised and then called within a multiprocessing function.
+
+        Usage:
+            new    = DatasetAligner(...)
+            output = new.run()
+        or:
+            output = DatasetAligner.process(...)
+        """
+
+        self.data = (model, other, method, id)
+
+    @classmethod
+    def process(cls, model, other, method, id):
+        """Process the dataset immediately and return output"""
+        return cls(model=model, other=other, method=method, id=id).run()
+
+    def run(self):
+        model, other, method, id = self.data
+        alignment = model.align_to(other_hierarchy=other.hierarchy, method=method, require_hierarchies_identical=False)
+        assert alignment.id is None
+        alignment.id = id
+        return alignment
+
+
+class MapLoader(object):
+
+
+    def __init__(self, dataset, grid, reference_map, args, verbose):
+        """
+        The main object for loading the maps for PanDDA.
+        Constructed so that the class can be initialised and then called within a multiprocessing function.
+
+        Usage:
+            new    = MapLoader(...)
+            output = new.run()
+        or:
+            output = MapLoader.process(...)
+        """
+
+        self.data = (dataset, grid, reference_map, args, verbose)
+
+    @classmethod
+    def process(cls, dataset, grid, reference_map, args, verbose):
+        """Process the dataset immediately and return output"""
+        return cls(dataset=dataset, grid=grid, reference_map=reference_map, args=args, verbose=verbose)
+
+    def run(self):
+
+        dataset, grid, reference_map, args, verbose = self.data
+
+        log_file = dataset.file_manager.get_file('dataset_log')
+
+        assert reference_map.is_sparse(), 'Reference map is not in sparse form'
+
+        # ============================================================================>
+        # Create map handler in the native coordinate frame
+        # ============================================================================>
+        # Extract the map data
+        fft_map = dataset.data.get_fft_map(structure_factors='truncated')
+        # Scale the map
+        if   args.params.maps.scaling == 'none':   pass
+        elif args.params.maps.scaling == 'sigma':  fft_map.apply_sigma_scaling()
+        elif args.params.maps.scaling == 'volume': fft_map.apply_volume_scaling()
+        # Create map object
+        native_map_true = dataset.data.get_electron_density_map(fft_map_name='truncated')
+
+        # ============================================================================>
+        # Morph the map to the reference frame
+        # ============================================================================>
+        # Extract the map sites from the grid partition
+        point_mappings_grid = grid.partition.nn_groups[grid.global_mask().outer_mask_indices()]
+        assert sum(point_mappings_grid == -1) == 0
+        sites_cart_map = grid.grid2cart(grid.global_mask().outer_mask(), origin=True)
+        # Translate the grid partition mappings to the dataset alignment mappings
+        mappings_grid2dataset = get_interpolated_mapping_between_coordinates(query_list=grid.partition.sites_cart,
+                                                                             ref_list=dataset.model.alignment.reference_sites,
+                                                                             tol=0.01)
+        point_mappings_dataset = numpy.array([mappings_grid2dataset[i] for i in point_mappings_grid])
+        assert sum(point_mappings_dataset == -1) == 0
+        sites_cart_map_d = dataset.model.alignment.ref2nat(coordinates=sites_cart_map, mappings=point_mappings_dataset)
+        morphed_map_data = native_map_true.as_map().get_cart_values(sites_cart_map_d)
+
+        # Scale map to reference
+        scale_mask = grid.index_on_other(query=grid.global_mask().inner_mask_indices(),
+                                         other=grid.global_mask().outer_mask_indices())
+        scaled_map_data = scale_map_to_reference(ref_vals   = reference_map.data,
+                                                 vals       = morphed_map_data,
+                                                 mask_idxs  = flex.size_t(scale_mask))
+        # Create map holder
+        morphed_map = reference_map.new_from_template(map_data=scaled_map_data, sparse=reference_map.is_sparse())
+        morphed_map.meta.num = dataset.num
+        morphed_map.meta.tag = dataset.tag
+        morphed_map.meta.type = 'observed map'
+        morphed_map.meta.resolution = reference_map.meta.resolution
+        morphed_map.meta.map_uncertainty = None
+        morphed_map.meta.obs_map_mean = morphed_map_data.min_max_mean().mean
+        morphed_map.meta.obs_map_rms  = morphed_map_data.standard_deviation_of_the_sample()
+        morphed_map.meta.scl_map_mean = scaled_map_data.min_max_mean().mean
+        morphed_map.meta.scl_map_rms  = scaled_map_data.standard_deviation_of_the_sample()
+
+        #with open('{}-map-load.log'.format(dataset.tag), 'w') as fh:
+        #    fh.write('Dx:'+str(numpy.round(numpy.array(dataset.model.alignment.reference_sites),2))+'\n')
+        #    fh.write('Gx:'+str(numpy.round(numpy.array(grid.partition.sites_cart),2))+'\n')
+        #    fh.write('G2D'+str(mappings_grid2dataset)+'\n')
+        #    fh.write('D2G'+str(mappings_dataset2grid)+'\n')
+
+        # Print a running row of dots
+        print('>', end=''); sys.stdout.flush()
+
+        return morphed_map.as_sparse()
+
+
+class UncertaintyCalculator(object):
+
+
+    def __init__(self, query_values, ref_values, q_cut=1.5, file_manager=None):
+        """
+        Object for calculating the uncertinty of query_map relative to ref_map.
+        Constructed so that the class can be initialised and then called within a multiprocessing function.
+
+        Usage:
+            new    = UncertaintyCalculator(...)
+            output = new.run()
+        or:
+            output = UncertaintyCalculator.process(...)
+        """
+
+        assert len(query_values) == len(ref_values)
+
+        self.data = (query_values, ref_values, q_cut, file_manager)
+
+    @classmethod
+    def process(cls, query_values, ref_values, q_cut, file_manager):
+        return cls(query_values=query_values, ref_values=ref_values, q_cut=q_cut, file_manager=file_manager).run()
+
+    def run(self):
+        """Calculate statistics of array of observed values with uncertainties"""
+
+        query_values, ref_values, q_cut, file_manager = self.data
+
+        # Extract the theoretical quantiles that we would expect if these values were from a normal distribution
+        the_diff_vals = normal_distribution().quantiles(len(query_values))
+
+        # Select the points in the middle of the distribution
+        mid_idxs = (the_diff_vals < q_cut).iselection().intersection((the_diff_vals > -1*q_cut).iselection())
+        mid_the_diff_vals = the_diff_vals.select(mid_idxs)
+
+        # Calculate the difference from the reference values
+        act_diff_vals = query_values - ref_values
+        srt_act_diff_vals = flex.double(sorted(act_diff_vals))
+        mid_act_diff_vals = srt_act_diff_vals.select(mid_idxs)
+
+        # Calculate the slope of the centre of the graph
+        map_unc, map_off = numpy.polyfit(x=mid_the_diff_vals, y=mid_act_diff_vals, deg=1)
+
+        try:
+            import matplotlib
+            matplotlib.interactive(False)
+            from matplotlib import pyplot
+            pyplot.style.use('ggplot')
+            output_graphs = True
+        except:
+            output_graphs = False
+
+        if output_graphs and file_manager:
+            # Sort query and ref values for plotting
+            srt_query_vals = sorted(query_values)
+            srt_ref_vals = sorted(ref_values)
+
+            analyse_graphs.mean_obs_scatter(f_name=file_manager.get_file('obs_qqplot_unsorted_png'),
+                                            mean_vals=ref_values, obs_vals=query_values)
+
+            analyse_graphs.sorted_mean_obs_scatter(f_name=file_manager.get_file('obs_qqplot_sorted_png'),
+                                            mean_vals=srt_ref_vals, obs_vals=srt_query_vals)
+
+            analyse_graphs.diff_mean_qqplot(f_name=file_manager.get_file('unc_qqplot_png'),
+                                            map_off=map_off, map_unc=map_unc,
+                                            q_cut=q_cut, obs_diff=srt_act_diff_vals,
+                                            quantile=the_diff_vals)
+
+        # Print a running row of dots
+        print('>', end=''); sys.stdout.flush()
+
+        return map_unc
+
+
+class DensityStatistics(object):
+
+
+    def __init__(self, observations_array, uncertainties):
+        """
+        The main object for loading the maps for PanDDA.
+        Constructed so that the class can be initialised and then called within a multiprocessing function.
+
+        Usage:
+            new    = DensityStatistics(...)
+            output = new.run()
+        or:
+            output = DensityStatistics.process(...)
+        """
+        assert observations_array.shape[1] == len(uncertainties), 'Arrays are not compatible sizes'
+        assert len(observations_array[0]) == len(uncertainties), 'Sorry. Something has gone wrong...'
+        assert len(observations_array[0,:]) == len(uncertainties), 'Sorry. Something has gone wrong...'
+
+        self.data = (observations_array, uncertainties)
+
+    @classmethod
+    def process(cls, observations_array, uncertainties):
+        return cls(observations_array=observations_array, uncertainties=uncertainties).run()
+
+    def run(self):
+        """Calculate statistics of array of observed values with uncertainties"""
+        observations_array, uncertainties = self.data
+        out = numpy.zeros((observations_array.shape[0], 5), dtype=numpy.float64)
+        for i, observations in enumerate(observations_array):
+            assert len(uncertainties) == len(observations)
+            assert (out[i,:]==0.0).all()
+            out[i,:] = self._calculate_statistics(observations=observations, uncertainties=uncertainties)
+        return out
+
+    def _calculate_statistics(self, observations, uncertainties):
+        """Calculate statistics for one set of observations and uncertainties"""
+        guess_factor = 0.001
+        stats_obj = basic_statistics(flex.double(observations))
+        stdv = stats_obj.bias_corrected_standard_deviation
+        sadj = estimate_true_underlying_sd(obs_vals=observations, obs_error=uncertainties, est_sigma=stdv*guess_factor)
+        skew = stats_obj.skew
+        kurt = stats_obj.kurtosis
+        bimo = (skew**2 + 1)/kurt
+        return (stdv, sadj, skew, kurt, bimo)
+
+
+class DatasetProcessor(object):
+
+
+    def __init__(self, dataset, dataset_map, grid, map_analyser, args, verbose):
         """
         The main object for comparing each dataset-map to the ensemble-maps.
         Constructed so that the class can be initialised and then called within a multiprocessing function.
@@ -52,38 +293,36 @@ class DatasetProcesser(object):
             output   = DatasetProcessor.process(...)
         """
 
-        self.data = (dataset,dataset_map,reference_dataset,grid,map_analyser,args,verbose)
+        self.data = (dataset, dataset_map, grid, map_analyser, args, verbose)
 
     @classmethod
-    def process(cls, dataset, dataset_map, grid, reference_dataset, map_analyser, args, verbose):
+    def process(cls, dataset, dataset_map, grid, map_analyser, args, verbose):
         """Process the dataset immediately and return output"""
-        return cls(dataset=dataset, dataset_map=dataset_map, reference_dataset=reference_dataset,
-                    grid=grid, map_analyser=map_analyser, args=args, verbose=verbose).run()
+        return cls(dataset=dataset, dataset_map=dataset_map, grid=grid, map_analyser=map_analyser, args=args, verbose=verbose).run()
 
     def run(self):
         """Process the dataset"""
 
-        dataset,dataset_map,reference_dataset,grid,map_analyser,args,verbose = self.data
+        dataset, dataset_map, grid, map_analyser, args, verbose = self.data
 
         # ============================================================================>
         # Prepare output objects
         # ============================================================================>
         log_strs = []
+        log_file = dataset.file_manager.get_file('dataset_log')
 
         # ============================================================================>
         # Build new blob search object
         # ============================================================================>
-        print('Creating ZMapAnalyser for Dataset {!s}'.format(dataset.tag))
-
         blob_finder = PanddaZMapAnalyser(params=args.params.blob_search, grid=grid,
-                            log=Log(log_file=dataset.file_manager.get_file('dataset_log'), verbose=False))
+                                         log=Log(log_file=log_file, verbose=False))
 
-        print('Writing Log for Dataset {!s} to '.format(dataset.tag, dataset.file_manager.get_file('dataset_log')))
+        print('Writing log for dataset {!s} to ...{}'.format(dataset.tag, log_file[log_file.index('processed'):]))
 
         # ============================================================================>
         # Generate masks for this dataset
         # ============================================================================>
-        print('Generating Symmetry Contacts for Dataset {!s}'.format(dataset.tag))
+        #print('Generating Symmetry Contacts for Dataset {!s}'.format(dataset.tag))
 
         # Generate symmetry contacts for this dataset and align to reference frame
         dataset_sym_copies = dataset.model.crystal_contacts(distance_cutoff=args.params.masks.outer_mask+5, combine_copies=True)
@@ -93,60 +332,69 @@ class DatasetProcesser(object):
         # Extract protein atoms from the symmetry copies
         dataset_sym_sites_cart = protein(dataset_sym_copies).atoms().extract_xyz()
 
-        # Generate custom grid mask for this dataset
-        dataset_mask = GridMask(
-                            parent=grid, sites_cart=dataset_sym_sites_cart,
-                            max_dist=args.params.masks.outer_mask,
-                            min_dist=args.params.masks.inner_mask_symmetry)
-        # TODO REIMPLEMENT TODO #
-        # Combine the standard mask with the custom mask
-        grid_idxr = grid.indexer()
-        dataset_total_mask = [gp for gp in grid.global_mask().total_mask() if dataset_mask.inner_mask_binary()[grid_idxr(gp)] < 0.5]
-        dataset_outer_mask = [gp for gp in grid.global_mask().outer_mask() if dataset_mask.inner_mask_binary()[grid_idxr(gp)] < 0.5]
-        # TODO REIMPLEMENT TODO #
+        # Generate custom grid mask for the symmetry contacts
+        dataset_mask = GridMask(parent=grid, sites_cart=dataset_sym_sites_cart,
+                                max_dist=args.params.masks.outer_mask,
+                                min_dist=args.params.masks.inner_mask_symmetry)
+
+        # Combine with the total mask to generate custom mask for this dataset
+        dset_total_temp = grid.global_mask().total_mask_binary().copy()
+        dset_total_temp.put(dataset_mask.inner_mask_indices(), 0)
+        dset_total_idxs = numpy.where(dset_total_temp)[0]
 
         # ============================================================================>
         #####
         # CALCULATE Z-MAPS AND LOOK FOR LARGE BLOBS
         #####
         # ============================================================================>
-        print('Calculating Z-MAPs for Dataset {!s}'.format(dataset.tag))
-
+        # Check maps and that all maps are sparse
+        # ============================================================================>
+        assert dataset_map.data is not None, 'Something has gone wrong - this dataset has no loaded map'
+        assert dataset_map.as_sparse()
+        assert map_analyser.statistical_maps.mean_map.as_sparse()
+        assert map_analyser.statistical_maps.stds_map.as_sparse()
+        assert map_analyser.statistical_maps.sadj_map.as_sparse()
         # ============================================================================>
         # CALCULATE MEAN-DIFF MAPS
         # ============================================================================>
-        assert dataset_map.data is not None, 'Something has gone wrong - this dataset has no loaded map'
-        mean_diff_map = dataset_map - map_analyser.statistical_maps.mean_map.data
+        mean_diff_map = dataset_map - map_analyser.statistical_maps.mean_map
         # ============================================================================>
         # NAIVE Z-MAP - NOT USING UNCERTAINTY ESTIMATION OR ADJUSTED STDS
         # ============================================================================>
         z_map_naive = map_analyser.calculate_z_map(map=dataset_map, method='naive')
-        z_map_naive_normalised = (z_map_naive - numpy.mean(z_map_naive.data)) / numpy.std(z_map_naive.data)
+        z_map_naive_normalised = (z_map_naive - numpy.mean(z_map_naive.data)) * (1.0/numpy.std(z_map_naive.data))
         # ============================================================================>
         # UNCERTAINTY Z-MAP - NOT USING ADJUSTED STDS
         # ============================================================================>
         z_map_uncty = map_analyser.calculate_z_map(map=dataset_map, uncertainty=dataset_map.meta.map_uncertainty, method='uncertainty')
-        z_map_uncty_normalised = (z_map_uncty - numpy.mean(z_map_uncty.data)) / numpy.std(z_map_uncty.data)
+        z_map_uncty_normalised = (z_map_uncty - numpy.mean(z_map_uncty.data)) * (1.0/numpy.std(z_map_uncty.data))
         # ============================================================================>
         # ADJUSTED+UNCERTAINTY Z-MAP
         # ============================================================================>
         z_map_compl = map_analyser.calculate_z_map(map=dataset_map, uncertainty=dataset_map.meta.map_uncertainty, method='adjusted+uncertainty')
-        z_map_compl_normalised = (z_map_compl - numpy.mean(z_map_compl.data)) / numpy.std(z_map_compl.data)
+        z_map_compl_normalised = (z_map_compl - numpy.mean(z_map_compl.data)) * (1.0/numpy.std(z_map_compl.data))
 
         # ============================================================================>
         # SELECT WHICH MAP TO DO THE BLOB SEARCHING ON
         # ============================================================================>
-        if   args.params.z_map.map_type == 'naive':                z_map = z_map_naive_normalised
-        elif args.params.z_map.map_type == 'adjusted':             z_map = z_map_adjst_normalised
-        elif args.params.z_map.map_type == 'uncertainty':          z_map = z_map_uncty_normalised
-        elif args.params.z_map.map_type == 'adjusted+uncertainty': z_map = z_map_compl_normalised
+        if args.params.z_map.map_type == 'naive':
+            z_map = z_map_naive_normalised
+            z_map_stats = basic_statistics(flex.double(z_map_naive.data))
+#        elif args.params.z_map.map_type == 'adjusted':
+#            z_map = z_map_adjst_normalised
+#            z_map_stats = basic_statistics(flex.double(z_map_adjst.data))
+        elif args.params.z_map.map_type == 'uncertainty':
+            z_map = z_map_uncty_normalised
+            z_map_stats = basic_statistics(flex.double(z_map_uncty.data))
+        elif args.params.z_map.map_type == 'adjusted+uncertainty':
+            z_map = z_map_compl_normalised
+            z_map_stats = basic_statistics(flex.double(z_map_compl.data))
         else: raise Exception('Invalid Z-map type')
 
         # ============================================================================>
         # RECORD Z-MAP FOR STATISTICS
         # ============================================================================>
         # Calculate statistics of z-maps
-        z_map_stats = basic_statistics(flex.double(z_map.data))
         dataset_map.meta.z_mean = z_map_stats.mean
         dataset_map.meta.z_stdv = z_map_stats.bias_corrected_standard_deviation
         dataset_map.meta.z_skew = z_map_stats.skew
@@ -154,8 +402,8 @@ class DatasetProcesser(object):
         # ============================================================================>
         # STORE THE Z MAP
         # ============================================================================>
-        z_map_holder.meta.type = 'z-map'
-        z_map_holder.parent = dataset_map
+        z_map.meta.type = 'z-map'
+        z_map.parent = dataset_map
 
         # ============================================================================>
         #####
@@ -164,37 +412,37 @@ class DatasetProcesser(object):
         # ============================================================================>
         # Sampled Map
         write_map_value_distribution(map_vals=dataset_map.data,
-                            output_file=dataset.file_manager.get_file('s_map_png'))
+                                     output_file=dataset.file_manager.get_file('s_map_png'))
         # Mean-Difference
         write_map_value_distribution(map_vals=mean_diff_map.data,
-                            output_file=dataset.file_manager.get_file('d_mean_map_png'))
+                                     output_file=dataset.file_manager.get_file('d_mean_map_png'))
         # Naive Z-Map
         write_map_value_distribution(map_vals=z_map_naive.data,
-                            output_file=dataset.file_manager.get_file('z_map_naive_png'),
-                            plot_normal=True)
+                                     output_file=dataset.file_manager.get_file('z_map_naive_png'),
+                                     plot_normal=True)
         # Normalised Naive Z-Map
         write_map_value_distribution(map_vals=z_map_naive_normalised.data,
-                            output_file=dataset.file_manager.get_file('z_map_naive_normalised_png'),
-                            plot_normal=True)
+                                     output_file=dataset.file_manager.get_file('z_map_naive_normalised_png'),
+                                     plot_normal=True)
         # Uncertainty Z-Map
         write_map_value_distribution(map_vals=z_map_uncty.data,
-                            output_file=dataset.file_manager.get_file('z_map_uncertainty_png'),
-                            plot_normal=True)
+                                     output_file=dataset.file_manager.get_file('z_map_uncertainty_png'),
+                                     plot_normal=True)
         # Normalised Uncertainty Z-Map
         write_map_value_distribution(map_vals=z_map_uncty_normalised.data,
-                            output_file=dataset.file_manager.get_file('z_map_uncertainty_normalised_png'),
-                            plot_normal=True)
+                                     output_file=dataset.file_manager.get_file('z_map_uncertainty_normalised_png'),
+                                     plot_normal=True)
         # Corrected Z-Map
         write_map_value_distribution(map_vals=z_map_compl.data,
-                            output_file=dataset.file_manager.get_file('z_map_corrected_png'),
-                            plot_normal=True)
+                                     output_file=dataset.file_manager.get_file('z_map_corrected_png'),
+                                     plot_normal=True)
         # Normalised Corrected Z-Map
         write_map_value_distribution(map_vals=z_map_compl_normalised.data,
-                            output_file=dataset.file_manager.get_file('z_map_corrected_normalised_png'),
-                            plot_normal=True)
+                                     output_file=dataset.file_manager.get_file('z_map_corrected_normalised_png'),
+                                     plot_normal=True)
         # Plot Q-Q Plot of Corrected Z-Map to see how normal it is
         write_qq_plot_against_normal(map_vals=z_map_compl_normalised.data,
-                            output_file=dataset.file_manager.get_file('z_map_qq_plot_png'))
+                                     output_file=dataset.file_manager.get_file('z_map_qq_plot_png'))
 
         # ============================================================================>
         #####
@@ -203,15 +451,14 @@ class DatasetProcesser(object):
         # ============================================================================>
         # Contour the grid at a particular Z-Value
         # ============================================================================>
-        num_clusters, z_clusters = blob_finder.cluster_high_z_values(z_map=z_map.as_dense().data, point_mask=dataset_total_mask)
+        num_clusters, z_clusters = blob_finder.cluster_high_z_values(z_map_data=z_map.as_dense().data, point_mask_idx=dset_total_idxs)
         # ============================================================================>
         # Too many points to cluster -- probably a bad dataset
         # ============================================================================>
         if num_clusters == -1:
             # This dataset is too noisy to analyse - flag!
-            #pandda.datasets.all_masks().set_mask_value(mask_name='noisy zmap', entry_id=d_handler.tag, value=True)
             log_strs.append('Z-Map too noisy to analyse')
-            return dataset, dataset_map.as_sparse(), log_strs
+            return dataset, dataset_map.meta, log_strs
 
         # ============================================================================>
         #####
@@ -254,44 +501,41 @@ class DatasetProcesser(object):
             # NATIVE MAPS (ROTATED)
             # ============================================================================>
             # Z-map
-            native_z_map_data = create_native_map(
-                                    native_crystal_symmetry=dataset.model.unit_cell,
-                                    native_sites=dataset.model.hierarchy.atoms().extract_xyz(),
-                                    native_hierarchy=dataset.model.hierarchy,
-                                    reference_map=z_map.as_map(), step=0.75,
-                                    filename=dataset.file_manager.get_file('native_z_map'))
+#            native_z_map_data = create_native_map(
+#                                    native_crystal_symmetry=dataset.model.crystal_symmetry,
+#                                    native_sites=dataset.model.hierarchy.atoms().extract_xyz(),
+#                                    native_hierarchy=dataset.model.hierarchy,
+#                                    alignment=dataset.model.alignment,
+#                                    reference_map=z_map.as_map(), step=0.75,
+#                                    filename=dataset.file_manager.get_file('native_z_map')
+#                                )
             # ============================================================================>
-            # WRITE REFERENCE FRAME MAPS (NOT ROTATED)
+            # WRITE REFERENCE FRAME MAPS (NOT ROTATED) - TODO REMOVE TODO
             # ============================================================================>
-            dataset_map.to_file(filename=dataset.file_manager.get_file('sampled_map'))
-            mean_diff_map.to_file(filename=dataset.file_manager.get_file('mean_diff_map'))
-            z_map.to_file(filename=dataset.file_manager.get_file('z_map'))
+            dataset_map.to_file(filename=dataset.file_manager.get_file('sampled_map'), space_group=grid.space_group())
+            mean_diff_map.to_file(filename=dataset.file_manager.get_file('mean_diff_map'), space_group=grid.space_group())
+            z_map.to_file(filename=dataset.file_manager.get_file('z_map'), space_group=grid.space_group())
             # ============================================================================>
-            # MASKS/BLOBS/GENERIC MAPS
+            # Write out DATASET and Z-MAP grid masks
             # ============================================================================>
             if args.output.developer.write_grid_masks:
                 # Write map of grid + symmetry mask
-                map_mask = numpy.zeros(grid.grid_size_1d(), dtype=int)
-                map_mask.put(map(grid.indexer(), dataset_outer_mask), 1)
-                map_mask = flex.double(map_mask.tolist()); map_mask.reshape(flex.grid(grid.grid_size()))
-                write_array_to_map(output_file=dataset.file_manager.get_file('grid_mask'), map_data=map_mask, grid=grid)
+                write_indices_as_map(grid=grid, indices=dset_total_idxs, f_name=dataset.file_manager.get_file('grid_mask'))
                 # Write map of where the blobs are (high-Z mask)
                 highz_points = []; [highz_points.extend(list(x[0])) for x in z_clusters]
                 highz_points = [map(int, v) for v in highz_points]
-                highz_map_array = numpy.zeros(grid.grid_size_1d(), dtype=int)
-                highz_map_array.put(map(grid.indexer(), list(highz_points)), 1)
-                map_mask = flex.double(highz_map_array.tolist()); map_mask.reshape(flex.grid(grid.grid_size()))
-                write_array_to_map(output_file = d_handler.file_manager.get_file('high_z_mask'), map_data=map_mask, grid=grid)
+                highz_indices = map(grid.indexer(), list(highz_points))
+                write_indices_as_map(grid=grid, indices=highz_indices, f_name=dataset.file_manager.get_file('high_z_mask'))
             # ============================================================================>
             # Write different Z-Maps? (Probably only needed for testing)
             # ============================================================================>
             if args.output.developer.write_all_z_map_types:
-                z_map_naive.to_file(filename=dataset.file_manager.get_file('z_map_naive'))
-                z_map_naive_normalised.to_file(filename=dataset.file_manager.get_file('z_map_naive_normalised'))
-                z_map_uncty.to_file(filename=dataset.file_manager.get_file('z_map_uncertainty'))
-                z_map_uncty_normalised.to_file(filename=dataset.file_manager.get_file('z_map_uncertainty_normalised'))
-                z_map_compl.to_file(filename=dataset.file_manager.get_file('z_map_corrected'))
-                z_map_compl_normalised.to_file(filename=dataset.file_manager.get_file('z_map_corrected_normalised'))
+                z_map_naive.to_file(filename=dataset.file_manager.get_file('z_map_naive'), space_group=grid.space_group())
+                z_map_naive_normalised.to_file(filename=dataset.file_manager.get_file('z_map_naive_normalised'), space_group=grid.space_group())
+                z_map_uncty.to_file(filename=dataset.file_manager.get_file('z_map_uncertainty'), space_group=grid.space_group())
+                z_map_uncty_normalised.to_file(filename=dataset.file_manager.get_file('z_map_uncertainty_normalised'), space_group=grid.space_group())
+                z_map_compl.to_file(filename=dataset.file_manager.get_file('z_map_corrected'), space_group=grid.space_group())
+                z_map_compl_normalised.to_file(filename=dataset.file_manager.get_file('z_map_corrected_normalised'), space_group=grid.space_group())
 
         # ============================================================================>
         # Skip to next dataset if no clusters found
@@ -300,7 +544,7 @@ class DatasetProcesser(object):
             log_strs.append('===> {!s} Cluster(s) found.'.format(num_clusters))
         else:
             log_strs.append('===> No Clusters found.')
-            return (d_handler, dataset_map.as_sparse(), log_strs)
+            return (dataset, dataset_map.meta, log_strs)
         assert num_clusters > 0, 'NUMBER OF CLUSTERS AFTER FILTERING == 0!'
 
         # ============================================================================>
@@ -322,47 +566,61 @@ class DatasetProcesser(object):
             log_strs.append('----------------------------------->>>')
             log_strs.append('Estimating Event {!s} Background Correction'.format(event_num))
             # Generate custom grid mask for this dataset
-            event_mask = GridMask(parent=grid, sites_cart=grid.grid2cart(point_cluster.points, origin=False), max_dist=1.0, min_dist=0.0)
+            event_mask = GridMask(parent=grid, sites_cart=grid.grid2cart(point_cluster.points, origin=False), max_dist=2.0, min_dist=0.0)
             log_strs.append('=> Event sites ({!s} points) expanded to {!s} points'.format(len(point_cluster.points), len(event_mask.outer_mask_indices())))
             # Select masks to define regions for bdc calculation
             exp_event_idxs = event_mask.outer_mask_indices()
             reference_idxs = grid.global_mask().inner_mask_indices()
-            # Calculate the correlation with the mean map as different amounts of the mean map are subtracted
-            event_remain_est = estimate_event_background_correction(
+            # ============================================================================>
+            # Generate BDC-estimation curve and estimate BDC
+            # ============================================================================>
+            event_remains, event_corrs, global_corrs = calculate_varying_bdc_correlations(
                 ref_map_data   = map_analyser.statistical_maps.mean_map.as_dense().data,
                 query_map_data = dataset_map.as_dense().data,
-                feature_idxs   = exp_event_idxs,
-                reference_idxs = reference_idxs,
-                min_remain     = 1.0-params.background_correction.max_bdc,
-                max_remain     = 1.0-params.background_correction.min_bdc,
-                bdc_increment  = params.background_correction.increment,
-                method         = 'value',
+                feature_idxs   = flex.size_t(exp_event_idxs),
+                reference_idxs = flex.size_t(reference_idxs),
+                min_remain     = 1.0-args.params.background_correction.max_bdc,
+                max_remain     = 1.0-args.params.background_correction.min_bdc,
+                bdc_increment  = args.params.background_correction.increment,
                 verbose        = verbose)
+            event_remain_est = calculate_maximum_series_discrepancy(
+                labels   = event_remains,
+                series_1 = global_corrs,
+                series_2 = event_corrs)
+            analyse_graphs.write_occupancy_graph(
+                x_values=event_remains,
+                global_values=global_corrs,
+                local_values=event_corrs,
+                out_file=dataset.file_manager.get_file('bdc_est_png').format(event_num))
             log_strs.append('=> Event Background Correction estimated as {!s}'.format(1-event_remain_est))
+            # Verbose Reporting
+            blob_finder.log('Min-Max: {} {}'.format(1.0-args.params.background_correction.max_bdc, 1.0-args.params.background_correction.min_bdc))
+            blob_finder.log('Event number: {}'.format(event_num))
+            blob_finder.log('Event Remains: {}'.format(','.join(map(str,event_remains))))
+            blob_finder.log('Event Corrs:  {}'.format(','.join(map(str,event_corrs))))
+            blob_finder.log('Global Corrs: {}'.format(','.join(map(str,global_corrs))))
             # ============================================================================>
             # Calculate background-corrected map
             # ============================================================================>
             event_map_data = calculate_bdc_subtracted_map(
-                                    ref_map_data   = map_analyser.statistical_maps.mean_map.as_dense().as_data,
+                                    ref_map_data   = map_analyser.statistical_maps.mean_map.as_dense().data,
                                     query_map_data = dataset_map.as_dense().data,
                                     bdc            = 1.0 - event_remain_est)
             event_map = dataset_map.new_from_template(event_map_data, sparse=False)
-            # Write out these array (reference and native frames)
-            event_map.to_file(filename=dataset.file_manager.get_file('event_map').format(event_num, event_remain_est))
-            native_event_map_data = create_native_map(
-                                        native_crystal_symmetry=dataset.model.crystal_symmetry,
-                                        native_sites=dataset.model.hierarchy.atoms().extract_xyz(),
-                                        native_hierarchy=dataset.model.hierarchy,
-                                        reference_map=event_map.as_map(), step=0.75,
-                                        filename=dataset.file_manager.get_file('native_event_map').format(event_num, event_remain_est))
+            # ============================================================================>
+            # Write out EVENT map (in the reference frame) and grid masks
+            # ============================================================================>
+            event_map.to_file(filename=dataset.file_manager.get_file('event_map').format(event_num, event_remain_est), space_group=grid.space_group())
+            if args.output.developer.write_grid_masks:
+                write_indices_as_map(grid=grid, indices=event_mask.outer_mask_indices(), f_name=dataset.file_manager.get_file('grid_mask').replace('.ccp4','')+'-event-mask-{}.ccp4'.format(event_num))
 
             # ============================================================================>
             # Find the nearest atom to the event
             # ============================================================================>
-            atm = find_nearest_atoms(atoms=protein(dataset.model.hierarchy).atoms(),
-                                points=dataset.model.alignment.ref2nat(grid.grid2cart(sites_grid=[map(int,point_cluster.centroid)], origin=False)))[0]
-            log_strs.append('=> Nearest Residue to event: Chain {}, Residue {} {}'.format(atm.parent().parent().parent().id,
-                                                    atm.parent().parent().unique_resnames()[0], atm.parent().parent().resid()))
+            atm = find_nearest_atoms(atoms=list(protein(dataset.model.hierarchy).atoms()),
+                                     query=dataset.model.alignment.ref2nat(grid.grid2cart(sites_grid=[map(int,point_cluster.centroid)], origin=False)))[0]
+            atm = atm.fetch_labels()
+            log_strs.append('=> Nearest Residue to event: Chain {}, Residue {} {}'.format(atm.chain_id, atm.resname, atm.resid()))
             # ============================================================================>
             # Create an event object
             # ============================================================================>
@@ -375,264 +633,103 @@ class DatasetProcesser(object):
             dataset.events.append(event_obj)
 
         # ============================================================================>
-        # Write out the graph of the background correction correlations
+        # Write out pymol script to load all of the maps easily
         # ============================================================================>
-        #if pandda.settings.plot_graphs:
-        #    pandda.something()
+        pml = PythonScript()
+        pml.set_normalise_maps(False)
+        # Load Structures
+        name = pml.load_pdb(f_name=dataset.file_manager.get_file('aligned_structure'))
+        pml.repr_as(obj=name, style='sticks')
+        name = pml.load_pdb(f_name=dataset.file_manager.get_file('symmetry_copies'))
+        pml.repr_hide(obj=name)
+        # Load Sampled Map
+        name = pml.load_map(f_name=dataset.file_manager.get_file('sampled_map'))
+        mesh = pml.make_mesh(obj=name, contour_level=1.0, colour='blue')
+        # Load Z-maps
+        name = pml.load_map(f_name=dataset.file_manager.get_file('z_map'))
+        mesh = pml.make_mesh(obj=name, mesh_suffix='.plus', contour_level=3.0, colour='green')
+        mesh = pml.make_mesh(obj=name, mesh_suffix='.mins', contour_level=-3.0, colour='red')
+        # Load Event maps
+        for f in sorted(glob.glob(dataset.file_manager.get_file('event_map').format('*','*'))):
+            name = pml.load_map(f_name=f)
+            mesh = pml.make_mesh(obj=name, contour_level=float(f.split('_')[-2]), colour='hotpink')
+        # Load Miscellaneous maps (e.g. masks)
+        for f in sorted(glob.glob(os.path.join(dataset.file_manager.get_dir('root'),'*mask*.ccp4'))):
+            name = pml.load_map(f_name=f)
+            mesh = pml.make_mesh(obj=name, contour_level=0.0, colour='grey')
 
-        return (dataset, dataset_map.as_sparse(), log_strs)
+        pml.write_script(f_name=dataset.file_manager.get_file('pymol_script'), overwrite=True)
+
+        return (dataset, dataset_map.meta, log_strs)
 
 
-class DatasetAligner(object):
+class NativeMapMaker(object):
 
 
-    def __init__(self, model, other, method, id):
+    def __init__(self, dataset, map, filename, args, verbose):
         """
-        Shortcut object for aligning datasets.
+        The main object for comparing each dataset-map to the ensemble-maps.
         Constructed so that the class can be initialised and then called within a multiprocessing function.
 
         Usage:
-            new    = DatasetAligner(...)
-            output = new.run()
+            new_proc = DatasetProcessor(...)
+            output   = new_proc.run()
         or:
-            output = DatasetAligner.process(...)
+            output   = DatasetProcessor.process(...)
         """
 
-        self.data = (model, other, method, id)
+        self.data = (dataset, map, filename, args, verbose)
 
     @classmethod
-    def process(cls, model, other, method, id):
+    def process(cls, dataset, map, filename, args, verbose):
         """Process the dataset immediately and return output"""
-        return cls(model=model, other=other, method=method, id=id).run()
+        return cls(dataset=dataset, map=map, filename=filename, args=args, verbose=verbose).run()
 
     def run(self):
-        model, other, method, id = self.data
-        alignment = model.align_to(other_hierarchy=other.hierarchy, method=method)
-        assert alignment.id is None
-        alignment.id = id
-        return alignment
+        """Process the dataset"""
 
+        dataset, map, filename, args, verbose = self.data
 
-class MapLoader(object):
-
-
-    def __init__(self, dataset, grid, reference_map, args, verbose):
-        """
-        The main object for loading the maps for PanDDA.
-        Constructed so that the class can be initialised and then called within a multiprocessing function.
-
-        Usage:
-            new    = MapLoader(...)
-            output = new.run()
-        or:
-            output = MapLoader.process(...)
-        """
-
-        self.data = (dataset, grid, reference_map, args, verbose)
-
-    @classmethod
-    def process(cls, dataset, grid, reference_map, args, verbose):
-        """Process the dataset immediately and return output"""
-        return cls(dataset=dataset, grid=grid, reference_map=reference_map, args=args, verbose=verbose)
-
-    def run(self):
-
-        dataset, grid, reference_map, args, verbose = self.data
-
-        assert reference_map.is_sparse(), 'Reference map is not in sparse form'
-
-        print('\rLoading Maps for Dataset {!s}'.format(dataset.tag), end=''); sys.stdout.flush()
-
-        # Extract the map data
-        fft_map = dataset.data.get_fft_map(structure_factors='truncated')
-
-        # Scale the map
-        if   args.params.maps.scaling == 'none':   pass
-        elif args.params.maps.scaling == 'sigma':  fft_map.apply_sigma_scaling()
-        elif args.params.maps.scaling == 'volume': fft_map.apply_volume_scaling()
-
-        # ============================================================================>
-        # MORPH MAPS TO REFERENCE FRAME
-        # ============================================================================>
-
-        # Create map handler and map to the reference frame
-        native_map_true = dataset.data.get_electron_density_map(fft_map_name='truncated')
-
-        # Extract the map sites from the grid partition
-        point_mappings_grid = grid.partition.nn_groups[grid.partition.nn_groups!=-1]
-        sites_cart_map = grid.grid2cart(grid.global_mask().outer_mask(), origin=False)
-        # Translate the grid partition mappings to the dataset alignment mappings
-        mappings_grid2dataset, mappings_dataset2grid = get_closest_mapping_between_lists(list_1=list(grid.partition.sites_cart), list_2=list(dataset.model.alignment.reference_sites))
-        point_mappings_dataset = numpy.array([mappings_grid2dataset[i] for i in point_mappings_grid])
-        assert point_mappings_dataset.count(-1) == 0
-        sites_cart_map_d = dataset.model.alignment.nat2ref(coordinates=sites_cart_map, mappings=point_mappings_dataset)
-        map_data = native_map_true.as_map().get_cart_values(sites_cart_map_d)
-
-        # Calculate mean and rms of map values
-        map_mean = map_data.min_max_mean().mean
-        map_rms  = map_data.standard_deviation_of_the_sample()
-
-        # Scale map to reference
-        morphed_map.data = scale_map_to_reference(ref_vals=reference_map.map_data, vals=morphed_map.data)
-        # Create map holder
-        morphed_map = reference_map.new_from_template(map_data=morphed_map, sparse=True)
-        morphed_map.meta.num = dataset.num
-        morphed_map.meta.tag = dataset.tag
-        morphed_map.meta.type = 'observed map'
-        morphed_map.meta.resolution = reference_map.meta.resolution
-        morphed_map.meta.map_uncertainty = None
-        morphed_map.meta.obs_map_mean = d_map_mean
-        morphed_map.meta.obs_map_rms = d_map_rms
-
-        return morphed_map.as_sparse()
-
-
-class UncertaintyCalculator(object):
-
-
-    def __init__(self, query_values, ref_values, q_cut=1.5, file_manager=None):
-        """
-        Object for calculating the uncertinty of query_map relative to ref_map.
-        Constructed so that the class can be initialised and then called within a multiprocessing function.
-
-        Usage:
-            new    = UncertaintyCalculator(...)
-            output = new.run()
-        or:
-            output = UncertaintyCalculator.process(...)
-        """
-
-        self.data = (query_values, ref_values, q_cut, file_manager)
-
-    @classmethod
-    def process(cls, query_values, ref_values, q_cut, file_manager):
-        return cls(query_values=query_values, ref_values=ref_values, q_cut=q_cut, file_manager=file_manager).run()
-
-    def run(self):
-        """Calculate statistics of array of observed values with uncertainties"""
-
-        query_values, ref_values, q_cut, file_manager = self.data
-
-        # Extract the theoretical quantiles that we would expect if these values were from a normal distribution
-        the_diff_vals = normal_distribution().quantiles(len(query_values))
-
-        # Select the points in the middle of the distribution
-        mid_idxs = (the_diff_vals < q_cut).iselection().intersection((the_diff_vals > -1*q_cut).iselection())
-        mid_the_diff_vals = the_diff_vals.select(mid_idxs)
-
-        # Calculate the difference from the reference values
-        act_diff_vals = query_values - ref_values
-        srt_act_diff_vals = flex.double(sorted(act_diff_vals))
-        mid_act_diff_vals = srt_act_diff_vals.select(mid_idxs)
-
-        # Calculate the slope of the centre of the graph
-        map_unc, map_off = numpy.polyfit(x=mid_the_diff_vals, y=mid_act_diff_vals, deg=1)
-
-        try:
-            import matplotlib
-            matplotlib.use('Agg')
-            matplotlib.interactive(0)
-            from matplotlib import pyplot
-            pyplot.style.use('ggplot')
-            output_graphs = True
-        except:
-            output_graphs = False
-
-        if output_graphs and file_manager:
-            # Sort query and ref values for plotting
-            srt_query_vals = sorted(query_values)
-            srt_ref_vals = sorted(ref_values)
-
-            analyse_graphs.mean_obs_scatter(f_name=file_manager.get_file('obs_qqplot_unsorted_png'),
-                                            mean_vals=ref_vals, obs_vals=query_values)
-
-            analyse_graphs.sorted_mean_obs_scatter(f_name=file_manager.get_file('obs_qqplot_sorted_png'),
-                                            mean_vals=srt_ref_vals, obs_vals=srt_query_vals)
-
-            analyse_graphs.diff_mean_qqplot(f_name=file_manager.get_file('unc_qqplot_png'),
-                                            map_off=map_off, map_unc=map_unc,
-                                            q_cut=q_cut, obs_diff=srt_act_diff_vals,
-                                            quantile=the_diff_vals)
-
-        return map_unc
-
-
-class DensityStatistics(object):
-
-
-    def __init__(self, observations_array, uncertainties):
-        """
-        The main object for loading the maps for PanDDA.
-        Constructed so that the class can be initialised and then called within a multiprocessing function.
-
-        Usage:
-            new    = MapLoader(...)
-            output = new.run()
-        or:
-            output = MapLoader.process(...)
-        """
-
-        assert observations_array.shape[1] == len(uncertainties), 'Arrays are not compatible sizes'
-
-        self.data = (observations_array, uncertainties)
-
-    @classmethod
-    def process(cls, observations_array, uncertainties):
-        return cls(observations_array=observations_array, uncertainties=uncertainties).run()
-
-    def run(self):
-        """Calculate statistics of array of observed values with uncertainties"""
-        observations_array, uncertainties = self.data
-        out = numpy.empty((observations_array.shape[0], 5))
-        for i, observations in enumerate(observations_array):
-            assert len(uncertainties) == len(observations)
-            out[i,:] = self._calculate_statistics(observations=observations, uncertainties=uncertainties)
-        return out
-
-    def _calculate_statistics(self, observations, uncertainties):
-        """Calculate statistics for one set of observations and uncertainties"""
-        guess_factor = 0.001
-        stats_obj = basic_statistics(flex.double(observations))
-        stdv = stats_obj.bias_corrected_standard_deviation
-        sadj = estimate_true_underlying_sd(obs_vals=observations, obs_error=uncertainties, est_sigma=stdv*guess_factor)
-        skew = stats_obj.skew
-        kurt = stats_obj.kurtosis
-        bimo = (skew**2 + 1)/kurt
-        return (stdv, sadj, skew, kurt, bimo)
+        native_map_data = create_native_map(
+                            native_crystal_symmetry = dataset.model.crystal_symmetry,
+                            native_sites            = dataset.model.hierarchy.atoms().extract_xyz(),
+                            native_hierarchy        = dataset.model.hierarchy,
+                            alignment               = dataset.model.alignment,
+                            reference_map           = map.as_map(),
+                            step                    = 0.75,
+                            filename                = filename
+                        )
 
 
 # ============================================================================>
 
-def get_closest_mapping_between_lists(list_1, list_2):
+def get_interpolated_mapping_between_coordinates(query_list, ref_list, tol=0.01):
     """
-    Take one set of list_1 and find the identical sites in list_2 (and vice versa).
-    Missing sites will be mapped to the closest neighbouring site.
+    Take each of query_list and find the sites in ref_list (within tolerance).
+    Missing sites will be interpolated to the closest neighbouring site.
     Return list of indices mapping the site in one to the closest site in the other.
     """
+    ref_list = flex.vec3_double(ref_list)
+    tmp_idxs_q_to_r = [closest_point_within_tolerance(query=q, ref_list=ref_list, tol=tol) for q in query_list]
+    assert tmp_idxs_q_to_r.count(-1) != len(tmp_idxs_q_to_r), 'no matching sites found between mappings'
+    out_idxs_q_to_r = copy.copy(tmp_idxs_q_to_r)
+    l = len(tmp_idxs_q_to_r)
+    # Populate the missing values with the nearest value
+    for i in range(l):
+        d_i = 0
+        while out_idxs_q_to_r[i] == -1:
+            d_i += 1; p_i = i+d_i; n_i = i-d_i
+            if   (p_i<l)  and (tmp_idxs_q_to_r[p_i] != -1):
+                out_idxs_q_to_r[i] = out_idxs_q_to_r[p_i]
+            elif (n_i>=0) and (tmp_idxs_q_to_r[n_i] != -1):
+                out_idxs_q_to_r[i] = out_idxs_q_to_r[n_i]
 
-    tmp_idxs_1_to_2 = [list_2.index(s1) if s1 in list_2 else -1 for s1 in list_1]
-    out_idxs_1_to_2 = copy.copy(tmp_idxs_1_to_2)
-    tmp_idxs_2_to_1 = [list_1.index(s2) if s2 in list_1 else -1 for s2 in list_2]
-    out_idxs_2_to_1 = copy.copy(tmp_idxs_2_to_1)
+    return out_idxs_q_to_r
 
-    for in_idxs, out_idxs in ((tmp_idxs_1_to_2,out_idxs_1_to_2),
-                              (tmp_idxs_2_to_1,out_idxs_2_to_1)):
-        assert in_idxs.count(-1) != len(in_idxs), 'no matching sites found between mappings'
-
-        l = len(in_idxs)
-        for i, idx in enumerate(in_idxs):
-            d_i = 0
-            while out_idxs[i] == -1:
-                d_i += 1
-                p_i = i+d_i
-                n_i = i-d_i
-                if   (p_i<l)  and (in_idxs[p_i] != -1):
-                    out_idxs[i] = out_idxs[p_i]
-                elif (n_i>=0) and (in_idxs[n_i] != -1):
-                    out_idxs[i] = out_idxs[n_i]
-
-    return (out_idxs_1_to_2, out_idxs_2_to_1)
-
-
-
+def closest_point_within_tolerance(query, ref_list, tol):
+    dist_sq = list((ref_list-query).dot())
+    dmin_sq = min(dist_sq)
+    if dmin_sq > tol**2:
+        return -1
+    return dist_sq.index(dmin_sq)
 

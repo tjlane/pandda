@@ -1,22 +1,26 @@
+import time
+
 import numpy
 import scipy.cluster
 
 from scitbx.array_family import flex
 
+from giant.structure.select import protein
 from giant.stats.cluster import find_connected_groups, generate_group_idxs
 from giant.xray.symmetry import find_symmetry_equivalent_groups
-
+from giant.grid.utils import idx_to_grid
 
 class PanddaZMapAnalyser(object):
 
 
-    def __init__(self, params, grid_spacing, log):
-        self.log = log
+    def __init__(self, params, grid, log):
         self.params = params
-        self.grid_spacing = grid_spacing
+        self.grid = grid
+        self.grid_spacing = grid.grid_spacing()
         self.grid_clustering_cutoff = 1.1 * numpy.math.sqrt(3)
-        self.real_clustering_cufoff = self.grid_clustering_cutoff * grid_spacing
-        self.grid_minimum_volume = int(self.params.min_blob_volume/(grid_spacing**3))
+        self.real_clustering_cufoff = self.grid_clustering_cutoff * self.grid_spacing
+        self.grid_minimum_volume = int(self.params.min_blob_volume/(self.grid_spacing**3))
+        self.log = log
 
     def print_settings(self):
         self.log('----------------------------------->>>', True)
@@ -30,18 +34,23 @@ class PanddaZMapAnalyser(object):
         self.log('Minimum Cluster Volume (A):  {!s}'.format(self.params.min_blob_volume), True)
         self.log('Minimum Cluster Size:        {!s}'.format(self.grid_minimum_volume), True)
 
-    def cluster_high_z_values(self, z_map_data, point_mask):
+    def cluster_high_z_values(self, z_map_data, point_mask_idx):
         """Finds all the points in the z-map above `z_cutoff`, points will then be clustered into groups of cutoff `clustering_cutoff` angstroms"""
 
-        point_mask_gps = flex.vec3_double(point_mask)
-        # Convert the gps to idxs
-        point_mask_idx = flex.size_t(map(z_map_data.accessor(), point_mask))
         # Select these values from the map
+        point_mask_idx = flex.size_t(point_mask_idx)
         point_mask_val = z_map_data.select(point_mask_idx)
         # Find values above cutoff
-        above_bool = (point_mask_val >= self.params.contour_level)
-        above_val = point_mask_val.select(above_bool)
-        above_gps = point_mask_gps.select(above_bool)
+        if self.params.negative_values:
+            above_idx = (point_mask_val >= self.params.contour_level).iselection()
+            below_idx = (point_mask_val <= -1.0*self.params.contour_level).iselection()
+            sel_idx = above_idx.concatenate(below_idx)
+        else:
+            sel_idx = (point_mask_val >= self.params.contour_level).iselection()
+        # Extract values and grid points for these sites
+        above_val = point_mask_val.select(sel_idx)
+        above_idx = point_mask_idx.select(sel_idx)
+        above_gps = flex.vec3_double([idx_to_grid(i, grid_size=z_map_data.all()) for i in above_idx])
         above_len = len(above_val)
 
         # No Cluster points found
@@ -105,7 +114,7 @@ class PanddaZMapAnalyser(object):
         self.log('Filtered {!s} Clusters to {!s} Clusters'.format(len(z_clusters), len(filt_z_clusters)))
         return len(filt_z_clusters), filt_z_clusters
 
-    def filter_z_clusters_2(self, z_clusters, grid_origin_cart, ref_structure, min_contact_dist=6):
+    def filter_z_clusters_2(self, z_clusters, dataset, min_contact_dist=6):
         """Find and remove clusters more than a minimum distance from the protein"""
 
         # min_contact_dist - blobs are rejected if they are more than this distance from the protein
@@ -113,8 +122,8 @@ class PanddaZMapAnalyser(object):
         self.log('----------------------------------->>>')
         self.log('Filtering by minimum distance from protein')
 
-        # Extract the protein sites
-        ref_sites_cart = ref_structure.select(ref_structure.atom_selection_cache().selection('pepnames')).atoms().extract_xyz()
+        # Extract the protein sites in the reference frame
+        ref_sites_cart = dataset.model.alignment.nat2ref(protein(dataset.model.hierarchy).atoms().extract_xyz())
         # Save time - calculate the square of the contact distance
         min_contact_dist_sq = min_contact_dist**2
 
@@ -122,7 +131,7 @@ class PanddaZMapAnalyser(object):
         filtered_c_idxs = []
         for c_idx, (c_gps, c_val) in enumerate(z_clusters):
             # Extract points in cluster
-            cluster_points_cart = (c_gps * self.grid_spacing) - grid_origin_cart
+            cluster_points_cart = self.grid.grid2cart(c_gps)
             # Calculate minimum distance to protein
             for r_site_cart in ref_sites_cart:
                 diff_vecs_cart = cluster_points_cart - r_site_cart
@@ -151,21 +160,23 @@ class PanddaZMapAnalyser(object):
             self.log('----------------------------------->>>')
             self.log('Filtering symmetry equivalent clusters')
 
-        # Extract the protein sites
-        ref_sites_cart = ref_structure.select(ref_structure.atom_selection_cache().selection('pepnames')).atoms().extract_xyz()
+        # Extract the protein sites in the reference frame
+        d_sites_cart = protein(dataset.model.hierarchy).atoms().extract_xyz()
+        d_unit_cell = dataset.model.unit_cell
+        d_sym_ops = dataset.model.crystal_contact_operators()
 
         # Cartesianise and fractionalise the points in each of the clusters (in the crystallographic frame)
         points_cart = [None]*len(z_clusters)
         points_frac = [None]*len(z_clusters)
         for c_idx, (c_gps, c_val) in enumerate(z_clusters):
             # Extract points in cluster
-            points_cart[c_idx] = (c_gps * self.grid_spacing) - grid_origin_cart
-            # Fractionalise them to the unit cell of the reference structure
-            points_frac[c_idx] = ref_unit_cell.fractionalize(points_cart[c_idx])
+            points_cart[c_idx] = dataset.model.alignment.ref2nat(self.grid.grid2cart(c_gps))
+            # Fractionalise them to the unit cell of the dataset
+            points_frac[c_idx] = d_unit_cell.fractionalize(points_cart[c_idx])
         # Find the sets of clusters that are symmetry related
         sym_equiv_groups = find_symmetry_equivalent_groups( points_frac = points_frac,
-                                                            sym_ops     = ref_sym_ops,
-                                                            unit_cell   = ref_unit_cell,
+                                                            sym_ops     = d_sym_ops,
+                                                            unit_cell   = d_unit_cell,
                                                             cutoff_cart = 1.05*1.7321*self.grid_spacing )
         # max_contact_dist - a point contacts an atom if the atoms is within this distance of it
         # Save time - calculate the square of the contact distance
@@ -182,7 +193,7 @@ class PanddaZMapAnalyser(object):
                 # Get the cartesian points for the cluster
                 c_points_cart = points_cart[c_idx]
                 # Again, use the brute force all-v-all method
-                for rp in ref_sites_cart:
+                for rp in d_sites_cart:
                     diffs_cart = c_points_cart - rp
                     # Check to see if site closer to cluster than minimum
                     if min(diffs_cart.dot()) < max_contact_dist_sq:

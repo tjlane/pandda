@@ -3,7 +3,7 @@ import numpy
 import iotbx.pdb
 from scitbx.array_family import flex
 
-from giant.structure.formatting import ShortSelection
+from giant.structure.formatting import Labeller
 
 #####################################################
 ###        MULTIPLE HIERARCHIES FUNCTIONS         ###
@@ -63,7 +63,7 @@ def resolve_residue_id_clashes(fixed_hierarchy, moving_hierarchy, in_place=False
         if (not new_chain) or (rg_mov.resid() in new_chain.get_residue_ids()):
             new_chain = iotbx.pdb.hierarchy.chain(id=new_chain_ids.pop(0))
             old_chain.parent().append_chain(new_chain)
-        if verbose: print '{} - moving to chain {}'.format(ShortSelection.format(rg_mov), new_chain.id)
+        if verbose: print '{} - moving to chain {}'.format(Labeller.format(rg_mov), new_chain.id)
         # Remove from old chain and add to the new chain
         old_chain.remove_residue_group(rg_mov)
         new_chain.append_residue_group(rg_mov)
@@ -80,7 +80,7 @@ def transfer_residue_groups_from_other(acceptor_hierarchy, donor_hierarchy, in_p
     for donor_ch in donor_hierarchy.chains():
         # If chain not in hierarchy, simply copy across
         if donor_ch.id not in accept_ch_dict.keys():
-            if verbose: print 'Transferring whole chain:    {}'.format(ShortSelection.format(donor_ch))
+            if verbose: print 'Transferring whole chain:    {}'.format(Labeller.format(donor_ch))
             accept_model.append_chain(donor_ch.detached_copy())
             continue
         # Chain present, copy by residue_group
@@ -94,12 +94,12 @@ def transfer_residue_groups_from_other(acceptor_hierarchy, donor_hierarchy, in_p
             elif len(accept_rg) == 1:
                 # Transfer atom groups to this residue_group
                 accept_rg = accept_rg[0]
-                if verbose: print 'Transferring atom groups:    {} > {}'.format(ShortSelection.format(donor_rg), ShortSelection.format(accept_rg))
+                if verbose: print 'Transferring atom groups:    {} > {}'.format(Labeller.format(donor_rg), Labeller.format(accept_rg))
                 for donor_ag in donor_rg.atom_groups():
                     accept_rg.append_atom_group(donor_ag.detached_copy())
             else:
                 # Simply append to chain
-                if verbose: print 'Transferring residue group:  {} > {}'.format(ShortSelection.format(donor_rg), ShortSelection.format(accept_ch))
+                if verbose: print 'Transferring residue group:  {} > {}'.format(Labeller.format(donor_rg), Labeller.format(accept_ch))
                 accept_ch.append_residue_group(donor_rg.detached_copy())
 
     return acceptor_hierarchy

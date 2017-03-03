@@ -16,7 +16,6 @@ def make_supercell(unit_cell, size=(3,3,3)):
     assert len(scales) == 6, 'Ooops, something seems to have gone wrong...: size {}, scales {}'.format(size, scales)
     old_params = unit_cell.parameters()
     new_params = [a*b for a,b in zip(old_params, scales)]
-    print old_params, '->', new_params
     return cctbx.uctbx.unit_cell(new_params)
 
 def calculate_offset_to_centre_grid(grid_dimensions, centre_on):
@@ -31,7 +30,7 @@ def get_subset_of_grid_points(gridding, grid_indices):
     for p in flex.nested_loop(gridding.n_real()):
         if mask_binary[grid(p)]: yield p
 
-def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, reference_map, alignment, site_mask_radius=6, step=0.7, filename=None):
+def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, alignment, reference_map, site_mask_radius=6, step=0.7, filename=None):
     """
     Transform the reference-aligned map back to the native crystallographic frame
     native_sites            - defines region that map will be masked around
@@ -125,7 +124,7 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, r
     # Get the symmetry operations for adjacent crystal copies
     sym_ops = get_crystal_contact_operators(hierarchy=native_hierarchy,
                                             crystal_symmetry=native_crystal_symmetry,
-                                            buffer_thickness=5.0)
+                                            distance_cutoff=5.0)
 
     for sym_op in sym_ops:
         # Get the transformation matrix
@@ -155,7 +154,6 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, r
                                         space_group = cctbx.sgtbx.space_group('P1'),
                                         map_data    = sc_map_data,
                                         labels      = flex.std_string(['Map from pandda'])     )
-    print 'Time Taken:', time.time() - start
 
     return uc_map_data
 

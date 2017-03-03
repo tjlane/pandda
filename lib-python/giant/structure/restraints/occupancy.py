@@ -5,7 +5,7 @@ from scitbx.array_family import flex
 
 from giant.maths.geometry import is_within
 from giant.stats.cluster import find_connected_groups, generate_group_idxs
-from giant.structure.formatting import GenericSelection
+from giant.structure.formatting import GenericSelection, Labeller
 from giant.structure.select import non_h
 
 def filter_by_distance(atom_groups, xyz, cutoff):
@@ -29,11 +29,11 @@ def simple_occupancy_groups(hierarchy, include_single_conformer_groups=False, ve
         # Skip single groups
         if (len(g) == 1) and (len(g[0]) == 1):
             if verbose:
-                print 'Not making simple restraints for single-atom groups:', ','.join([GenericSelection.format(a) for a in hierarchy.select(flex.size_t(g[0])).atoms()])
+                print 'Not making simple restraints for single-atom groups:', ','.join([Labeller.format(a) for a in hierarchy.select(flex.size_t(g[0])).atoms()])
             continue
         if (len(g) == 1) and (not include_single_conformer_groups):
             if verbose:
-                print 'Not making simple restraints for single-conformer groups:\n\t', '\n\t'.join([GenericSelection.format(a) for a in hierarchy.select(flex.size_t(g[0])).atom_groups()])
+                print 'Not making simple restraints for single-conformer groups:\n\t', '\n\t'.join([Labeller.format(a) for a in hierarchy.select(flex.size_t(g[0])).atom_groups()])
             continue
         selections = []
         for sel in g:

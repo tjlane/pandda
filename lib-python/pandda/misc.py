@@ -1,3 +1,5 @@
+import numpy
+
 import iotbx.ccp4_map
 import cctbx.maptbx
 
@@ -21,13 +23,31 @@ def write_qq_plot_against_normal(map_vals, output_file, plot_indices=None):
         analyse_graphs.qq_plot_against_normal(f_name=output_file, plot_vals=plot_vals)
     except: pass
 
-def write_array_to_map(output_file, map_data, grid):
+def write_array_as_map(grid, array, f_name):
     """Take array on the reference grid and write to map"""
-    iotbx.ccp4_map.write_ccp4_map(  file_name   = output_file,
+    iotbx.ccp4_map.write_ccp4_map(  file_name   = f_name,
                                     unit_cell   = grid.unit_cell(),
                                     space_group = grid.space_group(),
-                                    map_data    = map_data,
+                                    map_data    = array,
                                     labels      = flex.std_string(['Map from pandda'])     )
+
+def write_bool_as_map(grid, array, f_name):
+    """Write boolean array as electron density map"""
+    # Create binary map data
+    array = array.astype(int)
+    # Convert to flex and reshape
+    array = flex.double(array.tolist())
+    array.reshape(grid.indexer())
+    # Write as array
+    write_array_as_map(grid=grid, array=array, f_name=f_name)
+
+def write_indices_as_map(grid, indices, f_name):
+    """Take list of indices and write as a mask"""
+    # Create bool map data
+    array = numpy.zeros(grid.grid_size_1d(), dtype=bool)
+    array.put(indices, True)
+    # Write as array
+    write_bool_as_map(grid=grid, array=array, f_name=f_name)
 
 def rotate_map(grid, d_handler, map_data, align_on_grid_point=None):
     """Apply an RT matrix to an array on the reference grid"""

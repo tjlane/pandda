@@ -1,18 +1,17 @@
 
-STRUCTURE_MASK_NAMES = [    'bad structure - non-identical structures',
-                            'bad structure - different space group'    ]
-CRYSTAL_MASK_NAMES   = [    'bad crystal - isomorphous crystal',
-                            'bad crystal - isomorphous structure',
-                            'bad crystal - space group',
-                            'bad crystal - data quality',
-                            'bad crystal - data correlation',
-                            'bad crystal - rfree'  ]
-REJECT_MASK_NAMES    = [    'rejected - total',
-                            'rejected - crystal',
-                            'rejected - structure',
+REJECT_MASK_NAMES    = [    'rejected - non-identical structures',
+                            'rejected - rmsd to reference',
+                            'rejected - different space group',
+                            'rejected - isomorphism cutoff',
+                            'rejected - data quality',
+                            'rejected - rfree',
                             'rejected - unknown'  ]
-FLAG_MASK_NAMES      = [    'noisy zmap',
-                            'analysed'  ]
+FLAG_MASK_NAMES      = [    'rejected - total',
+                            'noisy zmap',
+                            'analysed',
+                            'interesting',
+                            'no_analyse',
+                            'no_build'    ]
 
 DATASET_INFO_FIELDS  = [    'high_resolution',
                             'low_resolution',
@@ -52,12 +51,10 @@ SITE_TABLE_FIELDS    = [    'centroid',
                             'near_crystal_contacts'     ]
 
 class PanddaMaskNames:
-    structure_mask_names = STRUCTURE_MASK_NAMES
-    crystal_mask_names   = CRYSTAL_MASK_NAMES
     reject_mask_names    = REJECT_MASK_NAMES
     flag_mask_names      = FLAG_MASK_NAMES
-    custom_mask_names    = ['no_analyse', 'no_build']
-    all_mask_names       = structure_mask_names + crystal_mask_names + reject_mask_names + flag_mask_names + custom_mask_names
+    all_mask_names       = flag_mask_names + reject_mask_names
+    write_mask_names     = flag_mask_names
 
 class PanddaTableFields:
     all_dataset_fields     = DATASET_INFO_FIELDS
@@ -105,9 +102,10 @@ class PanddaDatasetFilenames:
     native_obs_map         = '{!s}-observed.native.ccp4'
     native_z_map           = '{!s}-z_map.native.ccp4'
     native_event_map       = '{!s}-event_{!s}_1-BDC_{!s}_map.native.ccp4'
+    native_mean_map        = '{!s}-ground-state-mean-map.native.ccp4'
     # Misc...
     z_peaks_csv            = '{!s}-z_map_peaks.csv'
-    pymol_script           = 'load_maps.pml'
+    pymol_script           = 'load_maps.py'
     ccp4mg_script          = 'ccp4mg_{!s}_{!s}.py'
     ccp4mg_png             = 'blob_{!s}_{!s}.png'
 
@@ -140,6 +138,7 @@ class PanddaAnalyserFilenames:
     dataset_info            = 'all_datasets_info.csv'
     dataset_map_info        = 'all_datasets_info_maps.csv'
     dataset_combined_info   = 'all_datasets_info_combined.csv'
+    dataset_masks           = 'all_datasets_info_masks.csv'
     # Statistical Maps
     mean_map                = '{!s}A-mean_map.ccp4'
     medn_map                = '{!s}A-medn_map.ccp4'

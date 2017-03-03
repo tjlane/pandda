@@ -29,31 +29,25 @@ class Program(object):
         self.log('===================================>>>', True)
         self.log(self.master_phil.fetch_diff(source=self.master_phil.format(python_object=self._input_params)).as_str(), True)
 
-    def check_for_matplotlib(self):
+    def check_for_matplotlib(self, backend=None, interactive=False):
         """Check to see whether we can load matplotlib"""
+        self.log('Checking for matplotlib:')
         try:
             import matplotlib
-            matplotlib.use('Agg')
-            # Setup so that we can write without a display connected
-            matplotlib.interactive(0)
-            # Find the backend
-            default_backend, validate_function = matplotlib.defaultParams['backend']
-            self.log('===================================>>>')
-            self.log('MATPLOTLIB LOADED. Using Backend: {!s}'.format(default_backend))
+            matplotlib.interactive(interactive)
             from matplotlib import pyplot
-            # Test non-interactive-ness
-            assert not pyplot.isinteractive(), 'PYPLOT IS STILL IN INTERACTIVE MODE'
-            # Set the style to ggplot (the prettiest)
+            if backend:
+                pyplot.switch_backend(backend)
+                current_backend = pyplot.get_backend()
+                assert current_backend == backend, 'Backend loaded ({}) is not the one requested ({})'.format(current_backend, backend)
+            assert pyplot.isinteractive() is interactive, 'Interactive setting is incorrect ({} is not {})'.format(pyplot.isinteractive(), interactive)
             pyplot.style.use('ggplot')
-            self.log('PYPLOT loaded successfully')
-            self.log('===================================>>>', True)
-            self.log('', True)
+            self.log('pyplot loaded successfully. Using backend "{!s}"'.format(current_backend))
             return True
         except:
             self.log('===================================>>>', True)
-            self.log('>> COULD NOT IMPORT MATPLOTLIB. CANNOT GENERATE GRAPHS.', True)
+            self.log('>> COULD NOT IMPORT MATPLOTLIB. WILL NOT BE ABLE TO GENERATE GRAPHS.', True)
             self.log('===================================>>>', True)
-            self.log('', True)
             return False
 
     def initialise_file_manager(self, rootdir):

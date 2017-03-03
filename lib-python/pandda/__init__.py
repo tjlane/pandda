@@ -1,13 +1,14 @@
 import os, sys
 import pkg_resources
 
-PANDDA_LIB_TOP = os.path.realpath(os.path.abspath(os.path.join(__path__[0], '..')))
 try:
-    PANDDA_VERSION = pkg_resources.get_distribution("panddas").version
+    VERSION = pkg_resources.get_distribution("panddas").version
 except:
-    PANDDA_VERSION = 'xxx'
+    VERSION = '(unknown)'
 
-PANDDA_TEXT = """
+LOGO_PATH = os.path.realpath(os.path.join(os.path.realpath(__path__[0]), '..', '..', 'share', 'pandda-logo-small.png'))
+
+HEADER_TEXT = """
 ------------------------------------------------------------------>
 -
 -  Pandda Version {!s}
@@ -19,17 +20,19 @@ PANDDA_TEXT = """
 -   |____|    (____  /___|  /\\____ \\____ |(____  /____  >
 -                  \\/     \\/      \\/    \\/     \\/     \\/
 -
--  PAN-Dataset Density Analysis of Crystallographic Fragment Screens
+-  PAN-Dataset Density Analysis of Crystallographic Datasets
 -
 -  When using this software, please cite:
 -
--       Unpublished,
--       N Pearce, et al.
+-       A Multi-Crystal Method for Extracting Obscured Signal
+-       from Crystallographic Electron Density,
 -
--  and include "PANDDA" in the KEYWRD section of related PDB files
+-       N Pearce, et al. (2017)
+-
+-  and include "PANDDA" in the KEYWRD sections of PDB depositions
 -
 ------------------------------------------------------------------>
-""".format(PANDDA_VERSION)
+""".format(VERSION)
 
 def welcome(user=None):
     """Welcome message"""
@@ -45,6 +48,6 @@ def welcome(user=None):
     except: pass
 
     try:
-        print 'Hi {!s}. Welcome to Pandda.'.format(user.upper())
+        print '\nHi {!s}. Welcome to Pandda.'.format(user.upper())
     except: pass
 
