@@ -29,7 +29,6 @@ from pandda.analyse import graphs as analyse_graphs
 from pandda.analyse import html as analyse_html
 from pandda.misc import *
 
-
 # ============================================================================>
 #
 ###                 PanDDA Initialisation Functions
@@ -48,43 +47,25 @@ def pandda_dataset_setup(pandda):
     # ============================================================================>
     # Build list of files in data directories
     # ============================================================================>
-    input_files = pandda.build_input_list()
+    new_files = pandda.build_input_list()
+    # Add the new files to the pandda object
+    pandda.add_files(file_list=new_files)
     # Check that some datasets have been found or already loaded
-    if (not pandda.datasets.all()) and (not input_files):
-        raise Sorry('NO DATASETS HAVE BEEN FOUND FOR ANALYSIS OR LOADED FROM PREVIOUS RUNS')
-    # Check to see if we're reusing statistical maps
-    if (not pandda.args.method.recalculate_statistical_maps) and pandda.stat_maps.get_resolutions():
-        pandda.log('----------------------------------->>>', True)
-        pandda.log('Pre-existing statistical maps (from previous runs) have been found and will be reused:', True)
-        pandda.log('Resolutions of reloaded maps: {!s}'.format(', '.join(map(str,pandda.stat_maps.get_resolutions()))), True)
-    # Check that enough datasets have been found
-    elif pandda.datasets.size() + len(input_files) < pandda.params.analysis.min_build_datasets:
-        pandda.log('----------------------------------->>>', True)
-        pandda.log('NOT ENOUGH DATASETS HAVE BEEN LOADED FOR ANALYSIS', True)
-        pandda.log('Number loaded ({!s}) is less than the {!s} needed.'.format(pandda.datasets.size()+len(input_files), pandda.params.analysis.min_build_datasets), True)
-        pandda.log('This value is controlled by changing pandda.params.analysis.min_build_datasets', True)
-        raise Sorry('NOT ENOUGH DATASETS HAVE BEEN LOADED FOR ANALYSIS')
+    pandda.check_number_of_datasets()
+    # ============================================================================>
     # If dry_run, exit after initial search
+    # ============================================================================>
     if pandda.args.exit_flags.dry_run:
         raise SystemExit('Dry Run Only: Exiting')
+    # ============================================================================>
+    #####
     # Load and process input files
-    if input_files and (pandda.args.input.max_new_datasets > 0):
+    #####
+    # ============================================================================>
+    if pandda.new_files():
         # ============================================================================>
-        # Limit the number of files that can be added at once to a pandda
+        # Load and check datasets
         # ============================================================================>
-        if len(input_files) > pandda.args.input.max_new_datasets:
-            pandda.log('----------------------------------->>>', True)
-            pandda.log('Limiting the number of new datasets that are added to the pandda analysis (controlled by input.max_new_datasets)')
-            pandda.log('Limiting analysis to the first {} of {} datasets'.format(pandda.args.input.max_new_datasets, len(input_files)))
-            input_files = input_files[:pandda.args.input.max_new_datasets]
-            if len(input_files) != pandda.args.input.max_new_datasets:
-                raise Sorry('Something has gone wrong, number of selected datasets ({}) is not equal to the maximum ({})'.format(len(input_files), pandda.args.input.max_new_datasets))
-        # ============================================================================>
-        #####
-        # Add new files and load datasets
-        #####
-        # ============================================================================>
-        pandda.add_new_files(input_files)
         pandda.load_new_datasets()
         pandda.initialise_dataset_masks_and_tables()
         if pandda.args.method.reprocess_existing_datasets or pandda.args.method.reprocess_selected_datasets:
@@ -92,10 +73,7 @@ def pandda_dataset_setup(pandda):
         else:
             pandda.check_loaded_datasets(datasets=pandda.datasets.mask(mask_name='old datasets', invert=True))
         # ============================================================================>
-        #####
-        # Set Reference Dataset
-        #####
-        # Select the reference dataset
+        # Select Reference Dataset
         # ============================================================================>
         if not pandda.datasets.reference():
             # Filter datasets against the provided filter pdb if given
@@ -116,9 +94,7 @@ def pandda_dataset_setup(pandda):
             pandda.load_reference_dataset(ref_pdb=ref_pdb, ref_mtz=ref_mtz)
             pandda.log('----------------------------------->>>', True)
         # ============================================================================>
-        #####
-        # Scale, Align and Initial-Filter All Data
-        #####
+        # Align and Filter All Datasets
         # ============================================================================>
         # Filter out datasets with different protein structures
         pandda.filter_datasets_1()
@@ -128,7 +104,7 @@ def pandda_dataset_setup(pandda):
         pandda.pickle_the_pandda(components=['datasets'], datasets=pandda.datasets.mask(mask_name='old datasets', invert=True))
     else:
         # ============================================================================>
-        # Rebuild the masks of the rejected datasets (quick)
+        # Build masks for reloaded datasets based on current input parameters (quick)
         # ============================================================================>
         pandda.initialise_dataset_masks_and_tables()
         pandda.check_loaded_datasets(datasets=pandda.datasets.all())
@@ -137,15 +113,7 @@ def pandda_dataset_setup(pandda):
     # ============================================================================>
     # Check that enough VALID datasets have been found
     # ============================================================================>
-    if (not pandda.args.method.recalculate_statistical_maps) and pandda.stat_maps.get_resolutions():
-        # Using existing maps - don't need to check
-        pass
-    elif pandda.datasets.size(mask_name='rejected - total', invert=True) < pandda.params.analysis.min_build_datasets:
-        pandda.log('----------------------------------->>>', True)
-        pandda.log('NOT ENOUGH (NON-REJECTED) DATASETS TO BUILD DISTRIBUTIONS!', True)
-        pandda.log('Number loaded ({!s}) is less than the {!s} needed.'.format(pandda.datasets.size(mask_name='rejected - total', invert=True), pandda.params.analysis.min_build_datasets), True)
-        pandda.log('This value is defined by pandda.params.analysis.min_build_datasets', True)
-        raise Sorry('NOT ENOUGH DATASETS LOADED')
+    pandda.check_number_of_datasets()
 
     # ============================================================================>
     #####
@@ -158,18 +126,6 @@ def pandda_dataset_setup(pandda):
     pandda.filter_datasets_2()
     # Write output csvs
     pandda.write_output_csvs()
-
-    # Update masks
-    pandda.datasets.all_masks().add_mask(name='valid - new', values=pandda.datasets.all_masks().combine_masks(
-                                                                                                    names=['rejected - total', 'old datasets'],
-                                                                                                    invert=[True, True],
-                                                                                                    operation='and',
-                                                                                                    invert_output=False))
-    pandda.datasets.all_masks().add_mask(name='valid - old', values=pandda.datasets.all_masks().combine_masks(
-                                                                                                    names=['rejected - total', 'old datasets'],
-                                                                                                    invert=[True, False],
-                                                                                                    operation='and',
-                                                                                                    invert_output=False))
 
     return
 
@@ -207,7 +163,6 @@ def pandda_grid_setup(pandda):
     # Create reference grid based on the reference structure
     # ============================================================================>
     if pandda.grid is None:
-        # Create grid object - TODO multiple grids TODO
         pandda.create_reference_grid(
             dataset=pandda.datasets.reference(),
             grid_spacing=pandda.params.maps.grid_spacing)
@@ -215,6 +170,8 @@ def pandda_grid_setup(pandda):
             dataset=pandda.datasets.reference())
         pandda.partition_reference_grid(
             dataset=pandda.datasets.reference())
+    else:
+        pandda.log('Grid loaded from previous analysis')
     # ============================================================================>
     # Store for reuse
     # ============================================================================>
@@ -249,6 +206,7 @@ def pandda_main_loop(pandda):
     # ============================================================================>
     # Validate/Reset the loaded datasets (those to be analysed)
     # ============================================================================>
+    # Remove previous event information for datasets to be re-analysed
     pandda.reset_loaded_datasets()
     # Load reflection data for each dataset
     if pandda.args.method.reprocess_existing_datasets or pandda.args.method.reprocess_selected_datasets:
@@ -267,87 +225,28 @@ def pandda_main_loop(pandda):
 
     # ============================================================================>
     #####
-    # Update Settings
-    #####
-    # ============================================================================>
-    # Update the resolution limits using the resolution limits from the datasets supplied
-    if pandda.params.analysis.dynamic_res_limits:
-        pandda.log('----------------------------------->>>')
-        pandda.log('UPDATING RESOLUTION LIMITS -')
-        pandda.set_low_resolution(  min(pandda.params.analysis.high_res_lower_limit,
-                                    max(pandda.tables.dataset_info['high_resolution'])))
-        pandda.set_high_resolution( max(pandda.params.analysis.high_res_upper_limit,
-                                        pandda.datasets.reference().data.summary.high_res,
-                                        min(pandda.tables.dataset_info['high_resolution'])))
-    else:
-        pandda.log('----------------------------------->>>')
-        pandda.log('**NOT** UPDATING RESOLUTION LIMITS -')
-        pandda.set_low_resolution(  pandda.params.analysis.high_res_lower_limit)
-        pandda.set_high_resolution( pandda.params.analysis.high_res_upper_limit)
-    # Print new resolution limits
-    pandda.log('LOW RESOLUTION:  {!s}'.format(pandda.get_low_resolution()))
-    pandda.log('HIGH RESOLUTION: {!s}'.format(pandda.get_high_resolution()))
-
-    # ============================================================================>
-    #####
     # PREPARE VARIABLES TO LOOP OVER RESOLUTION SHELLS
     #####
     # ============================================================================>
     # Calculate cutoffs for resolution shells
     # ============================================================================>
-    if (not pandda.args.method.recalculate_statistical_maps) and pandda.stat_maps.get_resolutions():
-        # Use the resolution limits of previously run campaigns
-        res_limits = pandda.stat_maps.get_resolutions()
-        assert res_limits, 'No Resolution Limits found from statistical maps: {!s}'.format(res_limits)
-        min_limit = min(res_limits)
-        max_limit = max(res_limits)
-    else:
-        # Set pandda.args.method.recalculate_statistical_maps to True as no statistical maps have been found
-        if not pandda.args.method.recalculate_statistical_maps:
-            pandda.log('No Statistical Maps Found: Setting pandda.args.method.recalculate_statistical_maps to True', True)
-            pandda.args.method.recalculate_statistical_maps = True
-        # ============================================================================>
-        # Select resolution limits based on dataset resolutions and given arguments
-        # ============================================================================>
-        if pandda.params.analysis.dynamic_res_limits:
-            # Round the high limit DOWN to the nearest 0.01
-            min_limit = round(pandda.get_high_resolution()- 0.005, 2)    # i.e. 1.344 -> 1.34
-            # Round the low limit UP to the nearest 0.01
-            max_limit = round(pandda.get_low_resolution() + 0.005, 2)    # i.e. 3.423 -> 3.43
-        else:
-            # Take the arguments as given by the user
-            min_limit = pandda.get_high_resolution()
-            max_limit = pandda.get_low_resolution()
-        # ============================================================================>
-        # Create resolution shells (or single limit)
-        # ============================================================================>
-        if not pandda.params.analysis.high_res_increment:
-            # No variable cutoff - select all
-            res_limits = [max_limit]  # i.e. [2]
-        else:
-            # Calculate a range of resolution limits
-            shell_width = pandda.params.analysis.high_res_increment
-            res_limits = [round(x, 4) for x in numpy.arange(min_limit, max_limit, shell_width).tolist()]
-            # Append the rounded max_limit to the end to ensure that the last dataset is processed
-            if (not res_limits) or (res_limits[-1] != max_limit):
-                res_limits.append(max_limit)
-    # ==================================================>
-    #####
-    # Initialise for iterations over shells
-    #####
+    res_limits = pandda.select_resolution_limits()
     # ============================================================================>
     # Analyse all datasets from high_shell_limit -> cut_resolution (initialise high_shell_limit to 0)
+    # ============================================================================>
     high_shell_limit = 0
+    # ============================================================================>
     # Record how many datasets are processed at each resolution
+    # ============================================================================>
     resolution_count = {}
     # ============================================================================>
     # Report
     # ============================================================================>
     pandda.log('----------------------------------->>>', True)
     if len(res_limits)==1:
-        pandda.log('Analysing All Maps at {!s}A'.format(max_limit), True)
+        pandda.log('Analysing All Maps at {!s}A'.format(res_limits[0]), True)
     else:
-        pandda.log('Analysing Resolution Shells from {!s} -> {!s}A'.format(min_limit, max_limit), True)
+        pandda.log('Analysing Resolution Shells from {!s} -> {!s}A'.format(res_limits[0], res_limits[-1]), True)
         pandda.log('Limits: {!s}'.format(', '.join(map(str,res_limits))), True)
 
     # ============================================================================>
@@ -374,30 +273,28 @@ def pandda_main_loop(pandda):
         # ============================================================================>
         # Select datasets to build the distributions
         # ============================================================================>
-        if pandda.args.method.recalculate_statistical_maps:
-            pandda.log('----------------------------------->>>', True)
-            pandda.log('Selecting Building Mask', True)
-            pandda.log('----------------------------------->>>', True)
-            building_mask_name, building_mask = pandda.select_for_building_distributions(high_res_cutoff=cut_resolution)
-            # Check that we have enough datasets to build distributions
-            if sum(building_mask) < pandda.params.analysis.min_build_datasets:
-                # Don't have enough to construct robust distributions
-                pandda.log('NOT ENOUGH DATASETS TO CALCULATE DISTRIBUTIONS ({!s}<{!s})'.format(sum(building_mask),pandda.params.analysis.min_build_datasets), True)
-                pandda.log('----------------------------------->>>', True)
-                continue
-            else:
-                # Have enough to generate robust distributions
-                pandda.log('ENOUGH DATASETS -> PROCESSING THIS RESOLUTION', True)
-                pandda.log('----------------------------------->>>', True)
-                pandda.log('Using {} datasets for statistical electron density characterisation'.format(sum(building_mask)), True)
-                pandda.log('BUILDING Datasets: {}'.format(','.join(['\n\t'*(not i%5)+d.tag for i,d in enumerate(pandda.datasets.mask(mask_name=building_mask_name))])))
-        else:
-            pandda.log('----------------------------------->>>', True)
-            pandda.log('**NOT** Selecting Building Mask (Using Existing Statistical Maps)', True)
+        if cut_resolution in pandda.stat_maps.get_resolutions():
             # Create a dummy mask as we won't be using any datasets for building
+            pandda.log('----------------------------------->>>', True)
+            pandda.log('Using existing statistical maps @ {}A'.format(cut_resolution), True)
             building_mask_name = 'dummy mask @ {}A'.format(cut_resolution)
             building_mask = [False]*pandda.datasets.size()
             pandda.datasets.all_masks().add_mask(name=building_mask_name, values=building_mask)
+        else:
+            pandda.log('----------------------------------->>>', True)
+            pandda.log('Selecting Building Mask', True)
+            pandda.log('----------------------------------->>>', True)
+            building_mask_name, building_mask = pandda.select_datasets_for_density_characterisation(high_res_cutoff=cut_resolution)
+            # Check that we have enough datasets to build distributions
+            if sum(building_mask) < pandda.params.analysis.min_build_datasets:
+                pandda.log('Not enough datasets at this resolution to perform statistical density analysis ({!s}<{!s})'.format(sum(building_mask),pandda.params.analysis.min_build_datasets), True)
+                pandda.log('----------------------------------->>>', True)
+                continue
+            else:
+                pandda.log('Sufficient datasets ar this resolution to perform statistical density analysis', True)
+                pandda.log('----------------------------------->>>', True)
+                pandda.log('Using {} datasets for statistical electron density characterisation'.format(sum(building_mask)), True)
+                pandda.log('Datasets to be used for density characterisation: {}'.format(','.join(['\n\t'*(not i%5)+d.tag for i,d in enumerate(pandda.datasets.mask(mask_name=building_mask_name))])))
 
         # ============================================================================>
         # Select the datasets to analyse
@@ -405,15 +302,15 @@ def pandda_main_loop(pandda):
         pandda.log('----------------------------------->>>', True)
         pandda.log('Selecting Analysis Mask', True)
         pandda.log('----------------------------------->>>', True)
-        analysis_mask_name, analysis_mask = pandda.select_for_analysis(high_res_large_cutoff=cut_resolution, high_res_small_cutoff=high_shell_limit)
+        analysis_mask_name, analysis_mask = pandda.select_datasets_for_analysis(high_res_large_cutoff=cut_resolution, high_res_small_cutoff=high_shell_limit)
         # Check that there're some datasets to analyse
         if sum(analysis_mask) == 0:
-            pandda.log('NO DATASETS TO ANALYSE @ {!s}'.format(cut_resolution))
+            pandda.log('No datasets to analyse at this resolution', True)
             pandda.log('----------------------------------->>>', True)
             continue
         else:
-            pandda.log('Comparing {!s} datasets against the characterised electron density'.format(sum(analysis_mask)), True)
-            pandda.log('ANALYSIS Datasets: {}'.format(','.join(['\n\t'*(not i%5)+d.tag for i,d in enumerate(pandda.datasets.mask(mask_name=analysis_mask_name))])))
+            pandda.log('{!s} datasets selected for contrasting against the characterised electron density'.format(sum(analysis_mask)), True)
+            pandda.log('Datasets to be analysed: {}'.format(','.join(['\n\t'*(not i%5)+d.tag for i,d in enumerate(pandda.datasets.mask(mask_name=analysis_mask_name))])))
 
         # ============================================================================>
         # Combine the masks as we will need to load maps for all datasets
@@ -422,34 +319,22 @@ def pandda_main_loop(pandda):
         map_load_mask_name = 'Loading @ {!s}A'.format(cut_resolution)
         pandda.datasets.all_masks().add_mask(name=map_load_mask_name, values=map_load_mask.values)
 
-        # ============================================================================>
-        #####
-        # LOAD AND ANALYSE MAPS
-        #####
-        # ============================================================================>
-        t_loop_start = time.time()
-        # ==================================================>
-        pandda.log('', True)
-        pandda.log('----------------------------------->>>')
-        pandda.log('{!s}A Analysis Started: {!s}'.format(cut_resolution, time.strftime("%a, %d %b %Y %H:%M:%S", time.gmtime(t_loop_start))), True)
-        pandda.log('----------------------------------->>>')
-
-        # ============================================================================>
-        # Report
-        # ============================================================================>
-        pandda.log('', True)
-        pandda.log('################################### <~> ###################################', True)
-        pandda.log('                   Loading and aligning maps at {!s}A'.format(cut_resolution), True)
-        pandda.log('################################### <~> ###################################', True)
-        pandda.log('', True)
         pandda.log('----------------------------------->>>')
         pandda.log('Datasets for Building, Loading, and Analysis')
         pandda.log('Building: {!s} datasets'.format(sum(building_mask)))
         pandda.log('Analysis: {!s} datasets'.format(sum(analysis_mask)))
-        pandda.log('Load Map: {!s} datasets'.format(sum(map_load_mask)))
+        pandda.log('Total No: {!s} datasets'.format(sum(map_load_mask)))
         pandda.log('----------------------------------->>>', True)
-        pandda.log('', True)
 
+        # ============================================================================>
+        # Have now commited to processing this resoution - record start time
+        # ============================================================================>
+        t_loop_start = time.time()
+        # ============================================================================>
+        pandda.log('', True)
+        pandda.log('----------------------------------->>>')
+        pandda.log('{!s}A Analysis Started: {!s}'.format(cut_resolution, time.strftime("%a, %d %b %Y %H:%M:%S", time.gmtime(t_loop_start))), True)
+        pandda.log('----------------------------------->>>')
         # ============================================================================>
         # Update limit (cut resolution becomes top limit in next shell)
         # ============================================================================>
@@ -457,170 +342,192 @@ def pandda_main_loop(pandda):
 
         # ============================================================================>
         #####
-        # Truncate data, load and scale maps to reference dataset
+        # Load, truncate and scale diffraction data
         #####
-        # ============================================================================>
-        # Truncate the data to a particular resolution
-        # ============================================================================>
-        pandda.truncate_scaled_data(datasets=pandda.datasets.mask(mask_name=map_load_mask_name), res_truncate=cut_resolution)
-        # ============================================================================>
-        # Load the reference map so that we can scale the individual maps to this
-        # ============================================================================>
-        ref_map = pandda.load_reference_map(map_resolution=cut_resolution)
-        # ============================================================================>
-        # Load the required maps
-        # ============================================================================>
-        map_holder_list = pandda.load_and_morph_maps(datasets=pandda.datasets.mask(mask_name=map_load_mask_name),
-                                                     ref_map=ref_map, map_resolution=cut_resolution)
-        # ============================================================================>
-        # Extract the statistical maps at this resolution (if requested)
-        # ============================================================================>
-        if pandda.args.method.recalculate_statistical_maps:
-            # No Statistical maps - set to None so that they are created
-            statistical_maps = None
-        else:
-            # Try to find a statistical map at this resolution
-            statistical_maps = pandda.stat_maps.get(cut_resolution)
-        # ============================================================================>
-        # Create an object to hold all of the maps, and can be used to calculate the mean maps, etc...
-        # ============================================================================>
-        map_analyser = PanddaMapAnalyser(   dataset_maps     = map_holder_list,
-                                            meta             = Meta({'resolution'    : cut_resolution,
-                                                                     'map_data_size' : pandda.grid.global_mask().outer_mask_indices().size()}),
-                                            statistical_maps = statistical_maps,
-                                            parent           = pandda,
-                                            log              = pandda.log   )
-        # ============================================================================>
-        # If new statistical maps, add the meta data about which datasets are used
-        # ============================================================================>
-        if statistical_maps is None:
-            map_analyser.statistical_maps.meta.characterisation_datasets = [d.tag for d in pandda.datasets.mask(mask_name=building_mask_name)]
-        # ============================================================================>
-        # Add the analysis mask to the map analyser
-        # ============================================================================>
-        map_analyser.dataset_maps.all_masks().add_mask(name=analysis_mask_name, values=False)
-        for d in pandda.datasets.mask(mask_name=analysis_mask_name):
-            map_analyser.dataset_maps.all_masks().set_value(name=analysis_mask_name, id=d.tag, value=True)
-        # ============================================================================>
-        # Add the building mask to the map analyser
-        # ============================================================================>
-        map_analyser.dataset_maps.all_masks().add_mask(name=building_mask_name, values=False)
-        for d in pandda.datasets.mask(mask_name=building_mask_name):
-            map_analyser.dataset_maps.all_masks().set_value(name=building_mask_name, id=d.tag, value=True)
-
         # ============================================================================>
         # Report
         # ============================================================================>
         pandda.log('', True)
         pandda.log('################################### <~> ###################################', True)
-        pandda.log('               Performing statistical map analysis at {!s}A'.format(cut_resolution), True)
+        pandda.log('            Preparing selected datasets for analysis at {!s}A'.format(cut_resolution), True)
         pandda.log('################################### <~> ###################################', True)
         pandda.log('', True)
 
         # ============================================================================>
         #####
-        # Calculate Statistical Maps (if required) and Calculate Dataset Uncertainties
+        # Truncate data, load and scale maps to reference dataset
         #####
         # ============================================================================>
-        if pandda.args.method.recalculate_statistical_maps:
-            pandda.log('----------------------------------->>>', True)
-            pandda.log('Building Map Distributions for {!s} Datasets at {!s}A'.format(pandda.datasets.size(mask_name=building_mask_name), cut_resolution), True)
-        else:
-            pandda.log('----------------------------------->>>', True)
-            pandda.log('Using Existing Map Distributions at {!s}A'.format(cut_resolution), True)
-            assert pandda.datasets.size(mask_name=building_mask_name) == 0, 'BUILDING MASKS HAVE BEEN SELECTED WHEN MAPS ALREADY EXIST'
-            assert map_analyser.dataset_maps.size(mask_name=building_mask_name) == 0, 'BUILDING MASKS HAVE BEEN SELECTED WHEN MAPS ALREADY EXIST'
+        # Truncate the data to the same resolution and scale to reference data
+        pandda.scale_and_truncate_data(datasets=pandda.datasets.mask(mask_name=map_load_mask_name), res_truncate=cut_resolution)
+        # Get resolution range of the truncated data and plot histogram
+        if pandda.settings.plot_graphs:
+            analyse_graphs.write_truncated_data_plots(pandda        = pandda,
+                                                      resolution    = cut_resolution,
+                                                      miller_arrays = [d.data.miller_arrays['truncated'] for d in pandda.datasets.mask(mask_name=map_load_mask_name)])
         # ============================================================================>
-        # Calculate the mean map
+        # Load the reference map so that we can re-scale the individual maps to this
         # ============================================================================>
-        if (not map_analyser.statistical_maps.mean_map) or pandda.args.method.recalculate_statistical_maps:
-            map_analyser.calculate_mean_map(mask_name=building_mask_name)
-        # ============================================================================>
-        # If only Mean Map Requested -- exit
-        # ============================================================================>
-        if pandda.args.exit_flags.calculate_first_mean_map_only:
-            NativeMapMaker.process(dataset  = pandda.datasets.reference(),
-                                   map      = map_analyser.statistical_maps['mean_map'],
-                                   filename = pandda.file_manager.get_file('mean_map').format(cut_resolution),
-                                   args     = pandda.args,
-                                   verbose  = pandda.settings.verbose).run()
-#            write_array_as_map(grid=pandda.grid, array=map_analyser.statistical_maps.mean_map.copy().as_dense().data,
-#                               f_name=pandda.file_manager.get_file('mean_map').format(cut_resolution))
-            raise SystemExit('Calculating First Mean Map Only: Exiting')
-        # ============================================================================>
-        # Plot Mean Map against Reference Map - should be fairly similar...
-        # ============================================================================>
-        # Plot the mean map against the reference map (unsorted)
-        analyse_graphs.mean_obs_scatter(f_name      = pandda.file_manager.get_file('ref_v_mean_map_unsort').format(cut_resolution),
-                                        mean_vals   = map_analyser.statistical_maps.mean_map.as_sparse().data, obs_vals=ref_map.as_sparse().data)
-        # Plot the mean map against the reference map (sorted)
-        analyse_graphs.sorted_mean_obs_scatter(f_name    = pandda.file_manager.get_file('ref_v_mean_map_sort').format(cut_resolution),
-                                               mean_vals = sorted(map_analyser.statistical_maps.mean_map.as_sparse().data), obs_vals=sorted(ref_map.as_sparse().data))
-        # Plot the reference map distribution
-        write_map_value_distribution(map_vals       = ref_map.as_sparse().data,
-                                     output_file    = pandda.file_manager.get_file('ref_map_dist').format(cut_resolution))
-        # ============================================================================>
-        # Calculate the uncertainty of all loaded maps (needs the mean map to have been calculated)
-        # ============================================================================>
-        inner_mask_idxs_reindx = pandda.grid.index_on_other(query=pandda.grid.global_mask().inner_mask_indices(), other=pandda.grid.global_mask().outer_mask_indices())
-        assert len(inner_mask_idxs_reindx) == len(pandda.grid.global_mask().inner_mask_indices())
-        map_analyser.calculate_map_uncertainties(masked_idxs=inner_mask_idxs_reindx, cpus=pandda.settings.cpus)
-        # ============================================================================>
-        # Plot uncertainties of maps
-        # ============================================================================>
-        try:
-            from ascii_graph import Pyasciigraph
-            g=Pyasciigraph(float_format='{0:.3f}')
-            graph_data = [(m.meta.tag, round(m.meta.map_uncertainty,3)) for m in map_analyser.dataset_maps.all()]
-            pandda.log('----------------------------------->>>', True)
-            for l in g.graph(label='Sorted Map Uncertainties (Ascending Order)', data=graph_data):
-                if l.startswith('#######'): continue
-                pandda.log(l.replace(u"\u2588", '=').replace('= ','> '), True)
-            pandda.log('----------------------------------->>>', True)
-            pandda.log('')
-        except ImportError:
-            print('IMPORT ERROR (ascii_graph) - CANNOT GENERATE UNCERTAINTY GRAPH')
-        except:
-            raise
-        # ============================================================================>
-        # Calculate the statistics of the maps
-        # ============================================================================>
-        if (not map_analyser.statistical_maps.sadj_map) or pandda.args.method.recalculate_statistical_maps:
-            map_analyser.calculate_statistical_maps(mask_name=building_mask_name, cpus=pandda.settings.cpus)
+        ref_map = pandda.load_reference_map(map_resolution=cut_resolution)
 
         # ============================================================================>
-        # PICKLE THE DATASETS THAT HAVE JUST BEEN PROCESSED
+        #####
+        # Perform the statistical density characterisation (if required)
+        #####
         # ============================================================================>
-#        pandda.sync_datasets(datasets=pandda.datasets.mask(mask_name=analysis_mask_name), overwrite_dataset_meta=True)
-#        pandda.pickle_the_pandda(components=['datasets'], datasets=pandda.datasets.mask(mask_name=analysis_mask_name))
+        if cut_resolution not in pandda.stat_maps.get_resolutions():
+            # ============================================================================>
+            # Report
+            # ============================================================================>
+            pandda.log('', True)
+            pandda.log('################################### <~> ###################################', True)
+            pandda.log('         Performing statistical density characterisation at {!s}A'.format(cut_resolution), True)
+            pandda.log('################################### <~> ###################################', True)
+            pandda.log('', True)
 
-        # ============================================================================>
-        # Write the statistical maps
-        # ============================================================================>
-        pandda.write_map_analyser_maps(map_analyser=map_analyser)
-        # ============================================================================>
-        # Pickle the statistical map objects for re-use
-        # ============================================================================>
-        # Only need to add if we're calculating new statistical maps
-        if pandda.args.method.recalculate_statistical_maps:
-            # Check to see if already in there
-            if cut_resolution in pandda.stat_maps.get_resolutions():
-                pandda.log('Overwriting existing statistical maps @ {!s}A'.format(cut_resolution))
-            pandda.stat_maps.add(stat_map_list=map_analyser.statistical_maps, resolution=cut_resolution, overwrite=True)
+            pandda.log('----------------------------------->>>', True)
+            pandda.log('Building density distributions from {!s} datasets at {!s}A'.format(pandda.datasets.size(mask_name=building_mask_name), cut_resolution), True)
+            # ============================================================================>
+            # Load maps for characterisation datasets
+            # ============================================================================>
+            map_holder_list = pandda.load_and_morph_maps(datasets       = pandda.datasets.mask(mask_name=building_mask_name),
+                                                         ref_map        = ref_map,
+                                                         map_resolution = cut_resolution)
+            # ============================================================================>
+            # Label the datasets
+            # ============================================================================>
+            map_holder_list.all_masks().add_mask(name=building_mask_name, values=True)
+            map_holder_list.all_masks().add_mask(name=analysis_mask_name, values=False)
+            for m in map_holder_list.all():
+                if pandda.datasets.all_masks().get_value(name=analysis_mask_name, id=m.meta.tag):
+                    map_holder_list.all_masks().set_value(name  = analysis_mask_name,
+                                                          id    = m.meta.tag,
+                                                          value = True)
+            # ============================================================================>
+            # Create an object to hold all of the maps, and can be used to calculate the mean maps, etc...
+            # ============================================================================>
+            map_analyser = PanddaMapAnalyser(   dataset_maps     = map_holder_list,
+                                                meta             = Meta({'resolution'    : cut_resolution,
+                                                                         'map_data_size' : pandda.grid.global_mask().outer_mask_indices().size()}),
+                                                statistical_maps = None,
+                                                parent           = pandda,
+                                                log              = pandda.log   )
+            # ============================================================================>
+            # Add the meta data about which datasets are being used
+            # ============================================================================>
+            map_analyser.statistical_maps.meta.characterisation_datasets = [d.tag for d in pandda.datasets.mask(mask_name=building_mask_name)]
+
+            # ============================================================================>
+            # Calculate the mean map
+            # ============================================================================>
+            map_analyser.calculate_mean_map()
+            # ============================================================================>
+            # If only mean map requested, output and exit
+            # ============================================================================>
+            if pandda.args.exit_flags.calculate_first_mean_map_only:
+                NativeMapMaker.process(dataset  = pandda.datasets.reference(),
+                                       map      = map_analyser.statistical_maps['mean_map'],
+                                       filename = pandda.file_manager.get_file('mean_map').format(cut_resolution),
+                                       args     = pandda.args,
+                                       verbose  = pandda.settings.verbose).run()
+                raise SystemExit('Calculating first mean map only: Exiting')
+            # ============================================================================>
+            # Plot the reference dataset map against the mean map (sanity check)
+            # ============================================================================>
+            analyse_graphs.write_map_analyser_reference_dataset_graphs(pandda=pandda, map_analyser=map_analyser)
+            # ============================================================================>
+            # Calculate the uncertainty of all loaded maps (needs the mean map to have been calculated)
+            # ============================================================================>
+            inner_mask_idxs_reindx = pandda.grid.index_on_other(query=pandda.grid.global_mask().inner_mask_indices(), other=pandda.grid.global_mask().outer_mask_indices())
+            map_analyser.calculate_map_uncertainties(masked_idxs=inner_mask_idxs_reindx, cpus=pandda.settings.cpus)
+            # ============================================================================>
+            # Plot uncertainties of maps
+            # ============================================================================>
+            try:
+                from ascii_graph import Pyasciigraph
+                g=Pyasciigraph(float_format='{0:.3f}')
+                graph_data = [(m.meta.tag, round(m.meta.map_uncertainty,3)) for m in map_analyser.dataset_maps.all()]
+                pandda.log('----------------------------------->>>', True)
+                for l in g.graph(label='Uncertainties of maps used for density characterisation', data=graph_data):
+                    if l.startswith('#######'): continue
+                    pandda.log(l.replace(u"\u2588", '=').replace('= ','> '), True)
+                pandda.log('----------------------------------->>>', True)
+                pandda.log('')
+            except ImportError:
+                print('IMPORT ERROR (ascii_graph) - cannot plot uncertainties')
+            except:
+                raise
+            # ============================================================================>
+            # Calculate the statistics of the maps
+            # ============================================================================>
+            map_analyser.calculate_statistical_maps(cpus=pandda.settings.cpus)
+            # ============================================================================>
+            # Write the statistical maps
+            # ============================================================================>
+            pandda.write_map_analyser_maps(map_analyser=map_analyser)
+            # ============================================================================>
+            # Store in main pandda object and pickle the statistical map objects
+            # ============================================================================>
+            pandda.log('Storing statistical maps @ {!s}A in main pandda object'.format(cut_resolution))
+            pandda.stat_maps.add(stat_map_list=map_analyser.statistical_maps, resolution=cut_resolution, overwrite=False)
             pandda.pickle_the_pandda(components=['stat_maps'])
-        # ============================================================================>
-        # Pickle map analyser if required
-        # ============================================================================>
-        if pandda.args.output.pickling.pickle_map_analysers:
-            pandda.pickle(pickle_file=pandda.pickle_handler.get_file('map_analyser').format(cut_resolution), pickle_object=map_analyser, overwrite=True)
+            # ============================================================================>
+            # Pickle map analyser if requested
+            # ============================================================================>
+            if pandda.args.output.pickling.pickle_map_analysers:
+                pandda.pickle(pickle_file=pandda.pickle_handler.get_file('map_analyser').format(cut_resolution), pickle_object=map_analyser, overwrite=True)
 
-        # TODO TODO TODO
-        # ============================================================================>
-        # Write out Grid Point Distributions for interesting grid points (high modality, etc...)
-        # ============================================================================>
-        # map_analyser.analyse_point_distributions()
-        # TODO TODO TODO
+            # TODO TODO TODO
+            # ============================================================================>
+            # Perform analysis of the characterised maps
+            # ============================================================================>
+            # map_analyser.analyse_point_distributions()
+            # TODO TODO TODO
 
+            # ============================================================================>
+            # Load the remaining maps and merge with those already loaded
+            # ============================================================================>
+            pandda.log('', True)
+            pandda.log('################################### <~> ###################################', True)
+            pandda.log('               Loading remaining maps for analysis at {!s}A'.format(cut_resolution), True)
+            pandda.log('################################### <~> ###################################', True)
+            pandda.log('', True)
+            # ============================================================================>
+            # Load the remaining maps for the analysis step
+            # ============================================================================>
+            # Create mask for the analysis datasets that are not building datasets
+            remain_mask = pandda.datasets.all_masks().combine_masks(names=[analysis_mask_name, building_mask_name],
+                                                                    invert=[False,True],
+                                                                    operation='and',
+                                                                    invert_output=False)
+            # Load these datasets
+            map_holder_list = pandda.load_and_morph_maps(datasets       = pandda.datasets.mask(mask=remain_mask),
+                                                         ref_map        = ref_map,
+                                                         map_resolution = cut_resolution)
+            # ============================================================================>
+            # Extract the maps that are also to be analysed
+            # ============================================================================>
+            # Extract these maps from the loaded maps
+            transfer_maps = map_analyser.dataset_maps.mask(mask_name=analysis_mask_name)
+            # Append to the maps already loaded
+            map_holder_list.add(transfer_maps)
+            # ============================================================================>
+            # Garbage collect to remove any remaining un-needed datasets
+            # ============================================================================>
+            map_analyser.parent = None; del map_analyser; map_analyser = None
+            gc.collect(); gc.collect(); gc.collect();
+        else:
+            # ============================================================================>
+            # Load maps for analysis
+            # ============================================================================>
+            map_holder_list = pandda.load_and_morph_maps(datasets       = pandda.datasets.mask(mask_name=analysis_mask_name),
+                                                         ref_map        = ref_map,
+                                                         map_resolution = cut_resolution)
+
+        # ============================================================================>
+        #####
+        # Prepare datasets for comparison against the characterised electron density
+        #####
         # ============================================================================>
         # Report
         # ============================================================================>
@@ -629,51 +536,49 @@ def pandda_main_loop(pandda):
         pandda.log('               Preparing to analyse {!s} datasets at {!s}A'.format(pandda.datasets.size(mask_name=analysis_mask_name), cut_resolution), True)
         pandda.log('################################### <~> ###################################', True)
         pandda.log('', True)
-
         # ============================================================================>
-        #####
-        # DATA PROCESSING
-        #####
+        # Create new map analyser for analysis datasets
         # ============================================================================>
-        assert cut_resolution not in resolution_count
-        resolution_count[cut_resolution] = []
+        map_analyser = PanddaMapAnalyser(   dataset_maps     = map_holder_list,
+                                            meta             = Meta({'resolution'    : cut_resolution,
+                                                                     'map_data_size' : pandda.grid.global_mask().outer_mask_indices().size()}),
+                                            statistical_maps = pandda.stat_maps.get(cut_resolution),
+                                            parent           = pandda,
+                                            log              = pandda.log   )
+        # ============================================================================>
+        # Calculate the uncertainty of all loaded maps
+        # ============================================================================>
+        inner_mask_idxs_reindx = pandda.grid.index_on_other(query=pandda.grid.global_mask().inner_mask_indices(), other=pandda.grid.global_mask().outer_mask_indices())
+        map_analyser.calculate_map_uncertainties(masked_idxs=inner_mask_idxs_reindx, cpus=pandda.settings.cpus)
         # ============================================================================>
         # Create a new "dummy" map analyser for the parallel steps
         # ============================================================================>
-        dummy_map_analyser = PanddaMapAnalyser(dataset_maps=None,
-                                               meta=Meta({'resolution':cut_resolution,
-                                                          'map_data_size':pandda.grid.global_mask().outer_mask_indices().size()}),
-                                               statistical_maps=map_analyser.statistical_maps,
+        dummy_map_analyser = PanddaMapAnalyser(dataset_maps = None,
+                                               meta         = Meta({'resolution':cut_resolution,
+                                                                    'map_data_size':pandda.grid.global_mask().outer_mask_indices().size()}),
+                                               statistical_maps = pandda.stat_maps.get(cut_resolution),
                                                parent=None, log=None)
         # ============================================================================>
-        # Blob Search Object
+        # Print blob-search object settings
         # ============================================================================>
         dummy_blob_finder = PanddaZMapAnalyser(params=pandda.params.blob_search, grid=pandda.grid, log=pandda.log)
         dummy_blob_finder.print_settings()
 
         # ============================================================================>
-        #####
-        # Calculate Z-Maps
-        #####
+        # Create Z-Maps processor objects
         # ============================================================================>
         t_anal_start = time.time()
-        # ==================================================>
-
+        # List of objects for parallel calculation
         dataset_processor_list = []
-
         # Iterate through and prepare to calculate z-maps
         for i_d, dataset in enumerate(pandda.datasets.mask(mask_name=analysis_mask_name)):
-
             # ============================================================================>
-            # Record which resolution this dataset was analysed at
-            # ============================================================================>
-            resolution_count[cut_resolution].append(dataset.tag)
-
-            # ============================================================================>
-            # Validate/Check/Zero the dataset
+            # Check/update dataset records/variables
             # ============================================================================>
             # Dataset should not have any events
             assert dataset.events == []
+            # Record which resolution this dataset was analysed at
+            resolution_count.setdefault(cut_resolution, []).append(dataset.tag)
             # Update datasets masks flag - for this analysis
             pandda.datasets.all_masks().set_value(name='analysed', id=dataset.tag, value=True)
             # Update the dataset meta object -- this is persistent
@@ -704,11 +609,11 @@ def pandda_main_loop(pandda):
         for results in proc_results:
 
             # Unpack results
-            dataset, dataset_meta, log_strs = results
+            tmp_dataset, dataset_meta, log_strs = results
 
             pandda.log('', True)
             pandda.log('======================================>>>', True)
-            pandda.log('Z-Map Analysis Results for {}'.format(dataset.tag), True)
+            pandda.log('Z-Map Analysis Results for {}'.format(tmp_dataset.tag), True)
             pandda.log('======================================>>>', True)
             pandda.log('\n'.join(log_strs), True)
 
@@ -716,40 +621,36 @@ def pandda_main_loop(pandda):
             # STORE ANALYSIS DATA IN DATASET MAP TABLE
             # ============================================================================>
             # Add to the dataset map summary table
-            pandda.tables.dataset_map_info.set_value(dataset.tag, 'analysed_resolution', dataset_meta.resolution)
-            pandda.tables.dataset_map_info.set_value(dataset.tag, 'map_uncertainty',     round(dataset_meta.map_uncertainty,3))
-            pandda.tables.dataset_map_info.set_value(dataset.tag, 'obs_map_mean',        round(dataset_meta.obs_map_mean,3))
-            pandda.tables.dataset_map_info.set_value(dataset.tag, 'obs_map_rms',         round(dataset_meta.obs_map_rms,3))
-            pandda.tables.dataset_map_info.set_value(dataset.tag, 'scl_map_mean',        round(dataset_meta.scl_map_mean,3))
-            pandda.tables.dataset_map_info.set_value(dataset.tag, 'scl_map_rms',         round(dataset_meta.scl_map_rms,3))
-            pandda.tables.dataset_map_info.set_value(dataset.tag, 'z_map_mean',          round(dataset_meta.z_mean,3))
-            pandda.tables.dataset_map_info.set_value(dataset.tag, 'z_map_std',           round(dataset_meta.z_stdv,3))
-            pandda.tables.dataset_map_info.set_value(dataset.tag, 'z_map_skew',          round(dataset_meta.z_skew,3))
-            pandda.tables.dataset_map_info.set_value(dataset.tag, 'z_map_kurt',          round(dataset_meta.z_kurt,3))
+            pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'analysed_resolution', dataset_meta.resolution)
+            pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'map_uncertainty',     round(dataset_meta.map_uncertainty,3))
+            pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'obs_map_mean',        round(dataset_meta.obs_map_mean,3))
+            pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'obs_map_rms',         round(dataset_meta.obs_map_rms,3))
+            pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'scl_map_mean',        round(dataset_meta.scl_map_mean,3))
+            pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'scl_map_rms',         round(dataset_meta.scl_map_rms,3))
+            pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'z_map_mean',          round(dataset_meta.z_mean,3))
+            pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'z_map_std',           round(dataset_meta.z_stdv,3))
+            pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'z_map_skew',          round(dataset_meta.z_skew,3))
+            pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'z_map_kurt',          round(dataset_meta.z_kurt,3))
 
             # ============================================================================>
             # WRITE OUT DATASET INFORMATION TO CSV FILE
             # ============================================================================>
-            out_list = pandda.tables.dataset_info.loc[dataset.tag].append(pandda.tables.dataset_map_info.loc[dataset.tag])
-            out_list.to_csv(path=dataset.file_manager.get_file('dataset_info'), header=True, index_label='dtag')
+            out_list = pandda.tables.dataset_info.loc[tmp_dataset.tag].append(pandda.tables.dataset_map_info.loc[tmp_dataset.tag])
+            out_list.to_csv(path=tmp_dataset.file_manager.get_file('dataset_info'), header=True, index_label='dtag')
 
             # ============================================================================>
             # Mark as interesting and add events to the event table
             # ============================================================================>
-            if dataset.events:
-#                # Create a link to the interesting directories in the initial results directory
-#                hit_dir = os.path.join(pandda.file_manager.get_dir('interesting_datasets'), dataset.tag)
-#                if not os.path.exists(hit_dir): rel_symlink(orig=dataset.file_manager.get_dir('root'), link=hit_dir)
-                pandda.datasets.all_masks().set_value(name='interesting', id=dataset.tag, value=True)
-                for e in dataset.events:
-                    pandda.add_event_to_event_table(dataset=dataset, event=e)
+            if tmp_dataset.events:
+                pandda.datasets.all_masks().set_value(name='interesting', id=tmp_dataset.tag, value=True)
+                for e in tmp_dataset.events:
+                    pandda.add_event_to_event_table(dataset=tmp_dataset, event=e)
 
             # ============================================================================>
             # Update the master copy of the dataset object
             # ============================================================================>
-            master_dataset = pandda.datasets.get(tag=dataset.tag)
-            master_dataset.events = dataset.events
-            master_dataset.child  = map_analyser.dataset_maps.get(tag=dataset.tag)
+            master_dataset = pandda.datasets.get(tag=tmp_dataset.tag)
+            master_dataset.events = tmp_dataset.events
 
         # ============================================================================>
         #####
@@ -758,6 +659,10 @@ def pandda_main_loop(pandda):
         # ============================================================================>
         native_map_maker_list = []
         for i_d, dataset in enumerate(pandda.datasets.mask(mask_name=analysis_mask_name)):
+            # ============================================================================>
+            # Extract the map from the map analyser and store as child
+            # ============================================================================>
+            dataset.child = map_analyser.dataset_maps.get(tag=dataset.tag)
             # ============================================================================>
             # Make Z-map for each dataset (if events or write_z_maps_for_all_datasets)
             # ============================================================================>
@@ -796,7 +701,7 @@ def pandda_main_loop(pandda):
         # ============================================================================>
         # Statistical maps in the native frame of the reference dataset
         # ============================================================================>
-        if pandda.args.output.maps.write_statistical_maps and pandda.args.method.recalculate_statistical_maps:
+        if pandda.args.output.maps.write_statistical_maps:
             for m in ['mean_map', 'medn_map','stds_map','sadj_map','skew_map','kurt_map','bimo_map']:
                 map_maker = NativeMapMaker(dataset  = pandda.datasets.reference(),
                                            map      = map_analyser.statistical_maps[m],
@@ -813,26 +718,33 @@ def pandda_main_loop(pandda):
             pandda.log('{:^75}'.format('Outputting {!s} native maps at {!s}A'.format(len(native_map_maker_list), cut_resolution)), True)
             pandda.log('################################### <~> ###################################', True)
             pandda.log('', True)
+            t_map_make_start = time.time()
             for n in native_map_maker_list:
                 pandda.log('{:<30} -> {}'.format(n.data[0].tag, os.path.split(n.data[2])[-1]), True)
-            proc_results = easy_mp.pool_map(func=wrapper_run, args=native_map_maker_list, processes=pandda.settings.cpus, chunksize=1)
+            proc_results = easy_mp.pool_map(func=wrapper_run, args=native_map_maker_list, processes=pandda.settings.cpus)
+            t_map_make_end = time.time()
+            pandda.log('')
+            pandda.log('Map Generation Time: {!s}'.format(time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(t_map_make_end-t_map_make_start))), True)
 
         # ============================================================================>
-        #####
-        # Write the summaries
-        #####
+        # Ensure all data is synced between the datasets and the central tables
         # ============================================================================>
         pandda.sync_datasets(datasets=pandda.datasets.mask(mask_name=analysis_mask_name), overwrite_dataset_meta=True)
-        # Write output graphs for map analysis
+        # ============================================================================>
+        #####
+        # Write map_analyser summary
+        #####
+        # ============================================================================>
         if pandda.settings.plot_graphs:
-
             pandda.log('', True)
             pandda.log('################################### <~> ###################################', True)
             pandda.log('                     Writing Statistical Maps Summary'.format(cut_resolution), True)
             pandda.log('################################### <~> ###################################', True)
             pandda.log('', True)
-
-            analyse_graphs.write_map_analyser_graphs(pandda=pandda, map_analyser=map_analyser, analysis_mask_name=analysis_mask_name)
+            analyse_graphs.write_map_analyser_graphs(pandda=pandda, resolution=cut_resolution,
+                                                     analysis_mask_name=analysis_mask_name,
+                                                     building_mask_name=building_mask_name)
+            analyse_html.write_map_analyser_html(pandda=pandda, resolution=cut_resolution)
 
         # ============================================================================>
         #####
@@ -880,13 +792,11 @@ def pandda_main_loop(pandda):
         pandda.pickle_the_pandda(components=['datasets'], datasets=pandda.datasets.mask(mask_name=analysis_mask_name))
 
         # ============================================================================>
-        # DELETE THE MAP ANALYSER TO FREE UP MEMORY
+        # Delete the map analyser to free memory
         # ============================================================================>
-        map_analyser.parent = None
-        del map_analyser
-        map_analyser = None
+        map_analyser.parent = None; del map_analyser; map_analyser = None
         # ============================================================================>
-        # DELETE THE PROCESSED MAPS + Z-MAPS TO SAVE MEMORY (JUST BE CAREFUL NOT TO OVERWRITE THEIR PICKLED FILES!)
+        # Remove the dataset maps from the dataset objects
         # ============================================================================>
         for dataset in pandda.datasets.mask(mask_name=map_load_mask_name):
             dataset.child = None
@@ -894,7 +804,7 @@ def pandda_main_loop(pandda):
         for dataset in pandda.datasets.all():
             assert dataset.child is None
         # ============================================================================>
-        # Launch Garbage-Collection Manually just to be sure
+        # Launch garbage-collection manually just to be sure
         # ============================================================================>
         gc.collect(); gc.collect(); gc.collect()
 
@@ -1089,6 +999,12 @@ def pandda_analyse_main(args):
         pandda_grid_setup(pandda=pandda)
         # ============================================================================>
         #####
+        # Run variation analysis on the loaded datasets
+        #####
+        # ============================================================================>
+        #pandda_variation_analysis(pandda=pandda)
+        # ============================================================================>
+        #####
         # Run the main analysis loop
         #####
         # ============================================================================>
@@ -1110,7 +1026,10 @@ def pandda_analyse_main(args):
         try:    pandda.log('Exited Normally')
         except: print '<<< Pandda exited before being initialised >>>'
     except:
-        raise
+        if ("pandda" in locals()) and hasattr(pandda, 'log'):
+            pandda.exit(error=True)
+        else:
+            raise
     else:
         pandda.exit(error=False)
 

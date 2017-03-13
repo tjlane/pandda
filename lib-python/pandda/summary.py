@@ -4,9 +4,9 @@ from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from PyQt4.QtWebKit import *
 
-class panddaHtmlWidget(QWidget):
+class PanddaHtmlWidget(QWidget):
     def __init__(self, name, content):
-        super(panddaHtmlWidget, self).__init__()
+        super(PanddaHtmlWidget, self).__init__()
         # Widget Name
         self.name = name
         self.content = content
@@ -49,10 +49,10 @@ class panddaHtmlWidget(QWidget):
         print 'Refreshing html'
         self.build_html()
 
-class panddaWindow(QTabWidget):
-    def __init__(self, tabs=None):
-        super(panddaWindow, self).__init__()
-        self.setWindowTitle('PANDDA GUI')
+class PanddaTabBar(QTabWidget):
+    def __init__(self, name=None, tabs=None):
+        super(PanddaTabBar, self).__init__()
+        self.name = name
         # Create Tabs
         self.tabs = []
         if tabs is not None:
@@ -62,39 +62,8 @@ class panddaWindow(QTabWidget):
         self.tabs.append(widget)
         self.addTab(widget, widget.name)
 
-#class Render(QWebPage):
-#  def __init__(self, url):
-#    self.app = QApplication(sys.argv)
-#    QWebPage.__init__(self)
-#    self.loadFinished.connect(self._loadFinished)
-#    self.mainFrame().load(QUrl(url))
-#    self.app.exec_()
-#
-#  def _loadFinished(self, result):
-#    self.frame = self.mainFrame()
-#    self.app.quit()
+class PanddaWindow(PanddaTabBar):
+    def __init__(self, tabs=None):
+        super(PanddaWindow, self).__init__(name=None, tabs=tabs)
+        self.setWindowTitle('PanDDA HTML Summaries')
 
-def test_1(test_dir):
-    app = QApplication(sys.argv)
-    window = panddaWindow()
-    window.add_tab(panddaHtmlWidget(name='RESULTS', content=os.path.join(test_dir,'./pandda_results_example_basic.html')))
-    window.show()
-    app.exec_()
-
-#def test_2(test_dir):
-#    url = path2url(os.path.join(test_dir,'pandda_results_example.html'))
-#    print url
-#    html = Render(url).frame.toHtml()
-#    print html
-#
-#    app = QApplication(sys.argv)
-#    window = panddaWindow()
-#    widget = panddaHtmlWidget(name='RESULTS', content=html)
-#    window.add_tab(widget)
-#    window.show()
-#    app.exec_()
-
-if __name__ == "__main__":
-    test_dir = os.path.join(os.path.dirname(__file__), 'test_files')
-    test_1(test_dir)
-    test_2(test_dir)

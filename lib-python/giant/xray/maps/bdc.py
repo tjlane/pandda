@@ -36,7 +36,6 @@ def calculate_varying_bdc_correlations(ref_map_data, query_map_data, feature_idx
 
     return_vals = []
 
-    print(min_remain, max_remain)
     # Create list of fractions to subtract
     all_feature_remains = numpy.arange(min_remain, max_remain+bdc_increment, bdc_increment)
 

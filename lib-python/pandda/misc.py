@@ -7,22 +7,6 @@ from scitbx.array_family import flex
 
 from pandda.analyse import graphs as analyse_graphs
 
-def write_map_value_distribution(map_vals, output_file, plot_indices=None, plot_normal=False):
-    """Write out the value distribution for a map"""
-    try:
-        if plot_indices: plot_vals = [map_vals[i] for i in plot_indices]
-        else:            plot_vals = list(map_vals)
-        analyse_graphs.map_value_distribution(f_name=output_file, plot_vals=plot_vals, plot_normal=plot_normal)
-    except: pass
-
-def write_qq_plot_against_normal(map_vals, output_file, plot_indices=None):
-    """Plot the values in map_vals against those expected from a normal distribution"""
-    try:
-        if plot_indices: plot_vals = [map_vals[i] for i in plot_indices]
-        else:            plot_vals = list(map_vals)
-        analyse_graphs.qq_plot_against_normal(f_name=output_file, plot_vals=plot_vals)
-    except: pass
-
 def write_array_as_map(grid, array, f_name):
     """Take array on the reference grid and write to map"""
     iotbx.ccp4_map.write_ccp4_map(  file_name   = f_name,

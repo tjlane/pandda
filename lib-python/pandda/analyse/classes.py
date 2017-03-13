@@ -9,6 +9,7 @@ from libtbx import easy_mp
 from libtbx.utils import Sorry, Failure
 from libtbx.math_utils import ifloor, iceil
 
+import cctbx.maptbx
 import scitbx.matrix
 
 from scitbx.array_family import flex
@@ -22,7 +23,7 @@ from bamboo.common.math import round_no_fail
 from bamboo.common.status import status_bar, status_bar_2
 from bamboo.common.command import CommandManager
 
-from bamboo.plot import bar, simple_histogram
+from bamboo.plot import bar
 
 from giant.common import ModelAndData, ElectronDensityMap
 from giant.holders import HolderList
@@ -56,7 +57,13 @@ class PanddaDataset(ModelAndData):
 class PanddaReferenceDataset(ModelAndData):
 
 
-    _origin_shift=None
+    _origin_shift = None
+
+    def __init__(self, model, data):
+
+        super(PanddaReferenceDataset, self).__init__(model=model, data=data)
+
+        self.child = None
 
     def set_origin_shift(self, shift):
         """Creates an alignment corresponding to an origin shift"""
@@ -182,20 +189,19 @@ class PanddaMultiDatasetAnalyser(Program):
         assert self.args.output.out_dir, 'pandda.output.out_dir IS NOT DEFINED'
         self.out_dir = easy_directory(os.path.abspath(self.args.output.out_dir))
 
+        # Create a couple of files and directories for the logs and the parameters
+        self._log_dir = easy_directory(os.path.join(self.out_dir, 'logs'))
+        self._log_filename = 'pandda-{}.log'.format(time.strftime("%Y-%m-%d-%H%M", time.gmtime()))
+        self._def_filename = self._log_filename.replace('.log','.def')
+        self._eff_filename = self._log_filename.replace('.log','.eff')
         # Create a log for the object
-        self.log = Log(log_file=os.path.join(self.out_dir, 'pandda-{}.log'.format(time.strftime("%Y-%m-%d-%H%M", time.gmtime()))), verbose=self.settings.verbose)
-
-        # ===============================================================================>
-        # SETTINGS STUFF
-        # ===============================================================================>
-        self._high_resolution = None
-        self._low_resolution = None
+        self.log = Log(log_file=os.path.join(self._log_dir, self._log_filename), verbose=self.settings.verbose)
 
         # ===============================================================================>
         # DATA AND MAPS STUFF
         # ===============================================================================>
 
-        self._input_files = []
+        self._new_dataset_files = []
         self.grid = None
         self.datasets = PanddaDatasetList()
         self.pickled_dataset_meta = None
@@ -236,6 +242,12 @@ class PanddaMultiDatasetAnalyser(Program):
         else:
             self._new_pandda = True
 
+    #########################################################################################################
+    #                                                                                                       #
+    #                                              Directory Setup                                          #
+    #                                                                                                       #
+    #########################################################################################################
+
     def _directory_setup(self):
         """Initialise the pandda directory system"""
 
@@ -244,33 +256,34 @@ class PanddaMultiDatasetAnalyser(Program):
 
         # Filename templates
         f = PanddaAnalyserFilenames
+        h = PanddaHtmlFilenames
 
         # ===============================================================================>
         # Global Directories that do not change from run to run
         # ===============================================================================>
-#        fm.add_dir(dir_name='empty_directories',    dir_tag='empty_directories',    top_dir_tag='root', create=False, exists=False)
+        fm.add_dir(dir_name='logs',                 dir_tag='logs',                 top_dir_tag='root', create=False, exists=True)
         fm.add_dir(dir_name='processed_datasets',   dir_tag='processed_datasets',   top_dir_tag='root', create=False, exists=False)
-#        fm.add_dir(dir_name='rejected_datasets',    dir_tag='rejected_datasets',    top_dir_tag='root', create=False, exists=False)
-#        fm.add_dir(dir_name='interesting_datasets', dir_tag='interesting_datasets', top_dir_tag='root', create=False, exists=False)
-        fm.add_dir(dir_name='aligned_structures',   dir_tag='aligned_structures',   top_dir_tag='root', create=False, exists=False)
         fm.add_dir(dir_name='analyses',             dir_tag='analyses',             top_dir_tag='root', create=False, exists=False)
+        fm.add_dir(dir_name='aligned_structures',   dir_tag='aligned_structures',   top_dir_tag='root', create=False, exists=False)
 
         # ================================================>
         # Input + Status parameters
         # ================================================>
-        fm.add_file(file_name='pandda.eff',        file_tag='settings',         dir_tag='root')
         fm.add_file(file_name='pandda.{}',         file_tag='status',           dir_tag='root')
+        fm.add_file(file_name=self._def_filename,  file_tag='def_file',         dir_tag='logs')
+        fm.add_file(file_name=self._eff_filename,  file_tag='eff_file',         dir_tag='logs')
 
         # Somewhere to store the analysis summaries - for the user
         fm.add_dir(dir_name='html_summaries', dir_tag='output_summaries', top_dir_tag='analyses', create=False, exists=False)
-        fm.add_file(file_name=f.initial_html,                      file_tag='initial_html',            dir_tag='output_summaries')
-        fm.add_file(file_name=f.analyse_html,                      file_tag='analyse_html',            dir_tag='output_summaries')
-        fm.add_file(file_name=f.analyse_site_graph,                file_tag='analyse_site_graph',      dir_tag='output_summaries')
-        fm.add_file(file_name=f.analyse_site_graph_mult,           file_tag='analyse_site_graph_mult', dir_tag='output_summaries')
-        fm.add_file(file_name=f.pymol_sites_py,                    file_tag='pymol_sites_py',          dir_tag='output_summaries')
-        fm.add_file(file_name=f.pymol_sites_pml,                   file_tag='pymol_sites_pml',         dir_tag='output_summaries')
-        fm.add_file(file_name=f.pymol_sites_png_1,                 file_tag='pymol_sites_png_1',       dir_tag='output_summaries')
-        fm.add_file(file_name=f.pymol_sites_png_2,                 file_tag='pymol_sites_png_2',       dir_tag='output_summaries')
+        fm.add_file(file_name=h.initial_html,                      file_tag='initial_html',            dir_tag='output_summaries')
+        fm.add_file(file_name=h.map_html,                          file_tag='map_html',                dir_tag='output_summaries')
+        fm.add_file(file_name=h.analyse_html,                      file_tag='analyse_html',            dir_tag='output_summaries')
+        fm.add_file(file_name=h.analyse_site_graph,                file_tag='analyse_site_graph',      dir_tag='output_summaries')
+        fm.add_file(file_name=h.analyse_site_graph_mult,           file_tag='analyse_site_graph_mult', dir_tag='output_summaries')
+        fm.add_file(file_name=h.pymol_sites_py,                    file_tag='pymol_sites_py',          dir_tag='output_summaries')
+        fm.add_file(file_name=h.pymol_sites_pml,                   file_tag='pymol_sites_pml',         dir_tag='output_summaries')
+        fm.add_file(file_name=h.pymol_sites_png_1,                 file_tag='pymol_sites_png_1',       dir_tag='output_summaries')
+        fm.add_file(file_name=h.pymol_sites_png_2,                 file_tag='pymol_sites_png_2',       dir_tag='output_summaries')
         # Store dataset summary graphs
         fm.add_dir(dir_name='dataset_summary_graphs', dir_tag='d_graphs', top_dir_tag='analyses', create=False, exists=False)
         fm.add_file(file_name='dataset_resolutions.png',           file_tag='d_resolutions',           dir_tag='d_graphs')
@@ -281,9 +294,22 @@ class PanddaMultiDatasetAnalyser(Program):
         fm.add_file(file_name='dataset_cell_volumes.png',          file_tag='d_cell_volumes',          dir_tag='d_graphs')
         # Store map analysis graphs
         fm.add_dir(dir_name='map_analysis_summary_graphs', dir_tag='m_graphs', top_dir_tag='analyses', create=False, exists=False)
+        fm.add_file(file_name='{}A-truncated_data_resolutions.png', file_tag='dataset_res_hist',       dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-truncated_data_wilson_plot.png', file_tag='dataset_wilson_plot',    dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-reference_map_distribution.png', file_tag='ref_map_dist',           dir_tag='m_graphs')
         fm.add_file(file_name='{}A-reference_v_mean_unsorted.png',  file_tag='ref_v_mean_map_unsort',  dir_tag='m_graphs')
         fm.add_file(file_name='{}A-reference_v_mean_sorted.png',    file_tag='ref_v_mean_map_sort',    dir_tag='m_graphs')
-        fm.add_file(file_name='{}A-reference_map_distribution.png', file_tag='ref_map_dist',           dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-maps_mean_medn_histograms.png',  file_tag='map_mean_median_hist',   dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-maps_mean_medn_scatter.png',     file_tag='map_mean_median_scat',   dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-maps_mean_medn_difference.png',  file_tag='map_mean_median_diff',   dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-maps_stds_sadj_histograms.png',  file_tag='map_stds_sadj_hist',     dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-maps_stds_sadj_scatter.png',     file_tag='map_stds_sadj_scat',     dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-dataset_unc_histograms.png',     file_tag='dataset_unc_hist',       dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-dataset_res_unc_scatter.png',    file_tag='dataset_res_unc_scat',   dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-dataset_res_rfree_scatter.png',  file_tag='dataset_res_rfree_scat', dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-dataset_unc_rfree_scatter.png',  file_tag='dataset_unc_rfree_scat', dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-zmap_mean_sadj_histograms.png',  file_tag='zmap_mean_sadj_hist',    dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-zmap_skew_kurt_scatter.png',     file_tag='zmap_skew_kurt_scat',    dir_tag='m_graphs')
         # Somewhere to store the dataset information (general values)
         fm.add_file(file_name=f.dataset_info,                      file_tag='dataset_info',            dir_tag='analyses')
         fm.add_file(file_name=f.dataset_map_info,                  file_tag='dataset_map_info',        dir_tag='analyses')
@@ -337,211 +363,15 @@ class PanddaMultiDatasetAnalyser(Program):
         # Pickled Pandda -- (main object)
         self.pickle_handler.add_file(file_name='my_pandda.pickle',         file_tag='my_pandda')
 
-    def run_analysis_init(self):
-        """Set up the pandda for a new analysis (doing this will override links to analyses)"""
+    #########################################################################################################
+    #                                                                                                       #
+    #                                             Utility Functions                                         #
+    #                                                                                                       #
+    #########################################################################################################
 
-        # ================================================>
-        # Validate the input parameters
-        # ================================================>
-        self._validate_parameters()
-
-        # ================================================>
-        # Create a new analysis directory for analyses/summaries
-        # ================================================>
-        # New directories will be created for each run (so that data is not overwritten) by the time of the run
-        if self.args.output.new_analysis_dir or (not os.path.exists(self.file_manager.get_dir('analyses'))):
-            analysis_time_name = 'analyses-{}'.format(time.strftime("%Y-%m-%d-%H%M", time.gmtime(self._init_time)))
-            analysis_time_path = easy_directory(os.path.join(self.file_manager.get_dir('root'), analysis_time_name))
-            analysis_link_path = self.file_manager.get_dir('analyses')
-            # Remove old analysis link if it exists and link in the new analysis directory
-            if os.path.exists(analysis_link_path) and os.path.islink(analysis_link_path): os.unlink(analysis_link_path)
-            rel_symlink(orig=analysis_time_path, link=analysis_link_path)
-
-        assert os.path.exists(self.file_manager.get_dir('analyses')), 'Output analysis directory does not exist'
-
-        # ===============================================================================>
-        # Update the FileManager to make sure all directories are now created
-        # ===============================================================================>
-        self.file_manager.check_and_create_directories()
-
-        # ===============================================================================>
-        # Report
-        # ===============================================================================>
-        self.log('', True)
-        self.log('################################### <~> ###################################', True)
-        self.log('              Pre-analysis checks and directory setup complete', True)
-        self.log('################################### <~> ###################################', True)
-        self.log('', True)
-
-        # ===============================================================================>
-        # Write the header to the log file
-        # ===============================================================================>
-        self.log(HEADER_TEXT, True)
-        self.write_running_parameters_to_log()
-        # Write the used parameters to file
-        with open(self.file_manager.get_file('settings'), 'w') as out_file:
-            out_file.write( '\n'.join([ '# Command Line Args',
-                                        '# ', # The line below assures that strings are quoted for easy copy-pasting
-                                        '# '+self._NAME+' '+' '.join(sys.argv[1:]).replace(' ','" ').replace('=','="')+'"',
-                                        '',
-                                        '# Used Settings:',
-                                        '',
-                                        self.master_phil.format(python_object=self._input_params).as_str() ]))
-
-        # ===============================================================================>
-        # PRINT SOME HELPFUL INFORMATION
-        # ===============================================================================>
-
-        self.log('', True)
-        self.log('################################### <~> ###################################', True)
-        self.log('                         FILES/MODULE INFORMATION', True)
-        self.log('################################### <~> ###################################', True)
-        self.log('', True)
-        self.log('Running from: {!s}'.format(sys.argv[0]), True)
-        self.log('----------------------------------->>>', True)
-        self.log('Reading input from : {!s}'.format(self.args.input.data_dirs), True)
-        self.log('----------------------------------->>>', True)
-        self.log('Writing output to: {!s}'.format(self.out_dir), True)
-
-        # ===============================================================================>
-        # LOOK FOR MATPLOTLIB TO SEE IF WE CAN GENERATE GRAPHS
-        # ===============================================================================>
-
-        if self.settings.plot_graphs:
-            self.log('----------------------------------->>>', True)
-            if self.check_for_matplotlib(backend=self.settings.plotting.backend, interactive=False): pass
-            else: self.settings.plot_graphs = False
-
-        # ===============================================================================>
-        # CHANGE INTO OUTPUT DIRECTORY
-        # ===============================================================================>
-        self.log('----------------------------------->>>', True)
-        self.log('Changing into output directory: {}'.format(self.out_dir), True)
-        os.chdir(self.out_dir)
-
-        # ===============================================================================>
-        # REPOPULATE PANDDA FROM PREVIOUS RUNS
-        # ===============================================================================>
-        # Load any objects from previous runs
-        self.log('----------------------------------->>>', True)
-        self.log('Checking for existing analyses', True)
-        self.load_pickled_objects()
-
-        # Reload reference dataset
-        if (not self.datasets.reference()) and os.path.exists(self.file_manager.get_file('reference_structure')) and os.path.exists(self.file_manager.get_file('reference_dataset')):
-            self.log('----------------------------------->>>', True)
-            self.log('Loading Reference Dataset', True)
-            self.load_reference_dataset(ref_pdb=self.file_manager.get_file('reference_structure'), ref_mtz=self.file_manager.get_file('reference_dataset'))
-
-        # ===============================================================================>
-        # LOG THE START TIME AND UPDATE STATUS
-        # ===============================================================================>
-        self.log('', True)
-        self.log('################################### <~> ###################################', True)
-        self.log('                PROGRAM SETUP COMPLETE - starting analysis.')
-        self.log('################################### <~> ###################################', True)
-        self.log('', True)
-        self.log('----------------------------------->>>', True)
-        self.log('Analysis Started: {!s}'.format(time.strftime("%a, %d %b %Y %H:%M:%S", time.gmtime(self._init_time))), True)
-        self.log('----------------------------------->>>', True)
-        self.update_status('running')
-
-    def _validate_parameters(self):
-        """Validate and preprocess the loaded parameters"""
-
-        self.log('')
-        self.log('################################### <~> ###################################', True)
-        self.log('                 validating and updating input parameters', True)
-        self.log('################################### <~> ###################################', True)
-        self.log('')
-
-        p = self.args
-
-        # Input
-        assert p.input.data_dirs is not None, 'pandda.input.data_dirs IS NOT DEFINED'
-        assert p.input.pdb_style, 'pandda.input.pdb_style IS NOT DEFINED'
-        if not p.input.mtz_style: self.log('mtz_style not provided - using pdb style: {} -> {}'.format(p.input.pdb_style, p.input.pdb_style.replace('.pdb','.mtz')))
-        assert p.input.regex.pdb_regex or p.input.regex.mtz_regex or p.input.regex.dir_regex or \
-               (p.input.pdb_style and ('*' in p.input.pdb_style)) or \
-               (p.input.mtz_style and ('*' in p.input.mtz_style)) or \
-               (p.input.data_dirs and ('*' in p.input.data_dirs)), 'No method has been provided for labelling the datasets'
-        if not p.input.lig_style: self.log('pandda.input.lig_style has not been provided - ligand files will not be detected')
-
-        assert p.params.filtering.flags.same_space_group_only, 'PanDDA does not currently support the analysis of different spacegroups'
-
-        # Make fullpath so we can run on the eff file from anywhere and change directories without worrying about relative paths
-        p.input.data_dirs = os.path.abspath(p.input.data_dirs)
-        p.output.out_dir  = os.path.abspath(p.output.out_dir)
-        if p.input.filter.pdb:
-            p.input.filter.pdb = os.path.abspath(p.input.filter.pdb)
-
-        # If any datasets are set to be reprocessed, reload all datasets (need to change this to allow for "reload_selected_datasets")
-        if p.method.reprocess_existing_datasets or self.args.method.reprocess_selected_datasets:
-            self.log('----------------------------------->>>', True)
-            self.log('Setting method.reload_existing_datasets = True')
-            self.log('Old (previously processed) datasets will be reloaded')
-            p.method.reload_existing_datasets = True
-
-        if self.is_new_pandda() or self.args.method.reprocess_existing_datasets:
-            self.log('----------------------------------->>>', True)
-            self.log('Setting output.new_analysis_dir = True')
-            self.log('A new output analysis directory will be created')
-            p.output.new_analysis_dir = True
-
-        self.log('----------------------------------->>>', True)
-
-    def load_pickled_objects(self):
-        """Loads any pickled objects it finds"""
-
-        self.log('----------------------------------->>>', True)
-        self.log('Looking for pickled files from previous runs in: {!s}'.format(os.path.relpath(self.pickle_handler.get_dir('root'))), True)
-
-        # Record whether any pickled objects are loaded
-        pickles_found = False
-
-        # ==============================>
-        # Load Grid
-        if os.path.exists(self.pickle_handler.get_file('grid')):
-            pickles_found = True
-            self.log('-> Loading reference grid')
-            self.grid = self.unpickle(self.pickle_handler.get_file('grid'))
-
-        # ==============================>
-        # Load Reference Dataset
-        if os.path.exists(self.pickle_handler.get_file('reference_dataset')):
-            pickles_found = True
-            self.log('-> Loading reference dataset')
-            self.datasets.set_reference(dataset=self.unpickle(self.pickle_handler.get_file('reference_dataset')))
-
-        # ==============================>
-        # Load the datasets
-        if os.path.exists(self.pickle_handler.get_file('dataset_meta')):
-            pickles_found = True
-            self.log('-> Loading old dataset information (existing datasets)')
-            self.pickled_dataset_meta = self.unpickle(self.pickle_handler.get_file('dataset_meta'))
-            if self.args.method.reload_existing_datasets:
-                pickled_dataset_list = self.pickled_dataset_meta.dataset_pickle_list
-                for filename in pickled_dataset_list:
-                    assert os.path.isfile(os.path.join(self.out_dir, filename)), 'File does not exist: {!s}'.format(filename)
-                self.log('-> Reloading old datasets')
-                self.datasets.add([self.unpickle(os.path.join(self.out_dir,f)) for f in pickled_dataset_list])
-            else:
-                self.log('-> Not reloading old datasets')
-        else:
-            # No datasets to load - this must be False
-            self.args.method.reload_existing_datasets = False
-            self.log('-> No old datasets found')
-
-        # ==============================>
-        # Load Statistical Maps
-        if os.path.exists(self.pickle_handler.get_file('stat_maps')):
-            pickles_found = True
-            self.log('-> Loading old statistical maps')
-            self.stat_maps = self.unpickle(self.pickle_handler.get_file('stat_maps'))
-
-        if not pickles_found:
-            self.log('-> No Pickles Found', True)
-        self.log('----------------------------------->>>', True)
+    def is_new_pandda(self):
+        """Is this the first time the program has been run?"""
+        return self._new_pandda
 
     def pickle_the_pandda(self, components=None, all=False, datasets=None):
         """Pickles it's major components for quick loading..."""
@@ -602,6 +432,17 @@ class PanddaMultiDatasetAnalyser(Program):
                             overwrite = True)
             else:
                 self.log('No Statistical Maps to Pickle')
+
+    def write_parameters_to_parameter_file(self, f_name):
+        """Write the current parameter object to file f_name - overwrites current file"""
+
+        # Write the used parameters to file
+        with open(f_name, 'w') as out_file:
+            out_file.write( '\n'.join([ '# Command Line Args',
+                                        '# ', # The line below assures that strings are quoted for easy copy-pasting
+                                        '# '+self._NAME+' '+' '.join(sys.argv[1:]).replace(' ','" ').replace('=','="')+'"',
+                                        '',
+                                        self.master_phil.format(python_object=self._input_params).as_str() ]))
 
     def exit(self, error=False):
         """Exit the PANDDA, record runtime etc..."""
@@ -664,23 +505,282 @@ class PanddaMultiDatasetAnalyser(Program):
 
         self.log('', True)
 
-    def is_new_pandda(self):
-        """Is this the first time the program has been run?"""
-        return self._new_pandda
+    #########################################################################################################
+    #                                                                                                       #
+    #                                       Parameter Validation/Updating                                   #
+    #                                                                                                       #
+    #########################################################################################################
 
-    def set_high_resolution(self, res):
-        self._high_resolution = res
-    def get_high_resolution(self):
-        return self._high_resolution
+    def check_and_update_input_parameters(self):
+        """Validate and preprocess the loaded parameters"""
 
-    def set_low_resolution(self, res):
-        self._low_resolution = res
-    def get_low_resolution(self):
-        return self._low_resolution
+        self.log('')
+        self.log('################################### <~> ###################################', True)
+        self.log('                   validating and updating input files', True)
+        self.log('################################### <~> ###################################', True)
+        self.log('')
 
-    def new_files(self):
-        """Get all of the files that were added on this run"""
-        return self._input_files
+        p = self.args
+
+        # Validate input parameters
+        if p.input.data_dirs is None: raise Sorry('No value has been given for pandda.input.data_dirs')
+        if p.input.pdb_style is None: raise Sorry('No value has been given for pandda.input.pdb_style')
+        if not (p.input.regex.pdb_regex or \
+                p.input.regex.mtz_regex or \
+                p.input.regex.dir_regex or \
+                (p.input.pdb_style and ('*' in p.input.pdb_style)) or \
+                (p.input.mtz_style and ('*' in p.input.mtz_style)) or \
+                (p.input.data_dirs and ('*' in p.input.data_dirs))):
+            raise Sorry('No method has been provided for labelling the datasets. Need to provide either pdb_regex or mtz_regex or dir_regex, or contain a * in one of pdb_style, mtz_style or data_dirs.')
+
+        # Print information
+        if p.input.mtz_style is None:
+            self.log('mtz_style not provided - using pdb style: {} -> {}'.format(p.input.pdb_style, p.input.pdb_style.replace('.pdb','.mtz')))
+        if p.input.lig_style is None:
+            self.log('pandda.input.lig_style has not been provided - ligand files will not be detected')
+
+        # Make fullpaths so we can run on the eff file from anywhere and change directories without worrying about relative paths
+        p.input.data_dirs = os.path.abspath(p.input.data_dirs)
+        p.output.out_dir  = os.path.abspath(p.output.out_dir)
+        if p.input.filter.pdb:
+            p.input.filter.pdb = os.path.abspath(p.input.filter.pdb)
+        if p.input.reference.pdb:
+            p.input.reference.pdb = os.path.abspath(p.input.reference.pdb)
+        if p.input.reference.mtz:
+            p.input.reference.mtz = os.path.abspath(p.input.reference.mtz)
+
+        # Trim any unnecessary '/'
+        if p.input.pdb_style:
+            p.input.pdb_style = p.input.pdb_style.strip('/')
+        if p.input.mtz_style:
+            p.input.mtz_style = p.input.mtz_style.strip('/')
+        if p.input.lig_style:
+            p.input.lig_style = p.input.lig_style.strip('/')
+
+        self.log('----------------------------------->>>', True)
+
+    def check_and_update_program_flags(self):
+        """Validate and update program control flags"""
+
+        self.log('')
+        self.log('################################### <~> ###################################', True)
+        self.log('                   validating and updating program flags', True)
+        self.log('################################### <~> ###################################', True)
+        self.log('')
+
+        p = self.args
+
+        # Check program flags for conflicts
+        assert p.params.filtering.flags.same_space_group_only, 'PanDDA does not currently support the analysis of different spacegroups - sorry to get your hopes up...'
+
+        # Check if matplotlib is load-able
+        if self.settings.plot_graphs:
+            self.log('----------------------------------->>>', True)
+            if self.check_for_matplotlib(backend=self.settings.plotting.backend, interactive=False):
+                pass
+            else:
+                self.settings.plot_graphs = False
+
+        if not self.stat_maps.get_resolutions():
+            self.log('----------------------------------->>>', True)
+            self.log('No statistical maps have been loaded from previous runs')
+            self.log('Setting method.recalculate_statistical_maps to "Yes"')
+            p.method.recalculate_statistical_maps = "Yes"
+        elif (p.method.recalculate_statistical_maps == 'Yes') and self.stat_maps.get_resolutions():
+            raise Sorry('method.recalculate_statistical_maps is set to Yes, but statistical maps have been reloaded when they should not have been.')
+
+        # If any datasets are set to be reprocessed, reload all datasets (need to change this to allow for "reload_selected_datasets")
+        if p.method.reprocess_existing_datasets or p.method.reprocess_selected_datasets:
+            self.log('----------------------------------->>>', True)
+            self.log('method.reprocess_existing_datasets or p.method.reprocess_selected_datasets are set to True')
+            self.log('Old (previously processed) datasets will be reloaded')
+            self.log('Setting method.reload_existing_datasets = True')
+            p.method.reload_existing_datasets = True
+
+    def check_number_of_datasets(self):
+        """Check enough datasets have been loaded for analysis (given the input parameters"""
+
+        if (not self.datasets.all()) and (not self.new_files()):
+            raise Sorry('No datasets have been found in data_dirs, and no datasets have been reloaded from previous runs')
+        # Check to see if we're reusing statistical maps
+        if (self.args.method.recalculate_statistical_maps == "No") and self.stat_maps.get_resolutions():
+            pass
+        # Check that enough datasets have been found - before any filtering
+        elif self.datasets.size()+len(self.new_files()) < self.params.analysis.min_build_datasets:
+            self.log('----------------------------------->>>', True)
+            self.log('Not enough datasets are available for statistical map characterisation.', True)
+            self.log('The minimum number required is controlled by changing analysis.min_build_datasets', True)
+            self.log('Number loaded ({!s}) is less than the {!s} currently needed.'.format(self.datasets.size()+len(self.new_files()), self.params.analysis.min_build_datasets), True)
+            raise Sorry('Not enough datasets are available for statistical map characterisation')
+        # Check that enough VALID datasets have been loaded
+        elif self.datasets.all_masks().has_mask('rejected - total') and (self.datasets.size(mask_name='rejected - total', invert=True) < self.params.analysis.min_build_datasets):
+            self.log('----------------------------------->>>', True)
+            self.log('After filtering datasets, not enough datasets are available for statistical map characterisation.', True)
+            self.log('The minimum number required is controlled by changing analysis.min_build_datasets', True)
+            self.log('Number loaded ({!s}) is less than the {!s} currently needed.'.format(self.datasets.size(mask_name='rejected - total', invert=True), self.params.analysis.min_build_datasets), True)
+            raise Sorry('Not enough datasets are available for statistical map characterisation')
+
+    #########################################################################################################
+    #                                                                                                       #
+    #                                               Initialisation                                          #
+    #                                                                                                       #
+    #########################################################################################################
+
+    def run_analysis_init(self):
+        """Set up the pandda for a new analysis (doing this will override links to analyses)"""
+
+        # ================================================>
+        # Write the input parameters to file
+        # ================================================>
+        self.write_parameters_to_parameter_file(f_name=self.file_manager.get_file('def_file'))
+
+        # ================================================>
+        # Validate the input parameters
+        # ================================================>
+        self.check_and_update_input_parameters()
+
+        # ================================================>
+        # Create a new analysis directory for analyses/summaries
+        # ================================================>
+        if self.is_new_pandda() or self.args.method.reprocess_existing_datasets:
+            self.log('----------------------------------->>>', True)
+            self.log('Setting output.new_analysis_dir = True')
+            self.log('A new output analysis directory will be created')
+            self.args.output.new_analysis_dir = True
+        # New directories will be created for each run (so that data is not overwritten) by the time of the run
+        if self.args.output.new_analysis_dir or (not os.path.exists(self.file_manager.get_dir('analyses'))):
+            analysis_time_name = 'analyses-{}'.format(time.strftime("%Y-%m-%d-%H%M", time.gmtime(self._init_time)))
+            analysis_time_path = easy_directory(os.path.join(self.file_manager.get_dir('root'), analysis_time_name))
+            analysis_link_path = self.file_manager.get_dir('analyses')
+            # Remove old analysis link if it exists and link in the new analysis directory
+            if os.path.exists(analysis_link_path) and os.path.islink(analysis_link_path):
+                os.unlink(analysis_link_path)
+            rel_symlink(orig=analysis_time_path, link=analysis_link_path)
+
+        assert os.path.exists(self.file_manager.get_dir('analyses')), 'Output analysis directory does not exist'
+
+        # ===============================================================================>
+        # Update the FileManager to make sure all directories are now created
+        # ===============================================================================>
+        self.file_manager.check_and_create_directories()
+
+        # ===============================================================================>
+        # PRINT SOME HELPFUL INFORMATION
+        # ===============================================================================>
+
+        self.log('', True)
+        self.log('################################### <~> ###################################', True)
+        self.log('                         FILES/MODULE INFORMATION', True)
+        self.log('################################### <~> ###################################', True)
+        self.log('', True)
+        self.log('Running from: {!s}'.format(sys.argv[0]), True)
+        self.log('----------------------------------->>>', True)
+        self.log('Reading input from : {!s}'.format(self.args.input.data_dirs), True)
+        self.log('----------------------------------->>>', True)
+        self.log('Writing output to: {!s}'.format(self.out_dir), True)
+
+        # ===============================================================================>
+        # CHANGE INTO OUTPUT DIRECTORY
+        # ===============================================================================>
+        self.log('----------------------------------->>>', True)
+        self.log('Changing into output directory: {}'.format(self.out_dir), True)
+        os.chdir(self.out_dir)
+
+        # ===============================================================================>
+        # REPOPULATE PANDDA FROM PREVIOUS RUNS
+        # ===============================================================================>
+        # Load any objects from previous runs
+        self.log('----------------------------------->>>', True)
+        self.log('Checking for existing analyses', True)
+        self.load_pickled_objects()
+
+        # Reload reference dataset
+        if (not self.datasets.reference()) and os.path.exists(self.file_manager.get_file('reference_structure')) and os.path.exists(self.file_manager.get_file('reference_dataset')):
+            self.log('----------------------------------->>>', True)
+            self.log('Loading Reference Dataset', True)
+            self.load_reference_dataset(ref_pdb=self.file_manager.get_file('reference_structure'), ref_mtz=self.file_manager.get_file('reference_dataset'))
+
+        # ================================================>
+        # Validate the input parameters
+        # ================================================>
+        self.check_and_update_program_flags()
+
+        # ===============================================================================>
+        # Report
+        # ===============================================================================>
+        self.log('', True)
+        self.log('################################### <~> ###################################', True)
+        self.log('                PROGRAM SETUP COMPLETE - starting analysis.')
+        self.log('################################### <~> ###################################', True)
+        self.log('', True)
+
+        # ===============================================================================>
+        # Write the header to the log file and write the updated parameters
+        # ===============================================================================>
+        self.log(HEADER_TEXT, True)
+        self.write_running_parameters_to_log()
+        self.write_parameters_to_parameter_file(f_name=self.file_manager.get_file('eff_file'))
+
+        # ===============================================================================>
+        # LOG THE START TIME AND UPDATE STATUS
+        # ===============================================================================>
+        self.log('----------------------------------->>>', True)
+        self.log('Analysis Started: {!s}'.format(time.strftime("%a, %d %b %Y %H:%M:%S", time.gmtime(self._init_time))), True)
+        self.log('----------------------------------->>>', True)
+        self.update_status('running')
+
+    def load_pickled_objects(self):
+        """Loads any pickled objects it finds"""
+
+        self.log('----------------------------------->>>', True)
+        self.log('Looking for pickled files from previous runs in: {!s}'.format(os.path.relpath(self.pickle_handler.get_dir('root'))), True)
+
+        # Record whether any pickled objects are loaded
+        pickles_found = False
+
+        # ==============================>
+        # Load Grid
+        if os.path.exists(self.pickle_handler.get_file('grid')):
+            pickles_found = True
+            self.log('-> Loading reference grid')
+            self.grid = self.unpickle(self.pickle_handler.get_file('grid'))
+
+        # ==============================>
+        # Load Reference Dataset
+        if os.path.exists(self.pickle_handler.get_file('reference_dataset')):
+            pickles_found = True
+            self.log('-> Loading reference dataset')
+            self.datasets.set_reference(dataset=self.unpickle(self.pickle_handler.get_file('reference_dataset')))
+
+        # ==============================>
+        # Load the datasets
+        if os.path.exists(self.pickle_handler.get_file('dataset_meta')):
+            pickles_found = True
+            self.log('-> Loading old dataset information (existing datasets)')
+            self.pickled_dataset_meta = self.unpickle(self.pickle_handler.get_file('dataset_meta'))
+            if self.args.method.reload_existing_datasets:
+                pickled_dataset_list = self.pickled_dataset_meta.dataset_pickle_list
+                for filename in pickled_dataset_list:
+                    assert os.path.isfile(os.path.join(self.out_dir, filename)), 'File does not exist: {!s}'.format(filename)
+                self.log('-> Reloading old datasets')
+                self.datasets.add([self.unpickle(os.path.join(self.out_dir,f)) for f in pickled_dataset_list])
+            else:
+                self.log('-> Not reloading old datasets')
+        else:
+            # No datasets to load - this must be False
+            self.args.method.reload_existing_datasets = False
+            self.log('-> No old datasets found')
+
+        # ==============================>
+        # Load Statistical Maps
+        if os.path.exists(self.pickle_handler.get_file('stat_maps')) and (self.args.method.recalculate_statistical_maps != "Yes"):
+            pickles_found = True
+            self.log('-> Loading old statistical maps')
+            self.stat_maps = self.unpickle(self.pickle_handler.get_file('stat_maps'))
+
+        if not pickles_found:
+            self.log('-> No Pickles Found', True)
+        self.log('----------------------------------->>>', True)
 
     def initialise_dataset_masks_and_tables(self):
         """Add blank masks to the mask objects, based on how many datasets have been loaded"""
@@ -688,8 +788,6 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log('----------------------------------->>>', True)
         self.log('Initialising Dataset Masks.', True)
 
-        # Set the dataset ids (dataset tags)
-        self.datasets.all_masks().set_index_ids(ids=self.datasets.all_tags())
         # Initialise standard blank masks
         for mask_name in PanddaMaskNames.all_mask_names:
             self.datasets.all_masks().add_mask(name=mask_name, values=False)
@@ -736,81 +834,11 @@ class PanddaMultiDatasetAnalyser(Program):
                     for e in dataset.events:
                         self.add_event_to_event_table(dataset=dataset, event=e)
 
-    # TODO MOVE TO PANDDA DATASET LIST? TODO
-    def select_reference_dataset(self, method='resolution', max_rfree=0.4, min_resolution=5):
-        """Select dataset to act as the reference - scaling, aligning etc"""
-
-        assert method in ['resolution','rfree'], 'METHOD FOR SELECTING THE REFERENCE DATASET NOT RECOGNISED: {!s}'.format(method)
-
-        # Create a mask of the datasets that can be selected as the reference dataset
-        potential_reference_mask = self.datasets.all_masks().combine_masks(names=['no_build', 'rejected - total'], invert_output=True)
-        self.datasets.all_masks().add_mask(name='potential reference datasets', values=potential_reference_mask)
-        # Get the potential reference datasets
-        filtered_datasets = self.datasets.mask(mask_name='potential reference datasets')
-        if not filtered_datasets: raise Failure("Can't select a reference dataset - NO SUITABLE (NON-REJECTED) DATASETS REMAINING")
-
-        self.log('---------->>>', True)
-        self.log('Selecting Reference Dataset by: {!s}'.format(method), True)
-        if method == 'rfree':
-            # Get RFrees of datasets (set to dummy value of 999 if resolution is too high so that it is not selected)
-            r_frees = [d.model.input.get_r_rfree_sigma().r_free if (d.data.mtz_object().max_min_resolution()[1] < min_resolution) else 999 for d in filtered_datasets]
-            if len(r_frees) == 0: raise Exception('NO DATASETS BELOW RESOLUTION CUTOFF {!s}A - CANNOT SELECT REFERENCE DATASET'.format(min_resolution))
-            ref_dataset_index = r_frees.index(min(r_frees))
-        elif method == 'resolution':
-            # Get Resolutions of datasets (set to dummy value of 999 if r-free is too high so that it is not selected)
-            resolns = [d.data.mtz_object().max_min_resolution()[1] if (d.model.input.get_r_rfree_sigma().r_free < max_rfree) else 999 for d in filtered_datasets]
-            if len(resolns) == 0: raise Exception('NO DATASETS BELOW RFREE CUTOFF {!s} - CANNOT SELECT REFERENCE DATASET'.format(max_rfree))
-            ref_dataset_index = resolns.index(min(resolns))
-
-        reference = filtered_datasets[ref_dataset_index]
-        self.log('Reference Selected: {!s}'.format(reference.tag), True)
-        self.log('Resolution: {!s}, RFree: {!s}'.format(reference.data.mtz_object().max_min_resolution()[1], reference.model.input.get_r_rfree_sigma().r_free), True)
-
-        return reference.model.filename, reference.data.filename
-
-    def load_reference_dataset(self, ref_pdb, ref_mtz):
-        """Set the reference dataset, to which all other datasets will be aligned and scaled"""
-
-        self.log('---------->>>', True)
-        self.log('Loading Reference Dataset: {!s}'.format(ref_mtz), True)
-
-        link_ref_pdb = self.file_manager.get_file('reference_structure')
-        link_ref_mtz = self.file_manager.get_file('reference_dataset')
-
-        # Remove old links?
-        if os.path.abspath(ref_pdb) != os.path.abspath(link_ref_pdb):
-            if os.path.exists(link_ref_pdb): os.unlink(link_ref_pdb)
-            if os.path.exists(link_ref_mtz): os.unlink(link_ref_mtz)
-        # Create links to dataset
-        if not os.path.exists(link_ref_pdb): rel_symlink(orig=ref_pdb, link=link_ref_pdb)
-        if not os.path.exists(link_ref_mtz): rel_symlink(orig=ref_mtz, link=link_ref_mtz)
-
-        # Create and set reference dataset
-        ref_dataset = PanddaReferenceDataset.from_file(model_filename=os.path.relpath(link_ref_pdb, start=self.out_dir),
-                                                       data_filename=os.path.relpath(link_ref_mtz, start=self.out_dir)).label(num=-1, tag='reference')
-
-        # Calculate the shift required to move the reference structure into the positive quadrant
-        buffer = self.params.masks.outer_mask + self.params.maps.padding
-        sites_min = protein(ref_dataset.model.hierarchy).atoms().extract_xyz().min()
-        ref_dataset.set_origin_shift(shift=-1*flex.double(sites_min)+buffer)
-        self.log('Origin Shift for reference structure: {!s}'.format(tuple([round(s,3) for s in ref_dataset.origin_shift()])))
-
-        # Set as the reference dataset for the analysis
-        self.datasets.set_reference(dataset=ref_dataset)
-
-        # Write out the structure in the reference frame
-        tmp_r_hierarchy = ref_dataset.model.hierarchy.deep_copy()
-
-        if not os.path.exists(self.file_manager.get_file('reference_on_origin')):
-            tmp_r_hierarchy.atoms().set_xyz(ref_dataset.nat2grid(tmp_r_hierarchy.atoms().extract_xyz()))
-            tmp_r_hierarchy.write_pdb_file(self.file_manager.get_file('reference_on_origin'))
-
-        if not os.path.exists(self.file_manager.get_file('reference_symmetry')):
-            ref_sym_copies = ref_dataset.model.crystal_contacts(distance_cutoff=self.args.params.masks.outer_mask+5, combine_copies=True)
-            ref_sym_copies.atoms().set_xyz(ref_dataset.nat2grid(ref_sym_copies.atoms().extract_xyz()))
-            ref_sym_copies.write_pdb_file(self.file_manager.get_file('reference_symmetry'))
-
-        return self.datasets.reference()
+    #########################################################################################################
+    #                                                                                                       #
+    #                                               Grid Functions                                          #
+    #                                                                                                       #
+    #########################################################################################################
 
     def create_reference_grid(self, dataset, grid_spacing):
         """Create a grid over the given dataset"""
@@ -915,7 +943,7 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log('Total: {} regions ({} chains, {} residues)'.format(len(partition_h.atoms()), len(list(partition_h.chains())), len(list(partition_h.residue_groups()))), True)
 
         # Write grid summary for developer purposes
-        if self.args.output.developer.write_grid_masks:
+        if self.args.output.developer.write_reference_frame_grid_masks:
             self.log('----------------------------------->>>', True)
             self.log('Writing Voronoi grid masks:', True)
             # Write out the un-partitioned section of the grid
@@ -946,6 +974,12 @@ class PanddaMultiDatasetAnalyser(Program):
             pml.write_script(f_name=self.file_manager.get_file('grid_voronoi').format('cell-centres').replace('.ccp4','.py'))
 
         return self.grid
+
+    #########################################################################################################
+    #                                                                                                       #
+    #                                 Dataset loading/alignment/filtering                                   #
+    #                                                                                                       #
+    #########################################################################################################
 
     def build_input_list(self):
         """Builds a list of input files from the command line arguments passed"""
@@ -1066,36 +1100,12 @@ class PanddaMultiDatasetAnalyser(Program):
                     re_filtered_new_files.append(filtered_new_files[i])
             filtered_new_files = re_filtered_new_files
 
-#        # Get the list of already linked empty_directories
-#        empty_dir_prefix = 'Dir_'
-#        link_old_empty_dirs = glob.glob(os.path.join(self.file_manager.get_dir('empty_directories'),'*'))
-#        real_old_empty_dirs = [os.path.realpath(p) for p in link_old_empty_dirs]
-#        # Pull out the highest current idx
-#        emp_num_i = 0
-#        emp_num_offset = max([0]+[int(os.path.basename(v).strip(empty_dir_prefix)) for v in link_old_empty_dirs])
-#        assert emp_num_offset == len(link_old_empty_dirs), 'Numbering of empty directories is not consecutive'
-#        # Link the empty directories into the same directory
-#        for dir in empty_directories:
-#            # Already linked
-#            if os.path.realpath(dir) in real_old_empty_dirs:
-#                continue
-#            # Increment counter
-#            emp_num_i += 1
-#            # Create new dir
-#            empty_dir = os.path.join(self.file_manager.get_dir('empty_directories'), empty_dir_prefix+'{:05d}'.format(emp_num_i+emp_num_offset))
-#            if not os.path.exists(empty_dir):
-#                os.symlink(dir, empty_dir)
-#            else:
-#                raise Exception('THIS DIRECTORY SHOULD NOT EXIST: {!s}'.format(empty_dir))
-
         # Record number of empty datasets
         self.log('---------->>>', True)
         self.log('{!s} EMPTY DIRECTORIES FOUND:'.format(len(empty_directories)), True)
         self.log('---------->>>')
         for d in empty_directories:
             self.log('Empty Directory: {}'.format(d))
-#        self.log('{!s} EMPTY DIRECTORIES FOUND (TOTAL)'.format(emp_num_i+emp_num_offset), True)
-#        self.log('{!s} EMPTY DIRECTORIES FOUND (NEW)'.format(emp_num_i), True)
 
         # Record total number of datasets, and total number of new datasets
         if self.pickled_dataset_meta: num_old = self.pickled_dataset_meta.number_of_datasets
@@ -1106,28 +1116,36 @@ class PanddaMultiDatasetAnalyser(Program):
 
         return filtered_new_files
 
-    def add_new_files(self, input_files):
+    def add_files(self, file_list):
         """Add (pdb, mtz) file pairs to the datasets to be processed"""
 
-        self._input_files = input_files
+        # Limit the number of files that can be added at once to a self
+        if len(file_list) > self.args.input.max_new_datasets:
+            self.log('----------------------------------->>>', True)
+            self.log('Limiting the number of new datasets that are added to the pandda analysis (controlled by input.max_new_datasets)')
+            self.log('Limiting analysis to the first {} of {} datasets'.format(self.args.input.max_new_datasets, len(file_list)))
+            file_list = file_list[:self.args.input.max_new_datasets]
+            if len(file_list) != self.args.input.max_new_datasets:
+                raise Sorry('Something has gone wrong, number of selected datasets ({}) is not equal to the maximum ({})'.format(len(file_list), self.args.input.max_new_datasets))
+
+        self._new_dataset_files += file_list
 
         self.log('----------------------------------->>>', True)
-        self.log('{!s} Datasets Added'.format(len(input_files)), True)
+        self.log('{!s} Datasets Added'.format(len(file_list)), True)
 
     def load_new_datasets(self):
         """Read in maps for the input datasets"""
 
         if not self.datasets.all() and self.is_new_pandda():
-            self.log('Adding First Datasets to Pandda')
+            self.log('Adding First Datasets to PanDDA')
         else:
-            self.log('Adding more datasets')
-            self.log('{!s} already loaded'.format(self.datasets.size()))
-            self.log('{!s} not loaded'.format(self.pickled_dataset_meta.number_of_datasets - self.datasets.size()))
+            self.log('Adding more datasets to PanDDA')
+            self.log('{!s} previous datasets already loaded'.format(self.datasets.size()))
+            self.log('{!s} previous datasets not loaded'.format(self.pickled_dataset_meta.number_of_datasets - self.datasets.size()))
 
         # Counting offset for dataset index
         if self.pickled_dataset_meta: n_offset = self.pickled_dataset_meta.number_of_datasets
         else:                         n_offset = 0
-
 
         start = time.time()
         self.log('----------------------------------->>>', True)
@@ -1136,8 +1154,6 @@ class PanddaMultiDatasetAnalyser(Program):
         finish = time.time()
         self.log('> Adding Datasets > Time Taken: {!s} seconds'.format(int(finish-start)), True)
         self.log('----------------------------------->>>', True)
-
-        lig_style = self.args.input.lig_style.strip('/')
 
         # Output Path Templates
         f = PanddaDatasetFilenames
@@ -1154,11 +1170,11 @@ class PanddaMultiDatasetAnalyser(Program):
             dataset.initialise_output_directory(dir=os.path.join(self.file_manager.get_dir('processed_datasets'), dataset.tag))
 
             # Main input/output files
-            dataset.file_manager.add_file(file_name=f.input_structure.format(dataset.tag),                    file_tag='input_structure'              )
+            dataset.file_manager.add_file(file_name=f.input_model.format(dataset.tag),                    file_tag='input_model'                  )
             dataset.file_manager.add_file(file_name=f.input_data.format(dataset.tag),                         file_tag='input_data'                   )
             dataset.file_manager.add_file(file_name=f.dataset_info.format(dataset.tag),                       file_tag='dataset_info'                 )
             dataset.file_manager.add_file(file_name=f.dataset_log.format(dataset.tag),                        file_tag='dataset_log'                  )
-            dataset.file_manager.add_file(file_name=f.aligned_structure.format(dataset.tag),                  file_tag='aligned_structure'            )
+            dataset.file_manager.add_file(file_name=f.aligned_model.format(dataset.tag),                      file_tag='aligned_model'            )
             dataset.file_manager.add_file(file_name=f.symmetry_copies.format(dataset.tag),                    file_tag='symmetry_copies'              )
             dataset.file_manager.add_file(file_name=f.sampled_map.format(dataset.tag),                        file_tag='sampled_map'                  )
             dataset.file_manager.add_file(file_name=f.mean_diff_map.format(dataset.tag),                      file_tag='mean_diff_map'                )
@@ -1177,9 +1193,6 @@ class PanddaMultiDatasetAnalyser(Program):
 
             # Links to ligand files (if they've been found)
             dataset.file_manager.add_dir(dir_name='ligand_files', dir_tag='ligand', top_dir_tag='root')
-#            dataset.file_manager.add_file(file_name=f.ligand_coordinates.format(dataset.tag),                 file_tag='ligand_coordinates'   )
-#            dataset.file_manager.add_file(file_name=f.ligand_restraints.format(dataset.tag),                  file_tag='ligand_restraints'    )
-#            dataset.file_manager.add_file(file_name=f.ligand_image.format(dataset.tag),                       file_tag='ligand_image'         )
 
             # Native (back-rotated/transformed) maps
             dataset.file_manager.add_file(file_name=f.native_obs_map.format(dataset.tag),                     file_tag='native_obs_map'       )
@@ -1191,21 +1204,21 @@ class PanddaMultiDatasetAnalyser(Program):
             dataset.file_manager.add_dir(dir_name='modelled_structures', dir_tag='models', top_dir_tag='root')
 
             # Output images
-            dataset.file_manager.add_dir(dir_name='output_images', dir_tag='images', top_dir_tag='root')
+            dataset.file_manager.add_dir(dir_name='graphs', dir_tag='graphs', top_dir_tag='root')
             # Smapled map
-            dataset.file_manager.add_file(file_name=p.s_map_png.format(dataset.tag),                          file_tag='s_map_png',                        dir_tag='images')
-            dataset.file_manager.add_file(file_name=p.d_mean_map_png.format(dataset.tag),                     file_tag='d_mean_map_png',                   dir_tag='images')
-            dataset.file_manager.add_file(file_name=p.z_map_naive_png.format(dataset.tag),                    file_tag='z_map_naive_png',                  dir_tag='images')
-            dataset.file_manager.add_file(file_name=p.z_map_naive_norm_png.format(dataset.tag),               file_tag='z_map_naive_normalised_png',       dir_tag='images')
-            dataset.file_manager.add_file(file_name=p.z_map_uncertainty_png.format(dataset.tag),              file_tag='z_map_uncertainty_png',            dir_tag='images')
-            dataset.file_manager.add_file(file_name=p.z_map_uncertainty_norm_png.format(dataset.tag),         file_tag='z_map_uncertainty_normalised_png', dir_tag='images')
-            dataset.file_manager.add_file(file_name=p.z_map_corrected_png.format(dataset.tag),                file_tag='z_map_corrected_png',              dir_tag='images')
-            dataset.file_manager.add_file(file_name=p.z_map_corrected_norm_png.format(dataset.tag),           file_tag='z_map_corrected_normalised_png',   dir_tag='images')
-            dataset.file_manager.add_file(file_name=p.z_map_qq_plot_png.format(dataset.tag),                  file_tag='z_map_qq_plot_png',                dir_tag='images')
-            dataset.file_manager.add_file(file_name=p.bdc_est_png.format(dataset.tag, '{!s}'),                file_tag='bdc_est_png',                     dir_tag='images')
-            dataset.file_manager.add_file(file_name=p.unc_qqplot_png.format(dataset.tag),                     file_tag='unc_qqplot_png',                   dir_tag='images')
-            dataset.file_manager.add_file(file_name=p.obs_qqplot_sorted_png.format(dataset.tag),              file_tag='obs_qqplot_sorted_png',            dir_tag='images')
-            dataset.file_manager.add_file(file_name=p.obs_qqplot_unsorted_png.format(dataset.tag),            file_tag='obs_qqplot_unsorted_png',          dir_tag='images')
+            dataset.file_manager.add_file(file_name=p.s_map_png.format(dataset.tag),                          file_tag='s_map_png',                        dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.d_mean_map_png.format(dataset.tag),                     file_tag='d_mean_map_png',                   dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_naive_png.format(dataset.tag),                    file_tag='z_map_naive_png',                  dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_naive_norm_png.format(dataset.tag),               file_tag='z_map_naive_normalised_png',       dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_uncertainty_png.format(dataset.tag),              file_tag='z_map_uncertainty_png',            dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_uncertainty_norm_png.format(dataset.tag),         file_tag='z_map_uncertainty_normalised_png', dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_corrected_png.format(dataset.tag),                file_tag='z_map_corrected_png',              dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_corrected_norm_png.format(dataset.tag),           file_tag='z_map_corrected_normalised_png',   dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_qq_plot_png.format(dataset.tag),                  file_tag='z_map_qq_plot_png',                dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.bdc_est_png.format(dataset.tag, '{!s}'),                file_tag='bdc_est_png',                      dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.unc_qqplot_png.format(dataset.tag),                     file_tag='unc_qqplot_png',                   dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.obs_qqplot_sorted_png.format(dataset.tag),              file_tag='obs_qqplot_sorted_png',            dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.obs_qqplot_unsorted_png.format(dataset.tag),            file_tag='obs_qqplot_unsorted_png',          dir_tag='graphs')
 
             # Analysis files
             dataset.file_manager.add_file(file_name=f.z_peaks_csv.format(dataset.tag), file_tag='z_peaks_csv')
@@ -1216,8 +1229,8 @@ class PanddaMultiDatasetAnalyser(Program):
             dataset.file_manager.add_file(file_name=f.ccp4mg_script,    file_tag='ccp4mg_script',   dir_tag='scripts')
 
             # Output blobs
-            dataset.file_manager.add_dir(dir_name='blobs', dir_tag='blobs', top_dir_tag='root')
-            dataset.file_manager.add_file(file_name=f.ccp4mg_png,       file_tag='ccp4mg_png',      dir_tag='blobs')
+            dataset.file_manager.add_dir(dir_name='images',  dir_tag='images', top_dir_tag='root')
+#            dataset.file_manager.add_file(file_name=f.ccp4mg_png,       file_tag='ccp4mg_png',      dir_tag='images')
 
             # Pickled objects
             dataset.file_manager.add_dir(dir_name='pickles', dir_tag='pickles', top_dir_tag='root')
@@ -1226,15 +1239,14 @@ class PanddaMultiDatasetAnalyser(Program):
             ##############################################################################################################
 
             # Links for the dataset input files
-            link_pdb = dataset.file_manager.get_file('input_structure')
+            link_pdb = dataset.file_manager.get_file('input_model')
             link_mtz = dataset.file_manager.get_file('input_data')
             # Link the input files to the output folder
             if not os.path.exists(link_pdb): rel_symlink(orig=dataset.model.filename, link=link_pdb)
             if not os.path.exists(link_mtz): rel_symlink(orig=dataset.data.filename, link=link_mtz)
 
             # Search for ligand files and link them to the output ligands folder
-            lig_glob  = os.path.join(os.path.dirname(dataset.model.filename), lig_style)
-            lig_files = glob.glob(lig_glob)
+            lig_files = glob.glob(os.path.join(os.path.dirname(dataset.model.filename), self.args.input.lig_style))
             for lig_file in lig_files:
                 # Find all files with the same basename but allowing for different extensions. Then link to output folder.
                 lig_base = os.path.splitext(lig_file)[0] + '.*'
@@ -1253,39 +1265,84 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log('{!s} Datasets Loaded (New).          '.format(len(loaded_datasets), True))
         self.log('{!s} Datasets Loaded (Total).        '.format(self.datasets.size(), True))
 
-    #########################################################################################################
-    #                                                                                                       #
-    #                                     Dataset loading / processing                                      #
-    #                                                                                                       #
-    #########################################################################################################
+        # Reset the list of input files
+        self._new_dataset_files = []
 
-    def load_diffraction_data(self, datasets=None):
-        """Extract amplitudes and phases for creating map"""
+    # TODO MOVE TO PANDDA DATASET LIST? TODO
+    def select_reference_dataset(self, method='resolution', max_rfree=0.4, min_resolution=5):
+        """Select dataset to act as the reference - scaling, aligning etc"""
 
-        if datasets is None:
-            datasets=self.datasets.mask(mask_name='rejected - total', invert=True)
+        assert method in ['resolution','rfree'], 'METHOD FOR SELECTING THE REFERENCE DATASET NOT RECOGNISED: {!s}'.format(method)
 
-        all_cols = self.args.params.maps.structure_factors
-        ref_cols = self.args.input.reference.structure_factors if self.args.input.reference.structure_factors else all_cols
+        # Create a mask of the datasets that can be selected as the reference dataset
+        potential_reference_mask = self.datasets.all_masks().combine_masks(names=['no_build', 'rejected - total'], invert_output=True)
+        self.datasets.all_masks().add_mask(name='potential reference datasets', values=potential_reference_mask)
+        # Get the potential reference datasets
+        filtered_datasets = self.datasets.mask(mask_name='potential reference datasets')
+        if not filtered_datasets: raise Failure("Can't select a reference dataset - NO SUITABLE (NON-REJECTED) DATASETS REMAINING")
 
-        t1 = time.time()
-        self.log('----------------------------------->>>', True)
-        self.log('Loading structure factors: {}'.format(all_cols), True)
-        self.log('----------------------------------->>>', True)
+        self.log('---------->>>', True)
+        self.log('Selecting Reference Dataset by: {!s}'.format(method), True)
+        if method == 'rfree':
+            # Get RFrees of datasets (set to dummy value of 999 if resolution is too high so that it is not selected)
+            r_frees = [d.model.input.get_r_rfree_sigma().r_free if (d.data.mtz_object().max_min_resolution()[1] < min_resolution) else 999 for d in filtered_datasets]
+            if len(r_frees) == 0: raise Exception('NO DATASETS BELOW RESOLUTION CUTOFF {!s}A - CANNOT SELECT REFERENCE DATASET'.format(min_resolution))
+            ref_dataset_index = r_frees.index(min(r_frees))
+        elif method == 'resolution':
+            # Get Resolutions of datasets (set to dummy value of 999 if r-free is too high so that it is not selected)
+            resolns = [d.data.mtz_object().max_min_resolution()[1] if (d.model.input.get_r_rfree_sigma().r_free < max_rfree) else 999 for d in filtered_datasets]
+            if len(resolns) == 0: raise Exception('NO DATASETS BELOW RFREE CUTOFF {!s} - CANNOT SELECT REFERENCE DATASET'.format(max_rfree))
+            ref_dataset_index = resolns.index(min(resolns))
 
-        self.datasets.reference().data.get_structure_factors(columns=ref_cols)
+        reference = filtered_datasets[ref_dataset_index]
+        self.log('Reference Selected: {!s}'.format(reference.tag), True)
+        self.log('Resolution: {!s}, RFree: {!s}'.format(reference.data.mtz_object().max_min_resolution()[1], reference.model.input.get_r_rfree_sigma().r_free), True)
 
-        for dataset in datasets:
-            if all_cols in dataset.data.structure_factors.keys():
-                self.log('\rAlready Loaded: Dataset {!s}                           '.format(dataset.tag))
-            else:
-                print('\rLoading Diffraction Data: Dataset {!s}                 '.format(dataset.tag), end=''); sys.stdout.flush()
-                dataset.data.get_structure_factors(columns=all_cols)
+        return reference.model.filename, reference.data.filename
 
-        t2 = time.time()
-        self.log('\r> Structure Factors Extracted > Time Taken: {!s} seconds'.format(int(t2-t1)), True)
+    def load_reference_dataset(self, ref_pdb, ref_mtz):
+        """Set the reference dataset, to which all other datasets will be aligned and scaled"""
 
-        return all_cols,ref_cols
+        self.log('---------->>>', True)
+        self.log('Loading Reference Dataset: {!s}'.format(ref_mtz), True)
+
+        link_ref_pdb = self.file_manager.get_file('reference_structure')
+        link_ref_mtz = self.file_manager.get_file('reference_dataset')
+
+        # Remove old links?
+        if os.path.abspath(ref_pdb) != os.path.abspath(link_ref_pdb):
+            if os.path.exists(link_ref_pdb): os.unlink(link_ref_pdb)
+            if os.path.exists(link_ref_mtz): os.unlink(link_ref_mtz)
+        # Create links to dataset
+        if not os.path.exists(link_ref_pdb): rel_symlink(orig=ref_pdb, link=link_ref_pdb)
+        if not os.path.exists(link_ref_mtz): rel_symlink(orig=ref_mtz, link=link_ref_mtz)
+
+        # Create and set reference dataset
+        ref_dataset = PanddaReferenceDataset.from_file(model_filename=os.path.relpath(link_ref_pdb, start=self.out_dir),
+                                                       data_filename=os.path.relpath(link_ref_mtz, start=self.out_dir)).label(num=-1, tag='reference')
+
+        # Calculate the shift required to move the reference structure into the positive quadrant
+        buffer = self.params.masks.outer_mask + self.params.maps.padding
+        sites_min = protein(ref_dataset.model.hierarchy).atoms().extract_xyz().min()
+        ref_dataset.set_origin_shift(shift=-1*flex.double(sites_min)+buffer)
+        self.log('Origin Shift for reference structure: {!s}'.format(tuple([round(s,3) for s in ref_dataset.origin_shift()])))
+
+        # Set as the reference dataset for the analysis
+        self.datasets.set_reference(dataset=ref_dataset)
+
+        # Write out the structure in the reference frame
+        tmp_r_hierarchy = ref_dataset.model.hierarchy.deep_copy()
+
+        if not os.path.exists(self.file_manager.get_file('reference_on_origin')):
+            tmp_r_hierarchy.atoms().set_xyz(ref_dataset.nat2grid(tmp_r_hierarchy.atoms().extract_xyz()))
+            tmp_r_hierarchy.write_pdb_file(self.file_manager.get_file('reference_on_origin'))
+
+        if not os.path.exists(self.file_manager.get_file('reference_symmetry')):
+            ref_sym_copies = ref_dataset.model.crystal_contacts(distance_cutoff=self.args.params.masks.outer_mask+5, combine_copies=True)
+            ref_sym_copies.atoms().set_xyz(ref_dataset.nat2grid(ref_sym_copies.atoms().extract_xyz()))
+            ref_sym_copies.write_pdb_file(self.file_manager.get_file('reference_symmetry'))
+
+        return self.datasets.reference()
 
     def align_datasets(self, method):
         """Align each structure the reference structure"""
@@ -1323,7 +1380,7 @@ class PanddaMultiDatasetAnalyser(Program):
             aligned_struc = dataset.model.hierarchy.deep_copy()
             aligned_struc.atoms().set_xyz(dataset.model.alignment.nat2ref(coordinates=dataset.model.hierarchy.atoms().extract_xyz()))
             aligned_struc.write_pdb_file(file_name=os.path.join(self.file_manager.get_dir('aligned_structures'), '{!s}-aligned.pdb'.format(dataset.tag)))
-            aligned_struc.write_pdb_file(file_name=dataset.file_manager.get_file('aligned_structure'))
+            aligned_struc.write_pdb_file(file_name=dataset.file_manager.get_file('aligned_model'))
             # Write alignment summary to log
             self.log('------------------------->>>')
             self.log(dataset.model.alignment.summary())
@@ -1358,9 +1415,345 @@ class PanddaMultiDatasetAnalyser(Program):
 
         self.log('----------------------------------->>>', True)
 
+    def filter_datasets_1(self, filter_dataset=None):
+        """Filter out the datasets which contain different protein models (i.e. protein length, sequence, etc)"""
+
+        self.log('', True)
+        self.log('----------------------------------->>>', True)
+        self.log('Filtering Datasets (before alignment). Potential Classes:', True)
+        for failure_class in PanddaMaskNames.reject_mask_names:
+            self.log('\t{!s}'.format(failure_class), True)
+        self.log('----------------------------------->>>', True)
+
+        # If no filtering dataset given, filter against the reference dataset
+        if not filter_dataset: filter_dataset = self.datasets.reference()
+
+        # Check that the same protein structure is present in each dataset - THIS MASK SHOULD INCLUDE ALL DATASETS AT FIRST
+        for dataset in self.datasets.mask(mask_name='rejected - total', invert=True):
+
+            print('\rFiltering Dataset {!s}          '.format(dataset.tag), end=''); sys.stdout.flush()
+            if self.params.filtering.flags.same_space_group_only and (dataset.model.space_group.info().symbol_and_number() != filter_dataset.model.space_group.info().symbol_and_number()):
+                self.log('\rRejecting Dataset: {!s}          '.format(dataset.tag))
+                self.log('Different Space Group')
+                self.log('Reference: {!s}, {!s}: {!s}'.format(filter_dataset.model.space_group.info().symbol_and_number(),
+                                                        dataset.tag, dataset.model.space_group.info().symbol_and_number()))
+                self.log('---------->>>', True)
+                self.tables.dataset_info.set_value(dataset.tag, 'rejection_reason', 'Different Space Group to Reference')
+                self.datasets.all_masks().set_value(name='rejected - different space group', id=dataset.tag, value=True)
+            elif dataset.model.input.get_r_rfree_sigma().r_free > self.params.filtering.max_rfree:
+                self.log('\rRejecting Dataset: {!s}          '.format(dataset.tag))
+                self.log('RFree is higher than cutoff: {!s}'.format(self.params.filtering.max_rfree))
+                self.log('High RFree: {!s}'.format(dataset.model.input.get_r_rfree_sigma().r_free))
+                self.log('---------->>>', True)
+                self.tables.dataset_info.set_value(dataset.tag, 'rejection_reason', 'R-free is too high')
+                self.datasets.all_masks().set_value(name='rejected - rfree', id=dataset.tag, value=True)
+            elif self.params.filtering.flags.similar_models_only and (not dataset.model.hierarchy.is_similar_hierarchy(filter_dataset.model.hierarchy)):
+                self.log('\rRejecting Dataset: {!s}          '.format(dataset.tag))
+                self.log('Non-Identical Structure (Structures do not contain the same atoms)')
+                self.log('---------->>>', True)
+                self.tables.dataset_info.set_value(dataset.tag, 'rejection_reason', 'Atoms present in the dataset are different to atoms present in the reference structure')
+                self.datasets.all_masks().set_value(name='rejected - non-identical structures', id=dataset.tag, value=True)
+            else:
+                pass
+
+        # Update the masks
+        self.update_masks()
+
+        self.log('\rDatasets Filtered.                          ', True)
+        self.log('----------------------------------->>>')
+        self.log('Rejected Datasets (Total):     {!s}'.format(sum(self.datasets.all_masks().get_mask(name='rejected - total'))), True)
+        self.log('----------------------------------->>>')
+
+        reject_reasons = self.tables.dataset_info['rejection_reason'].value_counts().sort_index()
+        if reject_reasons.any():
+            self.log('Reasons for Rejection:')
+            for reason, count in reject_reasons.iteritems():
+                self.log('{} Dataset(s) - {}'.format(count, reason))
+
+    def filter_datasets_2(self):
+        """Filter out the non-isomorphous datasets"""
+
+        self.log('', True)
+        self.log('----------------------------------->>>', True)
+        self.log('Filtering Datasets (after alignment). Potential Classes:', True)
+        for failure_class in PanddaMaskNames.reject_mask_names:
+            self.log('\t{!s}'.format(failure_class), True)
+        self.log('----------------------------------->>>', True)
+
+        # Check that each dataset is similar enough to be compared
+        for dataset in self.datasets.mask(mask_name='rejected - total', invert=True):
+
+            print('\rFiltering Dataset {!s}          '.format(dataset.tag), end=''); sys.stdout.flush()
+            # Check the deviation from the average sites
+            if dataset.model.alignment.alignment_rmsd() > self.params.filtering.max_rmsd_to_reference:
+                self.log('\rRejecting Dataset: {!s}          '.format(dataset.tag))
+                self.log('Alignment RMSD is too large')
+                self.log('Aligned (Calpha) RMSD: {!s}'.format(dataset.model.alignment.alignment_rmsd()))
+                self.log('---------->>>', True)
+                self.tables.dataset_info.set_value(dataset.tag, 'rejection_reason', 'High RMSD to aligned reference structure')
+                self.datasets.all_masks().set_value(name='rejected - rmsd to reference', id=dataset.tag, value=True)
+            else:
+                pass
+
+        # Update the masks
+        self.update_masks()
+
+        self.log('\rDatasets Filtered.               ', True)
+        self.log('----------------------------------->>>')
+        self.log('Rejected Datasets (Total):     {!s}'.format(sum(self.datasets.all_masks().get_mask(name='rejected - total'))), True)
+
+        reject_reasons = self.tables.dataset_info['rejection_reason'].value_counts().sort_index()
+        if reject_reasons.any():
+            self.log('Reasons for Rejection:')
+            for reason, count in reject_reasons.iteritems():
+                self.log('{} Dataset(s) - {}'.format(count, reason))
+
+    def update_masks(self):
+        """Update the combined masks"""
+
+        # Combine all "rejected" masks into one combined mask
+        combined_reject_mask = self.datasets.all_masks().combine_masks(names=PanddaMaskNames.reject_mask_names)
+        self.datasets.all_masks().add_mask(name='rejected - total', values=combined_reject_mask, overwrite=True)
+
+        # Combine the combined "rejected" mask with the "old datasets" mask
+        valid_datasets_new = self.datasets.all_masks().combine_masks(names=['rejected - total', 'old datasets'],
+                                                                     invert=[True, True],
+                                                                     operation='and',
+                                                                     invert_output=False)
+        valid_datasets_old = self.datasets.all_masks().combine_masks(names=['rejected - total', 'old datasets'],
+                                                                     invert=[True, False],
+                                                                     operation='and',
+                                                                     invert_output=False)
+        self.datasets.all_masks().add_mask(name='valid - new', values=valid_datasets_new, overwrite=True)
+        self.datasets.all_masks().add_mask(name='valid - old', values=valid_datasets_old, overwrite=True)
+
     #########################################################################################################
     #                                                                                                       #
-    #                                 Dataset variation analysis functions                                  #
+    #                               Dataset diffraction data/map functions                                  #
+    #                                                                                                       #
+    #########################################################################################################
+
+    def load_diffraction_data(self, datasets=None):
+        """Extract amplitudes and phases for creating map"""
+
+        if datasets is None:
+            datasets=self.datasets.mask(mask_name='rejected - total', invert=True)
+
+        all_cols = self.args.params.maps.structure_factors
+        ref_cols = self.args.input.reference.structure_factors if self.args.input.reference.structure_factors else all_cols
+
+        t1 = time.time()
+        self.log('----------------------------------->>>', True)
+        self.log('Loading structure factors: {}'.format(all_cols), True)
+        self.log('----------------------------------->>>', True)
+
+        self.datasets.reference().data.miller_arrays[ref_cols] = self.datasets.reference().data.get_structure_factors(columns=ref_cols)
+
+        for dataset in datasets:
+            if all_cols in dataset.data.miller_arrays.keys():
+                self.log('\rAlready Loaded: Dataset {!s}                           '.format(dataset.tag))
+            else:
+                print('\rLoading Diffraction Data: Dataset {!s}                 '.format(dataset.tag), end=''); sys.stdout.flush()
+                dataset.data.miller_arrays[all_cols] = dataset.data.get_structure_factors(columns=all_cols)
+
+        t2 = time.time()
+        self.log('\r> Structure Factors Extracted > Time Taken: {!s} seconds'.format(int(t2-t1)), True)
+
+        return all_cols,ref_cols
+
+    def scale_and_truncate_data(self, datasets, res_truncate):
+        """Truncate data at the same indices across all the datasets"""
+
+        self.log('----------------------------------->>>', True)
+        self.log('Truncating Reflection Data', True)
+
+        # Column names
+        all_cols = self.args.params.maps.structure_factors
+        ref_cols = self.args.input.reference.structure_factors if self.args.input.reference.structure_factors else all_cols
+
+        # Calculate which reflections are present in the reference dataset
+        ref_size = self.datasets.reference().data.miller_arrays[ref_cols].set().size()
+        self.log('Number of Reflections in Reference Dataset: {!s}'.format(ref_size))
+
+        # TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+        #
+        # NEED TO REMOVE TRUNCATION STEP IF SPACEGROUPS ARE NOT IDENTICAL (OR UNIT CELLS ISOMORPHOUS)
+        # 1) ONLY TRUNCATE IF IDENTICAL SPACEGROUP
+        # 2) IF NOT IDENTICAL SPACEGROUP ASSERT THAT EACH DATASET HAS A FULL (COMPLETE) SET OF MILLER OF INDICES
+        #
+        # TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+
+        # Truncate reflections to the common set (not including the reference dataset)
+        common_set = datasets[0].data.miller_arrays[all_cols].set()
+        for dataset in datasets[1:]:
+            common_set = common_set.common_set(dataset.data.miller_arrays[all_cols], assert_is_similar_symmetry=False)
+
+        self.log('----------------------------------->>>', True)
+        self.log('Number of Common Reflections between Datasets: {!s} ({!s}% of reference)'.format(common_set.size(), int(100.0*common_set.size()/ref_size)))
+        self.log('After Truncation - Reflections per dataset: {!s}'.format(common_set.size()))
+
+        # Create maps for all of the datasets (including the reference dataset)
+        self.datasets.reference().data.miller_arrays['truncated'] = self.datasets.reference().data.miller_arrays[ref_cols].common_set(common_set, assert_is_similar_symmetry=False)
+        for dataset in datasets:
+            dataset.data.miller_arrays['truncated'] = dataset.data.miller_arrays[all_cols].common_set(common_set, assert_is_similar_symmetry=False)
+
+    def load_reference_map(self, map_resolution=0):
+        """Load the reference map, and calculate some map statistics"""
+
+        # Get the reference dataset
+        ref_dataset = self.datasets.reference()
+
+        # Take the scaled diffraction data for the dataset and create fft
+        fft_map = ref_dataset.data.miller_arrays['truncated'].fft_map(resolution_factor = self.params.maps.resolution_factor,
+                                                                      d_min             = map_resolution,
+                                                                      symmetry_flags    = cctbx.maptbx.use_space_group_symmetry)
+
+        # Scale the map
+        if   self.params.maps.scaling == 'none':   pass
+        elif self.params.maps.scaling == 'sigma':  fft_map.apply_sigma_scaling()
+        elif self.params.maps.scaling == 'volume': fft_map.apply_volume_scaling()
+
+        # Extract the points for the map (in the grid frame)
+        masked_cart = self.grid.grid2cart(self.grid.global_mask().outer_mask(), origin=True)
+        # Transform to the frame of the reference dataset (this should become unnecessary in the future)
+        masked_cart = self.datasets.reference().grid2nat(masked_cart)
+        # Create map handler in the native frame and extract the map values
+        ref_map_true = ElectronDensityMap.from_fft_map(fft_map).as_map()
+        masked_vals = ref_map_true.get_cart_values(masked_cart)
+
+        # Create a new electron density map object for the "grid map"
+        ref_map = ElectronDensityMap(map_data=masked_vals, unit_cell=self.grid.unit_cell(),
+                        map_indices=self.grid.global_mask().outer_mask_indices(),
+                        map_size=self.grid.grid_size(), sparse=True)
+
+        # Store the map as a child of the dataset
+        ref_dataset.child = ref_map
+
+        # Add some meta for debugging, etc
+        ref_map.meta.type = 'reference-map'
+        ref_map.meta.resolution = map_resolution
+        ref_map.meta.map_mean = ref_map.data.min_max_mean().mean
+        ref_map.meta.map_rms = ref_map.data.standard_deviation_of_the_sample()
+
+        return ref_map
+
+    def load_and_morph_maps(self, datasets, ref_map, map_resolution=0):
+        """Create map from miller arrays. Transform map into the reference frame by sampling at the given points."""
+
+        assert ref_map.is_sparse(), 'Reference map is not in sparse form'
+
+        # Create holder for the output map objects
+        map_list = MapHolderList()
+
+        if not datasets: return map_list
+
+        self.log('----------------------------------->>>', True)
+        self.log('Loading {} electron density maps @ {!s}A'.format(len(datasets), map_resolution), True)
+        self.log('----------------------------------->>>', True)
+        self.log('Converting structure factors to electron density maps')
+        start = time.time()
+        for dataset in datasets:
+            dataset.data.fft_maps['truncated'] = dataset.data.miller_arrays['truncated'].fft_map(resolution_factor = self.params.maps.resolution_factor,
+                                                                                                 d_min             = map_resolution,
+                                                                                                 symmetry_flags    = cctbx.maptbx.use_space_group_symmetry)
+            dataset.data.miller_arrays['truncated'] = None
+        finish = time.time()
+        self.log('> FFT-ing structure factors ({!s} Datasets) > Time Taken: {!s} seconds'.format(len(datasets), int(finish-start)), True)
+
+        self.log('----------------------------------->>>', True)
+        print('Loading maps (using {!s} cores)'.format(self.settings.cpus))
+        start = time.time()
+        arg_list = [MapLoader(dataset=d, grid=self.grid, reference_map=ref_map, args=self.args, verbose=self.settings.verbose) for d in datasets]
+        # Print a sort of progress bar
+        print('1'+''.join(['{:<5}'.format(i) for i in range(0,len(arg_list)+5,5)])[2:])
+        print(' '*len(arg_list)+'|\r', end=''); sys.stdout.flush()
+        dataset_maps = easy_mp.pool_map(func=wrapper_run, args=arg_list, processes=self.settings.cpus, chunksize=1)
+        print('|')
+        map_list.add(dataset_maps)
+
+        # Clear maps to save memory
+        for map in map_list.all():
+            map_dataset = self.datasets.get(tag=map.meta.tag)
+            # Remove fft map to save memory
+            map_dataset.data.fft_maps['truncated'] = None
+
+        finish = time.time()
+        self.log('> Loading maps ({!s} Datasets) > Time Taken: {!s} seconds'.format(map_list.size(), int(finish-start)), True)
+        self.log('----------------------------------->>>')
+
+        return map_list
+
+    #########################################################################################################
+    #                                                                                                       #
+    #                              Dataset utility functions (e.g. reset/sync)                              #
+    #                                                                                                       #
+    #########################################################################################################
+
+    def new_files(self):
+        """Get all of the files that were added on this run"""
+        return self._new_dataset_files
+
+    def reset_loaded_datasets(self):
+        """Check that pickled datasets are ready for reprocessing, etc, if required"""
+
+        if self.args.method.reprocess_existing_datasets:   datasets_for_reprocessing = self.datasets.all()
+        elif self.args.method.reprocess_selected_datasets: datasets_for_reprocessing = [self.datasets.get(tag=t) for t in self.args.method.reprocess_selected_datasets.split(',')]
+        else:                                              datasets_for_reprocessing = []
+
+        for dataset in datasets_for_reprocessing:
+            # Reset the meta objects
+            dataset.meta.analysed = False
+            dataset.meta.dataset_map_info = None
+            # Delete events from before
+            dataset.events = []
+            # Reset the map information for the dataset
+            self.tables.dataset_map_info.loc[dataset.tag] = numpy.nan
+
+    def check_loaded_datasets(self, datasets):
+        """Check that the datasets are analysable (have the right mtz columns, etc)"""
+
+        self.log('----------------------------------->>>', True)
+        self.log('Performing checks on the loaded datasets', True)
+
+        self.log('Checking for structure factors:', True)
+        sf_cols = self.params.maps.structure_factors.split(',')
+        self.log('> '+'\n> '.join(sf_cols), True)
+        for dataset in datasets:
+            # Check that the input files exist
+            if not os.path.exists(dataset.model.filename):
+                raise Sorry('Model file does not exist for dataset {}: {}'.format(dataset.tag, dataset.model.filename))
+            if not os.path.exists(dataset.data.filename):
+                raise Sorry('Data file does not exist for dataset {}: {}'.format(dataset.tag, dataset.data.filename))
+            # Check that the data contains the appropriate column
+            for c in sf_cols:
+                if not dataset.data.mtz_object().has_column(c):
+                    raise Sorry('Structure factor column "{}" was not found in the reflection data for dataset {}. You may need to change the pandda.params.maps.structure_factors option.'.format(c, dataset.tag))
+
+    def sync_datasets(self, datasets=None, overwrite_dataset_meta=False):
+        """Sync the loaded datasets and the pandda dataset tables"""
+
+        if not datasets: datasets = self.datasets.all()
+
+        for dataset in datasets:
+            # Copy data from pandda dataset tables to dataset
+            if (dataset.meta.dataset_info is None) or overwrite_dataset_meta:
+                dataset.meta.dataset_info = self.tables.dataset_info.loc[dataset.tag]
+            # Copy data from dataset to pandda dataset tables
+            else:
+                for col,val in dataset.meta.dataset_info.iteritems():
+                    self.tables.dataset_info.set_value(index=dataset.tag, col=col, value=val)
+
+            # Copy data from pandda dataset tables to dataset
+            if (dataset.meta.dataset_map_info is None) or overwrite_dataset_meta:
+                dataset.meta.dataset_map_info = self.tables.dataset_map_info.loc[dataset.tag]
+            # Copy data from dataset to pandda dataset tables
+            else:
+                for col,val in dataset.meta.dataset_map_info.iteritems():
+                    self.tables.dataset_map_info.set_value(index=dataset.tag, col=col, value=val)
+
+    #########################################################################################################
+    #                                                                                                       #
+    #                                  Dataset variation analysis functions                                 #
     #                                                                                                       #
     #########################################################################################################
 
@@ -1474,182 +1867,75 @@ class PanddaMultiDatasetAnalyser(Program):
 
     #########################################################################################################
     #                                                                                                       #
-    #                                             Dataset filtering                                         #
+    #                                       Dataset selection functions                                     #
     #                                                                                                       #
     #########################################################################################################
 
-    def filter_datasets_1(self, filter_dataset=None):
-        """Filter out the datasets which contain different protein models (i.e. protein length, sequence, etc)"""
+    def select_resolution_limits(self):
+        """Generate a set of resolution limits for the data analysis"""
 
-        self.log('', True)
-        self.log('----------------------------------->>>', True)
-        self.log('Filtering Datasets (before alignment). Potential Classes:', True)
-        for failure_class in PanddaMaskNames.reject_mask_names:
-            self.log('\t{!s}'.format(failure_class), True)
-        self.log('----------------------------------->>>', True)
+        # ================================================>
+        # Use resolution of already-loaded maps
+        # ================================================>
+        if (self.args.method.recalculate_statistical_maps == "No"):
+            res_limits = self.stat_maps.get_resolutions()
+            assert len(self.stat_maps.get_resolutions()) > 0
+            self.log('----------------------------------->>>', True)
+            self.log('Using previously loaded statistical maps')
+            self.log('Resolutions of reloaded maps: {!s}'.format(', '.join(map(str,res_limits))), True)
+            return res_limits
 
-        # If no filtering dataset given, filter against the reference dataset
-        if not filter_dataset: filter_dataset = self.datasets.reference()
-
-        # Check that the same protein structure is present in each dataset - THIS MASK SHOULD INCLUDE ALL DATASETS AT FIRST
-        for dataset in self.datasets.mask(mask_name='rejected - total', invert=True):
-
-            print('\rFiltering Dataset {!s}          '.format(dataset.tag), end=''); sys.stdout.flush()
-            if self.params.filtering.flags.same_space_group_only and (dataset.model.space_group.info().symbol_and_number() != filter_dataset.model.space_group.info().symbol_and_number()):
-                self.log('\rRejecting Dataset: {!s}          '.format(dataset.tag))
-                self.log('Different Space Group')
-                self.log('Reference: {!s}, {!s}: {!s}'.format(filter_dataset.model.space_group.info().symbol_and_number(),
-                                                        dataset.tag, dataset.model.space_group.info().symbol_and_number()))
-                self.log('---------->>>', True)
-                self.tables.dataset_info.set_value(dataset.tag, 'rejection_reason', 'Different Space Group to Reference')
-                self.datasets.all_masks().set_value(name='rejected - different space group', id=dataset.tag, value=True)
-            elif dataset.model.input.get_r_rfree_sigma().r_free > self.params.filtering.max_rfree:
-                self.log('\rRejecting Dataset: {!s}          '.format(dataset.tag))
-                self.log('RFree is higher than cutoff: {!s}'.format(self.params.filtering.max_rfree))
-                self.log('High RFree: {!s}'.format(dataset.model.input.get_r_rfree_sigma().r_free))
-                self.log('---------->>>', True)
-                self.tables.dataset_info.set_value(dataset.tag, 'rejection_reason', 'R-free is too high')
-                self.datasets.all_masks().set_value(name='rejected - rfree', id=dataset.tag, value=True)
-            elif self.params.filtering.flags.similar_models_only and (not dataset.model.hierarchy.is_similar_hierarchy(filter_dataset.model.hierarchy)):
-                self.log('\rRejecting Dataset: {!s}          '.format(dataset.tag))
-                self.log('Non-Identical Structure (Structures do not contain the same atoms)')
-                self.log('---------->>>', True)
-                self.tables.dataset_info.set_value(dataset.tag, 'rejection_reason', 'Atoms present in the dataset are different to atoms present in the reference structure')
-                self.datasets.all_masks().set_value(name='rejected - non-identical structures', id=dataset.tag, value=True)
-            else:
-                pass
-
-        # Update the combined masks
-        combined_reject_mask = self.datasets.all_masks().combine_masks(names=PanddaMaskNames.reject_mask_names)
-        self.datasets.all_masks().add_mask(name='rejected - total', values=combined_reject_mask, overwrite=True)
-
-        self.log('\rDatasets Filtered.                          ', True)
+        # ================================================>
+        # Select resolution range based on input parameters
+        # ================================================>
         self.log('----------------------------------->>>')
-        self.log('Rejected Datasets (Total):     {!s}'.format(sum(self.datasets.all_masks().get_mask(name='rejected - total'))), True)
-        self.log('----------------------------------->>>')
+        self.log('Selecting resolution range for analysis')
 
-        reject_reasons = self.tables.dataset_info['rejection_reason'].value_counts().sort_index()
-        if reject_reasons.any():
-            self.log('Reasons for Rejection:')
-            for reason, count in reject_reasons.iteritems():
-                self.log('{} Dataset(s) - {}'.format(count, reason))
+        # Update the resolution limits using the resolution limits from the datasets supplied
+        if self.params.analysis.dynamic_res_limits:
+            self.log('Updating resolution limits based on the resolution of the loaded datasets')
+            small_limit = max(self.params.analysis.high_res_upper_limit,
+                              self.datasets.reference().data.summary.high_res,
+                              min(self.tables.dataset_info['high_resolution']))
+            large_limit = min(self.params.analysis.high_res_lower_limit,
+                              max(self.tables.dataset_info['high_resolution']))
+            # Round the limits up and down to create sensible limits
+            small_limit = round(small_limit - 0.005, 2)    # i.e. 1.344 -> 1.34
+            large_limit = round(large_limit + 0.005, 2)    # i.e. 3.423 -> 3.43
+            self.log('Previous limits: ({}-{})'.format(self.params.analysis.high_res_upper_limit,self.params.analysis.high_res_lower_limit))
+            self.log('Updated limits:  ({}-{})'.format(small_limit, large_limit))
+        else:
+            self.log('Using the resolution limits defined in the input parameters')
+            small_limit = self.params.analysis.high_res_upper_limit
+            large_limit = self.params.analysis.high_res_lower_limit
+            self.log('Resolution Limits: ({}-{})'.format(small_limit, large_limit))
 
-#        # Link all rejected datasets into the rejected directory
-#        for dataset in self.datasets.mask(mask_name='rejected - total'):
-#            reject_dir = os.path.join(self.file_manager.get_dir('rejected_datasets'), dataset.tag)
-#            if not os.path.exists(reject_dir):
-#                rel_symlink(orig=dataset.file_manager.get_dir('root'), link=reject_dir)
+        # ============================================================================>
+        # Determine the range of resolutions already covered
+        # ============================================================================>
+        if (self.args.method.recalculate_statistical_maps == "Extend"):
+            # Extract the resolution limits from previous runs
+            curr_res_limits = self.stat_maps.get_resolutions()
+            curr_small_limit = min(curr_res_limits)
+            curr_large_limit = max(curr_res_limits)
+        else:
+            curr_res_limits = []
+            curr_small_limit = small_limit
+            curr_large_limit = small_limit
+        # ============================================================================>
+        # Combine to create new set of resolution limits
+        # ============================================================================>
+        if not self.params.analysis.high_res_increment:
+            # No variable cutoff - select all
+            res_limits = curr_res_limits + [large_limit]  # i.e. [2]
+        else:
+            small_res_limits = [round(x, 4) for x in numpy.arange(small_limit, curr_small_limit, self.params.analysis.high_res_increment).tolist()]
+            large_res_limits = [round(x, 4) for x in numpy.arange(curr_large_limit, large_limit, self.params.analysis.high_res_increment).tolist()]
+            res_limits = small_res_limits + curr_res_limits + large_res_limits + [large_limit]
 
-    def filter_datasets_2(self):
-        """Filter out the non-isomorphous datasets"""
+        return sorted(set(res_limits))
 
-        self.log('', True)
-        self.log('----------------------------------->>>', True)
-        self.log('Filtering Datasets (after alignment). Potential Classes:', True)
-        for failure_class in PanddaMaskNames.reject_mask_names:
-            self.log('\t{!s}'.format(failure_class), True)
-        self.log('----------------------------------->>>', True)
-
-        # Check that each dataset is similar enough to be compared
-        for dataset in self.datasets.mask(mask_name='rejected - total', invert=True):
-
-            print('\rFiltering Dataset {!s}          '.format(dataset.tag), end=''); sys.stdout.flush()
-            # Check the deviation from the average sites
-            if dataset.model.alignment.alignment_rmsd() > self.params.filtering.max_rmsd_to_reference:
-                self.log('\rRejecting Dataset: {!s}          '.format(dataset.tag))
-                self.log('Alignment RMSD is too large')
-                self.log('Aligned (Calpha) RMSD: {!s}'.format(dataset.model.alignment.alignment_rmsd()))
-                self.log('---------->>>', True)
-                self.tables.dataset_info.set_value(dataset.tag, 'rejection_reason', 'High RMSD to aligned reference structure')
-                self.datasets.all_masks().set_value(name='rejected - rmsd to reference', id=dataset.tag, value=True)
-            else:
-                pass
-
-        # Combine all of the masks
-        combined_reject_mask = self.datasets.all_masks().combine_masks(names=PanddaMaskNames.reject_mask_names)
-        self.datasets.all_masks().add_mask(name='rejected - total', values=combined_reject_mask, overwrite=True)
-
-        self.log('\rDatasets Filtered.               ', True)
-        self.log('----------------------------------->>>')
-        self.log('Rejected Datasets (Total):     {!s}'.format(sum(self.datasets.all_masks().get_mask(name='rejected - total'))), True)
-
-        reject_reasons = self.tables.dataset_info['rejection_reason'].value_counts().sort_index()
-        if reject_reasons.any():
-            self.log('Reasons for Rejection:')
-            for reason, count in reject_reasons.iteritems():
-                self.log('{} Dataset(s) - {}'.format(count, reason))
-
-#        # Link all rejected datasets into the rejected directory
-#        for dataset in self.datasets.mask(mask_name='rejected - total'):
-#            reject_dir = os.path.join(self.file_manager.get_dir('rejected_datasets'), dataset.tag)
-#            if not os.path.exists(reject_dir):
-#                rel_symlink(orig=dataset.file_manager.get_dir('root'), link=reject_dir)
-
-    #########################################################################################################
-    #                                                                                                       #
-    #                              Dataset utility functions (e.g. reset/sync)                              #
-    #                                                                                                       #
-    #########################################################################################################
-
-    def reset_loaded_datasets(self):
-        """Check that pickled datasets are ready for reprocessing, etc, if required"""
-
-        if self.args.method.reprocess_existing_datasets:   datasets_for_reprocessing = self.datasets.all()
-        elif self.args.method.reprocess_selected_datasets: datasets_for_reprocessing = [self.datasets.get(tag=t) for t in self.args.method.reprocess_selected_datasets.split(',')]
-        else:                                              datasets_for_reprocessing = []
-
-        for dataset in datasets_for_reprocessing:
-            # Reset the meta objects
-            dataset.meta.analysed = False
-            dataset.meta.dataset_map_info = None
-            # Delete events from before
-            dataset.events = []
-            # Reset the map information for the dataset
-            self.tables.dataset_map_info.loc[dataset.tag] = numpy.nan
-
-    def check_loaded_datasets(self, datasets):
-        """Check that the datasets are analysable (have the right mtz columns, etc)"""
-
-        self.log('----------------------------------->>>', True)
-        self.log('Performing checks on the loaded datasets', True)
-
-        self.log('Checking for structure factors:', True)
-        sf_cols = self.params.maps.structure_factors.split(',')
-        self.log('> '+'\n> '.join(sf_cols), True)
-        for dataset in datasets:
-            for c in sf_cols:
-                if not dataset.data.mtz_object().has_column(c):
-                    raise Sorry('Structure factor column "{}" was not found in the reflection data for dataset {}. You may need to change the pandda.params.maps.structure_factors option.'.format(c, dataset.tag))
-
-    def sync_datasets(self, datasets=None, overwrite_dataset_meta=False):
-        """Sync the loaded datasets and the pandda dataset tables"""
-
-        if not datasets: datasets = self.datasets.all()
-
-        for dataset in datasets:
-            # Copy data from pandda dataset tables to dataset
-            if (dataset.meta.dataset_info is None) or overwrite_dataset_meta:
-                dataset.meta.dataset_info = self.tables.dataset_info.loc[dataset.tag]
-            # Copy data from dataset to pandda dataset tables
-            else:
-                for col,val in dataset.meta.dataset_info.iteritems():
-                    self.tables.dataset_info.set_value(index=dataset.tag, col=col, value=val)
-
-            # Copy data from pandda dataset tables to dataset
-            if (dataset.meta.dataset_map_info is None) or overwrite_dataset_meta:
-                dataset.meta.dataset_map_info = self.tables.dataset_map_info.loc[dataset.tag]
-            # Copy data from dataset to pandda dataset tables
-            else:
-                for col,val in dataset.meta.dataset_map_info.iteritems():
-                    self.tables.dataset_map_info.set_value(index=dataset.tag, col=col, value=val)
-
-    #########################################################################################################
-    #                                                                                                       #
-    #                                Analysis functions (Dataset selection)                                 #
-    #                                                                                                       #
-    #########################################################################################################
-
-    def select_for_building_distributions(self, high_res_cutoff):
+    def select_datasets_for_density_characterisation(self, high_res_cutoff):
         """Select all datasets with resolution better than high_res_cutoff"""
 
         building_mask_name = 'characterisation @ {!s}A'.format(high_res_cutoff)
@@ -1676,7 +1962,7 @@ class PanddaMultiDatasetAnalyser(Program):
                     break
         return building_mask_name, self.datasets.all_masks().get_mask(name=building_mask_name)
 
-    def select_for_analysis(self, high_res_large_cutoff, high_res_small_cutoff):
+    def select_datasets_for_analysis(self, high_res_large_cutoff, high_res_small_cutoff):
         """Select all datasets with resolution between high and low limits"""
 
         assert high_res_large_cutoff > high_res_small_cutoff, '{!s} must be larger than {!s}'.format(high_res_large_cutoff, high_res_small_cutoff)
@@ -1707,130 +1993,11 @@ class PanddaMultiDatasetAnalyser(Program):
                 self.datasets.all_masks().set_value(name=analysis_mask_name, id=dataset.tag, value=True)
         return analysis_mask_name, self.datasets.all_masks().get_mask(name=analysis_mask_name)
 
-    def truncate_scaled_data(self, datasets, res_truncate):
-        """Truncate data at the same indices across all the datasets"""
-
-        self.log('----------------------------------->>>', True)
-        self.log('Truncating Reflection Data', True)
-
-        # Column names
-        all_cols = self.args.params.maps.structure_factors
-        ref_cols = self.args.input.reference.structure_factors if self.args.input.reference.structure_factors else all_cols
-
-        # Calculate which reflections are present in the reference dataset
-        ref_size = self.datasets.reference().data.structure_factors[ref_cols].set().size()
-        self.log('Number of Reflections in Reference Dataset: {!s}'.format(ref_size))
-
-        # TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
-        #
-        # NEED TO REMOVE TRUNCATION STEP IF SPACEGROUPS ARE NOT IDENTICAL (OR UNIT CELLS ISOMORPHOUS)
-        # 1) ONLY TRUNCATE IF IDENTICAL SPACEGROUP
-        # 2) IF NOT IDENTICAL SPACEGROUP ASSERT THAT EACH DATASET HAS A FULL (COMPLETE) SET OF MILLER OF INDICES
-        #
-        # TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
-
-        # Truncate reflections to the common set (not including the reference dataset)
-        common_set = datasets[0].data.structure_factors[all_cols].set()
-        for dataset in datasets[1:]:
-            common_set = common_set.common_set(dataset.data.structure_factors[all_cols], assert_is_similar_symmetry=False)
-
-        self.log('----------------------------------->>>', True)
-        self.log('Number of Common Reflections between Datasets: {!s} ({!s}% of reference)'.format(common_set.size(), int(100.0*common_set.size()/ref_size)))
-        self.log('After Truncation - Reflections per dataset: {!s}'.format(common_set.size()))
-
-        # Create maps for all of the datasets (including the reference dataset)
-        self.datasets.reference().data.structure_factors['truncated'] = self.datasets.reference().data.structure_factors[ref_cols].common_set(common_set, assert_is_similar_symmetry=False)
-        for dataset in datasets:
-            dataset.data.structure_factors['truncated'] = dataset.data.structure_factors[all_cols].common_set(common_set, assert_is_similar_symmetry=False)
-
-        # Get resolution range of the truncated data and plot histogram
-        reslns = [d.data.structure_factors['truncated'].d_min() for d in datasets]
-        min_res, max_res = min(reslns), max(reslns)
-        self.log('After Truncation - Resolution Range: {!s}-{!s}'.format(min_res, max_res))
-        if self.settings.plot_graphs:
-            f_name = os.path.join(self.file_manager.get_dir('m_graphs'), '{!s}A-truncated_dataset_resolutions.png'.format(res_truncate))
-            self.log('Writing histogram to {}'.format(f_name))
-            simple_histogram(filename=f_name, data=reslns, title='Truncated dataset resolutions', x_lab='Resolution (A)', n_bins=15)
-
-    def load_reference_map(self, map_resolution=0):
-        """Load the reference map, and calculate some map statistics"""
-
-        # Get the reference dataset
-        ref_dataset = self.datasets.reference()
-
-        # Take the scaled diffraction data for the dataset and create fft
-        fft_map = ref_dataset.data.get_fft_map(structure_factors='truncated',
-                    resolution_factor=self.params.maps.resolution_factor, d_min=map_resolution)
-
-        # Scale the map
-        if   self.params.maps.scaling == 'none':   pass
-        elif self.params.maps.scaling == 'sigma':  fft_map.apply_sigma_scaling()
-        elif self.params.maps.scaling == 'volume': fft_map.apply_volume_scaling()
-
-        # Extract the points for the map (in the grid frame)
-        masked_cart = self.grid.grid2cart(self.grid.global_mask().outer_mask(), origin=True)
-        # Transform to the frame of the reference dataset (this should become unnecessary in the future)
-        masked_cart = self.datasets.reference().grid2nat(masked_cart)
-        # Create map handler in the native frame and extract the map values
-        ref_map_true = ref_dataset.data.get_electron_density_map(fft_map_name='truncated').as_map()
-        masked_vals = ref_map_true.get_cart_values(masked_cart)
-
-        # Create a new electron density map object for the "grid map"
-        ref_map = ElectronDensityMap(map_data=masked_vals, unit_cell=self.grid.unit_cell(),
-                        map_indices=self.grid.global_mask().outer_mask_indices(),
-                        map_size=self.grid.grid_size(), sparse=True)
-
-        # Add some meta for debugging, etc
-        ref_map.meta.type = 'reference-map'
-        ref_map.meta.resolution = map_resolution
-        ref_map.meta.map_mean = ref_map.data.min_max_mean().mean
-        ref_map.meta.map_rms = ref_map.data.standard_deviation_of_the_sample()
-
-        return ref_map
-
-    def load_and_morph_maps(self, datasets, ref_map, map_resolution=0):
-        """Create map from miller arrays. Transform map into the reference frame by sampling at the given points."""
-
-        assert ref_map.is_sparse(), 'Reference map is not in sparse form'
-
-        self.log('----------------------------------->>>', True)
-        self.log('Loading electron density maps @ {!s}A'.format(map_resolution), True)
-
-        # Create holder for the output map objects
-        map_list = MapHolderList()
-
-        self.log('----------------------------------->>>', True)
-        self.log('Converting structure factors to electron density maps')
-        start = time.time()
-        for dataset in datasets:
-            dataset.data.get_fft_map(structure_factors='truncated', resolution_factor=self.params.maps.resolution_factor, d_min=map_resolution)
-        finish = time.time()
-        self.log('> FFT-ing structure factors ({!s} Datasets) > Time Taken: {!s} seconds'.format(len(datasets), int(finish-start)), True)
-
-        self.log('----------------------------------->>>', True)
-        print('Loading maps (using {!s} cores)'.format(self.settings.cpus))
-        start = time.time()
-        arg_list = [MapLoader(dataset=d, grid=self.grid, reference_map=ref_map, args=self.args, verbose=self.settings.verbose) for d in datasets]
-        # Print a sort of progress bar
-        print('1'+''.join(['{:<5}'.format(i) for i in range(0,len(arg_list)+5,5)])[2:])
-        print(' '*len(arg_list)+'|\r', end=''); sys.stdout.flush()
-        dataset_maps = easy_mp.pool_map(func=wrapper_run, args=arg_list, processes=self.settings.cpus, chunksize=1)
-        print('|')
-        map_list.add(dataset_maps)
-
-        # Assign parents and clear maps to save memory
-        for map in map_list.all():
-            map.parent = self.datasets.get(tag=map.meta.tag)
-            map.parent.data.fft_map['truncated'] = None
-
-        finish = time.time()
-        self.log('> Loading maps ({!s} Datasets) > Time Taken: {!s} seconds'.format(map_list.size(), int(finish-start)), True)
-        self.log('----------------------------------->>>')
-
-        # Set the mask lengths and entry ids
-        map_list.all_masks().set_index_ids(ids=map_list.all_tags())
-
-        return map_list
+    #########################################################################################################
+    #                                                                                                       #
+    #                                               Event functions                                         #
+    #                                                                                                       #
+    #########################################################################################################
 
     def collate_event_counts(self):
         """Collate events from all of the datasets"""
@@ -1928,6 +2095,12 @@ class PanddaMultiDatasetAnalyser(Program):
 #            if not os.path.exists(view_image):
 #                print('FAILED TO MAKE IMAGES')
 #                print(c.err)
+
+    #########################################################################################################
+    #                                                                                                       #
+    #                                         Summary/output functions                                      #
+    #                                                                                                       #
+    #########################################################################################################
 
     def write_map_analyser_maps(self, map_analyser):
         """Write statistical maps for a map_analyser object"""
@@ -2149,10 +2322,9 @@ class PanddaMapAnalyser(object):
     def calculate_mean_map(self, mask_name=None):
         """Calculate the mean map from all of the different observations"""
 
+        self.log('', True)
         self.log('----------------------------------->>>', True)
         self.log('Calculating Mean Map', True)
-
-        self.log('Mean Map Size: {}'.format(self.meta.map_data_size))
 
         # Chunk the points into groups - Compromise between cpu time and memory usage - ~200 dataset -> chunksize of 5000
         chunk_size = 500*iceil(1000.0/self.dataset_maps.size(mask_name=mask_name))
@@ -2214,20 +2386,21 @@ class PanddaMapAnalyser(object):
                 arg_list.append(None)
                 continue
 
-            if m.parent:
-                file_manager = m.parent.file_manager
+            # Get the file manager for the dataset to allow outputting of files
+            if self.parent:
+                file_manager = self.parent.datasets.get(tag=m.meta.tag).file_manager
             else:
-                file_manager = None
+                fine_manager = None
 
             u = UncertaintyCalculator(query_values=m.data.select(masked_idxs), ref_values=mean_vals, file_manager=file_manager)
             arg_list.append(u)
 
-        self.log('Calculating uncertainties of {!s} maps (using {!s} cores)'.format(len(arg_list), cpus))
-        self.log('----------------------------------->>>')
-
         t1 = time.time()
-        print('1'+''.join(['{:<5}'.format(i) for i in range(0,len(arg_list)+5,5)])[2:])
-        print(' '*len(arg_list)+'|\r', end=''); sys.stdout.flush()
+        num_to_process = len(arg_list)-arg_list.count(None)
+        self.log('Calculating uncertainties of {!s} maps (using {!s} cores)'.format(num_to_process, cpus))
+        self.log('----------------------------------->>>')
+        print('1'+''.join(['{:<5}'.format(i) for i in range(0,num_to_process+5,5)])[2:])
+        print(' '*num_to_process+'|\r', end=''); sys.stdout.flush()
         map_uncertainties = easy_mp.pool_map(func=wrapper_run, args=arg_list, processes=cpus, chunksize=1)
         print('|')
         t2 = time.time()
@@ -2242,8 +2415,6 @@ class PanddaMapAnalyser(object):
                 assert map_unc is not None
                 m.meta.map_uncertainty = map_unc
                 self.log('Dataset {}: Uncertainty {:.4f}'.format(m.meta.tag, m.meta.map_uncertainty))
-
-        self.log('----------------------------------->>>')
 
         return [m.meta.map_uncertainty for m in self.dataset_maps.mask(mask_name=mask_name)]
 

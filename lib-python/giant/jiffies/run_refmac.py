@@ -3,7 +3,7 @@ import os, sys, copy, re, shutil
 import libtbx.phil
 import libtbx.easy_mp
 from bamboo.common.command import CommandManager
-from giant.xray.data import CrystalSummary
+from giant.xray.crystal import CrystalSummary
 
 #######################################
 

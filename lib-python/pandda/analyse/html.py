@@ -43,6 +43,54 @@ def write_initial_html(pandda):
     with open(out_file, 'w') as out_html:
         out_html.write(template.render(output_data))
 
+def write_map_analyser_html(pandda, resolution):
+
+    # Get template to be filled in
+    template = PANDDA_HTML_ENV.get_template('pandda_summary.html')
+    # Output file
+    out_file = pandda.file_manager.get_file(file_tag='map_html').format(resolution)
+    # Output directory (for relative symlinks)
+    out_dir  = os.path.abspath(os.path.dirname(out_file))
+
+    # ===========================================================>
+    # Construct the data object to populate the template
+    output_data = {}
+    output_data['header'] = 'PANDDA Statistical Map Summary'
+    output_data['title'] = 'PANDDA Statistical Map Summary'
+    output_data['introduction'] = 'Summary of Statistical Maps @ {}A'.format(resolution)
+    # ===========================================================>
+    # Summary bar
+#    output_data['summary_bar'] = []
+#    output_data['summary_bar'].append({'colour':'info',    'text':'Datasets Loaded:   {}'.format(pandda.datasets.size())                                            })
+#    output_data['summary_bar'].append({'colour':'success', 'text':'Datasets Accepted: {}'.format(pandda.datasets.size(mask_name='rejected - total', invert=True))   })
+#    output_data['summary_bar'].append({'colour':'danger',  'text':'Datasets Rejected: {}'.format(pandda.datasets.size(mask_name='rejected - total'))                })
+    # ===========================================================>
+    # Header Images
+    output_data['top_images'] = []
+    for file_tag, plot_title in [('dataset_res_hist',           'Truncated dataset resolutions'         ),
+                                 ('dataset_wilson_plot',        'Truncated data Wilson plots'           ),
+                                 ('ref_map_dist',               'Reference map distribution'            ),
+                                 ('map_mean_median_hist',       'Mean & Median map distributions'       ),
+                                 ('ref_v_mean_map_unsort',      'Reference v Mean map (unsorted)'       ),
+                                 ('ref_v_mean_map_sort',        'Reference v Mean map (sorted)'         ),
+                                 ('map_mean_median_scat',       'Mean v median map scatter'             ),
+                                 ('map_mean_median_diff',       'Mean v median map histogram'           ),
+                                 ('map_stds_sadj_hist',         'Standard and adjusted variation'       ),
+                                 ('map_stds_sadj_scat',         'Standard and adjusted variation'       ),
+                                 ('dataset_unc_hist',           'Dataset Uncertainty Distribution'      ),
+                                 ('dataset_res_unc_scat',       'Resolution v Uncertainty'              ),
+                                 ('dataset_res_rfree_scat',     'Resolution v R-Free'                   ),
+                                 ('dataset_unc_rfree_scat',     'Uncertainty v R-Free'                  ),
+                                 ('zmap_mean_sadj_hist',        'Z-map mean and standard deviations'    ),
+                                 ('zmap_skew_kurt_scat',        'Z-map skew and kurtosis'               )]:
+        f_name = pandda.file_manager.get_file(file_tag=file_tag).format(resolution)
+        output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=f_name)),
+                                           'title': plot_title })
+    # ===========================================================>
+    # Write Output
+    with open(out_file, 'w') as out_html:
+        out_html.write(template.render(output_data))
+
 def write_analyse_html(pandda):
 
     # Get template to be filled in

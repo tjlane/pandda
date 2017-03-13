@@ -149,11 +149,11 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
                                         space_group = native_space_group,
                                         map_data    = combined_uc_map_data,
                                         labels      = flex.std_string(['Map from pandda'])     )
-        iotbx.ccp4_map.write_ccp4_map(  file_name   = filename.replace('.ccp4','.supercell.ccp4'),
-                                        unit_cell   = supercell,
-                                        space_group = cctbx.sgtbx.space_group('P1'),
-                                        map_data    = sc_map_data,
-                                        labels      = flex.std_string(['Map from pandda'])     )
+#        iotbx.ccp4_map.write_ccp4_map(  file_name   = filename.replace('.ccp4','.supercell.ccp4'),
+#                                        unit_cell   = supercell,
+#                                        space_group = cctbx.sgtbx.space_group('P1'),
+#                                        map_data    = sc_map_data,
+#                                        labels      = flex.std_string(['Map from pandda'])     )
 
     return uc_map_data
 

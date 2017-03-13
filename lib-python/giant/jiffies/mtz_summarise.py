@@ -5,8 +5,8 @@ import libtbx.phil
 import numpy
 import pandas
 
-from giant.xray.data import CrystalSummary
-from giant.xray.data.cluster import CrystalGroup
+from giant.xray.crystal import CrystalSummary
+from giant.xray.crystal.cluster import CrystalGroup
 
 from scitbx.array_family import flex
 from scitbx.python_utils import robust_statistics

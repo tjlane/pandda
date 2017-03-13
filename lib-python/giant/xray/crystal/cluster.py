@@ -6,8 +6,8 @@ import iotbx.mtz
 import scipy.cluster.hierarchy
 
 from giant.stats.cluster import generate_group_idxs
-from giant.xray.data import CrystalSummary, UnitCellVariation
-from giant.xray.unit_cell import lcv_from_unit_cells, pairwise_lcv, pairwise_ecv
+from giant.xray.crystal import CrystalSummary
+from giant.xray.unit_cell import UnitCellVariation, lcv_from_unit_cells, pairwise_lcv, pairwise_ecv
 
 class CrystalGroup(object):
     def __init__(self, crystals):

@@ -1,8 +1,8 @@
-import os, sys
+import os, sys, glob
 import threading
 
 from PyQt4.QtGui import QApplication
-from pandda.summary import panddaWindow, panddaHtmlWidget
+from pandda.summary import PanddaWindow, PanddaHtmlWidget, PanddaTabBar
 
 #######################################
 
@@ -10,23 +10,34 @@ blank_arg_prepend = None
 
 master_phil = None
 
-HTML_1 = './analyses/html_summaries/pandda_initial.html'
-HTML_2 = './analyses/html_summaries/pandda_analyse.html'
-HTML_3 = './analyses/html_summaries/pandda_inspect.html'
+INIT_HTML = './analyses/html_summaries/pandda_initial.html'
+MAP_HTMLS = sorted(glob.glob('./analyses/html_summaries/pandda_map_*.html'))
+ANAL_HTML = './analyses/html_summaries/pandda_analyse.html'
+INSP_HTML = './analyses/html_summaries/pandda_inspect.html'
 
 #######################################
 
 def show_summary():
     app = QApplication(sys.argv)
-    window = panddaWindow()
-    window.add_tab(panddaHtmlWidget(name='Dataset Summary', content=HTML_1))
-    window.add_tab(panddaHtmlWidget(name='Results Summary', content=HTML_2))
-    window.add_tab(panddaHtmlWidget(name='Inspect Summary', content=HTML_3))
+    window = PanddaWindow()
+    # ----------------------------------
+    window.add_tab(PanddaHtmlWidget(name='Dataset Summary', content=INIT_HTML))
+    # ----------------------------------
+    multi_tab = PanddaTabBar(name='Map Analysis Summaries')
+    for f in MAP_HTMLS:
+        name = f[f.find('pandda_map_'):].replace('pandda_map_','').replace('.html','')
+        multi_tab.add_tab(PanddaHtmlWidget(name=name, content=f))
+    window.add_tab(multi_tab)
+    # ----------------------------------
+    window.add_tab(PanddaHtmlWidget(name='Results Summary', content=ANAL_HTML))
+    # ----------------------------------
+    window.add_tab(PanddaHtmlWidget(name='Inspect Summary', content=INSP_HTML))
+    # ----------------------------------
     # Choose which window is initally open
-    if os.path.exists(HTML_3):
+    if os.path.exists(INSP_HTML):
+        window.setCurrentIndex(3)
+    elif os.path.exists(ANAL_HTML):
         window.setCurrentIndex(2)
-    elif os.path.exists(HTML_2):
-        window.setCurrentIndex(1)
     window.show()
     app.exec_()
 

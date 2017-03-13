@@ -6,18 +6,25 @@ import pandas
 from bamboo.plot import bar
 
 from pandda import LOGO_PATH
-from pandda import inspect_html
+from pandda.inspect import html as inspect_html
 from pandda.jiffies import pandda_summary
-from pandda.constants import PanddaInspectorFilenames, PanddaDatasetFilenames
+from pandda.constants import PanddaAnalyserFilenames, PanddaInspectorFilenames, PanddaDatasetFilenames, PanddaHtmlFilenames
 
-IMG_DIR = os.path.dirname(LOGO_PATH)
+import pandda.resources.inspect
+IMG_DIR = os.path.realpath(pandda.resources.inspect.__path__[0])
+
+def catchup(block=False):
+    while gtk.events_pending():
+        gtk.main_iteration(block)
 
 def nonmodal_msg(msg):
     """Display an error window - non-modal"""
     d = gtk.MessageDialog(  type    = gtk.MESSAGE_INFO,
                             message_format = msg )
+    d.set_position(gtk.WIN_POS_CENTER)
+    d.set_keep_above(True)
     d.show_all()
-    while gtk.events_pending(): gtk.main_iteration(False)
+    catchup()
     return d
 
 def modal_msg(msg):
@@ -25,12 +32,10 @@ def modal_msg(msg):
     d = gtk.MessageDialog(  type    = gtk.MESSAGE_INFO,
                             buttons = gtk.BUTTONS_CLOSE,
                             message_format = msg )
+    d.set_position(gtk.WIN_POS_CENTER)
+    d.set_keep_above(True)
     d.run()
     d.destroy()
-
-def catchup():
-    while gtk.events_pending():
-        gtk.main_iteration(False)
 
 #=========================================================================
 
@@ -86,6 +91,7 @@ class Notices:
         # ---------------------------
         box = gtk.HBox(spacing=5)
         label = gtk.Label('However, things are further complicated when looking at event maps. Since these are partial-difference maps, the EFFECTIVE sigma-value is calculated by dividing the contour level by the (1-BDC) value.')
+        label.set_justify(gtk.JUSTIFY_CENTER)
         label.props.width_chars = 100
         label.set_line_wrap(True)
         box.pack_start(label)
@@ -94,7 +100,7 @@ class Notices:
         main_vbox.pack_start(gtk.HSeparator())
         # ---------------------------
         box = gtk.HBox(spacing=5)
-        label = gtk.Label('For event maps where (1-BDC) = 0.1:')
+        label = gtk.Label('For event maps where (1-BDC) is 0.2:')
         box.pack_start(label)
         # ---------------------------
         main_vbox.pack_start(box)
@@ -102,7 +108,8 @@ class Notices:
         image = gtk.Image()
         image.set_from_file(os.path.join(IMG_DIR, '1-sigma-anno.png'))
         image.show()
-        label = gtk.Label('The event map is contoured at an effective value of 10 Sigma')
+        label = gtk.Label('The event map is contoured at an effective value of\n5 Sigma')
+        label.set_justify(gtk.JUSTIFY_CENTER)
         label.props.width_chars = 30
         label.set_line_wrap(True)
         vbox_1 = gtk.VBox(spacing=5)
@@ -111,7 +118,8 @@ class Notices:
         image = gtk.Image()
         image.set_from_file(os.path.join(IMG_DIR, '0.2-sigma-anno.png'))
         image.show()
-        label = gtk.Label('The event map is contoured at an effecive value of 2 Sigma')
+        label = gtk.Label('The event map is contoured at an effecive value of\n1 Sigma')
+        label.set_justify(gtk.JUSTIFY_CENTER)
         label.props.width_chars = 30
         label.set_line_wrap(True)
         vbox_2 = gtk.VBox(spacing=5)
@@ -123,63 +131,98 @@ class Notices:
         # ---------------------------
         main_vbox.pack_start(box)
         # ---------------------------
+        button = gtk.Button(label='Close window')
+        button.child.set_padding(5,5)
+        button.child.set_justify(gtk.JUSTIFY_CENTER)
+        button.child.set_line_wrap(True)
+        button.connect("clicked", lambda x: self.window.destroy())
+        box = gtk.HBox(spacing=5, homogeneous=False)
+        box.pack_start(gtk.Label(''), expand=True)
+        box.pack_start(button, expand=False)
+        box.pack_start(gtk.Label(''), expand=True)
+        # ---------------------------
+        main_vbox.pack_end(box)
+        # ---------------------------
         self.window.add(main_vbox)
         self.window.show_all()
         self.window.set_keep_above(True)
-        catchup()
 
-class splashScreen:
+
+class SplashScreen:
     def __init__(self):
-        # Create main window
-        self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
-        self.window.set_position(gtk.WIN_POS_CENTER)
-        self.window.set_border_width(10)
-        self.window.set_default_size(300,300)
-        self.window.set_title("Welcome to PanDDA Inspect")
         # ---------------------------
-        main_hbox = gtk.HBox(spacing=5)
+        # Create main window
+        # ---------------------------
+        self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
+        self.window.set_position(gtk.WIN_POS_CENTER_ALWAYS)
+        self.window.set_border_width(0)
+        self.window.set_decorated(False)
+        self.window.set_default_size(300,300)
+        # ---------------------------
+        self.main_hbox = gtk.HBox(spacing=0)
+        frame1 = gtk.EventBox()
+        frame1.set_border_width(5)
+        frame1.modify_bg(gtk.STATE_NORMAL, None)
+        frame1.add(self.main_hbox)
+        frame2 = gtk.EventBox()
+        frame2.modify_bg(gtk.STATE_NORMAL, gtk.gdk.color_parse("black"))
+        frame2.add(frame1)
+        self.window.add(frame2)
         # ---------------------------
         image = gtk.Image()
         image.set_from_file(LOGO_PATH)
         image.show()
-        main_hbox.pack_start(image)
+        self.main_hbox.pack_start(image)
         # ---------------------------
-        box = gtk.VBox(spacing=10)
+        self.window.set_title("Loading PanDDA Inspect")
+        self.window.show_all()
+        self.window.set_keep_above(True)
+
+    def show_menu(self):
+        # ---------------------------
+        box = gtk.VBox(spacing=7)
+        box.set_border_width(7)
+        self.main_hbox.pack_start(box)
+        # ---------------------------
         box.pack_start(gtk.Label(''), expand=True)
         # ---------------------------
         label = gtk.Label('New to PanDDA Inspect?')
         label.set_justify(gtk.JUSTIFY_CENTER)
         box.pack_start(label, expand=False)
         # ---------------------------
-        button = gtk.Button(label='Important information regarding contouring and interpreting maps')
-        button.child.set_padding(10, 10)
+        button = gtk.Button(label='Read this important information regarding map contouring')
+        button.child.set_padding(5,5)
+        button.child.props.width_chars = 30
         button.child.set_justify(gtk.JUSTIFY_CENTER)
         button.child.set_line_wrap(True)
         button.connect("clicked", lambda x: Notices())
         box.pack_start(button, expand=False)
         # ---------------------------
-        button = gtk.Button(label='Useful Features')
-        button.child.set_padding(10, 10)
-        button.child.set_justify(gtk.JUSTIFY_CENTER)
-        button.child.set_line_wrap(True)
-        box.pack_start(button, expand=False)
+        label = gtk.Label('For more information visit')
+        label.set_padding(5,5)
+        label.set_justify(gtk.JUSTIFY_CENTER)
+        label.set_line_wrap(True)
+        box.pack_start(label, expand=False)
+        # ---------------------------
+        label = gtk.Label('https://pandda.bitbucket.io')
+        label.set_padding(5,5)
+        label.set_justify(gtk.JUSTIFY_CENTER)
+        label.set_line_wrap(True)
+        box.pack_start(label, expand=False)
         # ---------------------------
         box.pack_start(gtk.Label(''), expand=True)
         # ---------------------------
         button = gtk.Button(label='Close window')
-        button.child.set_padding(10, 10)
+        button.child.set_padding(5,5)
         button.child.set_justify(gtk.JUSTIFY_CENTER)
         button.child.set_line_wrap(True)
         button.connect("clicked", lambda x: self.window.destroy())
         box.pack_end(button, expand=False)
         # ---------------------------
-        main_hbox.pack_start(box)
-        # ---------------------------
-        self.window.add(main_hbox)
+        self.window.set_title("Welcome to PanDDA Inspect")
         self.window.show_all()
-        self.window.set_keep_above(True)
+        self.window.queue_draw()
         catchup()
-
 
 #=========================================================================
 
@@ -233,7 +276,7 @@ class PanddaEvent(object):
         # The most recent model of the protein in the pandda maps
         self.fitted_link        = os.path.join(self.model_dir,      PanddaDatasetFilenames.modelled_structure.format(dtag)  )
         # Unfitted model of the protein
-        self.unfitted_model     = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.aligned_structure.format(dtag)   )
+        self.unfitted_model     = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.aligned_model.format(dtag)   )
         # Maps
         self.observed_map       = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.sampled_map.format(dtag)         )
         self.z_map              = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.z_map.format(dtag)               )
@@ -298,6 +341,10 @@ class PanddaSiteTracker(object):
 
         self.events = pandas.read_csv(csv, sep=',', dtype={'dtag':str})
         self.events = self.events.set_index(['dtag','event_idx'])
+        # Check that there's data in the csv file
+        if self.events.shape[0] == 0:
+            modal_msg('No event data found in CSV file: {}\n\npandda.inspect will now close'.format(csv))
+            sys.exit()
         print '====================>>>'
         print self.events
         print '====================>>>'
@@ -375,6 +422,8 @@ class PanddaInspector(object):
 
     def __init__(self, event_csv, site_csv, top_dir):
 
+        self.validate_input(files=[event_csv, site_csv])
+
         self.log_table  = None
         self.site_table = None
 
@@ -398,6 +447,13 @@ class PanddaInspector(object):
         # Object to hold the currently loaded event
         self.current_event = None
 
+    def validate_input(self, files=[]):
+        """Check valid input and quit if not"""
+        for f in files:
+            if not os.path.exists(f):
+                modal_msg('File does not exist: {}\n\npandda.inspect will now close'.format(f))
+                sys.exit()
+
     def start_gui(self):
         self.gui = PanddaGUI(parent=self)
         self.gui.launch()
@@ -416,7 +472,7 @@ class PanddaInspector(object):
         site_idxs = self.log_table['site_idx']
         groups = [list(g[1]) for g in itertools.groupby(range(len(site_idxs)), key=lambda i: site_idxs[i])]
         bar.multiple_bar_plot_over_several_images(
-                                f_template  = os.path.join(self.top_dir, 'analyses', 'html_summaries', PanddaInspectorFilenames.inspect_site_graph_mult),
+                                f_template  = os.path.join(self.top_dir, 'analyses', 'html_summaries', PanddaHtmlFilenames.inspect_site_graph_mult),
                                 plot_vals   = [[plot_vals[i] for i in g] for g in groups],
                                 colour_vals = [[colr_vals[i] for i in g] for g in groups]   )
         # Write output html
@@ -833,6 +889,7 @@ class PanddaGUI(object):
         # Finally, show the window
         self.window.add(main_vbox)
         self.window.show_all()
+        catchup(True)
 
         return self
 
@@ -980,7 +1037,7 @@ class PanddaGUI(object):
         # ---
         b = gtk.Button(label="Open Next Ligand")
         b.child.set_line_wrap(True)
-        b.child.props.width_chars = 10
+        b.child.props.width_chars = 15
         b.child.set_justify(gtk.JUSTIFY_CENTER)
         self.buttons['next-ligand'] = b
         box1.add(b)
@@ -1353,8 +1410,6 @@ if __name__=='__main__':
     #
     #############################################################################################
 
-    from pandda.constants import PanddaAnalyserFilenames
-
     work_dir = os.getcwd()
     hit_list = os.path.join(work_dir, 'analyses', PanddaAnalyserFilenames.event_info)
     site_csv = os.path.join(work_dir, 'analyses', PanddaAnalyserFilenames.site_info)
@@ -1364,9 +1419,9 @@ if __name__=='__main__':
     # INITIALISE THE MAIN INSPECTOR OBJECT
     #
     #############################################################################################
-    Notices()
+    splash = SplashScreen()
     inspector = PanddaInspector(event_csv=hit_list, site_csv=site_csv, top_dir=work_dir)
     inspector.start_gui()
     inspector.refresh_event()
+    splash.show_menu()
 
-    splScr = splashScreen()

@@ -66,14 +66,14 @@ class PanddaTableFields:
 
 class PanddaDatasetFilenames:
     # Input data...
-    input_structure        = '{!s}-pandda-input.pdb'
+    input_model            = '{!s}-pandda-input.pdb'
     input_data             = '{!s}-pandda-input.mtz'
     # Dataset Information
     dataset_info           = '{!s}-info.csv'
     dataset_log            = '{!s}.log'
     dataset_pickle         = 'dataset.pickle'
     # Structure Files...
-    aligned_structure      = '{!s}-aligned-structure.pdb'
+    aligned_model          = '{!s}-aligned-structure.pdb'
     symmetry_copies        = '{!s}-aligned-sym-contacts.pdb'
     # Modelled Structures...
     modelled_structure     = '{!s}-pandda-model.pdb'
@@ -105,41 +105,36 @@ class PanddaDatasetFilenames:
     native_mean_map        = '{!s}-ground-state-mean-map.native.ccp4'
     # Misc...
     z_peaks_csv            = '{!s}-z_map_peaks.csv'
-    pymol_script           = 'load_maps.py'
-    ccp4mg_script          = 'ccp4mg_{!s}_{!s}.py'
-    ccp4mg_png             = 'blob_{!s}_{!s}.png'
+    pymol_script           = 'load_script_for_pymol.py'
+    ccp4mg_script          = 'load_script_for_ccp4mg.py'
 
 class PanddaDatasetPNGFilenames:
-    s_map_png                   = '{!s}-obsv_map_dist.png'
-    d_mean_map_png              = '{!s}-diff_mean_map_dist.png'
-    z_map_naive_png             = '{!s}-z_map_dist_naive.png'
-    z_map_naive_norm_png        = '{!s}-z_map_dist_naive_normalised.png'
-    z_map_uncertainty_png       = '{!s}-z_map_dist_uncertainty.png'
-    z_map_uncertainty_norm_png  = '{!s}-z_map_dist_uncertainty_normalised.png'
-    z_map_corrected_png         = '{!s}-z_map_dist_adjusted.png'
-    z_map_corrected_norm_png    = '{!s}-z_map_dist_adjusted_normalised.png'
-    z_map_qq_plot_png           = '{!s}-z_map_dist_qq_plot.png'
-    bdc_est_png                 = '{!s}-event_{!s}_BDC_estimation.png'
-    unc_qqplot_png              = '{!s}-uncertainty-qqplot.png'
-    obs_qqplot_sorted_png       = '{!s}-mean-v-obs-sorted-qqplot.png'
-    obs_qqplot_unsorted_png     = '{!s}-mean-v-obs-unsorted-plot.png'
+    s_map_png                   = '{!s}-map_histogram.png'
+    d_mean_map_png              = '{!s}-mean_map_difference_histogram.png'
+    obs_qqplot_sorted_png       = '{!s}-mean_map_scatter_sorted.png'
+    obs_qqplot_unsorted_png     = '{!s}-mean_map_scatter_unsorted.png'
+    z_map_naive_png             = '{!s}-z_map_histogram_naive.png'
+    z_map_naive_norm_png        = '{!s}-z_map_histogram_naive_normalised.png'
+    z_map_uncertainty_png       = '{!s}-z_map_histogram_uncertainty.png'
+    z_map_uncertainty_norm_png  = '{!s}-z_map_histogram_uncertainty_normalised.png'
+    z_map_corrected_png         = '{!s}-z_map_histogram_adjusted.png'
+    z_map_corrected_norm_png    = '{!s}-z_map_histogram_adjusted_normalised.png'
+    z_map_qq_plot_png           = '{!s}-qq_plot_z_map.png'
+    unc_qqplot_png              = '{!s}-qq_plot_map.png'
+    bdc_est_png                 = '{!s}-event_{!s}_bdc_estimation.png'
 
 class PanddaAnalyserFoldernames:
     pass
 
 class PanddaAnalyserFilenames:
-    initial_html            = 'pandda_initial.html'
-    analyse_html            = 'pandda_analyse.html'
-    analyse_site_graph      = 'pandda_analyse_sites_graph.png'
-    analyse_site_graph_mult = 'pandda_analyse_sites_graph_{!s}.png'
-    # Output csvs
+
     event_info              = 'pandda_analyse_events.csv'
     site_info               = 'pandda_analyse_sites.csv'
     dataset_info            = 'all_datasets_info.csv'
     dataset_map_info        = 'all_datasets_info_maps.csv'
     dataset_combined_info   = 'all_datasets_info_combined.csv'
     dataset_masks           = 'all_datasets_info_masks.csv'
-    # Statistical Maps
+
     mean_map                = '{!s}A-mean_map.ccp4'
     medn_map                = '{!s}A-medn_map.ccp4'
     stds_map                = '{!s}A-stds_map.ccp4'
@@ -147,21 +142,31 @@ class PanddaAnalyserFilenames:
     skew_map                = '{!s}A-skew_map.ccp4'
     kurt_map                = '{!s}A-kurt_map.ccp4'
     bimo_map                = '{!s}A-bimo_map.ccp4'
-    # Reference Files
+
     reference_structure     = 'reference.pdb'
     reference_dataset       = 'reference.mtz'
     reference_on_origin     = 'reference.shifted.pdb'
     reference_symmetry      = 'reference.symmetry.pdb'
-    # Pymol images
+
+class PanddaInspectorFilenames:
+
+    event_info              = 'pandda_inspect_events.csv'
+    site_info               = 'pandda_inspect_sites.csv'
+
+class PanddaHtmlFilenames:
+
+    initial_html            = 'pandda_initial.html'
+
+    map_html                = 'pandda_map_{}A.html'
+
+    analyse_html            = 'pandda_analyse.html'
+    analyse_site_graph      = 'pandda_analyse_sites_graph.png'
+    analyse_site_graph_mult = 'pandda_analyse_sites_graph_{!s}.png'
     pymol_sites_png_1       = 'pandda_analyse_sites_pymol_1.png'
     pymol_sites_png_2       = 'pandda_analyse_sites_pymol_2.png'
     pymol_sites_py          = 'pandda_analyse_sites_pymol.py'
     pymol_sites_pml         = 'pandda_analyse_sites_pymol.pml'
 
-class PanddaInspectorFilenames:
     inspect_html            = 'pandda_inspect.html'
     inspect_site_graph      = 'pandda_inspect_sites_graph.png'
     inspect_site_graph_mult = 'pandda_inspect_sites_graph_{!s}.png'
-    # output csvs
-    event_info              = 'pandda_inspect_events.csv'
-    site_info               = 'pandda_inspect_sites.csv'

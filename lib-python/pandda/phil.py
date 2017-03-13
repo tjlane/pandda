@@ -99,14 +99,14 @@ pandda
             .help = "Development Settings (Not needed by most users)"
             .expert_level = 3
         {
-            write_maps_for_empty_datasets = False
-                .help = "Output maps for all datasets, not just datasets marked as interesting"
+            write_reference_frame_maps = False
+                .help = "Output maps for datasets in the reference coordinate frame"
                 .type = bool
-            write_grid_masks = False
+            write_reference_frame_grid_masks = False
                 .help = "Output the grid masks which control which areas are analysed"
                 .type = bool
-            write_all_z_map_types = False
-                .help = "Output all possible types of Z-maps (Takes a lot of space on disk)"
+            write_reference_frame_all_z_map_types = False
+                .help = "Output all possible types of Z-maps"
                 .type = bool
         }
     }
@@ -134,8 +134,11 @@ pandda
         reprocess_selected_datasets = None
             .help = "Reprocess selection of datasets (comma-separated list)"
             .type = str
-        recalculate_statistical_maps = False
-            .help = "Recalculate all of the statistical maps? (Time-consuming) - if False, looks for existing statistical maps and uses those (reverts to True if none are found)"
+        recalculate_statistical_maps = Yes No *Extend
+            .help = "Set whether statistical maps are re-used from previous runs. If No, it looks for existing statistical maps and uses those (reverts to Yes if none are found). If Extend is chosen, existing maps are used, but additional maps are calculated at high and low resolutions if the data extends beyond the current range."
+            .type = choice
+        run_in_seeding_mode = False
+            .help = "Do not analyse any datasets; generate statistical maps only."
             .type = bool
     }
     params

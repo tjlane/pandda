@@ -1,18 +1,23 @@
 import operator
 import numpy, pandas
 
-class mask_collection(object):
-    def __init__(self):
+
+class MaskCollection(object):
+
+
+    def __init__(self, index_ids=None):
         """Stores lots of similar mask objects. Masks can be combined in multiple ways"""
         self.table = pandas.DataFrame()
         self._index_length = None
+        if index_ids is not None:
+            self.set_index_ids(index_ids)
 
     def invert_mask(self, mask):
         """Invert a list of boolean values"""
         mask = numpy.array(mask).astype(bool)
         assert mask.ndim == 1
         mask = map(operator.not_, mask)
-        return pandas.DataFrame(mask, index=self.table.index, dtype=bool)
+        return pandas.Series(data=mask, index=self.table.index, dtype=bool)
 
     def set_index_length(self, length):
         """Set the mask length"""
@@ -21,7 +26,8 @@ class mask_collection(object):
 
     def set_index_ids(self, ids):
         assert not self.table.index.name
-        if not self._index_length: self.set_index_length(len(ids))
+        if not self._index_length:
+            self.set_index_length(len(ids))
         assert len(ids) == self._index_length
         self.table['id'] = ids
         self.table.set_index('id', inplace=True)

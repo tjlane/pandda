@@ -11,8 +11,8 @@ from bamboo.common import Meta, Info
 from bamboo.common.file import FileManager
 from bamboo.common.path import easy_directory
 
-from giant.xray.data import CrystalSummary
-from giant.xray.data.utils import extract_structure_factors
+from giant.xray.data import extract_structure_factors
+from giant.xray.crystal import CrystalSummary
 from giant.xray.symmetry import get_crystal_contact_operators, apply_symmetry_operators, combine_hierarchies
 from giant.structure.align import align_structures_rigid, align_structures_flexible
 
@@ -134,8 +134,8 @@ class XrayData(ExperimentalData):
         self._mtz_object = mtz_object
         self.filename = None
         self.summary = CrystalSummary.from_mtz(mtz_object=mtz_object)
-        self.structure_factors = {}
-        self.fft_map = {}
+        self.miller_arrays = {}
+        self.fft_maps = {}
 
     def _remove_mtz_objects(self):
         self._mtz_object = None
@@ -161,24 +161,7 @@ class XrayData(ExperimentalData):
     def get_structure_factors(self, columns):
         """Extract a let of structure factors from the mtz_object"""
         assert columns.count(',') == 1
-        if columns in self.structure_factors.keys():
-            return self.structure_factors[columns]
-        self.structure_factors[columns] = extract_structure_factors(self.mtz_object(), ampl_label=columns.split(',')[0], phas_label=columns.split(',')[1])
-        return self.structure_factors[columns]
-
-    def get_fft_map(self, structure_factors, resolution_factor=None, d_min=None):
-        assert structure_factors in self.structure_factors, 'need to extract structure factors before fft-ing map'
-        if structure_factors in self.fft_map.keys():
-            return self.fft_map[structure_factors]
-        assert resolution_factor is not None, 'need resolution factor to generate fft_map'
-        assert d_min is not None, 'need d_min to generate fft_map'
-        self.fft_map[structure_factors] =  self.structure_factors[structure_factors].fft_map(resolution_factor=resolution_factor, d_min=d_min,
-                                                                                            symmetry_flags=cctbx.maptbx.use_space_group_symmetry)
-        return self.fft_map[structure_factors]
-
-    def get_electron_density_map(self, fft_map_name):
-        fft_map = self.fft_map[fft_map_name]
-        return ElectronDensityMap(map_data=fft_map.real_map(), unit_cell=fft_map.unit_cell())
+        return extract_structure_factors(self.mtz_object(), ampl_label=columns.split(',')[0], phas_label=columns.split(',')[1])
 
 
 class ModelAndMap(object):
@@ -228,6 +211,10 @@ class ElectronDensityMap(object):
 
         assert len(self._map_size)==3, 'map_size must be tuple of length 3'
         assert sparse == self.is_sparse()
+
+    @classmethod
+    def from_fft_map(cls, fft_map):
+        return cls(map_data=fft_map.real_map(), unit_cell=fft_map.unit_cell())
 
     def new_from_template(self, map_data, sparse=False, copy_meta=False, same_parent=False):
         """Create a new ElectronDensityMap using this map as a template"""

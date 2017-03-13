@@ -6,3 +6,4 @@ recursive-include lib-python/bamboo/misc *
 recursive-include lib-python/bamboo/templates *
 recursive-include lib-python/giant/templates *
 recursive-include lib-python/pandda/templates *
+recursive-include lib-python/pandda/resources *

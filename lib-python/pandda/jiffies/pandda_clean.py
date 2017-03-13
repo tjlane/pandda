@@ -12,7 +12,7 @@ from bamboo.common.path import delete_with_glob
 master_phil = libtbx.phil.parse("""
 input {
     pandda_dir = None
-        .help = 'Path to the pandda directory to export files from'
+        .help = 'Path to the pandda directory'
         .type = str
 }
 
@@ -89,41 +89,21 @@ def clean_datasets(top_dir, level=0, skip_interesting=True):
 
     return
 
-#def clean_links(top_dir, level=0, skip_interesting=True):
-#    print '============================================================>>>'
-#    print 'Cleaning Soft Links:'
-#
-#    # Level 0 cleaning
-#    if level >= 0:
-#        delete_with_glob(os.path.join(top_dir, 'resolutions', '*'))
-#
-#    # Level 1 cleaning
-#    if level >= 1:
-#        pass
-#
-#    # Level 2 cleaning
-#    if level >= 2:
-#        delete_with_glob(os.path.join(top_dir, 'empty_directories', '*'))
-#        if not skip_interesting:
-#            delete_with_glob(os.path.join(top_dir, 'interesting_datasets', '*'))
-#
-#    return
-
 def clean_statistical_maps(top_dir, level=0):
     print '============================================================>>>'
     print 'Cleaning Statistical Maps:'
 
     # Level 0 cleaning - clean skew and kurt maps
     if level >= 0:
-        delete_with_glob(os.path.join(top_dir, 'statistical_maps', '*-skew_map.ccp4'))
-        delete_with_glob(os.path.join(top_dir, 'statistical_maps', '*-kurt_map.ccp4'))
-        delete_with_glob(os.path.join(top_dir, 'statistical_maps', '*-bimo_map.ccp4'))
-        delete_with_glob(os.path.join(top_dir, 'statistical_maps', '*-stds_map.ccp4'))
+        delete_with_glob(os.path.join(top_dir, 'reference', 'statistical_maps', '*-skew_map.ccp4'))
+        delete_with_glob(os.path.join(top_dir, 'reference', 'statistical_maps', '*-kurt_map.ccp4'))
+        delete_with_glob(os.path.join(top_dir, 'reference', 'statistical_maps', '*-bimo_map.ccp4'))
+        delete_with_glob(os.path.join(top_dir, 'reference', 'statistical_maps', '*-stds_map.ccp4'))
 
     # Level 1 cleaning - clean mean and sadj maps
     if level >= 1:
-        delete_with_glob(os.path.join(top_dir, 'statistical_maps', '*-mean_map.ccp4'))
-        delete_with_glob(os.path.join(top_dir, 'statistical_maps', '*-sadj_map.ccp4'))
+        delete_with_glob(os.path.join(top_dir, 'reference', 'statistical_maps', '*-mean_map.ccp4'))
+        delete_with_glob(os.path.join(top_dir, 'reference', 'statistical_maps', '*-sadj_map.ccp4'))
 
     return
 

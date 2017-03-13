@@ -2,7 +2,7 @@ import os, glob
 
 from bamboo.html import png2base64str
 from pandda.html import PANDDA_HTML_ENV
-from pandda.constants import PanddaAnalyserFilenames, PanddaInspectorFilenames
+from pandda.constants import PanddaHtmlFilenames
 
 def write_inspect_html(top_dir, inspector):
 
@@ -11,7 +11,7 @@ def write_inspect_html(top_dir, inspector):
     # Output directory (for relative symlinks)
     out_dir  = os.path.join(top_dir, 'analyses', 'html_summaries')
     # Output file
-    out_file = os.path.join(out_dir, PanddaInspectorFilenames.inspect_html)
+    out_file = os.path.join(out_dir, PanddaHtmlFilenames.inspect_html)
 
     all_data = inspector.log_table
     len_data = len(all_data.index)
@@ -65,13 +65,13 @@ def write_inspect_html(top_dir, inspector):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    if os.path.exists(os.path.join(out_dir, PanddaAnalyserFilenames.pymol_sites_png_1)):
-        output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=os.path.join(out_dir, PanddaAnalyserFilenames.pymol_sites_png_1))),
+    if os.path.exists(os.path.join(out_dir, PanddaHtmlFilenames.pymol_sites_png_1)):
+        output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=os.path.join(out_dir, PanddaHtmlFilenames.pymol_sites_png_1))),
                                            'title': 'Identified Sites (Front)' })
-    if os.path.exists(os.path.join(out_dir, PanddaAnalyserFilenames.pymol_sites_png_2)):
-        output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=os.path.join(out_dir, PanddaAnalyserFilenames.pymol_sites_png_2))),
+    if os.path.exists(os.path.join(out_dir, PanddaHtmlFilenames.pymol_sites_png_2)):
+        output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=os.path.join(out_dir, PanddaHtmlFilenames.pymol_sites_png_2))),
                                            'title': 'Identified Sites (Back)' })
-    for i_png, png in enumerate(sorted(glob.glob(os.path.join(out_dir, PanddaInspectorFilenames.inspect_site_graph_mult).format('*')))):
+    for i_png, png in enumerate(sorted(glob.glob(os.path.join(out_dir, PanddaHtmlFilenames.inspect_site_graph_mult).format('*')))):
         output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=png)),
                                            'title': 'Identified Site Summary ({})'.format(i_png+1) })
     # ===========================================================>

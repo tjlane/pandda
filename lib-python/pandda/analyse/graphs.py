@@ -14,14 +14,16 @@ import numpy
 
 from scitbx.array_family import flex
 
+from bamboo.plot import bar, simple_histogram
+
 def filter_nans(x):
     return [v for v in x if not numpy.isnan(v)]
 
-def map_value_distribution(f_name, plot_vals, plot_normal):
+def map_value_distribution(f_name, plot_vals, plot_normal=False):
     """Plot histogram of values, with optional normal distribution"""
     from scitbx.math.distributions import normal_distribution
     fig = pyplot.figure()
-    pyplot.title('Map Value Distribution')
+    pyplot.title('Distribution of map values')
     pyplot.hist(x=plot_vals, bins=30, normed=True)
     if plot_normal:
         # Plot the distribution for N(0,1)
@@ -34,7 +36,7 @@ def map_value_distribution(f_name, plot_vals, plot_normal):
         obs_x = numpy.linspace(-5,5,101)
         obs_y = [nd_o.pdf(x) for x in obs_x]
         pyplot.plot(obs_x, obs_y, c='g', ls='-', marker='o')
-    pyplot.xlabel('Map Value')
+    pyplot.xlabel('Map value')
     pyplot.ylabel('Density')
     fig.set_tight_layout(True)
     pyplot.savefig(f_name)
@@ -44,12 +46,12 @@ def qq_plot_against_normal(f_name, plot_vals):
     """Sort and plot list of values against expected quantiles from a normal distribution"""
     from scitbx.math.distributions import normal_distribution
     fig = pyplot.figure()
-    pyplot.title('Observed v Theoretical Q-Q Plot')
+    pyplot.title('Q-Q plot for map values against normal distribution')
     expected_vals = normal_distribution().quantiles(len(plot_vals))
     pyplot.plot([min(expected_vals)-1, max(expected_vals)+1], [min(expected_vals)-1, max(expected_vals)+1], 'b--')
     pyplot.plot(sorted(plot_vals), expected_vals, 'go-')
-    pyplot.xlabel('Observed Quantiles')
-    pyplot.ylabel('Theoretical Quantiles')
+    pyplot.xlabel('Observed quantiles')
+    pyplot.ylabel('Theoretical quantiles')
     fig.set_tight_layout(True)
     pyplot.savefig(f_name)
     pyplot.close(fig)
@@ -57,11 +59,11 @@ def qq_plot_against_normal(f_name, plot_vals):
 def mean_obs_scatter(f_name, mean_vals, obs_vals):
     """Plot mean map against observed map values"""
     fig = pyplot.figure()
-    pyplot.title('Unsorted Mean v Dataset Scatter Plot')
+    pyplot.title('Mean map plotted against dataset map (unsorted)')
     pyplot.plot([-3, 10], [-3, 10], 'b--')
     pyplot.plot(mean_vals, obs_vals, 'go')
-    pyplot.xlabel('Mean Map Values')
-    pyplot.ylabel('Dataset Map Values')
+    pyplot.xlabel('Mean map value')
+    pyplot.ylabel('Dataset map value')
     fig.set_tight_layout(True)
     pyplot.savefig(f_name)
     pyplot.close(fig)
@@ -69,25 +71,55 @@ def mean_obs_scatter(f_name, mean_vals, obs_vals):
 def sorted_mean_obs_scatter(f_name, mean_vals, obs_vals):
     """Plot sorted mean map against sorted observed map values"""
     fig = pyplot.figure()
-    pyplot.title('Sorted Mean v Dataset Scatter Plot')
+    pyplot.title('Mean map plotted against dataset map (sorted)')
     pyplot.plot([-3, 10], [-3, 10], 'b--')
     pyplot.plot(mean_vals, obs_vals, 'go')
-    pyplot.xlabel('Sorted Mean Map Values')
-    pyplot.ylabel('Sorted Dataset Map Values')
+    pyplot.xlabel('Mean map value')
+    pyplot.ylabel('Dataset map value')
     fig.set_tight_layout(True)
     pyplot.savefig(f_name)
     pyplot.close(fig)
 
-def diff_mean_qqplot(f_name, map_off, map_unc, q_cut, obs_diff, quantile):
+def uncertainty_qqplot(f_name, map_off, map_unc, q_cut, obs_diff, quantile):
     """Plot diff-mean map against normal quantiles, with uncertainty lines"""
     fig = pyplot.figure()
-    pyplot.title('Mean-Difference Map Q-Q Plot')
+    pyplot.title('Q-Q plot for map values against normal distribution')
     pyplot.plot([map_off-5*map_unc, map_off+5*map_unc], [-5, 5], 'b--')
     pyplot.plot([-1, 1], [q_cut, q_cut], 'k-.')
     pyplot.plot([-1, 1], [-q_cut, -q_cut], 'k-.')
     pyplot.plot(obs_diff, quantile, 'go-')
-    pyplot.xlabel('Difference from Mean Map Quantiles')
+    pyplot.xlabel('Difference from mean map')
     pyplot.ylabel('Theoretical Quantiles')
+    fig.set_tight_layout(True)
+    pyplot.savefig(f_name)
+    pyplot.close(fig)
+
+def write_occupancy_graph(f_name, x_values, global_values, local_values):
+    """Write output graph from occupancy estimation"""
+
+    # Get the x-value of the maximum difference
+    diff_values = list(numpy.array(global_values) - numpy.array(local_values))
+    max_x = x_values[diff_values.index(max(diff_values))]
+
+    fig, (axis_1_1, axis_2_1) = pyplot.subplots(2, sharex=True)
+    # 1st Plot - 1st Y-Axis
+    line_1_1, = axis_1_1.plot(x_values, global_values, 'g--', label='GLOBAL CORRELATION', linewidth=2)
+    line_1_2, = axis_1_1.plot(x_values, local_values, 'k--', label='LOCAL CORRELATION', linewidth=2)
+    axis_1_1.set_ylabel('CORRELATION\nTO GROUND STATE', color='k', size=16)
+    axis_1_1.set_ylim((-1, 1))
+    # 2nd Plot - 1st Y-Axis
+    line_2_1, = axis_2_1.plot(x_values, diff_values, 'b-', label='DIFFERENCE', linewidth=2)
+    axis_2_1.set_ylabel('CORRELATION\nDIFFERENCE', color='k', size=16)
+    axis_2_1.set_xlabel('1-BDC', color='k', size=16)
+    axis_2_1.set_ylim((min(diff_values)-0.2, max(diff_values)+0.2))
+    # Plot line at the maximum
+    line_2_2, = axis_2_1.plot([max_x,max_x],[-1,1], 'k-', linewidth=2)
+    text_2_1 = axis_2_1.text(0.02+max_x, 0.0, 'BDC='+str(1-max_x), size=14)
+    # Joint legend
+    axis_1_1.legend(handles=[line_1_1, line_1_2, line_2_1], loc=4, fontsize=16)
+    # Remove spacing between subplots
+    pyplot.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible=False)
+    pyplot.setp([axis_2_1.get_xticklabels()], visible=True)
     fig.set_tight_layout(True)
     pyplot.savefig(f_name)
     pyplot.close(fig)
@@ -187,46 +219,88 @@ def write_dataset_summary_graphs(pandda):
     pyplot.savefig(pandda.file_manager.get_file('d_cell_volumes'))
     pyplot.close(fig)
 
-def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
+def write_truncated_data_plots(pandda, resolution, miller_arrays):
+    """Write summaries of the truncated data"""
 
-    # Get the output directory to write the graphs into
-    #img_out_dir = os.path.join(pandda.file_manager.get_dir('analyses'), '{!s}A Maps'.format(map_analyser.meta.resolution))
-    #if not os.path.exists(img_out_dir): os.mkdir(img_out_dir)
-    img_out_dir = pandda.file_manager.get_dir('m_graphs')
+    reslns = [m.d_min() for m in miller_arrays]
+    min_res, max_res = min(reslns), max(reslns)
+    pandda.log('After Truncation - Resolution Range: {!s}-{!s}'.format(min_res, max_res))
 
-    # Map Analyser Variables
-    map_res = map_analyser.meta.resolution
+    # ================================================>
+    # Resolution ranges of the truncated data
+    simple_histogram(filename = pandda.file_manager.get_file('dataset_res_hist').format(resolution),
+                     data     = reslns,
+                     title    = 'Truncated dataset resolutions',
+                     x_lab    = 'Resolution (A)',
+                     n_bins   = 15)
+    # ================================================>
+    # Wilson plots of the truncated data
+    v_min = v_max = 0
+    # Make plot
+    fig = pyplot.figure()
+    pyplot.title('Wilson plot for truncated structure factors')
+    for m in miller_arrays:
+        # Convert to amplitudes
+        ma = m.as_amplitude_array()
+        # Create binning - just use the auto-binning for each dataset
+        binner = ma.setup_binner(auto_binning=True)
+        # Create the wilson plot
+        binned = ma.wilson_plot(use_binning=True)
+        # Extract bin centres and bin data
+        bin_cent = binner.bin_centers(1)
+        bin_data = binned.data[1:-1]
+        assert len(bin_cent) == len(bin_data)
+        pyplot.semilogy(bin_cent, bin_data, '-', linewidth=2, basey=numpy.e)
+    pyplot.xlabel('1/resolution (A^-1)')
+    pyplot.ylabel('Mean intensity')
+    fig.set_tight_layout(True)
+    pyplot.savefig(pandda.file_manager.get_file('dataset_wilson_plot').format(resolution))
+    pyplot.close(fig)
 
-    ########################################################
+def write_map_analyser_reference_dataset_graphs(pandda, map_analyser):
 
-    # Statistical Map Values
+    # Plot the mean map against the reference map (unsorted)
+    mean_obs_scatter(f_name      = pandda.file_manager.get_file('ref_v_mean_map_unsort').format(map_analyser.meta.resolution),
+                     mean_vals   = map_analyser.statistical_maps.mean_map.as_sparse().data,
+                     obs_vals    = pandda.datasets.reference().child.as_sparse().data)
+    # Plot the mean map against the reference map (sorted)
+    sorted_mean_obs_scatter(f_name    = pandda.file_manager.get_file('ref_v_mean_map_sort').format(map_analyser.meta.resolution),
+                            mean_vals = sorted(map_analyser.statistical_maps.mean_map.as_sparse().data),
+                            obs_vals  = sorted(pandda.datasets.reference().child.as_sparse().data))
+    # Plot the reference map distribution
+    map_value_distribution(f_name    = pandda.file_manager.get_file('ref_map_dist').format(map_analyser.meta.resolution),
+                           plot_vals = pandda.datasets.reference().child.as_sparse().data)
 
-    # Extract map values for plotting
-    mean_map_vals = list(map_analyser.statistical_maps.mean_map.data)
-    try:    medn_map_vals = list(map_analyser.statistical_maps.medn_map.data)
-    except: medn_map_vals = mean_map_vals
-    stds_map_vals = list(map_analyser.statistical_maps.stds_map.data)
-    sadj_map_vals = list(map_analyser.statistical_maps.sadj_map.data)
+def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_mask_name):
 
-    ########################################################
+    # Extract the statistical maps at this resolution
+    statistical_maps = pandda.stat_maps.get(resolution)
+    mean_map_vals = list(statistical_maps.mean_map.data)
+    medn_map_vals = list(statistical_maps.medn_map.data)
+    stds_map_vals = list(statistical_maps.stds_map.data)
+    sadj_map_vals = list(statistical_maps.sadj_map.data)
+    # Extract the dataset tags from the pandda object
+    analysis_tags = [d.tag for d in pandda.datasets.mask(mask_name=analysis_mask_name)]
+    building_tags = [d.tag for d in pandda.datasets.mask(mask_name=building_mask_name)]
+    combined_tags = sorted(set(analysis_tags+building_tags))
 
     # Dataset Parameters
     d_info = pandda.tables.dataset_info
     m_info = pandda.tables.dataset_map_info
 
     # All datasets
-    high_res = [d_info['high_resolution'][m.meta.tag] for m in map_analyser.dataset_maps.all()]
-    low_res =  [d_info['low_resolution'][m.meta.tag]  for m in map_analyser.dataset_maps.all()]
-    rfree =    [d_info['r_free'][m.meta.tag]          for m in map_analyser.dataset_maps.all()]
-    rwork =    [d_info['r_work'][m.meta.tag]          for m in map_analyser.dataset_maps.all()]
+    high_res = [d_info['high_resolution'][t] for t in combined_tags]
+    low_res =  [d_info['low_resolution'][t]  for t in combined_tags]
+    rfree =    [d_info['r_free'][t]          for t in combined_tags]
+    rwork =    [d_info['r_work'][t]          for t in combined_tags]
 
     # All datasets
-    map_uncties = [m_info['map_uncertainty'][m.meta.tag] for m in map_analyser.dataset_maps.all()]
+    map_uncties = [m_info['map_uncertainty'][t] for t in combined_tags]
     # Analysed datasets only
-    z_map_mean  = [m_info['z_map_mean'][m.meta.tag] for m in map_analyser.dataset_maps.mask(mask_name=analysis_mask_name)]
-    z_map_std   = [m_info['z_map_std'][m.meta.tag]  for m in map_analyser.dataset_maps.mask(mask_name=analysis_mask_name)]
-    z_map_skew  = [m_info['z_map_skew'][m.meta.tag] for m in map_analyser.dataset_maps.mask(mask_name=analysis_mask_name)]
-    z_map_kurt  = [m_info['z_map_kurt'][m.meta.tag] for m in map_analyser.dataset_maps.mask(mask_name=analysis_mask_name)]
+    z_map_mean  = [m_info['z_map_mean'][t] for t in analysis_tags]
+    z_map_std   = [m_info['z_map_std'][t]  for t in analysis_tags]
+    z_map_skew  = [m_info['z_map_skew'][t] for t in analysis_tags]
+    z_map_kurt  = [m_info['z_map_kurt'][t] for t in analysis_tags]
 
     ########################################################
 
@@ -252,7 +326,7 @@ def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
     pyplot.xlabel('Median Map Values')
     pyplot.ylabel('Count')
     fig.set_tight_layout(True)
-    pyplot.savefig(os.path.join(img_out_dir, '{!s}A-mean_medn_map_hist.png'.format(map_res)))
+    pyplot.savefig(pandda.file_manager.get_file('map_mean_median_hist').format(resolution))
     pyplot.close(fig)
 
     ##################################
@@ -269,7 +343,7 @@ def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
     pyplot.xlabel('Mean Map Value')
     pyplot.ylabel('Median Map Value')
     fig.set_tight_layout(True)
-    pyplot.savefig(os.path.join(img_out_dir, '{!s}A-mean_v_median_scatter.png'.format(map_res)))
+    pyplot.savefig(pandda.file_manager.get_file('map_mean_median_scat').format(resolution))
     pyplot.close(fig)
 
     ##################################
@@ -277,11 +351,11 @@ def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
     ##################################
     fig = pyplot.figure()
     pyplot.title('Mean-Median Difference Histogram')
-    pyplot.hist(x=numpy.abs(flex.double(mean_map_vals)-flex.double(medn_map_vals)), bins=30, normed=True)
+    pyplot.hist(x=numpy.array(flex.double(mean_map_vals)-flex.double(medn_map_vals)), bins=30, normed=True)
     pyplot.xlabel('Difference Map Value')
     pyplot.ylabel('Density')
     fig.set_tight_layout(True)
-    pyplot.savefig(os.path.join(img_out_dir, '{!s}A-mean_median_diff_hist.png'.format(map_res)))
+    pyplot.savefig(pandda.file_manager.get_file('map_mean_median_diff').format(resolution))
     pyplot.close(fig)
 
     ##################################
@@ -300,7 +374,7 @@ def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
     pyplot.xlabel('"Adjusted" Variation of Map Values')
     pyplot.ylabel('Count')
     fig.set_tight_layout(True)
-    pyplot.savefig(os.path.join(img_out_dir, '{!s}A-stds_sadj_map_vals.png'.format(map_res)))
+    pyplot.savefig(pandda.file_manager.get_file('map_stds_sadj_hist').format(resolution))
     pyplot.close(fig)
 
     ##################################
@@ -317,7 +391,7 @@ def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
     pyplot.xlabel('"Raw" Variation of Map Values')
     pyplot.ylabel('"Adjusted" Variation of Map Values')
     fig.set_tight_layout(True)
-    pyplot.savefig(os.path.join(img_out_dir, '{!s}A-std_v_adj_std_scatter.png'.format(map_res)))
+    pyplot.savefig(pandda.file_manager.get_file('map_stds_sadj_scat').format(resolution))
     pyplot.close(fig)
 
     ########################################################
@@ -332,7 +406,7 @@ def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
     pyplot.xlabel('Dataset Map Uncertainties')
     pyplot.ylabel('Count')
     fig.set_tight_layout(True)
-    pyplot.savefig(os.path.join(img_out_dir, '{!s}A-d_map_uncertainties.png'.format(map_res)))
+    pyplot.savefig(pandda.file_manager.get_file('dataset_unc_hist').format(resolution))
     pyplot.close(fig)
 
     ########################################################
@@ -346,7 +420,7 @@ def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
     pyplot.xlabel('Dataset Resolution')
     pyplot.ylabel('Dataset Map Uncertainty')
     fig.set_tight_layout(True)
-    pyplot.savefig(os.path.join(img_out_dir, '{!s}A-resolution_v_uncertainty.png'.format(map_res)))
+    pyplot.savefig(pandda.file_manager.get_file('dataset_res_unc_scat').format(resolution))
     pyplot.close(fig)
 
     # MAP RESOLUTION V UNCERTAINTY
@@ -356,7 +430,7 @@ def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
     pyplot.xlabel('Dataset Resolution')
     pyplot.ylabel('Dataset R-Free')
     fig.set_tight_layout(True)
-    pyplot.savefig(os.path.join(img_out_dir, '{!s}A-resolution_v_rfree.png'.format(map_res)))
+    pyplot.savefig(pandda.file_manager.get_file('dataset_res_rfree_scat').format(resolution))
     pyplot.close(fig)
 
     # RFREE V UNCERTAINTY
@@ -366,7 +440,7 @@ def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
     pyplot.xlabel('Dataset R-Free')
     pyplot.ylabel('Dataset Map Uncertainty')
     fig.set_tight_layout(True)
-    pyplot.savefig(os.path.join(img_out_dir, '{!s}A-rfree_v_uncertainty.png'.format(map_res)))
+    pyplot.savefig(pandda.file_manager.get_file('dataset_unc_rfree_scat').format(resolution))
     pyplot.close(fig)
 
     ########################################################
@@ -387,7 +461,7 @@ def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
     pyplot.xlabel('Z-Map Std')
     pyplot.ylabel('Count')
     fig.set_tight_layout(True)
-    pyplot.savefig(os.path.join(img_out_dir, '{!s}A-z_map_statistics.png'.format(map_res)))
+    pyplot.savefig(pandda.file_manager.get_file('zmap_mean_sadj_hist').format(resolution))
     pyplot.close(fig)
 
     # Z-MAP SKEW V UNCERTAINTY
@@ -397,35 +471,6 @@ def write_map_analyser_graphs(pandda, map_analyser, analysis_mask_name):
     pyplot.xlabel('Skew')
     pyplot.ylabel('Kurtosis')
     fig.set_tight_layout(True)
-    pyplot.savefig(os.path.join(img_out_dir, '{!s}A-z_map_skew_v_kurtosis.png'.format(map_res)))
+    pyplot.savefig(pandda.file_manager.get_file('zmap_skew_kurt_scat').format(resolution))
     pyplot.close(fig)
 
-def write_occupancy_graph(x_values, global_values, local_values, out_file):
-    """Write output graph from occupancy estimation"""
-
-    # Get the x-value of the maximum difference
-    diff_values = list(numpy.array(global_values) - numpy.array(local_values))
-    max_x = x_values[diff_values.index(max(diff_values))]
-
-    fig, (axis_1_1, axis_2_1) = pyplot.subplots(2, sharex=True)
-    # 1st Plot - 1st Y-Axis
-    line_1_1, = axis_1_1.plot(x_values, global_values, 'g--', label='GLOBAL CORRELATION', linewidth=2)
-    line_1_2, = axis_1_1.plot(x_values, local_values, 'k--', label='LOCAL CORRELATION', linewidth=2)
-    axis_1_1.set_ylabel('CORRELATION\nTO GROUND STATE', color='k', size=16)
-    axis_1_1.set_ylim((-1, 1))
-    # 2nd Plot - 1st Y-Axis
-    line_2_1, = axis_2_1.plot(x_values, diff_values, 'b-', label='DIFFERENCE', linewidth=2)
-    axis_2_1.set_ylabel('CORRELATION\nDIFFERENCE', color='k', size=16)
-    axis_2_1.set_xlabel('1-BDC', color='k', size=16)
-    axis_2_1.set_ylim((min(diff_values)-0.2, max(diff_values)+0.2))
-    # Plot line at the maximum
-    line_2_2, = axis_2_1.plot([max_x,max_x],[-1,1], 'k-', linewidth=2)
-    text_2_1 = axis_2_1.text(0.02+max_x, 0.0, 'BDC='+str(1-max_x), size=14)
-    # Joint legend
-    axis_1_1.legend(handles=[line_1_1, line_1_2, line_2_1], loc=4, fontsize=16)
-    # Remove spacing between subplots
-    pyplot.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible=False)
-    pyplot.setp([axis_2_1.get_xticklabels()], visible=True)
-    fig.set_tight_layout(True)
-    pyplot.savefig(out_file)
-    pyplot.close(fig)

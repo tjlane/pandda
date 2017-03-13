@@ -15,14 +15,14 @@ from bamboo.common.logs import Log
 from bamboo.common.path import rel_symlink
 from bamboo.pymol_utils import PythonScript
 
+from giant.common import ElectronDensityMap
 from giant.grid.masks import GridMask
 from giant.stats import quantile_quantile_scaling
 from giant.stats.ospina import estimate_true_underlying_sd
 from giant.structure.select import protein, find_nearest_atoms
-from giant.xray.maps import scale_map_to_reference
-from giant.xray.maps.bdc import calculate_varying_bdc_correlations, calculate_maximum_series_discrepancy
-from giant.xray.maps.bdc import calculate_bdc_subtracted_map
-from giant.xray.local_align_maps import create_native_map
+from giant.xray.maps.scale import scale_map_to_reference
+from giant.xray.maps.bdc import calculate_varying_bdc_correlations, calculate_maximum_series_discrepancy, calculate_bdc_subtracted_map
+from giant.xray.maps.local_align import create_native_map
 
 from pandda import welcome
 from pandda.phil import pandda_phil
@@ -104,13 +104,13 @@ class MapLoader(object):
         # Create map handler in the native coordinate frame
         # ============================================================================>
         # Extract the map data
-        fft_map = dataset.data.get_fft_map(structure_factors='truncated')
+        fft_map = dataset.data.fft_maps['truncated']
         # Scale the map
         if   args.params.maps.scaling == 'none':   pass
         elif args.params.maps.scaling == 'sigma':  fft_map.apply_sigma_scaling()
         elif args.params.maps.scaling == 'volume': fft_map.apply_volume_scaling()
         # Create map object
-        native_map_true = dataset.data.get_electron_density_map(fft_map_name='truncated')
+        native_map_true = ElectronDensityMap.from_fft_map(fft_map)
 
         # ============================================================================>
         # Morph the map to the reference frame
@@ -215,16 +215,20 @@ class UncertaintyCalculator(object):
             srt_query_vals = sorted(query_values)
             srt_ref_vals = sorted(ref_values)
 
-            analyse_graphs.mean_obs_scatter(f_name=file_manager.get_file('obs_qqplot_unsorted_png'),
-                                            mean_vals=ref_values, obs_vals=query_values)
+            analyse_graphs.mean_obs_scatter(f_name    = file_manager.get_file('obs_qqplot_unsorted_png'),
+                                            mean_vals = ref_values,
+                                            obs_vals  = query_values)
 
-            analyse_graphs.sorted_mean_obs_scatter(f_name=file_manager.get_file('obs_qqplot_sorted_png'),
-                                            mean_vals=srt_ref_vals, obs_vals=srt_query_vals)
+            analyse_graphs.sorted_mean_obs_scatter(f_name    = file_manager.get_file('obs_qqplot_sorted_png'),
+                                                   mean_vals = srt_ref_vals,
+                                                   obs_vals  = srt_query_vals)
 
-            analyse_graphs.diff_mean_qqplot(f_name=file_manager.get_file('unc_qqplot_png'),
-                                            map_off=map_off, map_unc=map_unc,
-                                            q_cut=q_cut, obs_diff=srt_act_diff_vals,
-                                            quantile=the_diff_vals)
+            analyse_graphs.uncertainty_qqplot(f_name   = file_manager.get_file('unc_qqplot_png'),
+                                              map_off  = map_off,
+                                              map_unc  = map_unc,
+                                              q_cut    = q_cut,
+                                              obs_diff = srt_act_diff_vals,
+                                              quantile = the_diff_vals)
 
         # Print a running row of dots
         print('>', end=''); sys.stdout.flush()
@@ -400,10 +404,8 @@ class DatasetProcessor(object):
         dataset_map.meta.z_skew = z_map_stats.skew
         dataset_map.meta.z_kurt = z_map_stats.kurtosis
         # ============================================================================>
-        # STORE THE Z MAP
-        # ============================================================================>
         z_map.meta.type = 'z-map'
-        z_map.parent = dataset_map
+        # ============================================================================>
 
         # ============================================================================>
         #####
@@ -411,38 +413,38 @@ class DatasetProcessor(object):
         #####
         # ============================================================================>
         # Sampled Map
-        write_map_value_distribution(map_vals=dataset_map.data,
-                                     output_file=dataset.file_manager.get_file('s_map_png'))
+        analyse_graphs.map_value_distribution(f_name    = dataset.file_manager.get_file('s_map_png'),
+                                              plot_vals = dataset_map.data)
         # Mean-Difference
-        write_map_value_distribution(map_vals=mean_diff_map.data,
-                                     output_file=dataset.file_manager.get_file('d_mean_map_png'))
+        analyse_graphs.map_value_distribution(f_name    = dataset.file_manager.get_file('d_mean_map_png'),
+                                              plot_vals = mean_diff_map.data)
         # Naive Z-Map
-        write_map_value_distribution(map_vals=z_map_naive.data,
-                                     output_file=dataset.file_manager.get_file('z_map_naive_png'),
-                                     plot_normal=True)
+        analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_naive_png'),
+                                              plot_vals   = z_map_naive.data,
+                                              plot_normal = True)
         # Normalised Naive Z-Map
-        write_map_value_distribution(map_vals=z_map_naive_normalised.data,
-                                     output_file=dataset.file_manager.get_file('z_map_naive_normalised_png'),
-                                     plot_normal=True)
+        analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_naive_normalised_png'),
+                                              plot_vals   = z_map_naive_normalised.data,
+                                              plot_normal = True)
         # Uncertainty Z-Map
-        write_map_value_distribution(map_vals=z_map_uncty.data,
-                                     output_file=dataset.file_manager.get_file('z_map_uncertainty_png'),
-                                     plot_normal=True)
+        analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_uncertainty_png'),
+                                              plot_vals   = z_map_uncty.data,
+                                              plot_normal = True)
         # Normalised Uncertainty Z-Map
-        write_map_value_distribution(map_vals=z_map_uncty_normalised.data,
-                                     output_file=dataset.file_manager.get_file('z_map_uncertainty_normalised_png'),
-                                     plot_normal=True)
+        analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_uncertainty_normalised_png'),
+                                              plot_vals   = z_map_uncty_normalised.data,
+                                              plot_normal = True)
         # Corrected Z-Map
-        write_map_value_distribution(map_vals=z_map_compl.data,
-                                     output_file=dataset.file_manager.get_file('z_map_corrected_png'),
-                                     plot_normal=True)
+        analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_corrected_png'),
+                                              plot_vals   = z_map_compl.data,
+                                              plot_normal = True)
         # Normalised Corrected Z-Map
-        write_map_value_distribution(map_vals=z_map_compl_normalised.data,
-                                     output_file=dataset.file_manager.get_file('z_map_corrected_normalised_png'),
-                                     plot_normal=True)
+        analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_corrected_normalised_png'),
+                                              plot_vals   = z_map_compl_normalised.data,
+                                              plot_normal = True)
         # Plot Q-Q Plot of Corrected Z-Map to see how normal it is
-        write_qq_plot_against_normal(map_vals=z_map_compl_normalised.data,
-                                     output_file=dataset.file_manager.get_file('z_map_qq_plot_png'))
+        analyse_graphs.qq_plot_against_normal(f_name    = dataset.file_manager.get_file('z_map_qq_plot_png'),
+                                              plot_vals = z_map_compl_normalised.data)
 
         # ============================================================================>
         #####
@@ -496,46 +498,33 @@ class DatasetProcessor(object):
         # WRITE MAPS
         #####
         # ============================================================================>
-        if (num_clusters != 0) or args.output.developer.write_maps_for_empty_datasets:
-            # ============================================================================>
-            # NATIVE MAPS (ROTATED)
-            # ============================================================================>
-            # Z-map
-#            native_z_map_data = create_native_map(
-#                                    native_crystal_symmetry=dataset.model.crystal_symmetry,
-#                                    native_sites=dataset.model.hierarchy.atoms().extract_xyz(),
-#                                    native_hierarchy=dataset.model.hierarchy,
-#                                    alignment=dataset.model.alignment,
-#                                    reference_map=z_map.as_map(), step=0.75,
-#                                    filename=dataset.file_manager.get_file('native_z_map')
-#                                )
-            # ============================================================================>
-            # WRITE REFERENCE FRAME MAPS (NOT ROTATED) - TODO REMOVE TODO
-            # ============================================================================>
+        # WRITE REFERENCE FRAME MAPS (NOT ROTATED)
+        # ============================================================================>
+        if args.output.developer.write_reference_frame_maps:
             dataset_map.to_file(filename=dataset.file_manager.get_file('sampled_map'), space_group=grid.space_group())
             mean_diff_map.to_file(filename=dataset.file_manager.get_file('mean_diff_map'), space_group=grid.space_group())
             z_map.to_file(filename=dataset.file_manager.get_file('z_map'), space_group=grid.space_group())
-            # ============================================================================>
-            # Write out DATASET and Z-MAP grid masks
-            # ============================================================================>
-            if args.output.developer.write_grid_masks:
-                # Write map of grid + symmetry mask
-                write_indices_as_map(grid=grid, indices=dset_total_idxs, f_name=dataset.file_manager.get_file('grid_mask'))
-                # Write map of where the blobs are (high-Z mask)
-                highz_points = []; [highz_points.extend(list(x[0])) for x in z_clusters]
-                highz_points = [map(int, v) for v in highz_points]
-                highz_indices = map(grid.indexer(), list(highz_points))
-                write_indices_as_map(grid=grid, indices=highz_indices, f_name=dataset.file_manager.get_file('high_z_mask'))
-            # ============================================================================>
-            # Write different Z-Maps? (Probably only needed for testing)
-            # ============================================================================>
-            if args.output.developer.write_all_z_map_types:
-                z_map_naive.to_file(filename=dataset.file_manager.get_file('z_map_naive'), space_group=grid.space_group())
-                z_map_naive_normalised.to_file(filename=dataset.file_manager.get_file('z_map_naive_normalised'), space_group=grid.space_group())
-                z_map_uncty.to_file(filename=dataset.file_manager.get_file('z_map_uncertainty'), space_group=grid.space_group())
-                z_map_uncty_normalised.to_file(filename=dataset.file_manager.get_file('z_map_uncertainty_normalised'), space_group=grid.space_group())
-                z_map_compl.to_file(filename=dataset.file_manager.get_file('z_map_corrected'), space_group=grid.space_group())
-                z_map_compl_normalised.to_file(filename=dataset.file_manager.get_file('z_map_corrected_normalised'), space_group=grid.space_group())
+        # ============================================================================>
+        # Write out DATASET and Z-MAP grid masks
+        # ============================================================================>
+        if args.output.developer.write_reference_frame_grid_masks:
+            # Write map of grid + symmetry mask
+            write_indices_as_map(grid=grid, indices=dset_total_idxs, f_name=dataset.file_manager.get_file('grid_mask'))
+            # Write map of where the blobs are (high-Z mask)
+            highz_points = []; [highz_points.extend(list(x[0])) for x in z_clusters]
+            highz_points = [map(int, v) for v in highz_points]
+            highz_indices = map(grid.indexer(), list(highz_points))
+            write_indices_as_map(grid=grid, indices=highz_indices, f_name=dataset.file_manager.get_file('high_z_mask'))
+        # ============================================================================>
+        # Write different Z-Maps? (Probably only needed for testing)
+        # ============================================================================>
+        if args.output.developer.write_reference_frame_all_z_map_types:
+            z_map_naive.to_file(filename=dataset.file_manager.get_file('z_map_naive'), space_group=grid.space_group())
+            z_map_naive_normalised.to_file(filename=dataset.file_manager.get_file('z_map_naive_normalised'), space_group=grid.space_group())
+            z_map_uncty.to_file(filename=dataset.file_manager.get_file('z_map_uncertainty'), space_group=grid.space_group())
+            z_map_uncty_normalised.to_file(filename=dataset.file_manager.get_file('z_map_uncertainty_normalised'), space_group=grid.space_group())
+            z_map_compl.to_file(filename=dataset.file_manager.get_file('z_map_corrected'), space_group=grid.space_group())
+            z_map_compl_normalised.to_file(filename=dataset.file_manager.get_file('z_map_corrected_normalised'), space_group=grid.space_group())
 
         # ============================================================================>
         # Skip to next dataset if no clusters found
@@ -588,10 +577,10 @@ class DatasetProcessor(object):
                 series_1 = global_corrs,
                 series_2 = event_corrs)
             analyse_graphs.write_occupancy_graph(
+                f_name=dataset.file_manager.get_file('bdc_est_png').format(event_num),
                 x_values=event_remains,
                 global_values=global_corrs,
-                local_values=event_corrs,
-                out_file=dataset.file_manager.get_file('bdc_est_png').format(event_num))
+                local_values=event_corrs)
             log_strs.append('=> Event Background Correction estimated as {!s}'.format(1-event_remain_est))
             # Verbose Reporting
             blob_finder.log('Min-Max: {} {}'.format(1.0-args.params.background_correction.max_bdc, 1.0-args.params.background_correction.min_bdc))
@@ -610,8 +599,9 @@ class DatasetProcessor(object):
             # ============================================================================>
             # Write out EVENT map (in the reference frame) and grid masks
             # ============================================================================>
-            event_map.to_file(filename=dataset.file_manager.get_file('event_map').format(event_num, event_remain_est), space_group=grid.space_group())
-            if args.output.developer.write_grid_masks:
+            if args.output.developer.write_reference_frame_maps:
+                event_map.to_file(filename=dataset.file_manager.get_file('event_map').format(event_num, event_remain_est), space_group=grid.space_group())
+            if args.output.developer.write_reference_frame_grid_masks:
                 write_indices_as_map(grid=grid, indices=event_mask.outer_mask_indices(), f_name=dataset.file_manager.get_file('grid_mask').replace('.ccp4','')+'-event-mask-{}.ccp4'.format(event_num))
 
             # ============================================================================>
@@ -638,7 +628,7 @@ class DatasetProcessor(object):
         pml = PythonScript()
         pml.set_normalise_maps(False)
         # Load Structures
-        name = pml.load_pdb(f_name=dataset.file_manager.get_file('aligned_structure'))
+        name = pml.load_pdb(f_name=dataset.file_manager.get_file('aligned_model'))
         pml.repr_as(obj=name, style='sticks')
         name = pml.load_pdb(f_name=dataset.file_manager.get_file('symmetry_copies'))
         pml.repr_hide(obj=name)
@@ -688,6 +678,7 @@ class NativeMapMaker(object):
     def run(self):
         """Process the dataset"""
 
+        t1 = time.time()
         dataset, map, filename, args, verbose = self.data
 
         native_map_data = create_native_map(
@@ -699,7 +690,9 @@ class NativeMapMaker(object):
                             step                    = 0.75,
                             filename                = filename
                         )
+#        print('Time: '+str(time.time()-t1))
 
+        return None
 
 # ============================================================================>
 

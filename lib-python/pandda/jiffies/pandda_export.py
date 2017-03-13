@@ -169,7 +169,7 @@ def process_and_export_folder(dir, params):
     if params.process_and_export.merge_and_export_fitted_structures:
         # Extract parameters for the merging and set them
         merging_params = merge_conformations.master_phil.extract()
-        merging_params.major =  os.path.join(dir, PanddaDatasetFilenames.aligned_structure.format(dir_name))
+        merging_params.major =  os.path.join(dir, PanddaDatasetFilenames.aligned_model.format(dir_name))
         merging_params.minor =  os.path.join(dir, 'modelled_structures', PanddaDatasetFilenames.modelled_structure.format(dir_name))
         merging_params.output = os.path.join(dir, PanddaDatasetFilenames.ensemble_structure.format(dir_name))
         merging_params.overwrite = params.overwrite

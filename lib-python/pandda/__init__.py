@@ -6,7 +6,8 @@ try:
 except:
     VERSION = '(unknown)'
 
-LOGO_PATH = os.path.realpath(os.path.join(os.path.realpath(__path__[0]), '..', '..', 'share', 'pandda-logo-small.png'))
+import pandda.resources
+LOGO_PATH = os.path.join(os.path.realpath(pandda.resources.__path__[0]), 'pandda-logo-small.png')
 
 HEADER_TEXT = """
 ------------------------------------------------------------------>
