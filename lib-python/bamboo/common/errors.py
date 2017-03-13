@@ -1,4 +1,6 @@
 
+import traceback
+
 #:::::::::::::::::::::::::::::::::#
 # ############################### #
 # ###     Error Functions     ### #
@@ -75,95 +77,3 @@ class ErrorObject(object):
         self.print_warnings()
         throw_error(message)
 
-#:::::::::::::::::::::::::::::::::#
-# ############################### #
-# ###      Error Classes      ### #
-# ############################### #
-#:::::::::::::::::::::::::::::::::#
-
-# General Errors
-
-class ExternalProgramError(Exception):
-    pass
-
-# Pipline Errors
-
-class PipelineError(Exception):
-    pass
-
-class OptionError(Exception):
-    pass
-
-class MolecularSubstitutionError(Exception):
-    pass
-
-class BuildingError(Exception):
-    pass
-
-class FittingError(Exception):
-    pass
-
-class RefinementError(Exception):
-    pass
-
-# Structure Errors
-
-class MacroMolError(Exception):
-    pass
-
-class FragmentationError(Exception):
-    pass
-
-class DistanceError(Exception):
-    pass
-
-class ScoringError(Exception):
-    pass
-
-class AnalysisError(Exception):
-    pass
-
-# Ligand/Smile Errors
-
-class LigandCheckError(Exception):
-    pass
-
-class SmileCheckError(Exception):
-    pass
-
-# RDkit Errors
-
-class RDkitError(Exception):
-    pass
-
-class RDkitReadError(Exception):
-    pass
-
-class RDkitFragmentationError(Exception):
-    pass
-
-class BondAssignmentError(Exception):
-    pass
-
-# TODO Change this to MolEqualityError
-class EqualityError(Exception):
-    pass
-
-# MTZ Errors
-
-class ReflectionException(Exception):
-    pass
-
-class LabelError(Exception):
-    pass
-
-# Selection Errors
-
-class RefinerSelectionError(Exception):
-    pass
-
-class LigandBuilderSelectionError(Exception):
-    pass
-
-class LigandFitterSelectionError(Exception):
-    pass

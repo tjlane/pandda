@@ -40,10 +40,14 @@ class FileManager(object):
         if dir_tag is None: dir_tag = 'root'
         dir_name = self.output_dirs[dir_tag]
         # Create filename and store
-        self.output_files[file_tag] = os.path.join(dir_name, file_name)
+        self.output_files[file_tag] = FileObj(file=os.path.join(dir_name, file_name), tag=file_tag)
 
     def get_file(self, file_tag):
         """Retrieve a filename by it's file_tag"""
+        return self.get_file_object(file_tag=file_tag).path
+
+    def get_file_object(self, file_tag):
+        """Retrieve a file object by it's file_tag"""
         assert file_tag in self.output_files.keys(), 'File has not been added: {}'.format(file_tag)
         return self.output_files[file_tag]
 
@@ -59,22 +63,26 @@ class FileManager(object):
             os.mkdir(self.output_dirs[dir_tag])
 
 class FileObj(object):
-    def __init__(self, file):
+    def __init__(self, file, tag=None):
         """File information object"""
 
         self.input = file
 
         self.path = os.path.abspath(file)
-        self.tag = None
+        self.tag = tag
         self.dir, self.name = os.path.split(self.path)
         self.base, self.ext = os.path.splitext(self.name)
 
-        stats = os.lstat(file)
-
-        self.created  = datetime.datetime.fromtimestamp(stats.st_ctime)
-        self.modified = datetime.datetime.fromtimestamp(stats.st_mtime)
-        self.accessed = datetime.datetime.fromtimestamp(stats.st_atime)
+    def __str__(self):
+        return self.path
 
     def __call__(self):
         return self.path
+
+    def get_datestamp(self, date='created'):
+        stats = os.lstat(self.path)
+        if date=='created':  return datetime.datetime.fromtimestamp(stats.st_ctime)
+        if date=='modified': return datetime.datetime.fromtimestamp(stats.st_mtime)
+        if date=='accessed': return datetime.datetime.fromtimestamp(stats.st_atime)
+        raise Exception("Invalid option: date='{}'".format(date))
 

@@ -1,4 +1,4 @@
-import os, sys, shutil, glob
+import os, sys, shutil, glob, tempfile
 
 #:::::::::::::::::::::::::::::::::#
 # ############################### #
@@ -37,11 +37,11 @@ def delete_temporary_directory(tempdir):
     """Delete A Temporary Directory"""
 
     # Remove Temporary Files
-    if tempdir.startswith('/tmp/'):
+    if tempdir.startswith(tempfile.gettempdir()):
         shutil.rmtree(tempdir)
         return 0
     else:
-        FlagError("Will Not Delete This Directory - Not in '/tmp' - Remove Manually : "+tempdir)
+        FlagError("Will Not Delete This Directory - Not in '{}' - Remove Manually : {}".format(tempfile.gettempdir(), tempdir))
         return 1
 
 def list_directory_contents(directory, templatename=None, templatestyle=None):

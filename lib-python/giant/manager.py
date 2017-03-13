@@ -19,14 +19,9 @@ class Program(object):
     file_manager = None
 
     def write_running_parameters_to_log(self):
-        self.log('===================================>>>', True)
-        self.log('PROCESSED ARGUMENTS', True)
-        self.log('===================================>>>', True)
+        self.log.heading('PROCESSED ARGUMENTS')
         self.log(self.master_phil.format(python_object=self._input_params).as_str(), True)
-
-        self.log('===================================>>>', True)
-        self.log('ARGUMENTS DIFFERENT TO DEFAULTS', True)
-        self.log('===================================>>>', True)
+        self.log.heading('ARGUMENTS DIFFERENT TO DEFAULTS')
         self.log(self.master_phil.fetch_diff(source=self.master_phil.format(python_object=self._input_params)).as_str(), True)
 
     def check_for_matplotlib(self, backend=None, interactive=False):
