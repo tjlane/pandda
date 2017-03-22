@@ -68,13 +68,13 @@ class Log(object):
         """Print message as a heading/divider"""
         text = self._heading(text=str(message), spacer=spacer, blank=blank)
         self.show(text)
-        self.write(text)
+        self.write(text+'\n', mode='a')
 
     def bar(self, blank_before=False, blank_after=False):
         """Print divider bar"""
         text = '\n'*blank_before + self._bar() + '\n'*blank_after
         self.show(text)
-        self.write(text)
+        self.write(text+'\n', mode='a')
 
     def set_bar_and_heading(self, bar=None, heading=None):
         if bar is not None:

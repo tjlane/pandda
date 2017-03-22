@@ -16,9 +16,9 @@ def idx_to_grid(idx, grid_size):
     return tuple(gp)
 
 def calculate_grid_size(min_carts, max_carts, grid_spacing):
-    """Calculate the number of points to be sampled for a box size and sampling distance. Returns the size of the box in A, and the number of points to be sampled along each axis."""
-    cart_size = tuple([max_c-min_c for min_c, max_c in zip(min_carts, max_carts)])
-    grid_size = tuple([iceil((1.0*c_size)/grid_spacing)+1 for c_size in cart_size])
+    """Calculate the number of points to be sampled for a box size and sampling distance. Returns the number of points to be sampled along each axis. Box may be larger than max_carts."""
+    cart_size = tuple([float(max_c-min_c) for min_c, max_c in zip(min_carts, max_carts)])
+    grid_size = tuple([iceil(c_size/(1.0*grid_spacing))+1 for c_size in cart_size])
     return grid_size
 
 def get_grid_points_within_distance_cutoff_of_origin(grid_spacing, distance_cutoff):

@@ -6,9 +6,9 @@ import numpy
 from libtbx import easy_mp
 from libtbx.math_utils import ifloor, iceil
 from scitbx.array_family import flex
-import iotbx.crystal_symmetry_from_any
 
-from cctbx import crystal
+import iotbx.crystal_symmetry_from_any, iotbx.ccp4_map
+import cctbx.uctbx, cctbx.sgtbx
 
 from giant.grid.utils import calculate_grid_size
 
@@ -17,7 +17,10 @@ class Grid(object):
 
 
     def __init__(self, grid_spacing, origin, approx_max, verbose=True):
-        """Create and manage a grid object"""
+        """Create and manage an isotropic grid object"""
+
+        # Check and convert input
+        grid_spacing = float(grid_spacing)
 
         self.verbose = verbose
 
@@ -63,14 +66,14 @@ class Grid(object):
         return flex.grid(self.grid_size())
 
     def unit_cell(self):
-        """Create a unit cell as if the reference grid were a real lattice (THE UNIT CELL IS LARGER THAN cart_size() BY 1 GRID SPACING)"""
-        return crystal.uctbx.unit_cell('{!s} {!s} {!s} 90 90 90'.format(*list(flex.double(self.grid_size())*self.grid_spacing())))
+        """Create a unit cell as if the reference grid were a real lattice"""
+        return cctbx.uctbx.unit_cell('{!s} {!s} {!s} 90 90 90'.format(*list(self.cart_size())))
     def space_group(self):
         """Create a spacegroup as if the reference grid were a real lattice (Cartesian Grid == P1 SpaceGroup)"""
-        return crystal.sgtbx.space_group('P1')
+        return cctbx.sgtbx.space_group('P1')
     def crystal_symmetry(self):
         """Create a symmetry object as if the reference grid were a real lattice (THE UNIT CELL IS LARGER THAN cart_size() BY 1 GRID SPACING)"""
-        return iotbx.crystal_symmetry_from_any.from_string("{:f},{:f},{:f},90,90,90,P1".format(*list(flex.double(self.grid_size())*self.grid_spacing())))
+        return iotbx.crystal_symmetry_from_any.from_string("{:f},{:f},{:f},90,90,90,P1".format(*list(self.cart_size())))
 
     def create_grid_partition(self, sites_cart):
         """Partition the grid using nearest neighbour algorithm"""
@@ -106,9 +109,36 @@ class Grid(object):
                             'Grid Point Volume:   {!s}'.format(round(self.grid_point_volume(),3)),
                             'Size of Grid (3D):   {!s}'.format(self.grid_size()),
                             'Size of Grid (1D):   {!s}'.format(self.grid_size_1d()),
-                            'Grid Origin  (Cart):  {!s}'.format(tuple([round(x,3) for x in self.cart_origin()])),
+                            'Grid Origin  (Cart): {!s}'.format(tuple([round(x,3) for x in self.cart_origin()])),
                             'Size of Grid (Cart): {!s}'.format(tuple([round(x,3) for x in self.cart_size()]))
                         ])
+
+    def write_array_as_map(self, array, f_name):
+        """Take array of values and write as map the shape of the grid"""
+
+        # Convert from numpy array is necessary
+        if isinstance(array, numpy.ndarray):
+            array = array.astype(float).flatten()
+        else:
+            array = list(array)
+        # Convert to flex.double and shape
+        array = flex.double(array)
+        array.reshape(self.indexer())
+        # Write the map
+        iotbx.ccp4_map.write_ccp4_map(file_name   = f_name,
+                                      unit_cell   = self.unit_cell(),
+                                      space_group = self.space_group(),
+                                      map_data    = array,
+                                      labels      = flex.std_string(['']))
+
+    def write_indices_as_map(self, indices, f_name):
+        """Create an array with 1s at the provided indices and write as map"""
+
+        # Create boolean array and populate
+        array = numpy.zeros(self.grid_size_1d(), dtype=bool)
+        array.put(indices, True)
+        # Write as array
+        self.write_array_as_map(array=array, f_name=f_name)
 
     @staticmethod
     def index_on_other(query, other, assume_unique=True):

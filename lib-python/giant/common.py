@@ -2,7 +2,7 @@ import os, copy
 
 import numpy
 
-import iotbx.pdb, iotbx.mtz
+import iotbx.pdb, iotbx.mtz, iotbx.ccp4_map
 import cctbx.maptbx, cctbx.uctbx
 import cctbx_uctbx_ext
 from scitbx.array_family import flex
@@ -15,6 +15,7 @@ from giant.xray.data import extract_structure_factors
 from giant.xray.crystal import CrystalSummary
 from giant.xray.symmetry import get_crystal_contact_operators, apply_symmetry_operators, combine_hierarchies
 from giant.structure.align import align_structures_rigid, align_structures_flexible
+from giant.utils.pdb import strip_pdb_to_input
 
 
 class ModelAndData(object):
@@ -67,7 +68,8 @@ class AtomicModel(object):
 
     @classmethod
     def from_file(cls, filename):
-        ih = iotbx.pdb.hierarchy.input(filename)
+#        ih = iotbx.pdb.hierarchy.input(filename)
+        ih = strip_pdb_to_input(filename, remove_ter=True)
         c = cls(input=ih.input, hierarchy=ih.hierarchy)
         c.filename = filename
         return c
