@@ -13,6 +13,10 @@ from pandda.constants import PanddaAnalyserFilenames, PanddaInspectorFilenames, 
 import pandda.resources.inspect
 IMG_DIR = os.path.realpath(pandda.resources.inspect.__path__[0])
 
+
+#=========================================================================
+
+
 def catchup(block=False):
     while gtk.events_pending():
         gtk.main_iteration(block)
@@ -36,6 +40,16 @@ def modal_msg(msg):
     d.set_keep_above(True)
     d.run()
     d.destroy()
+
+
+#=========================================================================
+
+
+def coot_customisation():
+    set_show_symmetry_master(1)
+    set_symmetry_shift_search_size(2)
+    post_display_control_window()
+
 
 #=========================================================================
 
@@ -90,7 +104,7 @@ class Notices:
         main_vbox.pack_start(gtk.HSeparator())
         # ---------------------------
         box = gtk.HBox(spacing=5)
-        label = gtk.Label('However, things are further complicated when looking at event maps. Since these are partial-difference maps, the EFFECTIVE sigma-value is calculated by dividing the contour level by the (1-BDC) value.')
+        label = gtk.Label('However, things are further complicated when looking at EVENT MAPS. Since these are partial-difference maps, the EFFECTIVE sigma-value is calculated by dividing the contour level by the (1-BDC) value.')
         label.set_justify(gtk.JUSTIFY_CENTER)
         label.props.width_chars = 100
         label.set_line_wrap(True)
@@ -108,7 +122,7 @@ class Notices:
         image = gtk.Image()
         image.set_from_file(os.path.join(IMG_DIR, '1-sigma-anno.png'))
         image.show()
-        label = gtk.Label('The event map is contoured at an effective value of\n5 Sigma')
+        label = gtk.Label('(1-BDC) is 0.2, so the event map is contoured at an effective value of 5 Sigma (1.0/0.2 = 5)')
         label.set_justify(gtk.JUSTIFY_CENTER)
         label.props.width_chars = 30
         label.set_line_wrap(True)
@@ -118,7 +132,7 @@ class Notices:
         image = gtk.Image()
         image.set_from_file(os.path.join(IMG_DIR, '0.2-sigma-anno.png'))
         image.show()
-        label = gtk.Label('The event map is contoured at an effecive value of\n1 Sigma')
+        label = gtk.Label('(1-BDC) is 0.2, so the event map is contoured at an effective value of 1 Sigma (0.2/0.2 = 1)')
         label.set_justify(gtk.JUSTIFY_CENTER)
         label.props.width_chars = 30
         label.set_line_wrap(True)
@@ -216,13 +230,18 @@ class SplashScreen:
         button.child.set_padding(5,5)
         button.child.set_justify(gtk.JUSTIFY_CENTER)
         button.child.set_line_wrap(True)
-        button.connect("clicked", lambda x: self.window.destroy())
+        button.connect("clicked", lambda x: self.close())
         box.pack_end(button, expand=False)
         # ---------------------------
         self.window.set_title("Welcome to PanDDA Inspect")
         self.window.show_all()
         self.window.queue_draw()
         catchup()
+
+    def close(self):
+        self.window.destroy()
+        coot_customisation()
+
 
 #=========================================================================
 
@@ -274,15 +293,13 @@ class PanddaEvent(object):
         if not os.path.exists(self.model_dir): os.mkdir(self.model_dir)
 
         # The most recent model of the protein in the pandda maps
-        self.fitted_link        = os.path.join(self.model_dir,      PanddaDatasetFilenames.modelled_structure.format(dtag)  )
-        # Unfitted model of the protein
-        self.unfitted_model     = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.aligned_model.format(dtag)   )
+        self.fitted_link        = os.path.join(self.model_dir,   PanddaDatasetFilenames.modelled_structure.format(dtag)  )
         # Maps
-        self.observed_map       = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.sampled_map.format(dtag)         )
-        self.z_map              = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.z_map.format(dtag)               )
-        self.mean_diff_map      = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.mean_diff_map.format(dtag)       )
-        self.event_map          = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.event_map.format(dtag, self.event_idx, self.est_1_bdc))
-        self.dataset_symmetry   = os.path.join(self.dataset_dir,    PanddaDatasetFilenames.symmetry_copies.format(dtag)     )
+        self.input_model        = os.path.join(self.dataset_dir, PanddaDatasetFilenames.input_model.format(dtag)         )
+        self.input_data         = os.path.join(self.dataset_dir, PanddaDatasetFilenames.input_data.format(dtag)          )
+        self.z_map              = os.path.join(self.dataset_dir, PanddaDatasetFilenames.native_z_map.format(dtag)        )
+        self.event_map          = os.path.join(self.dataset_dir, PanddaDatasetFilenames.native_event_map.format(dtag, self.event_idx, self.est_1_bdc))
+        self.mean_map           = os.path.join(self.dataset_dir, PanddaDatasetFilenames.native_mean_map.format(dtag)     )
 
         # Ligand Files
         self.lig_pdbs = sorted(glob.glob(os.path.join(self.ligand_dir, '*.pdb')))
@@ -537,13 +554,13 @@ class PanddaInspector(object):
         if os.path.exists(self.current_event.fitted_link):
             p = read_pdb(self.current_event.fitted_link)
         else:
-            p = read_pdb(self.current_event.unfitted_model)
+            p = read_pdb(self.current_event.input_model)
         self.coot.open_mols['p'] = p
         self.write_output_csvs()
 
     def reset_current_to_orig_model(self):
         close_molecule(self.coot.open_mols['p'])
-        p = read_pdb(self.current_event.unfitted_model)
+        p = read_pdb(self.current_event.input_model)
         self.coot.open_mols['p'] = p
         self.write_output_csvs()
 
@@ -718,10 +735,16 @@ class PanddaMolHandler(object):
         self.open_mols = {}
 
     def merge_ligand_with_protein(self):
+        if self.open_mols.get('l', None) is None:
+            modal_msg(msg='No ligand has been loaded')
+            return
         try: merge_molecules([self.open_mols['l']], self.open_mols['p'])
         except Exception as err: print err
 
     def move_ligand_here(self):
+        if self.open_mols.get('l', None) is None:
+            modal_msg(msg='No ligand has been loaded')
+            return
         try: move_molecule_to_screen_centre(self.open_mols['l'])
         except Exception as err: print err
 
@@ -732,35 +755,23 @@ class PanddaMolHandler(object):
         if close_all: self.close_all()
 
         # Re-centre camera
-        set_rotation_centre(*e.ref_coords)
+        set_rotation_centre(*e.nat_coords)
 
-        # Load fitted version if it exists
+        # 1 - Load input model or load fitted version if it exists
         if os.path.exists(e.fitted_link): p = read_pdb(e.fitted_link)
-        else:                             p = read_pdb(e.unfitted_model)
+        else:                             p = read_pdb(e.input_model)
 
-        # Load fitted version if it exists
-        s = handle_read_ccp4_map(e.observed_map, 0)
-        set_last_map_contour_level(1)
-        set_map_displayed(s, 0)
+        #set_last_map_contour_level_by_sigma(2)
 
-        # Load fitted version if it exists
+        # 3 - Load z-map
         z = handle_read_ccp4_map(e.z_map, 1)
         set_last_map_contour_level(3)
         set_map_displayed(z, 1)
 
-        # Mean-Difference Map
-        d = handle_read_ccp4_map(e.mean_diff_map, 1)
-        set_last_map_contour_level_by_sigma(3)
-        set_map_displayed(d, 0)
-
-        # Event Map
+        # 4 - Load event map
         o = handle_read_ccp4_map(e.event_map, 0)
         set_last_map_contour_level(2*e.est_1_bdc)
         set_map_displayed(o, 1)
-
-        # Symmetry contacts
-        r = read_pdb(e.dataset_symmetry)
-        set_mol_displayed(r, 0)
 
         # More Settings
         set_scrollable_map(o)
@@ -768,27 +779,51 @@ class PanddaMolHandler(object):
 
         # Save mol numbers
         self.open_mols['p'] = p
-        self.open_mols['s'] = s
         self.open_mols['z'] = z
-        self.open_mols['d'] = d
         self.open_mols['o'] = o
-        self.open_mols['r'] = r
 
         self.ligand_index = 0
         if e.lig_pdbs and e.lig_cifs:
             self.open_mols['l'] = self.open_ligand(event=e, index=self.ligand_index)
             if os.path.exists(e.fitted_link): set_mol_displayed(self.open_mols['l'], 0)
-        else:
-            self.open_mols['l'] = None
 
         return e
 
+    def load_full_dataset_mtz(self, event):
+        # Close existing maps
+        for i_m in self.open_mols.get('m', []):
+            close_molecule(i_m)
+        # Read mtz or map file
+        if event.input_data.endswith('.mtz'):
+            m = auto_read_make_and_draw_maps(event.input_data)
+        else:
+            m = [handle_read_ccp4_map(event.input_data, 0)]
+        # Display maps
+        for i_m in m:
+            set_map_displayed(i_m, 1)
+        # Record mol numbers
+        self.open_mols['m'] = m
+
+    def load_ground_state_map(self, event):
+        if self.open_mols.get('g', None) is not None:
+            close_molecule(self.open_mols['g'])
+        g = handle_read_ccp4_map(event.mean_map, 0)
+        set_last_map_contour_level(1)
+        set_map_displayed(g, 1)
+        self.open_mols['g'] = g
+
     def next_ligand(self, event):
+        if len(event.lig_pdbs) == 0:
+            modal_msg(msg='No ligand files found for this dataset')
+            return
         self.ligand_index = (self.ligand_index + 1)%len(event.lig_pdbs)
         if self.open_mols['l']: close_molecule(self.open_mols['l'])
         self.open_mols['l'] = self.open_ligand(event=event, index=self.ligand_index)
 
     def open_ligand(self, event, index):
+        if len(event.lig_pdbs) == 0:
+            modal_msg(msg='No ligand files found for this dataset')
+            return
         print 'Loading ligand {} of {}'.format(index+1, len(event.lig_pdbs))
         l_dict = read_cif_dictionary(event.lig_cifs[index])
         l = handle_read_draw_molecule_and_move_molecule_here(event.lig_pdbs[index])
@@ -882,6 +917,11 @@ class PanddaGUI(object):
         rec_s_buttons = self._record_site_buttons()
         frame = gtk.Frame(); frame.add(rec_s_buttons)
         main_vbox.pack_start(frame)
+        # -----------------------------------------------------
+        # Miscellaneous buttons
+        misc_buttons = self._misc_buttons()
+        frame = gtk.Frame(); frame.add(misc_buttons)
+        main_vbox.pack_start(frame)
 
         # Link the buttons to the Inspector
         self.link_buttons()
@@ -906,7 +946,7 @@ class PanddaGUI(object):
         self.buttons['next-site'].connect("clicked", lambda x: [self.store(), self.parent.load_next_site()])
         self.buttons['prev-site'].connect("clicked", lambda x: [self.store(), self.parent.load_prev_site()])
 
-        self.buttons['go-to'].connect("clicked", lambda x: [self.store(), self.parent.load_dataset(dataset_id=self.objects['go-to-text'].get_text().strip()), self.objects['go-to-text'].set_text('')])
+        self.buttons['go-to'].connect("clicked", lambda x: [self.store(), self.parent.load_dataset(dataset_id=self.objects['go-to-text'].get_text().strip())]) #, self.objects['go-to-text'].set_text('')])
 
         # Quit
         self.buttons['quit'].connect("clicked", lambda x: [self.quit()])
@@ -925,6 +965,10 @@ class PanddaGUI(object):
         self.buttons['merge-ligand'].connect("clicked", lambda x: [self.buttons['merge-ligand'].child.set_text('Already Merged\n(Click to Repeat)'), self.parent.coot.merge_ligand_with_protein()])
         self.buttons['move-ligand'].connect("clicked",  lambda x: self.parent.coot.move_ligand_here())
         self.buttons['next-ligand'].connect("clicked", lambda x: self.parent.coot.next_ligand(event=self.parent.current_event))
+
+        # Map buttons
+        self.buttons['load-ground-state-map'].connect("clicked", lambda x: self.parent.coot.load_ground_state_map(event=self.parent.current_event))
+        self.buttons['load-full-dataset-mtz'].connect("clicked", lambda x: self.parent.coot.load_full_dataset_mtz(event=self.parent.current_event))
 
         # Meta Recording buttons
         self.buttons['tp'].connect("clicked",         lambda x: self.parent.set_event_log_value(col='Interesting', value=True))
@@ -1164,6 +1208,30 @@ class PanddaGUI(object):
         vbox_main.pack_start(gtk.Label('Record Site Information (for all events with this site)'), expand=False, fill=False, padding=5)
         vbox_main.pack_start(hbox_1, padding=5)
         vbox_main.pack_start(hbox_2, padding=5)
+
+        return vbox_main
+
+    def _misc_buttons(self):
+        # ---------------------------------------------
+        hbox_1 = gtk.HBox(homogeneous=False, spacing=5)
+        # ---
+        hbox_1.pack_start(gtk.HBox(), expand=True, fill=False, padding=10)
+        # ---
+        l = gtk.Label('Miscellaneous buttons')
+        hbox_1.pack_start(l, expand=False, fill=False, padding=5)
+        # ---
+        b = gtk.Button('Load input mtz file')
+        self.buttons['load-full-dataset-mtz'] = b
+        hbox_1.pack_start(b, expand=False, fill=False, padding=5)
+        # ---
+        b = gtk.Button('Load average map')
+        self.buttons['load-ground-state-map'] = b
+        hbox_1.pack_start(b, expand=False, fill=False, padding=5)
+        # ---
+        hbox_1.pack_start(gtk.HBox(), expand=True, fill=False, padding=10)
+        # ---------------------------------------------
+        vbox_main = gtk.VBox(spacing=0)
+        vbox_main.pack_start(hbox_1, padding=5)
 
         return vbox_main
 

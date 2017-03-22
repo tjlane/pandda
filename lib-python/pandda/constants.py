@@ -10,14 +10,15 @@ FLAG_MASK_NAMES      = [    'rejected - total',
                             'noisy zmap',
                             'analysed',
                             'interesting',
-                            'no_analyse',
-                            'no_build'    ]
+                            'exclude_from_analysis',
+                            'exclude_from_characterisation'    ]
 
 DATASET_INFO_FIELDS  = [    'high_resolution',
                             'low_resolution',
                             'r_work',
                             'r_free',
                             'rmsd_to_reference',
+                            'wilson B',
                             'space_group',
                             'uc_a',
                             'uc_b',
@@ -75,12 +76,16 @@ class PanddaDatasetFilenames:
     # Structure Files...
     aligned_model          = '{!s}-aligned-structure.pdb'
     symmetry_copies        = '{!s}-aligned-sym-contacts.pdb'
+    # Native (Output) Maps
+    native_obs_map         = '{!s}-observed.native.ccp4'
+    native_z_map           = '{!s}-z_map.native.ccp4'
+    native_event_map       = '{!s}-event_{!s}_1-BDC_{!s}_map.native.ccp4'
+    native_mean_map        = '{!s}-ground-state-mean-map.native.ccp4'
     # Modelled Structures...
     modelled_structure     = '{!s}-pandda-model.pdb'
     ensemble_structure     = '{!s}-ensemble-model.pdb'
-    # Dataset Maps
+    # Maps - in aligned reference frame
     sampled_map            = '{!s}-aligned-map.ccp4'
-    # Z-Maps...
     mean_diff_map          = '{!s}-difference-from-mean.ccp4'
     z_map                  = '{!s}-z_map.ccp4'
     z_map_naive            = '{!s}-z_map_naive.ccp4'
@@ -89,21 +94,15 @@ class PanddaDatasetFilenames:
     z_map_uncertainty_norm = '{!s}-z_map_uncertainty_normalised.ccp4'
     z_map_corrected        = '{!s}-z_map_adjusted.ccp4'
     z_map_corrected_norm   = '{!s}-z_map_adjusted_normalised.ccp4'
-    # Events...
     event_map              = '{!s}-event_{!s}_1-BDC_{!s}_map.ccp4'
-    # Masks...
+    # Grid masks files
     high_z_mask            = '{!s}-high_z_mask.ccp4'
     grid_mask              = '{!s}-masked_grid.ccp4'
-    # Ligands...
+    # Ligands files
     ligand_coordinates     = '{!s}-ligand.pdb'
     ligand_restraints      = '{!s}-ligand.cif'
     ligand_image           = '{!s}-ligand.png'
-    # Native (Output) Maps
-    native_obs_map         = '{!s}-observed.native.ccp4'
-    native_z_map           = '{!s}-z_map.native.ccp4'
-    native_event_map       = '{!s}-event_{!s}_1-BDC_{!s}_map.native.ccp4'
-    native_mean_map        = '{!s}-ground-state-mean-map.native.ccp4'
-    # Misc...
+    # Miscellaneous files
     z_peaks_csv            = '{!s}-z_map_peaks.csv'
     pymol_script           = 'load_script_for_pymol.py'
     ccp4mg_script          = 'load_script_for_ccp4mg.py'

@@ -29,7 +29,6 @@ from pandda.phil import pandda_phil
 from pandda.analyse.z_maps import PanddaZMapAnalyser
 from pandda.analyse.events import PointCluster, Event
 from pandda.analyse import graphs as analyse_graphs
-from pandda.misc import *
 
 def wrapper_run(c):
     if c is not None:
@@ -509,12 +508,12 @@ class DatasetProcessor(object):
         # ============================================================================>
         if args.output.developer.write_reference_frame_grid_masks:
             # Write map of grid + symmetry mask
-            write_indices_as_map(grid=grid, indices=dset_total_idxs, f_name=dataset.file_manager.get_file('grid_mask'))
+            grid.write_indices_as_map(indices=dset_total_idxs, f_name=dataset.file_manager.get_file('grid_mask'))
             # Write map of where the blobs are (high-Z mask)
             highz_points = []; [highz_points.extend(list(x[0])) for x in z_clusters]
             highz_points = [map(int, v) for v in highz_points]
             highz_indices = map(grid.indexer(), list(highz_points))
-            write_indices_as_map(grid=grid, indices=highz_indices, f_name=dataset.file_manager.get_file('high_z_mask'))
+            grid.write_indices_as_map(indices=highz_indices, f_name=dataset.file_manager.get_file('high_z_mask'))
         # ============================================================================>
         # Write different Z-Maps? (Probably only needed for testing)
         # ============================================================================>
@@ -602,14 +601,13 @@ class DatasetProcessor(object):
             if args.output.developer.write_reference_frame_maps:
                 event_map.to_file(filename=dataset.file_manager.get_file('event_map').format(event_num, event_remain_est), space_group=grid.space_group())
             if args.output.developer.write_reference_frame_grid_masks:
-                write_indices_as_map(grid=grid, indices=event_mask.outer_mask_indices(), f_name=dataset.file_manager.get_file('grid_mask').replace('.ccp4','')+'-event-mask-{}.ccp4'.format(event_num))
+                grid.write_indices_as_map(indices=event_mask.outer_mask_indices(), f_name=dataset.file_manager.get_file('grid_mask').replace('.ccp4','')+'-event-mask-{}.ccp4'.format(event_num))
 
             # ============================================================================>
             # Find the nearest atom to the event
             # ============================================================================>
-            atm = find_nearest_atoms(atoms=list(protein(dataset.model.hierarchy).atoms()),
+            atm = find_nearest_atoms(atoms=list(protein(dataset.model.hierarchy).atoms_with_labels()),
                                      query=dataset.model.alignment.ref2nat(grid.grid2cart(sites_grid=[map(int,point_cluster.centroid)], origin=False)))[0]
-            atm = atm.fetch_labels()
             log_strs.append('=> Nearest Residue to event: Chain {}, Residue {} {}'.format(atm.chain_id, atm.resname, atm.resid()))
             # ============================================================================>
             # Create an event object
@@ -687,7 +685,8 @@ class NativeMapMaker(object):
                             native_hierarchy        = dataset.model.hierarchy,
                             alignment               = dataset.model.alignment,
                             reference_map           = map.as_map(),
-                            step                    = 0.75,
+                            site_mask_radius        = args.params.masks.outer_mask,
+                            step                    = args.params.maps.grid_spacing,
                             filename                = filename
                         )
 #        print('Time: '+str(time.time()-t1))

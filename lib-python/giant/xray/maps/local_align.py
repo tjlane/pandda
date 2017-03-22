@@ -3,6 +3,7 @@ import copy, time
 import cctbx.uctbx, cctbx.sgtbx, cctbx.maptbx
 import scitbx.sparse
 
+from libtbx.math_utils import iceil
 from scitbx.array_family import flex
 
 from giant.structure.align import *
@@ -27,10 +28,11 @@ def get_subset_of_grid_points(gridding, grid_indices):
     mask_binary = numpy.zeros(gridding.n_grid_points(), dtype=bool)
     mask_binary.put(grid_indices, True)
     grid = flex.grid(gridding.n_real())
-    for p in flex.nested_loop(gridding.n_real()):
-        if mask_binary[grid(p)]: yield p
+    for i, p in enumerate(flex.nested_loop(gridding.n_real())):
+        assert i == grid(p)
+        if mask_binary[i]: yield p
 
-def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, alignment, reference_map, site_mask_radius=6, step=0.7, filename=None):
+def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, alignment, reference_map, site_mask_radius=6, step=0.5, filename=None, verbose=False):
     """
     Transform the reference-aligned map back to the native crystallographic frame
     native_sites            - defines region that map will be masked around
@@ -44,58 +46,69 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
 
     start=time.time()
 
+    # Output unit cell and spacegroup
     native_unit_cell = native_crystal_symmetry.unit_cell()
     native_space_group = native_crystal_symmetry.space_group()
 
     # ===============================================================================>>>
     # Create a supercell containing the protein model at the centre
     # ===============================================================================>>>
-
+    # How many unit cells to include in the supercell
+    box_frac_min_max = native_unit_cell.box_frac_around_sites(sites_cart=native_hierarchy.atoms().extract_xyz(), buffer=site_mask_radius)
+    supercell_size = tuple([iceil(ma-mi) for mi, ma in zip(*box_frac_min_max)])
     # create supercell in the native frame
-    supercell = make_supercell(native_unit_cell)
+    supercell = make_supercell(native_unit_cell, size=supercell_size)
+    # Create gridding for the real unit cell based on fixed step size
+    tmp_gridding = cctbx.maptbx.crystal_gridding(unit_cell=native_unit_cell, step=step)
+    # Extract the n_real from this gridding to be applied to the real griddings
+    uc_n_real = tmp_gridding.n_real()
+    sc_n_real = tuple(flex.int(tmp_gridding.n_real())*flex.int(supercell_size))
+    if verbose:
+        print('Generating supercell of size {}. Unit cell grid size: {}. Supercell grid size: {}.'.format(supercell_size, uc_n_real, sc_n_real))
+    # Get griddings based on the n_real determined above
+    uc_gridding = cctbx.maptbx.crystal_gridding(unit_cell=native_unit_cell, pre_determined_n_real=uc_n_real)
+    sc_gridding = cctbx.maptbx.crystal_gridding(unit_cell=supercell,        pre_determined_n_real=sc_n_real)
 
-    sc_gridding = cctbx.maptbx.crystal_gridding(unit_cell=supercell,        step=step)
-    uc_gridding = cctbx.maptbx.crystal_gridding(unit_cell=native_unit_cell, step=step)
-
-    # calculate the origin of the supercell (centred on the protein model)
-    # adding origin translates "grid frame" to "crystallographic frame"
+    # ===============================================================================>>>
+    # Mask the supercell grid around the protein model
+    # ===============================================================================>>>
+    # calculate the origin of the supercell (centred on the protein model) - adding origin translates "grid frame" to "crystallographic frame"
     origin = calculate_offset_to_centre_grid(grid_dimensions=supercell.parameters()[0:3], centre_on=native_sites.mean())
-
-    # ===============================================================================>>>
-    # Create a masked grid around the protein model
-    # ===============================================================================>>>
-
     # sample the map points near to the protein (transform the structure to be centre of the grid)
-    sites_shifted = native_sites - origin
-    masked_points_indices = cctbx.maptbx.grid_indices_around_sites(unit_cell=supercell,
-                                fft_n_real=sc_gridding.n_real(), fft_m_real=sc_gridding.n_real(),
-                                sites_cart=sites_shifted, site_radii=flex.double(sites_shifted.size(),site_mask_radius))
+    masked_points_indices = cctbx.maptbx.grid_indices_around_sites(unit_cell  = supercell,
+                                                                   fft_n_real = sc_gridding.n_real(),
+                                                                   fft_m_real = sc_gridding.n_real(),
+                                                                   sites_cart = native_sites - origin,
+                                                                   site_radii = flex.double(native_sites.size(),site_mask_radius))
+    # Create iterator over these points
     masked_points_grid_iter = get_subset_of_grid_points(gridding=sc_gridding, grid_indices=masked_points_indices)
+    # Convert grid points to cartesian points
     g2c = cctbx.maptbx.grid2cart(sc_gridding.n_real(), supercell.orthogonalization_matrix())
     masked_points_cart = flex.vec3_double(map(g2c, masked_points_grid_iter)) + origin
 
-    from bamboo.pymol_utils.shapes import Sphere
-    points = ['from pymol import cmd','from pymol.cgo import *']
-    for i,p in enumerate(masked_points_cart):
-        if i%100==0: points.append(Sphere(p, 0.2).as_cmd('steve'))
-    points = '\n'.join(points)
-    with open(filename+'.pml.py', 'w') as fh: fh.write(points)
+#    from bamboo.pymol_utils.shapes import Sphere
+#    points = ['from pymol import cmd','from pymol.cgo import *']
+#    for i,p in enumerate(masked_points_cart):
+#        if i%100==0: points.append(Sphere(p, 0.2).as_cmd('steve'))
+#    points = '\n'.join(points)
+#    with open(filename+'.pml.py', 'w') as fh: fh.write(points)
 
     # ===============================================================================>>>
     # Sample masked points from the reference-aligned map
     # ===============================================================================>>>
-
-    # transform points to the reference frame
+    # Transform points to the reference frame
     masked_points_transformed = alignment.nat2ref(masked_points_cart)
     # Sample the map at these points
     masked_values = reference_map.get_cart_values(masked_points_transformed)
 
     # ===============================================================================>>>
-    # Create a native-aligned map and populate with the masked values
+    # Create a native-aligned map in the supercell
     # ===============================================================================>>>
-
     # Create a map of the density
-    sc_map_data = scitbx.sparse.vector(sc_gridding.n_grid_points(), dict(zip(masked_points_indices, masked_values))).as_dense_vector()
+    sc_map_data = numpy.zeros(sc_gridding.n_grid_points(), dtype=numpy.float64)
+    sc_map_data.put(masked_points_indices, masked_values)
+    sc_map_data = flex.double(sc_map_data)
+#    sc_map_data = scitbx.sparse.vector(sc_gridding.n_grid_points(), dict(zip(masked_points_indices, masked_values))).as_dense_vector()
     sc_map_data.reshape(flex.grid(sc_gridding.n_real()))
     # Transform the points back to the native frame (simple origin shift)
     sc_map_data = cctbx.maptbx.rotate_translate_map(unit_cell          = supercell,
@@ -104,38 +117,56 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
                                                     translation_vector = scitbx.matrix.rec([-a for a in origin], (3,1)).elems    )
 
     # ===============================================================================>>>
+    # Apply translations to populate all unit cells of supercell
+    # ===============================================================================>>>
+    # Create a copy to contain the combined map data
+    combined_sc_map_data = copy.deepcopy(sc_map_data)
+    # Apply unit cell translation operators
+    for x,y,z in flex.nested_loop(supercell_size):
+        if x==y==z==0: continue
+        # Calculate the translation vector
+        unit_cell_shift = native_unit_cell.orthogonalize((x,y,z))
+        # Tranform the map
+        rt_map_data = cctbx.maptbx.rotate_translate_map(unit_cell          = supercell,
+                                                        map_data           = sc_map_data,
+                                                        rotation_matrix    = scitbx.matrix.rec([1,0,0,0,1,0,0,0,1], (3,3)).elems,
+                                                        translation_vector = scitbx.matrix.rec(unit_cell_shift, (3,1)).elems    )
+        # Set any values that are filled in combined_sc_map_data to 0
+        rt_map_data.set_selected(flex.abs(combined_sc_map_data) > 1e-6, 0)
+        # Add values to combined_sc_map_data
+        combined_sc_map_data = combined_sc_map_data + rt_map_data
+
+    # ===============================================================================>>>
     # Select the first (on origin) unit cell of the supercell
     # ===============================================================================>>>
-
     # Get the indices for the first unit cell
     supercell_grid = flex.grid(sc_gridding.n_real())
     supercell_mask = map(supercell_grid, flex.nested_loop(uc_gridding.n_real()))
     # Extract the map data for those values (and reshape to the right size of the unit cell)
-    uc_map_data = sc_map_data.select(supercell_mask)
+    uc_map_data = combined_sc_map_data.select(supercell_mask)
     uc_map_data.reshape(flex.grid(uc_gridding.n_real()))
-
-    # Create a copy to be the output map
-    combined_uc_map_data = copy.copy(uc_map_data)
 
     # ===============================================================================>>>
     # Apply symmetry operations to generate whole unit cell
     # ===============================================================================>>>
-
-    # Get the symmetry operations for adjacent crystal copies
-    sym_ops = get_crystal_contact_operators(hierarchy=native_hierarchy,
-                                            crystal_symmetry=native_crystal_symmetry,
-                                            distance_cutoff=5.0)
-
-    for sym_op in sym_ops:
+    # Create a copy to contain the combined map data
+    combined_uc_map_data = copy.deepcopy(uc_map_data)
+#    # Get the symmetry operations for adjacent crystal copies
+#    sym_ops = get_crystal_contact_operators(hierarchy=native_hierarchy,
+#                                            crystal_symmetry=native_crystal_symmetry,
+#                                            distance_cutoff=5.0)
+    # Apply all symmetry operations to unit cell data
+    for sym_op in native_space_group.all_ops():
+        if sym_op.as_xyz() == 'x,y,z': continue
         # Get the transformation matrix
         rt_mx = sym_op.as_rational().as_float()
-        # Translate the map
+        # Tranform the map
         rt_map_data = cctbx.maptbx.rotate_translate_map(unit_cell          = supercell,
                                                         map_data           = uc_map_data,
                                                         rotation_matrix    = rt_mx.r.elems,
                                                         translation_vector = rt_mx.t.elems    )
         # Set any values that are filled in combined_uc_map_data to 0
-        rt_map_data.set_selected(combined_uc_map_data!=0, 0)
+        rt_map_data.set_selected(flex.abs(combined_uc_map_data) > 1e-6, 0)
         # Add values to combined_uc_map_data
         combined_uc_map_data = combined_uc_map_data + rt_map_data
 
@@ -155,5 +186,5 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
 #                                        map_data    = sc_map_data,
 #                                        labels      = flex.std_string(['Map from pandda'])     )
 
-    return uc_map_data
+    return combined_uc_map_data
 

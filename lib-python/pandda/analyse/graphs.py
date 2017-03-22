@@ -15,6 +15,7 @@ import numpy
 from scitbx.array_family import flex
 
 from bamboo.plot import bar, simple_histogram
+from giant.xray.data import calculate_wilson_b_factor
 
 def filter_nans(x):
     return [v for v in x if not numpy.isnan(v)]
@@ -250,9 +251,13 @@ def write_truncated_data_plots(pandda, resolution, miller_arrays):
         bin_cent = binner.bin_centers(1)
         bin_data = binned.data[1:-1]
         assert len(bin_cent) == len(bin_data)
-        pyplot.semilogy(bin_cent, bin_data, '-', linewidth=2, basey=numpy.e)
-    pyplot.xlabel('1/resolution (A^-1)')
-    pyplot.ylabel('Mean intensity')
+        # Transform the data - ln(F) v (1/A)^2
+        x_vals = numpy.power(bin_cent, 2)
+        y_vals = numpy.log(bin_data)
+        # Plot
+        pyplot.plot(x_vals, y_vals, '-', linewidth=1)
+    pyplot.xlabel('1/(resolution^2) (A^-2)')
+    pyplot.ylabel('ln(mean intensity)')
     fig.set_tight_layout(True)
     pyplot.savefig(pandda.file_manager.get_file('dataset_wilson_plot').format(resolution))
     pyplot.close(fig)

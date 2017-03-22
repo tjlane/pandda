@@ -1,5 +1,7 @@
 import cctbx.miller
 
+import numpy
+
 def extract_structure_factors(mtz_object, ampl_label, phas_label):
     # Get the crystal symmetry from the amplitudes' crystal
     try:
@@ -20,6 +22,22 @@ def extract_structure_factors(mtz_object, ampl_label, phas_label):
     mill_sfs = mill_sfs.as_non_anomalous_array()
     assert mill_sfs.is_complex_array(), 'STRUCTURE FACTORS SHOULD BE COMPLEX?!'
     return mill_sfs
+
+def calculate_wilson_b_factor(intensities, inverse_resolution, low_res_cutoff=3.5):
+
+    ln_ints = numpy.log(intensities)
+    sqr_res = numpy.power(inverse_resolution, 2)
+
+    # Truncate data at low_res_cutoff
+    idx_cut = numpy.where(inverse_resolution > (1.0/low_res_cutoff))[0]
+    if len(idx_cut)==0: raise Exception('Data does not extend to res_cutoff')
+    ln_ints = ln_ints[idx_cut[0]:]
+    sqr_res = sqr_res[idx_cut[0]:]
+
+    # polyfit
+    scale, offset = numpy.polyfit(x=sqr_res, y=ln_ints, deg=1)
+
+    return (scale, offset)
 
 #def extract_structure_factors(mtz_object, ampl_label, phas_label):
 #

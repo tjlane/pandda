@@ -1,0 +1,62 @@
+#!/usr/bin/env ccp4-python
+
+import os, sys, glob, shutil
+import wget
+
+import pandas
+import iotbx.pdb
+import libtbx.easy_mp
+
+from bamboo.pdb_utils import get_pdb_index, download_and_organise_pdb_as_necessary
+
+def process_line_wrap(line):
+
+    if not line: return None
+
+    try:
+        ret = process_line(line)
+        return ret
+    except KeyboardInterrupt:
+        raise SystemExit()
+    except Exception as e:
+        print e.__class__, e.message.strip('\n')+'\n'
+        raise 
+
+def process_line(line):
+    """Download and extract the het molecules from the pdb file"""
+    
+    pdb_id, pdb_type, pdb_method = line.split('\t')
+        
+    print 'Processing {}'.format(pdb_id)
+
+    if pdb_type != 'prot':
+        return
+    elif pdb_method != 'diffraction':
+        return
+
+    # Download and organise files as necessary
+    pdb_file = download_and_organise_pdb_as_necessary(pdb_id=pdb_id)
+   
+def run():
+
+    pdb_index = get_pdb_index()
+    print 'Using PDB file index from {}'.format(pdb_index)
+
+    pdb_entries = open(pdb_index, 'r').read().split('\n')
+    num_entries = len(pdb_entries)
+    print 'Found {} codes'.format(num_entries)
+    
+    print '==========================================================>'
+    print '===> Downloading PDBs'
+    print '==========================================================>'
+
+    # Get the HET molecules from the PDB files
+    output = libtbx.easy_mp.pool_map(func=process_line_wrap, args=pdb_entries, processes=48)
+      
+    print '==========================================================>'
+    print '===> FINISHED'
+    print '==========================================================>'
+
+if __name__=="__main__":
+    run()
+

@@ -4,7 +4,6 @@ import os,sys
 
 import numpy, scipy.stats
 from cctbx import uctbx, sgtbx
-import iotbx.ccp4_map
 from scitbx.array_family import flex
 
 from bamboo.common import Meta, Info

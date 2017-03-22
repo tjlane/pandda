@@ -1,0 +1,123 @@
+#!/usr/bin/env ccp4-python
+
+import os, sys, glob, shutil
+import wget
+
+import pandas
+import iotbx.pdb
+import libtbx.easy_mp
+
+from bamboo.pdb_utils import get_pdb_index, download_and_organise_pdb_as_necessary
+
+month_to_num = {'JAN':1,'FEB':2,'MAR':3,'APR':4,'MAY':5,'JUN':6,'JUL':7,'AUG':8,'SEP':9,'OCT':10,'NOV':11,'DEC':12}
+
+def process_line_wrap(line):
+
+    if not line: return None
+
+    try:
+        ret = process_line(line)
+        return ret
+    except KeyboardInterrupt:
+        raise SystemExit()
+    except Exception as e:
+        print e.__class__, e.message.strip('\n')+'\n'
+        raise 
+
+def process_line(line):
+    """Download and extract the het molecules from the pdb file"""
+    
+    pdb_id, pdb_type, pdb_method = line.split('\t')
+        
+    print 'Processing {}'.format(pdb_id)
+
+    if pdb_type != 'prot':
+        return
+    elif pdb_method != 'diffraction':
+        return
+
+    # Download and organise files as necessary
+    pdb_file = download_and_organise_pdb_as_necessary(pdb_id=pdb_id)
+
+    # Read as input object
+    try: 
+        i = iotbx.pdb.input(file_name=pdb_file)   
+    except:
+        print 'Bad PDB File'
+        return
+    # Extract date
+    try:
+        date = list(i.title_section())[0][50:59]
+        day   = int(date[0:2])
+        month = month_to_num[date[3:6]]
+        year  = int(date[7:])
+        if year < 20: 
+          year = year+2000
+        else:         
+          year = year+1900
+    except:
+        day = None
+        month = None
+        year = None
+    # Extract lead author
+    try:
+        author = i.extract_authors()[0]
+    except:
+        author = None
+  
+    ret_tab = pandas.DataFrame(
+        [{'pdbid':    pdb_id,
+          'author':   author,
+          'day':      day,
+          'month':    month,
+          'year':     year,
+        }])
+ 
+    print ret_tab
+    return ret_tab
+
+def run():
+
+    pdb_index = get_pdb_index()
+    print 'Using PDB file index from {}'.format(pdb_index)
+
+    pdb_entries = open(pdb_index, 'r').read().split('\n')
+    num_entries = len(pdb_entries)
+    print 'Found {} codes'.format(num_entries)
+    
+    print '==========================================================>'
+    print '===> Extracting Meta'
+    print '==========================================================>'
+
+    # Get the HET molecules from the PDB files
+    output = libtbx.easy_mp.pool_map(func=process_line_wrap, args=pdb_entries, processes=48)
+      
+    print '\n'*2
+    print '==========================================================>'        
+    print '===> Compiling output'
+    print '==========================================================>'        
+
+    out_tab = None 
+    for ret in output:
+        # Nothing returned
+        if ret is None: continue
+        # Errors
+        if isinstance(ret, Exception):
+            print ret.__type__, ret.message.strip('\n')+'\n'
+            continue       
+        # Create out_tab if necessary
+        if out_tab is None:
+            out_tab = pandas.DataFrame(columns=ret.columns)
+        # Append to output table 
+        out_tab = out_tab.append(ret, ignore_index=True)
+        print ret
+    # Write output
+    out_tab.to_csv('./pdb_meta.csv', sep='\t')
+
+    print '==========================================================>'
+    print '===> FINISHED'
+    print '==========================================================>'
+
+if __name__=="__main__":
+    run()
+

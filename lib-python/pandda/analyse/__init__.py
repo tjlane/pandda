@@ -1,4 +1,4 @@
-import os, sys, glob, time, gc
+import os, sys, glob, time, gc, traceback
 
 #################################
 try:
@@ -27,7 +27,6 @@ from pandda.analyse.functions import DatasetProcessor, NativeMapMaker, wrapper_r
 from pandda.analyse.z_maps import PanddaZMapAnalyser
 from pandda.analyse import graphs as analyse_graphs
 from pandda.analyse import html as analyse_html
-from pandda.misc import *
 
 # ============================================================================>
 #
@@ -51,11 +50,6 @@ def pandda_dataset_setup(pandda):
     pandda.add_files(file_list=new_files)
     # Check that some datasets have been found or already loaded
     pandda.check_number_of_datasets()
-    # ============================================================================>
-    # If dry_run, exit after initial search
-    # ============================================================================>
-    if pandda.args.exit_flags.dry_run:
-        raise SystemExit('Dry Run Only: Exiting')
     # ============================================================================>
     #####
     # Load and process input files
@@ -113,6 +107,12 @@ def pandda_dataset_setup(pandda):
     # Check that enough VALID datasets have been found
     # ============================================================================>
     pandda.check_number_of_datasets()
+
+    # ============================================================================>
+    # If dry_run, exit after initial search
+    # ============================================================================>
+    if pandda.args.exit_flags.dry_run:
+        raise SystemExit('Dry run only -exiting')
 
     # ============================================================================>
     #####
@@ -411,7 +411,7 @@ def pandda_main_loop(pandda):
                                        map      = map_analyser.statistical_maps['mean_map'],
                                        filename = pandda.file_manager.get_file('mean_map').format(cut_resolution),
                                        args     = pandda.args,
-                                       verbose  = pandda.settings.verbose).run()
+                                       verbose  = pandda.settings.verbose)
                 raise SystemExit('Calculating first mean map only: Exiting')
             # ============================================================================>
             # Plot the reference dataset map against the mean map (sanity check)
@@ -871,11 +871,11 @@ def pandda_end(pandda):
         pandda.log('Potentially Useful Shortcuts for Future Runs', True)
         pandda.log.bar()
         pandda.log('All datasets with events:')
-        pandda.log('no_build={!s}'.format(','.join(zip(*event_num)[0])), True)
+        pandda.log('exclude_from_characterisation={!s}'.format(','.join(zip(*event_num)[0])), True)
         for site_num, event_list in pandda.tables.event_info.groupby('site_idx').groups.items():
             pandda.log.bar()
             pandda.log('Datasets with events at Site {}'.format(site_num))
-            pandda.log('no_build={!s}'.format(','.join(zip(*event_list)[0])))
+            pandda.log('exclude_from_characterisation={!s}'.format(','.join(zip(*event_list)[0])))
         pandda.log.bar()
     # ============================================================================>
     # Record which datasets were used for each statistical map
@@ -972,16 +972,23 @@ def pandda_analyse_main(args):
         # ============================================================================>
     except KeyboardInterrupt:
         raise
-    except SystemExit:
-        try:    pandda.log('Exited Normally')
-        except: print '<<< Pandda exited before being initialised >>>'
+    except SystemExit as s:
+        try:
+            pandda.exit(error_msg=traceback.format_exception(type(s), str(s), tb=False))
+        except:
+            print '<<< Pandda exited before being initialised >>>'
+            raise
+    except Sorry as s:
+        # Recognised error - print type and message
+        pandda.exit(error_msg=traceback.format_exception(type(s), str(s), tb=False))
     except:
+        # Unknown error - print full traceback
         if ("pandda" in locals()) and hasattr(pandda, 'log'):
-            pandda.exit(error=True)
+            pandda.exit(error_msg=traceback.format_exc())
         else:
             raise
     else:
-        pandda.exit(error=False)
+        pandda.exit(error_msg=None)
 
     return pandda
 

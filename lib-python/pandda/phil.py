@@ -49,11 +49,11 @@ pandda
             ignore_datasets = None
                 .help = 'Reject these datasets, don\'t even load them - comma separated list of dataset tags'
                 .type = str
-            no_analyse = None
+            exclude_from_analysis = None
                 .help = 'Don\'t analyse these datasets, only use them to build the distributions - comma separated list of dataset tags'
                 .type = str
-            no_build = None
-                .help = 'Don\'t use these datasets to build the distributions, only analyse them - comma separated list of dataset tags'
+            exclude_from_characterisation = None
+                .help = 'Don\'t use these datasets to build density distributions, only analyse them - comma separated list of dataset tags'
                 .type = str
         }
     }
@@ -99,6 +99,9 @@ pandda
             .help = "Development Settings (Not needed by most users)"
             .expert_level = 3
         {
+            write_all = False
+                .help = "Activate all developer flags"
+                .type = bool
             write_reference_frame_maps = False
                 .help = "Output maps for datasets in the reference coordinate frame"
                 .type = bool
@@ -108,18 +111,6 @@ pandda
             write_reference_frame_all_z_map_types = False
                 .help = "Output all possible types of Z-maps"
                 .type = bool
-        }
-    }
-    results {
-        events {
-            order_by = *z_peak z_mean cluster_size
-                .help = "How should events be ordered within each site?"
-                .type = choice
-        }
-        sites {
-            order_by = *num_events
-                .help = "How should sites be ordered?"
-                .type = choice
         }
     }
     method
@@ -172,11 +163,22 @@ pandda
                     .type = bool
             }
         }
+        checks
+            .help = "Checks on the mtz file data provided for each dataset"
+        {
+            all_data_are_valid_values = True
+                .help = "Check that all reflections in the diffraction data have valid values (are not zero or N/A)"
+                .type = bool
+            low_resolution_completeness = 4.0
+                .help = "Check that diffraction data is 100% complete up to this resolution cutoff. Missing reflections at low resolution may seriously degrade analysis quality. Set to None to turn off this check."
+                .type = float
+        }
         maps
             .help = "Settings to control how maps are generated and analysed"
         {
-            structure_factors = '2FOFCWT,PH2FOFCWT'
+            structure_factors = None
                 .type = str
+                .multiple = True
             scaling = none *sigma volume
                 .type = choice
             resolution_factor = 0.25
@@ -262,6 +264,18 @@ pandda
             increment = 0.01
                 .type = float
                 .help = 'Resolution of background correction estimation'
+        }
+    }
+    results {
+        events {
+            order_by = *z_peak z_mean cluster_size
+                .help = "How should events be ordered within each site?"
+                .type = choice
+        }
+        sites {
+            order_by = *num_events
+                .help = "How should sites be ordered?"
+                .type = choice
         }
     }
     exit_flags
