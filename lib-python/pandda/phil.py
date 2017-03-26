@@ -49,7 +49,7 @@ pandda
             ignore_datasets = None
                 .help = 'Reject these datasets, don\'t even load them - comma separated list of dataset tags'
                 .type = str
-            exclude_from_analysis = None
+            exclude_from_zmap_analysis = None
                 .help = 'Don\'t analyse these datasets, only use them to build the distributions - comma separated list of dataset tags'
                 .type = str
             exclude_from_characterisation = None
@@ -113,8 +113,8 @@ pandda
                 .type = bool
         }
     }
-    method
-        .help = "High Level control of algorithm"
+    flags
+        .help = "control which datasets are loaded and processed, and when statistical maps are calculated"
     {
         reload_existing_datasets = True
             .help = "Reload existing datasets? - if False, will only load new datasets (unprocessed datasets)"
@@ -128,8 +128,15 @@ pandda
         recalculate_statistical_maps = Yes No *Extend
             .help = "Set whether statistical maps are re-used from previous runs. If No, it looks for existing statistical maps and uses those (reverts to Yes if none are found). If Extend is chosen, existing maps are used, but additional maps are calculated at high and low resolutions if the data extends beyond the current range."
             .type = choice
-        run_in_seeding_mode = False
-            .help = "Do not analyse any datasets; generate statistical maps only."
+    }
+    shortcuts
+        .help = "Shortcuts to set sets of parameters to defaults"
+    {
+        run_in_single_dataset_mode = False
+            .help = "Set the default parameters to allow the analysis to run on a single dataset"
+            .type = bool
+        run_characterisation_for_all_resolutions = False
+            .help = "Do not analyse any datasets; generate statistical maps only, over the full resolution range."
             .type = bool
     }
     params

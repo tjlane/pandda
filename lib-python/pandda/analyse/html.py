@@ -67,25 +67,79 @@ def write_map_analyser_html(pandda, resolution):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    for file_tag, plot_title in [('dataset_res_hist',           'Truncated dataset resolutions'         ),
-                                 ('dataset_wilson_plot',        'Truncated data Wilson plots'           ),
-                                 ('ref_map_dist',               'Reference map distribution'            ),
-                                 ('map_mean_median_hist',       'Mean & Median map distributions'       ),
-                                 ('ref_v_mean_map_unsort',      'Reference v Mean map (unsorted)'       ),
-                                 ('ref_v_mean_map_sort',        'Reference v Mean map (sorted)'         ),
-                                 ('map_mean_median_scat',       'Mean v median map scatter'             ),
-                                 ('map_mean_median_diff',       'Mean v median map histogram'           ),
-                                 ('map_stds_sadj_hist',         'Standard and adjusted variation'       ),
-                                 ('map_stds_sadj_scat',         'Standard and adjusted variation'       ),
-                                 ('dataset_unc_hist',           'Dataset Uncertainty Distribution'      ),
-                                 ('dataset_res_unc_scat',       'Resolution v Uncertainty'              ),
-                                 ('dataset_res_rfree_scat',     'Resolution v R-Free'                   ),
-                                 ('dataset_unc_rfree_scat',     'Uncertainty v R-Free'                  ),
-                                 ('zmap_mean_sadj_hist',        'Z-map mean and standard deviations'    ),
-                                 ('zmap_skew_kurt_scat',        'Z-map skew and kurtosis'               )]:
+    for file_tag, title, tooltip in [('dataset_res_hist',
+                                      '<strong>Distribution of truncated dataset resolutions</strong>. ',
+                                      'Histogram of the diffraction data resolution for each dataset after truncation to the same resolution. '\
+                                      'The truncated data is used to generate the statistical maps at this resolution, so for best results, '\
+                                      'the range on the x-axis should be very small. Large variation indicates that something has gone wrong during '\
+                                      'data truncation.'),
+                                     ('dataset_wilson_plot',
+                                      '<strong>Wilson plots of truncated diffraction data</strong>.',
+                                      'Plots of intensity vs resolution for the truncated diffraction data, showing how intensity falls off as a '\
+                                      'function of resolution. For best results, all of the lines should be approximately overlaid on each other.'),
+                                     ('ref_v_mean_map_unsort',
+                                      '<strong>Comparison of electron density values in the reference and mean map (unsorted)</strong>.',
+                                      'Scatter plot of equivalent electron density values in the reference map and the mean map (electron '\
+                                      'density values sampled at the same point in both maps). The points in this plot should group along '\
+                                      'the diagonal; the amount that the cloud deviates from the diagonal reflects the uncertainty in the '\
+                                      'reference map and the variation in the electron density data.'),
+                                     ('ref_v_mean_map_sort',
+                                      '<strong>Comparison of electron density values in the reference and mean map (after sorting)</strong>.',
+                                      'Scatter plot of sorted electron density values in the reference map and the mean map (largest in one '\
+                                      'plotted against largest in other, and smallest in one plotted against smallest in the other, etc.), '\
+                                      'resulting in a quantile-quantile plot. The results should be a line along the diagonal. Deviations from '\
+                                      'the diagonal, except at the extremes of the axis may indicate problems in analysis.'),
+                                     ('ref_map_dist',
+                                      '<strong>Reference map distribution</strong>.',
+                                      'Histogram of electron density values in the reference map. This should be the same shape as those for the '\
+                                      'mean and median maps (a slightly skewed distribution).'),
+                                     ('map_mean_median_hist',
+                                      '<strong>Mean & median map distributions</strong>.',
+                                      'Histogram of electron density values in the mean (average) and median electron density maps. These should '\
+                                      'be the same shape as for the reference map.'),
+                                     ('map_mean_median_scat',
+                                      '<strong>Comparison of electron density values in the mean and median map</strong>.',
+                                      'Scatter plot of electron density values at equivalent points in both maps.'),
+                                     ('map_mean_median_diff',
+                                      '<strong>Distribution of differences between the mean and median map</strong>.',
+                                      'Histograms of median map subtracted from the mean map. Points should cluster around the diagonal'),
+                                     ('map_stds_sadj_hist',
+                                      '<strong>Distribution of values in the "raw" and "adjusted" variation maps</strong>.',
+                                      'The "raw" variation at a point is the standard deviation of the observed electron density values at that point;'\
+                                      'the "adjusted" variation accounts for the error associated with each electron density value. The graphs show '\
+                                      'the histogram of these values for the whole map. The "adjusted" variation histogram should show smaller '\
+                                      'values on average than the "raw" variation (the distribution should be shifted to the left)'),
+                                     ('map_stds_sadj_scat',
+                                      '<strong>Comparison of "raw" and "adjusted" variation for all points</strong>.',
+                                      'Scatter plot of the different variation measures for all points. The "adjusted" variation should always be '\
+                                      'lower than the "raw" variation, so all points on the plot should fall to the bottom-right of the diagonal.'),
+                                     ('dataset_unc_hist',
+                                      '<strong>Distribution of map uncertainties for analysed datasets</strong>.',
+                                      'Histogram of datasets when compared to the mean map.'),
+                                     ('dataset_res_unc_scat',
+                                      '<strong>Comparison of dataset resolution and map uncertainty</strong>.',
+                                      'Resolution of the full (untruncated) diffraction data for each dataset plotted against the uncertainty of the '\
+                                      'map calculated at this resolution. There is rarely a strong correlation between these variables.'),
+                                     ('dataset_res_rfree_scat',
+                                      '<strong>Comparison of dataset resolution and R-free</strong>.',
+                                      'Resolution of the full (untruncated) diffraction data for each dataset plotted against the R-free of the input model. '\
+                                      'There is rarely a strong correlation between these variables.'),
+                                     ('dataset_unc_rfree_scat',
+                                      '<strong>Comparison of map uncertainty and dataset R-Free</strong>.',
+                                      'Uncertainty of the map calculated at this resolution plotted against the R-free of the input model. There is rarely '\
+                                      'a strong correlation between these variables.'),
+                                     ('zmap_mean_sadj_hist',
+                                      '<strong>Distribution of mean Z-values and standard deviation of Z-values for each dataset</strong>.',
+                                      'The mean values should be approximately zero, and the standard deviations should be approximately one (although they '\
+                                      'frequently are observed to be between 0.8-1.0.'),
+                                     ('zmap_skew_kurt_scat',
+                                      '<strong>Comparision of Z-map skew and kurtosis for each dataset</strong>.',
+                                      'Scatter plot of skew and kurtosis for all z-maps. Skew should be approximately zero and kurtosis should be '\
+                                      'approximately 3.0.')]:
         f_name = pandda.file_manager.get_file(file_tag=file_tag).format(resolution)
         output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=f_name)),
-                                           'title': plot_title })
+                                           'title': title,
+                                           'tooltip': tooltip  })
     # ===========================================================>
     # Write Output
     with open(out_file, 'w') as out_html:

@@ -18,10 +18,10 @@ output {
         .help = 'output folder name'
         .type = str
 }
-
-verbose = False
-    .type = bool
-
+settings {
+    verbose = False
+        .type = bool
+}
 """)
 
 ############################################################################
@@ -65,11 +65,11 @@ def migrate_pandda(params):
 
 def run(params):
 
-    assert params.input.pandda_dir, 'Must specify pandda directory'
-    assert params.output.out_dir,   'Must specify output directory'
+    assert params.input.pandda_dir is not None, 'Must specify pandda directory'
+    assert params.output.out_dir is not None,   'Must specify output directory'
     assert not os.path.exists(params.output.out_dir), 'Output directory already exists'
 
-    print 'Migrating Pandda from {} to {}'.format(params.input.pandda_dir, params.output.out_dir)
+    print 'Migrating pandda from {} to {}'.format(params.input.pandda_dir, params.output.out_dir)
     migrate_pandda(params)
 
 #######################################

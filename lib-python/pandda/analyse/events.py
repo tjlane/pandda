@@ -3,7 +3,7 @@ import os, sys
 import scipy.cluster
 
 from bamboo.common import Info
-from giant.stats.cluster import find_connected_groups, generate_group_idxs
+from bamboo.stats.cluster import find_connected_groups, generate_group_idxs
 
 from scitbx.array_family import flex
 

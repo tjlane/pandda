@@ -82,7 +82,7 @@ $(document).ready(function() {
         {% for img in top_images -%}
         <div class="col-xs-12 col-sm-12 col-md-6 col-lg-6">
            <p>{{ img.title }}</p>
-           <img class="img-responsive" src="{{ img.path }}" alt="No Image">
+           <img class="img-responsive" src="{{ img.path }}" alt="No Image" {% if img.tooltip is defined -%}title="{{ img.tooltip }}"{% endif -%}>
         </div>
         {% endfor -%}
       </div>

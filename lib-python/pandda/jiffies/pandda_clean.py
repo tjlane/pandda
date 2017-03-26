@@ -9,32 +9,9 @@ from bamboo.common.path import delete_with_glob
 
 ############################################################################
 
-master_phil = libtbx.phil.parse("""
-input {
-    pandda_dir = None
-        .help = 'Path to the pandda directory'
-        .type = str
-}
+PROGRAM = 'pandda.clean'
 
-level = *basic normal ruthless devastating
-    .type = choice
-    .multiple = False
-
-skip_interesting = True
-    .help = 'Clean interesting datasets as well?'
-    .type = bool
-
-verbose = False
-    .type = bool
-
-YES_I_AM_SURE = False
-    .type = bool
-
-""")
-
-blank_arg_prepend = {None:'pandda_dir='}
-
-help = """
+DESCRIPTION = """
 Cleaning Levels:
 BASIC       - Remove unnecessary files
 NORMAL      - Remove easily regenerated dataset files - re-run pandda to remake: quick
@@ -50,6 +27,32 @@ NEVER deleted (only files are deleted).
 
 ############################################################################
 
+master_phil = libtbx.phil.parse("""
+input {
+    pandda_dir = None
+        .help = 'Path to the pandda directory'
+        .type = str
+}
+options {
+    level = *basic normal ruthless devastating
+        .type = choice
+        .multiple = False
+    skip_modelled = True
+        .help = 'Clean interesting datasets as well?'
+        .type = bool
+}
+settings {
+    verbose = False
+        .type = bool
+    YES_I_AM_SURE = False
+        .type = bool
+}
+""")
+
+blank_arg_prepend = {None:'pandda_dir='}
+
+############################################################################
+
 def clean_misc(top_dir, level=0):
     print '============================================================>>>'
     print 'Cleaning Miscellaneous:'
@@ -58,7 +61,7 @@ def clean_misc(top_dir, level=0):
     if level >= 2:
         delete_with_glob(os.path.join(top_dir, 'aligned_structures', '*.pdb'))
 
-def clean_datasets(top_dir, level=0, skip_interesting=True):
+def clean_datasets(top_dir, level=0, skip_modelled=True):
     print '============================================================>>>'
     print 'Cleaning Dataset Folders:'
 
@@ -67,8 +70,8 @@ def clean_datasets(top_dir, level=0, skip_interesting=True):
         d_name = os.path.basename(d_dir)
         print '=======================================>>>'
 
-        if skip_interesting and glob.glob(os.path.join(d_dir, '*event_*.ccp4')):
-            print 'Not cleaning interesting dataset (folder containing event maps): {}'.format(d_name)
+        if skip_modelled and glob.glob(os.path.join(d_dir, 'modelled_structures', '*.pdb')):
+            print 'Not cleaning modelled dataset (modelled_structures contains a pdb file): {}'.format(d_name)
             continue
         else:
             print 'Cleaning folder: {}'.format(d_dir)
@@ -82,7 +85,6 @@ def clean_datasets(top_dir, level=0, skip_interesting=True):
             delete_with_glob(os.path.join(d_dir, '*.csv'))
             delete_with_glob(os.path.join(d_dir, '*.pdb'))
             delete_with_glob(os.path.join(d_dir, '*.mtz'))
-            delete_with_glob(os.path.join(d_dir, '*_refine.params'))
             delete_with_glob(os.path.join(d_dir, 'pickles', '*.pickle'))
             delete_with_glob(os.path.join(d_dir, 'output_images', '*.png'))
             delete_with_glob(os.path.join(d_dir, 'ligand_files',  '*'))
@@ -124,20 +126,20 @@ def run(params):
 
     assert params.input.pandda_dir, 'Must specify pandda directory'
 
-    if params.level   == 'basic':
+    if params.options.level   == 'basic':
         ferocity = 0
-    elif params.level == 'normal':
+    elif params.options.level == 'normal':
         ferocity = 1
-    elif params.level == 'ruthless':
+    elif params.options.level == 'ruthless':
         ferocity = 2
-    elif params.level == 'devastating':
+    elif params.options.level == 'devastating':
         ferocity = 3
 
-    if ferocity > 1 and (not params.YES_I_AM_SURE):
-        raise SystemExit('level set to {} -- are you sure? if yes, set YES_I_AM_SURE=True and re-run'.format(params.level))
+    if ferocity > 1 and (not params.settings.YES_I_AM_SURE):
+        raise SystemExit('level set to {} -- are you sure? if yes, set YES_I_AM_SURE=True and re-run'.format(params.options.level))
 
     print 'Cleaning Pandda in folder: {}'.format(params.input.pandda_dir)
-    print 'Running at Ferocity Level of {} ({})'.format(ferocity, params.level)
+    print 'Running at Ferocity Level of {} ({})'.format(ferocity, params.options.level)
 
     clean_misc(
         top_dir=params.input.pandda_dir,
@@ -147,14 +149,8 @@ def run(params):
     clean_datasets(
         top_dir=params.input.pandda_dir,
         level=ferocity,
-        skip_interesting=params.skip_interesting
+        skip_modelled=params.options.skip_modelled
     )
-
-#    clean_links(
-#        top_dir=params.input.pandda_dir,
-#        level=ferocity,
-#        skip_interesting=params.skip_interesting
-#    )
 
     clean_statistical_maps(
         top_dir=params.input.pandda_dir,
@@ -169,5 +165,11 @@ def run(params):
 #######################################
 
 if __name__ == '__main__':
-    from giant.jiffies import run_default
-    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
+    from pandda.jiffies import run_default
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION)

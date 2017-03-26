@@ -8,88 +8,63 @@ import libtbx.easy_pickle
 import iotbx.pdb
 
 master_phil = libtbx.phil.parse("""
-direction = toref *fromref
-    .type = choice
-file
-{
-    input  = None
+input {
+    pdb = None
         .type = path
-    output = None
+    dataset_pickle = ./pickles/dataset.pickle
         .type = path
 }
-dataset_pickle = ./pickles/dataset.pickle
-    .type = path
-overwrite = False
-    .type = bool
-verbose = False
-    .type = bool
+output {
+    pdb = None
+        .type = path
+}
+options {
+    direction = toref *fromref
+        .type = choice
+}
+settings {
+    overwrite = False
+        .type = bool
+    verbose = False
+        .type = bool
+}
 """)
 
 def run(params):
 
-    if params.dataset_pickle:
-        assert os.path.exists(params.dataset_pickle), 'PICKLE DOES NOT EXIST: {!s}'.format(params.dataset_pickle)
-    else:
-        # Find the dataset pickle
-        raise Exception('PLEASE PROVIDE DATASET PICKLE')
+    assert params.input.pdb is not None, 'No input pdb file provided (params.input.pdb).'
+    assert os.path.exists(params.input.pdb), 'Input pdb file does not exist: {}'.format(params.input.pdb)
+    assert params.input.dataset_pickle is not None, 'No dataset pickle file provided (params.input.dataset_pickle).'
+    assert os.path.exists(params.input.dataset_pickle), 'Dataset pickle file does not exist: {!s}'.format(params.input.dataset_pickle)
+    assert params.output.pdb is not None, 'No output pdb file provided (params.output.pdb).'
+    assert not os.path.exists(params.output.pdb), 'Output pdb file does not exist: {}'.format(params.output.pdb)
 
-    if params.file.input:
-        assert os.path.exists(params.file.input), 'FILE DOES NOT EXIST: {!s}'.format(params.file.input)
-    else:
-        # Find the dataset pickle
-        raise Exception('PLEASE PROVIDE INPUT FILE')
-
-    # Create output file if needed
-    if not params.file.output:
-        params.file.output = os.path.splitext(os.path.basename(params.file.input))[0] + '.{!s}.pdb'
-        if params.direction == 'toref':   params.file.output = params.file.output.format('ref')
-        else:                           params.file.output = params.file.output.format('native')
-    if os.path.exists(params.file.output):
-        if params.overwrite: os.remove(params.file.output)
-        else: raise Exception('FILE ALREADY EXISTS: {!s}'.format(params.file.output))
-
-    if params.verbose: print 'TRANSFORMING: {!s}'.format(params.file.input)
-    if params.verbose: print 'USING DATASET FROM: {!s}'.format(params.dataset_pickle)
-    if params.verbose: print 'WRITING FILE TO: {!s}'.format(params.file.output)
+    if params.verbose:
+        print 'Input file: {!s}'.format(params.input.pdb)
+        print 'Output file: {!s}'.format(params.output.pdb)
+        print 'Transforming using the dataset from: {!s}'.format(params.input.dataset_pickle)
 
     # Load the dataset handler from the pickle
-    d_handler = libtbx.easy_pickle.load(params.dataset_pickle)
-
+    dataset = libtbx.easy_pickle.load(params.input.dataset_pickle)
     # Load the ligand to be twiddled
-    hier = iotbx.pdb.hierarchy.input(params.file.input).hierarchy
+    inpt = iotbx.pdb.hierarchy.input(params.input.pdb)
+    hier = inpt.hierarchy
 
-    if d_handler.local_alignment_transforms:
-        method = 'local'
-        if params.direction == 'toref':
-            map_hier = d_handler.new_structure().hierarchy
-        else:
-            map_hier = d_handler.new_structure().hierarchy
-            map_hier.atoms().set_xyz(d_handler.transform_to_reference(points=map_hier.atoms().extract_xyz(), method=method))
-
-        mappings = d_handler.find_nearest_calpha(   points = hier.atoms().extract_xyz(),
-                                                    hierarchy = map_hier    )
+    # Transform the coordinates
+    if params.options.direction == 'toref':
+        hier.atoms().set_xyz(dataset.alignment.nat2ref(coordinates=hier.atoms().extract_xyz()))
     else:
-        method = 'global'
-        mappings = None
+        hier.atoms().set_xyz(dataset.alignment.ref2nat(coordinates=hier.atoms().extract_xyz()))
 
-    if params.direction == 'toref':
-        trans_points = d_handler.transform_to_reference(    points = hier.atoms().extract_xyz(),
-                                                            method = method,
-                                                            point_mappings = mappings   )
-    elif params.direction == 'fromref':
-        trans_points = d_handler.transform_from_reference(  points = hier.atoms().extract_xyz(),
-                                                            method = method,
-                                                            point_mappings = mappings   )
-
-    # Try to add symmetry to the output file
-    try:    crystal_symmetry = d_handler.mtz_summary.symmetry
-    except: crystal_symmetry = None
+    # Try to add symmetry to the output file (if sending to native frame)
+    crystal_symmetry = None
+    if params.options.direction == 'fromref':
+        try:    crystal_symmetry = dataset.data.summary.symmetry
+        except: pass
 
     # Create new hierarchy and write out
-    new_hier = hier.deep_copy()
-    new_hier.atoms().set_xyz(trans_points)
-    new_hier.write_pdb_file(    file_name        = params.file.output,
-                                crystal_symmetry = crystal_symmetry     )
+    hier.write_pdb_file(    file_name        = params.output.pdb,
+                            crystal_symmetry = crystal_symmetry     )
 
     return
 

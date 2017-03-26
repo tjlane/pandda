@@ -10,7 +10,7 @@ FLAG_MASK_NAMES      = [    'rejected - total',
                             'noisy zmap',
                             'analysed',
                             'interesting',
-                            'exclude_from_analysis',
+                            'exclude_from_zmap_analysis',
                             'exclude_from_characterisation'    ]
 
 DATASET_INFO_FIELDS  = [    'high_resolution',

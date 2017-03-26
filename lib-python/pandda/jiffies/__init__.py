@@ -1,8 +1,8 @@
 import os, sys, copy
 
-# Will fail inside coot
-try:
-    from libtbx.utils import Sorry
-except:
-    pass
+from giant.jiffies import run_default
 
+from pandda import HEADER_TEXT
+
+# Override the default values of the run_default class
+run_default.HEADER_TEXT = HEADER_TEXT

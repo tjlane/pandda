@@ -61,7 +61,7 @@ def pandda_dataset_setup(pandda):
         # ============================================================================>
         pandda.load_new_datasets()
         pandda.initialise_dataset_masks_and_tables()
-        if pandda.args.method.reprocess_existing_datasets or pandda.args.method.reprocess_selected_datasets:
+        if pandda.args.flags.reprocess_existing_datasets or pandda.args.flags.reprocess_selected_datasets:
             pandda.check_loaded_datasets(datasets=pandda.datasets.all())
         else:
             pandda.check_loaded_datasets(datasets=pandda.datasets.mask(mask_name='old datasets', invert=True))
@@ -180,7 +180,7 @@ def pandda_grid_setup(pandda):
     # If setup_only, exit after initial search
     # ============================================================================>
     if pandda.args.exit_flags.setup_only:
-        pandda.exit(error=False)
+        pandda.exit(error_msg=None)
         raise SystemExit('Setup Only: Exiting')
 
     return
@@ -205,7 +205,7 @@ def pandda_main_loop(pandda):
     # Remove previous event information for datasets to be re-analysed
     pandda.reset_loaded_datasets()
     # Load reflection data for each dataset
-    if pandda.args.method.reprocess_existing_datasets or pandda.args.method.reprocess_selected_datasets:
+    if pandda.args.flags.reprocess_existing_datasets or pandda.args.flags.reprocess_selected_datasets:
         pandda.load_diffraction_data(datasets=pandda.datasets.all())
     else:
         pandda.load_diffraction_data(datasets=pandda.datasets.mask(mask_name='old datasets', invert=True))
@@ -980,7 +980,7 @@ def pandda_analyse_main(args):
             raise
     except Sorry as s:
         # Recognised error - print type and message
-        pandda.exit(error_msg=traceback.format_exception(type(s), str(s), tb=False))
+        pandda.exit(error_msg=''.join(traceback.format_exception(type(s), str(s), tb=False)))
     except:
         # Unknown error - print full traceback
         if ("pandda" in locals()) and hasattr(pandda, 'log'):

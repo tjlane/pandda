@@ -13,12 +13,11 @@ from libtbx.utils import Sorry, Failure
 from bamboo.common import Meta, Info
 from bamboo.common.logs import Log
 from bamboo.common.path import rel_symlink
-from bamboo.pymol_utils import PythonScript
+from bamboo.pymol import PythonScript
+from bamboo.stats.ospina import estimate_true_underlying_sd
 
-from giant.common import ElectronDensityMap
+from giant.dataset import ElectronDensityMap
 from giant.grid.masks import GridMask
-from giant.stats import quantile_quantile_scaling
-from giant.stats.ospina import estimate_true_underlying_sd
 from giant.structure.select import protein, find_nearest_atoms
 from giant.xray.maps.scale import scale_map_to_reference
 from giant.xray.maps.bdc import calculate_varying_bdc_correlations, calculate_maximum_series_discrepancy, calculate_bdc_subtracted_map

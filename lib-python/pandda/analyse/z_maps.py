@@ -5,8 +5,9 @@ import scipy.cluster
 
 from scitbx.array_family import flex
 
+from bamboo.stats.cluster import find_connected_groups, generate_group_idxs
+
 from giant.structure.select import protein
-from giant.stats.cluster import find_connected_groups, generate_group_idxs
 from giant.xray.symmetry import find_symmetry_equivalent_groups
 from giant.grid.utils import idx_to_grid
 
