@@ -13,6 +13,12 @@ input {
         .multiple = True
         .type = path
 }
+output {
+    mtz = merged.mtz
+        .type = path
+    log = merged.log
+        .type = path
+}
 options {
     label_suffix = *incremental filename foldername
         .help = 'suffix added to the column name in the output file'
@@ -24,12 +30,6 @@ options {
             .type = str
             .multiple = True
     }
-}
-output {
-    mtz = merged.mtz
-        .type = path
-    log = merged.log
-        .type = path
 }
 """)
 

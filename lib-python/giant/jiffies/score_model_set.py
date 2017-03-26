@@ -6,8 +6,8 @@ import libtbx.easy_mp
 import numpy, pandas
 
 from bamboo.html import BAMBOO_HTML_ENV
+from bamboo.stats.cluster import generate_group_idxs
 from giant.jiffies.score_model import prepare_output_directory, score_model, make_residue_radar_plot, format_parameters_for_plot
-from giant.stats.cluster import generate_group_idxs
 
 from matplotlib import pyplot
 pyplot.rc('axes', color_cycle=['r', 'g', 'b', 'y'])

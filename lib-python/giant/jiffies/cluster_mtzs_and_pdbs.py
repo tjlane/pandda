@@ -5,12 +5,15 @@ import libtbx.phil
 import numpy
 import pandas
 
+from bamboo.common.logs import Bar
+
 from giant.xray.crystal import CrystalSummary
 from giant.xray.crystal.cluster import CrystalGroup
 
-#######################################
+############################################################################
 
 PROGRAM = 'giant.data.cluster'
+
 DESCRIPTION = """
     A tool to cluster sets of pdb and/or mtz files.
 
@@ -20,6 +23,8 @@ DESCRIPTION = """
         > giant.data.cluster */model.pdb pdb_label=foldername
 
 """
+
+############################################################################
 
 blank_arg_prepend = {'.mtz':'mtz=', '.pdb':'pdb='}
 
@@ -49,7 +54,7 @@ clustering{
         .type = float
 }
 output {
-    out_dir = None
+    out_dir = ./clustered
         .type = path
     split_pdbs_and_mtzs = True
         .type = bool
@@ -58,22 +63,26 @@ output {
 }
 """)
 
-#######################################
+############################################################################
 
-bar = '============================================>'
+bar = Bar()
 
-#######################################
+############################################################################
 
 def run(params):
 
-    if not (params.input.pdb or params.input.mtz): raise Exception('No pdb/mtz files have been provided.')
-
-    # Make output directory if required
-    if params.output.out_dir and (not os.path.exists(params.output.out_dir)):
+    # Validate input files
+    if not (params.input.pdb or params.input.mtz):
+        raise Exception('No pdb/mtz files have been provided.')
+    # Check and create output directory
+    if not params.output.out_dir:
+        raise Exception('No output directory has been specified: output.out_dir={}'.format(params.output.out_dir))
+    if not os.path.exists(params.output.out_dir):
         os.mkdir(params.output.out_dir)
-    # Dump images into the current directory if no directory is given
-    if not params.output.out_dir: img_dir = '.'
-    else: img_dir = params.output.out_dir
+    # Define and create image directory
+    img_dir = os.path.join(params.output.out_dir, 'images')
+    if not os.path.exists(img_dir):
+        os.mkdir(img_dir)
 
     #########################################################################################################
 
@@ -104,7 +113,7 @@ def run(params):
     else:                mtz_summaries = []
 
     print bar
-    print 'Grouping crystals by space group...'
+    print 'Grouping {} crystals by space group...'.format(len(pdb_summaries+mtz_summaries))
 
     # Group by SpaceGroup
     crystal_groups = CrystalGroup.by_space_group(crystals=pdb_summaries+mtz_summaries)
@@ -143,7 +152,7 @@ def run(params):
         #########################################################################################################
 
         print '===========================>'
-        print 'Clustering unit cells...'
+        print 'Clustering {} unit cells...'.format(len(cg.crystals))
 
         sg_crystal_groups = cg.by_unit_cell(cg.crystals, cutoff=params.clustering.lcv_cutoff)
 
@@ -151,7 +160,7 @@ def run(params):
 
         for i_cg2, cg2 in enumerate(sg_crystal_groups):
 
-            cluster_name = '{}-Cluster-{}'.format(sg_name, i_cg2+1)
+            cluster_name = '{}-{}'.format(sg_name, i_cg2+1)
 
             print '===========================>'
             print 'Processing: {}'.format(cluster_name)
@@ -169,43 +178,42 @@ def run(params):
 
             #########################################################################################################
 
-            if params.output.out_dir:
-                print 'Making and populating output directory'
+            print 'Making and populating output directory'
 
-                # Go through and link the datasets for each of the spacegroups into a separate folder
-                sub_dir = os.path.join(params.output.out_dir, cluster_name)
-                if not os.path.exists(sub_dir): os.mkdir(sub_dir)
+            # Go through and link the datasets for each of the spacegroups into a separate folder
+            sub_dir = os.path.join(params.output.out_dir, cluster_name)
+            if not os.path.exists(sub_dir): os.mkdir(sub_dir)
 
-                if params.output.split_pdbs_and_mtzs:
-                    # Split the mtzs and pdbs into separate directories
-                    mtz_dir = os.path.join(sub_dir, 'mtzs')
-                    if not os.path.exists(mtz_dir): os.mkdir(mtz_dir)
-                    pdb_dir = os.path.join(sub_dir, 'pdbs')
-                    if not os.path.exists(pdb_dir): os.mkdir(pdb_dir)
-                else:
-                    mtz_dir = pdb_dir = sub_dir
+            if params.output.split_pdbs_and_mtzs:
+                # Split the mtzs and pdbs into separate directories
+                mtz_dir = os.path.join(sub_dir, 'mtzs')
+                if not os.path.exists(mtz_dir): os.mkdir(mtz_dir)
+                pdb_dir = os.path.join(sub_dir, 'pdbs')
+                if not os.path.exists(pdb_dir): os.mkdir(pdb_dir)
+            else:
+                mtz_dir = pdb_dir = sub_dir
 
-                for c in cg2.crystals:
-                    if c.mtz_file:
-                        # Create subdirectory
-                        sub_sub_dir = os.path.join(mtz_dir, c.id)
-                        if not os.path.exists(sub_sub_dir): os.mkdir(sub_sub_dir)
-                        os.symlink(os.path.abspath(c.mtz_file), os.path.join(sub_sub_dir, c.id+'.mtz'))
-                        # Link PDB as well if filenames are the same
-                        potential = c.mtz_file.replace('.mtz','.pdb')
-                        if os.path.exists(potential):
-                            os.symlink(os.path.abspath(potential), os.path.join(sub_sub_dir, c.id+'.pdb'))
-                    if c.pdb_file:
-                        # Create subdirectory
-                        sub_sub_dir = os.path.join(pdb_dir, c.id)
-                        if not os.path.exists(sub_sub_dir): os.mkdir(sub_sub_dir)
-                        os.symlink(os.path.abspath(c.pdb_file), os.path.join(sub_sub_dir, c.id+'.pdb'))
-                        # Link PDB as well if filenames are the same
-                        potential = c.pdb_file.replace('.pdb','.mtz')
-                        if os.path.exists(potential):
-                            os.symlink(os.path.abspath(potential), os.path.join(sub_sub_dir, c.id+'.mtz'))
+            for c in cg2.crystals:
+                if c.mtz_file:
+                    # Create subdirectory
+                    sub_sub_dir = os.path.join(mtz_dir, c.id)
+                    if not os.path.exists(sub_sub_dir): os.mkdir(sub_sub_dir)
+                    os.symlink(os.path.abspath(c.mtz_file), os.path.join(sub_sub_dir, c.id+'.mtz'))
+                    # Link PDB as well if filenames are the same
+                    potential = c.mtz_file.replace('.mtz','.pdb')
+                    if os.path.exists(potential):
+                        os.symlink(os.path.abspath(potential), os.path.join(sub_sub_dir, c.id+'.pdb'))
+                if c.pdb_file:
+                    # Create subdirectory
+                    sub_sub_dir = os.path.join(pdb_dir, c.id)
+                    if not os.path.exists(sub_sub_dir): os.mkdir(sub_sub_dir)
+                    os.symlink(os.path.abspath(c.pdb_file), os.path.join(sub_sub_dir, c.id+'.pdb'))
+                    # Link PDB as well if filenames are the same
+                    potential = c.pdb_file.replace('.pdb','.mtz')
+                    if os.path.exists(potential):
+                        os.symlink(os.path.abspath(potential), os.path.join(sub_sub_dir, c.id+'.mtz'))
 
-#######################################
+############################################################################
 
 if __name__=='__main__':
     from giant.jiffies import run_default

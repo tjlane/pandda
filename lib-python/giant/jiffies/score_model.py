@@ -15,7 +15,7 @@ import numpy, pandas
 from bamboo.plot import Radar
 from bamboo.edstats import Edstats
 
-from giant.utils.pdb import strip_pdb_to_input
+from giant.io.pdb import strip_pdb_to_input
 from giant.structure import calculate_residue_group_occupancy, calculate_residue_group_rmsd
 from giant.structure.b_factors import calculate_residue_group_bfactor_ratio
 from giant.structure.formatting import ShortLabeller

@@ -3,7 +3,7 @@ import os, sys, copy
 import iotbx.pdb
 import libtbx.phil
 
-from giant.utils.pdb import strip_pdb_to_input
+from giant.io.pdb import strip_pdb_to_input
 from giant.structure.utils import resolve_residue_id_clashes, transfer_residue_groups_from_other
 from giant.structure.altlocs import expand_alternate_conformations, find_next_conformer_idx, increment_altlocs, prune_redundant_alternate_conformations
 from giant.structure.occupancy import set_conformer_occupancy
@@ -22,25 +22,30 @@ DESCRIPTION = """
         > giant.merge_conformations major=structure_1.pdb minor=structure_2.pdb
 """
 
+############################################################################
+
 blank_arg_prepend = None
 
 master_phil = libtbx.phil.parse("""
-major = None
-    .help = 'The major conformation of the protein (the conformation you want to have the lowest altlocs)'
-    .type = str
-
-minor = None
-    .help = 'The minor conformation of the protein (the conformation that will have the higher altlocs)'
-    .type = str
-
-output = 'merged.pdb'
-    .help = 'output pdb file'
-    .type = str
-
-overwrite = False
-    .type = bool
-verbose = False
-    .type = bool
+input {
+    major = None
+        .help = 'The major conformation of the protein (the conformation you want to have the lowest altlocs)'
+        .type = str
+    minor = None
+        .help = 'The minor conformation of the protein (the conformation that will have the higher altlocs)'
+        .type = str
+}
+output {
+    pdb = 'merged.pdb'
+        .help = 'output pdb file'
+        .type = str
+}
+settings {
+    overwrite = False
+        .type = bool
+    verbose = False
+        .type = bool
+}
 """)
 
 ############################################################################
@@ -143,12 +148,12 @@ def run(params):
     print '============================================ *** ============================================'
     print ''
 
-    assert params.major
-    assert params.minor
-    if not params.output: params.output='./output.pdb'
-    if os.path.exists(params.output):
-        if params.overwrite: os.remove(params.output)
-        else: raise Exception('File already exists: {}'.format(params.output))
+    assert params.input.major
+    assert params.input.minor
+    assert params.output.pdb
+    if os.path.exists(params.output.pdb):
+        if params.settings.overwrite: os.remove(params.output.pdb)
+        else: raise Exception('File already exists: {}'.format(params.output.pdb))
 
     # Read in the ligand file and set each residue to the requested conformer
     maj_obj = strip_pdb_to_input(params.major, remove_ter=True)
@@ -164,7 +169,7 @@ def run(params):
     final_struct = merge_complementary_hierarchies(
         hierarchy_1 = maj_obj.hierarchy,
         hierarchy_2 = min_obj.hierarchy,
-        verbose     = params.verbose)
+        verbose     = params.settings.verbose)
 
     print 'Writing output structure'
 
@@ -172,7 +177,7 @@ def run(params):
     final_struct.sort_atoms_in_place()
     final_struct.atoms_reset_serial()
     # Write output file
-    final_struct.write_pdb_file(file_name=params.output, crystal_symmetry=maj_obj.crystal_symmetry())
+    final_struct.write_pdb_file(file_name=params.output.pdb, crystal_symmetry=maj_obj.crystal_symmetry())
 
     print ''
     print '...finished!'
@@ -180,7 +185,7 @@ def run(params):
 
     return
 
-#######################################
+############################################################################
 
 if __name__=='__main__':
     from giant.jiffies import run_default

@@ -8,7 +8,7 @@ import iotbx.pdb
 
 from scitbx.array_family import flex
 
-from giant.utils.pdb import strip_pdb_to_input, get_pdb_header
+from giant.io.pdb import strip_pdb_to_input, get_pdb_header
 
 #######################################
 

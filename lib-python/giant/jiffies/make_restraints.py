@@ -12,9 +12,10 @@ from giant.structure.restraints.external import find_atoms_around_alternate_conf
 from giant.structure.restraints.occupancy import overlapping_occupancy_groups, simple_occupancy_groups
 from giant.structure.formatting import RefmacFormatter, PhenixFormatter
 
-#######################################
+############################################################################
 
 PROGRAM = 'giant.make_restraints'
+
 DESCRIPTION = """
     A tool to simplify the generation of restraints for use during refinement with REFMAC or PHENIX.
 
@@ -27,6 +28,8 @@ DESCRIPTION = """
         > giant.make_restraints input.pdb all=True
 """
 
+############################################################################
+
 blank_arg_prepend = {'.pdb' : 'pdb='}
 
 master_phil = libtbx.phil.parse("""
@@ -35,7 +38,14 @@ input {
        .help = 'Protein model'
         .type = str
 }
-
+output {
+    phenix = 'restraints_phenix.params'
+        .help = 'Output restraints file for phenix'
+        .type = path
+    refmac = 'restraints_refmac.params'
+        .help = 'Output restraints file for refmac'
+        .type = path
+}
 modes {
     all = False
         .help = "Turn on all funcationality"
@@ -58,16 +68,6 @@ modes {
         .expert_level = 1
         .type = bool
 }
-
-output {
-    phenix = 'restraints_phenix.params'
-        .help = 'Output restraints file for phenix'
-        .type = path
-    refmac = 'restraints_refmac.params'
-        .help = 'Output restraints file for refmac'
-        .type = path
-}
-
 duplicates {
     make_for = *all protein het
         .help = "Generate only restraints for protein residues?"
@@ -80,12 +80,10 @@ duplicates {
         .help = "Coordinate restraint term controlling how strongly the restraint is enforced"
         .type = float
 }
-
 peptide_bonds {
     suffix = '.link.pdb'
         .type = str
 }
-
 local_restraints {
     altlocs = C,D,E,F,G
         .help = "Which altlocs to generate local restraints for"
@@ -100,7 +98,6 @@ local_restraints {
         .help = "Sigma of the distance restraint controlling how strongly the restraint is enforced"
         .type = float
 }
-
 occupancy {
     resname = DRG,FRG,LIG,UNK,UNL
         .help = 'Residues to generate constraint groups around for occupancy refinement (comma separated list of residue identifiers, i.e. resname=LIG or resname=LIG,UNL)'
@@ -121,7 +118,6 @@ occupancy {
         .help = 'Exclude certain altlocs from occupancy groups (e.g. A or A,B)'
         .type = str
 }
-
 b_factors
     .expert_level = 1
 {
@@ -135,15 +131,15 @@ b_factors
         .help = "Sigma of the b-factor restraint controlling how strongly the restraint is enforced"
         .type = float
 }
-
-overwrite = True
-    .type = bool
-verbose = True
-    .type = bool
-
+settings {
+    overwrite = True
+        .type = bool
+    verbose = True
+        .type = bool
+}
 """)
 
-#######################################
+############################################################################
 
 def make_link_records(params, input_hierarchy, link_file):
     """Create link records to make a continuous peptide chain"""
@@ -229,7 +225,7 @@ def make_duplication_restraints(params, input_hierarchy):
         restraint_list = [RefmacFormatter.make_distance_restraint(atm_1=a1, atm_2=a2, value=0.0, sigma=params.duplicates.sigma_xyz) for a1,a2 in atom_pairs]
         rest_block = RefmacFormatter.format_distance_restraints(restraint_list=restraint_list)
         with open(params.output.refmac, 'a') as fh: fh.write(rest_block+'\n')
-        if params.verbose:
+        if params.settings.verbose:
             print '-------------------------------------------- *** --------------------------------------------'
             print '{:^93}'.format('refmac duplicate conformer restraints (output to {})'.format(params.output.refmac))
             print '-------------------------------------------- *** --------------------------------------------'
@@ -241,7 +237,7 @@ def make_duplication_restraints(params, input_hierarchy):
         restraint_list = [PhenixFormatter.make_distance_restraint(atm_1=a1, atm_2=a2, value=0.0, sigma=params.duplicates.sigma_xyz) for a1,a2 in atom_pairs]
         rest_block = PhenixFormatter.format_distance_restraints(restraint_list=restraint_list)
         with open(params.output.phenix, 'a') as fh: fh.write(rest_block+'\n')
-        if params.verbose:
+        if params.settings.verbose:
             print '-------------------------------------------- *** --------------------------------------------'
             print '{:^93}'.format('phenix duplicate conformer restraints (output to {})'.format(params.output.phenix))
             print '-------------------------------------------- *** --------------------------------------------'
@@ -274,7 +270,7 @@ def make_local_restraints(params, input_hierarchy):
         restraint_list = [RefmacFormatter.make_distance_restraint(atm_1=a1, atm_2=a2, value=d, sigma=params.local_restraints.sigma_xyz) for a1,a2,d in atom_d_pairs]
         rest_block = RefmacFormatter.format_distance_restraints(restraint_list=restraint_list)
         with open(params.output.refmac, 'a') as fh: fh.write(rest_block+'\n')
-        if params.verbose:
+        if params.settings.verbose:
             print '-------------------------------------------- *** --------------------------------------------'
             print '{:^93}'.format('refmac local structural restraints (output to {})'.format(params.output.refmac))
             print '-------------------------------------------- *** --------------------------------------------'
@@ -286,7 +282,7 @@ def make_local_restraints(params, input_hierarchy):
         restraint_list = [PhenixFormatter.make_distance_restraint(atm_1=a1, atm_2=a2, value=d, sigma=params.local_restraints.sigma_xyz) for a1,a2,d in atom_d_pairs]
         rest_block = PhenixFormatter.format_distance_restraints(restraint_list=restraint_list)
         with open(params.output.phenix, 'a') as fh: fh.write(rest_block+'\n')
-        if params.verbose:
+        if params.settings.verbose:
             print '-------------------------------------------- *** --------------------------------------------'
             print '{:^93}'.format('phenix duplicate conformer restraints (output to {})'.format(params.output.phenix))
             print '-------------------------------------------- *** --------------------------------------------'
@@ -305,7 +301,7 @@ def make_occupancy_constraints(params, input_hierarchy):
 
     # Ligand resname identifiers
     resnames = params.occupancy.resname.split(',')
-    if params.verbose:
+    if params.settings.verbose:
         print 'Looking for ligands with resname {!s}'.format(' or '.join(resnames))
         print ''
 
@@ -316,7 +312,7 @@ def make_occupancy_constraints(params, input_hierarchy):
                                                     overlap_dist    = params.occupancy.overlap_dist,
                                                     complete_groups = params.occupancy.complete_groups,
                                                     exclude_altlocs = params.occupancy.exclude_altlocs.split(',') if params.occupancy.exclude_altlocs else [],
-                                                    verbose         = params.verbose)
+                                                    verbose         = params.settings.verbose)
     # Record whether the occupancy groups are complete (occs sum to 1)
     if params.occupancy.complete_groups:
         occupancy_complete = [True]*len(occupancy_groups)
@@ -335,13 +331,13 @@ def make_occupancy_constraints(params, input_hierarchy):
     # Ref-make the default occupancy groups?
     if params.occupancy.simple_groups:
         print 'simple_groups=={}: Remaking default occupancy restraints for residues'.format(params.occupancy.simple_groups)
-        if params.verbose: print ''
+        if params.settings.verbose: print ''
         simple_groups = simple_occupancy_groups(hierarchy   = input_hierarchy.hierarchy,
-                                                verbose     = params.verbose)
+                                                verbose     = params.settings.verbose)
         num_alts = len([a for a in input_hierarchy.hierarchy.altloc_indices() if a!=''])
         occupancy_complete += [True if len(g)==num_alts else False for g in simple_groups]
         occupancy_groups += simple_groups
-        if params.verbose: print ''
+        if params.settings.verbose: print ''
         print 'Increased number of occupancy groups to {}'.format(len(occupancy_groups))
         print ''
 
@@ -350,7 +346,7 @@ def make_occupancy_constraints(params, input_hierarchy):
                                                                    group_completeness       = occupancy_complete)
         rest_block = RefmacFormatter.format_occupancy_restraints(restraint_list=restraint_list)
         with open(params.output.refmac, 'a') as fh: fh.write(rest_block+'\n')
-        if params.verbose:
+        if params.settings.verbose:
             print '-------------------------------------------- *** --------------------------------------------'
             print '{:^93}'.format('refmac occupancy restraints (output to {})'.format(params.output.refmac))
             print '-------------------------------------------- *** --------------------------------------------'
@@ -363,7 +359,7 @@ def make_occupancy_constraints(params, input_hierarchy):
                                                                    group_completeness       = occupancy_complete)
         rest_block = PhenixFormatter.format_occupancy_restraints(restraint_list=restraint_list)
         with open(params.output.phenix, 'a') as fh: fh.write(rest_block+'\n')
-        if params.verbose:
+        if params.settings.verbose:
             print '-------------------------------------------- *** --------------------------------------------'
             print '{:^93}'.format('phenix occupancy restraints (output to {})'.format(params.output.phenix))
             print '-------------------------------------------- *** --------------------------------------------'
@@ -374,7 +370,7 @@ def make_occupancy_constraints(params, input_hierarchy):
 def make_b_factor_restraints(params, input_hierarchy):
     pass
 
-#######################################
+############################################################################
 
 def run(params):
 
@@ -406,10 +402,10 @@ def run(params):
     # Prepare output and input
     ######################################################################
     if params.output.phenix and os.path.exists(params.output.phenix):
-        if params.overwrite: os.remove(params.output.phenix)
+        if params.settings.overwrite: os.remove(params.output.phenix)
         else: raise Exception('File already exists: {}'.format(params.output.phenix))
     if params.output.refmac and os.path.exists(params.output.refmac):
-        if params.overwrite: os.remove(params.output.refmac)
+        if params.settings.overwrite: os.remove(params.output.refmac)
         else: raise Exception('File already exists: {}'.format(params.output.refmac))
 
     pdb_obj = iotbx.pdb.hierarchy.input(params.input.pdb)
@@ -434,7 +430,7 @@ def run(params):
     if params.modes.b_factor_restraints:
         make_b_factor_restraints(params=params, input_hierarchy=pdb_obj)
 
-#######################################
+############################################################################
 
 if __name__=='__main__':
     from giant.jiffies import run_default
