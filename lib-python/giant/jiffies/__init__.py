@@ -5,6 +5,25 @@ from libtbx.utils import Sorry
 
 from giant import HEADER_TEXT
 
+
+class run_default(object):
+
+    HEADER_TEXT = HEADER_TEXT
+
+    def __init__(self, run, master_phil, args, blank_arg_prepend=None, program='', description=''):
+        """Run a program via a standard setup of functions and objects"""
+        print(self.HEADER_TEXT.format(program=program, description=description))
+        working_phil = extract_params_default(master_phil=master_phil, args=args, blank_arg_prepend=blank_arg_prepend)
+        out = run(params=working_phil.extract())
+        return 0
+
+
+def extract_params_default(master_phil, args, blank_arg_prepend=None, home_scope=None):
+    """Extract the parameters by a default script"""
+    show_defaults_and_exit_maybe(master_phil, args)
+    working_phil = parse_phil_args(master_phil, args, blank_arg_prepend=blank_arg_prepend, home_scope=home_scope)
+    return working_phil
+
 def show_defaults_and_exit_maybe(master_phil, args):
     """Show master_phil and exit if requested"""
 
@@ -85,15 +104,3 @@ def parse_phil_args(master_phil, args, blank_arg_prepend=None, home_scope=None):
 
     return working_phil
 
-def extract_params_default(master_phil, args, blank_arg_prepend=None, home_scope=None):
-    """Extract the parameters by a default script"""
-    show_defaults_and_exit_maybe(master_phil, args)
-    working_phil = parse_phil_args(master_phil, args, blank_arg_prepend=blank_arg_prepend, home_scope=home_scope)
-    return working_phil
-
-def run_default(run, master_phil, args, blank_arg_prepend=None, program='', description=''):
-    """Run a program via a standard setup of functions and objects"""
-    print(HEADER_TEXT.format(program=program, description=description))
-    working_phil = extract_params_default(master_phil=master_phil, args=args, blank_arg_prepend=blank_arg_prepend)
-    out = run(params=working_phil.extract())
-    return 0

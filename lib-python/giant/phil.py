@@ -25,5 +25,8 @@ image
     size = 300x200
         .help = "image size of width x height (inches)"
         .type = str
+    format = *png jpg svg
+        .help = "select output image format
+        .type = choice
 }
 """

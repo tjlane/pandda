@@ -7,7 +7,7 @@ from scitbx.array_family import flex
 import iotbx.pdb
 from cctbx import crystal, sgtbx
 
-from giant.stats.cluster import find_connected_groups
+from bamboo.stats.cluster import find_connected_groups
 
 def match_sites_by_symmetry(ref_sites, query_sites, unit_cell, space_group, cutoff=5):
     """Pair sites in query_sites to sites in ref_sites, allowing for symmetry"""

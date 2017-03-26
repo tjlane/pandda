@@ -3,8 +3,9 @@ import numpy
 from libtbx.utils import Sorry
 from scitbx.array_family import flex
 
+from bamboo.stats.cluster import find_connected_groups, generate_group_idxs
+
 from giant.maths.geometry import is_within
-from giant.stats.cluster import find_connected_groups, generate_group_idxs
 from giant.structure.formatting import GenericSelection, Labeller
 from giant.structure.select import non_h
 
