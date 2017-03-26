@@ -5,7 +5,3 @@ import os, sys
 
 from bamboo.common.errors import *
 
-def div_bar(width=30):
-    if width < 5: width=5
-    return '#'*2 + '='*(width-5) + '>'*3
-

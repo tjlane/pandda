@@ -11,11 +11,11 @@ from bamboo.common import Meta, Info
 from bamboo.common.file import FileManager
 from bamboo.common.path import easy_directory
 
+from giant.io.pdb import strip_pdb_to_input
 from giant.xray.data import extract_structure_factors
 from giant.xray.crystal import CrystalSummary
 from giant.xray.symmetry import get_crystal_contact_operators, apply_symmetry_operators, combine_hierarchies
 from giant.structure.align import align_structures_rigid, align_structures_flexible
-from giant.utils.pdb import strip_pdb_to_input
 
 
 class ModelAndData(object):

@@ -1,6 +1,9 @@
 import os, datetime
 
+
 class FileManager(object):
+
+
     def __init__(self, rootdir):
         """Creates and stores output files to be neatly created and retrieved"""
 
@@ -62,7 +65,10 @@ class FileManager(object):
         if not os.path.exists(self.output_dirs[dir_tag]):
             os.mkdir(self.output_dirs[dir_tag])
 
+
 class FileObj(object):
+
+
     def __init__(self, file, tag=None):
         """File information object"""
 

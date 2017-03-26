@@ -1,6 +1,6 @@
 import os, shutil, tempfile, tarfile
 
-import bamboo.misc
+import bamboo.resources
 
 from bamboo.common.command import CommandManager
 
@@ -74,7 +74,7 @@ def run_mlfsom(pdb_file, res_h, out_dir='mlfsom_out', n_images=180, osc=1.0, ene
         mlfsom_img = 'image_###.img'
 
         # Get the mlfsom tarball and move it to the temporary directory
-        mlfsom_file = os.path.join(bamboo.misc.__path__[0], 'mlfsom.tar.gz')
+        mlfsom_file = os.path.join(bamboo.resources.__path__[0], 'mlfsom.tar.gz')
         assert os.path.exists(mlfsom_file), 'MLFSOM tarball not found'
         shutil.copy(mlfsom_file, tmp_dir)
         mlfsom_file = os.path.join(tmp_dir, 'mlfsom.tar.gz')

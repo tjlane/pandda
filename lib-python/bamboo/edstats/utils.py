@@ -1,4 +1,3 @@
-from bamboo.macro.utils import get_residue_labels
 
 def extract_scores(scores, label):
     """Pull out the score specified by 'label'"""
@@ -26,16 +25,6 @@ def extract_scores(scores, label):
             raise
 
     return labscores
-
-def score_against_density_by_subset_file(mtz_file, pdb_file, subpdb):
-    """Scores all the residues with edstats and returns the scores for the residues present in `subpdb`"""
-
-    # Get the labels
-    labels = get_residue_labels(subpdb)
-    # Score by labels
-    labels, summary, scores = score_against_density_by_res_labels(mtz_file, pdb_file, labels)
-
-    return labels, summary, scores
 
 def score_against_density_by_res_labels(mtz_file, pdb_file, labels):
     """Scores all the residues with edstats and returns the scores for the residues identified by `labels`"""

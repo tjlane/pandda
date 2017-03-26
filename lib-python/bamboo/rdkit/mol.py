@@ -1,7 +1,7 @@
 import os,sys,re
 
 from bamboo.common.errors import *
-from bamboo.rdkit_utils.smile import check_smile_readable
+from bamboo.rdkit.smile import check_smile_readable
 
 from rdkit.Chem import AllChem as Chem
 
