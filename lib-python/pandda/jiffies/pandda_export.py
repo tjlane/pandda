@@ -5,15 +5,16 @@ import libtbx.phil
 
 import numpy
 
-from bamboo.common.logs import bar
+from bamboo.common.logs import Log
 from pandda.constants import PanddaDatasetFilenames
 from giant.jiffies import merge_conformations, make_restraints
 
 ############################################################################
 
-PROGRAM = ''
+PROGRAM = 'pandda.export'
 
 DESCRIPTION = """
+Extract the structures and maps from a pandda analysis and prepare them for refinement
 """
 
 ############################################################################
@@ -22,7 +23,7 @@ blank_arg_prepend = {None:'select_datasets='}
 
 master_phil = libtbx.phil.parse("""
 input {
-    pandda_dir = ./pandda
+    pandda_dir = None
         .help = 'Path to the pandda directory to export files from'
         .type = str
     select_datasets = None
@@ -32,6 +33,8 @@ input {
 }
 output {
     export_dir = ./pandda-export
+        .type = str
+    log_file = pandda-export.log
         .type = str
     dir_prefix = ''
         .help = 'Prefix to be added to each output (sub)directory'
@@ -60,10 +63,6 @@ settings {
 
 ############################################################################
 
-bar = Bar()
-
-############################################################################
-
 def prepend_prefix_to_basename(prefix, path):
     return os.path.join(os.path.dirname(path),prefix+os.path.basename(path))
 
@@ -83,7 +82,7 @@ def get_file_list(dir):
 
     return file_list
 
-def export_folder(dir):
+def export_folder(dir, params, log=Log()):
     """Export a subset of a folders contents"""
 
     # Extract folder name and report
@@ -95,24 +94,25 @@ def export_folder(dir):
     if not os.path.exists(exp_dir):
         os.mkdir(exp_dir)
     # Report
-    print bar()
-    print 'Exporting from {!s} to {!s}'.format(dir, exp_dir)
+    log.bar()
+    log('Exporting \n\tfrom {!s} \n\t  to {!s}'.format(dir, exp_dir))
     if params.settings.verbose:
-        print bar()
-        print 'Exporting files:'
+        log.bar()
+        log('Exporting files:')
         for f in file_list:
-            print '\t'+f
+            log('\t'+os.path.relpath(f, start=dir))
+    log.bar()
     # Export files
     for proc_file in file_list:
         # Check that the file exists
         if not os.path.exists(proc_file):
             if params.settings.verbose:
-                print 'FILE DOES NOT EXIST: {!s}'.format(proc_file)
+                log('FILE DOES NOT EXIST: {!s}'.format(proc_file))
             continue
         # Exported file path
         export_file = os.path.join(exp_dir, params.output.file_prefix+os.path.basename(proc_file))
         if params.settings.verbose:
-            print 'Exporting {!s} to {!s}'.format(proc_file, export_file)
+            log('Copying {!s}\n     to {!s}'.format(proc_file, export_file))
         # Check to see if file already exists and delete if overwrite
         if os.path.exists(export_file):
             if params.settings.overwrite:
@@ -123,27 +123,25 @@ def export_folder(dir):
 
     return exp_dir
 
-def process_and_export_folder(dir, params):
+def process_and_export_folder(dir, params, log=Log()):
     """Merge structures, transform them and export a subset of a folders contents"""
 
     dir_name = os.path.basename(dir)
-    print '\n\n==========================================+>'
-    print 'Processing Directory:', dir_name
-    print '==========================================+>\n'
+    log.heading('Processing directory: {}'.format(dir_name))
 
     # Check to see if this folder should be skipped (export fitted folders only)
     if params.options.required_file_for_export == 'model':
         if not os.path.exists(os.path.join(dir, 'modelled_structures', PanddaDatasetFilenames.modelled_structure.format(dir_name))):
-            print 'No modelled structure in modelled_structures folder - SKIPPING: {}'.format(dir)
+            log('No modelled structure in modelled_structures folder.')
+            log('SKIPPING: {}'.format(dir))
             return
 
     ############################################################################
     # Export the pandda folder to output directory
     ############################################################################
 
-    print bar()
-    print 'Exporting folder: {}'.format(dir)
-    exp_dir = export_folder(dir=dir)
+    log.subheading('Exporting folder: {}'.format(dir))
+    exp_dir = export_folder(dir=dir, params=params, log=log)
 
     ############################################################################
     # Merge input and pandda-modelled structures
@@ -153,50 +151,31 @@ def process_and_export_folder(dir, params):
     merging_params = merge_conformations.master_phil.extract()
     merging_params.input.major = os.path.join(exp_dir, params.output.file_prefix+PanddaDatasetFilenames.input_model.format(dir_name))
     merging_params.input.minor = os.path.join(exp_dir, params.output.file_prefix+PanddaDatasetFilenames.modelled_structure.format(dir_name))
-    merging_params.output = os.path.join(exp_dir, params.output.file_prefix+PanddaDatasetFilenames.ensemble_structure.format(dir_name))
+    merging_params.output.pdb  = os.path.join(exp_dir, params.output.file_prefix+PanddaDatasetFilenames.ensemble_structure.format(dir_name))
+    merging_params.output.log  = os.path.splitext(merging_params.output.pdb)[0]+'.log'
+    merging_params.output.make_restraints = True
+    # Apply settings -- always set verbose to False
     merging_params.settings.overwrite = params.settings.overwrite
-    merging_params.settings.verbose = params.settings.verbose
+    merging_params.settings.verbose = False
+    # Change the restraints settings
+    merging_params.restraints.output.phenix = os.path.splitext(os.path.basename(merging_params.output.pdb))[0]+'.restraints-phenix.params'
+    merging_params.restraints.output.refmac = os.path.splitext(os.path.basename(merging_params.output.pdb))[0]+'.restraints-refmac.params'
+    merging_params.restraints.output.log    = os.path.splitext(os.path.basename(merging_params.output.pdb))[0]+'.restraints.log'
     # Check files exist
-    if not os.path.exists(merging_params.minor):
-        raise Exception('File does not exist: {}'.format(merging_params.minor))
-    if not os.path.exists(merging_params.major):
-        raise Exception('File does not exist: {}'.format(merging_params.major))
+    if not os.path.exists(merging_params.input.minor):
+        raise Exception('File does not exist: {}'.format(merging_params.input.minor))
+    if not os.path.exists(merging_params.input.major):
+        raise Exception('File does not exist: {}'.format(merging_params.input.major))
     # Print and run
-    print bar()
-    print 'Merging parameters'
-    print bar()
-    merge_conformations.master_phil.format(python_object=merging_params).show()
-    print bar()
-    print 'Merging event-map model with input model'
-    merge_conformations.run(merging_params)
-
-    ############################################################################
-    # Generate output restraints if requested
-    ############################################################################
-
-    if params.options.generate_restraints:
-        print bar()
-        print 'Generating restraints for the merged model'
-
-        # Set parameters for restraints generation
-        restraints_params = make_restraints.master_phil.extract()
-        restraints_params.input.pdb = merging_params.output
-        restraints_params.output.refmac = os.path.join(exp_dir, os.path.basename(restraints_params.output.refmac))
-        restraints_params.output.phenix = os.path.join(exp_dir, os.path.basename(restraints_params.output.phenix))
-        restraints_params.settings.overwrite = params.settings.overwrite
-        restraints_params.settings.verbose = params.settings.verbose
-        # Print and run
-        print bar()
-        print 'Restraint-generation parameters'
-        print bar()
-        make_restraints.master_phil.format(python_object=restraints_params).show()
-        print bar()
-        print 'Generating restraints for ensemble model'
-        make_restraints.run(restraints_params)
+    log.subheading('Merging event-map model with input model')
+    merge_conformations.run(params=merging_params)
 
 ############################################################################
 
 def run(params):
+
+    # Create log object
+    log = Log(log_file=os.path.abspath(params.output.log_file), verbose=True)
 
     # Change paths to absolute paths
     params.input.pandda_dir  = os.path.abspath(params.input.pandda_dir)
@@ -204,7 +183,13 @@ def run(params):
     # Must be in the pandda directory (pandda objects use relative paths)
     os.chdir(params.input.pandda_dir)
 
+    # Report modifed phil
+    log.heading('Processed parameters')
+    log(master_phil.format(params).as_str())
+
     ############################################################################
+
+    log.heading('Identifying folders to export')
 
     # Find the dataset directories to be exported
     if params.input.select_datasets:
@@ -215,7 +200,9 @@ def run(params):
     else:
         export_dirs = sorted(glob.glob(os.path.join(params.input.pandda_dir, 'processed_datasets', '*')))
     assert export_dirs, 'No Export Directories Found'
-    print 'Exporting:\n\t', '\n\t'.join(export_dirs)
+
+    # Report
+    log('Exporting:\n\t'+'\n\t'.join(export_dirs))
 
     # Create output directory
     if not os.path.exists(params.output.export_dir):
@@ -223,7 +210,7 @@ def run(params):
 
     # Merge the fitted structures
     for dir in export_dirs:
-        process_and_export_folder(dir=dir, params=params)
+        process_and_export_folder(dir=dir, params=params, log=log)
 
 #######################################
 

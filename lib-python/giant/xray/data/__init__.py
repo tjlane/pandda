@@ -23,7 +23,7 @@ def extract_structure_factors(mtz_object, ampl_label, phas_label):
     assert mill_sfs.is_complex_array(), 'STRUCTURE FACTORS SHOULD BE COMPLEX?!'
     return mill_sfs
 
-def calculate_wilson_b_factor(intensities, inverse_resolution, low_res_cutoff=3.5):
+def calculate_wilson_b_factor(intensities, inverse_resolution, low_res_cutoff=4.0):
 
     ln_ints = numpy.log(intensities)
     sqr_res = numpy.power(inverse_resolution, 2)

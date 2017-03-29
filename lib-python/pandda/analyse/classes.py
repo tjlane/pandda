@@ -33,6 +33,7 @@ from giant.structure.align import GlobalAlignment
 from giant.structure.select import calphas, protein, sel_altloc
 from giant.structure.formatting import Labeller, ShortLabeller
 from giant.xray.data import calculate_wilson_b_factor
+from giant.xray.scaling import IsotropicScalingFactory
 
 from pandda.phil import pandda_phil
 from pandda.analyse.events import cluster_events
@@ -286,6 +287,8 @@ class PanddaMultiDatasetAnalyser(Program):
         fm.add_file(file_name='dataset_cell_axes.png',             file_tag='d_cell_axes',             dir_tag='d_graphs')
         fm.add_file(file_name='dataset_cell_angles.png',           file_tag='d_cell_angles',           dir_tag='d_graphs')
         fm.add_file(file_name='dataset_cell_volumes.png',          file_tag='d_cell_volumes',          dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_input_wilson_plots.png',    file_tag='d_unscaled_wilson',       dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_scaled_wilson_plots.png',   file_tag='d_scaled_wilson',         dir_tag='d_graphs')
         # ================================================>
         # Map analysis graphs
         # ================================================>
@@ -594,6 +597,13 @@ class PanddaMultiDatasetAnalyser(Program):
             p.params.maps.structure_factors.append('FWT,PHWT')
             p.params.maps.structure_factors.append('2FOFCWT,PH2FOFCWT')
             self.log('Will look for the default PHENIX and REFMAC structure factor columns: {}'.format(' or '.join(p.params.maps.structure_factors)))
+        # ================================================>
+        # Hardcoded limits
+        # ================================================>
+        if p.params.analysis.high_res_lower_limit < 4.0:
+            raise Sorry('params.analysis.high_res_lower_limit must be better/smaller than 4A. This is due to the need to scale the diffraction data '\
+                        'correctly - only datasets with a better resolution than this can be analysed. Parameter params.analysis.high_res_lower_limit '\
+                        'must be set to a value lower than 4.')
 
         self.log.bar()
 
@@ -1701,18 +1711,26 @@ class PanddaMultiDatasetAnalyser(Program):
     #                                                                                                       #
     #########################################################################################################
 
-    def load_diffraction_data(self, datasets=None):
+    def load_and_scale_diffraction_data(self, datasets=None):
         """Extract amplitudes and phases for creating map"""
 
         if datasets is None:
             datasets=self.datasets.mask(mask_name='rejected - total', invert=True)
 
         # ==============================>
+        # Prepare objects for scaling
+        # ==============================>
+        # Factory for scaling all datasets to the reference
+        ref_dataset = self.datasets.reference()
+        ref_miller = ref_dataset.data.miller_arrays[ref_dataset.meta.column_labels]
+        factory = IsotropicScalingFactory(reference_miller_array=ref_miller.as_intensity_array())
+
+        # ==============================>
         # Report
         # ==============================>
         t1 = time.time()
         self.log.bar()
-        self.log('Loading structure factors for each dataset', True)
+        self.log('Loading and scaling structure factors for each dataset', True)
         self.log.bar()
         # ==============================>
         # Extract dataset SFs
@@ -1722,24 +1740,61 @@ class PanddaMultiDatasetAnalyser(Program):
             dataset_sfs = dataset.meta.column_labels
             # Check and load structure factors
             if dataset_sfs in dataset.data.miller_arrays.keys():
-                self.log('\rStructure factors already loaded {:<20} - Dataset {!s}'.format(dataset_sts, dataset.tag)+' '*(30-len(dataset.tag)))
+                self.log('\rStructure factors already loaded {:<20} - Dataset {!s}'.format(dataset_sfs, dataset.tag)+' '*(30-len(dataset.tag)))
             else:
                 print('\rLoading structure factors {:<20} - Dataset {!s}'.format(dataset_sfs, dataset.tag)+' '*(30-len(dataset.tag)), end=''); sys.stdout.flush()
                 dataset.data.miller_arrays[dataset_sfs] = dataset.data.get_structure_factors(columns=dataset_sfs)
 
             # Extract miller array and calculate amplitudes
-            ma = dataset.data.miller_arrays[dataset_sfs].as_amplitude_array()
-            # Create binning - just use the auto-binning for each dataset
-            binner = ma.setup_binner(auto_binning=True)
-            # Create the wilson plot
-            binned = ma.wilson_plot(use_binning=True)
-            # Calculate the wilson b-factor
-            wilson_b_tuple = calculate_wilson_b_factor(intensities=numpy.array(binned.data[1:-1]), inverse_resolution=numpy.array(binner.bin_centers(1)))
-            # Store info in dataset object
-            dataset.meta.wilson_b_tuple = wilson_b_tuple
-            dataset.meta.wilson_b = -1.0*wilson_b_tuple[0]/2.0
-            # Store in table
-            self.tables.dataset_info.set_value(index=dataset.tag, col='wilson B', value=dataset.meta.wilson_b)
+            ma_com = dataset.data.miller_arrays[dataset_sfs]
+            ma_amp = ma_com.as_amplitude_array()
+            ma_int = ma_amp.as_intensity_array()
+            ma_phs = ma_com*(1.0/ma_amp.data())
+
+            # Scale to the reference dataset
+            scaling = factory.calculate_scaling(miller_array=ma_int)
+            scaling.new_x_values(x_values=ma_int.d_star_sq().data())
+            ma_scaled_int = ma_int.array(data=scaling.transform(ma_int.data())).set_observation_type_xray_intensity()
+            ma_scaled_amp = ma_scaled_int.as_amplitude_array()
+            ma_scaled_com = ma_phs * ma_scaled_amp.data()
+
+            self.log('')
+            self.log('Optimised Scaling Parameters: {}'.format(list(scaling.optimised_values)))
+
+            # Store in the dataset object
+            dataset.data.miller_arrays['scaled'] = ma_scaled_com
+
+            assert ma_scaled_com.is_complex_array()
+
+#            ##########################
+#            # UN-SCALED DATA
+#            ##########################
+#            # Create binning - just use the auto-binning for each dataset
+#            binner = ma_scaled_int.setup_binner(auto_binning=True)
+#            # Create the wilson plot
+#            binned = ma_scaled_int.wilson_plot(use_binning=True)
+#            # Calculate the wilson b-factor
+#            wilson_b_tuple = calculate_wilson_b_factor(intensities=numpy.array(binned.data[1:-1]), inverse_resolution=numpy.array(binner.bin_centers(1)))
+#            # Store info in dataset object
+#            dataset.meta.wilson_b_tuple = wilson_b_tuple
+#            dataset.meta.wilson_b = -1.0*wilson_b_tuple[0]/2.0
+#            # Store in table
+#            self.tables.dataset_info.set_value(index=dataset.tag, col='wilson B scaled', value=dataset.meta.wilson_b)
+#
+#            ##########################
+#            # SCALED DATA
+#            ##########################
+#            # Create binning - just use the auto-binning for each dataset
+#            binner = ma_int.setup_binner(auto_binning=True)
+#            # Create the wilson plot
+#            binned = ma_int.wilson_plot(use_binning=True)
+#            # Calculate the wilson b-factor
+#            wilson_b_tuple = calculate_wilson_b_factor(intensities=numpy.array(binned.data[1:-1]), inverse_resolution=numpy.array(binner.bin_centers(1)))
+#            # Store info in dataset object
+#            dataset.meta.wilson_b_tuple = wilson_b_tuple
+#            dataset.meta.wilson_b = -1.0*wilson_b_tuple[0]/2.0
+#            # Store in table
+#            self.tables.dataset_info.set_value(index=dataset.tag, col='wilson B', value=dataset.meta.wilson_b)
 
         # ==============================>
         # Report
@@ -1749,7 +1804,7 @@ class PanddaMultiDatasetAnalyser(Program):
 
         return None
 
-    def scale_and_truncate_data(self, datasets, res_truncate):
+    def truncate_diffraction_data(self, datasets, res_truncate):
         """Truncate data at the same indices across all the datasets"""
 
         self.log.bar()
@@ -1773,9 +1828,9 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Truncate miller indices to the common set (not including the reference dataset)
         # ==============================>
-        common_set = datasets[0].data.miller_arrays[datasets[0].meta.column_labels].set()
+        common_set = datasets[0].data.miller_arrays['scaled'].set()
         for dataset in datasets[1:]:
-            common_set = common_set.common_set(dataset.data.miller_arrays[dataset.meta.column_labels], assert_is_similar_symmetry=False)
+            common_set = common_set.common_set(dataset.data.miller_arrays['scaled'], assert_is_similar_symmetry=False)
         # ==============================>
         # Report
         # ==============================>
@@ -1787,7 +1842,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         self.datasets.reference().data.miller_arrays['truncated'] = self.datasets.reference().data.miller_arrays[ref_cols].common_set(common_set, assert_is_similar_symmetry=False)
         for dataset in datasets:
-            dataset.data.miller_arrays['truncated'] = dataset.data.miller_arrays[dataset.meta.column_labels].common_set(common_set, assert_is_similar_symmetry=False)
+            dataset.data.miller_arrays['truncated'] = dataset.data.miller_arrays['scaled'].common_set(common_set, assert_is_similar_symmetry=False)
 
     def load_reference_map(self, map_resolution=0):
         """Load the reference map, and calculate some map statistics"""

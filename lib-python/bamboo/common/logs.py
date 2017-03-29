@@ -9,39 +9,60 @@ class Bar(object):
         self.body  = body
         self.head  = head
 
-    def __call__(self):
-        width = self.width - len(self.head)
+    def __call__(self, width=None, body=None, head=None):
+        # Allow defaluts to be overridden
+        if width is None: width = self.width
+        if body is None:  body  = self.body
+        if head is None:  head  = self.head
+        # Modify width to allow for head
+        width = width - len(head)
         if width < 1: width = 0
-        return self.body*width + self.head
+        return body*width + head
 
 
 class Heading(object):
 
 
-    def __init__(self, width=80, spacer='#', decorator=' <~~~> ', edge_width=3):
+    def __init__(self, width=100, spacer='#', decorator=' <~~~> ', side_width=3):
         """Spacer for printing neatly formatted headings"""
 
         assert width > 10
         self._decorator     = decorator
         self._spacer        = spacer
         self._width         = width
-        self._content_width = width-(2*edge_width)
-        self._side_width    = edge_width
+        self._side_width    = side_width
+        self._content_width = width-(2*self._side_width)
 
         self._side_padding  = self._side_width*spacer
 
-        self._blank_line = ''
-        self._text_line  = self._side_padding + '{{:^{}}}'.format(self._content_width) + self._side_padding
-        self._inner_line = self._text_line.format('')
-        self._outer_line = self._decorator.center(self._width, self._spacer)
-
     def __call__(self, text='', spacer=False, blank=False):
-        out = []
-        out.append(self._text_line.format(text))
-        if spacer: out = [self._inner_line] + out + [self._inner_line]
-        out = [self._outer_line] + out + [self._outer_line]
-        if blank: out = [self._blank_line] + out + [self._blank_line]
+
+        # Allow for need to override defaults
+        content_width = max(len(text)+2, self._content_width)
+        total_width = content_width + (2*self._side_width)
+
+        out = [self._text_line(text=text, text_width=content_width)]
+        if spacer:
+            out.insert(0, self._inner_line(text_width=content_width))
+            out.append(out[0])
+        out.insert(0, self._outer_line(width=total_width))
+        out.append(out[0])
+        if blank:
+            out.insert(0, self._blank_line())
+            out.append(out[0])
         return '\n'.join(out)
+
+    def _blank_line(self):
+        return ''
+
+    def _text_line(self, text, text_width):
+        return self._side_padding + text.center(text_width, ' ') + self._side_padding
+
+    def _inner_line(self, text_width):
+        return self._text_line(text='', text_width=text_width)
+
+    def _outer_line(self, width):
+        return self._decorator.center(width, self._spacer)
 
 
 class Log(object):
@@ -55,38 +76,53 @@ class Log(object):
         self.verbose = verbose
 
         # Set default heading
-        self.set_bar_and_heading(bar=Bar(), heading=Heading())
+        self.set_bar_and_heading(bar        = Bar(),
+                                 heading    = Heading(spacer='#', decorator=' <~~~> '),
+                                 subheading = Heading(spacer='-', decorator=' *** ')
+                                )
 
     def __call__(self, message, show=False, hide=False):
         """Log message to file, and mirror to stdout if verbose or force_print (hide overrules show)"""
-        message = str(message)
+        message = str(message)+'\n'
         if (not hide) and (show or self.verbose):
             self.show(message)
-        self.write(message=message+'\n', mode='a')
+        self.write(message=message, mode='a')
+
+    def delete(self):
+        """Delete the current log file"""
+        if self.log_file and os.path.exists(self.log_file):
+            os.remove(self.log_file)
+        return self
 
     def heading(self, message, spacer=False, blank=True):
         """Print message as a heading/divider"""
         text = self._heading(text=str(message), spacer=spacer, blank=blank)
-        self.show(text)
-        self.write(text+'\n', mode='a')
+        self(text)
 
-    def bar(self, blank_before=False, blank_after=False):
+    def subheading(self, message, spacer=False, blank=True):
+        """Print message as a heading/divider"""
+        text = self._subheading(text=str(message), spacer=spacer, blank=blank)
+        self(text)
+
+    def bar(self, blank_before=False, blank_after=False, width=None, body=None, head=None):
         """Print divider bar"""
-        text = '\n'*blank_before + self._bar() + '\n'*blank_after
-        self.show(text)
-        self.write(text+'\n', mode='a')
+        text = '\n'*blank_before + self._bar(width=width, body=body, head=head) + '\n'*blank_after
+        self(text)
 
-    def set_bar_and_heading(self, bar=None, heading=None):
+    def set_bar_and_heading(self, bar=None, heading=None, subheading=None):
         if bar is not None:
             assert isinstance(bar, Bar)
             self._bar = bar
         if heading is not None:
             assert isinstance(heading, Heading)
             self._heading = heading
+        if subheading is not None:
+            assert isinstance(subheading, Heading)
+            self._subheading = subheading
         return self
 
     def show(self, message):
-        print(message)
+        self.stdout.write(message)
 
     def write(self, message, mode='a'):
         if not self.log_file: return

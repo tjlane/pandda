@@ -15,7 +15,6 @@ import numpy
 from scitbx.array_family import flex
 
 from bamboo.plot import bar, simple_histogram
-from giant.xray.data import calculate_wilson_b_factor
 
 def filter_nans(x):
     return [v for v in x if not numpy.isnan(v)]
@@ -129,48 +128,56 @@ def write_dataset_summary_graphs(pandda):
     """Plot dataset summary graphs of resolution, unit cell variation, etc"""
 
     pandda.log('----------------------------------->>>')
-    pandda.log('Generating Summary Graphs')
+    pandda.log('Generating summary graphs for non-rejected datasets')
 
     # Filter the dataset to non-rejected datasets
-    non_rejected_dtags = [dh.tag for dh in pandda.datasets.mask(mask_name='rejected - total', invert=True)]
+    non_rejected_dsets = pandda.datasets.mask(mask_name='rejected - total', invert=True)
+    non_rejected_dtags = [d.tag for d in non_rejected_dsets]
 
     d_info = pandda.tables.dataset_info.loc[non_rejected_dtags]
     n_bins = 30
 
     # ================================================>
+    # Simple histograms of data from the dataset_info table
+    # ================================================>
+    pandda.log('-> crystal variables and data quality histograms')
+
+    # ================================================>
+    # High & Low Resolutions
+    # ================================================>
     fig = pyplot.figure()
     pyplot.title('Resolution Histograms')
     pyplot.subplot(2, 1, 1)
     pyplot.hist(x=d_info['high_resolution'], bins=n_bins)
-    pyplot.xlabel('High Resolution Limit (A)')
+    pyplot.xlabel('High Resolution Limit ($\AA$)')
     pyplot.ylabel('Count')
     pyplot.subplot(2, 1, 2)
     pyplot.hist(x=d_info['low_resolution'], bins=n_bins)
-    pyplot.xlabel('Low Resolution Limit (A)')
+    pyplot.xlabel('Low Resolution Limit ($\AA$)')
     pyplot.ylabel('Count')
     fig.set_tight_layout(True)
     pyplot.savefig(pandda.file_manager.get_file('d_resolutions'))
     pyplot.close(fig)
+    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_resolutions')))
     # ================================================>
-    try:
-        fig = pyplot.figure()
-        pyplot.title('R-Factor Histograms')
-        pyplot.subplot(2, 1, 1)
-        pyplot.hist(x=d_info['r_free'], bins=n_bins)
-        pyplot.xlabel('R-Free')
-        pyplot.ylabel('Count')
-        pyplot.subplot(2, 1, 2)
-        pyplot.hist(x=d_info['r_work'], bins=n_bins)
-        pyplot.xlabel('R-Work')
-        pyplot.ylabel('Count')
-        fig.set_tight_layout(True)
-        pyplot.savefig(pandda.file_manager.get_file('d_rfactors'))
-        pyplot.close(fig)
-    except:
-        fig = pyplot.figure()
-        pyplot.title('Failed to make R-Factor Histograms')
-        pyplot.savefig(pandda.file_manager.get_file('d_rfactors'))
-        pyplot.close(fig)
+    # R-factors
+    # ================================================>
+    fig = pyplot.figure()
+    pyplot.title('R-Factor Histograms')
+    pyplot.subplot(2, 1, 1)
+    pyplot.hist(x=d_info['r_free'], bins=n_bins)
+    pyplot.xlabel('R-Free')
+    pyplot.ylabel('Count')
+    pyplot.subplot(2, 1, 2)
+    pyplot.hist(x=d_info['r_work'], bins=n_bins)
+    pyplot.xlabel('R-Work')
+    pyplot.ylabel('Count')
+    fig.set_tight_layout(True)
+    pyplot.savefig(pandda.file_manager.get_file('d_rfactors'))
+    pyplot.close(fig)
+    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_rfactors')))
+    # ================================================>
+    # RMSD to reference structure
     # ================================================>
     fig = pyplot.figure()
     pyplot.title('RMSDs to Reference Structure Histogram')
@@ -180,6 +187,9 @@ def write_dataset_summary_graphs(pandda):
     fig.set_tight_layout(True)
     pyplot.savefig(pandda.file_manager.get_file('d_global_rmsd_to_ref'))
     pyplot.close(fig)
+    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_global_rmsd_to_ref')))
+    # ================================================>
+    # Unit cell size
     # ================================================>
     fig = pyplot.figure()
     pyplot.title('Unit Cell Axis Variation')
@@ -195,6 +205,9 @@ def write_dataset_summary_graphs(pandda):
     fig.set_tight_layout(True)
     pyplot.savefig(pandda.file_manager.get_file('d_cell_axes'))
     pyplot.close(fig)
+    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_cell_axes')))
+    # ================================================>
+    # Unit cell angles
     # ================================================>
     fig = pyplot.figure()
     pyplot.title('Unit Cell Angle Variation')
@@ -210,20 +223,82 @@ def write_dataset_summary_graphs(pandda):
     fig.set_tight_layout(True)
     pyplot.savefig(pandda.file_manager.get_file('d_cell_angles'))
     pyplot.close(fig)
+    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_cell_angles')))
+    # ================================================>
+    # Unit cell volume
     # ================================================>
     fig = pyplot.figure()
     pyplot.title('Unit Cell Volume Variation')
-    pyplot.hist(x=d_info['uc_vol'], bins=n_bins)
-    pyplot.xlabel('Volume (A^3)')
+    pyplot.hist(x=d_info['uc_vol']/1000.0, bins=n_bins)
+    pyplot.xlabel('Volume ($10^3 A^3$)')
     pyplot.ylabel('Count')
     fig.set_tight_layout(True)
     pyplot.savefig(pandda.file_manager.get_file('d_cell_volumes'))
     pyplot.close(fig)
+    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_cell_volumes')))
 
-def write_truncated_data_plots(pandda, resolution, miller_arrays):
+    # ================================================>
+    # More complex graphs for e.g. the loaded diffracton data
+    # ================================================>
+    pandda.log('-> writing wilson plots of input and scaled data')
+
+    # ================================================>
+    # Wilson plots of the unscaled (input) data
+    # ================================================>
+    fig = pyplot.figure()
+    pyplot.title('Wilson plot for unscaled (input) structure factors')
+    for d in non_rejected_dsets:
+        # Extract scaled data
+        ma = d.data.miller_arrays[d.meta.column_labels].as_amplitude_array()
+        binner = ma.setup_binner(auto_binning=True)
+        binned = ma.wilson_plot(use_binning=True)
+        # Extract bin centres and bin data
+        bin_cent = binner.bin_centers(1)
+        bin_data = binned.data[1:-1]
+        assert len(bin_cent) == len(bin_data)
+        # Transform the data - ln(F) v (1/A)^2
+        x_vals = numpy.power(bin_cent, 2)
+        y_vals = numpy.log(bin_data)
+        # Plot
+        pyplot.plot(x_vals, y_vals, '-', linewidth=1)
+    pyplot.xlabel('resolution$^{-2}$ ($A^{-2}$)')
+    pyplot.ylabel('ln(mean intensity)')
+    fig.set_tight_layout(True)
+    pyplot.savefig(pandda.file_manager.get_file('d_unscaled_wilson'))
+    pyplot.close(fig)
+    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_unscaled_wilson')))
+    # ================================================>
+    # Wilson plots of the scaled data
+    # ================================================>
+    fig = pyplot.figure()
+    pyplot.title('Wilson plot for scaled structure factors')
+    for d in non_rejected_dsets:
+        # Extract scaled data
+        ma = d.data.miller_arrays['scaled'].as_amplitude_array()
+        binner = ma.setup_binner(auto_binning=True)
+        binned = ma.wilson_plot(use_binning=True)
+        # Extract bin centres and bin data
+        bin_cent = binner.bin_centers(1)
+        bin_data = binned.data[1:-1]
+        assert len(bin_cent) == len(bin_data)
+        # Transform the data - ln(F) v (1/A)^2
+        x_vals = numpy.power(bin_cent, 2)
+        y_vals = numpy.log(bin_data)
+        # Plot
+        pyplot.plot(x_vals, y_vals, '-', linewidth=1)
+    pyplot.xlabel('resolution$^{-2}$ ($A^{-2}$)')
+    pyplot.ylabel('ln(mean intensity)')
+    fig.set_tight_layout(True)
+    pyplot.savefig(pandda.file_manager.get_file('d_scaled_wilson'))
+    pyplot.close(fig)
+    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_scaled_wilson')))
+
+    return None
+
+def write_truncated_data_plots(pandda, resolution, datasets):
     """Write summaries of the truncated data"""
 
-    reslns = [m.d_min() for m in miller_arrays]
+    reslns = [d.data.miller_arrays['truncated'].d_min() for d in datasets]
     min_res, max_res = min(reslns), max(reslns)
     pandda.log('After Truncation - Resolution Range: {!s}-{!s}'.format(min_res, max_res))
 
@@ -236,11 +311,11 @@ def write_truncated_data_plots(pandda, resolution, miller_arrays):
                      n_bins   = 15)
     # ================================================>
     # Wilson plots of the truncated data
-    v_min = v_max = 0
-    # Make plot
     fig = pyplot.figure()
     pyplot.title('Wilson plot for truncated structure factors')
-    for m in miller_arrays:
+    for d in datasets:
+        # Extract truncated data
+        m = d.data.miller_arrays['truncated']
         # Convert to amplitudes
         ma = m.as_amplitude_array()
         # Create binning - just use the auto-binning for each dataset

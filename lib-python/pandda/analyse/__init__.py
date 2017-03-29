@@ -206,9 +206,9 @@ def pandda_main_loop(pandda):
     pandda.reset_loaded_datasets()
     # Load reflection data for each dataset
     if pandda.args.flags.reprocess_existing_datasets or pandda.args.flags.reprocess_selected_datasets:
-        pandda.load_diffraction_data(datasets=pandda.datasets.all())
+        pandda.load_and_scale_diffraction_data(datasets=pandda.datasets.all())
     else:
-        pandda.load_diffraction_data(datasets=pandda.datasets.mask(mask_name='old datasets', invert=True))
+        pandda.load_and_scale_diffraction_data(datasets=pandda.datasets.mask(mask_name='old datasets', invert=True))
 
     # ============================================================================>
     #####
@@ -346,12 +346,12 @@ def pandda_main_loop(pandda):
         #####
         # ============================================================================>
         # Truncate the data to the same resolution and scale to reference data
-        pandda.scale_and_truncate_data(datasets=pandda.datasets.mask(mask_name=map_load_mask_name), res_truncate=cut_resolution)
+        pandda.truncate_diffraction_data(datasets=pandda.datasets.mask(mask_name=map_load_mask_name), res_truncate=cut_resolution)
         # Get resolution range of the truncated data and plot histogram
         if pandda.settings.plot_graphs:
-            analyse_graphs.write_truncated_data_plots(pandda        = pandda,
-                                                      resolution    = cut_resolution,
-                                                      miller_arrays = [d.data.miller_arrays['truncated'] for d in pandda.datasets.mask(mask_name=map_load_mask_name)])
+            analyse_graphs.write_truncated_data_plots(pandda     = pandda,
+                                                      resolution = cut_resolution,
+                                                      datasets   = pandda.datasets.mask(mask_name=map_load_mask_name))
         # ============================================================================>
         # Load the reference map so that we can re-scale the individual maps to this
         # ============================================================================>

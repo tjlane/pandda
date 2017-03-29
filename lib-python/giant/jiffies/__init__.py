@@ -15,7 +15,6 @@ class run_default(object):
         print(self.HEADER_TEXT.format(program=program, description=description))
         working_phil = extract_params_default(master_phil=master_phil, args=args, blank_arg_prepend=blank_arg_prepend)
         out = run(params=working_phil.extract())
-        return 0
 
 
 def extract_params_default(master_phil, args, blank_arg_prepend=None, home_scope=None):

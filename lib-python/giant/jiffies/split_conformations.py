@@ -10,9 +10,10 @@ from scitbx.array_family import flex
 
 from giant.io.pdb import strip_pdb_to_input, get_pdb_header
 
-#######################################
+############################################################################
 
 PROGRAM = 'giant.strip_conformations'
+
 DESCRIPTION = """
     A tool to remove unwanted conformations of a multi-conformer model.
         Conformations to keep can be kept can be declared explicity (using conf=...) or implicitly,
@@ -22,13 +23,29 @@ DESCRIPTION = """
         > giant.strip_conformations input.pdb
 """
 
+############################################################################
+
 blank_arg_prepend = {'.pdb':'pdb='}
 
 master_phil = libtbx.phil.parse("""
-pdb = None
-    .help = 'The ensemble of protein conformations (normally the unbound and bound structures)'
-    .type = str
-    .multiple = True
+input  {
+    pdb = None
+        .help = 'A model containing multiple states/conformations (for example unbound and bound states)'
+        .type = str
+        .multiple = True
+}
+output {
+    suffix = '.stripped.pdb'
+}
+options = {
+    mode = by_conformer by_conformer_group *by_residue_name
+        .help = 'How to split the model:\n\tby_conformer : output a model for each conformer\n\tby_conformer_group : output a model for a selection of conformers\n\tby_residue_name : output a model containing all states containing a specifice residue name'
+        .type = choice
+    by_residue_name {
+
+        .
+    }
+}
 
 res = LIG,UNL
     .help = 'Residues to be define selected conformations (comma separated list of residue names, i.e. res=LIG or res=LIG,UNL)'
@@ -55,7 +72,7 @@ log = None
     .multiple = False
 """)
 
-#######################################
+############################################################################
 
 def proc(ensemble_file, params, sel_resnames=None, sel_confs=None):
 
