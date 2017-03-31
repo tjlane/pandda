@@ -2,25 +2,9 @@ from scitbx.math import scale_curves
 from scitbx.array_family import flex
 from mmtbx.scaling import absolute_scaling
 
-from giant.stats.optimisation import LeastSquaresFitting
+from giant.stats.optimisation import ExponentialScaling
 
-class RelativeBfactorScaling(LeastSquaresFitting):
-
-    def initialise_parameters(self):
-        """Initialise starting simplex"""
-        v0 = 0.0    # 0th order - offset
-        v1 = 0.0    # 1st order - scale
-        self.starting_simplex = [    flex.double([v0,    v1-20]),
-                                     flex.double([v0,    v1+20]),
-                                     flex.double([v0+0.1,v1])      ]
-        return [v0,v1]
-
-    def _scale(self, values, params):
-        v0,v1 = params
-        out = flex.exp(v0+v1*self.x_values)*values
-        return out
-
-class IsotropicScalingFactory(object):
+class IsotropicBfactorScalingFactory(object):
     """Adapted from mmtbx.scaling.relative_wilson"""
 
     def __init__(self, reference_miller_array, d_star_min_sq=0.0625, d_star_max_sq=2.0, n_scale=2000):
@@ -80,9 +64,9 @@ class IsotropicScalingFactory(object):
                                                                 y_array=self.ref_kernel.mean_I_array)
 
         # Run optimisation on the linear scaling
-        lsc = RelativeBfactorScaling(x_values = interpolator.target_x,
-                                     ref_y_values = ref_itpl_mean_I,
-                                     mov_y_values = new_itpl_mean_I)
+        lsc = ExponentialScaling(x_values = interpolator.target_x,
+                                 ref_values = ref_itpl_mean_I,
+                                 scl_values = new_itpl_mean_I)
 
         return lsc
 

@@ -20,20 +20,20 @@ from bamboo.common.file import FileManager
 from bamboo.common.path import easy_directory, rel_symlink, delete_with_glob
 from bamboo.common.status import status_bar, status_bar_2
 from bamboo.common.command import CommandManager
+from bamboo.common.holders import HolderList
 
 from bamboo.plot import bar
 from bamboo.maths import round_no_fail
 
 from giant.dataset import ModelAndData, ElectronDensityMap
-from giant.holders import HolderList
 from giant.manager import Program
 from giant.grid import Grid
 from giant.grid.masks import AtomicMask, GridMask
 from giant.structure.align import GlobalAlignment
 from giant.structure.select import calphas, protein, sel_altloc
 from giant.structure.formatting import Labeller, ShortLabeller
-from giant.xray.data import calculate_wilson_b_factor
-from giant.xray.scaling import IsotropicScalingFactory
+from giant.xray.data import estimate_wilson_b_factor
+from giant.xray.scaling import IsotropicBfactorScalingFactory
 
 from pandda.phil import pandda_phil
 from pandda.analyse.events import cluster_events
@@ -1723,7 +1723,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Factory for scaling all datasets to the reference
         ref_dataset = self.datasets.reference()
         ref_miller = ref_dataset.data.miller_arrays[ref_dataset.meta.column_labels]
-        factory = IsotropicScalingFactory(reference_miller_array=ref_miller.as_intensity_array())
+        factory = IsotropicBfactorScalingFactory(reference_miller_array=ref_miller.as_intensity_array())
 
         # ==============================>
         # Report
@@ -1732,69 +1732,51 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log.bar()
         self.log('Loading and scaling structure factors for each dataset', True)
         self.log.bar()
-        # ==============================>
-        # Extract dataset SFs
-        # ==============================>
+
         for dataset in datasets:
             # Get the columns to be loaded for this dataset
             dataset_sfs = dataset.meta.column_labels
-            # Check and load structure factors
+            # ==============================>
+            # Load structure factors
+            # ==============================>
             if dataset_sfs in dataset.data.miller_arrays.keys():
-                self.log('\rStructure factors already loaded {:<20} - Dataset {!s}'.format(dataset_sfs, dataset.tag)+' '*(30-len(dataset.tag)))
+                self.log('Structure factors already loaded {:<20} - Dataset {!s}'.format(dataset_sfs, dataset.tag))
+                ma_unscaled_com = dataset.data.miller_arrays[dataset_sfs]
             else:
-                print('\rLoading structure factors {:<20} - Dataset {!s}'.format(dataset_sfs, dataset.tag)+' '*(30-len(dataset.tag)), end=''); sys.stdout.flush()
-                dataset.data.miller_arrays[dataset_sfs] = dataset.data.get_structure_factors(columns=dataset_sfs)
+                self.log('Loading structure factors {:<20} for dataset {!s}'.format(dataset_sfs, dataset.tag))
+                ma_unscaled_com = dataset.data.get_structure_factors(columns=dataset_sfs)
 
-            # Extract miller array and calculate amplitudes
-            ma_com = dataset.data.miller_arrays[dataset_sfs]
-            ma_amp = ma_com.as_amplitude_array()
-            ma_int = ma_amp.as_intensity_array()
-            ma_phs = ma_com*(1.0/ma_amp.data())
+            # ==============================>
+            # Scale data to referene - make scaling off by default for now
+            # ==============================>
+            if self.args.testing.perform_diffraction_data_scaling:
+                # Extract miller array and calculate amplitudes
+                ma_unscaled_int = ma_unscaled_com.as_intensity_array()
+                ma_unscaled_phs = ma_unscaled_com*(1.0/ma_unscaled_com.as_amplitude_array().data())
 
-            # Scale to the reference dataset
-            scaling = factory.calculate_scaling(miller_array=ma_int)
-            scaling.new_x_values(x_values=ma_int.d_star_sq().data())
-            ma_scaled_int = ma_int.array(data=scaling.transform(ma_int.data())).set_observation_type_xray_intensity()
-            ma_scaled_amp = ma_scaled_int.as_amplitude_array()
-            ma_scaled_com = ma_phs * ma_scaled_amp.data()
+                # Scale to the reference dataset
+                scaling = factory.calculate_scaling(miller_array=ma_unscaled_int)
+                scaling.new_x_values(x_values=ma_unscaled_int.d_star_sq().data())
+                ma_scaled_int = ma_unscaled_int.array(data=scaling.transform(ma_unscaled_int.data())).set_observation_type_xray_intensity()
+                ma_scaled_com = ma_unscaled_phs * ma_scaled_int.as_amplitude_array().data()
 
-            self.log('')
-            self.log('Optimised Scaling Parameters: {}'.format(list(scaling.optimised_values)))
+                self.log('Optimised B-factor Scaling Factor: {}'.format(list(scaling.optimised_values)[0]))
+            else:
+                ma_scaled_com = ma_unscaled_com
 
-            # Store in the dataset object
-            dataset.data.miller_arrays['scaled'] = ma_scaled_com
-
+            assert ma_unscaled_com.is_complex_array()
             assert ma_scaled_com.is_complex_array()
+            # Store in the dataset object
+            dataset.data.miller_arrays[dataset_sfs] = ma_unscaled_com
+            dataset.data.miller_arrays['scaled']    = ma_scaled_com
 
-#            ##########################
-#            # UN-SCALED DATA
-#            ##########################
-#            # Create binning - just use the auto-binning for each dataset
-#            binner = ma_scaled_int.setup_binner(auto_binning=True)
-#            # Create the wilson plot
-#            binned = ma_scaled_int.wilson_plot(use_binning=True)
-#            # Calculate the wilson b-factor
-#            wilson_b_tuple = calculate_wilson_b_factor(intensities=numpy.array(binned.data[1:-1]), inverse_resolution=numpy.array(binner.bin_centers(1)))
-#            # Store info in dataset object
-#            dataset.meta.wilson_b_tuple = wilson_b_tuple
-#            dataset.meta.wilson_b = -1.0*wilson_b_tuple[0]/2.0
-#            # Store in table
-#            self.tables.dataset_info.set_value(index=dataset.tag, col='wilson B scaled', value=dataset.meta.wilson_b)
-#
-#            ##########################
-#            # SCALED DATA
-#            ##########################
-#            # Create binning - just use the auto-binning for each dataset
-#            binner = ma_int.setup_binner(auto_binning=True)
-#            # Create the wilson plot
-#            binned = ma_int.wilson_plot(use_binning=True)
-#            # Calculate the wilson b-factor
-#            wilson_b_tuple = calculate_wilson_b_factor(intensities=numpy.array(binned.data[1:-1]), inverse_resolution=numpy.array(binner.bin_centers(1)))
-#            # Store info in dataset object
-#            dataset.meta.wilson_b_tuple = wilson_b_tuple
-#            dataset.meta.wilson_b = -1.0*wilson_b_tuple[0]/2.0
-#            # Store in table
-#            self.tables.dataset_info.set_value(index=dataset.tag, col='wilson B', value=dataset.meta.wilson_b)
+            # ==============================>
+            # Wilson B-factors
+            # ==============================>
+            dataset.meta.unscaled_wilson_b = estimate_wilson_b_factor(miller_array=ma_unscaled_com)
+            dataset.meta.scaled_wilson_b = estimate_wilson_b_factor(miller_array=ma_scaled_com)
+            self.tables.dataset_info.set_value(index=dataset.tag, col='wilson B (unscaled)', value=dataset.meta.unscaled_wilson_b)
+            self.tables.dataset_info.set_value(index=dataset.tag, col='wilson B (scaled)',   value=dataset.meta.scaled_wilson_b)
 
         # ==============================>
         # Report

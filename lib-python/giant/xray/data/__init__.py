@@ -1,6 +1,8 @@
 import cctbx.miller
 
-import numpy
+from scitbx.array_family import flex
+
+from giant.stats.optimisation import LinearScaling
 
 def extract_structure_factors(mtz_object, ampl_label, phas_label):
     # Get the crystal symmetry from the amplitudes' crystal
@@ -23,21 +25,21 @@ def extract_structure_factors(mtz_object, ampl_label, phas_label):
     assert mill_sfs.is_complex_array(), 'STRUCTURE FACTORS SHOULD BE COMPLEX?!'
     return mill_sfs
 
-def calculate_wilson_b_factor(intensities, inverse_resolution, low_res_cutoff=4.0):
+def estimate_wilson_b_factor(miller_array, low_res_cutoff=4.0):
 
-    ln_ints = numpy.log(intensities)
-    sqr_res = numpy.power(inverse_resolution, 2)
+    miller_array = miller_array.resolution_filter(d_max=low_res_cutoff).as_intensity_array()
 
-    # Truncate data at low_res_cutoff
-    idx_cut = numpy.where(inverse_resolution > (1.0/low_res_cutoff))[0]
-    if len(idx_cut)==0: raise Exception('Data does not extend to res_cutoff')
-    ln_ints = ln_ints[idx_cut[0]:]
-    sqr_res = sqr_res[idx_cut[0]:]
+    # Setup binner and extract radial averages
+    binner = miller_array.setup_binner(auto_binning=True)
+    binned = miller_array.wilson_plot(use_binning=True)
+    # Convert to scale
+    y_values = flex.log(flex.double(binned.data[1:-1]))
+    x_values = flex.pow2(binner.bin_centers(1))
+    # Perform scaling
+    scl = LinearScaling(x_values   = x_values,
+                        ref_values = y_values)
 
-    # polyfit
-    scale, offset = numpy.polyfit(x=sqr_res, y=ln_ints, deg=1)
-
-    return (scale, offset)
+    return -1.0*scl.optimised_values[1]/2.0
 
 #def extract_structure_factors(mtz_object, ampl_label, phas_label):
 #

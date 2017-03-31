@@ -1,7 +1,3 @@
-import cctbx.sgtbx
-import cctbx.uctbx
-
-from scitbx.array_family import flex
 
 from bamboo.common.masks import MaskCollection
 from bamboo.common import Meta

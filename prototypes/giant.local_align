@@ -1,2 +1,0 @@
-#!/bin/sh
-pandda.python -Qnew -m giant.jiffies.local_align "$@"

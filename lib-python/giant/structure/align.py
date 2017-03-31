@@ -203,7 +203,7 @@ def nearby_coords_bool(query, coords, cutoff):
 ####################################################################################
 
 def align_structures_flexible(mov_hierarchy, ref_hierarchy, altlocs=['','A'], cutoff_radius=15, sequence_identity_threshold=0.95,
-                              one_to_one_mapping=True, require_hierarchies_identical=True, verbose=False):
+                              one_to_one_mapping=True, require_hierarchies_identical=True, verbose=True):
     """
     Perform a flexible alignment on two hierarchies. Alignments are performed on a chain-by-chain basis.
     Each chain of mov_hierarchy is aligned
@@ -211,6 +211,9 @@ def align_structures_flexible(mov_hierarchy, ref_hierarchy, altlocs=['','A'], cu
 
     # List of the alignments for each chain
     local_alignments = []
+    # Trim to protein only
+    mov_hierarchy = protein(mov_hierarchy, copy=True)
+    ref_hierarchy = protein(ref_hierarchy, copy=True)
     # Check the structures only have one model
     try:
         mov_hierarchy.only_model()

@@ -1,3 +1,5 @@
+#!/usr/bin.env ccp4-python
+
 import os, sys, glob
 
 #######################################

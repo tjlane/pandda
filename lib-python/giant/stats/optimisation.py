@@ -2,22 +2,29 @@ from scitbx.array_family import flex
 from scitbx import simplex
 
 
-class LeastSquaresFitting(object):
+class _LeastSquaresFitter(object):
 
-    def __init__(self, x_values, ref_y_values, mov_y_values, weights=None):
-        """Calculate the optimum scaling of mov -> ref for a target function"""
+    def __init__(self, x_values, ref_values, scl_values=None, weights=None):
+        """Calculate the optimum scaling of x_values -> ref_values (or scl_values -> ref_values, if given) for a target function"""
+
         self.x_values = flex.double(x_values)
-        self.ref_y_values = flex.double(ref_y_values)
-        self.mov_y_values = flex.double(mov_y_values)
-        # Store or create weightings
+
+        self.ref_values = flex.double(ref_values)
+
+        if scl_values is not None:
+            self.scl_values = flex.double(scl_values)
+        else:
+            self.scl_values = self.x_values
+
         if weights is not None:
             self.weight_array = flex.double(weights)
         else:
-            self.weight_array = flex.double(self.ref_y_values.size(), 1.0/self.ref_y_values.size())
-        # Validate inputs
-        assert self.x_values.size() == self.mov_y_values.size()
-        assert self.x_values.size() == self.ref_y_values.size()
+            self.weight_array = flex.double(self.x_values.size(), 1.0/self.x_values.size())
+
+        assert self.x_values.size() == self.ref_values.size()
+        assert self.x_values.size() == self.scl_values.size()
         assert self.x_values.size() == self.weight_array.size()
+
         # Initialise simplex
         self.starting_values = self.initialise_parameters()
         # Calculate scaling
@@ -26,7 +33,7 @@ class LeastSquaresFitting(object):
     def run(self, initial_simplex):
         """Calculate scaling"""
         # Optimise the simplex
-        self.optimised = simplex.simplex_opt(dimension = 2,
+        self.optimised = simplex.simplex_opt(dimension = len(initial_simplex[0]),
                                              matrix    = initial_simplex,
                                              evaluator = self)
         # Extract solution
@@ -35,26 +42,27 @@ class LeastSquaresFitting(object):
 
     def target(self, vector):
         """Target function for the simplex optimisation"""
-        scaled = self.transform(values=self.mov_y_values, params=vector)
-        diff = (scaled-self.ref_y_values)
+        scaled = self.transform(values=self.scl_values, params=vector)
+        diff = (scaled-self.ref_values)
         diff_sq = diff*diff
         result = flex.sum(self.weight_array*diff_sq)
         return result
 
     def transform(self, values, params=None):
         """Function defining how the fitting parameters are used to transform the input vectors"""
-        if params is None: params=self.optimised_values
+        if params is None:
+            params=self.optimised_values
         values = flex.double(values)
         assert values.size() == self.x_values.size()
         return self._scale(values=values, params=params)
 
     def new_x_values(self, x_values):
         self.x_values = flex.double(x_values)
-        self.ref_y_values = None
-        self.mov_y_values = None
+        self.ref_values = None
+        self.scl_values = None
         self.weight_array = None
 
-class LinearFitting(LeastSquaresFitting):
+class LinearScaling(_LeastSquaresFitter):
 
     def initialise_parameters(self):
         """Initialise starting simplex"""
@@ -68,5 +76,20 @@ class LinearFitting(LeastSquaresFitting):
     def _scale(self, values, params):
         v0,v1 = params
         out = v0 + values*v1
+        return out
+
+class ExponentialScaling(_LeastSquaresFitter):
+
+    def initialise_parameters(self):
+        """Initialise starting simplex"""
+        v1 = 0.0    # 1st order - scale
+        self.starting_simplex = [    flex.double([v1-10]),
+                                     flex.double([v1+10])
+                                ]
+        return [v1]
+
+    def _scale(self, values, params):
+        v1, = params
+        out = flex.exp(v1*self.x_values)*values
         return out
 

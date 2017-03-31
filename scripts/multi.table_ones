@@ -1,0 +1,56 @@
+import os,sys,glob
+
+structure_block = """
+  structure {{
+    name = "{name}"
+    pdb_file = "/work/ywork/JMJD2DA/JMJD2DA_Dec12_FragmentScreen/pandda-repository/models/{xtal}/{xtal}.final.pdb"
+    mtz_file = "/work/ywork/JMJD2DA/JMJD2DA_Dec12_FragmentScreen/pandda-repository/models/{xtal}/{xtal}.final.mtz"
+    data_labels = "F-obs,SIGF-obs"
+    r_free_flags_label = "R-free-flags"
+    wavelength = 0.9762
+    cif_file = None
+    cif_directory = "/work/ywork/JMJD2DA/JMJD2DA_Dec12_FragmentScreen/pandda-repository/models/{xtal}"
+    data_type = *xray neutron
+    unmerged_data = "/work/ywork/JMJD2DA/JMJD2DA_Dec12_FragmentScreen/pandda-repository/models/{xtal}/aimless.mtz"
+    unmerged_labels = "I(+),SIGI(+),I(-),SIGI(-)"
+    use_internal_variance = False
+    count_anomalous_pairs_separately = False
+  }}"""
+
+output_eff = """table_one {{
+  {structure_effs}
+  processing {{
+    re_compute_r_factors = True
+    n_bins = 10
+    ligand_selection = None
+  }}
+  multiprocessing {{
+    nproc = 7
+    technology = *multiprocessing sge lsf pbs condor slurm
+    qsub_command = None
+  }}
+  output {{
+    directory = "/work/ywork/JMJD2DA/JMJD2DA_Dec12_FragmentScreen/table-ones"
+    job_title = "Calculate Table 1 for JMJD2D"
+    show_missing_fields = True
+    format = *txt *csv *rtf
+    base_name = "table_one_all"
+    verbose = "True"
+    text_field_separation = 2
+  }}
+}}
+"""
+
+out_str = ''
+for d in sorted(glob.glob('/work/ywork/JMJD2DA/JMJD2DA_Dec12_FragmentScreen/pandda-repository/models/*')):
+    print d
+    xtal = os.path.basename(d)
+    out_str += structure_block.format(name=xtal.replace('A',''), xtal=xtal)
+
+output = output_eff.format(structure_effs=out_str).replace('{{','{').replace('}}','}')
+print output
+
+out_file = './table_one.eff'
+assert not os.path.exists(out_file)
+with open(out_file, 'w') as fh:
+    fh.write(output)

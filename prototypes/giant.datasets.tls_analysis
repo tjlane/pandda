@@ -1,0 +1,135 @@
+#!/usr/bin/env ccp4-python
+
+import os, sys
+
+import libtbx.phil
+import iotbx.pdb
+
+import mdp
+import pandas
+
+from bamboo.common.command import CommandManager
+
+############################################################################
+
+PROGRAM = ''
+
+DESCRIPTION = ''
+
+############################################################################
+
+blank_arg_prepend = {'.pdb' : 'pdb='}
+
+master_phil = libtbx.phil.parse("""
+input {
+    pdb = None
+        .help = "input pdb file"
+        .multiple = True
+        .type = str
+    tls_selection = None
+        .help = "define the tls groups (used for all structures)"
+        .type = str
+        .multiple = True
+}
+output {
+    out_dir = multi-dataset-tls-characterisation
+        .help = "output directory"
+        .type = str
+    log_file = multi-dataset-tls-characterisation.log
+        .type = str
+}
+""")
+
+############################################################################
+
+class TLSFit(object):
+
+    def __init__(self, pdb, id, tls_selections, pdb_out=None):
+
+        self.pdb = pdb
+        self.pdb_out = pdb_out
+        self.tls_selections = tls_selections
+        self.id = id
+
+        if not os.path.exists(self.pdb_out):
+            self.run_tls_parameterisation()
+        self.process_results()
+
+    def run_tls_parameterisation(self):
+        """Characterise TLS with phenix.tls"""
+
+        self.tls_cm = CommandManager('phenix.tls')
+        self.tls_cm.add_command_line_arguments(self.pdb)
+        self.tls_cm.add_command_line_arguments('extract_tls=True')
+        self.tls_cm.add_command_line_arguments(['\"selection={}\"'.format(s) for s in self.tls_selections if s is not None])
+        self.tls_cm.add_command_line_arguments('output_file_name={}'.format(self.pdb_out))
+
+        self.tls_cm.print_settings()
+        self.tls_cm.run()
+
+        self.tls_cm.write_output(self.pdb_out.replace('.pdb','.log'))
+        print open(self.pdb_out.replace('.pdb','.log'), 'r').read()
+
+    def process_results(self):
+
+        ih = iotbx.pdb.hierarchy.input(self.pdb_out)
+
+        i = ih.input
+
+        tls_params = ih.input.extract_tls_params(ih.hierarchy)
+
+        self.T = tls_params.tls_params[0].t
+        self.L = tls_params.tls_params[0].l
+        self.S = tls_params.tls_params[0].s
+
+class MultiTLS(object):
+
+    def __init__(self):
+        self.table = pandas.DataFrame(columns=[ 'T11','T22','T33','T12','T13','T23',
+                                                'L11','L22','L33','L12','L13','L23',
+                                                'S11','S12','S13','S21','S22','S23','S31','S32','S33'])
+
+    def add(self, fit):
+        self.table.loc[fit.id]=None
+        self.table.loc[fit.id]['T11','T22','T33','T12','T13','T23'] = fit.T
+        self.table.loc[fit.id]['L11','L22','L33','L12','L13','L23'] = fit.L
+        self.table.loc[fit.id]['S11','S12','S13','S21','S22','S23','S31','S32','S33'] = fit.S
+
+    def show(self):
+        print self.table
+
+    def run_pca(self):
+
+        y = mdp.pca(self.table.values.astype('float64')) 
+        print y
+
+def run(params):
+
+    out_dir = params.output.out_dir
+
+    multi_tls = MultiTLS()
+
+    for p in params.input.pdb:
+
+        print 'fitting: {}'.format(p)
+        fit = TLSFit(pdb=p,
+                     id=os.path.basename(os.path.splitext(p)[0]),
+                     tls_selections=params.input.tls_selection,
+                     pdb_out=os.path.join(out_dir, os.path.basename(os.path.splitext(p)[0])+'.tls.pdb'))
+
+        multi_tls.add(fit)
+
+    multi_tls.show()
+    multi_tls.run_pca()
+
+############################################################################
+
+if __name__=='__main__':
+    from giant.jiffies import run_default
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION)

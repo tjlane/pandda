@@ -298,6 +298,14 @@ pandda
            .help = "Will calculate the highest resolution mean map and then exit - used for initial reference modelling."
             .type = bool
     }
+    testing
+        .help = "Functionality that is still in the process of being tested"
+        .expert_level = 2
+    {
+        perform_diffraction_data_scaling = False
+            .help = "Perform reciprocal-space scaling of the diffraction data"
+            .type = bool
+    }
 }
 include scope giant.phil.settings_phil
 """, process_includes=True)

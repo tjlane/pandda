@@ -1,0 +1,108 @@
+#!/usr/bin.env ccp4-python
+
+import os, sys
+
+import libtbx.phil
+
+from bamboo.common.command import CommandManager
+from giant.xray.crystal import CrystalSummary
+
+############################################################################
+
+PROGRAM = 'multi.mtz.amplitudes_to_intensities'
+
+DESCRIPTION = """
+    A tool to convert amplitudes to intensities for a large number of files.
+"""
+############################################################################
+
+blank_arg_prepend = 'mtz='
+
+master_phil = libtbx.phil.parse("""
+input {
+    mtz = None
+        .type = path
+        .multiple = True
+    columns = F,SIGF
+        .type = str
+}
+method {
+    package = *phenix
+        .type = choice
+}
+output {
+    column = IMEAN
+        .type = str
+    file_suffix = '.intensities.mtz'
+        .type = str
+}
+""")
+
+############################################################################
+
+def run(params):
+
+    input_cols = params.input.columns.split(',')
+
+    for mtz_file in params.input.mtz:
+
+        # Output mtz file
+        output_mtz = os.path.splitext(mtz_file)[0]+params.output.file_suffix
+
+        # Get summary of the crystal
+        cs = CrystalSummary.from_mtz(mtz_file=mtz_file)
+
+        # Do nothing if output column is already present in the data
+        if params.output.column in cs.column_labels:
+            print 'Output column already present in mtz file: {}'.format(mtz_file)
+            if not os.path.exists(output_mtz):
+                os.symlink(os.path.basename(mtz_file), output_mtz)
+            continue
+
+        # Check the requested input column is present in the input data
+        cols_correct  = True
+        for col in input_cols:
+            if col not in cs.column_labels:
+                cols_correct = False
+                break
+        if cols_correct == False:
+            print 'Column not present in mtz_file: {}'.format(cs.column_labels)
+            print 'SKIPPING this dataset: {}'.format(mtz_file)
+            continue
+
+        # Create the command object
+        if params.method.package == 'phenix':
+            cm = CommandManager('phenix.reflection_file_converter')
+            cm.add_command_line_arguments([ mtz_file,
+                                            '--mtz-root-label='+params.output.column,
+                                            '--label='+params.input.columns,
+                                            '--non-anomalous',
+                                            '--write-mtz-intensities',
+                                            '--mtz='+output_mtz     ])
+        elif params.method.package == 'ccp4':
+            raise Exception('NOT IMPLEMENTED')
+        else:
+            raise Exception('NOT IMPLEMENTED')
+
+        cm.print_settings()
+        ret_code = cm.run()
+        if ret_code != 0:
+            print '============================>'
+            print 'Amplitude conversion exited with an error'
+            print '============================>'
+            print cm.output
+            print '============================>'
+            print cm.error
+            print '============================>'
+
+############################################################################
+
+if __name__=='__main__':
+    from giant.jiffies import run_default
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION)
