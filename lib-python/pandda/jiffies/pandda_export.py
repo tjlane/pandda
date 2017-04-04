@@ -32,7 +32,7 @@ input {
         .multiple = True
 }
 output {
-    export_dir = ./pandda-export
+    export_dir = pandda-export
         .type = str
     log_file = pandda-export.log
         .type = str
@@ -53,7 +53,7 @@ options {
 settings {
     overwrite = True
         .type = bool
-    verbose = True
+    verbose = False
         .type = bool
     cpus = 1
         .type = int
@@ -96,18 +96,16 @@ def export_folder(dir, params, log=Log()):
     # Report
     log.bar()
     log('Exporting \n\tfrom {!s} \n\t  to {!s}'.format(dir, exp_dir))
-    if params.settings.verbose:
-        log.bar()
-        log('Exporting files:')
-        for f in file_list:
-            log('\t'+os.path.relpath(f, start=dir))
+    log.bar()
+    log('Exporting files:')
+    for f in file_list:
+        log('\t'+os.path.relpath(f, start=dir))
     log.bar()
     # Export files
     for proc_file in file_list:
         # Check that the file exists
         if not os.path.exists(proc_file):
-            if params.settings.verbose:
-                log('FILE DOES NOT EXIST: {!s}'.format(proc_file))
+            log('FILE DOES NOT EXIST: {!s}'.format(proc_file))
             continue
         # Exported file path
         export_file = os.path.join(exp_dir, params.output.file_prefix+os.path.basename(proc_file))
@@ -127,7 +125,7 @@ def process_and_export_folder(dir, params, log=Log()):
     """Merge structures, transform them and export a subset of a folders contents"""
 
     dir_name = os.path.basename(dir)
-    log.heading('Processing directory: {}'.format(dir_name))
+    log.heading('Processing directory: {}'.format(dir_name), spacer=True)
 
     # Check to see if this folder should be skipped (export fitted folders only)
     if params.options.required_file_for_export == 'model':
@@ -154,9 +152,9 @@ def process_and_export_folder(dir, params, log=Log()):
     merging_params.output.pdb  = os.path.join(exp_dir, params.output.file_prefix+PanddaDatasetFilenames.ensemble_structure.format(dir_name))
     merging_params.output.log  = os.path.splitext(merging_params.output.pdb)[0]+'.log'
     merging_params.output.make_restraints = True
-    # Apply settings -- always set verbose to False
+    # Apply settings
     merging_params.settings.overwrite = params.settings.overwrite
-    merging_params.settings.verbose = False
+    merging_params.settings.verbose = params.settings.verbose
     # Change the restraints settings
     merging_params.restraints.output.phenix = os.path.splitext(os.path.basename(merging_params.output.pdb))[0]+'.restraints-phenix.params'
     merging_params.restraints.output.refmac = os.path.splitext(os.path.basename(merging_params.output.pdb))[0]+'.restraints-refmac.params'
@@ -211,6 +209,8 @@ def run(params):
     # Merge the fitted structures
     for dir in export_dirs:
         process_and_export_folder(dir=dir, params=params, log=log)
+
+    log.heading('FINISHED')
 
 #######################################
 

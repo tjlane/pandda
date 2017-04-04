@@ -962,7 +962,11 @@ class PanddaGUI(object):
         self.buttons['reset'].connect("clicked",  lambda x: self.parent.reset_current_to_orig_model())
 
         # Ligand Buttons
-        self.buttons['merge-ligand'].connect("clicked", lambda x: [self.buttons['merge-ligand'].child.set_text('Already Merged\n(Click to Repeat)'), self.parent.coot.merge_ligand_with_protein()])
+        self.buttons['merge-ligand'].connect("clicked", lambda x: [self.buttons['merge-ligand'].child.set_text('Already Merged\n(Click to Repeat)'), \
+                                                                   self.parent.coot.merge_ligand_with_protein(), \
+                                                                   self.buttons['placed'].clicked(), \
+                                                                   self.buttons['tp'].clicked(), \
+                                                                   self.buttons['high conf'].clicked()  ])
         self.buttons['move-ligand'].connect("clicked",  lambda x: self.parent.coot.move_ligand_here())
         self.buttons['next-ligand'].connect("clicked", lambda x: self.parent.coot.next_ligand(event=self.parent.current_event))
 

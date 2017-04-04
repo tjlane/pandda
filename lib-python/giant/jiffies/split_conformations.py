@@ -1,14 +1,12 @@
 import os, sys, copy
 
+import iotbx.pdb
 import libtbx.phil
 
-import numpy
-
-import iotbx.pdb
-
-from scitbx.array_family import flex
+from bamboo.common.logs import Log
 
 from giant.io.pdb import strip_pdb_to_input, get_pdb_header
+from giant.structure.formatting import Labeller
 
 ############################################################################
 
@@ -35,172 +33,160 @@ input  {
         .multiple = True
 }
 output {
-    suffix = '.stripped.pdb'
+    suffix_prefix = 'split'
+        .help = "prefix for the suffix to be appended to the output structure -- appended to the basename of the input structure before any conformer-specific labels"
+        .type = str
+    log = None
+        .help = ""
+        .type = path
+    reset_altlocs = True
+        .help = 'Relabel conformers of kept residues to begin with "A" (i.e. C,D,E -> A,B,C)'
+        .type = bool
 }
-options = {
+options {
     mode = by_conformer by_conformer_group *by_residue_name
         .help = 'How to split the model:\n\tby_conformer : output a model for each conformer\n\tby_conformer_group : output a model for a selection of conformers\n\tby_residue_name : output a model containing all states containing a specifice residue name'
         .type = choice
+    by_conformer_group {
+        conformers = C,D,E,F,G
+            .help = "Output these conformers in one model. Multiple can be provided."
+            .multiple = True
+            .type = str
+    }
     by_residue_name {
-
-        .
+        resname = DRG,FRG,LIG,UNK,UNL
+            .help = "Group conformers containing any of these residue names"
+            .type = str
+        selected_name = 'bound-state'
+            .help = "Output filename component containing selected residues"
+            .type = str
+        unselected_name = 'ground-state'
+            .help = "Output filename component containing residues not selected through 'rename'"
+            .type = str
     }
 }
+settings {
+    overwrite = False
+        .type = bool
+    verbose = False
+        .type = bool
+}
 
-res = LIG,UNL
-    .help = 'Residues to be define selected conformations (comma separated list of residue names, i.e. res=LIG or res=LIG,UNL)'
-    .type = str
-conf = None
-    .help = 'Define selected conformations explicitly (comma separated list of conformer IDs, i.e. conf=A or conf=A,B)'
-    .type = str
-
-suffix = '.stripped.pdb'
-    .help = 'output suffix for input files'
-    .type = str
-
-reset_altlocs = True
-    .help = 'Relabel conformers of kept residues'
-    .type = bool
-
-overwrite = False
-    .type = bool
-verbose = False
-    .type = bool
-
-log = None
-    .type = path
-    .multiple = False
 """)
 
 ############################################################################
 
-def proc(ensemble_file, params, sel_resnames=None, sel_confs=None):
+def split_conformations(filename, params, log=None):
 
-    # Create output file path
-    output_file = os.path.splitext(ensemble_file)[0] + params.suffix
+    if log is None: log = Log(verbose=True)
 
-    # Read the pdb header
-    header_contents = get_pdb_header(ensemble_file)
+    # Read the pdb header - for writing later...
+    header_contents = get_pdb_header(filename)
 
-    # Read in the ligand file and set each residue to the requested conformer
-    ens_obj = strip_pdb_to_input(ensemble_file, remove_ter=True)
-
-    # Check that ... something
+    # Read in and validate the input file
+    ens_obj = strip_pdb_to_input(filename, remove_ter=True)
     ens_obj.hierarchy.only_model()
 
     # Create a new copy of the structures
     new_ens = ens_obj.hierarchy.deep_copy()
 
-    confs_to_select = set()
-    if params.res:
-        confs_to_select = confs_to_select.union([ag.altloc for ag in new_ens.atom_groups() if (ag.resname in sel_resnames) and ag.altloc])
-    if params.conf:
-        confs_to_select = confs_to_select.union(sel_confs)
-    confs_to_select = sorted(confs_to_select)
+    # Extract conformers from the structure as set
+    all_confs = set(ens_obj.hierarchy.altloc_indices())
+    all_confs.discard('')
 
-    print 'Keeping Conformer IDs: {}'.format(', '.join(confs_to_select))
-
-    if not confs_to_select: raise Exception('No Conformers Selected')
-
-    ######################################################################
-    if params.verbose: print '===========================================>>>'
-    if params.verbose: print 'PRUNING OUTPUT STRUCTURE'
-    ######################################################################
-
-    print '===========================================>>>'
-    print 'Keeping ANY atom with conformer id: {}'.format(' or '.join(['" "']+confs_to_select))
-    print 'Keeping ALL amino acid conformers with no conformer in {}'.format(' or '.join(confs_to_select))
-    print 'Removing amino acid conformers where conformer not in {} but there is a conformer in this'.format(' or '.join(confs_to_select))
-    print 'Removing any other atom where conformer id not in {}'.format(' or '.join(confs_to_select))
-    print '===========================================>>>'
-
-    # Select atoms to keep - no altloc, or altloc in selection
-    sel_string_1 = ' or '.join(['altid " "']+['altid {}'.format(alt) for alt in confs_to_select])
-    print 'Selection 1: \n\t'+sel_string_1
-
-    # Select amino acids with no conformer overlapping with confs_to_select
-    sel_ags = [ag for ag in new_ens.atom_groups() if (iotbx.pdb.common_residue_names_get_class(ag.resname)=='common_amino_acid') and not set(confs_to_select).intersection([a.altloc for a in ag.parent().atom_groups()])]
-    sel_string_2 = ' or '.join(['(chain {!s} and resid {!s} and altid "{!s:1}")'.format(ag.parent().parent().id, ag.parent().resid(), ag.altloc) for ag in sel_ags])
-    print 'Selection 2: \n\t'+sel_string_2.replace('or ','or\n\t')[:500]+'...'
-
-    sel_cache = new_ens.atom_selection_cache()
-    sel_string = ' or '.join(['({})'.format(s) for s in [sel_string_1, sel_string_2]])
-
-    conf_sel = new_ens.select(sel_cache.selection(sel_string))
-
-    if params.log:
-        fh = open(params.log, 'w')
-        fh.write('>>> Residues where the conformer will be reset\n')
+    if params.options.mode == 'by_residue_name':
+        sel_resnames = params.options.by_residue_name.resname.split(',')
+        sel_confs = [ag.altloc for ag in new_ens.atom_groups() if (ag.resname in sel_resnames)]
+        # List of conformers to output for each structure, and suffixes
+        out_confs = map(sorted, [all_confs.intersection(sel_confs), all_confs.difference(sel_confs)])
+        out_suffs = [params.options.by_residue_name.selected_name, params.options.by_residue_name.unselected_name]
+    elif params.options.mode == 'by_conformer':
+        sel_resnames = None
+        sel_confs = None
+        # One structure for each conformer
+        out_confs = [[c] for c in sorted(all_confs)]
+        out_suffs = [''.join(c) for c in out_confs]
+    elif params.options.mode == 'by_conformer_group':
+        sel_resnames = None
+        sel_confs = None
+        # One structure for each set of supplied conformer sets
+        out_confs = [s.split(',') for s in params.options.by_conformer_group.conformers]
+        out_suffs = [''.join(c) for c in out_confs]
     else:
-        fh = None
+        raise Exception('Invalid selection for options.mode: {}'.format(params.options.mode))
 
-    if params.reset_altlocs:
-        ######################################################################
-        if params.verbose: print '===========================================>>>'
-        if params.verbose: print 'Resetting OUTPUT STRUCTURE'
-        ######################################################################
+    print out_confs
+    print out_suffs
 
-        if len(confs_to_select)==1: hash = {confs_to_select[0]: ' '}
-        else:                       hash = dict(zip(confs_to_select, iotbx.pdb.systematic_chain_ids()))
+    # Create paths from the suffixes
+    out_paths = ['.'.join([os.path.splitext(filename)[0],params.output.suffix_prefix,suff,'pdb']) for suff in out_suffs]
 
-        if params.verbose:
-            for it_pr in hash.items(): print 'Changing ALTLOCs:', ' -> '.join(it_pr)
+    log.subheading('Pruning conformers in {}'.format(filename[-70:]))
 
-        for ag in conf_sel.atom_groups():
-            if ag.altloc in confs_to_select:
-                # Reset the altloc
-                ag.altloc = hash[ag.altloc]
-                # Log this atom group
-                if fh: fh.write('> Chain {}, Residue {}, (New) Conformer {}\n'.format(ag.parent().parent().id, ag.parent().resid(), ag.altloc))
+    for this_confs, this_path in zip(out_confs, out_paths):
 
-    ######################################################################
-    if params.verbose: print '===========================================>>>'
-    if params.verbose: print 'WRITING OUTPUT STRUCTURE'
-    ######################################################################
+        if not this_confs: continue
 
-    # Update the atoms numbering
-#        conf_sel.atoms_reset_serial()
-    with open(output_file, 'w') as fh:
-        fh.write(header_contents)
-    # Write output file
-    conf_sel.write_pdb_file(output_file, open_append=True)
+        # Select atoms to keep - no altloc, or altloc in selection
+        sel_string = ' or '.join(['altid " "']+['altid "{}"'.format(alt) for alt in this_confs])
+        # Extract selection from the hierarchy
+        sel_hiery = new_ens.select(new_ens.atom_selection_cache().selection(sel_string), copy_atoms=True)
 
-#######################################
+        log.bar(True, False)
+        log('Outputting conformer(s) {} to {}'.format(''.join(this_confs), this_path))
+        log.bar()
+        log('Keeping ANY atom with conformer id: {}'.format(' or '.join(['" "']+this_confs)))
+        log('Selection: \n\t'+sel_string)
+        log.bar()
+
+        if params.output.reset_altlocs:
+
+            if len(this_confs) == 1:
+                conf_hash = {this_confs[0]: ' '}
+            else:
+                conf_hash = dict(zip(this_confs, iotbx.pdb.systematic_chain_ids()))
+
+            log('Resetting structure altlocs:')
+            for k in sorted(conf_hash.keys()):
+                log('\t{} -> "{}"'.format(k, conf_hash[k]))
+            log.bar()
+            for ag in sel_hiery.atom_groups():
+                if ag.altloc in this_confs:
+                    if params.settings.verbose:
+                        log('{} -> alt {}'.format(Labeller.format(ag), conf_hash[ag.altloc]))
+                    ag.altloc = conf_hash[ag.altloc]
+            if params.settings.verbose: log.bar()
+
+        log('Writing structure: {}'.format(this_path))
+        log.bar(False, True)
+
+        # Write header contents
+        with open(this_path, 'w') as fh: fh.write(header_contents)
+        # Write output file
+        sel_hiery.write_pdb_file(this_path, open_append=True)
+
+    return out_paths
+
+############################################################################
 
 def run(params):
 
-    ######################################################################
-    if params.verbose: print '===========================================>>>'
-    if params.verbose: print 'VALIDATING INPUT PARAMETERS'
-    ######################################################################
+    # Create log file
+    log = Log(log_file=params.output.log, verbose=True)
 
-    assert params.pdb, 'No PDB files given'
-    assert params.res or params.conf, 'Must give either res or conf'
+    log.heading('Validating input parameters')
 
-    ######################################################################
-    if params.verbose: print '===========================================>>>'
-    if params.verbose: print 'SPLITTING ENSEMBLES'
-    ######################################################################
+    assert params.input.pdb, 'No PDB files given'
 
-    if params.res:
-        sel_resnames = params.res.split(',')
-    else:
-        sel_resnames = None
+    print params.options.by_conformer_group.conformers
 
-    if params.conf:
-        sel_confs = params.conf.split(',')
-    else:
-        sel_confs = None
+    log.heading('Splitting multi-state structures')
 
     # Iterate through the input structures and extract the conformation
-    for ensemble_file in params.pdb:
-        try:
-            proc(ensemble_file, params, sel_resnames=sel_resnames, sel_confs=sel_confs)
-        except:
-            print "Failed:", ensemble_file
-            raise
+    for pdb in params.input.pdb:
+        split_conformations(filename=pdb, params=params, log=log)
 
-    return
+    log.heading('FINISHED')
 
 #######################################
 

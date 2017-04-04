@@ -34,13 +34,14 @@ options {
 }
 settings {
     cpus = 1
+        .help = "number of cpus to use for processing"
         .type = int
 }
 """)
 
 ############################################################################
 
-def run_reindex(cmds):
+def wrapper_run(cmds):
     for c in cmds:
         ret_code = c.run()
         if ret_code != 0:
@@ -112,7 +113,7 @@ def run(params):
 
     print '============================>'
     print 'Running reindexing for {} mtz files'.format(len(commands))
-    returned = libtbx.easy_mp.pool_map(fixed_func=run_reindex, args=commands, processes=params.settings.cpus)
+    returned = libtbx.easy_mp.pool_map(fixed_func=wrapper_run, args=commands, processes=params.settings.cpus, chunksize=1)
 
     print '============================>'
     print 'Return code total: {}'.format(sum(returned))

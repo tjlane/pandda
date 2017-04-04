@@ -151,14 +151,17 @@ def make_link_records(params, input_hierarchy, link_file, log=None):
 
     if log is None: log = Log(verbose=True)
 
-    log.heading('Checking the continuity of the protein backbone')
+    log.subheading('Checking the continuity of the protein backbone')
 
     links, warnings = generate_set_of_alternate_conformer_peptide_links(hierarchy=input_hierarchy.hierarchy)
 
     if warnings:
-        log.subheading('WARNINGS:')
+        log.bar()
+        log('WARNINGS:')
+        log.bar()
         for w in warnings:
             log(w)
+        log.bar()
         log('')
 
     if (not links) and (not warnings):
@@ -196,7 +199,7 @@ def make_duplication_restraints(params, input_hierarchy, log=None):
 
     if log is None: log = Log(verbose=True)
 
-    log.heading('Generating restraints for duplicated conformers')
+    log.subheading('Generating restraints for duplicated conformers')
 
     dup_groups = []
 
@@ -243,7 +246,7 @@ def make_local_restraints(params, input_hierarchy, log=None):
 
     if log is None: log = Log(verbose=True)
 
-    log.heading('Generating local structure restraints')
+    log.subheading('Generating local structure restraints')
 
     atom_d_pairs = find_atoms_around_alternate_conformers(hierarchy     = input_hierarchy.hierarchy,
                                                           altlocs       = params.local_restraints.altlocs.split(',') if params.local_restraints.altlocs else None,
@@ -280,7 +283,7 @@ def make_occupancy_constraints(params, input_hierarchy, log=None):
 
     if log is None: log = Log(verbose=True)
 
-    log.heading('Generating occupancy-constrained groups')
+    log.subheading('Generating occupancy-constrained groups')
 
     # Ligand resname identifiers
     resnames = params.occupancy.resname.split(',')

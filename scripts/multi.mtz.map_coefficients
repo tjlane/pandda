@@ -1,8 +1,9 @@
-#!/usr.bin/env ccp4-python
+#!/usr/bin/env ccp4-python
 
 import os,glob,sys
 
-from libtbx import easy_mp
+import libtbx.phil
+import libtbx.easy_mp
 
 from bamboo.common.command import CommandManager
 
@@ -16,7 +17,7 @@ DESCRIPTION = """
 
 ############################################################################
 
-blank_arg_prepend = {'.pdb' : 'pdb='}
+blank_arg_prepend = {'.mtz' : 'mtz='}
 
 master_phil = libtbx.phil.parse("""
 input {
@@ -25,27 +26,42 @@ input {
         .multiple = True
         .type = str
 }
+settings {
+    cpus = 1
+        .help = "number of cpus to use for processing"
+        .type = int
+}
 """)
 
 ############################################################################
 
-def run(params)
+def wrapper_run(cmd):
+    ret_code = cmd.run()
+    if ret_code != 0:
+        print '============================>'
+        print 'Process returned with an error'
+        print '============================>'
+        cmd.print_settings()
+        print '============================>'
+        print cmd.output
+        print '============================>'
+        print cmd.error
+        print '============================>'
+    return ret_code
 
-cmds = []
+def run(params):
 
-def wrapper_run(obj):
-    obj.run()
-    return None
+    cmds = []
 
-for p in glob.glob('*.pdb'):
-    m = p.replace('pdb','mtz')
+    for m in params.input.mtz:
+        p = m.replace('mtz','pdb')
 
-    cmd = CommandManager('phenix.maps')
-    cmd.add_command_line_arguments([p,m])
-    cmd.print_settings()
-    cmds.append(cmd)
+        cmd = CommandManager('phenix.maps')
+        cmd.add_command_line_arguments([p,m])
+        cmd.print_settings()
+        cmds.append(cmd)
 
-easy_mp.pool_map(func=wrapper_run, args=cmds, processes=48)
+    libtbx.easy_mp.pool_map(func=wrapper_run, args=cmds, processes=params.settings.cpus, chunksize=1)
 
 ############################################################################
 

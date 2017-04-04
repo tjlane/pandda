@@ -44,6 +44,11 @@ class CommandManager(object):
         # Meta
         self.runtime = None
 
+    def __str__(self):
+        return '\n'.join([  'Program:\n\t'+' '.join(self.program), \
+                            'Command:\n\t'+'\n\t'.join(self.cmd_line_args), \
+                            'Inputs:\n\t'+'\n\t'.join(self.std_inp_lines)])
+
     def set_timeout(self, timeout):
         """Set various program parameters"""
         self.timeout = timeout
@@ -62,9 +67,7 @@ class CommandManager(object):
 
     def print_settings(self):
         """Print out the current settings of the object"""
-        print 'Program:\n\t', ' '.join(self.program)
-        print 'Command:\n\t', '\n\t'.join(self.cmd_line_args)
-        print 'Inputs:\n\t',  '\n\t'.join(self.std_inp_lines)
+        print str(self)
 
     def _prepare_inputs_and_outputs(self):
         """Prepare the Input Pipes"""

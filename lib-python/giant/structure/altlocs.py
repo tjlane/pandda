@@ -8,6 +8,8 @@ from scitbx.array_family import flex
 from giant.structure import get_atom_pairs, calculate_rmsd
 from giant.structure.formatting import Labeller
 
+protein_amino_acid_set = set(iotbx.pdb.common_residue_names_amino_acid + iotbx.pdb.common_residue_names_modified_amino_acid)
+
 #####################################################
 ###             HIERARCHY FUNCTIONS               ###
 #####################################################
@@ -41,6 +43,11 @@ def expand_alternate_conformations(hierarchy, in_place=False, verbose=False):
     if not in_place: hierarchy = hierarchy.deep_copy()
     # Get all of the altlocs that should be present for each atom
     full_altloc_set = [a for a in hierarchy.altloc_indices() if a]
+    # If not altlocs found, expand all to "A"
+    if full_altloc_set == []:
+        if verbose:
+            print 'No altlocs found: expanding all residues to conformer "A"'
+        full_altloc_set = ['A']
     if verbose:
         print 'Expanding all (appropriate) residues to have altlocs {}'.format(full_altloc_set)
         print '------------------>'
@@ -55,10 +62,12 @@ def expand_alternate_conformations(hierarchy, in_place=False, verbose=False):
             # Only want to expand conformers for protein atoms (which should be present in all conformers)
             # or where the residue group is only present in one conformation (single conformer water)
             # but DO NOT want to expand waters in conformer A to A,B,C etc...
-            if chain.is_protein() or (not residue_group.have_conformers()):
-                if verbose: print '{} - populating missing conformers (current altlocs {})'.format(Labeller.format(residue_group), [a.altloc for a in residue_group.atom_groups()])
+            if protein_amino_acid_set.intersection(residue_group.unique_resnames()) or (not residue_group.have_conformers()):
+                if verbose: print '{} - populating missing conformers (current altlocs {}, target set {})'.format(Labeller.format(residue_group), [a.altloc for a in residue_group.atom_groups()], full_altloc_set)
                 # Populate missing conformers (from the other conformers)
                 populate_missing_conformers(residue_group=residue_group, full_altloc_set=full_altloc_set, in_place=True)
+                assert [a.altloc for a in residue_group.atom_groups()] == full_altloc_set
+                if verbose: print '{} - updated conformer list: (current altlocs {}, target set {})'.format(Labeller.format(residue_group), [a.altloc for a in residue_group.atom_groups()], full_altloc_set)
     if verbose: print '------------------>'
     return hierarchy
 
@@ -96,7 +105,7 @@ def prune_redundant_alternate_conformations(hierarchy, required_altlocs=[], rmsd
             if prune is False: break
         if prune is False: continue
         # All rmsds below cutoff - prune!
-        if verbose: print 'Pruning {}: altlocs {}'.format(Labeller.format(residue_group), [ag.altloc for ag in alt_ags])
+        if verbose: print 'Pruning {}: altlocs {} -> [""]'.format(Labeller.format(residue_group), [ag.altloc for ag in alt_ags])
         if main_ag:
             # Merge one alt group with the main atom_group
             new_main_ag = alt_ags[0].detached_copy()

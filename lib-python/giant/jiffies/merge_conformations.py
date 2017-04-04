@@ -61,7 +61,7 @@ restraints {
     include scope giant.jiffies.make_restraints.master_phil
 }
 settings {
-    overwrite = False
+    overwrite = True
         .type = bool
     verbose = False
         .type = bool
@@ -134,6 +134,7 @@ def merge_complementary_hierarchies(hierarchy_1, hierarchy_2, in_place=False, ve
         rmsd_cutoff         = 0.1,
         in_place            = True,
         verbose             = verbose)
+
     # Calculate number of altlocs and associated occupancy
     altlocs = [a for a in hierarchy_1.altloc_indices() if a]
     new_occ = 1.0/len(altlocs)
@@ -231,11 +232,14 @@ def run(params):
             params.restraints.output.log = os.path.join(os.path.dirname(params.output.pdb), os.path.basename(params.restraints.output.log))
         # Which alternate conformations to generate restraints for
         params.restraints.local_restraints.altlocs = ','.join([a for a in min_obj.hierarchy.altloc_indices() if a])
+        # Update settigns
+        params.restraints.settings.verbose = params.settings.verbose
+        params.restraints.settings.overwrite = params.settings.overwrite
 
         # Report
         log.heading('Parameters for generating restraints')
         log(master_phil.format(params).get('restraints').as_str().strip())
-        log.heading('Generating restraints', spacer=True)
+        log.heading('Generating restraints')
         # Run make_restraints
         make_restraints.run(params.restraints)
 
