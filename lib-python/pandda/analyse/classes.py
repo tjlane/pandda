@@ -600,7 +600,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ================================================>
         # Hardcoded limits
         # ================================================>
-        if p.params.analysis.high_res_lower_limit < 4.0:
+        if p.params.analysis.high_res_lower_limit > 4.0:
             raise Sorry('params.analysis.high_res_lower_limit must be better/smaller than 4A. This is due to the need to scale the diffraction data '\
                         'correctly - only datasets with a better resolution than this can be analysed. Parameter params.analysis.high_res_lower_limit '\
                         'must be set to a value lower than 4.')
@@ -2882,17 +2882,44 @@ class PanddaMapAnalyser(object):
         if 'uncertainty' in method:
             assert uncertainty is not None
 
+        assert map.is_sparse() is self.statistical_maps.mean_map.is_sparse()
+
         # Calculate Z-values
         if method == 'naive':
-            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/self.statistical_maps.stds_map.data)
+            weights = self.match_map_type(
+                emap=self.statistical_maps.stds_map,
+                reference = map,
+                )
+            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/weights.data)
         elif method == 'adjusted':
-            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/self.statistical_maps.sadj_map.data)
+            weights = self.match_map_type(
+                emap=self.statistical_maps.sadj_map,
+                reference = map,
+                )
+            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/weights.data)
         elif method == 'uncertainty':
             z_map = (map - self.statistical_maps.mean_map.data)*(1.0/uncertainty)
         elif method == 'adjusted+uncertainty':
-            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/flex.sqrt(self.statistical_maps.sadj_map.data**2 + uncertainty**2))
+            weights = self.match_map_type(
+                emap=self.statistical_maps.sadj_map,
+                reference = map,
+                )
+            z_map = (map - self.statistical_maps.mean_map)*(1.0/flex.sqrt(weights.data**2 + uncertainty**2))
         else:
             raise Exception('method not found: {!s}'.format(method))
 
         return z_map
 
+    @staticmethod
+    def match_map_type(emap, reference):
+
+        if reference.is_sparse() is not emap.is_sparse():
+          emap = emap.copy()
+
+          if reference.is_sparse():
+              emap.as_sparse()
+
+          else:
+              emap.as_dense()
+
+        return emap
