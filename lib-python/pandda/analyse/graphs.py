@@ -145,94 +145,124 @@ def write_dataset_summary_graphs(pandda):
     # ================================================>
     # High & Low Resolutions
     # ================================================>
-    fig = pyplot.figure()
-    pyplot.title('Resolution Histograms')
-    pyplot.subplot(2, 1, 1)
-    pyplot.hist(x=d_info['high_resolution'], bins=n_bins)
-    pyplot.xlabel('High Resolution Limit ($\AA$)')
-    pyplot.ylabel('Count')
-    pyplot.subplot(2, 1, 2)
-    pyplot.hist(x=d_info['low_resolution'], bins=n_bins)
-    pyplot.xlabel('Low Resolution Limit ($\AA$)')
-    pyplot.ylabel('Count')
-    fig.set_tight_layout(True)
+    try:
+        fig = pyplot.figure()
+        pyplot.title('Resolution Histograms')
+        pyplot.subplot(2, 1, 1)
+        pyplot.hist(x=d_info['high_resolution'], bins=n_bins)
+        pyplot.xlabel('High Resolution Limit ($\AA$)')
+        pyplot.ylabel('Count')
+        pyplot.subplot(2, 1, 2)
+        pyplot.hist(x=d_info['low_resolution'], bins=n_bins)
+        pyplot.xlabel('Low Resolution Limit ($\AA$)')
+        pyplot.ylabel('Count')
+        fig.set_tight_layout(True)
+
+    except:
+        fig = failure_graph(title='Resolution Histograms')
+
     pyplot.savefig(pandda.file_manager.get_file('d_resolutions'))
     pyplot.close(fig)
     pandda.log('\t{}'.format(pandda.file_manager.get_file('d_resolutions')))
     # ================================================>
     # R-factors
     # ================================================>
-    fig = pyplot.figure()
-    pyplot.title('R-Factor Histograms')
-    pyplot.subplot(2, 1, 1)
-    pyplot.hist(x=d_info['r_free'], bins=n_bins)
-    pyplot.xlabel('R-Free')
-    pyplot.ylabel('Count')
-    pyplot.subplot(2, 1, 2)
-    pyplot.hist(x=d_info['r_work'], bins=n_bins)
-    pyplot.xlabel('R-Work')
-    pyplot.ylabel('Count')
-    fig.set_tight_layout(True)
+    try:
+        fig = pyplot.figure()
+        pyplot.title('R-Factor Histograms')
+        pyplot.subplot(2, 1, 1)
+        pyplot.hist(x=d_info['r_free'], bins=n_bins)
+        pyplot.xlabel('R-Free')
+        pyplot.ylabel('Count')
+        pyplot.subplot(2, 1, 2)
+        pyplot.hist(x=d_info['r_work'], bins=n_bins)
+        pyplot.xlabel('R-Work')
+        pyplot.ylabel('Count')
+        fig.set_tight_layout(True)
+
+    except:
+        fig = failure_graph(title='R-Factor Histograms')
+
     pyplot.savefig(pandda.file_manager.get_file('d_rfactors'))
     pyplot.close(fig)
     pandda.log('\t{}'.format(pandda.file_manager.get_file('d_rfactors')))
     # ================================================>
     # RMSD to reference structure
     # ================================================>
-    fig = pyplot.figure()
-    pyplot.title('RMSDs to Reference Structure Histogram')
-    pyplot.hist(x=filter_nans(d_info['rmsd_to_reference']), bins=n_bins)
-    pyplot.xlabel('RMSD (A)')
-    pyplot.ylabel('Count')
-    fig.set_tight_layout(True)
+    try:
+        fig = pyplot.figure()
+        pyplot.title('RMSDs to Reference Structure Histogram')
+        pyplot.hist(x=filter_nans(d_info['rmsd_to_reference']), bins=n_bins)
+        pyplot.xlabel('RMSD (A)')
+        pyplot.ylabel('Count')
+        fig.set_tight_layout(True)
+
+    except:
+        fig = failure_graph(title='RMSDs to Reference Structure Histogram')
+
     pyplot.savefig(pandda.file_manager.get_file('d_global_rmsd_to_ref'))
     pyplot.close(fig)
     pandda.log('\t{}'.format(pandda.file_manager.get_file('d_global_rmsd_to_ref')))
     # ================================================>
     # Unit cell size
     # ================================================>
-    fig = pyplot.figure()
-    pyplot.title('Unit Cell Axis Variation')
-    pyplot.subplot(3, 1, 1)
-    pyplot.hist(x=d_info['uc_a'], bins=n_bins)
-    pyplot.xlabel('A (A)')
-    pyplot.subplot(3, 1, 2)
-    pyplot.hist(x=d_info['uc_b'], bins=n_bins)
-    pyplot.xlabel('B (A)')
-    pyplot.subplot(3, 1, 3)
-    pyplot.hist(x=d_info['uc_c'], bins=n_bins)
-    pyplot.xlabel('C (A)')
-    fig.set_tight_layout(True)
+    try:
+        fig = pyplot.figure()
+        pyplot.title('Unit Cell Axis Variation')
+        pyplot.subplot(3, 1, 1)
+        pyplot.hist(x=d_info['uc_a'], bins=n_bins)
+        pyplot.xlabel('A (A)')
+        pyplot.subplot(3, 1, 2)
+        pyplot.hist(x=d_info['uc_b'], bins=n_bins)
+        pyplot.xlabel('B (A)')
+        pyplot.subplot(3, 1, 3)
+        pyplot.hist(x=d_info['uc_c'], bins=n_bins)
+        pyplot.xlabel('C (A)')
+        fig.set_tight_layout(True)
+
+    except:
+        fig = failure_graph(title='Unit Cell Axis Variation')
+
     pyplot.savefig(pandda.file_manager.get_file('d_cell_axes'))
     pyplot.close(fig)
     pandda.log('\t{}'.format(pandda.file_manager.get_file('d_cell_axes')))
     # ================================================>
     # Unit cell angles
     # ================================================>
-    fig = pyplot.figure()
-    pyplot.title('Unit Cell Angle Variation')
-    pyplot.subplot(3, 1, 1)
-    pyplot.hist(x=d_info['uc_alpha'], bins=n_bins)
-    pyplot.xlabel('Alpha')
-    pyplot.subplot(3, 1, 2)
-    pyplot.hist(x=d_info['uc_beta'], bins=n_bins)
-    pyplot.xlabel('Beta')
-    pyplot.subplot(3, 1, 3)
-    pyplot.hist(x=d_info['uc_gamma'], bins=n_bins)
-    pyplot.xlabel('Gamma')
-    fig.set_tight_layout(True)
+    try:
+        fig = pyplot.figure()
+        pyplot.title('Unit Cell Angle Variation')
+        pyplot.subplot(3, 1, 1)
+        pyplot.hist(x=d_info['uc_alpha'], bins=n_bins)
+        pyplot.xlabel('Alpha')
+        pyplot.subplot(3, 1, 2)
+        pyplot.hist(x=d_info['uc_beta'], bins=n_bins)
+        pyplot.xlabel('Beta')
+        pyplot.subplot(3, 1, 3)
+        pyplot.hist(x=d_info['uc_gamma'], bins=n_bins)
+        pyplot.xlabel('Gamma')
+        fig.set_tight_layout(True)
+
+    except:
+        fig = failure_graph(title='Unit Cell Angle Variation')
+
     pyplot.savefig(pandda.file_manager.get_file('d_cell_angles'))
     pyplot.close(fig)
     pandda.log('\t{}'.format(pandda.file_manager.get_file('d_cell_angles')))
     # ================================================>
     # Unit cell volume
     # ================================================>
-    fig = pyplot.figure()
-    pyplot.title('Unit Cell Volume Variation')
-    pyplot.hist(x=d_info['uc_vol']/1000.0, bins=n_bins)
-    pyplot.xlabel('Volume ($10^3 A^3$)')
-    pyplot.ylabel('Count')
-    fig.set_tight_layout(True)
+    try:
+        fig = pyplot.figure()
+        pyplot.title('Unit Cell Volume Variation')
+        pyplot.hist(x=d_info['uc_vol']/1000.0, bins=n_bins)
+        pyplot.xlabel('Volume ($10^3 A^3$)')
+        pyplot.ylabel('Count')
+        fig.set_tight_layout(True)
+
+    except:
+        fig = failure_graph(title='Unit Cell Volume Variation')
+
     pyplot.savefig(pandda.file_manager.get_file('d_cell_volumes'))
     pyplot.close(fig)
     pandda.log('\t{}'.format(pandda.file_manager.get_file('d_cell_volumes')))
@@ -554,3 +584,9 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     pyplot.savefig(pandda.file_manager.get_file('zmap_skew_kurt_scat').format(resolution))
     pyplot.close(fig)
 
+
+def failure_graph(title):
+
+    fig = pyplot.figure()
+    pyplot.title('Failed to make {}'.format( title ))
+    return fig
