@@ -339,3 +339,19 @@ class ElectronDensityMap(object):
 
         return self
 
+    def get_map_data(self, is_sparse):
+        """Get the content is either forms"""
+
+        if is_sparse is not self.is_sparse():
+          result = self.copy()
+
+          if is_sparse:
+              result.as_sparse()
+
+          else:
+              result.as_dense()
+
+        else:
+          result = self
+
+        return result.data

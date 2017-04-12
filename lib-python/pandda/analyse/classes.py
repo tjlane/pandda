@@ -2883,43 +2883,21 @@ class PanddaMapAnalyser(object):
             assert uncertainty is not None
 
         assert map.is_sparse() is self.statistical_maps.mean_map.is_sparse()
+        is_sparse = map.is_sparse()
 
         # Calculate Z-values
         if method == 'naive':
-            weights = self.match_map_type(
-                emap=self.statistical_maps.stds_map,
-                reference = map,
-                )
-            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/weights.data)
+            data = self.statistical_maps.stds_map.get_map_data(is_sparse=is_sparse)
+            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/data)
         elif method == 'adjusted':
-            weights = self.match_map_type(
-                emap=self.statistical_maps.sadj_map,
-                reference = map,
-                )
-            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/weights.data)
+            data = self.statistical_maps.sadj_map.get_map_data(is_sparse=is_sparse)
+            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/data)
         elif method == 'uncertainty':
             z_map = (map - self.statistical_maps.mean_map.data)*(1.0/uncertainty)
         elif method == 'adjusted+uncertainty':
-            weights = self.match_map_type(
-                emap=self.statistical_maps.sadj_map,
-                reference = map,
-                )
-            z_map = (map - self.statistical_maps.mean_map)*(1.0/flex.sqrt(weights.data**2 + uncertainty**2))
+            data = self.statistical_maps.sadj_map.get_map_data(is_sparse=is_sparse)
+            z_map = (map - self.statistical_maps.mean_map)*(1.0/flex.sqrt(data**2 + uncertainty**2))
         else:
             raise Exception('method not found: {!s}'.format(method))
 
         return z_map
-
-    @staticmethod
-    def match_map_type(emap, reference):
-
-        if reference.is_sparse() is not emap.is_sparse():
-          emap = emap.copy()
-
-          if reference.is_sparse():
-              emap.as_sparse()
-
-          else:
-              emap.as_dense()
-
-        return emap

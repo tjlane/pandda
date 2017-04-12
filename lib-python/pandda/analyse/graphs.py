@@ -388,15 +388,9 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     mean_map_vals = list(statistical_maps.mean_map.data)
     is_sparse = statistical_maps.mean_map.data.is_sparse()
 
-    medn_map_vals = list(
-      get_map_data(emap=statistical_maps.medn_map, is_sparse=is_sparse)
-      )
-    stds_map_vals = list(
-      get_map_data(emap=statistical_maps.stds_map, is_sparse=is_sparse)
-      )
-    sadj_map_vals = list(
-      get_map_data(emap=statistical_maps.sadj_map, is_sparse=is_sparse)
-      )
+    medn_map_vals = list(statistical_maps.medn_map.get_map_data(is_sparse=is_sparse))
+    stds_map_vals = list(statistical_maps.stds_map.get_map_data(is_sparse=is_sparse))
+    sadj_map_vals = list(statistical_maps.sadj_map.get_map_data(is_sparse=is_sparse))
     # Extract the dataset tags from the pandda object
     analysis_tags = [d.tag for d in pandda.datasets.mask(mask_name=analysis_mask_name)]
     building_tags = [d.tag for d in pandda.datasets.mask(mask_name=building_mask_name)]
@@ -598,17 +592,3 @@ def failure_graph(title):
     fig = pyplot.figure()
     pyplot.title('Failed to make {}'.format( title ))
     return fig
-
-
-def get_map_data(emap, is_sparse):
-
-    if is_sparse is not emap.is_sparse():
-      emap = emap.copy()
-
-      if is_sparse:
-          emap.as_sparse()
-
-      else:
-          emap.as_dense()
-
-    return emap.data
