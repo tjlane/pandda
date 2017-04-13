@@ -600,7 +600,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ================================================>
         # Hardcoded limits
         # ================================================>
-        if p.params.analysis.high_res_lower_limit > 4.0:
+        if p.params.analysis.high_res_lower_limit < 4.0:
             raise Sorry('params.analysis.high_res_lower_limit must be better/smaller than 4A. This is due to the need to scale the diffraction data '\
                         'correctly - only datasets with a better resolution than this can be analysed. Parameter params.analysis.high_res_lower_limit '\
                         'must be set to a value lower than 4.')
