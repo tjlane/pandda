@@ -386,7 +386,7 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     # Extract the statistical maps at this resolution
     statistical_maps = pandda.stat_maps.get(resolution)
     mean_map_vals = list(statistical_maps.mean_map.data)
-    is_sparse = statistical_maps.mean_map.data.is_sparse()
+    is_sparse = statistical_maps.mean_map.is_sparse()
 
     medn_map_vals = list(statistical_maps.medn_map.get_map_data(is_sparse=is_sparse))
     stds_map_vals = list(statistical_maps.stds_map.get_map_data(is_sparse=is_sparse))
