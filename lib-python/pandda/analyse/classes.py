@@ -595,8 +595,10 @@ class PanddaMultiDatasetAnalyser(Program):
             self.log.bar()
             self.log('maps.structure_factors has not been provided.')
             p.params.maps.structure_factors.append('FWT,PHWT')
+            p.params.maps.structure_factors.append('2FOFCWT_fill,PH2FOFCWT_fill')
             p.params.maps.structure_factors.append('2FOFCWT,PH2FOFCWT')
             self.log('Will look for the default PHENIX and REFMAC structure factor columns: {}'.format(' or '.join(p.params.maps.structure_factors)))
+            self.log('(2FOFCWT_fill,PH2FOFCWT_fill are the "filled" phenix structure factors with missing values "filled" with DFc - if these are present it is prefereable to use these)')
         # ================================================>
         # Hardcoded limits
         # ================================================>
@@ -1483,6 +1485,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Raise error if no columns are identified
         if dataset_sfs is None:
             raise Sorry('No matching structure factors were found in the reflection data for reference dataset. \n'+\
+                        'Looking for structure factors: \n\t{}\n'.format('\n\t'.join(map(' and '.join,sf_cols))) +\
                         'Structure factors in this dataset: \n\t{}\n'.format('\n\t'.join(mtz_obj.column_labels()))+\
                         'You may need to change the maps.structure_factors or the reference.structure_factors option.')
         # Store column labels for later
@@ -2008,12 +2011,13 @@ class PanddaMultiDatasetAnalyser(Program):
             # Raise error if no columns are identified
             if dataset_sfs is None:
                 raise Sorry('No matching structure factors were found in the reflection data for dataset {}. \n'.format(dataset.tag)+\
+                            'Looking for structure factors: \n\t{}\n'.format('\n\t'.join(map(' and '.join,sf_cols))) +\
                             'Structure factors in this dataset: \n\t{}\n'.format('\n\t'.join(mtz_obj.column_labels()))+\
                             'You may need to change the maps.structure_factors option.')
             # Store the column labels in the dataset object
             dataset.meta.column_labels = ','.join(dataset_sfs)
             # Report which are being used
-            self.log('Structure factors for dataset {}: {}'.format(dataset.tag, dataset.meta.column_labels))
+            self.log('Validating structure factors for dataset {}: {}'.format(dataset.tag, dataset.meta.column_labels))
             # ==============================>
             # Check the data for the selected columns
             # ==============================>
@@ -2434,39 +2438,42 @@ class PanddaMultiDatasetAnalyser(Program):
     def write_map_analyser_maps(self, map_analyser):
         """Write statistical maps for a map_analyser object"""
 
+        # Resolution for file naming
         map_res = map_analyser.meta.resolution
+        # Extract stat maps for this resolution
+        stat_maps = map_analyser.statistical_maps
+        # Set symmetry mask values to zero
+        mask = flex.size_t(self.grid.symmetry_mask().inner_mask_indices())
 
         self.log('----------------------------------->>>')
         self.log('=> Writing characterised statistical maps @ {!s}A'.format(map_res))
 
-        self.grid.write_array_as_map(array  = map_analyser.statistical_maps.mean_map.copy().as_dense().data,
+        self.grid.write_array_as_map(array  = stat_maps.mean_map.copy().as_dense().data.as_1d().set_selected(mask, 0.0),
                                      f_name = self.file_manager.get_file('mean_map').format(map_res))
-        self.grid.write_array_as_map(array  = map_analyser.statistical_maps.stds_map.copy().as_dense().data,
+        self.grid.write_array_as_map(array  = stat_maps.stds_map.copy().as_dense().data.as_1d().set_selected(mask, 0.0),
                                      f_name = self.file_manager.get_file('stds_map').format(map_res))
-        self.grid.write_array_as_map(array  = map_analyser.statistical_maps.sadj_map.copy().as_dense().data,
+        self.grid.write_array_as_map(array  = stat_maps.sadj_map.copy().as_dense().data.as_1d().set_selected(mask, 0.0),
                                      f_name = self.file_manager.get_file('sadj_map').format(map_res))
-        self.grid.write_array_as_map(array  = map_analyser.statistical_maps.skew_map.copy().as_dense().data,
+        self.grid.write_array_as_map(array  = stat_maps.skew_map.copy().as_dense().data.as_1d().set_selected(mask, 0.0),
                                      f_name = self.file_manager.get_file('skew_map').format(map_res))
-        self.grid.write_array_as_map(array  = map_analyser.statistical_maps.kurt_map.copy().as_dense().data,
+        self.grid.write_array_as_map(array  = stat_maps.kurt_map.copy().as_dense().data.as_1d().set_selected(mask, 0.0),
                                      f_name = self.file_manager.get_file('kurt_map').format(map_res))
-        self.grid.write_array_as_map(array  = map_analyser.statistical_maps.bimo_map.copy().as_dense().data,
+        self.grid.write_array_as_map(array  = stat_maps.bimo_map.copy().as_dense().data.as_1d().set_selected(mask, 0.0),
                                      f_name = self.file_manager.get_file('bimo_map').format(map_res))
 
     def write_output_csvs(self):
         """Write CSV file of dataset variables"""
 
-        self.log('----------------------------------->>>')
-        self.log('Writing Dataset + Dataset Map Summary CSV')
-
         # Write the dataset information to csv file
+        self.log.bar()
+        self.log('Writing Dataset + Dataset Map Summary CSV')
         self.tables.dataset_info.to_csv(path_or_buf=self.file_manager.get_file('dataset_info'), index_label='dtag')
         self.tables.dataset_map_info.to_csv(path_or_buf=self.file_manager.get_file('dataset_map_info'), index_label='dtag')
         self.datasets.all_masks().table.to_csv(path_or_buf=self.file_manager.get_file('dataset_masks'), index_label='id')
 
-        self.log('----------------------------------->>>')
-        self.log('Writing COMBINED Dataset Summary CSV')
-
         # Join the tables on the index of the main table
+        self.log.bar()
+        self.log('Writing COMBINED Dataset Summary CSV')
         comb_tab = (
             self.tables.dataset_info
                 .join(self.tables.dataset_map_info, how='outer')
@@ -2474,16 +2481,17 @@ class PanddaMultiDatasetAnalyser(Program):
         )
         comb_tab.to_csv(path_or_buf=self.file_manager.get_file('dataset_combined_info'), index_label='dtag')
 
-        self.log('----------------------------------->>>')
-        self.log('Writing Event+Site Summary CSVs')
-
-        # Sort the event data by z-peak and write out
-        sort_eve = self.tables.event_info.sort_values(by=['site_idx',self.args.results.events.order_by], ascending=[1,0])
-        sort_eve = sort_eve.join(comb_tab, how='right')
-        sort_eve.to_csv(path_or_buf=self.file_manager.get_file('event_info'))
-        # Sort the sites by number of events and write out
-        sort_sit = self.tables.site_info.sort_values(by=[self.args.results.sites.order_by],ascending=[0])
-        sort_sit.to_csv( path_or_buf=self.file_manager.get_file('site_info'))
+        # Write the event data only once events have been recorded
+        if len(self.tables.event_info.index):
+            self.log.bar()
+            self.log('Writing Event+Site Summary CSVs')
+            # Sort the event data by z-peak and write out
+            sort_eve = self.tables.event_info.sort_values(by=['site_idx',self.args.results.events.order_by], ascending=[1,0])
+            sort_eve = sort_eve.join(comb_tab, how='right')
+            sort_eve.to_csv(path_or_buf=self.file_manager.get_file('event_info'))
+            # Sort the sites by number of events and write out
+            sort_sit = self.tables.site_info.sort_values(by=[self.args.results.sites.order_by],ascending=[0])
+            sort_sit.to_csv( path_or_buf=self.file_manager.get_file('site_info'))
 
     def update_site_table(self, site_list, clear_table=True):
         """Add site entries to the site table"""
