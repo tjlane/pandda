@@ -153,7 +153,7 @@ class MapLoader(object):
         # Print a running row of dots
         print('>', end=''); sys.stdout.flush()
 
-        return morphed_map.as_sparse()
+        return morphed_map.make_sparse()
 
 
 class UncertaintyCalculator(object):
@@ -307,6 +307,9 @@ class DatasetProcessor(object):
 
         dataset, dataset_map, grid, map_analyser, args, verbose = self.data
 
+        # TODO Hardcoded check - to be removed? TODO
+        assert dataset_map.is_sparse()
+
         # ============================================================================>
         # Prepare output objects
         # ============================================================================>
@@ -324,12 +327,13 @@ class DatasetProcessor(object):
         # ============================================================================>
         # Generate masks for this dataset
         # ============================================================================>
-        #print('Generating Symmetry Contacts for Dataset {!s}'.format(dataset.tag))
 
         # Generate symmetry contacts for this dataset and align to reference frame
         dataset_sym_copies = dataset.model.crystal_contacts(distance_cutoff=args.params.masks.outer_mask+5, combine_copies=True)
         dataset_sym_copies.atoms().set_xyz(dataset.model.alignment.nat2ref(dataset_sym_copies.atoms().extract_xyz()))
-        dataset_sym_copies.write_pdb_file(dataset.file_manager.get_file('symmetry_copies'))
+        # Only need to write if writing reference frame maps
+        if args.output.developer.write_reference_frame_maps:
+            dataset_sym_copies.write_pdb_file(dataset.file_manager.get_file('symmetry_copies'))
 
         # Extract protein atoms from the symmetry copies
         dataset_sym_sites_cart = protein(dataset_sym_copies).atoms().extract_xyz()
@@ -352,10 +356,9 @@ class DatasetProcessor(object):
         # Check maps and that all maps are sparse
         # ============================================================================>
         assert dataset_map.data is not None, 'Something has gone wrong - this dataset has no loaded map'
-        assert dataset_map.as_sparse()
-        assert map_analyser.statistical_maps.mean_map.as_sparse()
-        assert map_analyser.statistical_maps.stds_map.as_sparse()
-        assert map_analyser.statistical_maps.sadj_map.as_sparse()
+        assert dataset_map.is_sparse() is map_analyser.statistical_maps.mean_map.is_sparse()
+        assert dataset_map.is_sparse() is map_analyser.statistical_maps.stds_map.is_sparse()
+        assert dataset_map.is_sparse() is map_analyser.statistical_maps.sadj_map.is_sparse()
         # ============================================================================>
         # CALCULATE MEAN-DIFF MAPS
         # ============================================================================>
@@ -364,17 +367,17 @@ class DatasetProcessor(object):
         # NAIVE Z-MAP - NOT USING UNCERTAINTY ESTIMATION OR ADJUSTED STDS
         # ============================================================================>
         z_map_naive = map_analyser.calculate_z_map(map=dataset_map, method='naive')
-        z_map_naive_normalised = (z_map_naive - numpy.mean(z_map_naive.data)) * (1.0/numpy.std(z_map_naive.data))
+        z_map_naive_normalised = z_map_naive.normalised_copy()
         # ============================================================================>
         # UNCERTAINTY Z-MAP - NOT USING ADJUSTED STDS
         # ============================================================================>
         z_map_uncty = map_analyser.calculate_z_map(map=dataset_map, uncertainty=dataset_map.meta.map_uncertainty, method='uncertainty')
-        z_map_uncty_normalised = (z_map_uncty - numpy.mean(z_map_uncty.data)) * (1.0/numpy.std(z_map_uncty.data))
+        z_map_uncty_normalised = z_map_uncty.normalised_copy()
         # ============================================================================>
         # ADJUSTED+UNCERTAINTY Z-MAP
         # ============================================================================>
         z_map_compl = map_analyser.calculate_z_map(map=dataset_map, uncertainty=dataset_map.meta.map_uncertainty, method='adjusted+uncertainty')
-        z_map_compl_normalised = (z_map_compl - numpy.mean(z_map_compl.data)) * (1.0/numpy.std(z_map_compl.data))
+        z_map_compl_normalised = z_map_compl.normalised_copy()
 
         # ============================================================================>
         # SELECT WHICH MAP TO DO THE BLOB SEARCHING ON
@@ -412,37 +415,37 @@ class DatasetProcessor(object):
         # ============================================================================>
         # Sampled Map
         analyse_graphs.map_value_distribution(f_name    = dataset.file_manager.get_file('s_map_png'),
-                                              plot_vals = dataset_map.data)
+                                              plot_vals = dataset_map.get_map_data(sparse=True))
         # Mean-Difference
         analyse_graphs.map_value_distribution(f_name    = dataset.file_manager.get_file('d_mean_map_png'),
-                                              plot_vals = mean_diff_map.data)
+                                              plot_vals = mean_diff_map.get_map_data(sparse=True))
         # Naive Z-Map
         analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_naive_png'),
-                                              plot_vals   = z_map_naive.data,
+                                              plot_vals   = z_map_naive.get_map_data(sparse=True),
                                               plot_normal = True)
         # Normalised Naive Z-Map
         analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_naive_normalised_png'),
-                                              plot_vals   = z_map_naive_normalised.data,
+                                              plot_vals   = z_map_naive_normalised.get_map_data(sparse=True),
                                               plot_normal = True)
         # Uncertainty Z-Map
         analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_uncertainty_png'),
-                                              plot_vals   = z_map_uncty.data,
+                                              plot_vals   = z_map_uncty.get_map_data(sparse=True),
                                               plot_normal = True)
         # Normalised Uncertainty Z-Map
         analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_uncertainty_normalised_png'),
-                                              plot_vals   = z_map_uncty_normalised.data,
+                                              plot_vals   = z_map_uncty_normalised.get_map_data(sparse=True),
                                               plot_normal = True)
         # Corrected Z-Map
         analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_corrected_png'),
-                                              plot_vals   = z_map_compl.data,
+                                              plot_vals   = z_map_compl.get_map_data(sparse=True),
                                               plot_normal = True)
         # Normalised Corrected Z-Map
         analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_corrected_normalised_png'),
-                                              plot_vals   = z_map_compl_normalised.data,
+                                              plot_vals   = z_map_compl_normalised.get_map_data(sparse=True),
                                               plot_normal = True)
         # Plot Q-Q Plot of Corrected Z-Map to see how normal it is
         analyse_graphs.qq_plot_against_normal(f_name    = dataset.file_manager.get_file('z_map_qq_plot_png'),
-                                              plot_vals = z_map_compl_normalised.data)
+                                              plot_vals = z_map_compl_normalised.get_map_data(sparse=True))
 
         # ============================================================================>
         #####
@@ -451,7 +454,8 @@ class DatasetProcessor(object):
         # ============================================================================>
         # Contour the grid at a particular Z-Value
         # ============================================================================>
-        num_clusters, z_clusters = blob_finder.cluster_high_z_values(z_map_data=z_map.as_dense().data, point_mask_idx=dset_total_idxs)
+        num_clusters, z_clusters = blob_finder.cluster_high_z_values( z_map_data     = z_map.get_map_data(sparse=False),
+                                                                      point_mask_idx = dset_total_idxs)
         # ============================================================================>
         # Too many points to cluster -- probably a bad dataset
         # ============================================================================>
@@ -562,8 +566,8 @@ class DatasetProcessor(object):
             # Generate BDC-estimation curve and estimate BDC
             # ============================================================================>
             event_remains, event_corrs, global_corrs = calculate_varying_bdc_correlations(
-                ref_map_data   = map_analyser.statistical_maps.mean_map.as_dense().data,
-                query_map_data = dataset_map.as_dense().data,
+                ref_map_data   = map_analyser.statistical_maps.mean_map.get_map_data(sparse=False),
+                query_map_data = dataset_map.get_map_data(sparse=False),
                 feature_idxs   = flex.size_t(exp_event_idxs),
                 reference_idxs = flex.size_t(reference_idxs),
                 min_remain     = 1.0-args.params.background_correction.max_bdc,
@@ -594,8 +598,8 @@ class DatasetProcessor(object):
             # ============================================================================>
             if args.output.developer.write_reference_frame_maps:
                 event_map_data = calculate_bdc_subtracted_map(
-                                        ref_map_data   = map_analyser.statistical_maps.mean_map.as_dense().data,
-                                        query_map_data = dataset_map.as_dense().data,
+                                        ref_map_data   = map_analyser.statistical_maps.mean_map.get_map_data(sparse=False),
+                                        query_map_data = dataset_map.get_map_data(sparse=False),
                                         bdc            = 1.0 - event_remain_est)
                 event_map = dataset_map.new_from_template(event_map_data, sparse=False)
                 event_map.to_file(filename=dataset.file_manager.get_file('event_map').format(event_num, event_remain_est), space_group=grid.space_group())
@@ -693,6 +697,8 @@ class NativeMapMaker(object):
         return None
 
 # ============================================================================>
+
+# TODO move to more sensible permanent place
 
 def get_interpolated_mapping_between_coordinates(query_list, ref_list, tol=0.01):
     """

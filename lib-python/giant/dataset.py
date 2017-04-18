@@ -29,6 +29,7 @@ class ModelAndData(object):
         self.file_manager = None
         self.meta = Meta()
         self.parent = None
+        self.child = None
         self.children = []
 
     @classmethod
@@ -54,6 +55,7 @@ class ModelAndData(object):
 
     def get_pickle_copy(self):
         """Get copy of self that can be pickled - some cctbx objects cannot be pickled..."""
+
         return self
 
 
@@ -221,10 +223,15 @@ class ElectronDensityMap(object):
     def new_from_template(self, map_data, sparse=False, copy_meta=False, same_parent=False):
         """Create a new ElectronDensityMap using this map as a template"""
 
+        # map_data is in sparse form
         if sparse:
-            assert self.is_sparse(), 'template sparseness not the same as requested'
+            # Make sparse copy if template is not sparse
+            if not self.is_sparse():
+                self = self.copy().make_sparse()
+            # Check input map data is compatible
             assert map_data.nd() == 1, 'map_data must 1-dimensional'
             assert map_data.size() == self._map_indices.size()
+            # Extract parameters for sparseness
             map_size    = self._map_size
             map_indices = self._map_indices
         else:
@@ -251,26 +258,48 @@ class ElectronDensityMap(object):
                                       copy_meta   = True,
                                       same_parent = True)
 
+    def normalised_copy(self):
+        """Perform rms scaling on map data"""
+
+        # Create output copy and make sparse (always calculate the mean and rms from the sparse values)
+        result = self.copy().make_sparse()
+        map_data = result.get_map_data(sparse=True)
+        # Apply normalisation
+        result.data = (result.data-numpy.mean(map_data)) * (1.0/numpy.std(map_data))
+
+        # Return the modified map
+        if self.is_sparse():
+            return result.make_sparse()
+        else:
+            return result.make_dense()
+
+    def _check_compatibility(self, other):
+        assert self.is_sparse() is other.is_sparse()
+
     def __add__(self, other):
         if isinstance(other, ElectronDensityMap):
+            self._check_compatibility(other=other)
             return self.__add__(other.data)
         else:
             return self.new_from_template(map_data=self.data+other, sparse=self.is_sparse())
 
     def __sub__(self, other):
         if isinstance(other, ElectronDensityMap):
+            self._check_compatibility(other=other)
             return self.__sub__(other.data)
         else:
             return self.new_from_template(map_data=self.data-other, sparse=self.is_sparse())
 
     def __mul__(self, other):
         if isinstance(other, ElectronDensityMap):
+            self._check_compatibility(other=other)
             return self.__mul__(other.data)
         else:
             return self.new_from_template(map_data=self.data*other, sparse=self.is_sparse())
 
     def __div__(self, other):
         if isinstance(other, ElectronDensityMap):
+            self._check_compatibility(other=other)
             return self.__div__(other.data)
         else:
             return self.new_from_template(map_data=self.data*(1.0/other), sparse=self.is_sparse())
@@ -280,28 +309,40 @@ class ElectronDensityMap(object):
 
     def is_sparse(self):
         return (self._map_indices is not None)
-#        return (len(self.data.all()) == 1)
 
     def as_map(self):
-        self.as_dense()
+        map_data = self.get_map_data(sparse=False)
         return cctbx.maptbx.basic_map(
                     cctbx.maptbx.basic_map_unit_cell_flag(),
-                    self.data,
-                    self.data.focus(),
+                    map_data,
+                    map_data.focus(),
                     self.unit_cell.orthogonalization_matrix(),
                     cctbx.maptbx.out_of_bounds_clamp(0).as_handle(),
                     self.unit_cell)
 
     def to_file(self, filename, space_group):
-        self.as_dense()
+        map_data = self.get_map_data(sparse=False)
         iotbx.ccp4_map.write_ccp4_map(
                     file_name   = filename,
                     unit_cell   = self.unit_cell,
                     space_group = space_group,
-                    map_data    = self.data,
+                    map_data    = map_data,
                     labels      = flex.std_string(['Output map from giant/pandda'])     )
 
-    def as_sparse(self):
+    def get_map_data(self, sparse):
+        """Get the map data as sparse/dense without altering state of master object"""
+        if sparse is not self.is_sparse():
+            result = self.copy()
+            if sparse:
+                result.make_sparse()
+            else:
+                result.make_dense()
+        else:
+            result = self
+
+        return result.data
+
+    def make_sparse(self):
         """Convert the map data into sparse form"""
         if self.is_sparse(): return self
 
@@ -313,14 +354,9 @@ class ElectronDensityMap(object):
         self.data = sparse_data
         self._map_indices = sparse_idxs
 
-#        return ElectronDensityMap(
-#                    map_data=sparse_data, unit_cell=self.unit_cell,
-#                    map_indices=sparse_idxs, map_size=self._map_size, sparse=True,
-#                    meta=self.meta, parent=self.parent, children=self.children)
-
         return self
 
-    def as_dense(self):
+    def make_dense(self):
         """Convert the map data into dense form"""
         if not self.is_sparse(): return self
 
@@ -332,26 +368,5 @@ class ElectronDensityMap(object):
         self.data = data_bulk
         self._map_indices = None
 
-#        return ElectronDensityMap(
-#                    map_data=data_bulk, unit_cell=self.unit_cell,
-#                    map_indices=None, map_size=None, sparse=False,
-#                    meta=self.meta, parent=self.parent, children=self.children)
-
         return self
 
-    def get_map_data(self, is_sparse):
-        """Get the content is either forms"""
-
-        if is_sparse is not self.is_sparse():
-          result = self.copy()
-
-          if is_sparse:
-              result.as_sparse()
-
-          else:
-              result.as_dense()
-
-        else:
-          result = self
-
-        return result.data

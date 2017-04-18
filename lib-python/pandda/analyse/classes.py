@@ -602,7 +602,8 @@ class PanddaMultiDatasetAnalyser(Program):
         # ================================================>
         # Hardcoded limits
         # ================================================>
-        if p.params.analysis.high_res_lower_limit < 4.0:
+        # Require p.params.analysis.high_res_lower_limit to be set to less than 4A (0-4A)
+        if p.params.analysis.high_res_lower_limit > 4.0:
             raise Sorry('params.analysis.high_res_lower_limit must be better/smaller than 4A. This is due to the need to scale the diffraction data '\
                         'correctly - only datasets with a better resolution than this can be analysed. Parameter params.analysis.high_res_lower_limit '\
                         'must be set to a value lower than 4.')
@@ -1871,8 +1872,8 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         ref_map.meta.type = 'reference-map'
         ref_map.meta.resolution = map_resolution
-        ref_map.meta.map_mean = ref_map.data.min_max_mean().mean
-        ref_map.meta.map_rms = ref_map.data.standard_deviation_of_the_sample()
+        ref_map.meta.map_mean = ref_map.get_map_data(sparse=True).min_max_mean().mean
+        ref_map.meta.map_rms = ref_map.get_map_data(sparse=True).standard_deviation_of_the_sample()
 
         return ref_map
 
@@ -2448,17 +2449,17 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log('----------------------------------->>>')
         self.log('=> Writing characterised statistical maps @ {!s}A'.format(map_res))
 
-        self.grid.write_array_as_map(array  = stat_maps.mean_map.copy().as_dense().data.as_1d().set_selected(mask, 0.0),
+        self.grid.write_array_as_map(array  = stat_maps.mean_map.get_map_data(sparse=False).as_1d().set_selected(mask, 0.0),
                                      f_name = self.file_manager.get_file('mean_map').format(map_res))
-        self.grid.write_array_as_map(array  = stat_maps.stds_map.copy().as_dense().data.as_1d().set_selected(mask, 0.0),
+        self.grid.write_array_as_map(array  = stat_maps.stds_map.get_map_data(sparse=False).as_1d().set_selected(mask, 0.0),
                                      f_name = self.file_manager.get_file('stds_map').format(map_res))
-        self.grid.write_array_as_map(array  = stat_maps.sadj_map.copy().as_dense().data.as_1d().set_selected(mask, 0.0),
+        self.grid.write_array_as_map(array  = stat_maps.sadj_map.get_map_data(sparse=False).as_1d().set_selected(mask, 0.0),
                                      f_name = self.file_manager.get_file('sadj_map').format(map_res))
-        self.grid.write_array_as_map(array  = stat_maps.skew_map.copy().as_dense().data.as_1d().set_selected(mask, 0.0),
+        self.grid.write_array_as_map(array  = stat_maps.skew_map.get_map_data(sparse=False).as_1d().set_selected(mask, 0.0),
                                      f_name = self.file_manager.get_file('skew_map').format(map_res))
-        self.grid.write_array_as_map(array  = stat_maps.kurt_map.copy().as_dense().data.as_1d().set_selected(mask, 0.0),
+        self.grid.write_array_as_map(array  = stat_maps.kurt_map.get_map_data(sparse=False).as_1d().set_selected(mask, 0.0),
                                      f_name = self.file_manager.get_file('kurt_map').format(map_res))
-        self.grid.write_array_as_map(array  = stat_maps.bimo_map.copy().as_dense().data.as_1d().set_selected(mask, 0.0),
+        self.grid.write_array_as_map(array  = stat_maps.bimo_map.get_map_data(sparse=False).as_1d().set_selected(mask, 0.0),
                                      f_name = self.file_manager.get_file('bimo_map').format(map_res))
 
     def write_output_csvs(self):
@@ -2890,22 +2891,21 @@ class PanddaMapAnalyser(object):
         if 'uncertainty' in method:
             assert uncertainty is not None
 
-        assert map.is_sparse() is self.statistical_maps.mean_map.is_sparse()
+        # Extract maps in the right sparseness
         is_sparse = map.is_sparse()
+        # Extract mean values (for subtraction)
+        mean_vals = self.statistical_maps.mean_map.get_map_data(sparse=is_sparse)
 
-        # Calculate Z-values
+        # Extract the normalisation values (for division)
         if method == 'naive':
-            data = self.statistical_maps.stds_map.get_map_data(is_sparse=is_sparse)
-            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/data)
+            norm_vals = self.statistical_maps.stds_map.get_map_data(sparse=is_sparse)
         elif method == 'adjusted':
-            data = self.statistical_maps.sadj_map.get_map_data(is_sparse=is_sparse)
-            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/data)
+            norm_vals = self.statistical_maps.sadj_map.get_map_data(sparse=is_sparse)
         elif method == 'uncertainty':
-            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/uncertainty)
+            norm_vals = uncertainty
         elif method == 'adjusted+uncertainty':
-            data = self.statistical_maps.sadj_map.get_map_data(is_sparse=is_sparse)
-            z_map = (map - self.statistical_maps.mean_map)*(1.0/flex.sqrt(data**2 + uncertainty**2))
+            norm_vals = flex.sqrt(self.statistical_maps.sadj_map.get_map_data(sparse=is_sparse)**2 + uncertainty**2)
         else:
             raise Exception('method not found: {!s}'.format(method))
 
-        return z_map
+        return (map - mean_vals)*(1.0/norm_vals)

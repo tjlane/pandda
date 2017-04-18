@@ -568,7 +568,7 @@ def pandda_main_loop(pandda):
             # ============================================================================>
             # Compile arguments for this datasets
             # ============================================================================>
-            dp = DatasetProcessor(dataset=dataset, dataset_map=dataset_map.as_sparse(),
+            dp = DatasetProcessor(dataset=dataset, dataset_map=dataset_map.make_sparse(),
                                   grid=pandda.grid, map_analyser=dummy_map_analyser,
                                   args=pandda.args, verbose=pandda.settings.verbose)
             dataset_processor_list.append(dp)
@@ -649,7 +649,7 @@ def pandda_main_loop(pandda):
                 ref_z_map = map_analyser.calculate_z_map(map         = dataset.child,
                                                          uncertainty = dataset.child.meta.map_uncertainty,
                                                          method      = pandda.args.params.z_map.map_type)
-                ref_z_map = (ref_z_map - numpy.mean(ref_z_map.data)) * (1.0/numpy.std(ref_z_map.data))
+                ref_z_map = ref_z_map.normalised_copy()
                 map_maker = NativeMapMaker(dataset  = dataset,
                                            map      = ref_z_map,
                                            filename = dataset.file_manager.get_file('native_z_map'),

@@ -19,6 +19,11 @@ from bamboo.plot import bar, simple_histogram
 def filter_nans(x):
     return [v for v in x if not numpy.isnan(v)]
 
+def failure_graph(title):
+    fig = pyplot.figure()
+    pyplot.title('Failed to make {}'.format( title ))
+    return fig
+
 def map_value_distribution(f_name, plot_vals, plot_normal=False):
     """Plot histogram of values, with optional normal distribution"""
     from scitbx.math.distributions import normal_distribution
@@ -157,7 +162,6 @@ def write_dataset_summary_graphs(pandda):
         pyplot.xlabel('Low Resolution Limit ($\AA$)')
         pyplot.ylabel('Count')
         fig.set_tight_layout(True)
-
     except:
         fig = failure_graph(title='Resolution Histograms')
 
@@ -179,7 +183,6 @@ def write_dataset_summary_graphs(pandda):
         pyplot.xlabel('R-Work')
         pyplot.ylabel('Count')
         fig.set_tight_layout(True)
-
     except:
         fig = failure_graph(title='R-Factor Histograms')
 
@@ -196,7 +199,6 @@ def write_dataset_summary_graphs(pandda):
         pyplot.xlabel('RMSD (A)')
         pyplot.ylabel('Count')
         fig.set_tight_layout(True)
-
     except:
         fig = failure_graph(title='RMSDs to Reference Structure Histogram')
 
@@ -219,7 +221,6 @@ def write_dataset_summary_graphs(pandda):
         pyplot.hist(x=d_info['uc_c'], bins=n_bins)
         pyplot.xlabel('C (A)')
         fig.set_tight_layout(True)
-
     except:
         fig = failure_graph(title='Unit Cell Axis Variation')
 
@@ -242,7 +243,6 @@ def write_dataset_summary_graphs(pandda):
         pyplot.hist(x=d_info['uc_gamma'], bins=n_bins)
         pyplot.xlabel('Gamma')
         fig.set_tight_layout(True)
-
     except:
         fig = failure_graph(title='Unit Cell Angle Variation')
 
@@ -259,7 +259,6 @@ def write_dataset_summary_graphs(pandda):
         pyplot.xlabel('Volume ($10^3 A^3$)')
         pyplot.ylabel('Count')
         fig.set_tight_layout(True)
-
     except:
         fig = failure_graph(title='Unit Cell Volume Variation')
 
@@ -371,26 +370,25 @@ def write_map_analyser_reference_dataset_graphs(pandda, map_analyser):
 
     # Plot the mean map against the reference map (unsorted)
     mean_obs_scatter(f_name      = pandda.file_manager.get_file('ref_v_mean_map_unsort').format(map_analyser.meta.resolution),
-                     mean_vals   = map_analyser.statistical_maps.mean_map.as_sparse().data,
-                     obs_vals    = pandda.datasets.reference().child.as_sparse().data)
+                     mean_vals   = map_analyser.statistical_maps.mean_map.get_map_data(sparse=True),
+                     obs_vals    = pandda.datasets.reference().child.get_map_data(sparse=True))
     # Plot the mean map against the reference map (sorted)
     sorted_mean_obs_scatter(f_name    = pandda.file_manager.get_file('ref_v_mean_map_sort').format(map_analyser.meta.resolution),
-                            mean_vals = sorted(map_analyser.statistical_maps.mean_map.as_sparse().data),
-                            obs_vals  = sorted(pandda.datasets.reference().child.as_sparse().data))
+                            mean_vals = sorted(map_analyser.statistical_maps.mean_map.get_map_data(sparse=True)),
+                            obs_vals  = sorted(pandda.datasets.reference().child.get_map_data(sparse=True)))
     # Plot the reference map distribution
     map_value_distribution(f_name    = pandda.file_manager.get_file('ref_map_dist').format(map_analyser.meta.resolution),
-                           plot_vals = pandda.datasets.reference().child.as_sparse().data)
+                           plot_vals = pandda.datasets.reference().child.get_map_data(sparse=True))
 
 def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_mask_name):
 
     # Extract the statistical maps at this resolution
     statistical_maps = pandda.stat_maps.get(resolution)
-    mean_map_vals = list(statistical_maps.mean_map.data)
-    is_sparse = statistical_maps.mean_map.is_sparse()
-
-    medn_map_vals = list(statistical_maps.medn_map.get_map_data(is_sparse=is_sparse))
-    stds_map_vals = list(statistical_maps.stds_map.get_map_data(is_sparse=is_sparse))
-    sadj_map_vals = list(statistical_maps.sadj_map.get_map_data(is_sparse=is_sparse))
+    # Extract map values
+    mean_map_vals = list(statistical_maps.mean_map.get_map_data(sparse=True))
+    medn_map_vals = list(statistical_maps.medn_map.get_map_data(sparse=True))
+    stds_map_vals = list(statistical_maps.stds_map.get_map_data(sparse=True))
+    sadj_map_vals = list(statistical_maps.sadj_map.get_map_data(sparse=True))
     # Extract the dataset tags from the pandda object
     analysis_tags = [d.tag for d in pandda.datasets.mask(mask_name=analysis_mask_name)]
     building_tags = [d.tag for d in pandda.datasets.mask(mask_name=building_mask_name)]
@@ -587,8 +585,3 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     pyplot.close(fig)
 
 
-def failure_graph(title):
-
-    fig = pyplot.figure()
-    pyplot.title('Failed to make {}'.format( title ))
-    return fig
