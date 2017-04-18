@@ -83,8 +83,8 @@ def multiple_bar_plot_over_several_images(f_template, plot_vals, graphs_per_imag
             else:             bar_colr = ['blue']*num_vals
             # Make the bar
             bar_bar = s_axis.bar(left=bar_left, height=bar_hght, width=0.8, color=bar_colr)
-            if   colour_bool: s_axis.set_title('Site {}: {} hits'.format(i_site+1, sum(colour_bool[i_site])))
-            elif colour_vals: s_axis.set_title('Site {}: {} hits'.format(i_site+1, colour_vals[i_site].count('limegreen')))
+            if   colour_bool: s_axis.set_title('Site {}: {} models'.format(i_site+1, sum(colour_bool[i_site])))
+            elif colour_vals: s_axis.set_title('Site {}: {} models'.format(i_site+1, colour_vals[i_site].count('limegreen')))
             else:             s_axis.set_title('Site {}'.format(i_site+1))
             # Change Y-axis
             s_axis.set_yticks([int(max(bar_hght)+0.5)])
