@@ -271,7 +271,7 @@ class DensityStatistics(object):
     def _calculate_statistics(self, observations, uncertainties):
         """Calculate statistics for one set of observations and uncertainties"""
         guess_factor = 0.001
-        stats_obj = basic_statistics(flex.double(observations))
+        stats_obj = basic_statistics(flex.double(numpy.ascontiguousarray(observations)))
         stdv = stats_obj.bias_corrected_standard_deviation
         sadj = estimate_true_underlying_sd(obs_vals=observations, obs_error=uncertainties, est_sigma=stdv*guess_factor)
         skew = stats_obj.skew

@@ -2890,17 +2890,22 @@ class PanddaMapAnalyser(object):
         if 'uncertainty' in method:
             assert uncertainty is not None
 
+        assert map.is_sparse() is self.statistical_maps.mean_map.is_sparse()
+        is_sparse = map.is_sparse()
+
         # Calculate Z-values
         if method == 'naive':
-            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/self.statistical_maps.stds_map.data)
+            data = self.statistical_maps.stds_map.get_map_data(is_sparse=is_sparse)
+            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/data)
         elif method == 'adjusted':
-            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/self.statistical_maps.sadj_map.data)
+            data = self.statistical_maps.sadj_map.get_map_data(is_sparse=is_sparse)
+            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/data)
         elif method == 'uncertainty':
             z_map = (map - self.statistical_maps.mean_map.data)*(1.0/uncertainty)
         elif method == 'adjusted+uncertainty':
-            z_map = (map - self.statistical_maps.mean_map.data)*(1.0/flex.sqrt(self.statistical_maps.sadj_map.data**2 + uncertainty**2))
+            data = self.statistical_maps.sadj_map.get_map_data(is_sparse=is_sparse)
+            z_map = (map - self.statistical_maps.mean_map)*(1.0/flex.sqrt(data**2 + uncertainty**2))
         else:
             raise Exception('method not found: {!s}'.format(method))
 
         return z_map
-
