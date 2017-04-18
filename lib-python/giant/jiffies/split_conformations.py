@@ -7,6 +7,7 @@ from bamboo.common.logs import Log
 
 from giant.io.pdb import strip_pdb_to_input, get_pdb_header
 from giant.structure.formatting import Labeller
+from giant.structure.altlocs import prune_redundant_alternate_conformations
 
 ############################################################################
 
@@ -41,6 +42,9 @@ output {
         .type = path
     reset_altlocs = True
         .help = 'Relabel conformers of kept residues to begin with "A" (i.e. C,D,E -> A,B,C)'
+        .type = bool
+    prune_duplicates = True
+        .help = 'Remove duplicated conformers in the output structure (convert to blank altloc)'
         .type = bool
 }
 options {
@@ -139,13 +143,21 @@ def split_conformations(filename, params, log=None):
         log('Selection: \n\t'+sel_string)
         log.bar()
 
-        if params.output.reset_altlocs:
+        if params.output.prune_duplicates:
+            # Remove an alternate conformers than are duplicated after selection
+            prune_redundant_alternate_conformations(
+                hierarchy           = sel_hiery,
+                required_altlocs    = sel_hiery.altloc_indices(),
+                rmsd_cutoff         = 0.1,
+                in_place            = True,
+                verbose             = params.settings.verbose)
 
+        if params.output.reset_altlocs:
+            # Change the altlocs so that they start from "A"
             if len(this_confs) == 1:
                 conf_hash = {this_confs[0]: ' '}
             else:
                 conf_hash = dict(zip(this_confs, iotbx.pdb.systematic_chain_ids()))
-
             log('Resetting structure altlocs:')
             for k in sorted(conf_hash.keys()):
                 log('\t{} -> "{}"'.format(k, conf_hash[k]))

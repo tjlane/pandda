@@ -32,7 +32,7 @@ def get_subset_of_grid_points(gridding, grid_indices):
         assert i == grid(p)
         if mask_binary[i]: yield p
 
-def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, alignment, reference_map, site_mask_radius=6, step=0.5, filename=None, verbose=False):
+def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, alignment, reference_map, site_mask_radius=6.0, step=0.5, filename=None, verbose=False):
     """
     Transform the reference-aligned map back to the native crystallographic frame
     native_sites            - defines region that map will be masked around
@@ -54,7 +54,7 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
     # Create a supercell containing the protein model at the centre
     # ===============================================================================>>>
     # How many unit cells to include in the supercell
-    box_frac_min_max = native_unit_cell.box_frac_around_sites(sites_cart=native_hierarchy.atoms().extract_xyz(), buffer=site_mask_radius)
+    box_frac_min_max = native_unit_cell.box_frac_around_sites(sites_cart=native_hierarchy.atoms().extract_xyz(), buffer=site_mask_radius+1.0)
     supercell_size = tuple([iceil(ma-mi) for mi, ma in zip(*box_frac_min_max)])
     # create supercell in the native frame
     supercell = make_supercell(native_unit_cell, size=supercell_size)
@@ -132,7 +132,7 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
                                                         rotation_matrix    = scitbx.matrix.rec([1,0,0,0,1,0,0,0,1], (3,3)).elems,
                                                         translation_vector = scitbx.matrix.rec(unit_cell_shift, (3,1)).elems    )
         # Set any values that are filled in combined_sc_map_data to 0
-        rt_map_data.set_selected(flex.abs(combined_sc_map_data) > 1e-6, 0)
+        rt_map_data.set_selected(flex.abs(combined_sc_map_data) > 1e-6, 0.0)
         # Add values to combined_sc_map_data
         combined_sc_map_data = combined_sc_map_data + rt_map_data
 
@@ -161,7 +161,7 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
         # Get the transformation matrix
         rt_mx = sym_op.as_rational().as_float()
         # Tranform the map
-        rt_map_data = cctbx.maptbx.rotate_translate_map(unit_cell          = supercell,
+        rt_map_data = cctbx.maptbx.rotate_translate_map(unit_cell          = native_unit_cell,
                                                         map_data           = uc_map_data,
                                                         rotation_matrix    = rt_mx.r.elems,
                                                         translation_vector = rt_mx.t.elems    )

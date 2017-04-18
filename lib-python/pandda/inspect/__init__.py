@@ -50,6 +50,8 @@ def coot_customisation():
     set_symmetry_shift_search_size(2)
     post_display_control_window()
 
+    add_key_binding("Add ligand",  "a", lambda: solvent_ligands_gui())
+    add_key_binding("Add water",   "w", lambda : place_typed_atom_at_pointer("Water"))
 
 #=========================================================================
 
@@ -555,12 +557,14 @@ class PanddaInspector(object):
             p = read_pdb(self.current_event.fitted_link)
         else:
             p = read_pdb(self.current_event.input_model)
+        set_pointer_atom_molecule(p)
         self.coot.open_mols['p'] = p
         self.write_output_csvs()
 
     def reset_current_to_orig_model(self):
         close_molecule(self.coot.open_mols['p'])
         p = read_pdb(self.current_event.input_model)
+        set_pointer_atom_molecule(p)
         self.coot.open_mols['p'] = p
         self.write_output_csvs()
 
@@ -760,6 +764,7 @@ class PanddaMolHandler(object):
         # 1 - Load input model or load fitted version if it exists
         if os.path.exists(e.fitted_link): p = read_pdb(e.fitted_link)
         else:                             p = read_pdb(e.input_model)
+        set_pointer_atom_molecule(p)
 
         #set_last_map_contour_level_by_sigma(2)
 

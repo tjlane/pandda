@@ -586,18 +586,18 @@ class DatasetProcessor(object):
             blob_finder.log('Event Remains: {}'.format(','.join(map(str,event_remains))))
             blob_finder.log('Event Corrs:  {}'.format(','.join(map(str,event_corrs))))
             blob_finder.log('Global Corrs: {}'.format(','.join(map(str,global_corrs))))
-            # ============================================================================>
-            # Calculate background-corrected map
-            # ============================================================================>
-            event_map_data = calculate_bdc_subtracted_map(
-                                    ref_map_data   = map_analyser.statistical_maps.mean_map.as_dense().data,
-                                    query_map_data = dataset_map.as_dense().data,
-                                    bdc            = 1.0 - event_remain_est)
-            event_map = dataset_map.new_from_template(event_map_data, sparse=False)
+            # Apply multiplier if provided
+            blob_finder.log('Applying multiplier to output 1-BDC: {}'.format(args.params.background_correction.output_multiplier))
+            event_remain_est = min(event_remain_est*args.params.background_correction.output_multiplier, 1.0-args.params.background_correction.min_bdc)
             # ============================================================================>
             # Write out EVENT map (in the reference frame) and grid masks
             # ============================================================================>
             if args.output.developer.write_reference_frame_maps:
+                event_map_data = calculate_bdc_subtracted_map(
+                                        ref_map_data   = map_analyser.statistical_maps.mean_map.as_dense().data,
+                                        query_map_data = dataset_map.as_dense().data,
+                                        bdc            = 1.0 - event_remain_est)
+                event_map = dataset_map.new_from_template(event_map_data, sparse=False)
                 event_map.to_file(filename=dataset.file_manager.get_file('event_map').format(event_num, event_remain_est), space_group=grid.space_group())
             if args.output.developer.write_reference_frame_grid_masks:
                 grid.write_indices_as_map(indices=event_mask.outer_mask_indices(), f_name=dataset.file_manager.get_file('grid_mask').replace('.ccp4','')+'-event-mask-{}.ccp4'.format(event_num))

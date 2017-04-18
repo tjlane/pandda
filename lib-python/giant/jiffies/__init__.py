@@ -26,22 +26,16 @@ def extract_params_default(master_phil, args, blank_arg_prepend=None, home_scope
 def show_defaults_and_exit_maybe(master_phil, args):
     """Show master_phil and exit if requested"""
 
-    # Show Defaults (just values)
-    if '--show-defaults' in args or (not args):
+    attributes_level = expert_level = 0
+
+    if '-h' in args: attributes_level = 1
+    if '-hh' in args: attributes_level = 2
+    if '-hhh' in args: attributes_level = 3
+    if '-a' in args: expert_level = 3
+
+    if ('--show-defaults' in args) or (not args) or (not attributes_level==expert_level==0):
         print('\n====================== Showing Default Parameters =====================\n')
-        master_phil.show(expert_level=0, attributes_level=0)
-    # Show Defaults (including help)
-    elif '--help' in args:
-        print('\n================== Showing Default Parameters & Help ==================\n')
-        master_phil.show(expert_level=0, attributes_level=1)
-    # Show Defaults (including help and types)
-    elif '--help-and-types' in args:
-        print('\n=============== Showing Default Parameters & Help+Types ===============\n')
-        master_phil.show(expert_level=0, attributes_level=2)
-    # Show Defaults (everything)
-    elif '--expert' in args:
-        print('\n============== Showing Default Parameters (Expert Level) ==============\n')
-        master_phil.show(expert_level=3, attributes_level=3)
+        master_phil.show(expert_level=expert_level, attributes_level=attributes_level)
     else:
         return
 

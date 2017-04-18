@@ -271,6 +271,9 @@ pandda
             increment = 0.01
                 .type = float
                 .help = 'Resolution of background correction estimation'
+            output_multiplier = 1.0
+                .type = float
+                .help = 'Empirical multiplier to be applied to the contrast-estimated value of 1-BDC'
         }
     }
     results {

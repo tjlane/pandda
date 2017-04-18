@@ -19,7 +19,7 @@ INSP_HTML = './analyses/html_summaries/pandda_inspect.html'
 
 def show_summary():
     app = QApplication(sys.argv)
-    window = PanddaWindow()
+    window = PanddaWindow(title='PanDDA HTML Summaries: {}'.format(os.getcwd()))
     # ----------------------------------
     window.add_tab(PanddaHtmlWidget(name='Dataset Summary', content=INIT_HTML))
     # ----------------------------------

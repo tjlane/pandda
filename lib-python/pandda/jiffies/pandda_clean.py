@@ -86,8 +86,9 @@ def clean_datasets(top_dir, level=0, skip_modelled=True):
             delete_with_glob(os.path.join(d_dir, '*.pdb'))
             delete_with_glob(os.path.join(d_dir, '*.mtz'))
             delete_with_glob(os.path.join(d_dir, 'pickles', '*.pickle'))
-            delete_with_glob(os.path.join(d_dir, 'output_images', '*.png'))
-            delete_with_glob(os.path.join(d_dir, 'ligand_files',  '*'))
+            delete_with_glob(os.path.join(d_dir, 'images', '*.png'))
+            delete_with_glob(os.path.join(d_dir, 'graphs', '*.png'))
+            delete_with_glob(os.path.join(d_dir, 'scripts', '*'))
 
     return
 
