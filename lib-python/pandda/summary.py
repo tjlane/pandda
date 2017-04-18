@@ -63,7 +63,7 @@ class PanddaTabBar(QTabWidget):
         self.addTab(widget, widget.name)
 
 class PanddaWindow(PanddaTabBar):
-    def __init__(self, tabs=None):
+    def __init__(self, tabs=None, title='PanDDA HTML Summaries'):
         super(PanddaWindow, self).__init__(name=None, tabs=tabs)
-        self.setWindowTitle('PanDDA HTML Summaries')
+        self.setWindowTitle(title)
 
