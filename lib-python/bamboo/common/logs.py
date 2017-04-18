@@ -72,7 +72,6 @@ class Log(object):
         """Log Object for writing to logs...?"""
         # File that the log will be written to
         self.log_file = log_file
-        self.stdout = stdout
         self.verbose = verbose
 
         # Set default heading
@@ -122,7 +121,7 @@ class Log(object):
         return self
 
     def show(self, message):
-        self.stdout.write(message)
+        sys.stdout.write(message)
 
     def write(self, message, mode='a'):
         if not self.log_file: return
