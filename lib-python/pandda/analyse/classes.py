@@ -607,6 +607,11 @@ class PanddaMultiDatasetAnalyser(Program):
             raise Sorry('params.analysis.high_res_lower_limit must be better/smaller than 4A. This is due to the need to scale the diffraction data '\
                         'correctly - only datasets with a better resolution than this can be analysed. Parameter params.analysis.high_res_lower_limit '\
                         'must be set to a value lower than 4.')
+        # Check that the upper limit is smaller than the lower limit
+        if p.params.analysis.high_res_upper_limit > p.params.analysis.high_res_lower_limit:
+            raise Sorry('params.analysis.high_res_lower_limit must be a larger number than params.analysis.high_res_upper_limit. '+\
+                        'Current values are \n\tparams.analysis.high_res_lower_limit={} '.format(p.params.analysis.high_res_lower_limit)+\
+                        '\nand \n\tparams.analysis.high_res_upper_limit={}'.format(p.params.analysis.high_res_upper_limit))
 
         self.log.bar()
 
@@ -2236,7 +2241,7 @@ class PanddaMultiDatasetAnalyser(Program):
             # Round the limits up and down to create sensible limits
             small_limit = round(small_limit - 0.005, 2)    # i.e. 1.344 -> 1.34
             large_limit = round(large_limit + 0.005, 2)    # i.e. 3.423 -> 3.43
-            self.log('Previous limits: ({}-{})'.format(self.params.analysis.high_res_upper_limit,self.params.analysis.high_res_lower_limit))
+            self.log('Input limits: ({}-{})'.format(self.params.analysis.high_res_upper_limit,self.params.analysis.high_res_lower_limit))
             self.log('Updated limits:  ({}-{})'.format(small_limit, large_limit))
         else:
             self.log('Using the resolution limits defined in the input parameters')

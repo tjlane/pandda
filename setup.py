@@ -11,8 +11,10 @@ if '--for-ccp4' in sys.argv:
                         'bin/pandda.export',
                         'bin/giant.score_model',
                         'bin/giant.quick_refine',
-                        'bin/giant.create_occupancy_params',
-                        'bin/giant.strip_conformations'         ]
+                        'bin/giant.make_restraints',
+                        'bin/giant.merge_conformations',
+                        'bin/giant.split_conformations',
+                      ]
     # And clean up
     sys.argv.remove('--for-ccp4')
 else:
@@ -40,7 +42,7 @@ for s in install_scripts:
 #####################################################################################
 
 setup(  name                = 'panddas',
-        version             = '0.1.11',
+        version             = '0.2.0',
         description         = 'Multi-dataset crystallographic analyses',
         author              = 'Nicholas M Pearce',
         author_email        = 'nicholas.pearce.0@gmail.com',
