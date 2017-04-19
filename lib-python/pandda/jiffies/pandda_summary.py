@@ -4,6 +4,8 @@ import threading
 from PyQt4.QtGui import QApplication
 from pandda.summary import PanddaWindow, PanddaHtmlWidget, PanddaTabBar
 
+print 'IMPORTS DONE'
+
 #######################################
 
 blank_arg_prepend = None
@@ -19,11 +21,15 @@ INSP_HTML = './analyses/html_summaries/pandda_inspect.html'
 
 def show_summary():
     app = QApplication(sys.argv)
+    print 'QAPP CREATED'
     window = PanddaWindow(title='PanDDA HTML Summaries: {}'.format(os.getcwd()))
+    print 'QWINDOW CREATED'
     # ----------------------------------
     window.add_tab(PanddaHtmlWidget(name='Dataset Summary', content=INIT_HTML))
+    print 'HTML WIDGET CREATED'
     # ----------------------------------
     multi_tab = PanddaTabBar(name='Map Analysis Summaries')
+    print 'TAB BAR CREATED'
     for f in MAP_HTMLS:
         name = f[f.find('pandda_map_'):].replace('pandda_map_','').replace('.html','')
         multi_tab.add_tab(PanddaHtmlWidget(name=name, content=f))
@@ -44,10 +50,11 @@ def show_summary():
 #######################################
 
 def run():
-    t = threading.Thread(target=show_summary, args=())
-    t.daemon = True
-    t.start()
-    t.join()
+    show_summary()
+#    t = threading.Thread(target=show_summary, args=())
+#    t.daemon = True
+#    t.start()
+#    t.join()
 
 #######################################
 
