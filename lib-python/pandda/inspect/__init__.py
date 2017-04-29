@@ -7,7 +7,6 @@ from bamboo.plot import bar
 
 from pandda import LOGO_PATH
 from pandda.inspect import html as inspect_html
-from pandda.jiffies import pandda_summary
 from pandda.constants import PanddaAnalyserFilenames, PanddaInspectorFilenames, PanddaDatasetFilenames, PanddaHtmlFilenames
 
 import pandda.resources.inspect
