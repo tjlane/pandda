@@ -49,6 +49,11 @@ def coot_customisation():
     set_show_symmetry_master(1)
     set_symmetry_shift_search_size(2)
     post_display_control_window()
+    try:
+        # Future-available function
+        post_delete_item_dialog()
+    except:
+        pass
 
     add_key_binding("Add ligand",  "a", lambda: solvent_ligands_gui())
     add_key_binding("Add water",   "w", lambda : place_typed_atom_at_pointer("Water"))
