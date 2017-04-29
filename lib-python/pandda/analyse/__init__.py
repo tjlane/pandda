@@ -973,6 +973,7 @@ def pandda_analyse_main(args):
     except KeyboardInterrupt:
         raise
     except SystemExit as s:
+        # Non-error exit - print type and message
         try:
             pandda.exit(error_msg=traceback.format_exception(type(s), str(s), tb=False))
         except:

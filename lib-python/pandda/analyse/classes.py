@@ -1536,9 +1536,17 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         self.log.bar()
         self.log('Alignment Summaries:', True)
-        for alignment in dataset_alignments:
-            # Get the master copy of the dataset
-            dataset = self.datasets.get(tag=alignment.id)
+        errors = []
+        for dataset, alignment in zip(datasets_for_alignment, alignments):
+            # If errored, print and record
+            if isinstance(alignment, str):
+                self.log.bar()
+                self.log('Failed to align dataset {}'.format(dataset.id))
+                self.log(alignment)
+                errors.append((dataset,alignment))
+                continue
+            # Attach alignment to dataset
+            assert dataset.id == alignment.id
             dataset.model.alignment = alignment
             # Output an aligned copy of the structure
             aligned_struc = dataset.model.hierarchy.deep_copy()
@@ -1549,6 +1557,16 @@ class PanddaMultiDatasetAnalyser(Program):
             self.log.bar()
             self.log(dataset.model.alignment.summary())
         t3 = time.time()
+        # ==============================>
+        # Report Errors
+        # ==============================>
+        if errors:
+            for dataset, error in errors:
+                self.log.bar()
+                self.log('Failed to align dataset {}'.format(dataset.id))
+                self.log.bar()
+                self.log(error)
+            raise Sorry('Failed to align {} datasets. Error messages printed above.'.format(len(errors)))
         # ==============================>
         # Report
         # ==============================>

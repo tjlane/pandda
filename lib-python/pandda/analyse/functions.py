@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import os, sys, copy, time, glob
+import traceback
 
 import numpy
 
@@ -62,11 +63,14 @@ class DatasetAligner(object):
 
     def run(self):
         model, other, method, id = self.data
-        alignment = model.align_to(other_hierarchy=other.hierarchy, method=method, require_hierarchies_identical=False)
-        assert alignment.id is None
-        alignment.id = id
-        return alignment
 
+        try:
+            alignment = model.align_to(other_hierarchy=other.hierarchy, method=method, require_hierarchies_identical=False)
+            assert alignment.id is None
+            alignment.id = id
+            return alignment
+        except:
+            return traceback.format_exc()
 
 class MapLoader(object):
 
