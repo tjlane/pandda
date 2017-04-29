@@ -14,7 +14,7 @@ from scitbx.array_family import flex
 from bamboo.common import ListStream
 
 from giant.structure import make_label
-from giant.structure.select import protein, complete_backbone, common_residues, extract_atom
+from giant.structure.select import protein, backbone, complete_backbone, common_residues, extract_atom
 from giant.structure.sequence import pairwise_chain_sequence_identity, align_sequences_default
 
 ####################################################################################
@@ -212,8 +212,8 @@ def align_structures_flexible(mov_hierarchy, ref_hierarchy, altlocs=['','A'], cu
     # List of the alignments for each chain
     local_alignments = []
     # Trim to protein only
-    mov_hierarchy = protein(mov_hierarchy, copy=True)
-    ref_hierarchy = protein(ref_hierarchy, copy=True)
+    mov_hierarchy = backbone(mov_hierarchy, copy=True)
+    ref_hierarchy = backbone(ref_hierarchy, copy=True)
     # Check the structures only have one model
     try:
         mov_hierarchy.only_model()

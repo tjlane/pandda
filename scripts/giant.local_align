@@ -96,7 +96,7 @@ def run(params):
         print pretty_string('===========================>').blue()
 
         combined_alignment = align_structures_flexible(mov_hierarchy=h_mov, ref_hierarchy=h_ref,
-                                conformers=confs_to_align, cutoff_radius=params.alignment.cutoff_radius,
+                                altlocs=confs_to_align, cutoff_radius=params.alignment.cutoff_radius,
                                 sequence_identity_threshold=params.alignment.sequence_identity_threshold,
                                 one_to_one_mapping=params.alignment.one_to_one_chain_alignment,
                                 require_hierarchies_identical=params.alignment.similar_structures_only,
