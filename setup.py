@@ -52,6 +52,7 @@ setup(  name                = 'panddas',
                                 'jinja2',
                                 'markupsafe',
                                 'ascii_graph',
+                                'numpy>=1.10.4'
                                 ),
         package_dir         = {'':'lib-python'},
         scripts             = install_scripts,
