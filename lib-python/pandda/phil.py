@@ -72,10 +72,16 @@ pandda
             .help = "Control which maps are output by the program"
         {
             write_mean_map = none *interesting all
-                .help = "Output the mean map in the native frame of datasets containing events"
+                .help = "Output the mean map in the native frame of datasets for selected datasets"
+                .multiple = False
                 .type = choice
             write_z_maps = none *interesting all
-                .help = "Output z-maps for all datasets, not just datasets marked as interesting"
+                .help = "Output the z-maps in the native frame of datasets for selected datasets"
+                .multiple = False
+                .type = choice
+            write_dataset_map = *none interesting all
+                .help = "Output the analysed maps in the native frame of datasets for selected datasets"
+                .multiple = False
                 .type = choice
             write_statistical_maps = False
                 .help = "Output statistical maps in the native frame of the reference dataset"

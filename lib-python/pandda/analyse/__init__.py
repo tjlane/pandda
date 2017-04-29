@@ -657,6 +657,16 @@ def pandda_main_loop(pandda):
                                            verbose  = pandda.settings.verbose)
                 native_map_maker_list.append(map_maker)
             # ============================================================================>
+            # Make dataset map for each dataset (if write_dataset_maps)
+            # ============================================================================>
+            if (pandda.args.output.maps.write_dataset_map=='interesting' and dataset.events) or (pandda.args.output.maps.write_dataset_map=='all'):
+                map_maker = NativeMapMaker(dataset  = dataset,
+                                           map      = dataset.child,
+                                           filename = dataset.file_manager.get_file('native_map'),
+                                           args     = pandda.args,
+                                           verbose  = pandda.settings.verbose)
+                native_map_maker_list.append(map_maker)
+            # ============================================================================>
             # Make Event-map for each event
             # ============================================================================>
             for i,e in enumerate(dataset.events):
