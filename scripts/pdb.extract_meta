@@ -73,10 +73,23 @@ def process_line(line):
           'year':     year,
         }])
  
-    print ret_tab
+#    print ret_tab
     return ret_tab
 
 def run():
+
+    try:
+      cpus = int(sys.argv[1])
+    except:
+      cpus = None
+      while not isinstance(cpus, int):
+        cpus = raw_input('Enter number of CPUs: ')
+        try: 
+          cpus = int(cpus)
+        except: 
+          print 'Not valid input: {}'.format(cpus)
+
+    print 'Running with {} CPUs'.format(cpus)
 
     pdb_index = get_pdb_index()
     print 'Using PDB file index from {}'.format(pdb_index)
@@ -90,7 +103,7 @@ def run():
     print '==========================================================>'
 
     # Get the HET molecules from the PDB files
-    output = libtbx.easy_mp.pool_map(func=process_line_wrap, args=pdb_entries, processes=48)
+    output = libtbx.easy_mp.pool_map(func=process_line_wrap, args=pdb_entries, processes=cpus)
       
     print '\n'*2
     print '==========================================================>'        
@@ -110,7 +123,7 @@ def run():
             out_tab = pandas.DataFrame(columns=ret.columns)
         # Append to output table 
         out_tab = out_tab.append(ret, ignore_index=True)
-        print ret
+#        print ret
     # Write output
     out_tab.to_csv('./pdb_meta.csv', sep='\t')
 
