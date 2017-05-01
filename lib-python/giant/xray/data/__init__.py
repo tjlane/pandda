@@ -39,7 +39,7 @@ def estimate_wilson_b_factor(miller_array, low_res_cutoff=4.0):
     scl = LinearScaling(x_values   = x_values,
                         ref_values = y_values)
 
-    return -1.0*scl.optimised_values[1]/2.0
+    return -0.5*scl.optimised_values[1]
 
 #def extract_structure_factors(mtz_object, ampl_label, phas_label):
 #

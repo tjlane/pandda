@@ -132,8 +132,7 @@ def write_occupancy_graph(f_name, x_values, global_values, local_values):
 def write_dataset_summary_graphs(pandda):
     """Plot dataset summary graphs of resolution, unit cell variation, etc"""
 
-    pandda.log('----------------------------------->>>')
-    pandda.log('Generating summary graphs for non-rejected datasets')
+    pandda.log.heading('Generating summary graphs for non-rejected datasets')
 
     # Filter the dataset to non-rejected datasets
     non_rejected_dsets = pandda.datasets.mask(mask_name='rejected - total', invert=True)
@@ -267,9 +266,45 @@ def write_dataset_summary_graphs(pandda):
     pandda.log('\t{}'.format(pandda.file_manager.get_file('d_cell_volumes')))
 
     # ================================================>
-    # More complex graphs for e.g. the loaded diffracton data
+    # Summary plots for the loaded diffracton data
     # ================================================>
     pandda.log('-> writing wilson plots of input and scaled data')
+
+    # ================================================>
+    # Wilson plots RMSDS for unscaled (input) data
+    # ================================================>
+    try:
+        fig = pyplot.figure()
+        pyplot.title('Wilson Plot RMSD to Reference (unscaled)')
+        pyplot.scatter(x=d_info['unscaled_wilson_rmsd_>4A'], y=d_info['unscaled_wilson_rmsd_<4A'])
+        pyplot.xlabel('RMSD to Reference (>4A)')
+        pyplot.ylabel('RMSD to Reference (<4A)')
+        fig.set_tight_layout(True)
+    except:
+        raise
+        fig = failure_graph(title='Wilson Plot RMSD to Reference (unscaled)')
+
+    pyplot.savefig(pandda.file_manager.get_file('d_unscaled_wilson_rmsds'))
+    pyplot.close(fig)
+    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_unscaled_wilson_rmsds')))
+
+    # ================================================>
+    # Wilson plots RMSDS for scaled data
+    # ================================================>
+    try:
+        fig = pyplot.figure()
+        pyplot.title('Wilson Plot RMSD to Reference (scaled)')
+        pyplot.scatter(x=d_info['scaled_wilson_rmsd_>4A'], y=d_info['scaled_wilson_rmsd_<4A'])
+        pyplot.xlabel('RMSD to Reference (>4A)')
+        pyplot.ylabel('RMSD to Reference (<4A)')
+        fig.set_tight_layout(True)
+    except:
+        raise
+        fig = failure_graph(title='Wilson Plot RMSD to Reference (scaled)')
+
+    pyplot.savefig(pandda.file_manager.get_file('d_scaled_wilson_rmsds'))
+    pyplot.close(fig)
+    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_scaled_wilson_rmsds')))
 
     # ================================================>
     # Wilson plots of the unscaled (input) data
@@ -293,9 +328,9 @@ def write_dataset_summary_graphs(pandda):
     pyplot.xlabel('resolution$^{-2}$ ($A^{-2}$)')
     pyplot.ylabel('ln(mean intensity)')
     fig.set_tight_layout(True)
-    pyplot.savefig(pandda.file_manager.get_file('d_unscaled_wilson'))
+    pyplot.savefig(pandda.file_manager.get_file('d_unscaled_wilson_plots'))
     pyplot.close(fig)
-    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_unscaled_wilson')))
+    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_unscaled_wilson_plots')))
     # ================================================>
     # Wilson plots of the scaled data
     # ================================================>
@@ -318,9 +353,9 @@ def write_dataset_summary_graphs(pandda):
     pyplot.xlabel('resolution$^{-2}$ ($A^{-2}$)')
     pyplot.ylabel('ln(mean intensity)')
     fig.set_tight_layout(True)
-    pyplot.savefig(pandda.file_manager.get_file('d_scaled_wilson'))
+    pyplot.savefig(pandda.file_manager.get_file('d_scaled_wilson_plots'))
     pyplot.close(fig)
-    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_scaled_wilson')))
+    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_scaled_wilson_plots')))
 
     return None
 

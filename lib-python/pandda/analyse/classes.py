@@ -3,7 +3,7 @@ from __future__ import print_function
 import os, sys, glob, time, re
 import copy, warnings
 
-import numpy, pandas
+import numpy, pandas, scipy.stats
 
 from libtbx import easy_mp
 from libtbx.utils import Sorry, Failure
@@ -287,8 +287,10 @@ class PanddaMultiDatasetAnalyser(Program):
         fm.add_file(file_name='dataset_cell_axes.png',             file_tag='d_cell_axes',             dir_tag='d_graphs')
         fm.add_file(file_name='dataset_cell_angles.png',           file_tag='d_cell_angles',           dir_tag='d_graphs')
         fm.add_file(file_name='dataset_cell_volumes.png',          file_tag='d_cell_volumes',          dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_input_wilson_plots.png',    file_tag='d_unscaled_wilson',       dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_scaled_wilson_plots.png',   file_tag='d_scaled_wilson',         dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_unscaled_wilson_plots.png', file_tag='d_unscaled_wilson_plots', dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_unscaled_wilson_rmsds.png', file_tag='d_unscaled_wilson_rmsds', dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_scaled_wilson_plots.png',   file_tag='d_scaled_wilson_plots',   dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_scaled_wilson_rmsds.png',   file_tag='d_scaled_wilson_rmsds',   dir_tag='d_graphs')
         # ================================================>
         # Map analysis graphs
         # ================================================>
@@ -373,7 +375,7 @@ class PanddaMultiDatasetAnalyser(Program):
     def pickle_the_pandda(self, components=None, all=False, datasets=None):
         """Pickles it's major components for quick loading..."""
 
-        self.log.heading('Pickling PanDDA objects')
+        self.log.subheading('Pickling PanDDA objects')
 
         self.log.bar()
         if all == True:
@@ -508,7 +510,7 @@ class PanddaMultiDatasetAnalyser(Program):
                 p.shortcuts.run_in_single_dataset_mode):
             return
 
-        self.log.heading('Applying shortcuts')
+        self.log.heading('Applying shortcuts to parameters')
 
         # ================================================>
         # Seeding mode
@@ -1505,6 +1507,8 @@ class PanddaMultiDatasetAnalyser(Program):
     def align_datasets(self, method):
         """Align each structure the reference structure"""
 
+        self.log.heading('Aligning dataset structures')
+
         assert method in ['local','global'], 'METHOD NOT DEFINED: {!s}'.format(method)
 
         # ==============================>
@@ -1603,11 +1607,13 @@ class PanddaMultiDatasetAnalyser(Program):
     def filter_datasets_1(self, filter_dataset=None):
         """Filter out the datasets which contain different protein models (i.e. protein length, sequence, etc)"""
 
+        self.log.subheading('Filtering datasets (before alignment)')
+
         # ==============================>
         # Print list of possible error classes
         # ==============================>
         self.log.bar(True, False)
-        self.log('Filtering Datasets (before alignment). Potential Classes:', True)
+        self.log('Potential rejection classes:', True)
         for failure_class in PanddaMaskNames.reject_mask_names:
             self.log('\t{!s}'.format(failure_class), True)
         self.log.bar()
@@ -1644,6 +1650,7 @@ class PanddaMultiDatasetAnalyser(Program):
             else:
                 pass
 
+        self.log('\rDatasets Filtered.                          ', True)
         # ==============================>
         # Update the masks
         # ==============================>
@@ -1651,7 +1658,6 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Report
         # ==============================>
-        self.log('\rDatasets Filtered.                          ', True)
         self.log.bar()
         self.log('Rejected Datasets (Total):     {!s}'.format(sum(self.datasets.all_masks().get_mask(name='rejected - total'))), True)
         self.log.bar()
@@ -1667,11 +1673,13 @@ class PanddaMultiDatasetAnalyser(Program):
     def filter_datasets_2(self):
         """Filter out the non-isomorphous datasets"""
 
+        self.log.subheading('Filtering datasets (after alignment).')
+
         # ==============================>
         # Print list of possible error classes
         # ==============================>
         self.log.bar(True, False)
-        self.log('Filtering Datasets (after alignment). Potential Classes:', True)
+        self.log('Potential rejection classes:', True)
         for failure_class in PanddaMaskNames.reject_mask_names:
             self.log('\t{!s}'.format(failure_class), True)
         self.log.bar()
@@ -1690,6 +1698,7 @@ class PanddaMultiDatasetAnalyser(Program):
             else:
                 pass
 
+        self.log('\rDatasets Filtered.                          ', True)
         # ==============================>
         # Update the masks
         # ==============================>
@@ -1697,9 +1706,9 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Report
         # ==============================>
-        self.log('\rDatasets Filtered.               ', True)
         self.log.bar()
         self.log('Rejected Datasets (Total):     {!s}'.format(sum(self.datasets.all_masks().get_mask(name='rejected - total'))), True)
+        self.log.bar()
         # ==============================>
         # Print summary of rejected datasets
         # ==============================>
@@ -1711,6 +1720,9 @@ class PanddaMultiDatasetAnalyser(Program):
 
     def update_masks(self):
         """Update the combined masks"""
+
+        self.log.bar()
+        self.log('Updating dataset masks', True)
 
         # ==============================>
         # Combine all "rejected" masks into one combined mask
@@ -1747,7 +1759,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Prepare objects for scaling
         # ==============================>
-        # Factory for scaling all datasets to the reference
+        # Extract reference miller array and prepare for scaling
         ref_dataset = self.datasets.reference()
         ref_miller = ref_dataset.data.miller_arrays[ref_dataset.meta.column_labels]
         factory = IsotropicBfactorScalingFactory(reference_miller_array=ref_miller.as_intensity_array())
@@ -1756,9 +1768,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Report
         # ==============================>
         t1 = time.time()
-        self.log.bar()
-        self.log('Loading and scaling structure factors for each dataset', True)
-        self.log.bar()
+        self.log.heading('Loading and scaling structure factors for each dataset')
 
         for dataset in datasets:
             # Get the columns to be loaded for this dataset
@@ -1774,22 +1784,41 @@ class PanddaMultiDatasetAnalyser(Program):
                 ma_unscaled_com = dataset.data.get_structure_factors(columns=dataset_sfs)
 
             # ==============================>
-            # Scale data to referene - make scaling off by default for now
+            # Compare data to reference - allow spotting of outliers
             # ==============================>
-            if self.args.testing.perform_diffraction_data_scaling:
-                # Extract miller array and calculate amplitudes
-                ma_unscaled_int = ma_unscaled_com.as_intensity_array()
-                ma_unscaled_phs = ma_unscaled_com*(1.0/ma_unscaled_com.as_amplitude_array().data())
+            # Extract miller array and calculate amplitudes
+            ma_unscaled_int = ma_unscaled_com.as_intensity_array()
+            ma_unscaled_phs = ma_unscaled_com*(1.0/ma_unscaled_com.as_amplitude_array().data())
+            # Scale to the reference dataset
+            scaling = factory.calculate_scaling(miller_array=ma_unscaled_int)
+            # Select high resolution and low resolution separately
+            high_res_sel = scaling.x_values > 1/(4.0**2)
+            low_res_sel = scaling.x_values <= 1/(4.0**2)
+            # Log unscaled rmsds values
+            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_rmsd_all', numpy.round(scaling.unscaled_rmsd,3))
+            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_rmsd_<4A', numpy.round(scaling.rmsd_to_ref(values=scaling.scl_values, sel=high_res_sel),3))
+            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_rmsd_>4A', numpy.round(scaling.rmsd_to_ref(values=scaling.scl_values, sel=low_res_sel),3))
+            self.log('RMSD to reference dataset: (before) {}'.format(numpy.round(scaling.unscaled_rmsd,3)))
 
-                # Scale to the reference dataset
-                scaling = factory.calculate_scaling(miller_array=ma_unscaled_int)
+            # ==============================>
+            # Scale data to reference
+            # ==============================>
+            if not self.args.testing.perform_diffraction_data_scaling:
+                # No scaling
+                ma_scaled_com = ma_unscaled_com
+            else:
+                # Report values
+                self.log('RMSD to reference dataset: (after)  {}'.format(numpy.round(scaling.scaled_rmsd,3)))
+                self.log('Optimised B-factor Scaling Factor: {} ({})'.format(numpy.round(scaling.scaling_b_factor,3), 'sharpened' if scaling.scaling_b_factor<0 else 'blurred'))
+                # Log scaled rmsds values
+                self.tables.dataset_info.set_value(dataset.tag, 'applied_b_factor_scaling', numpy.round(scaling.scaling_b_factor,3))
+                self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_all',   numpy.round(scaling.scaled_rmsd,3))
+                self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_<4A',   numpy.round(scaling.rmsd_to_ref(values=scaling.out_values, sel=high_res_sel),3))
+                self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_>4A',   numpy.round(scaling.rmsd_to_ref(values=scaling.out_values, sel=low_res_sel),3))
+                # Apply scaling to diffraction data
                 scaling.new_x_values(x_values=ma_unscaled_int.d_star_sq().data())
                 ma_scaled_int = ma_unscaled_int.array(data=scaling.transform(ma_unscaled_int.data())).set_observation_type_xray_intensity()
                 ma_scaled_com = ma_unscaled_phs * ma_scaled_int.as_amplitude_array().data()
-
-                self.log('Optimised B-factor Scaling Factor: {}'.format(list(scaling.optimised_values)[0]))
-            else:
-                ma_scaled_com = ma_unscaled_com
 
             assert ma_unscaled_com.is_complex_array()
             assert ma_scaled_com.is_complex_array()
@@ -1801,15 +1830,37 @@ class PanddaMultiDatasetAnalyser(Program):
             # Wilson B-factors
             # ==============================>
             dataset.meta.unscaled_wilson_b = estimate_wilson_b_factor(miller_array=ma_unscaled_com)
-            dataset.meta.scaled_wilson_b = estimate_wilson_b_factor(miller_array=ma_scaled_com)
-            self.tables.dataset_info.set_value(index=dataset.tag, col='wilson B (unscaled)', value=dataset.meta.unscaled_wilson_b)
-            self.tables.dataset_info.set_value(index=dataset.tag, col='wilson B (scaled)',   value=dataset.meta.scaled_wilson_b)
+            dataset.meta.scaled_wilson_b   = estimate_wilson_b_factor(miller_array=ma_scaled_com)
+            self.tables.dataset_info.set_value(index=dataset.tag, col='unscaled_wilson_B', value=dataset.meta.unscaled_wilson_b)
+            self.tables.dataset_info.set_value(index=dataset.tag, col='scaled_wilson_B',   value=dataset.meta.scaled_wilson_b)
 
+            self.log.bar()
         # ==============================>
         # Report
         # ==============================>
         t2 = time.time()
         self.log('\r> Structure factors extracted > Time taken: {!s} seconds'.format(int(t2-t1))+' '*30, True)
+        # ==============================>
+        # Update Z-score columns
+        # ==============================>
+        self.tables.dataset_info['unscaled_wilson_rmsd_all_z'] = scipy.stats.zscore(self.tables.dataset_info['unscaled_wilson_rmsd_all'])
+        self.tables.dataset_info['unscaled_wilson_rmsd_<4A_z'] = scipy.stats.zscore(self.tables.dataset_info['unscaled_wilson_rmsd_<4A'])
+        self.tables.dataset_info['unscaled_wilson_rmsd_>4A_z'] = scipy.stats.zscore(self.tables.dataset_info['unscaled_wilson_rmsd_>4A'])
+        if self.args.testing.perform_diffraction_data_scaling:
+            self.tables.dataset_info['scaled_wilson_rmsd_all_z'] = scipy.stats.zscore(self.tables.dataset_info['scaled_wilson_rmsd_all'])
+            self.tables.dataset_info['scaled_wilson_rmsd_<4A_z'] = scipy.stats.zscore(self.tables.dataset_info['scaled_wilson_rmsd_<4A'])
+            self.tables.dataset_info['scaled_wilson_rmsd_>4A_z'] = scipy.stats.zscore(self.tables.dataset_info['scaled_wilson_rmsd_>4A'])
+        # ==============================>
+        # Exclude from characterisation if poor quality diffraction
+        # ==============================>
+        self.log.subheading('Checking for datasets that exhibit large wilson plot RMSDs to the reference dataset')
+        pref = '' if self.args.testing.perform_diffraction_data_scaling else 'un'
+        for dataset in datasets:
+            if (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_rmsd_all_z') > self.params.excluding.max_wilson_plot_rmsd_z_score) or \
+               (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_rmsd_<4A_z') > self.params.excluding.max_wilson_plot_rmsd_z_score) or \
+               (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_rmsd_>4A_z') > self.params.excluding.max_wilson_plot_rmsd_z_score):
+                self.log('Dataset {} has a high wilson plot rmsd to the reference dataset (relative to other datasets) - excluding from characterisation'.format(dataset.tag))
+                self.datasets.all_masks().set_value(name='exclude_from_characterisation', id=dataset.tag, value=True)
 
         return None
 
@@ -1817,7 +1868,7 @@ class PanddaMultiDatasetAnalyser(Program):
         """Truncate data at the same indices across all the datasets"""
 
         self.log.bar()
-        self.log('(Scaling and) truncating reflection data', True)
+        self.log.heading('(Scaling and) truncating reflection data')
 
         # ==============================>
         # Find how many reflections are present in the reference dataset
@@ -2231,6 +2282,8 @@ class PanddaMultiDatasetAnalyser(Program):
     def select_resolution_limits(self):
         """Generate a set of resolution limits for the data analysis"""
 
+        self.log.heading('Selecting resolution limits for analysis')
+
         # ================================================>
         # Use resolution of already-loaded maps
         # ================================================>
@@ -2245,9 +2298,6 @@ class PanddaMultiDatasetAnalyser(Program):
         # ================================================>
         # Select resolution range based on input parameters
         # ================================================>
-        self.log('----------------------------------->>>')
-        self.log('Selecting resolution range for analysis')
-
         # Update the resolution limits using the resolution limits from the datasets supplied
         if self.params.analysis.dynamic_res_limits:
             self.log('Updating resolution limits based on the resolution of the loaded datasets')
@@ -2488,11 +2538,16 @@ class PanddaMultiDatasetAnalyser(Program):
     def write_output_csvs(self):
         """Write CSV file of dataset variables"""
 
+        self.log.subheading('Writing output CSVs', False, True)
+
         # Write the dataset information to csv file
         self.log.bar()
-        self.log('Writing Dataset + Dataset Map Summary CSV')
-        self.tables.dataset_info.to_csv(path_or_buf=self.file_manager.get_file('dataset_info'), index_label='dtag')
-        self.tables.dataset_map_info.to_csv(path_or_buf=self.file_manager.get_file('dataset_map_info'), index_label='dtag')
+        self.log('Writing Dataset + Dataset Map Summary CSVs')
+        self.log('\t'+self.file_manager.get_file('dataset_info'))
+        self.tables.dataset_info.dropna(axis=1, how='all').to_csv(path_or_buf=self.file_manager.get_file('dataset_info'), index_label='dtag')
+        self.log('\t'+self.file_manager.get_file('dataset_map_info'))
+        self.tables.dataset_map_info.dropna(axis=1, how='all').to_csv(path_or_buf=self.file_manager.get_file('dataset_map_info'), index_label='dtag')
+        self.log('\t'+self.file_manager.get_file('dataset_masks'))
         self.datasets.all_masks().table.to_csv(path_or_buf=self.file_manager.get_file('dataset_masks'), index_label='id')
 
         # Join the tables on the index of the main table
@@ -2503,7 +2558,8 @@ class PanddaMultiDatasetAnalyser(Program):
                 .join(self.tables.dataset_map_info, how='outer')
                 .join(self.datasets.all_masks().table[PanddaMaskNames.write_mask_names], how='outer')
         )
-        comb_tab.to_csv(path_or_buf=self.file_manager.get_file('dataset_combined_info'), index_label='dtag')
+        self.log('\t'+self.file_manager.get_file('dataset_combined_info'))
+        comb_tab.dropna(axis=1, how='all').to_csv(path_or_buf=self.file_manager.get_file('dataset_combined_info'), index_label='dtag')
 
         # Write the event data only once events have been recorded
         if len(self.tables.event_info.index):
@@ -2512,9 +2568,11 @@ class PanddaMultiDatasetAnalyser(Program):
             # Sort the event data by z-peak and write out
             sort_eve = self.tables.event_info.sort_values(by=['site_idx',self.args.results.events.order_by], ascending=[1,0])
             sort_eve = sort_eve.join(comb_tab, how='right')
+            self.log('\t'+self.file_manager.get_file('event_info'))
             sort_eve.to_csv(path_or_buf=self.file_manager.get_file('event_info'))
             # Sort the sites by number of events and write out
             sort_sit = self.tables.site_info.sort_values(by=[self.args.results.sites.order_by],ascending=[0])
+            self.log('\t'+self.file_manager.get_file('site_info'))
             sort_sit.to_csv( path_or_buf=self.file_manager.get_file('site_info'))
 
     def update_site_table(self, site_list, clear_table=True):

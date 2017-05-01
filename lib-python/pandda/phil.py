@@ -148,34 +148,6 @@ pandda
     params
         .help = "Algorithm Parameters"
     {
-        alignment
-            .help = "Settings to control the alignment of the structures"
-        {
-            method = global *local
-                .help = "How should the structures be aligned? 'global' is fast, but requires high structural conservation, whereas local is slower and accounts for structural variation"
-                .type = choice
-                .multiple = False
-        }
-        filtering
-            .help = "Settings to control when datasets are rejected from the analysis"
-        {
-            max_rmsd_to_reference = 1.5
-                .help = "Reject datasets that have a calpha rmsd of greater than this to the reference (after global alignment)"
-                .type = float
-                .multiple = False
-            max_rfree = 0.4
-                .help = 'Maximum allowed rfree for a structure (datasets above this are rejected)'
-                .type = float
-                .multiple = False
-            flags {
-                same_space_group_only = True
-                    .help = "Reject datasets that are a different spacegroup to the reference/filter dataset - NOT YET IMPLEMENTED - MUST BE SET TO TRUE"
-                    .type = bool
-                similar_models_only = False
-                    .help = "Reject datasets that have a different model composition to the reference/filter dataset. All models must have the same number and identity of atoms."
-                    .type = bool
-            }
-        }
         checks
             .help = "Checks on the mtz file data provided for each dataset"
         {
@@ -185,6 +157,14 @@ pandda
             low_resolution_completeness = 4.0
                 .help = "Check that diffraction data is 100% complete up to this resolution cutoff. Missing reflections at low resolution may seriously degrade analysis quality. Set to None to turn off this check."
                 .type = float
+        }
+        alignment
+            .help = "Settings to control the alignment of the structures"
+        {
+            method = global *local
+                .help = "How should the structures be aligned? 'global' is fast, but requires high structural conservation, whereas local is slower and accounts for structural variation"
+                .type = choice
+                .multiple = False
         }
         maps
             .help = "Settings to control how maps are generated and analysed"
@@ -216,6 +196,34 @@ pandda
             outer_mask = 6
                 .help = "Points are masked outside this distance of protein atoms"
                 .type = float
+        }
+        filtering
+            .help = "Settings to control when datasets are rejected from the analysis"
+        {
+            max_rmsd_to_reference = 1.5
+                .help = "Reject datasets that have a calpha rmsd of greater than this to the reference (after global alignment)"
+                .type = float
+                .multiple = False
+            max_rfree = 0.4
+                .help = 'Maximum allowed rfree for a structure (datasets above this are rejected)'
+                .type = float
+                .multiple = False
+            flags {
+                same_space_group_only = True
+                    .help = "Reject datasets that are a different spacegroup to the reference/filter dataset - NOT YET IMPLEMENTED - MUST BE SET TO TRUE"
+                    .type = bool
+                similar_models_only = False
+                    .help = "Reject datasets that have a different model composition to the reference/filter dataset. All models must have the same number and identity of atoms."
+                    .type = bool
+            }
+        }
+        excluding
+            .help = "Parameters to control when datasets are automatically excluded from characterisation"
+        {
+            max_wilson_plot_rmsd_z_score = 3.0
+                .help = "Maximum Z-score for RMSD of dataset diffraction wilson curve compared to the reference dataset. Z-scores calculated from RMSDs of all datasets."
+                .type = float
+                .multiple = False
         }
         analysis
             .help = "Settings to control the selection of datasets"

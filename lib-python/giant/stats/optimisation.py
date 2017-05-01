@@ -38,7 +38,26 @@ class _LeastSquaresFitter(object):
                                              evaluator = self)
         # Extract solution
         self.optimised_values = self.optimised.get_solution()
+
+        # Scaled input values
+        self.out_values = self.transform(values=self.scl_values)
+        # Calculate rmsds
+        self.unscaled_rmsd = self.rmsd_to_ref(values=self.scl_values)
+        self.scaled_rmsd = self.rmsd_to_ref(values=self.out_values)
+
         return self.optimised_values
+
+    def rmsd_to_ref(self, values, sel=None):
+        """Calculate the rmsd between a vector and the reference values"""
+        assert len(values) == len(self.ref_values)
+        if sel:
+            ref = self.ref_values.select(sel)
+            val = values.select(sel)
+        else:
+            ref = self.ref_values
+            val = values
+
+        return (ref-val).norm()/(ref.size()**0.5)
 
     def target(self, vector):
         """Target function for the simplex optimisation"""
@@ -60,6 +79,7 @@ class _LeastSquaresFitter(object):
         self.x_values = flex.double(x_values)
         self.ref_values = None
         self.scl_values = None
+        self.out_values = None
         self.weight_array = None
 
 class LinearScaling(_LeastSquaresFitter):

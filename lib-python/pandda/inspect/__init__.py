@@ -512,7 +512,7 @@ class PanddaInspector(object):
         self.gui.labels['rank_val'].set_label(str(self.site_list.rank_val))
         self.gui.labels['rank_tot'].set_label(str(self.site_list.rank_tot))
         # Update current event and dataset information
-        self.gui.labels['dtag'].set_label(str(self.current_event.dtag))
+        self.gui.labels['dtag'].set_label('<b>'+str(self.current_event.dtag)+'</b>')
         self.gui.labels['e_idx'].set_label(str(self.current_event.event_idx))
         self.gui.labels['e_1_bdc'].set_label(str(self.current_event.est_1_bdc))
         self.gui.labels['zpeak'].set_label(str(round(self.current_event.z_peak,3)))
@@ -1292,6 +1292,7 @@ class PanddaGUI(object):
         # Dataset Name
         gtk_label = gtk.Label('Dataset ID')
         gtk_value = gtk.Label('None')
+        gtk_value.set_use_markup(gtk.TRUE)
         gtk_box = gtk.EventBox(); gtk_box.add(gtk_value)
         hbox = gtk.HBox(homogeneous=True); hbox.add(gtk_label); hbox.add(gtk_box)
         frame = gtk.Frame(); frame.add(hbox)

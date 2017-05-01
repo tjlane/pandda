@@ -68,5 +68,7 @@ class IsotropicBfactorScalingFactory(object):
                                  ref_values = ref_itpl_mean_I,
                                  scl_values = new_itpl_mean_I)
 
+        lsc.scaling_b_factor = -0.5 * list(lsc.optimised_values)[0]
+
         return lsc
 
