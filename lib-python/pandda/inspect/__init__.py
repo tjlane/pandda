@@ -14,7 +14,8 @@ IMG_DIR = os.path.realpath(pandda.resources.inspect.__path__[0])
 
 
 #=========================================================================
-
+# GTK FUNCTIONS
+#=========================================================================
 
 def catchup(block=False):
     while gtk.events_pending():
@@ -40,14 +41,19 @@ def modal_msg(msg):
     d.run()
     d.destroy()
 
-
+#=========================================================================
+# COOT FUNCTIONS
 #=========================================================================
 
+def set_main_coot_molecule(i):
+    set_pointer_atom_molecule(i)
+    set_go_to_atom_molecule(i)
 
 def coot_customisation():
     set_show_symmetry_master(1)
     set_symmetry_shift_search_size(2)
     post_display_control_window()
+    post_go_to_atom_window()
     try:
         # Future-available function
         post_delete_item_dialog()
@@ -561,14 +567,14 @@ class PanddaInspector(object):
             p = read_pdb(self.current_event.fitted_link)
         else:
             p = read_pdb(self.current_event.input_model)
-        set_pointer_atom_molecule(p)
+        set_main_coot_molecule(p)
         self.coot.open_mols['p'] = p
         self.write_output_csvs()
 
     def reset_current_to_orig_model(self):
         close_molecule(self.coot.open_mols['p'])
         p = read_pdb(self.current_event.input_model)
-        set_pointer_atom_molecule(p)
+        set_main_coot_molecule(p)
         self.coot.open_mols['p'] = p
         self.write_output_csvs()
 
@@ -576,7 +582,7 @@ class PanddaInspector(object):
         if new_event is None:
             # TODO DO SOMETHING BETTER HERE TODO
             # Instead of loading new event, inform using the same model
-            modal_msg(msg='Reloading Same MODEL (Unchanged)')
+            modal_msg(msg='no new model loaded')
         else:
             self.current_event = self.coot.load_event(e=new_event)
         self.update_gui()
@@ -765,12 +771,24 @@ class PanddaMolHandler(object):
         # Re-centre camera
         set_rotation_centre(*e.nat_coords)
 
-        # 1 - Load input model or load fitted version if it exists
+        ##########
+        # MODELS
+        ##########
+
+        # Load ligand objects first - coot automatically focusses on the last
+        # loaded molecule and we want that to be the protein molecule!
+        self.ligand_index = 0
+        if e.lig_pdbs and e.lig_cifs:
+            self.open_mols['l'] = self.open_ligand(event=e, index=self.ligand_index)
+            if os.path.exists(e.fitted_link): set_mol_displayed(self.open_mols['l'], 0)
+
+        # Load input model or load fitted version if it exists
         if os.path.exists(e.fitted_link): p = read_pdb(e.fitted_link)
         else:                             p = read_pdb(e.input_model)
-        set_pointer_atom_molecule(p)
 
-        #set_last_map_contour_level_by_sigma(2)
+        ##########
+        # MAPS
+        ##########
 
         # 3 - Load z-map
         z = handle_read_ccp4_map(e.z_map, 1)
@@ -782,7 +800,13 @@ class PanddaMolHandler(object):
         set_last_map_contour_level(2*e.est_1_bdc)
         set_map_displayed(o, 1)
 
-        # More Settings
+        ##########
+        # SETTINGS AND SAVE
+        ##########
+
+        # Set the main molecule
+        set_main_coot_molecule(p)
+        # Set the main map
         set_scrollable_map(o)
         set_imol_refinement_map(o)
 
@@ -790,11 +814,6 @@ class PanddaMolHandler(object):
         self.open_mols['p'] = p
         self.open_mols['z'] = z
         self.open_mols['o'] = o
-
-        self.ligand_index = 0
-        if e.lig_pdbs and e.lig_cifs:
-            self.open_mols['l'] = self.open_ligand(event=e, index=self.ligand_index)
-            if os.path.exists(e.fitted_link): set_mol_displayed(self.open_mols['l'], 0)
 
         return e
 
