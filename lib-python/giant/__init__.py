@@ -1,6 +1,11 @@
 import os, sys
 import pkg_resources
 
+try:
+    VERSION = pkg_resources.get_distribution("panddas").version
+except:
+    VERSION = '(developer -- see setup.py file)'
+
 HEADER_TEXT = """
 ------------------------------------------------------------------>
 -         .__               __
@@ -17,3 +22,7 @@ HEADER_TEXT = """
 ------------------------------------------------------------------>
 """
 
+class module_info:
+    name        = 'giant'
+    version     = VERSION
+    header_text = HEADER_TEXT

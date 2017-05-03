@@ -20,7 +20,7 @@ from bamboo.common.path import rel_symlink
 
 from giant.jiffies import extract_params_default
 
-from pandda import welcome
+from pandda import welcome, module_info
 from pandda.phil import pandda_phil
 from pandda.analyse.classes import PanddaMultiDatasetAnalyser, PanddaMapAnalyser, PanddaDataset
 from pandda.analyse.functions import DatasetProcessor, NativeMapMaker, wrapper_run
@@ -940,7 +940,8 @@ def pandda_end(pandda):
 def pandda_analyse_main(args):
     """Run the PANDDA algorithm, using supplied args"""
 
-    working_phil = extract_params_default(master_phil=pandda_phil, args=args)
+    working_phil = extract_params_default(master_phil=pandda_phil, args=args, module_info=module_info)
+    welcome()
 
     try:
         # ============================================================================>
@@ -1011,7 +1012,6 @@ def pandda_analyse_main(args):
 
 if __name__ == '__main__':
 
-    welcome()
     pandda = pandda_analyse_main(args=sys.argv[1:])
 
 
