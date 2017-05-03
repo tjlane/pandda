@@ -18,7 +18,16 @@ from giant.xray.symmetry import get_crystal_contact_operators, apply_symmetry_op
 from giant.structure.align import align_structures_rigid, align_structures_flexible
 
 
-class ModelAndData(object):
+class _DatasetObj(object):
+
+
+    def label(self, num=-1, tag=None):
+        self.num = num
+        if tag: self.tag = str(tag)
+        return self
+
+
+class ModelAndData(_DatasetObj):
 
 
     def __init__(self, model, data):
@@ -43,11 +52,6 @@ class ModelAndData(object):
             data = ExperimentalData.from_file(filename=data_filename)
         return cls(model=model, data=data)
 
-    def label(self, num=-1, tag=None):
-        self.num = num
-        if tag: self.tag = str(tag)
-        return self
-
     def initialise_output_directory(self, dir):
         """Initialise a dataset output directory"""
         # Create a file and directory organiser
@@ -59,7 +63,7 @@ class ModelAndData(object):
         return self
 
 
-class AtomicModel(object):
+class AtomicModel(_DatasetObj):
 
 
     def __init__(self, input, hierarchy):
@@ -122,7 +126,7 @@ class CrystallographicModel(AtomicModel):
         return sym_hierarchies
 
 
-class ExperimentalData(object):
+class ExperimentalData(_DatasetObj):
 
 
     @classmethod
@@ -168,7 +172,7 @@ class XrayData(ExperimentalData):
         return extract_structure_factors(self.mtz_object(), ampl_label=columns.split(',')[0], phas_label=columns.split(',')[1])
 
 
-class ModelAndMap(object):
+class ModelAndMap(_DatasetObj):
 
 
     def __init__(self, model=None, map=None):

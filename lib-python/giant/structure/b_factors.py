@@ -84,6 +84,9 @@ def normalise_b_factors_to_z_scores(pdb_input=None, pdb_hierarchy=None, b_factor
 
     return output_h
 
+def occupancy_weighted_average_b_factor(atoms):
+    return flex.mean_weighted(atoms.extract_b(), atoms.extract_occ())
+
 def calculate_residue_group_bfactor_ratio(residue_group, hierarchy, data_table=None, rg_label=None, column_suffix=''):
     """Calculate bfactor quality metrics of the residue to surrounding residues"""
 
@@ -110,12 +113,12 @@ def calculate_residue_group_bfactor_ratio(residue_group, hierarchy, data_table=N
         near_ats = iotbx.pdb.hierarchy.af_shared_atom()
         [near_ats.extend(ag.detached_copy().atoms()) for ag in near_ags]
         # Calculate B-factors of the residue
-        res_mean_b = flex.mean_weighted(rg_sel_atoms.extract_b(), rg_sel_atoms.extract_occ())
+        res_mean_b = occupancy_weighted_average_b_factor(atoms=rg_sel_atoms)
         data_table.set_value(   index = rg_label,
                                 col   = 'Average B-factor (Residue)'+column_suffix,
                                 value = res_mean_b )
         # Calculate B-factors of the surrounding atoms
-        sch_mean_b = flex.mean_weighted(near_ats.extract_b(), near_ats.extract_occ())
+        sch_mean_b = occupancy_weighted_average_b_factor(atoms=near_ats)
         data_table.set_value(   index = rg_label,
                                 col   = 'Average B-factor (Surroundings)'+column_suffix,
                                 value = sch_mean_b )

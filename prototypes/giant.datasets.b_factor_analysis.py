@@ -1,33 +1,46 @@
 #!/usr/bin/env ccp4-python
 
 import os, sys, re, glob, shutil, copy, tempfile
-
-import libtbx.phil
-import libtbx.easy_mp
-import iotbx.pdb
+import math
 
 import mdp
 import pandas, numpy
 
-numpy.set_printoptions(threshold=numpy.nan)
+import libtbx.phil
+import libtbx.easy_mp
+import iotbx.pdb
+import mmtbx.tls.tools
+
+from scitbx.array_family import flex
 
 from bamboo.common.path import easy_directory
 from bamboo.common.command import CommandManager
 from bamboo.common.logs import Log
+from bamboo.stats.cluster import generate_group_idxs
 
+from giant.dataset import CrystallographicModel
+from giant.structure.b_factors import occupancy_weighted_average_b_factor
+from giant.structure.select import protein, backbone, sidechains
+
+import matplotlib
+matplotlib.interactive(True)
 from matplotlib import pyplot
-pyplot.interactive(0)
+#pyplot.switch_backend('agg')
+pyplot.interactive(1)
+
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d import proj3d
 
-from matplotlib.patches import FancyArrowPatch
+numpy.set_printoptions(threshold=numpy.nan)
+
+EIGHT_PI_SQ = 8*math.pi*math.pi
 
 ############################################################################
 
-PROGRAM = 'giant.datasets.tls_analysis'
+PROGRAM = 'giant.datasets.b_factor_analysis'
 
 DESCRIPTION = """
-    Analyse the TLS models of a set of related structures.
+    Analyse the variation/conservartion of B-factors (under different models) of a set of related structures.
 """
 
 ############################################################################
@@ -40,10 +53,10 @@ input {
         .help = "input pdb file"
         .multiple = True
         .type = str
-    tls_selection = None
+    tls_selections = tls_selections.params
         .help = "define the tls groups (used for all structures)"
-        .type = str
-        .multiple = True
+        .type = path
+        .multiple = False
 }
 output {
     out_dir = multi-dataset-tls-characterisation
@@ -61,25 +74,43 @@ settings {
 
 ############################################################################
 
-class Arrow3D(FancyArrowPatch):
-    def __init__(self, xs, ys, zs, *args, **kwargs):
-        FancyArrowPatch.__init__(self, (0,0), (0,0), *args, **kwargs)
-        self._verts3d = xs, ys, zs
+def extract_tls_from_pdb(pdb_file):
+    ih = iotbx.pdb.hierarchy.input(pdb_file)
+    tls_params = ih.input.extract_tls_params(ih.hierarchy)
+    return tls_params
 
-    def draw(self, renderer):
-        xs3d, ys3d, zs3d = self._verts3d
-        xs, ys, zs = proj3d.proj_transform(xs3d, ys3d, zs3d, renderer.M)
-        self.set_positions((xs[0],ys[0]),(xs[1],ys[1]))
-        FancyArrowPatch.draw(self, renderer)
+def extract_u_components(input_hierarchy=None, hierarchy=None, input=None):
+    assert input_hierarchy or (hierarchy and input)
+    if input_hierarchy:
+        hierarchy = input_hierarchy.hierarchy
+        input = input_hierarchy.input
+    else:
+        assert hierarchy and input
 
-class TLSAnalyser(object):
+    cache = hierarchy.atom_selection_cache()
+    tls_objs = input.extract_tls_params(hierarchy)
+    assert tls_objs.tls_present is True
+    tls_prms = [mmtbx.tls.tools.tlso(t=p.t, l=p.l, s=p.s, origin=p.origin) for p in tls_objs.tls_params]
+    tls_sels = [cache.selection(p.selection_string) for p in tls_objs.tls_params]
 
-    def __init__(self, pdb_file, mtz_file, out_dir, dataset_id=None, tls_selections=None):
+    u_tot = hierarchy.atoms().extract_uij()
+    u_tls = mmtbx.tls.tools.u_cart_from_tls(sites_cart=hierarchy.atoms().extract_xyz(),
+                                            selections=tls_sels, tlsos=tls_prms)
+    u_loc = u_tot - u_tls
+
+    return ADPs(hierarchy=hierarchy, u_tot=u_tot, u_tls=u_tls, u_loc=u_loc)
+
+############################################################################
+
+
+class TLSFitter(object):
+
+    def __init__(self, pdb_file, mtz_file, out_dir, tag=None, tls_selections=None):
 
         self.pdb_file = pdb_file
         self.mtz_file = mtz_file
         self.out_dir = out_dir
-        self.dataset_id = dataset_id
+        self.tag = tag
         self.tls_selections = tls_selections
         self.tls_matrices = None
 
@@ -127,7 +158,7 @@ class TLSAnalyser(object):
         cmd = CommandManager('phenix.tls')
         cmd.add_command_line_arguments(self.pdb_file)
         cmd.add_command_line_arguments('extract_tls=True')
-        cmd.add_command_line_arguments([r'selection={}'.format(s) for s in self.tls_selections if s is not None])
+        cmd.add_command_line_arguments([r'selection="{}"'.format(s) for s in self.tls_selections if s is not None])
         cmd.add_command_line_arguments('output_file_name={}'.format(self.tls_initial_pdb))
 
         cmd.print_settings()
@@ -153,8 +184,8 @@ class TLSAnalyser(object):
         cmd = CommandManager('phenix.refine')
         cmd.add_command_line_arguments(self.pdb_file, self.mtz_file)
         cmd.add_command_line_arguments('refine.strategy=individual_adp+tls')
-        cmd.add_command_line_arguments('main.number_of_macro_cycles=1')
-        cmd.add_command_line_arguments([r'refinement.refine.adp.tls={}'.format(t) for t in self.tls_selections])
+        cmd.add_command_line_arguments('main.number_of_macro_cycles=3')
+        cmd.add_command_line_arguments([r'refinement.refine.adp.tls="{}"'.format(t) for t in self.tls_selections])
         cmd.add_command_line_arguments('output.prefix={}'.format(out_pre))
 
         cmd.print_settings()
@@ -177,9 +208,7 @@ class TLSAnalyser(object):
 
     @staticmethod
     def extract_tls_from_pdb(pdb_file):
-        ih = iotbx.pdb.hierarchy.input(pdb_file)
-        tls_params = ih.input.extract_tls_params(ih.hierarchy)
-        return tls_params
+        return extract_tls_from_pdb(pdb_file)
 
     def show_tls_params(self, tls_params=None, pdb_file=None):
         if pdb_file: tls_params=self.extract_tls_from_pdb(pdb_file=pdb_file)
@@ -199,31 +228,170 @@ class TLSAnalyser(object):
         self.log(o)
 
 
-class MultiTLS(object):
+class ADPs(object):
+    def __init__(self, hierarchy, u_tot, u_tls, u_loc):
+        self.hierarchy = hierarchy
+        self.u_tot = flex.sym_mat3_double(u_tot)
+        self.u_tls = flex.sym_mat3_double(u_tls)
+        self.u_loc = flex.sym_mat3_double(u_loc)
+        self.iso_b_tot = flex.double(EIGHT_PI_SQ * numpy.mean(numpy.array(u_tot)[:,:3], axis=1))
+        self.iso_b_tls = flex.double(EIGHT_PI_SQ * numpy.mean(numpy.array(u_tls)[:,:3], axis=1))
+        self.iso_b_loc = flex.double(EIGHT_PI_SQ * numpy.mean(numpy.array(u_loc)[:,:3], axis=1))
+    def __getitem__(self, item):
+        return self.__dict__[item]
+
+
+class MultiDatasetBFactorAnalysis(object):
+
+    _BFAC_ATTRS = ['tot',       'tls',       'loc' ]
+    _BFAC_NAMES = ['total',     'tls',       'residual'  ]
+    _FILT_FUNCS = [ protein,     backbone,    sidechains ]
+    _FILT_NAMES = ['protein',   'backbone',  'sidechains']
+
+    def __init__(self, models):
+
+        self.models = models
+        self.adps = [extract_u_components(input=m.input, hierarchy=m.hierarchy) for m in self.models]
+
+        self.log = Log(verbose=True)
+
+    def write_b_factor_plots(self):
+
+        data_dict = {}
+
+        # Which atoms to look at (protein/backbone/sidechain)
+        for i_filt in range(1):
+
+            filt_func = self._FILT_FUNCS[i_filt]
+            filt_name = self._FILT_NAMES[i_filt]
+
+            self.log.heading('Calculating B-factor plots for {}'.format(filt_name))
+
+            for i_strc, (mdl, adps) in enumerate(zip(self.models, self.adps)):
+
+                sys.stdout.write('\n'*(not i_strc%50)+'>'); sys.stdout.flush()
+
+                # Which bfactors to add to structure (Total/TLS/Residual)
+                for i_bfac in range(3):
+
+                    bfac_attr = self._BFAC_ATTRS[i_bfac]
+                    bfac_name = self._BFAC_NAMES[i_bfac]
+
+                    h = mdl.hierarchy.deep_copy()
+                    h.atoms().set_b(adps['iso_b_'+bfac_attr])
+                    h.atoms().set_uij(adps['u_'+bfac_attr])
+
+                    file_name = os.path.splitext(mdl.filename)[0]+'-'+filt_name+'-'+bfac_name+'.pdb'
+
+                    self.log('Writing: {}'.format(file_name))
+                    h.write_pdb_file(file_name=file_name,
+                                     crystal_symmetry=mdl.input.crystal_symmetry())
+
+                    for chn in protein(h).chains():
+
+                        chn_h = iotbx.pdb.hierarchy.new_hierarchy_from_chain(chn)
+                        av_bs = [( rg.resseq_as_int(), occupancy_weighted_average_b_factor(rg.atoms()) ) for rg in filt_func(chn_h).residue_groups()]
+
+                        data_dict.setdefault(filt_name,{}).setdefault(chn.id,{}).setdefault(bfac_name,[]).append(av_bs)
+
+            sys.stdout.write('\n')
+
+            self.log.subheading('Generating plots')
+
+            for chn_id in sorted(data_dict[filt_name].keys()):
+
+                self.log('Writing images for function {} chain {}'.format(filt_name, chn_id))
+
+                ########################################
+
+                fig, axes = pyplot.subplots(3, sharex=True)
+
+                for ax, bfac_name in zip(axes, self._BFAC_NAMES):
+                    ax.set_title(bfac_name)
+                    for d in data_dict[filt_name][chn_id][bfac_name]:
+                        d = zip(*d)
+                        line, = ax.plot(d[0], d[1], linewidth=0.1)
+
+                axes[-1].set_xlabel('Residue Number', color='k', size=16)
+                axes[ 1].set_ylabel('Isotropic B-factor', color='k', size=16)
+                fig.set_tight_layout(True)
+                pyplot.savefig('{}-{}.png'.format(chn_id, filt_name), dpi=300)
+                pyplot.close(fig)
+
+                ########################################
+
+                fig, axes = pyplot.subplots(len(self._BFAC_NAMES)+1, sharex=True)
+
+                ax_1_3 = axes[0:len(self._BFAC_NAMES)]
+                ax_4 = axes[-1]
+                ax_4.set_title('RMS B-factor')
+
+                for ax, bfac_name in zip(ax_1_3, self._BFAC_NAMES):
+                    ax.set_title(bfac_name)
+
+                    # Collate all B-factors from the datasets
+                    all_data = []; [all_data.extend(d) for d in data_dict[filt_name][chn_id][bfac_name]]
+                    res_nums, b_factors = zip(*all_data)
+
+                    # Group B-factors by residue number and make boxplot
+                    x_vals, y_vals = zip(*[[i, [b_factors[j] for j in idxs]] for i,idxs in generate_group_idxs(res_nums)])
+                    ax.boxplot(x=y_vals, positions=x_vals, labels=x_vals, sym='')
+
+                    # Calculation the RMSD B-factor for each residue
+                    y_stds = map(numpy.std, y_vals)
+                    line, = ax_4.plot(x_vals, y_stds, linewidth=1, label=bfac_name)
+
+                axes[-1].set_xlabel('Residue Number', color='k', size=16)
+                axes[-1].set_xticks(range(min(x_vals), max(x_vals), 10))
+                axes[-1].set_xticks(range(min(x_vals), max(x_vals), 1), minor=True)
+                axes[ 1].set_ylabel('Isotropic B-factor', color='k', size=16)
+                pyplot.legend(loc='lower right',
+                              bbox_to_anchor=(0.95, 0.25),
+                              bbox_transform=pyplot.gcf().transFigure,
+                              fontsize=12,
+                              ncol=len(self._BFAC_NAMES))
+                pyplot.tight_layout()
+                pyplot.savefig('{}-{}-boxplot.png'.format(chn_id, filt_name), dpi=300)
+                pyplot.close(fig)
+
+            #pyplot.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible=False)
+            #pyplot.setp([axis_3_1.get_xticklabels()], visible=True)
+
+#        from IPython import embed; embed()
+#        raise SystemExit()
+
+
+class MultiDatasetTLSAnalysis(object):
 
     _t_name = ['T11','T22','T33','T12','T13','T23']
     _l_name = ['L11','L22','L33','L12','L13','L23']
     _s_name = ['S11','S12','S13','S21','S22','S23','S31','S32','S33']
+    _all_names = _t_name+_l_name+_s_name
 
-    def __init__(self, csv_base='tls-params-'):
+    def __init__(self, models, out_dir='tls-analysis', csv_base='tls-params-'):
 
-        self.csv_base = csv_base
+        self.out_dir = easy_directory(out_dir)
+
+        self.csv_base = os.path.join(self.out_dir, os.path.basename(csv_base))
         self.tables = {}
 
         self.log = Log(verbose=True)
 
-    def add(self, tls):
+        for m in models:
+            self.add(m)
 
-        tls_params = tls.extract_tls_from_pdb(tls.tls_refined_pdb)
+    def add(self, model):
+
+        tls_params = extract_tls_from_pdb(model.filename)
 
         for tls_fit in tls_params.tls_params:
             # Extract data table for this selection
             tls_table = self.tables.setdefault(tls_fit.selection_string, pandas.DataFrame(columns=self._t_name+self._l_name+self._s_name))
 
-            tls_table.loc[tls.dataset_id]=None
-            tls_table.loc[tls.dataset_id,self._t_name] = tls_fit.t
-            tls_table.loc[tls.dataset_id,self._l_name] = tls_fit.l
-            tls_table.loc[tls.dataset_id,self._s_name] = tls_fit.s
+            tls_table.loc[model.tag]=None
+            tls_table.loc[model.tag,self._t_name] = tls_fit.t
+            tls_table.loc[model.tag,self._l_name] = tls_fit.l
+            tls_table.loc[model.tag,self._s_name] = tls_fit.s
 
     def show(self):
         for selection in sorted(self.tables.keys()):
@@ -237,48 +405,63 @@ class MultiTLS(object):
                 csv_log.write('selection {:03d} : {}\n'.format(n, selection))
                 self.tables[selection].to_csv(self.csv_base+'selection-{:03d}'.format(n)+'.csv')
 
+    def make_plots(self):
+
+        from IPython import embed; embed()
+
+        raise SystemExit()
+
     def run_pca(self):
 
-        t = self.table.loc[:,self._t_name]
-        l = self.table.loc[:,self._l_name]
-        s = self.table.loc[:,self._s_name]
+        tls_sel_str = sorted(self.tables.keys())[0]
 
-        #self.plot_3d(s.values[:,0:3], block=False)
-        #self.plot_3d(s.values[:,3:6], block=False)
-        #self.plot_3d(s.values[:,5:8], block=False)
-        #self.plot_3d(s.values[:,[0,4,8]],block=True)
+        sel_table = self.tables[tls_sel_str]
+        sel_data = sel_table.values.astype('float64')
 
-        data = self.table.values
+        print sel_data
 
-        pca = mdp.nodes.PCANode()
-        pca.train(data)
+        pca = mdp.nodes.PCANode(reduce=True)
+        pca.train(sel_data)
         pca.stop_training()
 
-        print repr(pca)
+        # Bolt on a couple of other statistics
+        pca.d_perc = 100.0*pca.d/pca.total_variance
+        pca.component_corr_to_avg = numpy.corrcoef(pca.avg, pca.get_recmatrix())[0][1:]
 
-        print 'average: ', pca.avg
+        # Summary
+        self.log('The PCA was trained on {} TLS matrices (of {} parameters each)'.format(pca.tlen, pca.input_dim))
+        self.log('The resultant PCA is formed of {} principal components'.format(pca.output_dim))
+        self.log('...which explain {}% of the observed variance'.format(100.0*pca.explained_variance))
+        self.log('...and which individually explain')
+        self.log('\t{}%'.format('%\n\t'.join(['{:7.3f}'.format(s) for s in pca.d_perc])))
+        self.log('...of the variance.')
+        self.log.bar()
+        self.log('The average TLS parameters are')
+        self.log('\t'+'\n\t'.join(['{} : {:8.3f}'.format(*v) for v in zip(self._all_names,pca.avg.tolist()[0])]))
+        self.log.bar()
+        self.log('The correlations between the average TLS model and each of the principle components is:')
+        self.log('\t{}'.format('\n\t'.join(['{:8.3f}'.format(s) for s in pca.component_corr_to_avg])))
 
-        print 'projection matrix: '
-        print pca.get_projmatrix()
+#        print 'projection matrix: '
+#        print pca.get_projmatrix()
 
-        proj_vals = pca.execute(data)
+        proj_vals = pca.execute(sel_data)
 
         print proj_vals.shape
 
-        print pca.get_explained_variance()
-        print pca.d
+#        self.plot_bar(pca.d)
+#        self.plot_2d(proj_vals[:,:2])
 
-        self.plot_bar(pca.d)
-        self.plot_3d(proj_vals[:,:3])
-        self.plot_2d(proj_vals[:,:2])
+        from IPython import embed; embed()
 
-        help(pca)
+        #help(pca)
 
     def plot_2d(self, data, block=True):
         fig = pyplot.figure(figsize=(8,8))
         ax = fig.add_subplot(111)
         pyplot.rcParams['legend.fontsize'] = 10
         ax.plot(data[:,0], data[:,1], 'o', markersize=8, color='blue', alpha=0.5)
+        ax.set_aspect('equal')
         pyplot.show(block)
 
     def plot_3d(self, data, block=True):
@@ -286,6 +469,7 @@ class MultiTLS(object):
         ax = fig.add_subplot(111, projection='3d')
         pyplot.rcParams['legend.fontsize'] = 10
         ax.plot(data[:,0], data[:,1], data[:,2], 'o', markersize=8, color='blue', alpha=0.5)
+        ax.set_aspect('equal')
         pyplot.show(block)
 
     def plot_bar(self, vals, block=True):
@@ -296,7 +480,10 @@ class MultiTLS(object):
         pyplot.show(block)
 
 def wrapper_run(tls_fit):
-    tls_fit.log.heading('Processing: {}'.format(tls_fit.dataset_id))
+    if os.path.exists(tls_fit.tls_initial_pdb) and os.path.exists(tls_fit.tls_refined_pdb):
+        tls_fit.log('tls parameters already fitted and refined: {}'.format(tls_fit.tag))
+        return tls_fit
+    tls_fit.log.heading('Processing: {}'.format(tls_fit.tag))
     if not os.path.exists(tls_fit.tls_initial_pdb):
         pdb1 = tls_fit.initial_tls_parameters()
     if not os.path.exists(tls_fit.tls_refined_pdb):
@@ -310,43 +497,56 @@ def run(params):
 
     out_dir = easy_directory(params.output.out_dir)
 
-    if params.input.tls_selection == [None]:
-        params.input.tls_selection = None
+    if os.path.exists(params.input.tls_selections):
+        tls_selections = open(params.input.tls_selections, 'r').read().strip().split('\n')
+        log('Using existing TLS selections:')
+        log('\t'+'\n\t'.join(tls_selections))
+    else:
+        tls_selections = None
 
     all_fits = []
 
     for p in params.input.pdb:
-        print 'fitting: {}'.format(p)
-        fit = TLSAnalyser(pdb_file=p,
-                          mtz_file=p.replace('.pdb', '.mtz'),
-                          out_dir=os.path.join(out_dir,os.path.basename(os.path.splitext(p)[0])+'-tls'),
-                          dataset_id=os.path.basename(os.path.splitext(p)[0]),
-                          tls_selections=copy.copy(params.input.tls_selection))
 
-        if not params.input.tls_selection:
-            params.input.tls_selection=fit.tls_selections
+        fit = TLSFitter(pdb_file=p,
+                        mtz_file=p.replace('.pdb', '.mtz'),
+                        out_dir=os.path.join(out_dir,os.path.basename(os.path.splitext(p)[0])+'-tls'),
+                        tag=os.path.basename(os.path.splitext(p)[0]),
+                        tls_selections=tls_selections)
+
+        if tls_selections is None:
+            tls_selections=fit.tls_selections
+
+            assert not os.path.exists(params.input.tls_selections)
+            with open(params.input.tls_selections, 'w') as fh: fh.write('\n'.join(tls_selections))
 
         all_fits.append(fit)
 
     all_fits = libtbx.easy_mp.pool_map(fixed_func=wrapper_run, args=all_fits, processes=params.settings.cpus, chunksize=1)
 
-    multi_tls = MultiTLS()
+    # ===================================++>
+    # BFACTOR ANALYSIS
+    # ===================================++>
 
-    for fit in all_fits:
+    log.heading('Extracting refined structures')
+    all_models = [CrystallographicModel.from_file(f.tls_refined_pdb).label(tag=f.tag) for f in all_fits]
 
-        fit.log.heading('Results for {}'.format(fit.dataset_id))
-        fit.log.subheading('Initial Fit')
-        fit.show_tls_params(pdb_file=fit.tls_initial_pdb)
-        fit.log.subheading('Refined Fit')
-        fit.show_tls_params(pdb_file=fit.tls_refined_pdb)
+#    log.heading('Performing B-factor analysis')
+#    multi_bfa = MultiDatasetBFactorAnalysis(models=all_models)
+#    multi_bfa.write_b_factor_plots()
 
-        multi_tls.add(fit)
+    # ===================================++>
+    # TLS ANALYSIS
+    # ===================================++>
+
+    log.heading('Performing TLS analysis')
+    multi_tls = MultiDatasetTLSAnalysis(models=all_models)
 
     multi_tls.show()
     multi_tls.write()
-#    multi_tls.run_pca()
+    multi_tls.run_pca()
 
-    from IPython import embed; embed()
+
 
 ############################################################################
 
