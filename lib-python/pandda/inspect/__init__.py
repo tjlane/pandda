@@ -50,8 +50,16 @@ def set_main_coot_molecule(i):
     set_go_to_atom_molecule(i)
 
 def coot_customisation():
+    set_nomenclature_errors_on_read("ignore")
+    set_colour_map_rotation_for_map(0)
+    set_colour_map_rotation_on_read_pdb(0)
+    set_recentre_on_read_pdb(0)
     set_show_symmetry_master(1)
     set_symmetry_shift_search_size(2)
+    add_key_binding("Add ligand",  "a", lambda: solvent_ligands_gui())
+    add_key_binding("Add water",   "w", lambda : place_typed_atom_at_pointer("Water"))
+
+def post_coot_windows():
     post_display_control_window()
     post_go_to_atom_window()
     try:
@@ -59,9 +67,6 @@ def coot_customisation():
         post_delete_item_dialog()
     except:
         pass
-
-    add_key_binding("Add ligand",  "a", lambda: solvent_ligands_gui())
-    add_key_binding("Add water",   "w", lambda : place_typed_atom_at_pointer("Water"))
 
 #=========================================================================
 
@@ -252,7 +257,7 @@ class SplashScreen:
 
     def close(self):
         self.window.destroy()
-        coot_customisation()
+        post_coot_windows()
 
 
 #=========================================================================
@@ -1499,10 +1504,7 @@ if __name__=='__main__':
     #############################################################################################
 
     try:
-        set_nomenclature_errors_on_read("ignore")
-        set_colour_map_rotation_for_map(0)
-        set_colour_map_rotation_on_read_pdb(0)
-        set_recentre_on_read_pdb(0)
+        coot_customisation()
     except:
         pass
 
