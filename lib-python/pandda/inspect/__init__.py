@@ -12,6 +12,16 @@ from pandda.constants import PanddaAnalyserFilenames, PanddaInspectorFilenames, 
 import pandda.resources.inspect
 IMG_DIR = os.path.realpath(pandda.resources.inspect.__path__[0])
 
+# ANGLES FOR COLOURS
+COLOUR_YELLOW  = 20.0
+COLOUR_GREEN   = 80.0
+COLOUR_BLUE    = 200.0
+COLOUR_MAGENTA = 260.0
+
+# COLOUR FOR THE PROTEIN
+MOL_COLOUR = COLOUR_GREEN
+# COLOUR FOR THE LIGANDS
+LIG_COLOUR = COLOUR_MAGENTA
 
 #=========================================================================
 # GTK FUNCTIONS
@@ -46,16 +56,23 @@ def modal_msg(msg):
 #=========================================================================
 
 def set_main_coot_molecule(i):
+    # Have to set colour manually!
+    set_molecule_bonds_colour_map_rotation(i, MOL_COLOUR); graphics_draw()
+    # Other settings
     set_pointer_atom_molecule(i)
     set_go_to_atom_molecule(i)
+    update_go_to_atom_window_on_new_mol()
 
 def coot_customisation():
     set_nomenclature_errors_on_read("ignore")
-    set_colour_map_rotation_for_map(0)
-    set_colour_map_rotation_on_read_pdb(0)
     set_recentre_on_read_pdb(0)
     set_show_symmetry_master(1)
     set_symmetry_shift_search_size(2)
+    set_colour_map_rotation_for_map(0.0)
+    set_colour_map_rotation_on_read_pdb(0.0)
+    set_colour_map_rotation_on_read_pdb_flag(1)
+    set_colour_map_rotation_on_read_pdb_c_only_flag(1)
+
     add_key_binding("Add ligand",  "a", lambda: solvent_ligands_gui())
     add_key_binding("Add water",   "w", lambda : place_typed_atom_at_pointer("Water"))
 
@@ -790,6 +807,7 @@ class PanddaMolHandler(object):
         # Load input model or load fitted version if it exists
         if os.path.exists(e.fitted_link): p = read_pdb(e.fitted_link)
         else:                             p = read_pdb(e.input_model)
+        set_main_coot_molecule(p)
 
         ##########
         # MAPS
@@ -806,11 +824,9 @@ class PanddaMolHandler(object):
         set_map_displayed(o, 1)
 
         ##########
-        # SETTINGS AND SAVE
+        # SETTINGS AND STORE
         ##########
 
-        # Set the main molecule
-        set_main_coot_molecule(p)
         # Set the main map
         set_scrollable_map(o)
         set_imol_refinement_map(o)
@@ -860,6 +876,7 @@ class PanddaMolHandler(object):
         print 'Loading ligand {} of {}'.format(index+1, len(event.lig_pdbs))
         l_dict = read_cif_dictionary(event.lig_cifs[index])
         l = handle_read_draw_molecule_and_move_molecule_here(event.lig_pdbs[index])
+        set_molecule_bonds_colour_map_rotation(l, LIG_COLOUR)
         set_mol_displayed(l, 1)
         set_b_factor_molecule(l, 20)
         # Set the occupancy of the ligand to 2*(1-bdc)
@@ -1007,6 +1024,7 @@ class PanddaGUI(object):
         # Map buttons
         self.buttons['load-ground-state-map'].connect("clicked", lambda x: self.parent.coot.load_ground_state_map(event=self.parent.current_event))
         self.buttons['load-full-dataset-mtz'].connect("clicked", lambda x: self.parent.coot.load_full_dataset_mtz(event=self.parent.current_event))
+        self.buttons['load-original-model'].connect("clicked", lambda x: read_pdb(self.parent.current_event.input_model))
 
         # Meta Recording buttons
         self.buttons['tp'].connect("clicked",         lambda x: self.parent.set_event_log_value(col='Interesting', value=True))
@@ -1264,6 +1282,11 @@ class PanddaGUI(object):
         # ---
         b = gtk.Button('Load average map')
         self.buttons['load-ground-state-map'] = b
+        hbox_1.pack_start(b, expand=False, fill=False, padding=5)
+        # ---
+        b = gtk.Button('Load unfitted model\n(for comparison only)')
+        b.child.set_justify(gtk.JUSTIFY_CENTER)
+        self.buttons['load-original-model'] = b
         hbox_1.pack_start(b, expand=False, fill=False, padding=5)
         # ---
         hbox_1.pack_start(gtk.HBox(), expand=True, fill=False, padding=10)
