@@ -284,7 +284,7 @@ class PanddaEvent(object):
 
     FITTED_PRE = 'fitted-v'
 
-    def __init__(self, rank, info, top_dir):
+    def __init__(self, rank, info, top_dir, update_link=False):
 
         # Key for the pandas table
         self.index = info.name
@@ -312,7 +312,8 @@ class PanddaEvent(object):
         # Find the files for loading
         self.find_file_paths(top_dir=top_dir)
         # Make sure the link to the input file is up to date
-        self.update_fitted_link()
+        if update_link:
+            self.update_fitted_link()
 
     def find_file_paths(self, top_dir):
         dtag = self.dtag
@@ -426,7 +427,7 @@ class PanddaSiteTracker(object):
         self.update() # Ensure that we're up-to-date
         curr_event = self.events.iloc[self.rank_idx]
 #        print '\n\nCurrent Event:\n\n{!s}\n\n'.format(curr_event)
-        return PanddaEvent(rank=self.rank_val, info=curr_event, top_dir=self.top_dir)
+        return PanddaEvent(rank=self.rank_val, info=curr_event, top_dir=self.top_dir, update_link=self.parent.settings.update_links)
 
     #-------------------------------------------------------------------------
 
@@ -481,7 +482,9 @@ class PanddaSiteTracker(object):
 class PanddaInspector(object):
     """Main Object in pandda.inspect"""
 
-    def __init__(self, event_csv, site_csv, top_dir):
+    def __init__(self, event_csv, site_csv, top_dir, settings):
+
+        self.settings = settings
 
         self.validate_input(files=[event_csv, site_csv])
 
@@ -1527,6 +1530,9 @@ class PanddaGUI(object):
 
         return vbox_main
 
+class InspectSettings:
+    update_links = False
+
 
 if __name__=='__main__':
 
@@ -1540,6 +1546,10 @@ if __name__=='__main__':
         coot_customisation()
     except:
         pass
+
+    settings = InspectSettings()
+    if '--update-model-links' in sys.argv:
+        settings.update_links=True
 
     #############################################################################################
     #
@@ -1557,7 +1567,7 @@ if __name__=='__main__':
     #
     #############################################################################################
     splash = SplashScreen()
-    inspector = PanddaInspector(event_csv=hit_list, site_csv=site_csv, top_dir=work_dir)
+    inspector = PanddaInspector(event_csv=hit_list, site_csv=site_csv, top_dir=work_dir, settings=settings)
     inspector.start_gui()
     inspector.refresh_event()
     splash.show_menu()
