@@ -23,10 +23,10 @@ from giant.structure.b_factors import occupancy_weighted_average_b_factor
 from giant.structure.select import protein, backbone, sidechains
 
 import matplotlib
-matplotlib.interactive(True)
+matplotlib.interactive(False)
 from matplotlib import pyplot
 #pyplot.switch_backend('agg')
-pyplot.interactive(1)
+pyplot.interactive(0)
 
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d import proj3d
@@ -103,7 +103,7 @@ def extract_u_components(input_hierarchy=None, hierarchy=None, input=None):
 ############################################################################
 
 
-class TLSFitter(object):
+class TLSFitterRefiner(object):
 
     def __init__(self, pdb_file, mtz_file, out_dir, tag=None, tls_selections=None):
 
@@ -226,6 +226,45 @@ class TLSFitter(object):
             o += 'S: '+str(tls.s)+'\n'
         o += '\n'
         self.log(o)
+
+
+class RestrainedTLSModelRefiner(object):
+
+    def __init__(self, inp_pdb, inp_mtz, out_pdb='this.pdb', tls_selection_strings=None):
+
+        self.pdb = inp_pdb
+        self.mtz = inp_mtz
+        self.out = out_pdb
+        self.tls = tls_selection_strings
+
+    def refine_model(self):
+
+        out_dir = tempfile.mkdtemp(prefix='tls_refine_')
+        out_pre = os.path.join(out_dir, 'tls-refine')
+
+        self.log.heading('Refining TLS model with phenix.refine')
+        self.log('writing to output directory: {}'.format(out_dir))
+
+        cmd = CommandManager('phenix.refine')
+        cmd.add_command_line_arguments(self.pdb, self.mtz)
+        cmd.add_command_line_arguments('refine.strategy=tls')
+        cmd.add_command_line_arguments('main.number_of_macro_cycles=3')
+        cmd.add_command_line_arguments([r'refinement.refine.adp.tls="{}"'.format(t) for t in self.tls_selection_strings])
+        cmd.add_command_line_arguments('output.prefix={}'.format(out_pre))
+
+        cmd.print_settings()
+        ret_code = cmd.run()
+        cmd.write_output(out_pre+'.log')
+
+        if ret_code != 0:
+            self.log(cmd.output)
+            self.log(cmd.error)
+            raise Exception('Failed to determine refine model: {}'.format(' '.join(cmd.program)))
+
+        out_pdb = glob.glob(out_pre+'*.pdb')[0]
+
+        self.log('copying output pdb: {} -> {}'.format(out_pdb, self.out_pdb))
+        shutil.copy(out_pdb, self.out_pdb)
 
 
 class ADPs(object):
@@ -354,11 +393,33 @@ class MultiDatasetBFactorAnalysis(object):
                 pyplot.savefig('{}-{}-boxplot.png'.format(chn_id, filt_name), dpi=300)
                 pyplot.close(fig)
 
-            #pyplot.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible=False)
-            #pyplot.setp([axis_3_1.get_xticklabels()], visible=True)
+    def write_median_b_factors(self):
 
-#        from IPython import embed; embed()
-#        raise SystemExit()
+        b_factors = [a.iso_b_loc for a in self.adps]
+        b_sizes = map(len, b_factors)
+        b_factors = numpy.array(b_factors)
+
+        med_b_factors = flex.double(numpy.median(b_factors, axis=0).tolist())
+
+        g_zero = (med_b_factors>0)
+        l_zero = (med_b_factors<0)
+        med_b_factors.set_selected(l_zero, 0)
+
+        for model in self.models:
+
+            med_filename = model.filename.replace('.pdb','.median.pdb')
+
+            mdl_hierarchy = model.hierarchy.deep_copy()
+            mdl_b_facs = mdl_hierarchy.atoms().extract_b()
+            mdl_b_facs.set_selected(g_zero, 0)
+
+            mdl_hierarchy.atoms().set_b(med_b_factors+mdl_b_facs)
+            print 'Writing {}'.format(med_filename)
+            mdl_hierarchy.write_pdb_file(med_filename,
+                                         anisou=False,
+                                         crystal_symmetry=model.input.crystal_symmetry())
+
+        from IPython import embed; embed()
 
 
 class MultiDatasetTLSAnalysis(object):
@@ -417,8 +478,6 @@ class MultiDatasetTLSAnalysis(object):
 
         sel_table = self.tables[tls_sel_str]
         sel_data = sel_table.values.astype('float64')
-
-        print sel_data
 
         pca = mdp.nodes.PCANode(reduce=True)
         pca.train(sel_data)
@@ -504,15 +563,16 @@ def run(params):
     else:
         tls_selections = None
 
+    log.heading('Fitting TLS Parameters')
+
     all_fits = []
 
     for p in params.input.pdb:
 
-        fit = TLSFitter(pdb_file=p,
-                        mtz_file=p.replace('.pdb', '.mtz'),
-                        out_dir=os.path.join(out_dir,os.path.basename(os.path.splitext(p)[0])+'-tls'),
-                        tag=os.path.basename(os.path.splitext(p)[0]),
-                        tls_selections=tls_selections)
+        fit = TLSFitterRefiner(pdb_file=p, mtz_file=p.replace('.pdb', '.mtz'),
+                               out_dir=os.path.join(out_dir,os.path.basename(os.path.splitext(p)[0])+'-tls'),
+                               tag=os.path.basename(os.path.splitext(p)[0]),
+                               tls_selections=tls_selections)
 
         if tls_selections is None:
             tls_selections=fit.tls_selections
@@ -524,27 +584,29 @@ def run(params):
 
     all_fits = libtbx.easy_mp.pool_map(fixed_func=wrapper_run, args=all_fits, processes=params.settings.cpus, chunksize=1)
 
+    log.heading('Extracting models for refined structures')
+    all_models = [CrystallographicModel.from_file(f.tls_refined_pdb).label(tag=f.tag) for f in all_fits]
+    log('{} models extracted'.format(len(all_models)))
+
     # ===================================++>
     # BFACTOR ANALYSIS
     # ===================================++>
 
-    log.heading('Extracting refined structures')
-    all_models = [CrystallographicModel.from_file(f.tls_refined_pdb).label(tag=f.tag) for f in all_fits]
-
-#    log.heading('Performing B-factor analysis')
-#    multi_bfa = MultiDatasetBFactorAnalysis(models=all_models)
+    log.heading('Performing B-factor analysis')
+    multi_bfa = MultiDatasetBFactorAnalysis(models=all_models)
 #    multi_bfa.write_b_factor_plots()
+    multi_bfa.write_median_b_factors()
 
     # ===================================++>
     # TLS ANALYSIS
     # ===================================++>
 
-    log.heading('Performing TLS analysis')
-    multi_tls = MultiDatasetTLSAnalysis(models=all_models)
-
-    multi_tls.show()
-    multi_tls.write()
-    multi_tls.run_pca()
+#    log.heading('Performing TLS analysis')
+#    multi_tls = MultiDatasetTLSAnalysis(models=all_models)
+#
+#    multi_tls.show()
+#    multi_tls.write()
+#    multi_tls.run_pca()
 
 
 
