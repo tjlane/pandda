@@ -284,7 +284,7 @@ class PanddaEvent(object):
 
     FITTED_PRE = 'fitted-v'
 
-    def __init__(self, rank, info, top_dir, update_link=False):
+    def __init__(self, rank, info, top_dir):
 
         # Key for the pandas table
         self.index = info.name
@@ -311,9 +311,6 @@ class PanddaEvent(object):
         self.nat_coords = info[['x','y','z']]
         # Find the files for loading
         self.find_file_paths(top_dir=top_dir)
-        # Make sure the link to the input file is up to date
-        if update_link:
-            self.update_fitted_link()
 
     def find_file_paths(self, top_dir):
         dtag = self.dtag
@@ -348,13 +345,17 @@ class PanddaEvent(object):
     def find_current_fitted_model(self):
         """Get the most recent saved model of this protein"""
         fitted_outputs = sorted(glob.glob(os.path.join(self.model_dir, self.FITTED_PRE+'*')))
-        if fitted_outputs: return fitted_outputs[-1]
-        else:              return None
+        if fitted_outputs:
+            print 'Current models: \n\t{}'.format('\n\t'.join(fitted_outputs))
+            return fitted_outputs[-1]
+        else:
+            print 'No current models'
+            return None
 
     def find_new_fitted_model(self):
         """Get the path for the next model"""
         current = self.find_current_fitted_model()
-        print 'CURRENT: {!s}'.format(current)
+        print 'Most recent saved model: {!s}'.format(current)
         if current: last_idx = int(current.replace('.pdb','')[-4:])
         else:       last_idx = 0
         new_fitted = self.FITTED_PRE+'{:04d}.pdb'.format(last_idx+1)
@@ -376,7 +377,7 @@ class PanddaEvent(object):
         # Delete the symbolic link (or file -- shouldn't ever be a file...)
         if os.path.exists(self.fitted_link):
             os.unlink(self.fitted_link)
-        print 'Linking {!s} -> {!s}'.format(filename, self.fitted_link)
+        print 'Linking {!s} -> {!s}'.format(os.path.basename(filename), os.path.basename(self.fitted_link))
         # Create new link the most recent file
         os.symlink(os.path.basename(filename), self.fitted_link)
 
@@ -427,7 +428,7 @@ class PanddaSiteTracker(object):
         self.update() # Ensure that we're up-to-date
         curr_event = self.events.iloc[self.rank_idx]
 #        print '\n\nCurrent Event:\n\n{!s}\n\n'.format(curr_event)
-        return PanddaEvent(rank=self.rank_val, info=curr_event, top_dir=self.top_dir, update_link=self.parent.settings.update_links)
+        return PanddaEvent(rank=self.rank_val, info=curr_event, top_dir=self.top_dir)
 
     #-------------------------------------------------------------------------
 
@@ -589,6 +590,21 @@ class PanddaInspector(object):
 
         # Reset the merge button
         self.gui.buttons['merge-ligand'].child.set_text("Merge Ligand\nWith Model")
+
+    def update_all_model_links(self):
+        print '\n=====================++>\n'
+        print 'Updating ALL model links'
+        print '\n=====================++>\n'
+        assert self.site_list.at_first_event()
+        event = self.site_list.get_new_current_event()
+        assert event.rank == 1
+        for idx in range(0, self.site_list.rank_tot):
+            print '=====================++>'
+            print 'Event {} of {}'.format(event.rank, self.site_list.rank_tot)
+            event.update_fitted_link()
+            event=self.site_list.get_next()
+        assert self.site_list.at_first_event()
+        assert event.rank == 1
 
     #-------------------------------------------------------------------------
 
@@ -1530,9 +1546,37 @@ class PanddaGUI(object):
 
         return vbox_main
 
-class InspectSettings:
-    update_links = False
+class InspectFlags(object):
 
+    _flags = ['--update-model-links']
+
+    def __init__(self, args=[]):
+
+        for f in self._flags:
+            self._set_flag(f, True if f in args else False)
+
+    def _set_flag(self, flag, value):
+        self.__dict__[self._translate_flag(flag)] = value
+
+    def _get_flag(self, flag):
+        return self.__dict__[self._translate_flag(flag)]
+
+    def _translate_flag(self, flag):
+        return flag.replace('-','_').strip('_')
+
+    def print_flags(self):
+        print '\n====================++>\n'
+        print 'Possible flags:\n'
+        for f in self._flags:
+            print '\t'+f
+        print '\n====================++>\n'
+
+    def show_flags(self):
+        print '\n====================++>\n'
+        print 'Current flags:\n'
+        for f in self._flags:
+            print '\t{:30}\t{}'.format(f, self._get_flag(f))
+        print '\n====================++>\n'
 
 if __name__=='__main__':
 
@@ -1547,9 +1591,12 @@ if __name__=='__main__':
     except:
         pass
 
-    settings = InspectSettings()
-    if '--update-model-links' in sys.argv:
-        settings.update_links=True
+    flags = InspectFlags(args=sys.argv)
+    print flags.__dict__
+    flags.show_flags()
+    if '--show-options' in sys.argv:
+        flags.print_flags()
+        sys.exit()
 
     #############################################################################################
     #
@@ -1567,7 +1614,12 @@ if __name__=='__main__':
     #
     #############################################################################################
     splash = SplashScreen()
-    inspector = PanddaInspector(event_csv=hit_list, site_csv=site_csv, top_dir=work_dir, settings=settings)
+    inspector = PanddaInspector(event_csv=hit_list, site_csv=site_csv, top_dir=work_dir, settings=flags)
+
+    if flags.update_model_links:
+        inspector.update_all_model_links()
+        sys.exit()
+
     inspector.start_gui()
     inspector.refresh_event()
     splash.show_menu()
