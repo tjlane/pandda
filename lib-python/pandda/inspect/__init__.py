@@ -281,6 +281,9 @@ class SplashScreen:
 
 
 class PanddaEvent(object):
+
+    FITTED_PRE = 'fitted-v'
+
     def __init__(self, rank, info, top_dir):
 
         # Key for the pandas table
@@ -308,6 +311,8 @@ class PanddaEvent(object):
         self.nat_coords = info[['x','y','z']]
         # Find the files for loading
         self.find_file_paths(top_dir=top_dir)
+        # Make sure the link to the input file is up to date
+        self.update_fitted_link()
 
     def find_file_paths(self, top_dir):
         dtag = self.dtag
@@ -341,7 +346,7 @@ class PanddaEvent(object):
 
     def find_current_fitted_model(self):
         """Get the most recent saved model of this protein"""
-        fitted_outputs = sorted(glob.glob(os.path.join(self.model_dir, 'fitted-v*')))
+        fitted_outputs = sorted(glob.glob(os.path.join(self.model_dir, self.FITTED_PRE+'*')))
         if fitted_outputs: return fitted_outputs[-1]
         else:              return None
 
@@ -351,23 +356,28 @@ class PanddaEvent(object):
         print 'CURRENT: {!s}'.format(current)
         if current: last_idx = int(current.replace('.pdb','')[-4:])
         else:       last_idx = 0
-        new_fitted = 'fitted-v{:04d}.pdb'.format(last_idx+1)
+        new_fitted = self.FITTED_PRE+'{:04d}.pdb'.format(last_idx+1)
         return os.path.join(self.model_dir, new_fitted)
 
     def write_fitted_model(self, protein_obj):
         new_fitted = self.find_new_fitted_model()
         # Save the fitted model to this file
+        print '======================>'
+        print 'SAVING PROTEIN MOL {!s} TO {!s}'.format(protein_obj, new_fitted)
+        print '======================>'
         write_pdb_file(protein_obj, new_fitted)
-        print '======================>'
-        print 'SAVED PROTEIN MOL {!s} TO {!s}'.format(protein_obj, new_fitted)
-        print '======================>'
+        self.update_fitted_link(filename=new_fitted)
+
+    def update_fitted_link(self, filename=None):
+        if filename is None: filename=self.find_current_fitted_model()
+        # No file -- leave as is
+        if filename is None: return
+        # Delete the symbolic link (or file -- shouldn't ever be a file...)
         if os.path.exists(self.fitted_link):
-#            assert os.path.islink(self.fitted_link), 'FILE IS NOT A LINK'
-            # Delete the symbolic link
             os.unlink(self.fitted_link)
-        print 'Linking {!s} -> {!s}'.format(new_fitted, self.fitted_link)
+        print 'Linking {!s} -> {!s}'.format(filename, self.fitted_link)
         # Create new link the most recent file
-        os.symlink(os.path.basename(new_fitted), self.fitted_link)
+        os.symlink(os.path.basename(filename), self.fitted_link)
 
 
 #=========================================================================
