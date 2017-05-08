@@ -56,7 +56,7 @@ class CommandManager(object):
     def add_command_line_arguments(self, *args):
         """Add to the CMD LINE for the program"""
         for arg in args:
-            if   isinstance(arg, str):  self.cmd_line_args.extend(shlex.split(arg))
+            if   isinstance(arg, str):  self.cmd_line_args.extend([arg])#shlex.split(arg))
             elif isinstance(arg, list): self.add_command_line_arguments(*arg)
 
     def add_standard_input(self, *args):

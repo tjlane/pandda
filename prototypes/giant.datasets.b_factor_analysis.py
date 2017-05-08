@@ -1,7 +1,7 @@
 #!/usr/bin/env ccp4-python
 
-import os, sys, re, glob, shutil, copy, tempfile
-import math
+import os, sys, re, glob, shutil, copy, tempfile, gc
+import math, re
 
 import mdp
 import pandas, numpy
@@ -11,6 +11,7 @@ import libtbx.easy_mp
 import iotbx.pdb
 import mmtbx.tls.tools
 
+from libtbx.utils import Sorry, Failure
 from scitbx.array_family import flex
 
 from bamboo.common.path import easy_directory
@@ -45,7 +46,7 @@ DESCRIPTION = """
 
 ############################################################################
 
-blank_arg_prepend = {'.pdb' : 'pdb='}
+blank_arg_prepend = {'.pdb':'pdb=', '.cif':'cif='}
 
 master_phil = libtbx.phil.parse("""
 input {
@@ -53,9 +54,15 @@ input {
         .help = "input pdb file"
         .multiple = True
         .type = str
+    cif = None
+        .type = str
+        .multiple = True
     tls_selections = tls_selections.params
         .help = "define the tls groups (used for all structures)"
         .type = path
+        .multiple = False
+    labelling = filename *foldername
+        .type = choice
         .multiple = False
 }
 output {
@@ -100,18 +107,58 @@ def extract_u_components(input_hierarchy=None, hierarchy=None, input=None):
 
     return ADPs(hierarchy=hierarchy, u_tot=u_tot, u_tls=u_tls, u_loc=u_loc)
 
+def identify_tls_boundaries(tls_selections):
+
+    rgx = re.compile("chain (.*) and \(resid (.*) through (.*)\)")
+
+    dividers = {}
+
+    for sel in tls_selections:
+
+        m = rgx.findall(sel)
+
+        if not m:
+            print 'No REGEX match found: {}'.format(sel)
+            continue
+
+        assert len(m) == 1
+
+        chain, v1, v2 = m[0]
+        chain = chain.strip("'")
+        v1 = int(v1)
+        v2 = int(v2)
+        dividers.setdefault(chain, []).extend([v1,v2])
+
+    for k in dividers.keys():
+        dividers[k] = sorted(set(dividers[k]))
+        boundaries = copy.copy(dividers[k])
+        print boundaries
+        for v1,v2 in zip(dividers[k][:-1],dividers[k][1:]):
+            if abs(v2-v1)==1:
+                try: boundaries.remove(v1)
+                except: pass
+                try: boundaries.remove(v2)
+                except: pass
+                boundaries.append((v1+v2)/2.0)
+            print boundaries
+        dividers[k] = sorted(boundaries)
+
+    print dividers
+    return dividers
+
 ############################################################################
 
 
 class TLSFitterRefiner(object):
 
-    def __init__(self, pdb_file, mtz_file, out_dir, tag=None, tls_selections=None):
+    def __init__(self, pdb_file, mtz_file, out_dir, cif_files=[], tag=None, tls_selections=None):
 
         self.pdb_file = pdb_file
         self.mtz_file = mtz_file
+        self.cif_files = cif_files
         self.out_dir = out_dir
         self.tag = tag
-        self.tls_selections = tls_selections
+        self.tls_selections = []
         self.tls_matrices = None
 
         self.tls_initial_pdb = os.path.join(self.out_dir, 'initial.pdb')
@@ -120,13 +167,20 @@ class TLSFitterRefiner(object):
         self.log = Log(verbose=True)
 
         if not tls_selections:
-            self.tls_selections = self.determine_tls_groups(pdb_file=pdb_file)
+            tls_selections = self.determine_tls_groups(pdb_file=pdb_file)
+
+        # Sanitise the tls selections
+        for tls in tls_selections:
+            if tls.startswith('"') and tls.endswith('"'):
+                tls=tls[1:-1]
+            assert '\"' not in tls, 'TLS selection cannot include \": {}'.format(tls)
+            self.tls_selections.append(tls)
 
         if not os.path.exists(self.out_dir): os.mkdir(self.out_dir)
 
     def determine_tls_groups(self, pdb_file):
 
-        self.log.heading('Determining TLS groups for: {}'.format(pdb_file))
+        self.log.subheading('Determining TLS groups for: {}'.format(pdb_file))
 
         cmd = CommandManager('phenix.find_tls_groups')
         cmd.add_command_line_arguments(pdb_file)
@@ -152,11 +206,12 @@ class TLSFitterRefiner(object):
     def initial_tls_parameters(self):
         """Characterise TLS with phenix.tls"""
 
-        self.log.heading('Fitting TLS Matrices to selections')
+        self.log.subheading('Fitting TLS Matrices to selections')
         self.log('writing to output file: {}'.format(self.tls_initial_pdb))
 
         cmd = CommandManager('phenix.tls')
         cmd.add_command_line_arguments(self.pdb_file)
+        cmd.add_command_line_arguments(self.cif_files)
         cmd.add_command_line_arguments('extract_tls=True')
         cmd.add_command_line_arguments([r'selection="{}"'.format(s) for s in self.tls_selections if s is not None])
         cmd.add_command_line_arguments('output_file_name={}'.format(self.tls_initial_pdb))
@@ -178,11 +233,12 @@ class TLSFitterRefiner(object):
         out_dir = tempfile.mkdtemp(prefix='tls_refine_')
         out_pre = os.path.join(out_dir, 'tls-refine')
 
-        self.log.heading('Refining TLS model with phenix.refine')
+        self.log.subheading('Refining TLS model with phenix.refine')
         self.log('writing to output directory: {}'.format(out_dir))
 
         cmd = CommandManager('phenix.refine')
         cmd.add_command_line_arguments(self.pdb_file, self.mtz_file)
+        cmd.add_command_line_arguments(self.cif_files)
         cmd.add_command_line_arguments('refine.strategy=individual_adp+tls')
         cmd.add_command_line_arguments('main.number_of_macro_cycles=3')
         cmd.add_command_line_arguments([r'refinement.refine.adp.tls="{}"'.format(t) for t in self.tls_selections])
@@ -242,7 +298,7 @@ class RestrainedTLSModelRefiner(object):
         out_dir = tempfile.mkdtemp(prefix='tls_refine_')
         out_pre = os.path.join(out_dir, 'tls-refine')
 
-        self.log.heading('Refining TLS model with phenix.refine')
+        self.log.subheading('Refining TLS model with phenix.refine')
         self.log('writing to output directory: {}'.format(out_dir))
 
         cmd = CommandManager('phenix.refine')
@@ -294,17 +350,18 @@ class MultiDatasetBFactorAnalysis(object):
 
         self.log = Log(verbose=True)
 
-    def write_b_factor_plots(self):
+    def write_b_factor_plots(self, boundaries=None):
 
         data_dict = {}
 
         # Which atoms to look at (protein/backbone/sidechain)
-        for i_filt in range(1):
+        for i_filt in range(3):
 
             filt_func = self._FILT_FUNCS[i_filt]
             filt_name = self._FILT_NAMES[i_filt]
 
-            self.log.heading('Calculating B-factor plots for {}'.format(filt_name))
+            self.log.subheading('Calculating B-factor plots for {}'.format(filt_name))
+            self.log('Iterating through {} structures...'.format(len(self.models)))
 
             for i_strc, (mdl, adps) in enumerate(zip(self.models, self.adps)):
 
@@ -322,7 +379,6 @@ class MultiDatasetBFactorAnalysis(object):
 
                     file_name = os.path.splitext(mdl.filename)[0]+'-'+filt_name+'-'+bfac_name+'.pdb'
 
-                    self.log('Writing: {}'.format(file_name))
                     h.write_pdb_file(file_name=file_name,
                                      crystal_symmetry=mdl.input.crystal_symmetry())
 
@@ -349,11 +405,12 @@ class MultiDatasetBFactorAnalysis(object):
                     ax.set_title(bfac_name)
                     for d in data_dict[filt_name][chn_id][bfac_name]:
                         d = zip(*d)
-                        line, = ax.plot(d[0], d[1], linewidth=0.1)
-
+                        line, = ax.plot(d[0], d[1], 'b-', alpha=1.0/(1.0+5.0*math.log(len(self.models))), linewidth=1)
+                    if boundaries:
+                        [ax.axvline(x=x, ymin=0.0, ymax=1.0, linewidth=2, color='r') for x in boundaries[chn_id]]
                 axes[-1].set_xlabel('Residue Number', color='k', size=16)
                 axes[ 1].set_ylabel('Isotropic B-factor', color='k', size=16)
-                fig.set_tight_layout(True)
+                pyplot.subplots_adjust()
                 pyplot.savefig('{}-{}.png'.format(chn_id, filt_name), dpi=300)
                 pyplot.close(fig)
 
@@ -374,30 +431,44 @@ class MultiDatasetBFactorAnalysis(object):
 
                     # Group B-factors by residue number and make boxplot
                     x_vals, y_vals = zip(*[[i, [b_factors[j] for j in idxs]] for i,idxs in generate_group_idxs(res_nums)])
+                    x_labs = [str(x) if x%100==0 else '' for i,x in enumerate(x_vals)]
                     ax.boxplot(x=y_vals, positions=x_vals, labels=x_vals, sym='')
 
                     # Calculation the RMSD B-factor for each residue
                     y_stds = map(numpy.std, y_vals)
                     line, = ax_4.plot(x_vals, y_stds, linewidth=1, label=bfac_name)
 
+                    if boundaries:
+                        [ax.axvline(x=x, ymin=0.0, ymax=1.0, linewidth=2, color='r') for x in boundaries[chn_id]]
+
+                if boundaries:
+                    [ax_4.axvline(x=x, ymin=0.0, ymax=1.0, linewidth=2, color='r') for x in boundaries[chn_id]]
+
                 axes[-1].set_xlabel('Residue Number', color='k', size=16)
-                axes[-1].set_xticks(range(min(x_vals), max(x_vals), 10))
-                axes[-1].set_xticks(range(min(x_vals), max(x_vals), 1), minor=True)
+
+                x_ticks_maj = range(int(round(min(x_vals),-2)), int(round(max(x_vals),-2)+1), 100)
+                x_ticks_min = range(int(round(min(x_vals),-1)), int(round(max(x_vals),-1)+1), 10)
+                axes[-1].set_xticks(x_ticks_maj)
+                axes[-1].set_xticks(x_ticks_min, minor=True)
+                axes[-1].set_xticklabels(map(str,x_ticks_maj))
                 axes[ 1].set_ylabel('Isotropic B-factor', color='k', size=16)
-                pyplot.legend(loc='lower right',
-                              bbox_to_anchor=(0.95, 0.25),
+                pyplot.legend(loc='center right',
+                              bbox_to_anchor=(0.99, 0.25),
                               bbox_transform=pyplot.gcf().transFigure,
-                              fontsize=12,
-                              ncol=len(self._BFAC_NAMES))
-                pyplot.tight_layout()
+                              fontsize=8,
+                              ncol=1)
+                pyplot.subplots_adjust(hspace=0.4)
                 pyplot.savefig('{}-{}-boxplot.png'.format(chn_id, filt_name), dpi=300)
                 pyplot.close(fig)
 
     def write_median_b_factors(self):
 
-        b_factors = [a.iso_b_loc for a in self.adps]
-        b_sizes = map(len, b_factors)
+        b_factors = [numpy.array(a.iso_b_loc) for a in self.adps]
+        b_sizes = set(map(len, b_factors))
         b_factors = numpy.array(b_factors)
+
+        if len(b_sizes) > 1:
+            raise Sorry('Structures have different numbers of atoms -- cannot proceed. Sizes: {}'.format(b_sizes))
 
         med_b_factors = flex.double(numpy.median(b_factors, axis=0).tolist())
 
@@ -428,6 +499,11 @@ class MultiDatasetTLSAnalysis(object):
     _l_name = ['L11','L22','L33','L12','L13','L23']
     _s_name = ['S11','S12','S13','S21','S22','S23','S31','S32','S33']
     _all_names = _t_name+_l_name+_s_name
+
+    pca_groups = [('T',   _t_name),
+                  ('L',   _l_name),
+                  ('S',   _s_name),
+                  ('TLS', _all_names)]
 
     def __init__(self, models, out_dir='tls-analysis', csv_base='tls-params-'):
 
@@ -474,46 +550,53 @@ class MultiDatasetTLSAnalysis(object):
 
     def run_pca(self):
 
-        tls_sel_str = sorted(self.tables.keys())[0]
+        # Iterate through the different TLS selections
+        for tls_sel_str in sorted(self.tables.keys()):
 
-        sel_table = self.tables[tls_sel_str]
-        sel_data = sel_table.values.astype('float64')
+            sel_table = self.tables[tls_sel_str]
 
-        pca = mdp.nodes.PCANode(reduce=True)
-        pca.train(sel_data)
-        pca.stop_training()
+            # Analyse different parts of the TLS parameterisation
+            for group_name, group_sel in self.pca_groups:
 
-        # Bolt on a couple of other statistics
-        pca.d_perc = 100.0*pca.d/pca.total_variance
-        pca.component_corr_to_avg = numpy.corrcoef(pca.avg, pca.get_recmatrix())[0][1:]
+                self.log.subheading('{}   -   ({})'.format(group_name, ','.join(group_sel)))
 
-        # Summary
-        self.log('The PCA was trained on {} TLS matrices (of {} parameters each)'.format(pca.tlen, pca.input_dim))
-        self.log('The resultant PCA is formed of {} principal components'.format(pca.output_dim))
-        self.log('...which explain {}% of the observed variance'.format(100.0*pca.explained_variance))
-        self.log('...and which individually explain')
-        self.log('\t{}%'.format('%\n\t'.join(['{:7.3f}'.format(s) for s in pca.d_perc])))
-        self.log('...of the variance.')
-        self.log.bar()
-        self.log('The average TLS parameters are')
-        self.log('\t'+'\n\t'.join(['{} : {:8.3f}'.format(*v) for v in zip(self._all_names,pca.avg.tolist()[0])]))
-        self.log.bar()
-        self.log('The correlations between the average TLS model and each of the principle components is:')
-        self.log('\t{}'.format('\n\t'.join(['{:8.3f}'.format(s) for s in pca.component_corr_to_avg])))
+                sel_data = sel_table[group_sel].values.astype('float64')
 
-#        print 'projection matrix: '
-#        print pca.get_projmatrix()
+                pca = mdp.nodes.PCANode(reduce=True)
+                pca.train(sel_data)
+                pca.stop_training()
 
-        proj_vals = pca.execute(sel_data)
+                # Bolt on a couple of other statistics
+                pca.d_perc = 100.0*pca.d/pca.total_variance
+                pca.component_corr_to_avg = numpy.corrcoef(pca.avg, pca.get_recmatrix())[0][1:]
 
-        print proj_vals.shape
+                # Summary
+                self.log('The PCA was trained on {} {} matrices (of {} parameters each)'.format(pca.tlen, group_name, pca.input_dim))
+                self.log('The resultant PCA is formed of {} principal components'.format(pca.output_dim))
+                self.log('...which explain {}% of the observed variance'.format(100.0*pca.explained_variance))
+                self.log('...and which individually explain')
+                self.log('\t{}'.format('\n\t'.join(['{:7.3f}\t({:7.3f}%)'.format(v,p) for v,p in zip(pca.d,pca.d_perc)])))
+                self.log('...of the variance.')
+                self.log.bar()
+                self.log('The average TLS parameters are')
+                self.log('\t'+'\n\t'.join(['{} : {:8.3f}'.format(*v) for v in zip(group_sel,pca.avg.tolist()[0])]))
+                self.log.bar()
+                self.log('The correlations between the average TLS model and each of the principle components is:')
+                self.log('\t{}'.format('\n\t'.join(['{:8.3f}'.format(s) for s in pca.component_corr_to_avg])))
 
-#        self.plot_bar(pca.d)
-#        self.plot_2d(proj_vals[:,:2])
+        #        print 'projection matrix: '
+        #        print pca.get_projmatrix()
 
-        from IPython import embed; embed()
+                proj_vals = pca.execute(sel_data)
 
-        #help(pca)
+                print proj_vals.shape
+
+        #        self.plot_bar(pca.d)
+        #        self.plot_2d(proj_vals[:,:2])
+
+                from IPython import embed; embed()
+
+                #help(pca)
 
     def plot_2d(self, data, block=True):
         fig = pyplot.figure(figsize=(8,8))
@@ -569,9 +652,16 @@ def run(params):
 
     for p in params.input.pdb:
 
-        fit = TLSFitterRefiner(pdb_file=p, mtz_file=p.replace('.pdb', '.mtz'),
-                               out_dir=os.path.join(out_dir,os.path.basename(os.path.splitext(p)[0])+'-tls'),
-                               tag=os.path.basename(os.path.splitext(p)[0]),
+        if params.input.labelling == 'foldername':
+            tag = os.path.basename(os.path.dirname(p))
+        elif params.input.labelling == 'filename':
+            tag = os.path.basename(os.path.splitext(p)[0])
+
+        fit = TLSFitterRefiner(pdb_file=p,
+                               mtz_file=p.replace('.pdb', '.mtz'),
+                               cif_files=params.input.cif,
+                               out_dir=os.path.join(out_dir,tag+'-tls'),
+                               tag=tag,
                                tls_selections=tls_selections)
 
         if tls_selections is None:
@@ -584,9 +674,24 @@ def run(params):
 
     all_fits = libtbx.easy_mp.pool_map(fixed_func=wrapper_run, args=all_fits, processes=params.settings.cpus, chunksize=1)
 
+    tls_boundaries = identify_tls_boundaries(tls_selections)
+
     log.heading('Extracting models for refined structures')
     all_models = [CrystallographicModel.from_file(f.tls_refined_pdb).label(tag=f.tag) for f in all_fits]
     log('{} models extracted'.format(len(all_models)))
+
+    # ===================================++>
+    # FILTERING
+    # ===================================++>
+    reject = []
+    for m in all_models:
+        if not m.hierarchy.is_similar_hierarchy(all_models[0].hierarchy):
+            print '{} is not the same hierarchy as the first model'.format(m.tag)
+            reject.append(m)
+    all_models = [m for m in all_models if m not in reject]
+    log('{} models after filtering'.format(len(all_models)))
+    if len(all_models) == 1:
+        print 'Only one model after filtering -- cannot proceed'
 
     # ===================================++>
     # BFACTOR ANALYSIS
@@ -594,19 +699,19 @@ def run(params):
 
     log.heading('Performing B-factor analysis')
     multi_bfa = MultiDatasetBFactorAnalysis(models=all_models)
-#    multi_bfa.write_b_factor_plots()
+    multi_bfa.write_b_factor_plots(boundaries=tls_boundaries)
     multi_bfa.write_median_b_factors()
 
     # ===================================++>
     # TLS ANALYSIS
     # ===================================++>
 
-#    log.heading('Performing TLS analysis')
-#    multi_tls = MultiDatasetTLSAnalysis(models=all_models)
-#
+    log.heading('Performing TLS analysis')
+    multi_tls = MultiDatasetTLSAnalysis(models=all_models)
+
 #    multi_tls.show()
-#    multi_tls.write()
-#    multi_tls.run_pca()
+    multi_tls.write()
+    multi_tls.run_pca()
 
 
 
