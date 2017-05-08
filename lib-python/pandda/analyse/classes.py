@@ -24,6 +24,7 @@ from bamboo.common.holders import HolderList
 
 from bamboo.plot import bar
 from bamboo.maths import round_no_fail
+from bamboo.stats import modified_z_scores
 
 from giant.dataset import ModelAndData, ElectronDensityMap
 from giant.manager import Program
@@ -281,22 +282,24 @@ class PanddaMultiDatasetAnalyser(Program):
         # Dataset summary graphs
         # ================================================>
         fm.add_dir(dir_name='dataset_summary_graphs', dir_tag='d_graphs', top_dir_tag='analyses', create=False, exists=False)
-        fm.add_file(file_name='dataset_resolutions.png',           file_tag='d_resolutions',           dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_rfactors.png',              file_tag='d_rfactors',              dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_global_rmsd_to_ref.png',    file_tag='d_global_rmsd_to_ref',    dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_cell_axes.png',             file_tag='d_cell_axes',             dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_cell_angles.png',           file_tag='d_cell_angles',           dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_cell_volumes.png',          file_tag='d_cell_volumes',          dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_unscaled_wilson_plots.png', file_tag='d_unscaled_wilson_plots', dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_unscaled_wilson_rmsds.png', file_tag='d_unscaled_wilson_rmsds', dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_scaled_wilson_plots.png',   file_tag='d_scaled_wilson_plots',   dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_scaled_wilson_rmsds.png',   file_tag='d_scaled_wilson_rmsds',   dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_resolutions.png',              file_tag='d_resolutions',              dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_rfactors.png',                 file_tag='d_rfactors',                 dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_global_rmsd_to_ref.png',       file_tag='d_global_rmsd_to_ref',       dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_cell_axes.png',                file_tag='d_cell_axes',                dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_cell_angles.png',              file_tag='d_cell_angles',              dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_cell_volumes.png',             file_tag='d_cell_volumes',             dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_unscaled_wilson_plots.png',    file_tag='d_unscaled_wilson_plots',    dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_unscaled_wilson_rmsds.png',    file_tag='d_unscaled_wilson_rmsds',    dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_unscaled_wilson_ln_rmsds.png', file_tag='d_unscaled_wilson_ln_rmsds', dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_scaled_wilson_plots.png',      file_tag='d_scaled_wilson_plots',      dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_scaled_wilson_rmsds.png',      file_tag='d_scaled_wilson_rmsds',      dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_scaled_wilson_ln_rmsds.png',   file_tag='d_scaled_wilson_ln_rmsds',   dir_tag='d_graphs')
         # ================================================>
         # Map analysis graphs
         # ================================================>
         fm.add_dir(dir_name='map_analysis_summary_graphs', dir_tag='m_graphs', top_dir_tag='analyses', create=False, exists=False)
-        fm.add_file(file_name='{}A-truncated_data_resolutions.png', file_tag='dataset_res_hist',       dir_tag='m_graphs')
-        fm.add_file(file_name='{}A-truncated_data_wilson_plot.png', file_tag='dataset_wilson_plot',    dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-truncated_data_resolutions.png', file_tag='truncated_res_hist',     dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-truncated_data_wilson_plot.png', file_tag='truncated_wilson_plot',  dir_tag='m_graphs')
         fm.add_file(file_name='{}A-reference_map_distribution.png', file_tag='ref_map_dist',           dir_tag='m_graphs')
         fm.add_file(file_name='{}A-reference_v_mean_unsorted.png',  file_tag='ref_v_mean_map_unsort',  dir_tag='m_graphs')
         fm.add_file(file_name='{}A-reference_v_mean_sorted.png',    file_tag='ref_v_mean_map_sort',    dir_tag='m_graphs')
@@ -1315,19 +1318,25 @@ class PanddaMultiDatasetAnalyser(Program):
             # Graphs
             # ==============================>
             dataset.file_manager.add_dir(dir_name='graphs', dir_tag='graphs', top_dir_tag='root')
-            dataset.file_manager.add_file(file_name=p.s_map_png.format(dataset.tag),                          file_tag='s_map_png',                        dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.d_mean_map_png.format(dataset.tag),                     file_tag='d_mean_map_png',                   dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.z_map_naive_png.format(dataset.tag),                    file_tag='z_map_naive_png',                  dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.z_map_naive_norm_png.format(dataset.tag),               file_tag='z_map_naive_normalised_png',       dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.z_map_uncertainty_png.format(dataset.tag),              file_tag='z_map_uncertainty_png',            dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.z_map_uncertainty_norm_png.format(dataset.tag),         file_tag='z_map_uncertainty_normalised_png', dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.z_map_corrected_png.format(dataset.tag),                file_tag='z_map_corrected_png',              dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.z_map_corrected_norm_png.format(dataset.tag),           file_tag='z_map_corrected_normalised_png',   dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.z_map_qq_plot_png.format(dataset.tag),                  file_tag='z_map_qq_plot_png',                dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.bdc_est_png.format(dataset.tag, '{!s}'),                file_tag='bdc_est_png',                      dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.unc_qqplot_png.format(dataset.tag),                     file_tag='unc_qqplot_png',                   dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.obs_qqplot_sorted_png.format(dataset.tag),              file_tag='obs_qqplot_sorted_png',            dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.obs_qqplot_unsorted_png.format(dataset.tag),            file_tag='obs_qqplot_unsorted_png',          dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.s_map_png.format(dataset.tag),                   file_tag='s_map_png',                         dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.d_mean_map_png.format(dataset.tag),              file_tag='d_mean_map_png',                    dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_naive_png.format(dataset.tag),             file_tag='z_map_naive_png',                   dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_naive_norm_png.format(dataset.tag),        file_tag='z_map_naive_normalised_png',        dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_uncertainty_png.format(dataset.tag),       file_tag='z_map_uncertainty_png',             dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_uncertainty_norm_png.format(dataset.tag),  file_tag='z_map_uncertainty_normalised_png',  dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_corrected_png.format(dataset.tag),         file_tag='z_map_corrected_png',               dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_corrected_norm_png.format(dataset.tag),    file_tag='z_map_corrected_normalised_png',    dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_qq_plot_png.format(dataset.tag),           file_tag='z_map_qq_plot_png',                 dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.bdc_est_png.format(dataset.tag, '{!s}'),         file_tag='bdc_est_png',                       dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.unc_qqplot_png.format(dataset.tag),              file_tag='unc_qqplot_png',                    dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.obs_qqplot_sorted_png.format(dataset.tag),       file_tag='obs_qqplot_sorted_png',             dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.obs_qqplot_unsorted_png.format(dataset.tag),     file_tag='obs_qqplot_unsorted_png',           dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.wilson_plot.format(dataset.tag),                 file_tag='wilson_plot_png',                   dir_tag='graphs')
+            # ==============================>
+            # HTML
+            # ==============================>
+            dataset.file_manager.add_dir(dir_name='html', dir_tag='html', top_dir_tag='root')
+            dataset.file_manager.add_file(file_name=dataset.tag+'.html', file_tag='dataset_html', dir_tag='html')
             # ==============================>
             # Scripts
             # ==============================>
@@ -1799,6 +1808,9 @@ class PanddaMultiDatasetAnalyser(Program):
             self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_rmsd_<4A', numpy.round(scaling.rmsd_to_ref(values=scaling.scl_values, sel=high_res_sel),3))
             self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_rmsd_>4A', numpy.round(scaling.rmsd_to_ref(values=scaling.scl_values, sel=low_res_sel),3))
             self.log('RMSD to reference dataset: (before) {}'.format(numpy.round(scaling.unscaled_rmsd,3)))
+            # Log the scaled log-rmsd values
+            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_ln_rmsd', numpy.round(scaling.unscaled_ln_rmsd,3))
+            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_ln_dev',  numpy.round(scaling.unscaled_ln_dev,3))
 
             # ==============================>
             # Scale data to reference
@@ -1810,11 +1822,15 @@ class PanddaMultiDatasetAnalyser(Program):
                 # Report values
                 self.log('RMSD to reference dataset: (after)  {}'.format(numpy.round(scaling.scaled_rmsd,3)))
                 self.log('Optimised B-factor Scaling Factor: {} ({})'.format(numpy.round(scaling.scaling_b_factor,3), 'sharpened' if scaling.scaling_b_factor<0 else 'blurred'))
-                # Log scaled rmsds values
+                # Log the scaling
                 self.tables.dataset_info.set_value(dataset.tag, 'applied_b_factor_scaling', numpy.round(scaling.scaling_b_factor,3))
-                self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_all',   numpy.round(scaling.scaled_rmsd,3))
-                self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_<4A',   numpy.round(scaling.rmsd_to_ref(values=scaling.out_values, sel=high_res_sel),3))
-                self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_>4A',   numpy.round(scaling.rmsd_to_ref(values=scaling.out_values, sel=low_res_sel),3))
+                # Log the scaled rmsd values
+                self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_all', numpy.round(scaling.scaled_rmsd,3))
+                self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_<4A', numpy.round(scaling.rmsd_to_ref(values=scaling.out_values, sel=high_res_sel),3))
+                self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_>4A', numpy.round(scaling.rmsd_to_ref(values=scaling.out_values, sel=low_res_sel),3))
+                # Log the scaled log-rmsd values
+                self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_ln_rmsd', numpy.round(scaling.scaled_ln_rmsd,3))
+                self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_ln_dev',  numpy.round(scaling.scaled_ln_dev,3))
                 # Apply scaling to diffraction data
                 scaling.new_x_values(x_values=ma_unscaled_int.d_star_sq().data())
                 ma_scaled_int = ma_unscaled_int.array(data=scaling.transform(ma_unscaled_int.data())).set_observation_type_xray_intensity()
@@ -1843,13 +1859,17 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Update Z-score columns
         # ==============================>
-        self.tables.dataset_info['unscaled_wilson_rmsd_all_z'] = scipy.stats.zscore(self.tables.dataset_info['unscaled_wilson_rmsd_all'])
-        self.tables.dataset_info['unscaled_wilson_rmsd_<4A_z'] = scipy.stats.zscore(self.tables.dataset_info['unscaled_wilson_rmsd_<4A'])
-        self.tables.dataset_info['unscaled_wilson_rmsd_>4A_z'] = scipy.stats.zscore(self.tables.dataset_info['unscaled_wilson_rmsd_>4A'])
+        self.tables.dataset_info['unscaled_wilson_rmsd_all_z'] = modified_z_scores(self.tables.dataset_info['unscaled_wilson_rmsd_all'])
+        self.tables.dataset_info['unscaled_wilson_rmsd_<4A_z'] = modified_z_scores(self.tables.dataset_info['unscaled_wilson_rmsd_<4A'])
+        self.tables.dataset_info['unscaled_wilson_rmsd_>4A_z'] = modified_z_scores(self.tables.dataset_info['unscaled_wilson_rmsd_>4A'])
+        self.tables.dataset_info['unscaled_wilson_ln_rmsd_z'] = modified_z_scores(self.tables.dataset_info['unscaled_wilson_ln_rmsd'])
+        self.tables.dataset_info['unscaled_wilson_ln_dev_z']  = modified_z_scores(self.tables.dataset_info['unscaled_wilson_ln_dev'])
         if self.args.testing.perform_diffraction_data_scaling:
-            self.tables.dataset_info['scaled_wilson_rmsd_all_z'] = scipy.stats.zscore(self.tables.dataset_info['scaled_wilson_rmsd_all'])
-            self.tables.dataset_info['scaled_wilson_rmsd_<4A_z'] = scipy.stats.zscore(self.tables.dataset_info['scaled_wilson_rmsd_<4A'])
-            self.tables.dataset_info['scaled_wilson_rmsd_>4A_z'] = scipy.stats.zscore(self.tables.dataset_info['scaled_wilson_rmsd_>4A'])
+            self.tables.dataset_info['scaled_wilson_rmsd_all_z'] = modified_z_scores(self.tables.dataset_info['scaled_wilson_rmsd_all'])
+            self.tables.dataset_info['scaled_wilson_rmsd_<4A_z'] = modified_z_scores(self.tables.dataset_info['scaled_wilson_rmsd_<4A'])
+            self.tables.dataset_info['scaled_wilson_rmsd_>4A_z'] = modified_z_scores(self.tables.dataset_info['scaled_wilson_rmsd_>4A'])
+            self.tables.dataset_info['scaled_wilson_ln_rmsd_z'] = modified_z_scores(self.tables.dataset_info['scaled_wilson_ln_rmsd'])
+            self.tables.dataset_info['scaled_wilson_ln_dev_z']  = modified_z_scores(self.tables.dataset_info['scaled_wilson_ln_dev'])
         # ==============================>
         # Exclude from characterisation if poor quality diffraction
         # ==============================>
@@ -1858,7 +1878,9 @@ class PanddaMultiDatasetAnalyser(Program):
         for dataset in datasets:
             if (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_rmsd_all_z') > self.params.excluding.max_wilson_plot_rmsd_z_score) or \
                (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_rmsd_<4A_z') > self.params.excluding.max_wilson_plot_rmsd_z_score) or \
-               (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_rmsd_>4A_z') > self.params.excluding.max_wilson_plot_rmsd_z_score):
+               (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_rmsd_>4A_z') > self.params.excluding.max_wilson_plot_rmsd_z_score) or \
+               (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_ln_rmsd_z') > self.params.excluding.max_wilson_plot_rmsd_z_score)  or \
+               (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_ln_dev_z')  > self.params.excluding.max_wilson_plot_rmsd_z_score):
                 self.log('Dataset {} has a high wilson plot rmsd to the reference dataset (relative to other datasets) - excluding from characterisation'.format(dataset.tag))
                 self.datasets.all_masks().set_value(name='exclude_from_characterisation', id=dataset.tag, value=True)
 

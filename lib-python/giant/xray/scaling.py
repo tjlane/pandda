@@ -1,5 +1,8 @@
-from scitbx.math import scale_curves
+import numpy
+
+from scitbx.math import scale_curves, approx_equal_relatively
 from scitbx.array_family import flex
+from scitbx.python_utils.robust_statistics import percentile
 from mmtbx.scaling import absolute_scaling
 
 from giant.stats.optimisation import ExponentialScaling
@@ -43,7 +46,7 @@ class IsotropicBfactorScalingFactory(object):
                                                      n_bins=n_bins,
                                                      n_term=n_term)
 
-    def calculate_scaling(self, miller_array):
+    def calculate_scaling(self, miller_array, convergence_crit_perc=0.05, convergence_reject_perc=99, max_iter=20):
         """Calculate the scaling between two arrays"""
 
         # Convert to intensities and extract d_star_sq
@@ -63,12 +66,46 @@ class IsotropicBfactorScalingFactory(object):
                                                                 x_array=self.ref_kernel.d_star_sq_array,
                                                                 y_array=self.ref_kernel.mean_I_array)
 
-        # Run optimisation on the linear scaling
-        lsc = ExponentialScaling(x_values = interpolator.target_x,
-                                 ref_values = ref_itpl_mean_I,
-                                 scl_values = new_itpl_mean_I)
+        # Initalise convergence loop - begin by scaling over all points
+        selection = flex.bool(self._npoints, True)
+        # Set initial scale factor to small value
+        curr_b = 1e-6
+        # Percent change between iterations - convergence when delta <convergence_criterion
+        n_iter = 0
+        while n_iter < max_iter:
+            print 'ITER: '+str(n_iter)
+            # Run optimisation on the linear scaling
+            lsc = ExponentialScaling(x_values = interpolator.target_x,
+                                     ref_values = ref_itpl_mean_I,
+                                     scl_values = new_itpl_mean_I,
+                                     weights = selection.as_double())
+            # Calculate scaling B-factor
+            lsc.scaling_b_factor = -0.5 * list(lsc.optimised_values)[0]
+            # Break if fitted to 0
+            if approx_equal_relatively(0.0, lsc.scaling_b_factor, 1e-6):
+                break
+            # Calculate percentage change
+            print 'Curr/New: '+str(curr_b)+'\t'+str(lsc.scaling_b_factor)
+            delta = abs((curr_b-lsc.scaling_b_factor)/curr_b)
+            print 'Delta: '+str(delta)
+            if delta < convergence_crit_perc: break
+            # Update selection
+            print 'Curr Selection Size: '+str(sum(selection))
+            abs_diffs = flex.abs(lsc.ref_values-lsc.out_values)
+            sel_diffs = abs_diffs.select(selection)
+            rej_val = numpy.percentile(sel_diffs, convergence_reject_perc)
+            print 'Percentile: '+str(convergence_reject_perc)+'\t'+str(rej_val)
+            selection.set_selected(abs_diffs>rej_val, False)
+            print 'New Selection Size: '+str(sum(selection))
+            # Update loop params
+            curr_b = lsc.scaling_b_factor
+            n_iter += 1
 
-        lsc.scaling_b_factor = -0.5 * list(lsc.optimised_values)[0]
+        lsc.unscaled_ln_rmsd = (flex.log(lsc.ref_values)-flex.log(lsc.scl_values)).norm()/(lsc.ref_values.size()**0.5)
+        lsc.scaled_ln_rmsd   = (flex.log(lsc.ref_values)-flex.log(lsc.out_values)).norm()/(lsc.ref_values.size()**0.5)
+
+        lsc.unscaled_ln_dev = flex.sum(flex.abs(flex.log(lsc.ref_values)-flex.log(lsc.scl_values)))
+        lsc.scaled_ln_dev   = flex.sum(flex.abs(flex.log(lsc.ref_values)-flex.log(lsc.out_values)))
 
         return lsc
 

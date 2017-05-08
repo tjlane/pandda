@@ -217,6 +217,7 @@ def pandda_main_loop(pandda):
     # ============================================================================>
     pandda.write_output_csvs()
     analyse_graphs.write_dataset_summary_graphs(pandda)
+    analyse_graphs.write_individual_dataset_plots(pandda=pandda, datasets=pandda.datasets.all())
     analyse_html.write_initial_html(pandda)
 
     # ============================================================================>
@@ -413,10 +414,6 @@ def pandda_main_loop(pandda):
                                        args     = pandda.args,
                                        verbose  = pandda.settings.verbose)
                 raise SystemExit('Calculating first mean map only: Exiting')
-            # ============================================================================>
-            # Plot the reference dataset map against the mean map (sanity check)
-            # ============================================================================>
-            analyse_graphs.write_map_analyser_reference_dataset_graphs(pandda=pandda, map_analyser=map_analyser)
             # ============================================================================>
             # Calculate the uncertainty of all loaded maps (needs the mean map to have been calculated)
             # ============================================================================>
@@ -721,11 +718,15 @@ def pandda_main_loop(pandda):
         #####
         # ============================================================================>
         if pandda.settings.plot_graphs:
-            pandda.log.heading('Writing Statistical Maps Summary'.format(cut_resolution))
+            pandda.log.subheading('Writing statistical map analysis summary graphs and HTML pages')
+            analyse_graphs.write_map_analyser_reference_dataset_graphs(pandda=pandda, map_analyser=map_analyser)
             analyse_graphs.write_map_analyser_graphs(pandda=pandda, resolution=cut_resolution,
                                                      analysis_mask_name=analysis_mask_name,
                                                      building_mask_name=building_mask_name)
             analyse_html.write_map_analyser_html(pandda=pandda, resolution=cut_resolution)
+            pandda.log.subheading('Writing dataset analysis summary HTML pages')
+            analyse_html.write_datasets_htmls(pandda=pandda, resolution=cut_resolution,
+                                              datasets=pandda.datasets.mask(mask_name=analysis_mask_name))
 
         # ============================================================================>
         #####

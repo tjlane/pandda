@@ -24,6 +24,21 @@ def failure_graph(title):
     pyplot.title('Failed to make {}'.format( title ))
     return fig
 
+#################################
+
+def get_wilson_plot_vals(miller_array):
+    """Get the atuomatic wilson plot values for an array"""
+    # Create binning - just use the auto-binning for each dataset
+    binner = miller_array.setup_binner(auto_binning=True)
+    # Create the wilson plot
+    binned = miller_array.wilson_plot(use_binning=True)
+    x_bin_cent = binner.bin_centers(1)
+    y_bin_data = binned.data[1:-1]
+    assert len(x_bin_cent) == len(y_bin_data)
+    return numpy.power(x_bin_cent,2), numpy.log(y_bin_data)
+
+#################################
+
 def map_value_distribution(f_name, plot_vals, plot_normal=False):
     """Plot histogram of values, with optional normal distribution"""
     from scitbx.math.distributions import normal_distribution
@@ -43,7 +58,8 @@ def map_value_distribution(f_name, plot_vals, plot_normal=False):
         pyplot.plot(obs_x, obs_y, c='g', ls='-', marker='o')
     pyplot.xlabel('Map value')
     pyplot.ylabel('Density')
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust()
     pyplot.savefig(f_name)
     pyplot.close(fig)
 
@@ -57,7 +73,8 @@ def qq_plot_against_normal(f_name, plot_vals):
     pyplot.plot(sorted(plot_vals), expected_vals, 'go-')
     pyplot.xlabel('Observed quantiles')
     pyplot.ylabel('Theoretical quantiles')
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust()
     pyplot.savefig(f_name)
     pyplot.close(fig)
 
@@ -69,7 +86,8 @@ def mean_obs_scatter(f_name, mean_vals, obs_vals):
     pyplot.plot(mean_vals, obs_vals, 'go')
     pyplot.xlabel('Mean map value')
     pyplot.ylabel('Dataset map value')
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust()
     pyplot.savefig(f_name)
     pyplot.close(fig)
 
@@ -81,7 +99,8 @@ def sorted_mean_obs_scatter(f_name, mean_vals, obs_vals):
     pyplot.plot(mean_vals, obs_vals, 'go')
     pyplot.xlabel('Mean map value')
     pyplot.ylabel('Dataset map value')
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust()
     pyplot.savefig(f_name)
     pyplot.close(fig)
 
@@ -95,7 +114,8 @@ def uncertainty_qqplot(f_name, map_off, map_unc, q_cut, obs_diff, quantile):
     pyplot.plot(obs_diff, quantile, 'go-')
     pyplot.xlabel('Difference from mean map')
     pyplot.ylabel('Theoretical Quantiles')
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust()
     pyplot.savefig(f_name)
     pyplot.close(fig)
 
@@ -125,9 +145,36 @@ def write_occupancy_graph(f_name, x_values, global_values, local_values):
     # Remove spacing between subplots
     pyplot.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible=False)
     pyplot.setp([axis_2_1.get_xticklabels()], visible=True)
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust()
     pyplot.savefig(f_name)
     pyplot.close(fig)
+
+#################################
+
+def write_individual_dataset_plots(pandda, datasets):
+    """Write individual wilson plots for each dataset"""
+
+    ref_d = pandda.datasets.reference()
+    ref_x, ref_y = get_wilson_plot_vals(miller_array=ref_d.data.miller_arrays[ref_d.meta.column_labels].as_amplitude_array())
+
+    for d in datasets:
+        fig = pyplot.figure()
+        pyplot.title('Wilson plot for dataset {}'.format(d.tag))
+        # Plot for the reference dataset
+        pyplot.plot(ref_x, ref_y, 'k-', linewidth=2, label='reference')
+        # Plot for this dataset
+        x, y = get_wilson_plot_vals(miller_array=d.data.miller_arrays['scaled'].as_amplitude_array())
+        pyplot.plot(x, y, 'b-', linewidth=2, label=d.tag)
+        pyplot.axes().set_xticklabels([numpy.round(t**-0.5,2) for t in pyplot.axes().get_xticks()])
+        pyplot.xlabel('resolution ($\AA$)')
+        pyplot.ylabel('ln(mean amplitude)')
+        #pyplot.tight_layout()
+        pyplot.legend()
+        pyplot.subplots_adjust()
+        f_name = d.file_manager.get_file('wilson_plot_png')
+        pyplot.savefig(f_name)
+        pyplot.close(fig)
 
 def write_dataset_summary_graphs(pandda):
     """Plot dataset summary graphs of resolution, unit cell variation, etc"""
@@ -160,7 +207,8 @@ def write_dataset_summary_graphs(pandda):
         pyplot.hist(x=d_info['low_resolution'], bins=n_bins)
         pyplot.xlabel('Low Resolution Limit ($\AA$)')
         pyplot.ylabel('Count')
-        fig.set_tight_layout(True)
+        #pyplot.tight_layout()
+        pyplot.subplots_adjust(hspace=0.3)
     except:
         fig = failure_graph(title='Resolution Histograms')
 
@@ -181,7 +229,8 @@ def write_dataset_summary_graphs(pandda):
         pyplot.hist(x=d_info['r_work'], bins=n_bins)
         pyplot.xlabel('R-Work')
         pyplot.ylabel('Count')
-        fig.set_tight_layout(True)
+        #pyplot.tight_layout()
+        pyplot.subplots_adjust(hspace=0.3)
     except:
         fig = failure_graph(title='R-Factor Histograms')
 
@@ -197,7 +246,8 @@ def write_dataset_summary_graphs(pandda):
         pyplot.hist(x=filter_nans(d_info['rmsd_to_reference']), bins=n_bins)
         pyplot.xlabel('RMSD (A)')
         pyplot.ylabel('Count')
-        fig.set_tight_layout(True)
+        #pyplot.tight_layout()
+        pyplot.subplots_adjust()
     except:
         fig = failure_graph(title='RMSDs to Reference Structure Histogram')
 
@@ -219,7 +269,8 @@ def write_dataset_summary_graphs(pandda):
         pyplot.subplot(3, 1, 3)
         pyplot.hist(x=d_info['uc_c'], bins=n_bins)
         pyplot.xlabel('C (A)')
-        fig.set_tight_layout(True)
+        #pyplot.tight_layout()
+        pyplot.subplots_adjust(hspace=0.6)
     except:
         fig = failure_graph(title='Unit Cell Axis Variation')
 
@@ -241,7 +292,8 @@ def write_dataset_summary_graphs(pandda):
         pyplot.subplot(3, 1, 3)
         pyplot.hist(x=d_info['uc_gamma'], bins=n_bins)
         pyplot.xlabel('Gamma')
-        fig.set_tight_layout(True)
+        #pyplot.tight_layout()
+        pyplot.subplots_adjust(hspace=0.6)
     except:
         fig = failure_graph(title='Unit Cell Angle Variation')
 
@@ -257,7 +309,8 @@ def write_dataset_summary_graphs(pandda):
         pyplot.hist(x=d_info['uc_vol']/1000.0, bins=n_bins)
         pyplot.xlabel('Volume ($10^3 A^3$)')
         pyplot.ylabel('Count')
-        fig.set_tight_layout(True)
+        #pyplot.tight_layout()
+        pyplot.subplots_adjust()
     except:
         fig = failure_graph(title='Unit Cell Volume Variation')
 
@@ -279,7 +332,8 @@ def write_dataset_summary_graphs(pandda):
         pyplot.scatter(x=d_info['unscaled_wilson_rmsd_>4A'], y=d_info['unscaled_wilson_rmsd_<4A'])
         pyplot.xlabel('RMSD to Reference (>4A)')
         pyplot.ylabel('RMSD to Reference (<4A)')
-        fig.set_tight_layout(True)
+        #pyplot.tight_layout()
+        pyplot.subplots_adjust()
     except:
         raise
         fig = failure_graph(title='Wilson Plot RMSD to Reference (unscaled)')
@@ -297,7 +351,8 @@ def write_dataset_summary_graphs(pandda):
         pyplot.scatter(x=d_info['scaled_wilson_rmsd_>4A'], y=d_info['scaled_wilson_rmsd_<4A'])
         pyplot.xlabel('RMSD to Reference (>4A)')
         pyplot.ylabel('RMSD to Reference (<4A)')
-        fig.set_tight_layout(True)
+        #pyplot.tight_layout()
+        pyplot.subplots_adjust()
     except:
         raise
         fig = failure_graph(title='Wilson Plot RMSD to Reference (scaled)')
@@ -312,47 +367,31 @@ def write_dataset_summary_graphs(pandda):
     fig = pyplot.figure()
     pyplot.title('Wilson plot for unscaled (input) structure factors')
     for d in non_rejected_dsets:
-        # Extract scaled data
-        ma = d.data.miller_arrays[d.meta.column_labels].as_amplitude_array()
-        binner = ma.setup_binner(auto_binning=True)
-        binned = ma.wilson_plot(use_binning=True)
-        # Extract bin centres and bin data
-        bin_cent = binner.bin_centers(1)
-        bin_data = binned.data[1:-1]
-        assert len(bin_cent) == len(bin_data)
-        # Transform the data - ln(F) v (1/A)^2
-        x_vals = numpy.power(bin_cent, 2)
-        y_vals = numpy.log(bin_data)
-        # Plot
-        pyplot.plot(x_vals, y_vals, '-', linewidth=1)
+        x, y = get_wilson_plot_vals(miller_array=d.data.miller_arrays[d.meta.column_labels].as_amplitude_array())
+        pyplot.plot(x, y, '-', linewidth=1)
     pyplot.xlabel('resolution$^{-2}$ ($A^{-2}$)')
-    pyplot.ylabel('ln(mean intensity)')
-    fig.set_tight_layout(True)
+    pyplot.ylabel('ln(mean amplitude)')
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust()
     pyplot.savefig(pandda.file_manager.get_file('d_unscaled_wilson_plots'))
     pyplot.close(fig)
     pandda.log('\t{}'.format(pandda.file_manager.get_file('d_unscaled_wilson_plots')))
     # ================================================>
-    # Wilson plots of the scaled data
+    # Wilson plots of the scaled data (characterisation)
     # ================================================>
-    fig = pyplot.figure()
+    fig, (axis_1, axis_2) = pyplot.subplots(2, sharex=True)
     pyplot.title('Wilson plot for scaled structure factors')
     for d in non_rejected_dsets:
-        # Extract scaled data
-        ma = d.data.miller_arrays['scaled'].as_amplitude_array()
-        binner = ma.setup_binner(auto_binning=True)
-        binned = ma.wilson_plot(use_binning=True)
-        # Extract bin centres and bin data
-        bin_cent = binner.bin_centers(1)
-        bin_data = binned.data[1:-1]
-        assert len(bin_cent) == len(bin_data)
-        # Transform the data - ln(F) v (1/A)^2
-        x_vals = numpy.power(bin_cent, 2)
-        y_vals = numpy.log(bin_data)
-        # Plot
-        pyplot.plot(x_vals, y_vals, '-', linewidth=1)
-    pyplot.xlabel('resolution$^{-2}$ ($A^{-2}$)')
-    pyplot.ylabel('ln(mean intensity)')
-    fig.set_tight_layout(True)
+        x, y = get_wilson_plot_vals(miller_array=d.data.miller_arrays['scaled'].as_amplitude_array())
+        ax = axis_1 if pandda.datasets.all_masks().get_value(name='exclude_from_characterisation', id=d.tag)==False else axis_2
+        ax.plot(x, y, '-', linewidth=1)
+    axis_1.set_title('Datasets to be used for characterisation')
+    axis_2.set_title('Datasets excluded from characterisation')
+    axis_2.set_xlabel('resolution$^{-2}$ ($A^{-2}$)')
+    axis_1.set_ylabel('ln(mean amplitude)')
+    axis_2.set_ylabel('ln(mean amplitude)')
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust()
     pyplot.savefig(pandda.file_manager.get_file('d_scaled_wilson_plots'))
     pyplot.close(fig)
     pandda.log('\t{}'.format(pandda.file_manager.get_file('d_scaled_wilson_plots')))
@@ -368,7 +407,7 @@ def write_truncated_data_plots(pandda, resolution, datasets):
 
     # ================================================>
     # Resolution ranges of the truncated data
-    simple_histogram(filename = pandda.file_manager.get_file('dataset_res_hist').format(resolution),
+    simple_histogram(filename = pandda.file_manager.get_file('truncated_res_hist').format(resolution),
                      data     = reslns,
                      title    = 'Truncated dataset resolutions',
                      x_lab    = 'Resolution (A)',
@@ -378,27 +417,14 @@ def write_truncated_data_plots(pandda, resolution, datasets):
     fig = pyplot.figure()
     pyplot.title('Wilson plot for truncated structure factors')
     for d in datasets:
-        # Extract truncated data
-        m = d.data.miller_arrays['truncated']
-        # Convert to amplitudes
-        ma = m.as_amplitude_array()
-        # Create binning - just use the auto-binning for each dataset
-        binner = ma.setup_binner(auto_binning=True)
-        # Create the wilson plot
-        binned = ma.wilson_plot(use_binning=True)
-        # Extract bin centres and bin data
-        bin_cent = binner.bin_centers(1)
-        bin_data = binned.data[1:-1]
-        assert len(bin_cent) == len(bin_data)
-        # Transform the data - ln(F) v (1/A)^2
-        x_vals = numpy.power(bin_cent, 2)
-        y_vals = numpy.log(bin_data)
-        # Plot
-        pyplot.plot(x_vals, y_vals, '-', linewidth=1)
-    pyplot.xlabel('1/(resolution^2) (A^-2)')
-    pyplot.ylabel('ln(mean intensity)')
-    fig.set_tight_layout(True)
-    pyplot.savefig(pandda.file_manager.get_file('dataset_wilson_plot').format(resolution))
+        x, y = get_wilson_plot_vals(miller_array=d.data.miller_arrays['truncated'].as_amplitude_array())
+        pyplot.plot(x, y, '-', linewidth=1)
+    pyplot.axes().set_xticklabels([numpy.round(t**-0.5,2) for t in pyplot.axes().get_xticks()])
+    pyplot.xlabel('resolution ($\AA$)')
+    pyplot.ylabel('ln(mean amplitude)')
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust()
+    pyplot.savefig(pandda.file_manager.get_file('truncated_wilson_plot').format(resolution))
     pyplot.close(fig)
 
 def write_map_analyser_reference_dataset_graphs(pandda, map_analyser):
@@ -470,7 +496,8 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     pyplot.hist(x=medn_map_vals, bins=n_bins)
     pyplot.xlabel('Median Map Values')
     pyplot.ylabel('Count')
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust(hspace=0.4)
     pyplot.savefig(pandda.file_manager.get_file('map_mean_median_hist').format(resolution))
     pyplot.close(fig)
 
@@ -487,7 +514,8 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     # Axis labels
     pyplot.xlabel('Mean Map Value')
     pyplot.ylabel('Median Map Value')
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust(hspace=0.4)
     pyplot.savefig(pandda.file_manager.get_file('map_mean_median_scat').format(resolution))
     pyplot.close(fig)
 
@@ -499,7 +527,8 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     pyplot.hist(x=numpy.array(flex.double(mean_map_vals)-flex.double(medn_map_vals)), bins=30, normed=True)
     pyplot.xlabel('Difference Map Value')
     pyplot.ylabel('Density')
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust(hspace=0.4)
     pyplot.savefig(pandda.file_manager.get_file('map_mean_median_diff').format(resolution))
     pyplot.close(fig)
 
@@ -518,7 +547,8 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     pyplot.hist(x=sadj_map_vals, bins=n_bins)
     pyplot.xlabel('"Adjusted" Variation of Map Values')
     pyplot.ylabel('Count')
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust(hspace=0.4)
     pyplot.savefig(pandda.file_manager.get_file('map_stds_sadj_hist').format(resolution))
     pyplot.close(fig)
 
@@ -535,7 +565,8 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     # Axis labels
     pyplot.xlabel('"Raw" Variation of Map Values')
     pyplot.ylabel('"Adjusted" Variation of Map Values')
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust(hspace=0.4)
     pyplot.savefig(pandda.file_manager.get_file('map_stds_sadj_scat').format(resolution))
     pyplot.close(fig)
 
@@ -550,7 +581,8 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     pyplot.hist(x=map_uncties, bins=n_bins, range=(min(map_uncties)-0.1,max(map_uncties)+0.1))
     pyplot.xlabel('Dataset Map Uncertainties')
     pyplot.ylabel('Count')
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust(hspace=0.4)
     pyplot.savefig(pandda.file_manager.get_file('dataset_unc_hist').format(resolution))
     pyplot.close(fig)
 
@@ -564,7 +596,8 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     pyplot.scatter(x=high_res, y=map_uncties)
     pyplot.xlabel('Dataset Resolution')
     pyplot.ylabel('Dataset Map Uncertainty')
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust(hspace=0.4)
     pyplot.savefig(pandda.file_manager.get_file('dataset_res_unc_scat').format(resolution))
     pyplot.close(fig)
 
@@ -574,7 +607,8 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     pyplot.scatter(x=high_res, y=rfree)
     pyplot.xlabel('Dataset Resolution')
     pyplot.ylabel('Dataset R-Free')
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust(hspace=0.4)
     pyplot.savefig(pandda.file_manager.get_file('dataset_res_rfree_scat').format(resolution))
     pyplot.close(fig)
 
@@ -584,7 +618,8 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     pyplot.scatter(x=rfree, y=map_uncties)
     pyplot.xlabel('Dataset R-Free')
     pyplot.ylabel('Dataset Map Uncertainty')
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust(hspace=0.4)
     pyplot.savefig(pandda.file_manager.get_file('dataset_unc_rfree_scat').format(resolution))
     pyplot.close(fig)
 
@@ -605,7 +640,8 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     pyplot.hist(x=z_map_std, bins=n_bins, range=(0, max(z_map_std)+0.1))
     pyplot.xlabel('Z-Map Std')
     pyplot.ylabel('Count')
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust(hspace=0.4)
     pyplot.savefig(pandda.file_manager.get_file('zmap_mean_sadj_hist').format(resolution))
     pyplot.close(fig)
 
@@ -615,8 +651,8 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     pyplot.scatter(x=z_map_skew, y=z_map_kurt)
     pyplot.xlabel('Skew')
     pyplot.ylabel('Kurtosis')
-    fig.set_tight_layout(True)
+    #pyplot.tight_layout()
+    pyplot.subplots_adjust(hspace=0.4)
     pyplot.savefig(pandda.file_manager.get_file('zmap_skew_kurt_scat').format(resolution))
     pyplot.close(fig)
-
 
