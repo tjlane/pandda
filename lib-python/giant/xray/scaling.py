@@ -46,8 +46,10 @@ class IsotropicBfactorScalingFactory(object):
                                                      n_bins=n_bins,
                                                      n_term=n_term)
 
-    def calculate_scaling(self, miller_array, convergence_crit_perc=0.05, convergence_reject_perc=99, max_iter=20):
+    def calculate_scaling(self, miller_array, convergence_crit_perc=0.01, convergence_reject_perc=97.5, max_iter=20):
         """Calculate the scaling between two arrays"""
+
+        assert convergence_reject_perc > 90.0
 
         # Convert to intensities and extract d_star_sq
         new_miller = miller_array.as_intensity_array()
@@ -91,11 +93,14 @@ class IsotropicBfactorScalingFactory(object):
             if delta < convergence_crit_perc: break
             # Update selection
             print 'Curr Selection Size: '+str(sum(selection))
-            abs_diffs = flex.abs(flex.log(lsc.ref_values)-flex.log(lsc.out_values))
-            sel_diffs = abs_diffs.select(selection)
-            rej_val = numpy.percentile(sel_diffs, convergence_reject_perc)
-            print 'Percentile: '+str(convergence_reject_perc)+'\t'+str(rej_val)
-            selection.set_selected(abs_diffs>rej_val, False)
+            ref_diffs = flex.log(lsc.ref_values)-flex.log(lsc.out_values)
+            #abs_diffs = flex.abs(ref_diffs)
+            sel_diffs = ref_diffs.select(selection)
+            rej_val_high = numpy.percentile(sel_diffs, convergence_reject_perc)
+            rej_val_low  = numpy.percentile(sel_diffs, 100.0-convergence_reject_perc)
+            print 'Percentile: '+str(convergence_reject_perc)+'\t<'+str(rej_val_low)+'\t>'+str(rej_val_high)
+            selection.set_selected(ref_diffs>rej_val_high, False)
+            selection.set_selected(ref_diffs<rej_val_low,  False)
             print 'New Selection Size: '+str(sum(selection))
             # Update loop params
             curr_b = lsc.scaling_b_factor

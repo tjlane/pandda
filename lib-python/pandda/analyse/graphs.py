@@ -128,13 +128,13 @@ def write_occupancy_graph(f_name, x_values, global_values, local_values):
 
     fig, (axis_1_1, axis_2_1) = pyplot.subplots(2, sharex=True)
     # 1st Plot - 1st Y-Axis
-    line_1_1, = axis_1_1.plot(x_values, global_values, 'g--', label='GLOBAL CORRELATION', linewidth=2)
-    line_1_2, = axis_1_1.plot(x_values, local_values, 'k--', label='LOCAL CORRELATION', linewidth=2)
-    axis_1_1.set_ylabel('CORRELATION\nTO GROUND STATE', color='k', size=16)
+    line_1_1, = axis_1_1.plot(x_values, global_values, 'g--', label='Global corr.', linewidth=2)
+    line_1_2, = axis_1_1.plot(x_values, local_values, 'k--', label='Local corr.', linewidth=2)
+    axis_1_1.set_ylabel('Corr. to ground state', color='k', size=16)
     axis_1_1.set_ylim((-1, 1))
     # 2nd Plot - 1st Y-Axis
-    line_2_1, = axis_2_1.plot(x_values, diff_values, 'b-', label='DIFFERENCE', linewidth=2)
-    axis_2_1.set_ylabel('CORRELATION\nDIFFERENCE', color='k', size=16)
+    line_2_1, = axis_2_1.plot(x_values, diff_values, 'b-', label='Difference', linewidth=2)
+    axis_2_1.set_ylabel('Corr. difference', color='k', size=16)
     axis_2_1.set_xlabel('1-BDC', color='k', size=16)
     axis_2_1.set_ylim((min(diff_values)-0.2, max(diff_values)+0.2))
     # Plot line at the maximum
@@ -155,6 +155,9 @@ def write_occupancy_graph(f_name, x_values, global_values, local_values):
 def write_individual_dataset_plots(pandda, datasets):
     """Write individual wilson plots for each dataset"""
 
+    pandda.log.heading('Generating individual dataset graphs')
+    pandda.log('-> wilson plots against the reference dataset')
+
     ref_d = pandda.datasets.reference()
     ref_x, ref_y = get_wilson_plot_vals(miller_array=ref_d.data.miller_arrays[ref_d.meta.column_labels].as_amplitude_array())
 
@@ -163,9 +166,13 @@ def write_individual_dataset_plots(pandda, datasets):
         pyplot.title('Wilson plot for dataset {}'.format(d.tag))
         # Plot for the reference dataset
         pyplot.plot(ref_x, ref_y, 'k-', linewidth=2, label='reference')
-        # Plot for this dataset
+        # Plot for this dataset (unscaled)
+        x, y = get_wilson_plot_vals(miller_array=d.data.miller_arrays[d.meta.column_labels].as_amplitude_array())
+        pyplot.plot(x, y, 'r-', linewidth=2, label=d.tag+' (unscaled)')
+        # Plot for this dataset (scaled)
         x, y = get_wilson_plot_vals(miller_array=d.data.miller_arrays['scaled'].as_amplitude_array())
-        pyplot.plot(x, y, 'b-', linewidth=2, label=d.tag)
+        pyplot.plot(x, y, 'b-', linewidth=2, label=d.tag+' (scaled)')
+        # Plot settings
         pyplot.axes().set_xticklabels([numpy.round(t**-0.5,2) for t in pyplot.axes().get_xticks()])
         pyplot.xlabel('resolution ($\AA$)')
         pyplot.ylabel('ln(mean amplitude)')
@@ -175,6 +182,7 @@ def write_individual_dataset_plots(pandda, datasets):
         f_name = d.file_manager.get_file('wilson_plot_png')
         pyplot.savefig(f_name)
         pyplot.close(fig)
+        pandda.log('\t{}'.format(f_name))
 
 def write_dataset_summary_graphs(pandda):
     """Plot dataset summary graphs of resolution, unit cell variation, etc"""
@@ -212,9 +220,10 @@ def write_dataset_summary_graphs(pandda):
     except:
         fig = failure_graph(title='Resolution Histograms')
 
-    pyplot.savefig(pandda.file_manager.get_file('d_resolutions'))
+    f_name = pandda.file_manager.get_file('d_resolutions')
+    pyplot.savefig(f_name)
     pyplot.close(fig)
-    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_resolutions')))
+    pandda.log('\t{}'.format(f_name))
     # ================================================>
     # R-factors
     # ================================================>
@@ -234,9 +243,10 @@ def write_dataset_summary_graphs(pandda):
     except:
         fig = failure_graph(title='R-Factor Histograms')
 
-    pyplot.savefig(pandda.file_manager.get_file('d_rfactors'))
+    f_name = pandda.file_manager.get_file('d_rfactors')
+    pyplot.savefig(f_name)
     pyplot.close(fig)
-    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_rfactors')))
+    pandda.log('\t{}'.format(f_name))
     # ================================================>
     # RMSD to reference structure
     # ================================================>
@@ -251,9 +261,10 @@ def write_dataset_summary_graphs(pandda):
     except:
         fig = failure_graph(title='RMSDs to Reference Structure Histogram')
 
-    pyplot.savefig(pandda.file_manager.get_file('d_global_rmsd_to_ref'))
+    f_name = pandda.file_manager.get_file('d_global_rmsd_to_ref')
+    pyplot.savefig(f_name)
     pyplot.close(fig)
-    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_global_rmsd_to_ref')))
+    pandda.log('\t{}'.format(f_name))
     # ================================================>
     # Unit cell size
     # ================================================>
@@ -274,9 +285,10 @@ def write_dataset_summary_graphs(pandda):
     except:
         fig = failure_graph(title='Unit Cell Axis Variation')
 
-    pyplot.savefig(pandda.file_manager.get_file('d_cell_axes'))
+    f_name = pandda.file_manager.get_file('d_cell_axes')
+    pyplot.savefig(f_name)
     pyplot.close(fig)
-    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_cell_axes')))
+    pandda.log('\t{}'.format(f_name))
     # ================================================>
     # Unit cell angles
     # ================================================>
@@ -297,9 +309,10 @@ def write_dataset_summary_graphs(pandda):
     except:
         fig = failure_graph(title='Unit Cell Angle Variation')
 
-    pyplot.savefig(pandda.file_manager.get_file('d_cell_angles'))
+    f_name = pandda.file_manager.get_file('d_cell_angles')
+    pyplot.savefig(f_name)
     pyplot.close(fig)
-    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_cell_angles')))
+    pandda.log('\t{}'.format(f_name))
     # ================================================>
     # Unit cell volume
     # ================================================>
@@ -314,14 +327,20 @@ def write_dataset_summary_graphs(pandda):
     except:
         fig = failure_graph(title='Unit Cell Volume Variation')
 
-    pyplot.savefig(pandda.file_manager.get_file('d_cell_volumes'))
+    f_name = pandda.file_manager.get_file('d_cell_volumes')
+    pyplot.savefig(f_name)
     pyplot.close(fig)
-    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_cell_volumes')))
+    pandda.log('\t{}'.format(f_name))
 
     # ================================================>
     # Summary plots for the loaded diffracton data
     # ================================================>
     pandda.log('-> writing wilson plots of input and scaled data')
+
+    min_x = numpy.nanmin([numpy.min(d_info['unscaled_wilson_rmsd_>4A']), numpy.min(d_info['scaled_wilson_rmsd_>4A'])])
+    max_x = numpy.nanmax([numpy.max(d_info['unscaled_wilson_rmsd_>4A']), numpy.max(d_info['scaled_wilson_rmsd_>4A'])])
+    min_y = numpy.nanmin([numpy.min(d_info['unscaled_wilson_rmsd_<4A']), numpy.min(d_info['scaled_wilson_rmsd_<4A'])])
+    max_y = numpy.nanmax([numpy.max(d_info['unscaled_wilson_rmsd_<4A']), numpy.max(d_info['scaled_wilson_rmsd_<4A'])])
 
     # ================================================>
     # Wilson plots RMSDS for unscaled (input) data
@@ -332,15 +351,18 @@ def write_dataset_summary_graphs(pandda):
         pyplot.scatter(x=d_info['unscaled_wilson_rmsd_>4A'], y=d_info['unscaled_wilson_rmsd_<4A'])
         pyplot.xlabel('RMSD to Reference (>4A)')
         pyplot.ylabel('RMSD to Reference (<4A)')
+        pyplot.xlim(min_x, max_x)
+        pyplot.ylim(min_y, max_y)
         #pyplot.tight_layout()
         pyplot.subplots_adjust()
     except:
         raise
         fig = failure_graph(title='Wilson Plot RMSD to Reference (unscaled)')
 
-    pyplot.savefig(pandda.file_manager.get_file('d_unscaled_wilson_rmsds'))
+    f_name = pandda.file_manager.get_file('d_unscaled_wilson_rmsds')
+    pyplot.savefig(f_name)
     pyplot.close(fig)
-    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_unscaled_wilson_rmsds')))
+    pandda.log('\t{}'.format(f_name))
 
     # ================================================>
     # Wilson plots RMSDS for scaled data
@@ -351,15 +373,18 @@ def write_dataset_summary_graphs(pandda):
         pyplot.scatter(x=d_info['scaled_wilson_rmsd_>4A'], y=d_info['scaled_wilson_rmsd_<4A'])
         pyplot.xlabel('RMSD to Reference (>4A)')
         pyplot.ylabel('RMSD to Reference (<4A)')
+        pyplot.xlim(min_x, max_x)
+        pyplot.ylim(min_y, max_y)
         #pyplot.tight_layout()
         pyplot.subplots_adjust()
     except:
         raise
         fig = failure_graph(title='Wilson Plot RMSD to Reference (scaled)')
 
-    pyplot.savefig(pandda.file_manager.get_file('d_scaled_wilson_rmsds'))
+    f_name = pandda.file_manager.get_file('d_scaled_wilson_rmsds')
+    pyplot.savefig(f_name)
     pyplot.close(fig)
-    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_scaled_wilson_rmsds')))
+    pandda.log('\t{}'.format(f_name))
 
     # ================================================>
     # Wilson plots of the unscaled (input) data
@@ -369,13 +394,15 @@ def write_dataset_summary_graphs(pandda):
     for d in non_rejected_dsets:
         x, y = get_wilson_plot_vals(miller_array=d.data.miller_arrays[d.meta.column_labels].as_amplitude_array())
         pyplot.plot(x, y, '-', linewidth=1)
-    pyplot.xlabel('resolution$^{-2}$ ($A^{-2}$)')
+    pyplot.axes().set_xticklabels([numpy.round(t**-0.5,2) for t in pyplot.axes().get_xticks()])
+    pyplot.xlabel('resolution ($\AA$)')
     pyplot.ylabel('ln(mean amplitude)')
     #pyplot.tight_layout()
     pyplot.subplots_adjust()
-    pyplot.savefig(pandda.file_manager.get_file('d_unscaled_wilson_plots'))
+    f_name = pandda.file_manager.get_file('d_unscaled_wilson_plots')
+    pyplot.savefig(f_name)
     pyplot.close(fig)
-    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_unscaled_wilson_plots')))
+    pandda.log('\t{}'.format(f_name))
     # ================================================>
     # Wilson plots of the scaled data (characterisation)
     # ================================================>
@@ -387,14 +414,16 @@ def write_dataset_summary_graphs(pandda):
         ax.plot(x, y, '-', linewidth=1)
     axis_1.set_title('Datasets to be used for characterisation')
     axis_2.set_title('Datasets excluded from characterisation')
-    axis_2.set_xlabel('resolution$^{-2}$ ($A^{-2}$)')
+    axis_2.set_xticklabels([numpy.round(t**-0.5,2) for t in axis_2.get_xticks()])
+    axis_2.set_xlabel('resolution ($\AA$)')
     axis_1.set_ylabel('ln(mean amplitude)')
     axis_2.set_ylabel('ln(mean amplitude)')
     #pyplot.tight_layout()
     pyplot.subplots_adjust()
-    pyplot.savefig(pandda.file_manager.get_file('d_scaled_wilson_plots'))
+    f_name = pandda.file_manager.get_file('d_scaled_wilson_plots')
+    pyplot.savefig(f_name)
     pyplot.close(fig)
-    pandda.log('\t{}'.format(pandda.file_manager.get_file('d_scaled_wilson_plots')))
+    pandda.log('\t{}'.format(f_name))
 
     return None
 
@@ -404,14 +433,24 @@ def write_truncated_data_plots(pandda, resolution, datasets):
     reslns = [d.data.miller_arrays['truncated'].d_min() for d in datasets]
     min_res, max_res = min(reslns), max(reslns)
     pandda.log('After Truncation - Resolution Range: {!s}-{!s}'.format(min_res, max_res))
+    pandda.log('')
+    pandda.log('-> Writing truncated data plots')
 
     # ================================================>
     # Resolution ranges of the truncated data
-    simple_histogram(filename = pandda.file_manager.get_file('truncated_res_hist').format(resolution),
-                     data     = reslns,
-                     title    = 'Truncated dataset resolutions',
-                     x_lab    = 'Resolution (A)',
-                     n_bins   = 15)
+    f_name = pandda.file_manager.get_file('truncated_res_hist').format(resolution)
+    try:
+        simple_histogram(filename = f_name,
+                         data     = reslns,
+                         title    = 'Truncated dataset resolutions',
+                         x_lab    = 'Resolution (A)',
+                         n_bins   = 15)
+    except:
+        fig = failure_graph(title='Truncated dataset resolutions')
+        pyplot.savefig(f_name)
+        pyplot.close(fig)
+    pandda.log('\t{}'.format(f_name))
+
     # ================================================>
     # Wilson plots of the truncated data
     fig = pyplot.figure()
@@ -424,8 +463,10 @@ def write_truncated_data_plots(pandda, resolution, datasets):
     pyplot.ylabel('ln(mean amplitude)')
     #pyplot.tight_layout()
     pyplot.subplots_adjust()
-    pyplot.savefig(pandda.file_manager.get_file('truncated_wilson_plot').format(resolution))
+    f_name = pandda.file_manager.get_file('truncated_wilson_plot').format(resolution)
+    pyplot.savefig(f_name)
     pyplot.close(fig)
+    pandda.log('\t{}'.format(f_name))
 
 def write_map_analyser_reference_dataset_graphs(pandda, map_analyser):
 

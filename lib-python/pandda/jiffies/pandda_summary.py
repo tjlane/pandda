@@ -26,19 +26,21 @@ def show_summary():
     INIT_WIDG = PanddaHtmlWidget(name='Initial Summary', content=INIT_HTML)
     window.add_tab(INIT_WIDG)
     # ----------------------------------
-    multi_tab = PanddaTabBar(name='Individual Dataset Summaries')
-    for f in DST_HTMLS:
-        print '> Creating Tab: '+f
-        name = os.path.splitext(os.path.basename(f))[0]
-        multi_tab.add_tab(PanddaHtmlWidget(name=name, content=f))
-    window.add_tab(multi_tab)
+    if DST_HTMLS:
+        multi_tab = PanddaTabBar(name='Individual Dataset Summaries')
+        for f in DST_HTMLS:
+            print '> Creating Tab: '+f
+            name = os.path.splitext(os.path.basename(f))[0]
+            multi_tab.add_tab(PanddaHtmlWidget(name=name, content=f))
+        window.add_tab(multi_tab)
     # ----------------------------------
-    multi_tab = PanddaTabBar(name='Map Analysis Summaries')
-    for f in MAP_HTMLS:
-        print '> Creating Tab: '+f
-        name = os.path.splitext(os.path.basename(f))[0].replace('pandda_map_','')
-        multi_tab.add_tab(PanddaHtmlWidget(name=name, content=f))
-    window.add_tab(multi_tab)
+    if MAP_HTMLS:
+        multi_tab = PanddaTabBar(name='Map Analysis Summaries')
+        for f in MAP_HTMLS:
+            print '> Creating Tab: '+f
+            name = os.path.splitext(os.path.basename(f))[0].replace('pandda_map_','')
+            multi_tab.add_tab(PanddaHtmlWidget(name=name, content=f))
+        window.add_tab(multi_tab)
     # ----------------------------------
     print '> Creating Tab: '+ANAL_HTML
     ANAL_WIDG = PanddaHtmlWidget(name='Results Summary', content=ANAL_HTML)
