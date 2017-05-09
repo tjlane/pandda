@@ -91,7 +91,7 @@ class IsotropicBfactorScalingFactory(object):
             if delta < convergence_crit_perc: break
             # Update selection
             print 'Curr Selection Size: '+str(sum(selection))
-            abs_diffs = flex.abs(lsc.ref_values-lsc.out_values)
+            abs_diffs = flex.abs(flex.log(lsc.ref_values)-flex.log(lsc.out_values))
             sel_diffs = abs_diffs.select(selection)
             rej_val = numpy.percentile(sel_diffs, convergence_reject_perc)
             print 'Percentile: '+str(convergence_reject_perc)+'\t'+str(rej_val)
