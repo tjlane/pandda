@@ -206,9 +206,9 @@ def pandda_main_loop(pandda):
     pandda.reset_loaded_datasets()
     # Load reflection data for each dataset
     if pandda.args.flags.reprocess_existing_datasets or pandda.args.flags.reprocess_selected_datasets:
-        pandda.load_and_scale_diffraction_data(datasets=pandda.datasets.all())
+        pandda.load_and_scale_diffraction_data(datasets=pandda.datasets.mask(mask_name='valid - all'))
     else:
-        pandda.load_and_scale_diffraction_data(datasets=pandda.datasets.mask(mask_name='old datasets', invert=True))
+        pandda.load_and_scale_diffraction_data(datasets=pandda.datasets.mask(mask_name='valid - new'))
 
     # ============================================================================>
     #####
@@ -217,7 +217,7 @@ def pandda_main_loop(pandda):
     # ============================================================================>
     pandda.write_output_csvs()
     analyse_graphs.write_dataset_summary_graphs(pandda)
-    analyse_graphs.write_individual_dataset_plots(pandda=pandda, datasets=pandda.datasets.all())
+    analyse_graphs.write_individual_dataset_plots(pandda=pandda, datasets=pandda.datasets.mask(mask_name='valid - new'))
     analyse_html.write_initial_html(pandda)
 
     # ============================================================================>

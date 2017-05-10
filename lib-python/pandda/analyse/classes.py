@@ -1468,6 +1468,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Set as the reference dataset for the analysis
         # ==============================>
         self.datasets.set_reference(dataset=ref_dataset)
+        assert ref_dataset is self.datasets.reference()
         # ==============================>
         # Write out structure in reference coordinate frames
         # ==============================>
@@ -1509,7 +1510,7 @@ class PanddaMultiDatasetAnalyser(Program):
         ref_dataset.meta.column_labels = dataset_sfs
         # Load the diffraction data
         self.log('Loading structure factors for reference dataset: {}'.format(dataset_sfs))
-        ref_dataset.data.miller_arrays[dataset_sfs] = self.datasets.reference().data.get_structure_factors(columns=dataset_sfs)
+        ref_dataset.data.miller_arrays[dataset_sfs] = ref_dataset.data.get_structure_factors(columns=dataset_sfs)
 
         return self.datasets.reference()
 
@@ -1742,6 +1743,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Combine the combined "rejected" mask with the "old datasets" mask
         # ==============================>
+        valid_datasets_all = self.datasets.all_masks().get_mask(name='rejected - total', invert=True)
         valid_datasets_new = self.datasets.all_masks().combine_masks(names=['rejected - total', 'old datasets'],
                                                                      invert=[True, True],
                                                                      operation='and',
@@ -1750,6 +1752,7 @@ class PanddaMultiDatasetAnalyser(Program):
                                                                      invert=[True, False],
                                                                      operation='and',
                                                                      invert_output=False)
+        self.datasets.all_masks().add_mask(name='valid - all', values=valid_datasets_all, overwrite=True)
         self.datasets.all_masks().add_mask(name='valid - new', values=valid_datasets_new, overwrite=True)
         self.datasets.all_masks().add_mask(name='valid - old', values=valid_datasets_old, overwrite=True)
 
@@ -1763,7 +1766,7 @@ class PanddaMultiDatasetAnalyser(Program):
         """Extract amplitudes and phases for creating map"""
 
         if datasets is None:
-            datasets=self.datasets.mask(mask_name='rejected - total', invert=True)
+            datasets=self.datasets.mask(mask_name='valid - all')
 
         # ==============================>
         # Prepare objects for scaling
