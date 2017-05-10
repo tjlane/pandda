@@ -1879,11 +1879,11 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log.subheading('Checking for datasets that exhibit large wilson plot RMSDs to the reference dataset')
         pref = '' if self.args.testing.perform_diffraction_data_scaling else 'un'
         for dataset in datasets:
-            if (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_rmsd_all_z') > self.params.excluding.max_wilson_plot_rmsd_z_score) or \
-               (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_rmsd_<4A_z') > self.params.excluding.max_wilson_plot_rmsd_z_score) or \
-               (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_rmsd_>4A_z') > self.params.excluding.max_wilson_plot_rmsd_z_score) or \
-               (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_ln_rmsd_z') > self.params.excluding.max_wilson_plot_rmsd_z_score)  or \
-               (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_ln_dev_z')  > self.params.excluding.max_wilson_plot_rmsd_z_score):
+            if (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_rmsd_all_z') > self.params.excluding.max_wilson_plot_z_score) or \
+               (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_rmsd_<4A_z') > self.params.excluding.max_wilson_plot_z_score) or \
+               (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_rmsd_>4A_z') > self.params.excluding.max_wilson_plot_z_score) or \
+               (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_ln_rmsd_z')  > self.params.excluding.max_wilson_plot_z_score)  or \
+               (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_ln_dev_z')   > self.params.excluding.max_wilson_plot_z_score):
                 self.log('Dataset {} has a high wilson plot rmsd to the reference dataset (relative to other datasets) - excluding from characterisation'.format(dataset.tag))
                 self.datasets.all_masks().set_value(name='exclude_from_characterisation', id=dataset.tag, value=True)
 
@@ -2695,6 +2695,8 @@ class PanddaMultiDatasetAnalyser(Program):
         self.tables.event_info.set_value(event.id, 'cluster_size', event.cluster.size)
         self.tables.event_info.set_value(event.id, ['refx','refy','refz'], list(self.grid.grid2cart([event.cluster.peak],origin=False)[0]))
         self.tables.event_info.set_value(event.id, ['x','y','z'], list(dataset.model.alignment.ref2nat(coordinates=self.grid.grid2cart([event.cluster.peak],origin=False))[0]))
+        self.tables.event_info.set_value(event.id, 'global_correlation_to_mean_map', event.info.global_correlation)
+        self.tables.event_info.set_value(event.id, 'local_correlation_to_mean_map',  event.info.local_correlation)
 
     def update_event_table_site_info(self, events):
         """Update the event table for pre-existing events"""

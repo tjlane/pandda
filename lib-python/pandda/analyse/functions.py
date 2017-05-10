@@ -543,6 +543,11 @@ class DatasetProcessor(object):
         assert num_clusters > 0, 'NUMBER OF CLUSTERS AFTER FILTERING == 0!'
 
         # ============================================================================>
+        # Extract the map data in non-sparse format
+        # ============================================================================>
+        dset_map_data = dataset_map.get_map_data(sparse=False)
+        mean_map_data = map_analyser.statistical_maps.mean_map.get_map_data(sparse=False)
+        # ============================================================================>
         # Process the identified features
         # ============================================================================>
         for event_idx, (event_points, event_values) in enumerate(z_clusters):
@@ -564,16 +569,16 @@ class DatasetProcessor(object):
             event_mask = GridMask(parent=grid, sites_cart=grid.grid2cart(point_cluster.points, origin=False), max_dist=2.0, min_dist=0.0)
             log_strs.append('=> Event sites ({!s} points) expanded to {!s} points'.format(len(point_cluster.points), len(event_mask.outer_mask_indices())))
             # Select masks to define regions for bdc calculation
-            exp_event_idxs = event_mask.outer_mask_indices()
-            reference_idxs = grid.global_mask().inner_mask_indices()
+            exp_event_idxs = flex.size_t(event_mask.outer_mask_indices())
+            reference_idxs = flex.size_t(grid.global_mask().inner_mask_indices())
             # ============================================================================>
             # Generate BDC-estimation curve and estimate BDC
             # ============================================================================>
             event_remains, event_corrs, global_corrs = calculate_varying_bdc_correlations(
-                ref_map_data   = map_analyser.statistical_maps.mean_map.get_map_data(sparse=False),
-                query_map_data = dataset_map.get_map_data(sparse=False),
-                feature_idxs   = flex.size_t(exp_event_idxs),
-                reference_idxs = flex.size_t(reference_idxs),
+                ref_map_data   = mean_map_data,
+                query_map_data = dset_map_data,
+                feature_idxs   = exp_event_idxs,
+                reference_idxs = reference_idxs,
                 min_remain     = 1.0-args.params.background_correction.max_bdc,
                 max_remain     = 1.0-args.params.background_correction.min_bdc,
                 bdc_increment  = args.params.background_correction.increment,
@@ -598,13 +603,18 @@ class DatasetProcessor(object):
             blob_finder.log('Applying multiplier to output 1-BDC: {}'.format(args.params.background_correction.output_multiplier))
             event_remain_est = min(event_remain_est*args.params.background_correction.output_multiplier, 1.0-args.params.background_correction.min_bdc)
             # ============================================================================>
+            # Calculate the map correlations at the selected BDC
+            # ============================================================================>
+            event_map_data = calculate_bdc_subtracted_map(
+                                    ref_map_data   = mean_map_data,
+                                    query_map_data = dset_map_data,
+                                    bdc            = 1.0 - event_remain_est)
+            global_corr = numpy.corrcoef(event_map_data.select(reference_idxs), mean_map_data.select(reference_idxs))[0,1]
+            local_corr  = numpy.corrcoef(event_map_data.select(exp_event_idxs), mean_map_data.select(exp_event_idxs))[0,1]
+            # ============================================================================>
             # Write out EVENT map (in the reference frame) and grid masks
             # ============================================================================>
             if args.output.developer.write_reference_frame_maps:
-                event_map_data = calculate_bdc_subtracted_map(
-                                        ref_map_data   = map_analyser.statistical_maps.mean_map.get_map_data(sparse=False),
-                                        query_map_data = dataset_map.get_map_data(sparse=False),
-                                        bdc            = 1.0 - event_remain_est)
                 event_map = dataset_map.new_from_template(event_map_data, sparse=False)
                 event_map.to_file(filename=dataset.file_manager.get_file('event_map').format(event_num, event_remain_est), space_group=grid.space_group())
             if args.output.developer.write_reference_frame_grid_masks:
@@ -622,6 +632,8 @@ class DatasetProcessor(object):
             event_obj = Event(id=point_cluster.id, cluster=point_cluster)
             event_obj.info.estimated_pseudo_occupancy = event_remain_est
             event_obj.info.estimated_bdc              = 1.0 - event_remain_est
+            event_obj.info.global_correlation = global_corr
+            event_obj.info.local_correlation  = local_corr
             # ============================================================================>
             # Append to dataset handler
             # ============================================================================>

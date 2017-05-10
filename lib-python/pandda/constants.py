@@ -48,7 +48,9 @@ DATASET_EVENT_FIELDS = [    'site_idx',
                             'z_mean',
                             'cluster_size',
                             'x','y','z',
-                            'refx','refy','refz'    ]
+                            'refx','refy','refz',
+                            'global_correlation_to_mean_map',
+                            'local_correlation_to_mean_map' ]
 SITE_TABLE_FIELDS    = [    'centroid',
                             'num_events',
                             'nearest_residue 1',

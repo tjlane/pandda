@@ -14,6 +14,7 @@ def make_supercell(unit_cell, size=(3,3,3)):
     assert isinstance(size, int) or (len(size) == 3), 'Size must be either single scale factor or 3 scale factors for (x,y,z)'
     if isinstance(size, int):   scales = [size]*3   + [1]*3
     else:                       scales = list(size) + [1]*3
+    scaled = map(float, scales)
     assert len(scales) == 6, 'Ooops, something seems to have gone wrong...: size {}, scales {}'.format(size, scales)
     old_params = unit_cell.parameters()
     new_params = [a*b for a,b in zip(old_params, scales)]
@@ -108,7 +109,6 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
     sc_map_data = numpy.zeros(sc_gridding.n_grid_points(), dtype=numpy.float64)
     sc_map_data.put(masked_points_indices, masked_values)
     sc_map_data = flex.double(sc_map_data)
-#    sc_map_data = scitbx.sparse.vector(sc_gridding.n_grid_points(), dict(zip(masked_points_indices, masked_values))).as_dense_vector()
     sc_map_data.reshape(flex.grid(sc_gridding.n_real()))
     # Transform the points back to the native frame (simple origin shift)
     sc_map_data = cctbx.maptbx.rotate_translate_map(unit_cell          = supercell,
@@ -164,7 +164,7 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
         rt_map_data = cctbx.maptbx.rotate_translate_map(unit_cell          = native_unit_cell,
                                                         map_data           = uc_map_data,
                                                         rotation_matrix    = rt_mx.r.elems,
-                                                        translation_vector = rt_mx.t.elems    )
+                                                        translation_vector = native_unit_cell.orthogonalize(rt_mx.t.elems)    )
         # Set any values that are filled in combined_uc_map_data to 0
         rt_map_data.set_selected(flex.abs(combined_uc_map_data) > 1e-6, 0)
         # Add values to combined_uc_map_data

@@ -220,8 +220,8 @@ pandda
         excluding
             .help = "Parameters to control when datasets are automatically excluded from characterisation"
         {
-            max_wilson_plot_rmsd_z_score = 3.0
-                .help = "Maximum Z-score for RMSD of dataset diffraction wilson curve compared to the reference dataset. Z-scores calculated from RMSDs of all datasets."
+            max_wilson_plot_z_score = 5.0
+                .help = "Maximum Z-score for RMSD of dataset diffraction wilson curve compared to the reference dataset. Z-scores calculated relative to the rest of the datasets."
                 .type = float
                 .multiple = False
         }
