@@ -44,7 +44,7 @@ def set_main_coot_molecule(i):
 
 def coot_customisation():
     set_nomenclature_errors_on_read("ignore")
-    set_recentre_on_read_pdb(0)
+    set_recentre_on_read_pdb(1)
     set_show_symmetry_master(1)
     set_symmetry_shift_search_size(2)
     set_colour_map_rotation_for_map(0.0)
@@ -97,5 +97,9 @@ if __name__=='__main__':
     set_last_map_contour_level(0.25)
     set_map_displayed(s1_i, 1)
 
+    b1 = m1.replace('mean','bimo')
+    b1_i = handle_read_ccp4_map(b1, 0)
+    set_last_map_contour_level(3.0)
+    set_map_displayed(b1_i, 1)
 
 
