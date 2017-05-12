@@ -140,10 +140,8 @@ def identify_tls_boundaries(tls_selections):
                 try: boundaries.remove(v2)
                 except: pass
                 boundaries.append((v1+v2)/2.0)
-            print boundaries
         dividers[k] = sorted(boundaries)
 
-    print dividers
     return dividers
 
 ############################################################################
