@@ -139,7 +139,7 @@ def write_occupancy_graph(f_name, x_values, global_values, local_values):
     axis_2_1.set_ylim((min(diff_values)-0.2, max(diff_values)+0.2))
     # Plot line at the maximum
     line_2_2, = axis_2_1.plot([max_x,max_x],[-1,1], 'k-', linewidth=2)
-    text_2_1 = axis_2_1.text(0.02+max_x, 0.0, 'BDC='+str(1-max_x), size=14)
+    text_2_1 = axis_2_1.text(0.02+max_x, min(diff_values), 'BDC='+str(1-max_x), size=14)
     # Joint legend
     axis_1_1.legend(handles=[line_1_1, line_1_2, line_2_1], loc=4, fontsize=16)
     # Remove spacing between subplots
