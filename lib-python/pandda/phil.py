@@ -46,14 +46,17 @@ pandda
         flags
             .help = "Flags for individual datasets"
         {
-            ignore_datasets = None
-                .help = 'Reject these datasets, don\'t even load them - comma separated list of dataset tags'
-                .type = str
             exclude_from_zmap_analysis = None
                 .help = 'Don\'t analyse these datasets, only use them to build the distributions - comma separated list of dataset tags'
                 .type = str
             exclude_from_characterisation = None
                 .help = 'Don\'t use these datasets to build density distributions, only analyse them - comma separated list of dataset tags'
+                .type = str
+            ignore_datasets = None
+                .help = 'Reject these datasets, don\'t even load them - comma separated list of dataset tags'
+                .type = str
+            reprocess_datasets = None
+                .help = "Selection of existing datasets to reproces (treat as new datasets) - comma separated list of dataset tags. Setting this will set flags.existing_datasets=reload."
                 .type = str
         }
     }
@@ -71,21 +74,18 @@ pandda
         maps
             .help = "Control which maps are output by the program"
         {
-            write_mean_map = none *interesting all
-                .help = "Output the mean map in the native frame of datasets for selected datasets"
-                .multiple = False
-                .type = choice
             write_z_maps = none *interesting all
                 .help = "Output the z-maps in the native frame of datasets for selected datasets"
-                .multiple = False
+                .type = choice
+            write_mean_map = none *interesting all
+                .help = "Output the mean map in the native frame of datasets for selected datasets"
                 .type = choice
             write_dataset_map = *none interesting all
                 .help = "Output the analysed maps in the native frame of datasets for selected datasets"
-                .multiple = False
                 .type = choice
-            write_statistical_maps = False
-                .help = "Output statistical maps in the native frame of the reference dataset"
-                .type = bool
+            write_statistical_maps = *none reference
+                .help = "Output statistical maps in the native frame of datasets"
+                .type = choice
         }
         pickling
             .help = "Pickle Settings"
@@ -114,6 +114,9 @@ pandda
             write_reference_frame_grid_masks = False
                 .help = "Output the grid masks which control which areas are analysed"
                 .type = bool
+            write_reference_frame_statistical_maps = False
+                .help = "Output the statistical maps in the reference coordinate frame"
+                .type = bool
             write_reference_frame_all_z_map_types = False
                 .help = "Output all possible types of Z-maps"
                 .type = bool
@@ -122,27 +125,24 @@ pandda
     flags
         .help = "control which datasets are loaded and processed, and when statistical maps are calculated"
     {
-        reload_existing_datasets = True
-            .help = "Reload existing datasets? - if False, will only load new datasets (unprocessed datasets)"
-            .type = bool
-        reprocess_existing_datasets = False
-            .help = "Reprocess existing datasets? (Time-consuming) - if False, will only calculate z-maps for new datasets (unprocessed datasets)"
-            .type = bool
-        reprocess_selected_datasets = None
-            .help = "Reprocess selection of datasets (comma-separated list)"
-            .type = str
-        recalculate_statistical_maps = Yes No *Extend
+        stages = *add_datasets *density_characterisation *zmap_analysis
+            .help = "Which parts of the program should be turned on? add_datasets: find and add new datasets (not needed to reload old datasets). density_characterisation: perform statistical density analysis. zmap_analysis: identify local events in each dataset."
+            .type = choice(multi=True)
+        existing_datasets = reprocess *reload ignore
+            .help = "What to do with previously-analysed datasets? reprocess: old datasets are treated as new and processed fully. reload: events identified in old datasets will be included in results. ignore: ..."
+            .type = choice
+        recalculate_statistical_maps = yes no *extend
             .help = "Set whether statistical maps are re-used from previous runs. If No, it looks for existing statistical maps and uses those (reverts to Yes if none are found). If Extend is chosen, existing maps are used, but additional maps are calculated at high and low resolutions if the data extends beyond the current range."
+            .type = choice
+        density_analysis_for = all_resolutions *datasets
+            .help = "Select which resolutions density is analysed at - characterise the density always? or only when there is a dataset to be analysed?"
             .type = choice
     }
     shortcuts
         .help = "Shortcuts to set sets of parameters to defaults"
     {
         run_in_single_dataset_mode = False
-            .help = "Set the default parameters to allow the analysis to run on a single dataset"
-            .type = bool
-        run_characterisation_for_all_resolutions = False
-            .help = "Do not analyse any datasets; generate statistical maps only, over the full resolution range."
+            .help = "Set the default parameters to allow the characterisation to be performed using a single dataset (no variation analysis)"
             .type = bool
     }
     params
@@ -164,7 +164,6 @@ pandda
             method = global *local
                 .help = "How should the structures be aligned? 'global' is fast, but requires high structural conservation, whereas local is slower and accounts for structural variation"
                 .type = choice
-                .multiple = False
         }
         maps
             .help = "Settings to control how maps are generated and analysed"
@@ -187,6 +186,9 @@ pandda
         masks
             .help = "Parameters to control the masking of grid points around the protein"
         {
+            pdb = None
+                .help = "A PDB to mask the grid against (if none provided, use reference dataset)"
+                .type = float
             inner_mask = 1.8
                 .help = "Points are masked within this distance of protein atoms"
                 .type = float
@@ -290,9 +292,11 @@ pandda
                 .help = 'Empirical multiplier to be applied to the contrast-estimated value of 1-BDC'
         }
     }
-    results {
+    results
+        .help = "Change ordering/filtering of the output data"
+    {
         events {
-            order_by = *z_peak z_mean cluster_size
+            order_by = z_peak z_mean *cluster_size
                 .help = "How should events be ordered within each site?"
                 .type = choice
         }
@@ -319,8 +323,8 @@ pandda
         .help = "Functionality that is still in the process of being tested"
         .expert_level = 2
     {
-        perform_diffraction_data_scaling = False
-            .help = "Perform reciprocal-space scaling of the diffraction data"
+        use_b_factor_scaled_data = False
+        .help = "Apply B-factor scaling to the input data?"
             .type = bool
     }
 }
