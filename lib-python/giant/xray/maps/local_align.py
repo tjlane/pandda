@@ -114,7 +114,7 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
     sc_map_data = cctbx.maptbx.rotate_translate_map(unit_cell          = supercell,
                                                     map_data           = sc_map_data,
                                                     rotation_matrix    = scitbx.matrix.rec([1,0,0,0,1,0,0,0,1], (3,3)).elems,
-                                                    translation_vector = scitbx.matrix.rec([-a for a in origin], (3,1)).elems    )
+                                                    translation_vector = -1.0*scitbx.matrix.rec(origin, (3,1)).elems    )
 
     # ===============================================================================>>>
     # Apply translations to populate all unit cells of supercell
