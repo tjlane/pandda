@@ -112,7 +112,7 @@ class MapLoader(object):
         elif args.params.maps.scaling == 'sigma':  fft_map.apply_sigma_scaling()
         elif args.params.maps.scaling == 'volume': fft_map.apply_volume_scaling()
         # Create map object
-        native_map_true = ElectronDensityMap.from_fft_map(fft_map)
+        native_map_true = ElectronDensityMap.from_fft_map(fft_map).as_map()
 
         # ============================================================================>
         # Morph the map to the reference frame
@@ -120,7 +120,7 @@ class MapLoader(object):
         # Extract the map sites from the grid partition
         point_mappings_grid = grid.partition.nn_groups[grid.global_mask().outer_mask_indices()]
         assert sum(point_mappings_grid == -1) == 0
-        sites_cart_map = grid.grid2cart(grid.global_mask().outer_mask(), origin=True)
+        sites_cart_map = grid.grid2cart(grid.global_mask().outer_mask(), origin_shift=True)
         # Translate the grid partition mappings to the dataset alignment mappings
         mappings_grid2dataset = get_interpolated_mapping_between_coordinates(query_list=grid.partition.sites_cart,
                                                                              ref_list=dataset.model.alignment.reference_sites,
@@ -128,7 +128,7 @@ class MapLoader(object):
         point_mappings_dataset = numpy.array([mappings_grid2dataset[i] for i in point_mappings_grid])
         assert sum(point_mappings_dataset == -1) == 0
         sites_cart_map_d = dataset.model.alignment.ref2nat(coordinates=sites_cart_map, mappings=point_mappings_dataset)
-        morphed_map_data = native_map_true.as_map().get_cart_values(sites_cart_map_d)
+        morphed_map_data = native_map_true.get_cart_values(sites_cart_map_d)
 
         # Scale map to reference
         scale_mask = grid.index_on_other(query=grid.global_mask().inner_mask_indices(),
@@ -566,7 +566,7 @@ class DatasetProcessor(object):
             log_strs.append('----------------------------------->>>')
             log_strs.append('Estimating Event {!s} Background Correction'.format(event_num))
             # Generate custom grid mask for this dataset
-            event_mask = GridMask(parent=grid, sites_cart=grid.grid2cart(point_cluster.points, origin=False), max_dist=2.0, min_dist=0.0)
+            event_mask = GridMask(parent=grid, sites_cart=grid.grid2cart(point_cluster.points, origin_shift=True), max_dist=2.0, min_dist=0.0)
             log_strs.append('=> Event sites ({!s} points) expanded to {!s} points'.format(len(point_cluster.points), len(event_mask.outer_mask_indices())))
             # Select masks to define regions for bdc calculation
             exp_event_idxs = flex.size_t(event_mask.outer_mask_indices())
@@ -624,7 +624,7 @@ class DatasetProcessor(object):
             # Find the nearest atom to the event
             # ============================================================================>
             atm = find_nearest_atoms(atoms=list(protein(dataset.model.hierarchy).atoms_with_labels()),
-                                     query=dataset.model.alignment.ref2nat(grid.grid2cart(sites_grid=[map(int,point_cluster.centroid)], origin=False)))[0]
+                                     query=dataset.model.alignment.ref2nat(grid.grid2cart(sites_grid=[map(int,point_cluster.centroid)], origin_shift=True)))[0]
             log_strs.append('=> Nearest Residue to event: Chain {}, Residue {} {}'.format(atm.chain_id, atm.resname, atm.resid()))
             # ============================================================================>
             # Create an event object

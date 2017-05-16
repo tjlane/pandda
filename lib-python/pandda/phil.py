@@ -188,7 +188,8 @@ pandda
         {
             pdb = None
                 .help = "A PDB to mask the grid against (if none provided, use reference dataset)"
-                .type = float
+                .type = str
+                .multiple = False
             inner_mask = 1.8
                 .help = "Points are masked within this distance of protein atoms"
                 .type = float

@@ -158,14 +158,22 @@ def pandda_grid_setup(pandda):
     # Create reference grid based on the reference structure
     # ============================================================================>
     if pandda.grid is None:
-        # TODO ADD MASK DATASET HERE TODO
-        pandda.create_reference_grid(
-            dataset=pandda.datasets.reference(),
-            grid_spacing=pandda.params.maps.grid_spacing)
-        pandda.mask_reference_grid(
-            dataset=pandda.datasets.reference())
-        pandda.partition_reference_grid(
-            dataset=pandda.datasets.reference())
+        # Which dataset to be used to mask the grid
+        if pandda.params.masks.pdb is not None:
+            pandda.log('Using {} to create and mask the grid'.format(pandda.params.masks.pdb))
+            mask_dataset = PanddaDataset.from_file(model_filename=pandda.params.masks.pdb).label(tag='masking')
+            mask_dataset.model.align_to(other_hierarchy=pandda.datasets.reference().model.hierarchy,
+                                        method=pandda.params.alignment.method,
+                                        require_hierarchies_identical=False)
+        else:
+            pandda.log('Using the reference dataset to create and mask the grid')
+            mask_dataset = pandda.datasets.reference().copy()
+        # Create the grid using the masking dataset (for determining size and extent of grid)
+        pandda.create_reference_grid(dataset=mask_dataset, grid_spacing=pandda.params.maps.grid_spacing)
+        pandda.mask_reference_grid(dataset=mask_dataset)
+        pandda.datasets.reference().set_origin_shift([-1.0*a for a in pandda.grid.cart_origin()])
+        # Partition the grid with the reference dataset (which grid points use which coordinate transformations)
+        pandda.partition_reference_grid(dataset=pandda.datasets.reference())
     else:
         pandda.log('Grid loaded from previous analysis')
     # ============================================================================>

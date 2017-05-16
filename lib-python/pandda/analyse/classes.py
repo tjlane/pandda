@@ -64,6 +64,7 @@ class PanddaReferenceDataset(ModelAndData):
 
         super(PanddaReferenceDataset, self).__init__(model=model, data=data)
 
+        self.set_origin_shift((0.,0.,0.))
         self.child = None
 
     def set_origin_shift(self, shift):
@@ -79,10 +80,13 @@ class PanddaReferenceDataset(ModelAndData):
     def origin_shift(self):
         return self._origin_shift
 
-    def nat2grid(self, *args, **kwargs):
+    def ref2grid(self, *args, **kwargs):
         return self.model.alignment.nat2ref(*args, **kwargs)
-    def grid2nat(self, *args, **kwargs):
+    def grid2ref(self, *args, **kwargs):
         return self.model.alignment.ref2nat(*args, **kwargs)
+
+    def copy(self):
+        return copy.deepcopy(self)
 
 
 class PanddaDatasetList(HolderList):
@@ -551,6 +555,8 @@ class PanddaMultiDatasetAnalyser(Program):
             p.input.reference.pdb = os.path.abspath(p.input.reference.pdb)
         if p.input.reference.mtz:
             p.input.reference.mtz = os.path.abspath(p.input.reference.mtz)
+        if p.params.masks.pdb:
+            p.params.masks.pdb = os.path.abspath(p.params.masks.pdb)
         # ================================================>
         # Trim any unnecessary '/'
         # ================================================>
@@ -928,22 +934,22 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log.bar()
         self.log('Creating Reference Grid', True)
 
-        # ==============================>
-        # Create grid size based on reference dataset atoms and buffer zone
-        # ==============================>
-        sites_cart = protein(dataset.model.hierarchy).atoms().extract_xyz()
+        # ============================================================================>
+        # Extract sites and calculate grid extent
+        # ============================================================================>
+        sites_cart = dataset.model.alignment.nat2ref(protein(dataset.model.hierarchy).atoms().extract_xyz())
+        # Calculate the extent of the grid
         buffer = self.params.masks.outer_mask + self.params.maps.padding
         grid_min = flex.double([s-buffer for s in sites_cart.min()])
         grid_max = flex.double([s+buffer for s in sites_cart.max()])
-
-        # TODO origin -> grid_min, approx_max -> grid_max TODO
-
-        # ==============================>
-        # Create grid object
-        # ==============================>
+        self.log('Grid minimum: {}'.format(tuple(grid_min)))
+        self.log('Grid maximum: {}'.format(tuple(grid_max)))
+        # ============================================================================>
+        # Create main grid object
+        # ============================================================================>
         self.grid = Grid(grid_spacing   = grid_spacing,
-                         origin         = (0,0,0),
-                         approx_max     = tuple(grid_max-grid_min),
+                         origin         = tuple(grid_min),
+                         approx_max     = tuple(grid_max),
                          verbose        = self.settings.verbose)
         self.log(self.grid.summary())
 
@@ -956,10 +962,10 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log('Masking Reference Grid', True)
 
         # ============================================================================>
-        # Get main and neighbouring symmetry copies of the reference structures
+        # Get main and neighbouring symmetry copies of the masking structure
         # ============================================================================>
         ref_sites_cart = dataset.model.alignment.nat2ref(protein(dataset.model.hierarchy).atoms().extract_xyz())
-        sym_copies = dataset.model.crystal_contacts(distance_cutoff=self.args.params.masks.outer_mask+5, combine_copies=True)
+        sym_copies = dataset.model.crystal_contacts(distance_cutoff=self.args.params.masks.outer_mask+5.0, combine_copies=True)
         sym_sites_cart = dataset.model.alignment.nat2ref(protein(sym_copies).atoms().extract_xyz())
         # ============================================================================>
         # Global mask used for removing points in the bulk solvent regions
@@ -1002,7 +1008,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Select the sites for generating the voronoi alignments (calphas)
         # ============================================================================>
         partition_h = calphas(sel_altloc(dataset.model.hierarchy, altlocs=altlocs))
-        site_cart_ca = dataset.nat2grid(partition_h.atoms().extract_xyz())
+        site_cart_ca = partition_h.atoms().extract_xyz()
         # ============================================================================>
         # Create voronoi cells based on these atoms
         # ============================================================================>
@@ -1466,14 +1472,6 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         ref_dataset = PanddaReferenceDataset.from_file(model_filename=os.path.relpath(link_ref_pdb, start=self.out_dir),
                                                        data_filename=os.path.relpath(link_ref_mtz, start=self.out_dir)).label(num=-1, tag='reference')
-
-        # ==============================>
-        # Calculate the shift required to move the reference structure into the positive quadrant
-        # ==============================>
-        buffer = self.params.masks.outer_mask + self.params.maps.padding
-        sites_min = protein(ref_dataset.model.hierarchy).atoms().extract_xyz().min()
-        ref_dataset.set_origin_shift(shift=-1*flex.double(sites_min)+buffer)
-        self.log('Origin Shift for reference structure: {!s}'.format(tuple([round(s,3) for s in ref_dataset.origin_shift()])))
         # ==============================>
         # Set as the reference dataset for the analysis
         # ==============================>
@@ -1482,14 +1480,14 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Write out structure in reference coordinate frames
         # ==============================>
-        tmp_r_hierarchy = ref_dataset.model.hierarchy.deep_copy()
-        if not os.path.exists(self.file_manager.get_file('reference_on_origin')):
-            tmp_r_hierarchy.atoms().set_xyz(ref_dataset.nat2grid(tmp_r_hierarchy.atoms().extract_xyz()))
-            tmp_r_hierarchy.write_pdb_file(self.file_manager.get_file('reference_on_origin'))
-        if not os.path.exists(self.file_manager.get_file('reference_symmetry')):
-            ref_sym_copies = ref_dataset.model.crystal_contacts(distance_cutoff=self.args.params.masks.outer_mask+5, combine_copies=True)
-            ref_sym_copies.atoms().set_xyz(ref_dataset.nat2grid(ref_sym_copies.atoms().extract_xyz()))
-            ref_sym_copies.write_pdb_file(self.file_manager.get_file('reference_symmetry'))
+#        tmp_r_hierarchy = ref_dataset.model.hierarchy.deep_copy()
+#        if not os.path.exists(self.file_manager.get_file('reference_on_origin')):
+#            tmp_r_hierarchy.atoms().set_xyz(ref_dataset.nat2grid(tmp_r_hierarchy.atoms().extract_xyz()))
+#            tmp_r_hierarchy.write_pdb_file(self.file_manager.get_file('reference_on_origin'))
+#        if not os.path.exists(self.file_manager.get_file('reference_symmetry')):
+#            ref_sym_copies = ref_dataset.model.crystal_contacts(distance_cutoff=self.args.params.masks.outer_mask+5, combine_copies=True)
+#            ref_sym_copies.atoms().set_xyz(ref_dataset.nat2grid(ref_sym_copies.atoms().extract_xyz()))
+#            ref_sym_copies.write_pdb_file(self.file_manager.get_file('reference_symmetry'))
 
         # ==============================>
         # Extract reference dataset SFs
@@ -1541,15 +1539,10 @@ class PanddaMultiDatasetAnalyser(Program):
             return
         self.log('Generating Alignments (using {!s} cores) for {} datasets'.format(self.settings.cpus, len(datasets_for_alignment)))
         # ==============================>
-        # Create a shifted version of the reference model for alignment
-        # ==============================>
-        ref_model = copy.deepcopy(self.datasets.reference().model)
-        ref_model.hierarchy.atoms().set_xyz(ref_model.alignment.nat2ref(ref_model.hierarchy.atoms().extract_xyz()))
-        # ==============================>
         # Generate the alignments for each structure
         # ==============================>
         t1 = time.time()
-        arg_list = [DatasetAligner(model=d.model, other=ref_model, method=method, id=d.tag) for d in datasets_for_alignment]
+        arg_list = [DatasetAligner(model=d.model, other=self.datasets.reference().model, method=method, id=d.tag) for d in datasets_for_alignment]
         dataset_alignments = easy_mp.pool_map(func=wrapper_run, args=arg_list, processes=self.settings.cpus)
         t2 = time.time()
         # ==============================>
@@ -1995,12 +1988,9 @@ class PanddaMultiDatasetAnalyser(Program):
         """Load the reference map, and calculate some map statistics"""
 
         # ==============================>
-        # Get the reference dataset
+        # Take the scaled diffraction data for the reference dataset and create fft
         # ==============================>
         ref_dataset = self.datasets.reference()
-        # ==============================>
-        # Take the scaled diffraction data for the dataset and create fft
-        # ==============================>
         fft_map = ref_dataset.data.miller_arrays['truncated'].fft_map(resolution_factor = self.params.maps.resolution_factor,
                                                                       d_min             = map_resolution,
                                                                       symmetry_flags    = cctbx.maptbx.use_space_group_symmetry)
@@ -2014,9 +2004,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Transform to the reference frame
         # ==============================>
         # Extract the points for the map (in the grid frame)
-        masked_cart = self.grid.grid2cart(self.grid.global_mask().outer_mask(), origin=True)
-        # Transform to the frame of the reference dataset (this should become unnecessary in the future)
-        masked_cart = self.datasets.reference().grid2nat(masked_cart)
+        masked_cart = self.grid.grid2cart(self.grid.global_mask().outer_mask(), origin_shift=True)
         # Create map handler in the native frame and extract the map values
         ref_map_true = ElectronDensityMap.from_fft_map(fft_map).as_map()
         masked_vals = ref_map_true.get_cart_values(masked_cart)
@@ -2025,7 +2013,9 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         ref_map = ElectronDensityMap(map_data=masked_vals, unit_cell=self.grid.unit_cell(),
                         map_indices=self.grid.global_mask().outer_mask_indices(),
-                        map_size=self.grid.grid_size(), sparse=True)
+                        map_size=self.grid.grid_size(),
+                        map_origin=self.grid.cart_origin(),
+                        sparse=True)
         # Store the map as a child of the dataset
         ref_dataset.child = ref_map
         # ==============================>
@@ -2743,8 +2733,8 @@ class PanddaMultiDatasetAnalyser(Program):
         self.tables.event_info.set_value(event.id, 'z_peak', round(event.cluster.max,2))
         self.tables.event_info.set_value(event.id, 'z_mean', round(event.cluster.mean,2))
         self.tables.event_info.set_value(event.id, 'cluster_size', event.cluster.size)
-        self.tables.event_info.set_value(event.id, ['refx','refy','refz'], list(self.grid.grid2cart([event.cluster.peak],origin=False)[0]))
-        self.tables.event_info.set_value(event.id, ['x','y','z'], list(dataset.model.alignment.ref2nat(coordinates=self.grid.grid2cart([event.cluster.peak],origin=False))[0]))
+#        self.tables.event_info.set_value(event.id, ['refx','refy','refz'], list(self.grid.grid2cart([event.cluster.peak],origin_shift=False)[0]))
+        self.tables.event_info.set_value(event.id, ['x','y','z'], list(dataset.model.alignment.ref2nat(coordinates=self.grid.grid2cart([event.cluster.peak],origin_shift=True))[0]))
         self.tables.event_info.set_value(event.id, 'global_correlation_to_mean_map', event.info.global_correlation)
         self.tables.event_info.set_value(event.id, 'local_correlation_to_mean_map',  event.info.local_correlation)
 
