@@ -42,7 +42,7 @@ for s in install_scripts:
 #####################################################################################
 
 setup(  name                = 'panddas',
-        version             = '0.2.1',
+        version             = '0.2.2',
         description         = 'Multi-dataset crystallographic analyses',
         author              = 'Nicholas M Pearce',
         author_email        = 'nicholas.pearce.0@gmail.com',
