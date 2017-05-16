@@ -319,7 +319,7 @@ class ElectronDensityMap(object):
         return cctbx.maptbx.rotate_translate_map(unit_cell          = self.unit_cell,
                                                  map_data           = map_data,
                                                  rotation_matrix    = scitbx.matrix.rec([1,0,0,0,1,0,0,0,1], (3,3)).elems,
-                                                 translation_vector = -1.0*scitbx.matrix.rec(self._map_origin, (3,1)).elems    )
+                                                 translation_vector = (-1.0*scitbx.matrix.rec(self._map_origin, (3,1))).elems    )
 
     def as_map(self):
         map_data = self.get_map_data(sparse=False)

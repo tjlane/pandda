@@ -129,7 +129,7 @@ class Grid(object):
             array = cctbx.maptbx.rotate_translate_map(unit_cell          = self.unit_cell(),
                                                       map_data           = array,
                                                       rotation_matrix    = scitbx.matrix.rec([1,0,0,0,1,0,0,0,1], (3,3)).elems,
-                                                      translation_vector = -1.0*scitbx.matrix.rec(self.cart_origin(), (3,1)).elems    )
+                                                      translation_vector = (-1.0*scitbx.matrix.rec(self.cart_origin(), (3,1))).elems    )
         # Write the map
         iotbx.ccp4_map.write_ccp4_map(file_name   = f_name,
                                       unit_cell   = self.unit_cell(),
