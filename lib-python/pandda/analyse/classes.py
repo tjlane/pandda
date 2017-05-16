@@ -2661,7 +2661,7 @@ class PanddaMultiDatasetAnalyser(Program):
         pymol_str =  '# Mark the identified sites on the protein\n'
         pymol_str += 'from pymol import cmd\n'
         pymol_str += 'from pymol.cgo import *\n'
-        pymol_str += 'cmd.load("{}", "reference")\n'.format(os.path.relpath(self.file_manager.get_file('reference_on_origin'), start=self.file_manager.get_dir('output_summaries')))
+        pymol_str += 'cmd.load("{}", "reference")\n'.format(os.path.relpath(self.file_manager.get_file('reference_structure'), start=self.file_manager.get_dir('output_summaries')))
         pymol_str += 'cmd.show_as("cartoon", "reference")\n'
         pymol_str += 'cmd.color("cyan", "reference")\n'
         # Add sphere at each of the sites
@@ -2669,7 +2669,7 @@ class PanddaMultiDatasetAnalyser(Program):
             # Only print the site if it has more than one event
             if len(site.children) > 1:
                 lab = 'site_{}'.format(site.id)
-                com = tuple(flex.double(site.info.centroid)*self.grid.grid_spacing())
+                com = tuple(self.grid.grid2cart([site.info.centroid])[0])
                 pymol_str += 'cmd.pseudoatom("{}", pos={}, vdw=2.5)\n'.format(lab, com)
                 pymol_str += 'cmd.show("sphere", "{}")\n'.format(lab)
                 pymol_str += 'cmd.label("{}", "{}")\n'.format(lab, site.id)
@@ -2678,7 +2678,7 @@ class PanddaMultiDatasetAnalyser(Program):
             # Label events as smaller spheres
             for event in site.children:
                 lab = 'event'
-                com = tuple(flex.double(event.cluster.centroid)*self.grid.grid_spacing())
+                com = tuple(self.grid.grid2cart([event.cluster.centroid])[0])
                 pymol_str += 'cmd.pseudoatom("{}", pos={}, vdw=0.5)\n'.format(lab, com)
                 pymol_str += 'cmd.show("sphere", "{}")\n'.format(lab)
                 pymol_str += 'cmd.color("blue", "{}")\n'.format(lab)
