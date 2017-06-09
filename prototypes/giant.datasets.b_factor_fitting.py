@@ -600,23 +600,21 @@ class MultiDatasetTLSFit(object):
 def run(params):
 
     print 'Building model list'
-    models = [CrystallographicModel.from_file(f).label(tag=os.path.basename(os.path.dirname(f))) for f in params.input.pdb[:10]]
-
-    print 'running fitting'
+    models = [CrystallographicModel.from_file(f).label(tag=os.path.basename(os.path.dirname(f))) for f in params.input.pdb]
 
     # Check that all models are the same
     # TODO
 
-    # Extract the TLS model of the first dataset
-    log('No TLS models provided. Trying to extract from first crystallographic model')
-    tls_params = extract_tls_from_pdb(models[0].filename).tls_params
-    # Print the found models
-    for i_tls, tls in enumerate(tls_params):
-        log.subheading('TLS MODEL: {}'.format(i_tls+1))
-        log('T: {}'.format(tuple(tls.t)))
-        log('L: {}'.format(tuple(tls.l)))
-        log('S: {}'.format(tuple(tls.s)))
-    assert len(tls_params) != 0, 'No TLS models found in structure.'
+#    # Extract the TLS model of the first dataset
+#    log('No TLS models provided. Trying to extract from first crystallographic model')
+#    tls_params = extract_tls_from_pdb(models[0].filename).tls_params
+#    # Print the found models
+#    for i_tls, tls in enumerate(tls_params):
+#        log.subheading('TLS MODEL: {}'.format(i_tls+1))
+#        log('T: {}'.format(tuple(tls.t)))
+#        log('L: {}'.format(tuple(tls.l)))
+#        log('S: {}'.format(tuple(tls.s)))
+#    assert len(tls_params) != 0, 'No TLS models found in structure.'
 
     h=models[0].hierarchy
     for m in models:
@@ -639,17 +637,18 @@ def run(params):
         fitter = MultiDatasetTLSFitter(observed_uij=obs_uij,
                                        observed_xyz=obs_xyz,
                                        #tls_params=tls_params,
-                                       num_tls_models=2,
+                                       num_tls_models=1,
                                        cpus=params.settings.cpus)
 
         # Calculate scaling
-        fitter.run()
+        fitter.run(2)
 
         # Extract the fitted output for each dataset
         for i_mdl, mdl in enumerate(models):
+            log('Extracting B-factors for model: {}'.format(mdl.filename))
             mdl_uij = fitter.extract_fitted_uij(datasets=[i_mdl])
             h=mdl.hierarchy.deep_copy()
-            h.atoms().select(atm_sel).set_uij(mdl_uij)
+            h.atoms().select(atm_sel).set_uij(flex.sym_mat3_double(mdl_uij[0]))
             h.write_pdb_file(mdl.filename.replace('.pdb', '.mda.pdb'))
 
     #embed()
