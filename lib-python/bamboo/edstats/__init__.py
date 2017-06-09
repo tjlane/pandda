@@ -4,7 +4,7 @@ import os, sys, tempfile
 import pandas
 
 from bamboo.common.command import CommandManager
-from bamboo.utils.mtz import MtzSummary
+from bamboo.wrappers.mtzutils import MtzSummary
 
 class Edstats(object):
     def __init__(self, mtz_file, pdb_file):

@@ -2,7 +2,7 @@ import os, sys, shutil
 
 from rdkit import Chem
 
-from bamboo.utils.mtz import get_mtz_summary_dict
+from bamboo.wrappers.mtzutils import get_mtz_summary_dict
 from bamboo.wrappers.symutils import generate_symmetry_mates
 from bamboo.rdkit_utils.contacts.utils import order_structures_by_minimum_distance_to_reference, order_structures_by_number_of_contacts_to_reference
 

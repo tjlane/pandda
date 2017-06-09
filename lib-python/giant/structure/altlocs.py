@@ -5,7 +5,7 @@ import iotbx.pdb
 
 from scitbx.array_family import flex
 
-from giant.structure import get_atom_pairs, calculate_rmsd
+from giant.structure import get_atom_pairs, calculate_paired_atom_rmsd
 from giant.structure.formatting import Labeller
 
 protein_amino_acid_set = set(iotbx.pdb.common_residue_names_amino_acid + iotbx.pdb.common_residue_names_modified_amino_acid)
@@ -98,7 +98,7 @@ def prune_redundant_alternate_conformations(hierarchy, required_altlocs=[], rmsd
         for i,ag_1 in enumerate(alt_ags):
             for j,ag_2 in enumerate(alt_ags):
                 if j<=i: continue
-                d = calculate_rmsd(atoms_1=ag_1.atoms(), atoms_2=ag_2.atoms(), sort=True, truncate_to_common_set=False)
+                d = calculate_paired_atom_rmsd(atoms_1=ag_1.atoms(), atoms_2=ag_2.atoms(), sort=True, truncate_to_common_set=False)
                 if (d is None) or (d > rmsd_cutoff):
                     prune = False
                     break
@@ -146,7 +146,7 @@ def find_duplicate_conformers(residue_group, rmsd_cutoff=0.1, include_truncated_
             if r1.resname != r2.resname:
                 continue
             a2 = r2.atoms()
-            d = calculate_rmsd(atoms_1=a1, atoms_2=a2, sort=True, truncate_to_common_set=include_truncated_atom_groups)
+            d = calculate_paired_atom_rmsd(atoms_1=a1, atoms_2=a2, sort=True, truncate_to_common_set=include_truncated_atom_groups)
             if d is None: continue
             if d < rmsd_cutoff:
                 duplicate_conformers.append((r1.standalone_copy(),r2.standalone_copy()))

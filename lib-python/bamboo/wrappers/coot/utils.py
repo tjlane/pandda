@@ -1,6 +1,6 @@
 
 from bamboo.common.command import CommandManager
-from bamboo.utils.mtz import MtzSummary
+from bamboo.wrappers.mtzutils import MtzSummary
 from bamboo.wrappers.coot.scripts import *
 
 def validate_coot_script(script):

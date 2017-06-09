@@ -1,7 +1,6 @@
 import os, sys, shutil
 
 from bamboo.common.command import CommandManager
-from bamboo.macro.utils import get_residue_labels
 from bamboo.constants import DEFAULT_OUTPUT_CHAIN, DEFAULT_OUTPUT_RESNUM
 
 def isolate_residue(inpdb, outpdb, resname):
@@ -23,28 +22,6 @@ def remove_residue(inpdb, outpdb, resname):
     PDBCUR.run()
 
     return PDBCUR
-
-def change_residue_chain_and_number_to_default(inpdb):
-    """Takes the residue in inpdb and moves it to chain X, residue 666 - IN PLACE (keeps original copy as inpdb+'.origfile')"""
-
-    # Get the current labels
-    res_id = get_residue_labels(inpdb)
-    assert len(res_id)!=0, 'NO RESIDUES IN FILE! {!s}'.format(inpdb)
-    assert len(res_id)==1, 'MORE THAN ONE RESIDUE IS PRESENT IN THE FILE! {!s}'.format(inpdb)
-    curr_resname, curr_chain, curr_resnum, curr_inscode = res_id[0]
-    if not curr_chain: curr_chain='\'\''
-    new_chain, new_resnum = DEFAULT_OUTPUT_CHAIN[0], DEFAULT_OUTPUT_RESNUM[0]
-
-    # Move file to prepare for new file
-    origfile = inpdb + '.origfile'
-    shutil.move(inpdb, origfile)
-
-    PDBSET = CommandManager('pdbset')
-    PDBSET.add_command_line_arguments('XYZIN',origfile,'XYZOUT',inpdb)
-    PDBSET.add_standard_input(['RENUMBER {!s} CHAIN {!s} TO {!s}'.format(new_resnum, curr_chain, new_chain), 'END'])
-    PDBSET.run()
-
-    return PDBSET
 
 def isolate_residue_by_res_id(inpdb, outpdb, chain, resnum, model='*', inscode=''):
     """Isolate the residues identified by residue ids using pdbcur - i.e. '0/A/54.A/'"""

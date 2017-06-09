@@ -1,7 +1,7 @@
 import os,sys
 
 from bamboo.maps.utils import select_factors_and_phases_for_map
-from bamboo.utils.mtz import get_mtz_summary_dict
+from bamboo.wrappers.mtzutils import get_mtz_summary_dict
 from bamboo.wrappers.maputils import fft_mtz_to_map
 
 def convert_mtz_to_map(mtzfile, mapfile=None, method='fft', maptype='2FOFC', force=False):

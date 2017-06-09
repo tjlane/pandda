@@ -16,9 +16,10 @@ from bamboo.plot import Radar
 from bamboo.edstats import Edstats
 
 from giant.io.pdb import strip_pdb_to_input
-from giant.structure import calculate_residue_group_occupancy, calculate_residue_group_rmsd
+from giant.structure import calculate_residue_group_occupancy, calculate_paired_conformer_rmsds
 from giant.structure.b_factors import calculate_residue_group_bfactor_ratio
 from giant.structure.formatting import ShortLabeller
+from giant.structure.select import non_h, protein, backbone, sidechains
 from giant.xray.edstats import extract_residue_group_density_scores
 
 #######################################
@@ -138,6 +139,7 @@ include scope giant.phil.settings_phil
 
 def sanitise_hierarchy(hierarchy):
     hierarchy.atoms().set_chemical_element_simple_if_necessary()
+    hierarchy.sort_atoms_in_place()
 
 def prepare_table():
 
@@ -153,7 +155,7 @@ def prepare_table():
     columns = []
     columns.extend(columns_fix)
     columns.extend(columns_num)
-    columns.extend([c+'-2' for c in columns_num])
+    #columns.extend([c+'-2' for c in columns_num])
     columns.extend(columns_end)
     columns.extend([c+'-2' for c in columns_end])
 
@@ -181,12 +183,12 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix='', verbo
     print 'Reading input structure:', pdb1
 
     # Extract Structure
-    h1_all = strip_pdb_to_input(pdb1, remove_ter=True, remove_end=True).hierarchy
+    h1_all = non_h(strip_pdb_to_input(pdb1, remove_ter=True, remove_end=True).hierarchy)
+    # Normalise hierarchy (standardise atomic naming, etc...)
     sanitise_hierarchy(h1_all)
-    h1_all = h1_all.select(h1_all.atom_selection_cache().selection('not element H'), copy_atoms=True)
-    h1_pro = h1_all.select(h1_all.atom_selection_cache().selection('pepnames'), copy_atoms=True)
-    h1_bck = h1_pro.select(h1_pro.atom_selection_cache().selection('(name CA or name C or name O or name N)'), copy_atoms=True)
-    h1_sch = h1_pro.select(h1_pro.atom_selection_cache().selection('not (name CA or name C or name O or name N)'), copy_atoms=True)
+    h1_pro = protein(h1_all)
+    h1_bck = backbone(h1_all)
+    h1_sch = sidechains(h1_all)
 
     # Pull out residues to analyse
     if res_names:
@@ -203,9 +205,8 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix='', verbo
     # Extract PDB2
     if pdb2 is not None:
         print 'Reading input structure:', pdb2
-        h2_all = strip_pdb_to_input(pdb2, remove_ter=True, remove_end=True).hierarchy
+        h2_all = non_h(strip_pdb_to_input(pdb2, remove_ter=True, remove_end=True).hierarchy)
         sanitise_hierarchy(h2_all)
-        h2_all = h2_all.select(h2_all.atom_selection_cache().selection('not element H'), copy_atoms=True)
 
     # Score MTZ1
     if mtz1 is not None:
@@ -264,17 +265,18 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix='', verbo
             except:
                 raise
 
-            # Exctract occupancy
+            # Extract occupancy
             data_table.set_value(index = rg_label,
                                  col   = 'Occupancy-2',
-                                 value = calculate_residue_group_occupancy(residue_group=rg_sel_2) )
+                                 value = calculate_residue_group_occupancy(residue_group=rg_sel_2[0]) )
 
             # Calculate the RMSD between the models
             try:
-                rmsd = calculate_residue_group_rmsd(residue_group_1=rg_sel,
-                                                    residue_group_2=rg_sel_2[0])
-                data_table.set_value(index=rg_label, col='Model RMSD', value=rmsd)
+                confs1, confs2, rmsds = zip(*calculate_paired_conformer_rmsds(conformers_1=rg_sel.conformers(), conformers_2=rg_sel_2[0].conformers()))
+                data_table.set_value(index=rg_label, col='Model RMSD', value=min(rmsds))
             except:
+                raise
+                print 'Could not calculate RMSD between pdb_1 and pdb_2 for residue {}'.format(rg_label)
                 pass
 
         # Extract Density Scores - MTZ 1
@@ -461,7 +463,7 @@ def run(params):
     print '...Done'
     print bar
 
-    data_table.to_csv(scores_file)
+    data_table.dropna(axis=1, how='all').to_csv(scores_file)
     print 'Output written to {}'.format(scores_file)
     print bar
 

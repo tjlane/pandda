@@ -1,6 +1,6 @@
 import os, sys, shutil
 
-from bamboo.utils.mtz import get_mtz_summary_dict
+from bamboo.wrappers.mtzutils import get_mtz_summary_dict
 from bamboo.wrappers.pdbutils import create_cryst_line
 
 def create_cryst_line_from_mtz(pdbin, pdbout, mtz):
