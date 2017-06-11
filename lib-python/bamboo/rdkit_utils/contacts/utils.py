@@ -1,7 +1,7 @@
 from rdkit import Chem
 
 from bamboo.constants import WATER_NAMES
-from bamboo.rdkit.mol import check_pdb_readable
+from bamboo.rdkit_utils.mol import check_pdb_readable
 
 def order_structures_by_minimum_distance_to_reference(refpdb, pdbs, mincutoff=1.5, maxcutoff=6):
     """Return the molecules have at least one non-H atom within a certain distance of the reference structure"""

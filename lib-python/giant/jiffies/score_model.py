@@ -13,14 +13,13 @@ import libtbx.phil
 import numpy, pandas
 
 from bamboo.plot import Radar
-from bamboo.edstats import Edstats
 
 from giant.io.pdb import strip_pdb_to_input
+from giant.xray.edstats import Edstats
 from giant.structure import calculate_residue_group_occupancy, calculate_paired_conformer_rmsds
 from giant.structure.b_factors import calculate_residue_group_bfactor_ratio
 from giant.structure.formatting import ShortLabeller
 from giant.structure.select import non_h, protein, backbone, sidechains
-from giant.xray.edstats import extract_residue_group_density_scores
 
 #######################################
 
@@ -283,10 +282,9 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix='', verbo
         if mtz1 is not None:
             data_table.set_value(   index = rg_label, col='MTZ', value=mtz1)
         if mtz1_edstats_scores is not None:
-            data_table = extract_residue_group_density_scores(  residue_group  = rg_sel,
-                                                                edstats_scores = mtz1_edstats_scores,
-                                                                data_table     = data_table,
-                                                                rg_label       = rg_label )
+            data_table = mtz1_edstats_scores.extract_residue_group_scores(  residue_group  = rg_sel,
+                                                                            data_table     = data_table,
+                                                                            rg_label       = rg_label )
             # Normalise the RSZO by the Occupancy of the ligand
             data_table['RSZO/OCC'] = data_table['RSZO']/data_table['Occupancy']
 
@@ -294,11 +292,10 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix='', verbo
         if mtz2 is not None:
             data_table.set_value(   index = rg_label, col='MTZ-2', value=mtz2)
         if mtz2_edstats_scores is not None:
-            data_table = extract_residue_group_density_scores(  residue_group  = rg_sel,
-                                                                edstats_scores = mtz2_edstats_scores,
-                                                                data_table     = data_table,
-                                                                rg_label       = rg_label,
-                                                                column_suffix  = '-2' )
+            data_table = mtz2_edstats_scores.extract_residue_group_scores(  residue_group  = rg_sel,
+                                                                            data_table     = data_table,
+                                                                            rg_label       = rg_label,
+                                                                            column_suffix  = '-2' )
             # Normalise the RSZO by the Occupancy of the ligand
             data_table['RSZO/OCC-2'] = data_table['RSZO-2']/data_table['Occupancy-2']
 

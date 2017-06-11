@@ -7,7 +7,7 @@ import pandas
 import iotbx.pdb
 import libtbx.easy_mp
 
-from bamboo.pdb_utils import get_pdb_index, download_and_organise_pdb_as_necessary
+from bamboo.rscb_utils import get_pdb_index, download_and_organise_pdb_as_necessary
 
 def process_line_wrap(line):
 

@@ -14,7 +14,7 @@ from libtbx.utils import Sorry, Failure
 from bamboo.common import Meta, Info
 from bamboo.common.logs import Log
 from bamboo.common.path import rel_symlink
-from bamboo.pymol import PythonScript
+from bamboo.pymol_utils import PythonScript
 from bamboo.stats.ospina import estimate_true_underlying_sd
 
 from giant.dataset import ElectronDensityMap

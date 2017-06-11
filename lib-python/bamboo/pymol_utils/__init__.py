@@ -3,7 +3,7 @@ import numpy
 
 from itertools import cycle
 
-from bamboo.pymol.shapes import *
+from bamboo.pymol_utils.shapes import *
 
 
 class PymolColourPalettes:
