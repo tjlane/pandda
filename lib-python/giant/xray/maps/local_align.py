@@ -74,7 +74,8 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
     # Mask the supercell grid around the protein model
     # ===============================================================================>>>
     # calculate the origin of the supercell (centred on the protein model) - adding origin translates "grid frame" to "crystallographic frame"
-    origin = calculate_offset_to_centre_grid(grid_dimensions=supercell.parameters()[0:3], centre_on=native_sites.mean())
+    model_centroid = tuple((flex.double(native_sites.max()) + flex.double(native_sites.min()))/2.0)
+    origin = calculate_offset_to_centre_grid(grid_dimensions=supercell.parameters()[0:3], centre_on=model_centroid)
     # sample the map points near to the protein (transform the structure to be centre of the grid)
     masked_points_indices = cctbx.maptbx.grid_indices_around_sites(unit_cell  = supercell,
                                                                    fft_n_real = sc_gridding.n_real(),
