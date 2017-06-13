@@ -1,6 +1,6 @@
 import os, sys
 
-from bamboo.rdkit.mol import check_pdb_readable
+from bamboo.rdkit_utils.mol import check_pdb_readable
 
 from rdkit import Chem
 

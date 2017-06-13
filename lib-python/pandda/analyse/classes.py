@@ -1053,7 +1053,7 @@ class PanddaMultiDatasetAnalyser(Program):
                 self.grid.write_array_as_map(array=((self.grid.partition.nn_groups%10)==i_cell)*(self.grid.partition.nn_groups>=0).astype(int),
                                              f_name=self.file_manager.get_file('grid_voronoi').format('{:04}'.format(i_cell)))
             # Write out pymol script to allow results to be access easily
-            from bamboo.pymol import PythonScript, Sphere
+            from bamboo.pymol_utils import PythonScript, Sphere
             pml = PythonScript()
             pml.set_normalise_maps(False)
             for i_atom, atom in enumerate(partition_h.atoms_with_labels()):

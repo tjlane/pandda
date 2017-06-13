@@ -3,7 +3,7 @@ import math
 
 from bamboo.rdkit_utils.mol import check_pdb_readable
 from bamboo.rdkit_utils.coords.utils import get_atomic_equivalences
-from bamboo.wrappers.symutils import map_to_reference_using_symmetry
+from bamboo.ccp4_utils import map_to_reference_using_symmetry
 
 def calculate_rmsd_between_fragged_files_using_symmetry(file1, file2, delete_structures=True):
     """Take a pair of homologous fragmented molecule files and return a list of the rmsds between the paired fragments in each molecule, minimising over equivalent models"""

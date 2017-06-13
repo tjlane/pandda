@@ -1,7 +1,7 @@
 import math
 from rdkit import Chem
 
-from bamboo.rdkit.bonds.rotate import identify_rotatable_bond_atom_pairs
+from bamboo.rdkit_utils.bonds.rotate import identify_rotatable_bond_atom_pairs
 
 def calculate_dihedral_angle_differences(mol1, mol2):
     """Calculates the dihedral angle differences between rotatable bonds of mol1 and mol2"""

@@ -1,8 +1,8 @@
 import os
 
 from bamboo.common.command import CommandManager
-from bamboo.wrappers.program_selector import allowed_refiner_args
-from bamboo.wrappers.pdbutils import remove_modres_records
+from bamboo.wrappers import allowed_refiner_args
+from bamboo.ccp4_utils import remove_modres_records
 
 class RefinerObject(object):
 

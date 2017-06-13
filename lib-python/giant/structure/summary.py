@@ -2,7 +2,7 @@ import iotbx.pdb
 
 from scitbx.math import basic_statistics
 
-from bamboo.edstats import Edstats
+from giant.xray.edstats import Edstats
 from giant.structure.b_factors import BfactorStatistics, normalise_b_factors_to_z_scores
 from giant.structure.html import write_html_summary
 

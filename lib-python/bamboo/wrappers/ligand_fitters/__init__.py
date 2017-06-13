@@ -2,10 +2,8 @@ import os, shutil
 
 from bamboo.common.command import CommandManager
 from bamboo.constants import DEFAULT_OUTPUT_CHAIN
-from bamboo.xray.cryst import create_cryst_line_from_mtz
-from bamboo.wrappers.program_selector import allowed_fitter_args
-from bamboo.wrappers.symutils import map_to_reference_using_symmetry
-from bamboo.wrappers.pdbutils import merge_pdb_files, change_residue_chain_and_number
+from bamboo.wrappers import allowed_fitter_args
+from bamboo.ccp4_utils import map_to_reference_using_symmetry, merge_pdb_files, change_residue_chain_and_number, create_cryst_line_from_mtz
 
 class FitterObject(object):
 

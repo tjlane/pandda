@@ -2,7 +2,7 @@ import os
 
 from bamboo.common.command import CommandManager
 from bamboo.constants import DEFAULT_LIGAND_NAMES
-from bamboo.wrappers.program_selector import allowed_builder_args
+from bamboo.wrappers import allowed_builder_args
 
 class BuilderObject(object):
     """Template Object for creating an Object to generate ligand restraints"""
