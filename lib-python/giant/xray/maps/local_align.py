@@ -164,7 +164,8 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
         rt_map_data = cctbx.maptbx.rotate_translate_map(unit_cell          = native_unit_cell,
                                                         map_data           = combined_uc_map_data,
                                                         rotation_matrix    = rt_mx.r.elems,
-                                                        translation_vector = native_unit_cell.orthogonalize((-1.0*rt_mx.t).elems)   )
+                                                        #translation_vector = native_unit_cell.orthogonalize((-1.0*rt_mx.t).elems)   )
+                                                        translation_vector = native_unit_cell.orthogonalize(rt_mx.t.elems)   )
         # Set any values that are filled in combined_uc_map_data to 0
         rt_map_data.set_selected(flex.abs(combined_uc_map_data) > 1e-6, 0)
         # Add values to combined_uc_map_data
