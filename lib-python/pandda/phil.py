@@ -190,6 +190,9 @@ pandda
                 .help = "A PDB to mask the grid against (if none provided, use reference dataset)"
                 .type = str
                 .multiple = False
+            align_mask_to_reference = True
+                .help = "If masks.pdb is supplied, does it require alignment to the reference structure? If selecting a fragment of the structure, masks.pdb must already be aligned prior to running pandda (can't align fragments)."
+                .type = bool
             inner_mask = 1.8
                 .help = "Points are masked within this distance of protein atoms"
                 .type = float

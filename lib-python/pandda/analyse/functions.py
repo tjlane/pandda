@@ -673,7 +673,7 @@ class DatasetProcessor(object):
 class NativeMapMaker(object):
 
 
-    def __init__(self, dataset, map, filename, args, verbose):
+    def __init__(self, dataset, map_obj, sites_mask, filename, args, verbose):
         """
         The main object for comparing each dataset-map to the ensemble-maps.
         Constructed so that the class can be initialised and then called within a multiprocessing function.
@@ -685,25 +685,24 @@ class NativeMapMaker(object):
             output   = DatasetProcessor.process(...)
         """
 
-        self.data = (dataset, map, filename, args, verbose)
+        self.data = (dataset, map_obj, sites_mask, filename, args, verbose)
 
     @classmethod
-    def process(cls, dataset, map, filename, args, verbose):
+    def process(cls, dataset, map_obj, sites_mask, filename, args, verbose):
         """Process the dataset immediately and return output"""
-        return cls(dataset=dataset, map=map, filename=filename, args=args, verbose=verbose).run()
+        return cls(dataset=dataset, map_obj=map_obj, sites_mask=sites_mask, filename=filename, args=args, verbose=verbose).run()
 
     def run(self):
         """Process the dataset"""
 
         t1 = time.time()
-        dataset, map, filename, args, verbose = self.data
+        dataset, map_obj, sites_mask, filename, args, verbose = self.data
 
         native_map_data = create_native_map(
                             native_crystal_symmetry = dataset.model.crystal_symmetry,
-                            native_sites            = dataset.model.hierarchy.atoms().extract_xyz(),
-                            native_hierarchy        = dataset.model.hierarchy,
+                            native_sites            = dataset.model.alignment.ref2nat(sites_mask),
                             alignment               = dataset.model.alignment,
-                            reference_map           = map.as_map(),
+                            reference_map           = map_obj.as_map(),
                             site_mask_radius        = args.params.masks.outer_mask,
                             step                    = args.params.maps.grid_spacing,
                             filename                = filename

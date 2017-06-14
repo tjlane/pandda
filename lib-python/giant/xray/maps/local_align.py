@@ -33,11 +33,10 @@ def get_subset_of_grid_points(gridding, grid_indices):
         assert i == grid(p)
         if mask_binary[i]: yield p
 
-def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, alignment, reference_map, site_mask_radius=6.0, step=0.5, filename=None, verbose=False):
+def create_native_map(native_crystal_symmetry, native_sites, alignment, reference_map, site_mask_radius=6.0, step=0.5, filename=None, verbose=False):
     """
     Transform the reference-aligned map back to the native crystallographic frame
     native_sites            - defines region that map will be masked around
-    native_hierarchy        - full model for the crystal
     native_crystal_symmetry - crystal symmetry
     reference_map           - basic_map object of the map in the reference frame
     alignment               - Alignment object used to map between the reference frame and the native frame
@@ -52,10 +51,10 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
     native_space_group = native_crystal_symmetry.space_group()
 
     # ===============================================================================>>>
-    # Create a supercell containing the protein model at the centre
+    # Create a supercell containing the native_sites at the centre
     # ===============================================================================>>>
     # How many unit cells to include in the supercell
-    box_frac_min_max = native_unit_cell.box_frac_around_sites(sites_cart=native_hierarchy.atoms().extract_xyz(), buffer=site_mask_radius+1.0)
+    box_frac_min_max = native_unit_cell.box_frac_around_sites(sites_cart=native_sites, buffer=site_mask_radius+1.0)
     supercell_size = tuple([iceil(ma-mi) for mi, ma in zip(*box_frac_min_max)])
     # create supercell in the native frame
     supercell = make_supercell(native_unit_cell, size=supercell_size)
@@ -152,10 +151,6 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
     # ===============================================================================>>>
     # Create a copy to contain the combined map data
     combined_uc_map_data = copy.deepcopy(uc_map_data)
-#    # Get the symmetry operations for adjacent crystal copies
-#    sym_ops = get_crystal_contact_operators(hierarchy=native_hierarchy,
-#                                            crystal_symmetry=native_crystal_symmetry,
-#                                            distance_cutoff=5.0)
     # Apply all symmetry operations to unit cell data
     for sym_op in native_space_group.all_ops():
         if sym_op.as_xyz() == 'x,y,z': continue
