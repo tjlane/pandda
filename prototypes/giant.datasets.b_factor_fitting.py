@@ -11,7 +11,7 @@ import mmtbx.tls.tools
 
 from libtbx.utils import Sorry, Failure
 from scitbx.array_family import flex
-from scitbx import simplex
+from scitbx import simplex, matrix
 
 from bamboo.common.logs import Log
 
@@ -77,7 +77,11 @@ def proc_wrapper(arg):
 
 class MultiDatasetTLSFitter(object):
 
-    def __init__(self, observed_xyz, observed_uij, tls_params=None, num_tls_models=None, cpus=48):
+    _tls_weight = 1.0
+    _amp_weight = 1.0
+    _uij_weight = 1.0
+
+    def __init__(self, observed_xyz, observed_uij, tls_params=None, num_tls_models=None, cpus=1):
 
         self._test = False
         self._iter = 0
@@ -131,8 +135,8 @@ class MultiDatasetTLSFitter(object):
         # Initial parameter values
         # ---------------------------->
         self.initial_tls_parameters = numpy.concatenate(vec_tls)
-        self.initial_tls_amplitudes = numpy.array([1.0]*self._n_prm_tls_amp)
-        self.initial_uij_residuals  = numpy.array([0.0]*self._n_prm_uij_res)
+        self.initial_tls_amplitudes = numpy.ones(self._n_prm_tls_amp)
+        self.initial_uij_residuals  = numpy.zeros(self._n_prm_uij_res)
         # ---------------------------->
         # Output variables (initialise to None)
         # ---------------------------->
@@ -231,6 +235,22 @@ class MultiDatasetTLSFitter(object):
     def copy(self):
         return copy.deepcopy(self)
 
+    def _adopt(self, sub_vector, selection=None):
+        """Insert a set of parameters into the complete parameter set"""
+        if selection is None: selection = self._var_current_sel
+        assert len(sub_vector) == numpy.sum(selection)
+        self._var_current[selection] = sub_vector
+
+    def _adopt_from_others(self, others):
+        # Updating from others, so set own selection to none
+        self._reset_current_selection()
+        for n in others:
+            # Add this selection to our selection
+            self._var_current_sel += n._var_current_sel
+            # Copy the values across
+            self._adopt(sub_vector=n._var_current[n._var_current_sel], selection=n._var_current_sel)
+        self._update_output()
+
     def _prep_for_mp(self):
         """Clear parts of the object that are not needed for optimisation after selection - save memory when pickling"""
         self.initial_tls_parameters = None
@@ -240,84 +260,7 @@ class MultiDatasetTLSFitter(object):
 
     ################################################################################################
     ###
-    ###                             Summaries
-    ###
-    ################################################################################################
-
-    def input_summary(self):
-        """Print the number of parameters/input data"""
-        log.subheading('Input summary')
-        log('input uij parameters: {}'.format(self.observed_uij.shape))
-        log('input xyz parameters: {}'.format(self.observed_xyz.shape))
-        log('Centre of mass: {}'.format(self.observed_com))
-        log.bar()
-        log('Number of parameters for TLS fitting: {}'.format(self._n_prm_total))
-        log('Number of observations: {}'.format(self._n_obs_total))
-        log('Data/parameter ratio is {:.3f}'.format(self._n_obs_total*1.0/self._n_prm_total))
-        log.bar()
-        log('Number of datasets:   {}'.format(self._n_dst))
-        log('Number of atoms:      {}'.format(self._n_atm))
-        log('Number of TLS models: {}'.format(self._n_tls))
-        log.bar()
-
-    def optimisation_summary(self, full=True):
-        """Print the fitted parameters"""
-        tls_prms, tls_amps, res_uij = self._extract(vector=self._var_optimised)
-
-        log.subheading('Optimisation Summary')
-
-        tls_refined = numpy.sum(self._sel_tls_mdl*self._var_current_sel)
-        amp_refined = numpy.sum(self._sel_tls_amp*self._var_current_sel)
-        uij_refined = numpy.sum(self._sel_uij_res*self._var_current_sel)
-
-        log('Optimisation used data from {} datasets'.format(len(self._cur_datasets)))
-        log('Optimisation used data for {} atoms'.format(len(self._cur_atoms)))
-        log.bar()
-        log('Optimised {} parameters'.format(numpy.sum(self._var_current_sel)))
-        log('... {} TLS parameters,'.format(tls_refined))
-        log('... {} TLS amplitudes,'.format(amp_refined))
-        log('... {} uij parameters.'.format(uij_refined))
-        log.bar()
-        log('Optimisation RMSD: {}'.format(self.optimisation_rmsd))
-        log.bar()
-        log('')
-        if tls_refined or full:
-            self.parameter_summary(tls_params=tls_prms)
-        if amp_refined or full:
-            self.parameter_summary(tls_amplitudes=tls_amps)
-        if uij_refined or full:
-            self.parameter_summary(uij_residual=res_uij)
-
-    def parameter_summary(self, tls_params=None, tls_amplitudes=None, uij_residual=None):
-        if tls_params is tls_amplitudes is uij_residual is None:
-            tls_params, tls_amplitudes, uij_residual = self._extract(vector=self._var_current)
-        log.bar()
-        if tls_params is not None:
-            log('TLS Parameters:')
-            for i, vals in enumerate(tls_params):
-                log.bar()
-                log('Model {:2}'.format(i+1))
-                log('T: '+', '.join(['{:8.3f}'.format(v) for v in vals[00:06]]))
-                log('L: '+', '.join(['{:8.3f}'.format(v) for v in vals[06:12]]))
-                log('S: '+', '.join(['{:8.3f}'.format(v) for v in vals[12:21]]))
-            log.bar()
-        if tls_amplitudes is not None:
-            log('TLS Amplitudes:')
-            for i, vals in enumerate(tls_amplitudes):
-                log.bar()
-                log('Dataset {:4}'.format(i+1))
-                for i, amps in enumerate(vals):
-                    log('Model {:2}:'.format(i+1)+' {:8.3f} (T) {:8.3f} (L) {:8.3f} (S)'.format(*amps))
-            log.bar()
-        if uij_residual is not None:
-            log('Residual Uijs:')
-            for i, vals in enumerate(uij_residual):
-                log('Atom {:5}: '.format(i+1) + ', '.join(['{:8.3f}'.format(v) for v in vals]))
-            log.bar()
-
-    ################################################################################################
-    ###
-    ###                             Update internal variables or masks
+    ###                             Internal functions
     ###
     ################################################################################################
 
@@ -328,23 +271,14 @@ class MultiDatasetTLSFitter(object):
     def _blank_atom_selection(self):
         return numpy.zeros(self._n_atm, dtype=bool)
 
-    def reset_tls_amplitudes(self):
+    def _reset_tls_amplitudes(self):
         self._var_current[self._sel_tls_amp] = 1.0
-    def reset_uij_residual(self):
+    def _reset_uij_residual(self):
         self._var_current[self._sel_uij_res] = 0.0
-    def reset_current_selection(self):
+    def _reset_current_selection(self):
         self._var_current_sel = self._blank_parameter_selection()
 
-    def _update_atom_masks(self):
-        _, _, uij_res = self._extract()
-        uij_max = numpy.max(numpy.abs(uij_res[:,:3]),axis=1)
-        thresh = numpy.percentile(uij_max, 90)
-        self._mask_atoms *= (uij_max < thresh)
-
-    def _update_dataset_masks(self):
-        pass
-
-    def _extract(self, vector=None):
+    def _extract_parameters(self, vector=None):
         """Convert 1d vector into objects"""
         if vector is None: vector=self._var_current
         tls_mdls = vector[self._sel_tls_mdl].reshape((self._n_tls, 21)             )
@@ -352,9 +286,60 @@ class MultiDatasetTLSFitter(object):
         uij_resl = vector[self._sel_uij_res].reshape((self._n_atm, 6)              )
         return (tls_mdls,tls_amps,uij_resl)
 
+    def _unpack_tls_parameters(self, vals):
+        return vals[0:6], vals[6:12], vals[12:21]
+
+    def _expand_tls_amplitudes(self, tls_amps):
+        """Convert 3-element vector into 21 element vector for TLS multiplication"""
+        cur_n_dst = len(tls_amps)
+        assert tls_amps.shape == (cur_n_dst,self._n_tls,3)
+        t_amps = numpy.repeat(tls_amps[:,:,0], 6, axis=1).reshape((cur_n_dst, self._n_tls, 6))
+        l_amps = numpy.repeat(tls_amps[:,:,1], 6, axis=1).reshape((cur_n_dst, self._n_tls, 6))
+        s_amps = numpy.repeat(tls_amps[:,:,2], 9, axis=1).reshape((cur_n_dst, self._n_tls, 9))
+        exp_tls_amps = numpy.concatenate([t_amps, l_amps, s_amps], axis=2)
+        assert exp_tls_amps.shape == (cur_n_dst,self._n_tls,21)
+        return exp_tls_amps
+
     ################################################################################################
     ###
-    ###                             Update internal variables after optimising/adopting
+    ###                             Constraints / Restraints
+    ###
+    ################################################################################################
+
+    def set_penalty_weights(tls_weight=None, amp_weight=None, uij_weight=None):
+        """Set penalties for parameters to be invalid"""
+        if tls_weight is not None: self._tls_weight = tls_weight
+        if amp_weight is not None: self._amp_weight = amp_weight
+        if uij_weight is not None: self._uij_weight = uij_weight
+
+    def _all_penalties(self, vector, uij_fit):
+        tls_mdl, tls_amp, uij_res = self._extract_parameters(vector=vector)
+        tls_penalties = [self._tls_penalty(values=v) for v in tls_mdl]
+        amp_penalties = [self._amp_penalty(values=v) for v in tls_amp]
+        uij_penalties = [self._uij_penalty(values=v) for v in uij_res]
+        fit_penalties = []; [fit_penalties.extend([self._uij_penalty(values=vv) for vv in v]) for v in uij_fit]
+        return numpy.sum(tls_penalties+amp_penalties+uij_penalties+fit_penalties)
+
+    def _tls_penalty(self, values):
+        assert len(values) == 21
+        t,l,s = self._unpack_tls_parameters(vals=values)
+        t_eig_values = numpy.linalg.eigvals(matrix.sym(sym_mat3=t).as_numpy_array())
+        t_penalty = numpy.sum(t_eig_values<0.0)
+        l_eig_values = numpy.linalg.eigvals(matrix.sym(sym_mat3=l).as_numpy_array())
+        l_penalty = numpy.sum(l_eig_values<0.0)
+        return self._tls_weight*numpy.sum([t_penalty, l_penalty])
+
+    def _amp_penalty(self, values):
+        return self._amp_weight*numpy.sum(values<0.0)
+
+    def _uij_penalty(self, values):
+        assert len(values) == 6
+        eig_values = numpy.linalg.eigvals(matrix.sym(sym_mat3=values).as_numpy_array())
+        return self._uij_weight*numpy.sum(eig_values<0.0)
+
+    ################################################################################################
+    ###
+    ###                             Update functions
     ###
     ################################################################################################
 
@@ -362,27 +347,14 @@ class MultiDatasetTLSFitter(object):
         # Copy running parameters to output holder
         self._var_optimised = self._var_current.copy()
 
-    ################################################################################################
-    ###
-    ###                             Change the parameters of the fitter
-    ###
-    ################################################################################################
+    def _update_atom_masks(self):
+        _, _, uij_res = self._extract_parameters()
+        uij_max = numpy.max(numpy.abs(uij_res[:,:3]),axis=1)
+        thresh = numpy.percentile(uij_max, 90)
+        self._mask_atoms *= (uij_max < thresh)
 
-    def _adopt(self, sub_vector, selection=None):
-        """Insert a set of parameters into the complete parameter set"""
-        if selection is None: selection = self._var_current_sel
-        assert len(sub_vector) == numpy.sum(selection)
-        self._var_current[selection] = sub_vector
-
-    def _adopt_from_others(self, others):
-        # Updating from others, so set own selection to none
-        self.reset_current_selection()
-        for n in others:
-            # Add this selection to our selection
-            self._var_current_sel += n._var_current_sel
-            # Copy the values across
-            self._adopt(sub_vector=n._var_current[n._var_current_sel], selection=n._var_current_sel)
-        self._update_output()
+    def _update_dataset_masks(self):
+        pass
 
     ################################################################################################
     ###
@@ -407,9 +379,10 @@ class MultiDatasetTLSFitter(object):
                 #self._update_dataset_masks()
 
             #########################################
-            log('Resetting amplitudes and uij residuals')
-            self.reset_tls_amplitudes()
-            self.reset_uij_residual()
+#            log('Resetting tls amplitudes')
+#            self._reset_tls_amplitudes()
+            log('Resetting uij residuals')
+            self._reset_uij_residual()
 
             #########################################
             for i_tls in range(self._n_tls):
@@ -432,8 +405,8 @@ class MultiDatasetTLSFitter(object):
                     self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._cpus, func=proc_wrapper, args=proc_args))
                     self.optimisation_summary(False)
                 #########################################
-                log.heading('Optimising all parameters for TLS model {}'.format(i_tls+1))
-                self._select(parameter_selection = self._sel_tls_mdl*self._sel_tls[i_tls],
+                log.heading('Optimising all parameters and amplitudes for TLS model {}'.format(i_tls+1))
+                self._select(parameter_selection = self._sel_tls[i_tls],
                              datasets = None,
                              atoms    = None)
                 self._optimise()
@@ -485,6 +458,14 @@ class MultiDatasetTLSFitter(object):
         self._adopt(optimised.get_solution())
         self._update_output()
 
+    def _get_simplex(self, selection):
+        starting_values = self._var_current[selection]
+        starting_deltas = self._del_simplex[selection]
+        starting_simplex = numpy.repeat([starting_values], len(starting_values)+1, axis=0)
+        for i in range(len(starting_values)):
+            starting_simplex[i+1][i] += starting_deltas[i]
+        return starting_simplex
+
     def target(self, sub_vector):
         """Target function for the simplex optimisation"""
         # Combine the optimising parameters in the complete parameter set
@@ -495,45 +476,9 @@ class MultiDatasetTLSFitter(object):
         # Calculate RMSD
         rmsd = numpy.sqrt(numpy.mean(numpy.power(uij_obs-uij_fit, 2)))
         self.optimisation_rmsd = min(self.optimisation_rmsd, rmsd)
-
-        if self._test: embed()
-
-        return rmsd
-
-    def _get_simplex(self, selection):
-        starting_values = self._var_current[selection]
-        starting_deltas = self._del_simplex[selection]
-        starting_simplex = numpy.repeat([starting_values], len(starting_values)+1, axis=0)
-        for i in range(len(starting_values)):
-            starting_simplex[i+1][i] += starting_deltas[i]
-        return starting_simplex
-
-    ################################################################################################
-    ###
-    ###                             Public Helper functions
-    ###
-    ################################################################################################
-
-    def tls_uij(self, xyz, tls_vectors, origin):
-        """Convert a set of parameter vectors to a set of uijs"""
-        return numpy.sum([uij_from_tls_vector_and_origin(xyz=xyz, tls_vector=v, origin=origin) for v in tls_vectors], axis=0)
-
-    def expand_tls_amplitudes(self, tls_amps):
-        """Convert 3-element vector into 21 element vector for TLS multiplication"""
-        cur_n_dst = len(tls_amps)
-        assert tls_amps.shape == (cur_n_dst,self._n_tls,3)
-        t_amps = numpy.repeat(tls_amps[:,:,0], 6, axis=1).reshape((cur_n_dst, self._n_tls, 6))
-        l_amps = numpy.repeat(tls_amps[:,:,1], 6, axis=1).reshape((cur_n_dst, self._n_tls, 6))
-        s_amps = numpy.repeat(tls_amps[:,:,2], 9, axis=1).reshape((cur_n_dst, self._n_tls, 9))
-        exp_tls_amps = numpy.concatenate([t_amps, l_amps, s_amps], axis=2)
-        assert exp_tls_amps.shape == (cur_n_dst,self._n_tls,21)
-        return exp_tls_amps
-
-    ################################################################################################
-    ###
-    ###                             Public Output functions
-    ###
-    ################################################################################################
+        # Calculate penalties
+        pen = self._all_penalties(vector=self._var_current, uij_fit=uij_fit)
+        return rmsd+pen
 
     def get_dataset_and_atom_selection_bool(self, datasets=[], atoms=[]):
         datasets_bool = self._blank_dataset_selection()
@@ -558,11 +503,15 @@ class MultiDatasetTLSFitter(object):
         datasets, atoms = self.selection_filter(datasets=datasets, atoms=atoms)
         return self.observed_uij[datasets][:,atoms]
 
+    def tls_uij(self, xyz, tls_vectors, origin):
+        """Convert a set of parameter vectors to a set of uijs"""
+        return numpy.sum([uij_from_tls_vector_and_origin(xyz=xyz, tls_vector=v, origin=origin) for v in tls_vectors], axis=0)
+
     def extract_fitted_uij(self, datasets=None, atoms=None):
         """Extract total fitted uijs for a subset of datasets or atoms"""
         datasets, atoms = self.selection_filter(datasets=datasets, atoms=atoms)
         # Extract the optimised values
-        tls_p, tls_a, uij_r = self._extract()
+        tls_p, tls_a, uij_r = self._extract_parameters()
         # Extract relevant coordinates
         xyz = self.extract_observed_xyz(datasets=datasets, atoms=atoms)
         assert xyz.shape == (len(datasets), len(atoms), 3)
@@ -572,7 +521,7 @@ class MultiDatasetTLSFitter(object):
         uij_r = uij_r[atoms]
         assert uij_r.shape == (len(atoms), 6)
         # Multiply tls amplitudes and models
-        tls_f = self.expand_tls_amplitudes(tls_amps=tls_a) * tls_p
+        tls_f = self._expand_tls_amplitudes(tls_amps=tls_a) * tls_p
         assert tls_f.shape == (len(datasets), self._n_tls, 21)
 
         assert len(xyz) == len(tls_f)
@@ -583,6 +532,96 @@ class MultiDatasetTLSFitter(object):
         uij_fit += uij_r
 
         return uij_fit
+
+    ################################################################################################
+    ###
+    ###                             Summaries
+    ###
+    ################################################################################################
+
+    def input_summary(self):
+        """Print the number of parameters/input data"""
+        log.subheading('Input summary')
+        log('input uij parameters: {}'.format(self.observed_uij.shape))
+        log('input xyz parameters: {}'.format(self.observed_xyz.shape))
+        log('Centre of mass: {}'.format(self.observed_com))
+        log.bar()
+        log('Number of parameters for TLS fitting: {}'.format(self._n_prm_total))
+        log('Number of observations: {}'.format(self._n_obs_total))
+        log('Data/parameter ratio is {:.3f}'.format(self._n_obs_total*1.0/self._n_prm_total))
+        log.bar()
+        log('Number of datasets:   {}'.format(self._n_dst))
+        log('Number of atoms:      {}'.format(self._n_atm))
+        log('Number of TLS models: {}'.format(self._n_tls))
+        log.bar()
+
+    def optimisation_summary(self, full=True):
+        """Print the fitted parameters"""
+        tls_prms, tls_amps, res_uij = self._extract_parameters(vector=self._var_optimised)
+
+        log.subheading('Optimisation Summary')
+
+        tls_refined = numpy.sum(self._sel_tls_mdl*self._var_current_sel)
+        amp_refined = numpy.sum(self._sel_tls_amp*self._var_current_sel)
+        uij_refined = numpy.sum(self._sel_uij_res*self._var_current_sel)
+
+        log('Optimisation used data from {} datasets'.format(len(self._cur_datasets)))
+        log('Optimisation used data for {} atoms'.format(len(self._cur_atoms)))
+        log.bar()
+        log('Optimised {} parameters'.format(numpy.sum(self._var_current_sel)))
+        log('... {} TLS parameters,'.format(tls_refined))
+        log('... {} TLS amplitudes,'.format(amp_refined))
+        log('... {} uij parameters.'.format(uij_refined))
+        log.bar()
+        log('Optimisation RMSD: {}'.format(self.optimisation_rmsd))
+        log.bar()
+        log('')
+        if tls_refined or full:
+            self.parameter_summary(tls_params=tls_prms)
+        if amp_refined or full:
+            self.parameter_summary(tls_amplitudes=tls_amps)
+        if uij_refined or full:
+            self.parameter_summary(uij_residual=res_uij)
+
+    def parameter_summary(self, tls_params=None, tls_amplitudes=None, uij_residual=None):
+        if tls_params is tls_amplitudes is uij_residual is None:
+            tls_params, tls_amplitudes, uij_residual = self._extract_parameters(vector=self._var_current)
+        log.bar()
+        if tls_params is not None:
+            log('TLS Parameters:')
+            for i, vals in enumerate(tls_params):
+                log.bar()
+                log('Model {:2}'.format(i+1))
+                t,l,s = self._unpack_tls_parameters(vals=vals)
+                log('T: '+', '.join(['{:8.3f}'.format(v) for v in t]))
+                log('L: '+', '.join(['{:8.3f}'.format(v) for v in l]))
+                log('S: '+', '.join(['{:8.3f}'.format(v) for v in s]))
+            log.bar()
+        if tls_amplitudes is not None:
+            log('TLS Amplitudes:')
+            for i, vals in enumerate(tls_amplitudes):
+                log.bar()
+                log('Dataset {:4}'.format(i+1))
+                for i, amps in enumerate(vals):
+                    log('Model {:2}:'.format(i+1)+' {:8.3f} (T) {:8.3f} (L) {:8.3f} (S)'.format(*amps))
+            log.bar()
+        if uij_residual is not None:
+            log('Residual Uijs:')
+            for i, vals in enumerate(uij_residual):
+                log('Atom {:5}: '.format(i+1) + ', '.join(['{:8.3f}'.format(v) for v in vals]))
+            log.bar()
+
+    def dataset_summary(self):
+
+        uij_obs = self.extract_observed_uij()
+        uij_fit = self.extract_fitted_uij()
+
+        dataset_rmsds = numpy.sum(numpy.power(numpy.abs(uij_opt - uij_fit),2), axis=2)
+
+        embed()
+
+    def atom_summary(self):
+        pass
 
 class MultiDatasetTLSFit(object):
 
@@ -600,7 +639,7 @@ class MultiDatasetTLSFit(object):
 def run(params):
 
     print 'Building model list'
-    models = [CrystallographicModel.from_file(f).label(tag=os.path.basename(os.path.dirname(f))) for f in params.input.pdb]
+    models = [CrystallographicModel.from_file(f).label(tag=os.path.basename(os.path.dirname(f))) for f in params.input.pdb][:10]
 
     # Check that all models are the same
     # TODO
@@ -642,16 +681,19 @@ def run(params):
 
         # Calculate scaling
         fitter.run(2)
+        # Analyse the fit as a function of dataset and atom
+        dataset_fit, atom_fit = fitter.fit_summary()
 
         # Extract the fitted output for each dataset
         for i_mdl, mdl in enumerate(models):
-            log('Extracting B-factors for model: {}'.format(mdl.filename))
+            log('Outputting fitted B-factors for model: {}'.format(mdl.filename))
             mdl_uij = fitter.extract_fitted_uij(datasets=[i_mdl])
             h=mdl.hierarchy.deep_copy()
             h.atoms().select(atm_sel).set_uij(flex.sym_mat3_double(mdl_uij[0]))
             h.write_pdb_file(mdl.filename.replace('.pdb', '.mda.pdb'))
 
-    #embed()
+
+    embed()
 
 
 
