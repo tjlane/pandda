@@ -14,6 +14,7 @@ from scitbx.array_family import flex
 from scitbx import simplex, matrix
 
 from bamboo.common.logs import Log
+from bamboo.common.path import easy_directory
 
 from giant.dataset import CrystallographicModel
 from giant.structure.select import protein
@@ -75,17 +76,96 @@ def proc_wrapper(arg):
     arg._optimise()
     return arg
 
+class MultiDatasetTLSParameterisation(object):
+
+    def __init__(self, models, groups=None, n_cpu=1, n_tls=1):
+
+        self._n_cpu=n_cpu
+        self._n_tls=n_tls
+
+        self.models = models
+        self.groups = groups
+        self.fits = {}
+
+        # Use the first hierarchy as the reference
+        self.master_h = models[0].hierarchy.deep_copy()
+        # Extract the atoms for each tls group
+        self.atom_selections = dict([(g, self.master_h.atom_selection_cache().selection(g)) for g in self.groups])
+
+        self.validate_input()
+
+    def validate_input(self):
+
+        for m in self.models:
+            assert self.master_h.is_similar_hierarchy(m.hierarchy)
+
+    def fit(self):
+
+        for group in self.groups:
+
+            log.heading('Parameterising Uijs for selection: {}'.format(group))
+
+            # Get the selection for this group
+            atom_sel = self.atom_selections[group]
+            # Get all atoms for this group
+            atoms = [m.hierarchy.atoms().select(atom_sel) for m in self.models]
+            # Extract uij and xyz
+            obs_uij = numpy.array([a.extract_uij() for a in atoms])
+            obs_xyz = numpy.array([a.extract_xyz() for a in atoms])
+
+            log.subheading('Fitting TLS models to data')
+            fitter = MultiDatasetTLSFitter(observed_uij=obs_uij,
+                                           observed_xyz=obs_xyz,
+                                           n_tls=self._n_tls,
+                                           n_cpu=self._n_cpu)
+            # Calculate scaling
+            fitter.fit(2)
+
+            self.fits[group] = fitter
+
+        log.heading('Parameterisation complete')
+
+    def write_summary(self, out_dir='./'):
+
+        easy_directory(out_dir)
+
+        log.subheading('Extracting residual atomic B-factors')
+        h = self.master_h.deep_copy()
+        h.atoms().set_uij(flex.sym_mat3_double(h.atoms().size(), [0.0]*6))
+        for group in self.groups:
+            fit = self.fits[group]
+            sel = self.atom_selections[group]
+            # Apply the residual B-factors to the master h
+            h.atoms().select(sel).set_uij(flex.sym_mat3_double(fit.fitted_uij_residual()))
+        h.write_pdb_file('residual_uij.pdb')
+
+    def write_parameterised_structures(self):
+        log.subheading('Writing parameterised structures')
+
+        # Extract the fitted output for each dataset
+        log.subheading('Exporting parameterised B-factors')
+        for i_mdl, mdl in enumerate(self.models):
+            log('Applying to model: {}'.format(mdl.filename))
+            h = mdl.hierarchy.deep_copy()
+            for group in self.groups:
+                sel = self.atom_selections[group]
+                uij = self.fits[group].extract_fitted_uij(datasets=[i_mdl])[0]
+                h.atoms().select(sel).set_uij(flex.sym_mat3_double(uij))
+            log('Writing structure for model: {}'.format(mdl.filename))
+            h.write_pdb_file(mdl.filename.replace('.pdb', '.mda.pdb'))
+
 class MultiDatasetTLSFitter(object):
 
     _tls_weight = 1.0
     _amp_weight = 1.0
     _uij_weight = 1.0
 
-    def __init__(self, observed_xyz, observed_uij, tls_params=None, num_tls_models=None, cpus=1):
+    def __init__(self, observed_xyz, observed_uij, tls_params=None, n_tls=None, n_cpu=1):
 
         self._test = False
         self._iter = 0
-        self._cpus = cpus
+
+        self._n_cpu = n_cpu
 
         self.optimisation_rmsd = numpy.inf
 
@@ -103,9 +183,9 @@ class MultiDatasetTLSFitter(object):
             inp_tls = tls_params
             num_tls = len(tls_params)
             vec_tls = [p.t+p.l+p.s for p in tls_params]
-        elif num_tls_models is not None:
+        elif n_tls is not None:
             inp_tls = None
-            num_tls = num_tls_models
+            num_tls = n_tls
             vec_tls = [numpy.mean(self.observed_uij, axis=(0,1)).tolist()+[0.0]*15]+[[0.0]*21]*(num_tls-1)
         else:
             raise Sorry('No TLS models provided')
@@ -362,7 +442,7 @@ class MultiDatasetTLSFitter(object):
     ###
     ################################################################################################
 
-    def run(self, macro_cycles=3):
+    def fit(self, macro_cycles=3):
         """Run macro-cycles of parameter optimisation"""
         for i_cyc in range(macro_cycles):
 
@@ -402,7 +482,7 @@ class MultiDatasetTLSFitter(object):
                                   datasets = [i_dst],
                                   atoms    = None)
                         proc_args.append(n._prep_for_mp())
-                    self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._cpus, func=proc_wrapper, args=proc_args))
+                    self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=proc_wrapper, args=proc_args))
                     self.optimisation_summary(False)
                 #########################################
                 log.heading('Optimising all parameters and amplitudes for TLS model {}'.format(i_tls+1))
@@ -420,7 +500,7 @@ class MultiDatasetTLSFitter(object):
                           datasets = None,
                           atoms    = [i])
                 proc_args.append(n._prep_for_mp())
-            self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._cpus, func=proc_wrapper, args=proc_args))
+            self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=proc_wrapper, args=proc_args))
             self.optimisation_summary(False)
             #########################################
             log.subheading('End of macrocycle {}'.format(i_cyc+1))
@@ -533,6 +613,18 @@ class MultiDatasetTLSFitter(object):
 
         return uij_fit
 
+    def fitted_tls_models(self):
+        v,_,_ = self._extract_parameters(vector=self._var_optimised)
+        return v
+    def fitted_tls_amplitudes(self, datasets=None):
+        _,v,_ = self._extract_parameters(vector=self._var_optimised)
+        if datasets is not None: return v[datasets]
+        return v
+    def fitted_uij_residual(self, atoms=None):
+        _,_,v = self._extract_parameters(vector=self._var_optimised)
+        if atoms is not None: return v[atoms]
+        return v
+
     ################################################################################################
     ###
     ###                             Summaries
@@ -623,16 +715,6 @@ class MultiDatasetTLSFitter(object):
     def atom_summary(self):
         pass
 
-class MultiDatasetTLSFit(object):
-
-    def __init__(self, u_residual, tls_selections, tls_params):
-
-        self.u_residual = u_residual
-        self.tls_sels = tls_selections
-        self.tls_objs = tls_objects
-
-    def extract(self, hierarchy):
-        pass
 
 ############################################################################
 
@@ -655,43 +737,11 @@ def run(params):
 #        log('S: {}'.format(tuple(tls.s)))
 #    assert len(tls_params) != 0, 'No TLS models found in structure.'
 
-    h=models[0].hierarchy
-    for m in models:
-        assert h.is_similar_hierarchy(m.hierarchy)
 
-    for tls_sel in params.input.tls_group:
-        # Extract the atoms for this tls selection
-        atm_sel = h.atom_selection_cache().selection(tls_sel)
-
-        log.heading('Calculating TLS fit for selection: {}'.format(tls_sel))
-
-        # Extract filtered hierarchies
-        atoms = [m.hierarchy.atoms().select(atm_sel) for m in models]
-
-        # Extract uij and xyz
-        obs_uij = numpy.array([a.extract_uij() for a in atoms])
-        obs_xyz = numpy.array([a.extract_xyz() for a in atoms])
-
-        log.subheading('Fitting TLS models to data')
-        fitter = MultiDatasetTLSFitter(observed_uij=obs_uij,
-                                       observed_xyz=obs_xyz,
-                                       #tls_params=tls_params,
-                                       num_tls_models=1,
-                                       cpus=params.settings.cpus)
-
-        # Calculate scaling
-        fitter.run(2)
-        # Analyse the fit as a function of dataset and atom
-        dataset_fit, atom_fit = fitter.fit_summary()
-
-        # Extract the fitted output for each dataset
-        for i_mdl, mdl in enumerate(models):
-            log('Outputting fitted B-factors for model: {}'.format(mdl.filename))
-            mdl_uij = fitter.extract_fitted_uij(datasets=[i_mdl])
-            h=mdl.hierarchy.deep_copy()
-            h.atoms().select(atm_sel).set_uij(flex.sym_mat3_double(mdl_uij[0]))
-            h.write_pdb_file(mdl.filename.replace('.pdb', '.mda.pdb'))
-
+    p = MultiDatasetTLSParameterisation(models=models, groups=params.input.tls_group)
+    p.fit()
+    p.write_summary(out_dir=params.output.out_dir)
+    p.write_parameterised_structures()
 
     embed()
 
