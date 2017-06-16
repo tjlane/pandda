@@ -255,9 +255,8 @@ pandda
         }
         z_map
             .help = "Settings to control the calculation of z-maps"
-            .expert_level = 3
         {
-            map_type = naive adjusted uncertainty *adjusted+uncertainty
+            map_type = naive uncertainty *adjusted+uncertainty
                 .help = 'Type of Z-map to calculate'
                 .type = choice
         }
