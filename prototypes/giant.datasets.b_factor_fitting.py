@@ -92,7 +92,7 @@ settings {
 ############################################################################
 
 def proc_wrapper(arg):
-    arg._optimise()
+    arg._optimise(verbose=False)
     return arg
 
 def rms(vals, axis=None):
@@ -109,6 +109,9 @@ class MultiDatasetTLSParameterisation(object):
         self._n_tls=n_tls
 
         self.models = models
+        for mdl in self.models:
+            mdl.outputfilename = mdl.filename.replace('.pdb', '.mda.pdb')
+
         self.groups = groups
         self.fits = {}
 
@@ -177,7 +180,7 @@ class MultiDatasetTLSParameterisation(object):
             uij = fit.fitted_uij_residual()
             h.atoms().select(sel).set_b(flex.double(EIGHT_PI_SQ*numpy.mean(uij[:,0:3],axis=1)))
             h.atoms().select(sel).set_uij(flex.sym_mat3_double(uij))
-        h.write_pdb_file(os.path.join(out_dir, 'fit_uij_residual.pdb'))
+        h.write_pdb_file(os.path.join(out_dir, 'fitted_uij_residual.pdb'))
         # ----------------------------------------------------
         # Apply the TLS B-factors to the master h
         # ----------------------------------------------------
@@ -192,29 +195,29 @@ class MultiDatasetTLSParameterisation(object):
             sel = self.atom_selections[group]
             xyz = h.atoms().select(sel).extract_xyz()
             # ALL TLS contributions
-            uij = fit.fitted_uij_tls(xyz=xyz)
+            uij = fit.average_fitted_uij_tls(xyz=xyz)
             h.atoms().select(sel).set_b(flex.double(EIGHT_PI_SQ*numpy.mean(uij[:,0:3],axis=1)))
             h.atoms().select(sel).set_uij(flex.sym_mat3_double(uij))
             # Only T contributions
-            uij = fit.fitted_uij_tls(xyz=xyz, t=True, l=False, s=False)
+            uij = fit.average_fitted_uij_tls(xyz=xyz, t=True, l=False, s=False)
             t.atoms().select(sel).set_b(flex.double(EIGHT_PI_SQ*numpy.mean(uij[:,0:3],axis=1)))
             t.atoms().select(sel).set_uij(flex.sym_mat3_double(uij))
             # Only L contributions
-            uij = fit.fitted_uij_tls(xyz=xyz, t=False, l=True, s=False)
+            uij = fit.average_fitted_uij_tls(xyz=xyz, t=False, l=True, s=False)
             l.atoms().select(sel).set_b(flex.double(EIGHT_PI_SQ*numpy.mean(uij[:,0:3],axis=1)))
             l.atoms().select(sel).set_uij(flex.sym_mat3_double(uij))
             # Only S contributions
-            uij = fit.fitted_uij_tls(xyz=xyz, t=False, l=False, s=True)
+            uij = fit.average_fitted_uij_tls(xyz=xyz, t=False, l=False, s=True)
             s.atoms().select(sel).set_b(flex.double(EIGHT_PI_SQ*numpy.mean(uij[:,0:3],axis=1)))
             s.atoms().select(sel).set_uij(flex.sym_mat3_double(uij))
             # Combine T and L contributions
             tl.atoms().select(sel).set_b(t.atoms().select(sel).extract_b() + l.atoms().select(sel).extract_b())
             tl.atoms().select(sel).set_uij(t.atoms().select(sel).extract_uij() + l.atoms().select(sel).extract_uij())
         # Write out structures
-        h.write_pdb_file(os.path.join(out_dir, 'fit_uij_tls.pdb'))
-        t.write_pdb_file(os.path.join(out_dir, 'fit_uij_tls_t_only.pdb'))
-        l.write_pdb_file(os.path.join(out_dir, 'fit_uij_tls_l_only.pdb'))
-        s.write_pdb_file(os.path.join(out_dir, 'fit_uij_tls_s_only.pdb'))
+        h.write_pdb_file(os.path.join(out_dir, 'fitted_uij_average_tls.pdb'))
+        t.write_pdb_file(os.path.join(out_dir, 'fitted_uij_average_tls_t_only.pdb'))
+        l.write_pdb_file(os.path.join(out_dir, 'fitted_uij_average_tls_l_only.pdb'))
+        s.write_pdb_file(os.path.join(out_dir, 'fitted_uij_average_tls_s_only.pdb'))
 
         for chain_id in [c.id for c in h.chains()]:
             sel = h.atom_selection_cache().selection('chain {}'.format(chain_id))
@@ -224,37 +227,37 @@ class MultiDatasetTLSParameterisation(object):
             sel_s = s.select(sel)
             sel_tl = tl.select(sel)
             # Write graphs of individual and cumulative Tls contributions
-            filename = os.path.join(out_dir, 'tls_contributions-chain-{}.png'.format(chain_id))
+            filename = os.path.join(out_dir, 'average_tls_contributions-chain-{}.png'.format(chain_id))
             x_vals   = numpy.array(range(len(list(sel_h.residue_groups()))))+1
-            x_labels = ['0']+[ShortLabeller.format(rg) for rg in sel_h.residue_groups()]
-            l_styles = ['r-', 'g-', 'b-', 'k-']
+            x_labels = ['']+[ShortLabeller.format(rg) for rg in sel_h.residue_groups()]
+            l_styles = ['ro-', 'go-', 'bo-', 'ko-']
             l_labels = ['T', 'L', 'S', 'TLS']
             # Make plot
             fig, axes = pyplot.subplots(nrows=2, ncols=1, sharey=True)
             # Individual lines
-            tls_vals = [numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in sel_t.residue_groups()]),
-                        numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in sel_l.residue_groups()]),
-                        numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in sel_s.residue_groups()]),
-                        numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in sel_h.residue_groups()])]
+            tls_vals_0 = [numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in sel_t.residue_groups()]),
+                          numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in sel_l.residue_groups()]),
+                          numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in sel_s.residue_groups()]),
+                          numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in sel_h.residue_groups()])]
+            # Cumulative contributions
+            tls_vals_1 = [numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in sel_t.residue_groups() ]),
+                          numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in sel_tl.residue_groups()]),
+                          numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in sel_h.residue_groups() ])]
+            # Plot 1
             axes[0].set_title('Individual contributions')
             axes[0].set_xlabel('Residue')
             axes[0].set_ylabel('Isotropic-ised B')
             for i in range(4):
-                axes[0].plot(x_vals, tls_vals[i], l_styles[i], label=l_labels[i])
+                axes[0].plot(x_vals, tls_vals_0[i], l_styles[i], label=l_labels[i], markersize=3)
             axes[0].legend()
-            # Cumulative contributions
-            tls_vals = [numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in sel_t.residue_groups() ]),
-                        numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in sel_tl.residue_groups()]),
-                        numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in sel_h.residue_groups() ])]
+            # Plot 2
             axes[1].set_title('Cumulative contributions')
             axes[1].set_xlabel('Residue')
             axes[1].set_ylabel('Isotropic-ised B')
             for i in range(3):
-                axes[1].plot(x_vals, tls_vals[i], l_styles[i], label=''.join(l_labels[:i+1]))
-            xticks = axes[1].get_xticks()
-            axes[1].set_xticklabels([x_labels[i] if i<len(x_labels) else '' for i in xticks.astype(int)])
-            labels = axes[1].get_xticklabels()
-            pyplot.setp(labels, rotation=90)
+                axes[1].plot(x_vals, tls_vals_1[i], l_styles[i], label=''.join(l_labels[:i+1]), markersize=3)
+            axes[1].set_xticklabels([x_labels[int(i)] if (i<len(x_labels)) and (float(int(i))==i) else '' for i in axes[1].get_xticks()])
+            pyplot.setp(axes[1].get_xticklabels(), rotation=90)
             axes[1].legend()
             # Format and save
             pyplot.tight_layout()
@@ -273,7 +276,13 @@ class MultiDatasetTLSParameterisation(object):
                 sel = self.atom_selections[group]
                 uij = self.fits[group].extract_fitted_uij(datasets=[i_mdl])[0]
                 h.atoms().select(sel).set_uij(flex.sym_mat3_double(uij))
-            h.write_pdb_file(mdl.filename.replace('.pdb', '.mda.pdb'))
+            h.write_pdb_file(mdl.outputfilename)
+
+    def generate_fitted_table_ones(self):
+
+        self.log.subheading('Generating "Table Ones" for input and fitted B-factor models')
+        for i_mdl, mdl in enumerate(self.models):
+            pass
 
     def write_summary_statistics_csv(self, out_dir='./'):
         """Add data to CSV and write"""
@@ -288,11 +297,11 @@ class MultiDatasetTLSParameterisation(object):
         table['mean_rmsds'] = mean_rmsds
         table.to_csv(os.path.join(out_dir, 'dataset_scores.csv'))
 
-        for group in self.groups:
+        for i, group in enumerate(self.groups):
             table = pandas.DataFrame(data    = self.fits[g].uij_fit_obs_all_rmsds(),
                                      index   = [m.tag for m in self.models],
                                      columns = [ShortLabeller.format(a) for a in self.master_h.atoms().select(self.atom_selections[group])])
-            table.to_csv(os.path.join(out_dir, 'all_rmsd_scores.csv'))
+            table.to_csv(os.path.join(out_dir, 'all_rmsd_scores_group_{}.csv'.format(i+1)))
 
     def write_summary_statistics_graphs_and_structures(self, out_dir='./'):
         """Write atom-by-atom and dataset-by-dataset graphs"""
@@ -453,6 +462,7 @@ class MultiDatasetTLSFitter(object):
         self._n_cpu = n_cpu
 
         self.optimisation_rmsd = numpy.inf
+        self.optimisation_penalty = numpy.inf
 
         # ---------------------------->
         # Input data
@@ -461,6 +471,8 @@ class MultiDatasetTLSFitter(object):
         self.observed_xyz = numpy.array(observed_xyz)
         # TODO Make this variable over the datasets ? TODO
         self.observed_com = numpy.mean(self.observed_xyz, axis=(0,1))
+        self._box_size = (numpy.min(self.observed_xyz, axis=(0,1)), numpy.max(self.observed_xyz, axis=(0,1)))
+        self._box_edge = numpy.array([(self._box_size[i][0],self._box_size[j][1],self._box_size[k][2]) for i,j,k in flex.nested_loop((2,2,2))])
         # ---------------------------->
         # Process input TLS options
         # ---------------------------->
@@ -471,7 +483,12 @@ class MultiDatasetTLSFitter(object):
         elif n_tls is not None:
             inp_tls = None
             num_tls = n_tls
-            vec_tls = [numpy.mean(self.observed_uij, axis=(0,1)).tolist()+[0.0]*15]+[[0.0]*21]*(num_tls-1)
+            #vec_tls = [[0.0]*21]*(num_tls)
+            #vec_tls = [(0.50*numpy.mean(self.observed_uij, axis=(0,1))).tolist()+[0.0]*15]+[[0.0]*21]*(num_tls-1)
+            # Select the initial Uij to be the Uij with the smallest largest eigenvalue (smallest of the largest eigenvalues)
+            eig_max = numpy.apply_along_axis(func1d=lambda uij: max(self.sym_mat3_eigenvalues(uij)), axis=2, arr=self.observed_uij)
+            uij_min = numpy.round(self.observed_uij[zip(*numpy.where(eig_max == numpy.min(eig_max)))[0]], 3)
+            vec_tls = [uij_min.tolist()+[0.0]*15]+[[0.0]*21]*(num_tls-1)
         else:
             raise Sorry('No TLS models provided')
 
@@ -572,9 +589,7 @@ class MultiDatasetTLSFitter(object):
         self._del_tls_mdl = 0.25
         self._del_tls_amp = 0.1
         self._del_uij_res = 0.1
-        self._del_simplex = numpy.array([self._del_tls_mdl]*self._n_prm_tls_mdl +
-                                        [self._del_tls_amp]*self._n_prm_tls_amp +
-                                        [self._del_uij_res]*self._n_prm_uij_res )
+        self._update_del_simplex()
         # ---------------------------->
         # Loop variables during optimisation
         # ---------------------------->
@@ -613,6 +628,7 @@ class MultiDatasetTLSFitter(object):
             self._var_current_sel += n._var_current_sel
             # Copy the values across
             self._adopt(sub_vector=n._var_current[n._var_current_sel], selection=n._var_current_sel)
+        self._update_after_optimisation()
 
     def _prep_for_mp(self):
         """Clear parts of the object that are not needed for optimisation after selection - save memory when pickling"""
@@ -663,7 +679,7 @@ class MultiDatasetTLSFitter(object):
         assert exp_tls_amps.shape == (cur_n_dst,self._n_tls,21)
         return exp_tls_amps
 
-    def _select(self, parameter_selection, datasets=None, atoms=None):
+    def _select(self, parameter_selection, datasets=None, atoms=None, max_datasets=None):
         """Select variables for optimisation"""
 
         # Save the parameter selection
@@ -675,12 +691,18 @@ class MultiDatasetTLSFitter(object):
             self._cur_datasets = list(numpy.where(self._mask_dsets)[0])
         if atoms is None:
             self._cur_atoms = list(numpy.where(self._mask_atoms)[0])
+        # Limit the number of datasets
+        if max_datasets is not None:
+            self._cur_datasets = self._cur_datasets[:max_datasets]
 
-    def _optimise(self):
+    def _optimise(self, verbose=False):
         """Run the optimisation"""
+
+        self._verbose=verbose
 
         # Initialise the RMSD measure
         self.optimisation_rmsd = 1e6
+        self.optimisation_penalty = 0.0
         # Create simplex for these parameters
         cur_simplex = self._get_simplex(self._var_current_sel)
         # Optimise these parameters
@@ -689,14 +711,7 @@ class MultiDatasetTLSFitter(object):
                                         evaluator = self)
         # Extract and update current values
         self._adopt(optimised.get_solution())
-
-    def _get_simplex(self, selection):
-        starting_values = self._var_current[selection]
-        starting_deltas = self._del_simplex[selection]
-        starting_simplex = numpy.repeat([starting_values], len(starting_values)+1, axis=0)
-        for i in range(len(starting_values)):
-            starting_simplex[i+1][i] += starting_deltas[i]
-        return starting_simplex
+        self._update_after_optimisation()
 
     def _get_dataset_and_atom_selection_bool(self, datasets=[], atoms=[]):
         datasets_bool = self._blank_dataset_selection()
@@ -722,16 +737,46 @@ class MultiDatasetTLSFitter(object):
         uij_obs = self.extract_observed_uij(datasets=self._cur_datasets, atoms=self._cur_atoms)
         # Calculate RMSD
         rmsd = numpy.sqrt(numpy.mean(numpy.power(uij_obs-uij_fit, 2)))
-        self.optimisation_rmsd = min(self.optimisation_rmsd, rmsd)
         # Calculate penalties
         pen = self._all_penalties(vector=self._var_current, uij_fit=uij_fit, uij_obs=uij_obs)
+        # Update minima
+        if rmsd+pen < self.optimisation_rmsd+self.optimisation_penalty:
+            self.optimisation_rmsd = rmsd
+            self.optimisation_penalty = pen
+        if self._verbose: print '[{}] -> ({:10.4f}, {:10.1f})'.format(', '.join(['{:+10.5f}'.format(r) for r in sub_vector]), numpy.round(rmsd,5), numpy.round(pen,5))
         return rmsd+pen
 
     ################################################################################################
     ###
-    ###                             Constraints / Restraints
+    ###                             Constraints / Restraints / Search Parameters
     ###
     ################################################################################################
+
+    def _update_del_simplex(self):
+        self._del_simplex = numpy.array([self._del_tls_mdl]*self._n_prm_tls_mdl +
+                                        [self._del_tls_amp]*self._n_prm_tls_amp +
+                                        [self._del_uij_res]*self._n_prm_uij_res )
+
+    def set_simplex_widths(self, tls_model=None, tls_amplitudes=None, uij_residual=None):
+        if tls_model is not None:
+            self._del_tls_mdl = tls_model
+        if tls_amplitudes is not None:
+            self._del_tls_amp = tls_amplitudes
+        if uij_residual is not None:
+            self._del_uij_res = uij_residual
+        self._update_del_simplex()
+        self.log.subheading('Setting/updating optimisation deltas')
+        self.log('TLS Model Step Size:     {}'.format(self._del_tls_mdl))
+        self.log('TLS Amplitude Step Size: {}'.format(self._del_tls_amp))
+        self.log('Uij Residual Step Size:  {}'.format(self._del_uij_res))
+
+    def _get_simplex(self, selection):
+        starting_values = self._var_current[selection]
+        starting_deltas = self._del_simplex[selection]
+        starting_simplex = numpy.repeat([starting_values], len(starting_values)+1, axis=0)
+        for i in range(len(starting_values)):
+            starting_simplex[i+1][i] += starting_deltas[i]
+        return starting_simplex
 
     def set_penalty_weights(self, tls_weight=None, amp_weight=None, uij_weight=None, ovr_weight=None):
         """Set penalties for parameters to be invalid"""
@@ -739,24 +784,32 @@ class MultiDatasetTLSFitter(object):
         if amp_weight is not None: self._amp_weight = amp_weight
         if uij_weight is not None: self._uij_weight = uij_weight
         if ovr_weight is not None: self._ovr_weight = ovr_weight
+        self.log.subheading('Setting/updating optimisation penalties')
+        self.log('Invalid TLS Model Penalty:     {}'.format(self._tls_weight))
+        self.log('Invalid Amplitude Penalty:     {}'.format(self._amp_weight))
+        self.log('Invalid Uij Penalty:           {}'.format(self._uij_weight))
+        self.log('Fitted > Observed Uij Penalty: {}'.format(self._ovr_weight))
 
     def _all_penalties(self, vector, uij_fit, uij_obs):
         tls_mdl, tls_amp, uij_res = self._extract_parameters(vector=vector)
         tls_penalties = [self._tls_penalty(values=v) for v in tls_mdl]
         amp_penalties = [self._amp_penalty(values=v) for v in tls_amp]
         uij_penalties = [self._uij_penalty(values=v) for v in uij_res]
-        fit_penalties = []; [fit_penalties.extend([self._uij_penalty(values=vv) for vv in v]) for v in uij_fit]
+        fit_penalties = []; #[fit_penalties.extend([self._uij_penalty(values=vv) for vv in v]) for v in uij_fit]
         ovr_penalties = []; [ovr_penalties.extend([self._ovr_penalty(*vv) for vv in zip(*v)]) for v in zip(uij_fit,uij_obs)]
         return numpy.sum(tls_penalties+amp_penalties+uij_penalties+fit_penalties+ovr_penalties)
 
     def _tls_penalty(self, values):
         assert len(values) == 21
         t,l,s = self._unpack_tls_parameters(vals=values)
-        t_eig_values = numpy.linalg.eigvals(matrix.sym(sym_mat3=t).as_numpy_array())
-        t_penalty = numpy.sum(t_eig_values<0.0)
-        l_eig_values = numpy.linalg.eigvals(matrix.sym(sym_mat3=l).as_numpy_array())
-        l_penalty = numpy.sum(l_eig_values<0.0)
-        return self._tls_weight*numpy.sum([t_penalty, l_penalty])
+        t_penalty = numpy.max((self.sym_mat3_eigenvalues(t)<0.0).astype(int))
+        l_penalty = numpy.max((self.sym_mat3_eigenvalues(l)<0.0).astype(int))
+        if numpy.sum(numpy.abs(s)) > 0.0:
+            s_uij_values = self.tls_uij(xyz=self._box_edge, tls_vectors=numpy.array([[0.0]*12+list(s)]), origin=self.observed_com)
+            s_penalty = numpy.max([numpy.max((self.sym_mat3_eigenvalues(uij)<0.0).astype(int)) for uij in s_uij_values])
+        else:
+            s_penalty = 0
+        return self._tls_weight*numpy.sum([t_penalty, l_penalty, s_penalty])
 
     def _amp_penalty(self, values):
         return self._amp_weight*numpy.sum(values<0.0)
@@ -777,6 +830,9 @@ class MultiDatasetTLSFitter(object):
     ###                             Update functions
     ###
     ################################################################################################
+
+    def _update_after_optimisation(self):
+        pass
 
     def _update_atom_masks(self):
         _, _, uij_res = self._extract_parameters()
@@ -814,67 +870,95 @@ class MultiDatasetTLSFitter(object):
                 self._update_dataset_masks()
                 self.log('Using {} datasets for TLS optimisation'.format(numpy.sum(self._mask_dsets)))
 
-
             #########################################
             #self.log('Resetting tls amplitudes')
             #self._reset_tls_amplitudes()
             self.log('Resetting uij residuals')
             self._reset_uij_residual()
 
-            #########################################
             # Moving selection for amplitude optimisation
             prev_opt = self._blank_parameter_selection()
+
+            #########################################
             for i_tls in range(self._n_tls):
                 for c_name, c_sel in [('T',self._sel_t), ('L',self._sel_l), ('S',self._sel_s)]:
                     #########################################
                     # Add these parameters to the parameters for optimisation
                     prev_opt += self._sel_tls[i_tls]*c_sel
                     #########################################
-                    # Update penalty weight for overfitting
-                    if (c_name=='T') and (i_tls==0): self.set_penalty_weights(ovr_weight=1e6)
-                    else:                            self.set_penalty_weights(ovr_weight=0.0)
-                    #########################################
                     self.log.heading('Optimising {} parameters for TLS model {}'.format(c_name, i_tls+1))
                     self._select(parameter_selection = self._sel_tls[i_tls]*self._sel_tls_mdl*c_sel,
                                  datasets = None,
-                                 atoms    = None)
-                    self._optimise()
+                                 atoms    = None,
+                                 max_datasets = 5)
+                    # COARSE OPTIMISATION
+                    if (c_name=='T') and (i_tls==0):
+                        self.set_penalty_weights(ovr_weight=1.0)
+                        self.set_simplex_widths(tls_model=0.1)
+                    else:
+                        self.set_penalty_weights(ovr_weight=0.0)
+                        self.set_simplex_widths(tls_model=1.0)
+                    self.log.subheading('Running optimisation')
+                    self._optimise(verbose=True)
+                    # FINEGRAIN OPTIMISATION
+                    self.set_simplex_widths(tls_model=0.01)
+                    self.log.subheading('Running optimisation')
+                    self._optimise(verbose=True)
                     self.optimisation_summary(False)
                     #########################################
-                    self.set_penalty_weights(ovr_weight=0.1)
-                    #########################################
-                    self.log.heading('Optimising all amplitudes for all TLS models for all datasets'.format(i_tls+1))
+                    self.log.heading('Optimising {} amplitudes for TLS model {} for all datasets'.format(c_name, i_tls+1))
+                    self.set_simplex_widths(tls_amplitudes=0.1)
                     proc_args = []
                     for i_dst in range(self._n_dst):
                         n = self.copy()
-                        n._select(parameter_selection = self._sel_dst[i_dst]*prev_opt,
+                        n._select(parameter_selection = self._sel_dst[i_dst]*c_sel,
                                   datasets = [i_dst],
                                   atoms    = None)
                         proc_args.append(n._prep_for_mp())
-                    self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=proc_wrapper, args=proc_args))
+                    self.log.subheading('Running optimisation')
+                    self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=proc_wrapper, args=proc_args, chunksize=1))
                     self.optimisation_summary(False)
+                    #########################################
+                    if not ((c_name=='T') and (i_tls==0)):
+                        self.log.heading('Optimising all amplitudes for all TLS models for all datasets'.format(i_tls+1))
+                        self.set_penalty_weights(ovr_weight=0.1)
+                        self.set_simplex_widths(tls_amplitudes=0.01)
+                        proc_args = []
+                        for i_dst in range(self._n_dst):
+                            n = self.copy()
+                            n._select(parameter_selection = self._sel_dst[i_dst]*prev_opt,
+                                      datasets = [i_dst],
+                                      atoms    = None)
+                            proc_args.append(n._prep_for_mp())
+                        self.log.subheading('Running optimisation')
+                        self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=proc_wrapper, args=proc_args, chunksize=1))
+                        self.optimisation_summary(False)
                 #########################################
-                self.set_penalty_weights(ovr_weight=10.0)
-                #########################################
-                self.log.heading('Optimising all parameters and amplitudes for TLS model {}'.format(i_tls+1))
-                self._select(parameter_selection = self._sel_tls[i_tls],
-                             datasets = None,
-                             atoms    = None)
-                self._optimise()
-                self.optimisation_summary(False)
-            #########################################
-            self.set_penalty_weights(ovr_weight=0.0)
+                #self.log.heading('Optimising all parameters and amplitudes for TLS model {}'.format(i_tls+1))
+                #self.set_penalty_weights(ovr_weight=1.0)
+                #self.set_simplex_widths(tls_model=0.01, tls_amplitudes=0.01)
+                #self._select(parameter_selection = self._sel_tls[i_tls],
+                #             datasets = None,
+                #             atoms    = None)
+                #self.log.subheading('Running optimisation')
+                #self._optimise()
+                #self.optimisation_summary(False)
             #########################################
             self.log.heading('Optimising residual Uijs')
-            proc_args = []
-            for i in range(self._n_atm):
-                n = self.copy()
-                n._select(parameter_selection = self._sel_atm[i],
-                          datasets = None,
-                          atoms    = [i])
-                proc_args.append(n._prep_for_mp())
-            self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=proc_wrapper, args=proc_args))
-            self.optimisation_summary(False)
+            self.set_penalty_weights(ovr_weight=0.0)
+            for i, uij_del in enumerate([1.0,0.1]):
+                self.log.subheading('Optimising residual Uijs (sub-cycle {})'.format(i+1))
+                self.set_simplex_widths(uij_residual=uij_del)
+                proc_args = []
+                for i in range(self._n_atm):
+                    n = self.copy()
+                    n._select(parameter_selection = self._sel_atm[i],
+                              datasets = None,
+                              atoms    = [i])
+                    proc_args.append(n._prep_for_mp())
+                self.log.subheading('Running optimisation')
+                self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=proc_wrapper, args=proc_args, chunksize=1))
+                self.optimisation_summary(False)
             #########################################
             self.log.subheading('End of macrocycle {}'.format(i_cyc+1))
             self.optimisation_summary()
@@ -930,13 +1014,20 @@ class MultiDatasetTLSFitter(object):
         _,_,v = self._extract_parameters()
         if atoms is not None: return v[atoms]
         return v
-    def fitted_uij_tls(self, xyz, models=None, t=True, l=True, s=True):
+
+    def average_fitted_uij_tls(self, xyz, models=None, t=True, l=True, s=True):
         tls = self.fitted_tls_models()
+        amp = numpy.mean(self.fitted_tls_amplitudes(), axis=0)
+        tls = (self._expand_tls_amplitudes(tls_amps=numpy.array([amp]))[0]) * tls
         if models is not None: tls=tls[models]
         if t is not True: tls[:,00:06] = 0.0
         if l is not True: tls[:,06:12] = 0.0
         if s is not True: tls[:,12:21] = 0.0
         return self.tls_uij(xyz=xyz, tls_vectors=tls, origin=self.observed_com)
+
+    def sym_mat3_eigenvalues(self, vals):
+        assert len(vals) == 6
+        return numpy.linalg.eigvals(matrix.sym(sym_mat3=vals).as_numpy_array())
 
     ################################################################################################
     ###
@@ -978,7 +1069,8 @@ class MultiDatasetTLSFitter(object):
         self.log('... {} TLS amplitudes,'.format(amp_refined))
         self.log('... {} uij parameters.'.format(uij_refined))
         self.log.bar()
-        self.log('Optimisation RMSD: {}'.format(self.optimisation_rmsd))
+        self.log('Optimisation RMSD:    {}'.format(self.optimisation_rmsd))
+        self.log('Optimisation Penalty: {}'.format(self.optimisation_penalty))
         self.log.bar()
         self.log('')
         if tls_refined or full:
@@ -1075,6 +1167,7 @@ def run(params):
     p.write_summary_statistics_graphs_and_structures(out_dir=params.output.out_dir)
     p.write_fitted_uij_structures(out_dir=params.output.out_dir)
     p.write_parameterised_structures()
+    p.generate_fitted_table_ones()
 
     #embed()
 
