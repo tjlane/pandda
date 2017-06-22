@@ -3,25 +3,33 @@ import os, sys, copy
 import libtbx.phil
 from libtbx.utils import Sorry
 
-from giant import HEADER_TEXT
-
+from giant import module_info
 
 class run_default(object):
 
-    HEADER_TEXT = HEADER_TEXT
+    _module_info = module_info
 
     def __init__(self, run, master_phil, args, blank_arg_prepend=None, program='', description=''):
         """Run a program via a standard setup of functions and objects"""
-        print(self.HEADER_TEXT.format(program=program, description=description))
-        working_phil = extract_params_default(master_phil=master_phil, args=args, blank_arg_prepend=blank_arg_prepend)
+        print(self._module_info.header_text.format(program=program, description=description))
+        working_phil = extract_params_default(master_phil=master_phil, args=args, blank_arg_prepend=blank_arg_prepend, module_info=self._module_info)
         out = run(params=working_phil.extract())
 
 
-def extract_params_default(master_phil, args, blank_arg_prepend=None, home_scope=None):
+def extract_params_default(master_phil, args, blank_arg_prepend=None, home_scope=None, module_info=None):
     """Extract the parameters by a default script"""
+    show_version_and_exit_maybe(module_info, args)
     show_defaults_and_exit_maybe(master_phil, args)
     working_phil = parse_phil_args(master_phil, args, blank_arg_prepend=blank_arg_prepend, home_scope=home_scope)
     return working_phil
+
+def show_version_and_exit_maybe(module_info, args):
+    if '--version' not in args: return
+    if module_info is None:
+        print 'no version information available'
+    else:
+        print '{} version: {}'.format(module_info.name, module_info.version)
+    sys.exit()
 
 def show_defaults_and_exit_maybe(master_phil, args):
     """Show master_phil and exit if requested"""

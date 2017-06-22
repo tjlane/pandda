@@ -27,8 +27,12 @@ DATASET_INFO_FIELDS  = [    'high_resolution',
                             'applied_b_factor_scaling',
                             'unscaled_wilson_rmsd_all',   'unscaled_wilson_rmsd_>4A',   'unscaled_wilson_rmsd_<4A',
                             'unscaled_wilson_rmsd_all_z', 'unscaled_wilson_rmsd_<4A_z', 'unscaled_wilson_rmsd_>4A_z',
+                            'unscaled_wilson_ln_rmsd',    'unscaled_wilson_ln_rmsd_z',
+                            'unscaled_wilson_ln_dev',     'unscaled_wilson_ln_dev_z',
                             'scaled_wilson_rmsd_all',     'scaled_wilson_rmsd_>4A',     'scaled_wilson_rmsd_<4A',
                             'scaled_wilson_rmsd_all_z',   'scaled_wilson_rmsd_<4A_z',   'scaled_wilson_rmsd_>4A_z',
+                            'scaled_wilson_ln_rmsd',      'scaled_wilson_ln_rmsd_z',
+                            'scaled_wilson_ln_dev',       'scaled_wilson_ln_dev_z',
                             'rejection_reason'                ]
 DATASET_MAP_FIELDS   = [    'analysed_resolution',
                             'map_uncertainty',
@@ -44,7 +48,9 @@ DATASET_EVENT_FIELDS = [    'site_idx',
                             'z_mean',
                             'cluster_size',
                             'x','y','z',
-                            'refx','refy','refz'    ]
+                            'refx','refy','refz',
+                            'global_correlation_to_mean_map',
+                            'local_correlation_to_mean_map' ]
 SITE_TABLE_FIELDS    = [    'centroid',
                             'num_events',
                             'nearest_residue 1',
@@ -123,6 +129,7 @@ class PanddaDatasetPNGFilenames:
     z_map_qq_plot_png           = '{!s}-qq_plot_z_map.png'
     unc_qqplot_png              = '{!s}-qq_plot_map.png'
     bdc_est_png                 = '{!s}-event_{!s}_bdc_estimation.png'
+    wilson_plot                 = '{!s}-wilson_plot.png'
 
 class PanddaAnalyserFoldernames:
     pass

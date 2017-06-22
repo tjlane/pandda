@@ -14,6 +14,7 @@ def make_supercell(unit_cell, size=(3,3,3)):
     assert isinstance(size, int) or (len(size) == 3), 'Size must be either single scale factor or 3 scale factors for (x,y,z)'
     if isinstance(size, int):   scales = [size]*3   + [1]*3
     else:                       scales = list(size) + [1]*3
+    scaled = map(float, scales)
     assert len(scales) == 6, 'Ooops, something seems to have gone wrong...: size {}, scales {}'.format(size, scales)
     old_params = unit_cell.parameters()
     new_params = [a*b for a,b in zip(old_params, scales)]
@@ -32,11 +33,10 @@ def get_subset_of_grid_points(gridding, grid_indices):
         assert i == grid(p)
         if mask_binary[i]: yield p
 
-def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, alignment, reference_map, site_mask_radius=6.0, step=0.5, filename=None, verbose=False):
+def create_native_map(native_crystal_symmetry, native_sites, alignment, reference_map, site_mask_radius=6.0, step=0.5, filename=None, verbose=False):
     """
     Transform the reference-aligned map back to the native crystallographic frame
     native_sites            - defines region that map will be masked around
-    native_hierarchy        - full model for the crystal
     native_crystal_symmetry - crystal symmetry
     reference_map           - basic_map object of the map in the reference frame
     alignment               - Alignment object used to map between the reference frame and the native frame
@@ -51,10 +51,10 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
     native_space_group = native_crystal_symmetry.space_group()
 
     # ===============================================================================>>>
-    # Create a supercell containing the protein model at the centre
+    # Create a supercell containing the native_sites at the centre
     # ===============================================================================>>>
     # How many unit cells to include in the supercell
-    box_frac_min_max = native_unit_cell.box_frac_around_sites(sites_cart=native_hierarchy.atoms().extract_xyz(), buffer=site_mask_radius+1.0)
+    box_frac_min_max = native_unit_cell.box_frac_around_sites(sites_cart=native_sites, buffer=site_mask_radius+1.0)
     supercell_size = tuple([iceil(ma-mi) for mi, ma in zip(*box_frac_min_max)])
     # create supercell in the native frame
     supercell = make_supercell(native_unit_cell, size=supercell_size)
@@ -73,7 +73,8 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
     # Mask the supercell grid around the protein model
     # ===============================================================================>>>
     # calculate the origin of the supercell (centred on the protein model) - adding origin translates "grid frame" to "crystallographic frame"
-    origin = calculate_offset_to_centre_grid(grid_dimensions=supercell.parameters()[0:3], centre_on=native_sites.mean())
+    model_centroid = tuple((flex.double(native_sites.max()) + flex.double(native_sites.min()))/2.0)
+    origin = calculate_offset_to_centre_grid(grid_dimensions=supercell.parameters()[0:3], centre_on=model_centroid)
     # sample the map points near to the protein (transform the structure to be centre of the grid)
     masked_points_indices = cctbx.maptbx.grid_indices_around_sites(unit_cell  = supercell,
                                                                    fft_n_real = sc_gridding.n_real(),
@@ -108,13 +109,12 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
     sc_map_data = numpy.zeros(sc_gridding.n_grid_points(), dtype=numpy.float64)
     sc_map_data.put(masked_points_indices, masked_values)
     sc_map_data = flex.double(sc_map_data)
-#    sc_map_data = scitbx.sparse.vector(sc_gridding.n_grid_points(), dict(zip(masked_points_indices, masked_values))).as_dense_vector()
     sc_map_data.reshape(flex.grid(sc_gridding.n_real()))
     # Transform the points back to the native frame (simple origin shift)
     sc_map_data = cctbx.maptbx.rotate_translate_map(unit_cell          = supercell,
                                                     map_data           = sc_map_data,
                                                     rotation_matrix    = scitbx.matrix.rec([1,0,0,0,1,0,0,0,1], (3,3)).elems,
-                                                    translation_vector = scitbx.matrix.rec([-a for a in origin], (3,1)).elems    )
+                                                    translation_vector = (-1.0*scitbx.matrix.rec(origin, (3,1))).elems    )
 
     # ===============================================================================>>>
     # Apply translations to populate all unit cells of supercell
@@ -151,10 +151,6 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
     # ===============================================================================>>>
     # Create a copy to contain the combined map data
     combined_uc_map_data = copy.deepcopy(uc_map_data)
-#    # Get the symmetry operations for adjacent crystal copies
-#    sym_ops = get_crystal_contact_operators(hierarchy=native_hierarchy,
-#                                            crystal_symmetry=native_crystal_symmetry,
-#                                            distance_cutoff=5.0)
     # Apply all symmetry operations to unit cell data
     for sym_op in native_space_group.all_ops():
         if sym_op.as_xyz() == 'x,y,z': continue
@@ -162,9 +158,10 @@ def create_native_map(native_crystal_symmetry, native_sites, native_hierarchy, a
         rt_mx = sym_op.as_rational().as_float()
         # Tranform the map
         rt_map_data = cctbx.maptbx.rotate_translate_map(unit_cell          = native_unit_cell,
-                                                        map_data           = uc_map_data,
+                                                        map_data           = combined_uc_map_data,
                                                         rotation_matrix    = rt_mx.r.elems,
-                                                        translation_vector = rt_mx.t.elems    )
+                                                        #translation_vector = native_unit_cell.orthogonalize((-1.0*rt_mx.t).elems)   )
+                                                        translation_vector = native_unit_cell.orthogonalize(rt_mx.t.elems)   )
         # Set any values that are filled in combined_uc_map_data to 0
         rt_map_data.set_selected(flex.abs(combined_uc_map_data) > 1e-6, 0)
         # Add values to combined_uc_map_data

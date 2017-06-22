@@ -28,42 +28,35 @@ cd ccp4-nightly
 if [ ! -e ccp4 ]; then
     if   [ $(uname) == 'Linux' ]; then
       echo "System is Linux"
-      echo $bar
-      echo "Downloading most recent copy of ccp4"
-      echo "wget http://devtools.fg.oisin.rc-harwell.ac.uk/nightly/ccp4-linux${pkg}-latest.tar.bz2"
-      echo $bar
-      wget http://devtools.fg.oisin.rc-harwell.ac.uk/nightly/ccp4-linux${pkg}-latest.tar.bz2  
-      echo $bar
-      echo "Unzipping the archive"
-      echo "bunzip2 ccp4-linux${pkg}-latest.tar.bz2"
-      bunzip2 ccp4-linux${pkg}-latest.tar.bz2
-      echo $bar
-      echo "Untarring the archive"
-      echo "tar -xf ccp4-linux${pkg}-latest.tar"
-      tar -xf ccp4-linux${pkg}-latest.tar  
-      echo $bar
-      echo "Creating soft link to ccp4"
-      echo "ln -s ./ccp4-linux${pkg}-*/ ccp4"
-      ln -s ./ccp4-linux${pkg}-*/ ./ccp4
+      dld_base="ccp4-7.0-linux${pkg}-latest"
     elif [ $(uname) == 'Darwin' ]; then
       echo "System is MacOSX"
-      echo $bar
-      echo "Downloading most recent copy of ccp4"
-      echo "wget http://devtools.fg.oisin.rc-harwell.ac.uk/nightly/ccp4-osx-clang-latest.tar.gz"
-      echo $bar
-      wget http://devtools.fg.oisin.rc-harwell.ac.uk/nightly/ccp4-osx-clang-latest.tar.gz
-      echo $bar
-      echo "Unzipping the archive"
-      echo "tar -zxf ccp4-osx-clang-latest.tar.gz"
-      tar -zxf ccp4-osx-clang-latest.tar.gz
-      echo $bar
-      echo "Creating soft link to ccp4"
-      echo "ln -s ccp4-osx-clang-latest ccp4"
-      ln -s ./ccp4-osx-clang-*/ ./ccp4
+      dld_base="ccp4-7.0-macosx-10.6.0-latest"
     else
       echo "Can't install"
       exit 1
     fi
+      
+    echo $bar
+    echo "Downloading most recent copy of ccp4"
+    echo $bar
+    bz2_file="${dld_base}.tar.bz2"
+    tar_file="${dld_base}.tar"
+    echo "wget http://devtools.fg.oisin.rc-harwell.ac.uk/nightly/7.0/${bz2_file}"
+    wget http://devtools.fg.oisin.rc-harwell.ac.uk/nightly/7.0/${bz2_file}
+    echo $bar
+    echo "Unzipping the archive"
+    echo "bunzip2 ${bz2_file}"
+    bunzip2 ${bz2_file}
+    echo $bar
+    echo "Untarring the archive"
+    echo "tar -xf ${tar_file}"
+    tar -xf ${tar_file} 
+    rm -f ${tar_file}
+    echo $bar
+    echo "Creating soft link to ccp4"
+    echo "ln -s ccp4-7.0/ ccp4"
+    ln -s ccp4-7.0/ ccp4
 
     echo $bar
     echo "Setting up the fresh copy of ccp4"
@@ -74,6 +67,15 @@ fi
 echo "source ./ccp4/bin/ccp4.setup-sh"
 source ./ccp4/bin/ccp4.setup-sh
 
+#echo $bar
+#echo "Updating ccp4-python"
+#echo "ccp4-python -m pip --quiet install pip --upgrade"
+#ccp4-python -m pip install pip --upgrade
+#echo "ccp4-python -m pip --quiet install IPython --upgrade"
+#ccp4-python -m pip install IPython --upgrade
+#echo "source ./ccp4/bin/ccp4.setup-sh"
+#source ./ccp4/bin/ccp4.setup-sh
+
 echo ""
 echo $bar
 echo ""
@@ -81,7 +83,7 @@ echo $bar
 echo ""
 
 echo "Installation complete."
-echo "You will need to source the scripts below to use panddas:"
+echo "You will need to source the scripts below to use ccp4:"
 echo $bar
 echo "bash users:"
 echo "source $(pwd)/ccp4/bin/ccp4.setup-sh"
@@ -89,7 +91,5 @@ echo $bar
 echo "csh users:"
 echo "source $(pwd)/ccp4/bin/ccp4.setup-csh"
 echo $bar
-
-echo "You may encounter problems with missing packages in ccp4 that are required for panddas and may have to add them manually"
 
 

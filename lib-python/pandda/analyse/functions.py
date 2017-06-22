@@ -14,7 +14,7 @@ from libtbx.utils import Sorry, Failure
 from bamboo.common import Meta, Info
 from bamboo.common.logs import Log
 from bamboo.common.path import rel_symlink
-from bamboo.pymol import PythonScript
+from bamboo.pymol_utils import PythonScript
 from bamboo.stats.ospina import estimate_true_underlying_sd
 
 from giant.dataset import ElectronDensityMap
@@ -112,7 +112,7 @@ class MapLoader(object):
         elif args.params.maps.scaling == 'sigma':  fft_map.apply_sigma_scaling()
         elif args.params.maps.scaling == 'volume': fft_map.apply_volume_scaling()
         # Create map object
-        native_map_true = ElectronDensityMap.from_fft_map(fft_map)
+        native_map_true = ElectronDensityMap.from_fft_map(fft_map).as_map()
 
         # ============================================================================>
         # Morph the map to the reference frame
@@ -120,7 +120,7 @@ class MapLoader(object):
         # Extract the map sites from the grid partition
         point_mappings_grid = grid.partition.nn_groups[grid.global_mask().outer_mask_indices()]
         assert sum(point_mappings_grid == -1) == 0
-        sites_cart_map = grid.grid2cart(grid.global_mask().outer_mask(), origin=True)
+        sites_cart_map = grid.grid2cart(grid.global_mask().outer_mask(), origin_shift=True)
         # Translate the grid partition mappings to the dataset alignment mappings
         mappings_grid2dataset = get_interpolated_mapping_between_coordinates(query_list=grid.partition.sites_cart,
                                                                              ref_list=dataset.model.alignment.reference_sites,
@@ -128,7 +128,7 @@ class MapLoader(object):
         point_mappings_dataset = numpy.array([mappings_grid2dataset[i] for i in point_mappings_grid])
         assert sum(point_mappings_dataset == -1) == 0
         sites_cart_map_d = dataset.model.alignment.ref2nat(coordinates=sites_cart_map, mappings=point_mappings_dataset)
-        morphed_map_data = native_map_true.as_map().get_cart_values(sites_cart_map_d)
+        morphed_map_data = native_map_true.get_cart_values(sites_cart_map_d)
 
         # Scale map to reference
         scale_mask = grid.index_on_other(query=grid.global_mask().inner_mask_indices(),
@@ -543,6 +543,11 @@ class DatasetProcessor(object):
         assert num_clusters > 0, 'NUMBER OF CLUSTERS AFTER FILTERING == 0!'
 
         # ============================================================================>
+        # Extract the map data in non-sparse format
+        # ============================================================================>
+        dset_map_data = dataset_map.get_map_data(sparse=False)
+        mean_map_data = map_analyser.statistical_maps.mean_map.get_map_data(sparse=False)
+        # ============================================================================>
         # Process the identified features
         # ============================================================================>
         for event_idx, (event_points, event_values) in enumerate(z_clusters):
@@ -561,19 +566,19 @@ class DatasetProcessor(object):
             log_strs.append('----------------------------------->>>')
             log_strs.append('Estimating Event {!s} Background Correction'.format(event_num))
             # Generate custom grid mask for this dataset
-            event_mask = GridMask(parent=grid, sites_cart=grid.grid2cart(point_cluster.points, origin=False), max_dist=2.0, min_dist=0.0)
+            event_mask = GridMask(parent=grid, sites_cart=grid.grid2cart(point_cluster.points, origin_shift=True), max_dist=2.0, min_dist=0.0)
             log_strs.append('=> Event sites ({!s} points) expanded to {!s} points'.format(len(point_cluster.points), len(event_mask.outer_mask_indices())))
             # Select masks to define regions for bdc calculation
-            exp_event_idxs = event_mask.outer_mask_indices()
-            reference_idxs = grid.global_mask().inner_mask_indices()
+            exp_event_idxs = flex.size_t(event_mask.outer_mask_indices())
+            reference_idxs = flex.size_t(grid.global_mask().inner_mask_indices())
             # ============================================================================>
             # Generate BDC-estimation curve and estimate BDC
             # ============================================================================>
             event_remains, event_corrs, global_corrs = calculate_varying_bdc_correlations(
-                ref_map_data   = map_analyser.statistical_maps.mean_map.get_map_data(sparse=False),
-                query_map_data = dataset_map.get_map_data(sparse=False),
-                feature_idxs   = flex.size_t(exp_event_idxs),
-                reference_idxs = flex.size_t(reference_idxs),
+                ref_map_data   = mean_map_data,
+                query_map_data = dset_map_data,
+                feature_idxs   = exp_event_idxs,
+                reference_idxs = reference_idxs,
                 min_remain     = 1.0-args.params.background_correction.max_bdc,
                 max_remain     = 1.0-args.params.background_correction.min_bdc,
                 bdc_increment  = args.params.background_correction.increment,
@@ -598,13 +603,18 @@ class DatasetProcessor(object):
             blob_finder.log('Applying multiplier to output 1-BDC: {}'.format(args.params.background_correction.output_multiplier))
             event_remain_est = min(event_remain_est*args.params.background_correction.output_multiplier, 1.0-args.params.background_correction.min_bdc)
             # ============================================================================>
+            # Calculate the map correlations at the selected BDC
+            # ============================================================================>
+            event_map_data = calculate_bdc_subtracted_map(
+                                    ref_map_data   = mean_map_data,
+                                    query_map_data = dset_map_data,
+                                    bdc            = 1.0 - event_remain_est)
+            global_corr = numpy.corrcoef(event_map_data.select(reference_idxs), mean_map_data.select(reference_idxs))[0,1]
+            local_corr  = numpy.corrcoef(event_map_data.select(exp_event_idxs), mean_map_data.select(exp_event_idxs))[0,1]
+            # ============================================================================>
             # Write out EVENT map (in the reference frame) and grid masks
             # ============================================================================>
             if args.output.developer.write_reference_frame_maps:
-                event_map_data = calculate_bdc_subtracted_map(
-                                        ref_map_data   = map_analyser.statistical_maps.mean_map.get_map_data(sparse=False),
-                                        query_map_data = dataset_map.get_map_data(sparse=False),
-                                        bdc            = 1.0 - event_remain_est)
                 event_map = dataset_map.new_from_template(event_map_data, sparse=False)
                 event_map.to_file(filename=dataset.file_manager.get_file('event_map').format(event_num, event_remain_est), space_group=grid.space_group())
             if args.output.developer.write_reference_frame_grid_masks:
@@ -614,7 +624,7 @@ class DatasetProcessor(object):
             # Find the nearest atom to the event
             # ============================================================================>
             atm = find_nearest_atoms(atoms=list(protein(dataset.model.hierarchy).atoms_with_labels()),
-                                     query=dataset.model.alignment.ref2nat(grid.grid2cart(sites_grid=[map(int,point_cluster.centroid)], origin=False)))[0]
+                                     query=dataset.model.alignment.ref2nat(grid.grid2cart(sites_grid=[map(int,point_cluster.centroid)], origin_shift=True)))[0]
             log_strs.append('=> Nearest Residue to event: Chain {}, Residue {} {}'.format(atm.chain_id, atm.resname, atm.resid()))
             # ============================================================================>
             # Create an event object
@@ -622,6 +632,8 @@ class DatasetProcessor(object):
             event_obj = Event(id=point_cluster.id, cluster=point_cluster)
             event_obj.info.estimated_pseudo_occupancy = event_remain_est
             event_obj.info.estimated_bdc              = 1.0 - event_remain_est
+            event_obj.info.global_correlation = global_corr
+            event_obj.info.local_correlation  = local_corr
             # ============================================================================>
             # Append to dataset handler
             # ============================================================================>
@@ -661,7 +673,7 @@ class DatasetProcessor(object):
 class NativeMapMaker(object):
 
 
-    def __init__(self, dataset, map, filename, args, verbose):
+    def __init__(self, dataset, map_obj, sites_mask, filename, args, verbose):
         """
         The main object for comparing each dataset-map to the ensemble-maps.
         Constructed so that the class can be initialised and then called within a multiprocessing function.
@@ -673,25 +685,24 @@ class NativeMapMaker(object):
             output   = DatasetProcessor.process(...)
         """
 
-        self.data = (dataset, map, filename, args, verbose)
+        self.data = (dataset, map_obj, sites_mask, filename, args, verbose)
 
     @classmethod
-    def process(cls, dataset, map, filename, args, verbose):
+    def process(cls, dataset, map_obj, sites_mask, filename, args, verbose):
         """Process the dataset immediately and return output"""
-        return cls(dataset=dataset, map=map, filename=filename, args=args, verbose=verbose).run()
+        return cls(dataset=dataset, map_obj=map_obj, sites_mask=sites_mask, filename=filename, args=args, verbose=verbose).run()
 
     def run(self):
         """Process the dataset"""
 
         t1 = time.time()
-        dataset, map, filename, args, verbose = self.data
+        dataset, map_obj, sites_mask, filename, args, verbose = self.data
 
         native_map_data = create_native_map(
                             native_crystal_symmetry = dataset.model.crystal_symmetry,
-                            native_sites            = dataset.model.hierarchy.atoms().extract_xyz(),
-                            native_hierarchy        = dataset.model.hierarchy,
+                            native_sites            = dataset.model.alignment.ref2nat(sites_mask),
                             alignment               = dataset.model.alignment,
-                            reference_map           = map.as_map(),
+                            reference_map           = map_obj.as_map(),
                             site_mask_radius        = args.params.masks.outer_mask,
                             step                    = args.params.maps.grid_spacing,
                             filename                = filename

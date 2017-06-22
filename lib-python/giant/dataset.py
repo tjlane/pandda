@@ -5,6 +5,7 @@ import numpy
 import iotbx.pdb, iotbx.mtz, iotbx.ccp4_map
 import cctbx.maptbx, cctbx.uctbx
 import cctbx_uctbx_ext
+import scitbx.matrix
 from scitbx.array_family import flex
 
 from bamboo.common import Meta, Info
@@ -184,7 +185,7 @@ class ModelAndMap(_DatasetObj):
 class ElectronDensityMap(object):
 
 
-    def __init__(self, map_data, unit_cell, map_indices=None, map_size=None, sparse=False, meta=None, parent=None, children=None):
+    def __init__(self, map_data, unit_cell, map_indices=None, map_size=None, map_origin=(0.0,0.0,0.0), sparse=False, meta=None, parent=None, children=None):
 
         assert isinstance(map_data, flex.double)
         assert isinstance(unit_cell, cctbx.uctbx.unit_cell) or isinstance(unit_cell, cctbx_uctbx_ext.unit_cell)
@@ -212,6 +213,7 @@ class ElectronDensityMap(object):
         self.data         = map_data
         self._map_size    = map_size
         self._map_indices = map_indices
+        self._map_origin  = map_origin
         self.unit_cell = unit_cell
         self.meta      = meta if meta else Meta()
         self.parent    = parent
@@ -252,6 +254,7 @@ class ElectronDensityMap(object):
                                   unit_cell     = self.unit_cell,
                                   map_indices   = map_indices,
                                   map_size      = map_size,
+                                  map_origin    = self._map_origin,
                                   meta          = meta,
                                   parent        = parent,
                                   sparse        = sparse)
@@ -314,11 +317,19 @@ class ElectronDensityMap(object):
     def is_sparse(self):
         return (self._map_indices is not None)
 
+    def embed(self, map_data):
+        """Embed map data relative to the real map origin, rather than (0,0,0)"""
+        if self._map_origin == (0.0,0.0,0.0): return map_data
+        return cctbx.maptbx.rotate_translate_map(unit_cell          = self.unit_cell,
+                                                 map_data           = map_data,
+                                                 rotation_matrix    = scitbx.matrix.rec([1,0,0,0,1,0,0,0,1], (3,3)).elems,
+                                                 translation_vector = (-1.0*scitbx.matrix.rec(self._map_origin, (3,1))).elems    )
+
     def as_map(self):
         map_data = self.get_map_data(sparse=False)
         return cctbx.maptbx.basic_map(
                     cctbx.maptbx.basic_map_unit_cell_flag(),
-                    map_data,
+                    self.embed(map_data),
                     map_data.focus(),
                     self.unit_cell.orthogonalization_matrix(),
                     cctbx.maptbx.out_of_bounds_clamp(0).as_handle(),
@@ -330,7 +341,7 @@ class ElectronDensityMap(object):
                     file_name   = filename,
                     unit_cell   = self.unit_cell,
                     space_group = space_group,
-                    map_data    = map_data,
+                    map_data    = self.embed(map_data),
                     labels      = flex.std_string(['Output map from giant/pandda'])     )
 
     def get_map_data(self, sparse):

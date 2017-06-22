@@ -26,22 +26,103 @@ def write_initial_html(pandda):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.file_manager.get_file(file_tag='d_resolutions'))),
-                                       'title': 'Dataset Resolutions' })
-    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.file_manager.get_file(file_tag='d_rfactors'))),
-                                       'title': 'Dataset R-Factors' })
-    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.file_manager.get_file(file_tag='d_global_rmsd_to_ref'))),
-                                       'title': 'Dataset RMSD to Mean Structure' })
-    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.file_manager.get_file(file_tag='d_cell_volumes'))),
-                                       'title': 'Dataset Cell Volumes' })
-    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.file_manager.get_file(file_tag='d_cell_axes'))),
-                                       'title': 'Dataset Cell Axis Lengths' })
-    output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=pandda.file_manager.get_file(file_tag='d_cell_angles'))),
-                                       'title': 'Dataset Cell Angles' })
+    for file_tag, title, tooltip in [('d_resolutions',
+                                      'Dataset Resolutions', ''),
+                                     ('d_rfactors',
+                                      'Dataset R-Factors', ''),
+                                     ('d_unscaled_wilson_plots',
+                                      'Unscaled Wilson plots', ''),
+                                     ('d_scaled_wilson_plots',
+                                      'Scaled Wilson plots', ''),
+                                     ('d_unscaled_wilson_rmsds',
+                                      'RMSDs to reference wilson plot (unscaled)', ''),
+                                     ('d_scaled_wilson_rmsds',
+                                      'RMSDs to reference wilson plot (scaled)', ''),
+                                     ('d_global_rmsd_to_ref',
+                                      'Dataset RMSD to Mean Structure', ''),
+                                     ('d_cell_volumes',
+                                      'Dataset Cell Volumes', ''),
+                                     ('d_cell_axes',
+                                      'Dataset Cell Axis Lengths', ''),
+                                     ('d_cell_angles',
+                                      'Dataset Cell Angles', '')]:
+        f_name = pandda.file_manager.get_file(file_tag=file_tag)
+        output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=f_name)),
+                                           'title': title,
+                                           'tooltip': tooltip  })
     # ===========================================================>
     # Write Output
     with open(out_file, 'w') as out_html:
         out_html.write(template.render(output_data))
+
+def write_datasets_htmls(pandda, resolution, datasets):
+
+    # Get template to be filled in
+    template = PANDDA_HTML_ENV.get_template('pandda_summary.html')
+
+    # Iterate through datasets and write graphs for each
+    for dataset in datasets:
+        # Output file
+        out_file = dataset.file_manager.get_file(file_tag='dataset_html')
+
+        # ===========================================================>
+        # Construct the data object to populate the template
+        output_data = {}
+        output_data['header'] = 'Dataset {} Analysis Summary'.format(dataset.tag)
+        output_data['title'] = 'Dataset {} Analysis Summary'.format(dataset.tag)
+        output_data['introduction'] = 'Summary of dataset {} analysed @ {}A'.format(dataset.tag, resolution)
+        # ===========================================================>
+        # Dataset analysis images
+        output_data['top_images'] = []
+        for file_tag, title, tooltip in [('s_map_png',
+                                          '<strong>Electron density distribution</strong>. ',
+                                          'Tooltip. '\
+                                          ''),
+                                         ('d_mean_map_png',
+                                          '<strong>Distribution of differences from the mean map</strong>. ',
+                                          'Tooltip. '\
+                                          ''),
+                                         ('obs_qqplot_unsorted_png',
+                                          '<strong>Dataset v Reference map values (unsorted)</strong>. ',
+                                          'Tooltip. '\
+                                          ''),
+                                         ('obs_qqplot_sorted_png',
+                                          '<strong>Dataset v Reference map values (sorted)</strong>. ',
+                                          'Tooltip. '\
+                                          ''),
+                                         ('unc_qqplot_png',
+                                          '<strong>Uncertainty Q-Q plot</strong>. ',
+                                          'Tooltip. '\
+                                          ''),
+                                         ('z_map_qq_plot_png',
+                                          '<strong>Z-map Q-Q plot</strong>. ',
+                                          'Tooltip. '\
+                                          ''),
+                                         ('z_map_naive_normalised_png',
+                                          '<strong>(Naive) Z-map distribution</strong>. ',
+                                          'Tooltip. '\
+                                          ''),
+                                         ('z_map_corrected_normalised_png',
+                                          '<strong>(Corrected) Z-map distribution</strong>. ',
+                                          'Tooltip. '\
+                                          ''),
+                                         ('wilson_plot_png',
+                                          '<strong>Wilson Plot. ',
+                                          'Tooltip. '\
+                                          '')]:
+            f_name = dataset.file_manager.get_file(file_tag=file_tag)
+            output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=f_name)),
+                                               'title': title,
+                                               'tooltip': tooltip  })
+        # Any event maps (variable filenames)
+        for f_name in sorted(glob.glob(dataset.file_manager.get_file(file_tag='bdc_est_png').format('*'))):
+            output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=f_name)),
+                                               'title': os.path.basename(os.path.splitext(f_name)[0]),
+                                               'tooltip': '' })
+        # ===========================================================>
+        # Write Output
+        with open(out_file, 'w') as out_html:
+            out_html.write(template.render(output_data))
 
 def write_map_analyser_html(pandda, resolution):
 
@@ -67,13 +148,13 @@ def write_map_analyser_html(pandda, resolution):
     # ===========================================================>
     # Header Images
     output_data['top_images'] = []
-    for file_tag, title, tooltip in [('dataset_res_hist',
+    for file_tag, title, tooltip in [('truncated_res_hist',
                                       '<strong>Distribution of truncated dataset resolutions</strong>. ',
                                       'Histogram of the diffraction data resolution for each dataset after truncation to the same resolution. '\
                                       'The truncated data is used to generate the statistical maps at this resolution, so for best results, '\
                                       'the range on the x-axis should be very small. Large variation indicates that something has gone wrong during '\
                                       'data truncation.'),
-                                     ('dataset_wilson_plot',
+                                     ('truncated_wilson_plot',
                                       '<strong>Wilson plots of truncated diffraction data</strong>.',
                                       'Plots of intensity vs resolution for the truncated diffraction data, showing how intensity falls off as a '\
                                       'function of resolution. For best results, all of the lines should be approximately overlaid on each other.'),

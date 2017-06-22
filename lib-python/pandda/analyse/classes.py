@@ -24,6 +24,7 @@ from bamboo.common.holders import HolderList
 
 from bamboo.plot import bar
 from bamboo.maths import round_no_fail
+from bamboo.stats import modified_z_scores
 
 from giant.dataset import ModelAndData, ElectronDensityMap
 from giant.manager import Program
@@ -63,6 +64,7 @@ class PanddaReferenceDataset(ModelAndData):
 
         super(PanddaReferenceDataset, self).__init__(model=model, data=data)
 
+        self.set_origin_shift((0.,0.,0.))
         self.child = None
 
     def set_origin_shift(self, shift):
@@ -78,10 +80,13 @@ class PanddaReferenceDataset(ModelAndData):
     def origin_shift(self):
         return self._origin_shift
 
-    def nat2grid(self, *args, **kwargs):
+    def ref2grid(self, *args, **kwargs):
         return self.model.alignment.nat2ref(*args, **kwargs)
-    def grid2nat(self, *args, **kwargs):
+    def grid2ref(self, *args, **kwargs):
         return self.model.alignment.ref2nat(*args, **kwargs)
+
+    def copy(self):
+        return copy.deepcopy(self)
 
 
 class PanddaDatasetList(HolderList):
@@ -128,7 +133,7 @@ class MapList(Info):
         self.meta = Meta()
         self._initialized = True
 
-    def __get_item__(self, item):
+    def __getitem__(self, item):
         return self.__dict__[item]
 
 
@@ -199,7 +204,7 @@ class PanddaMultiDatasetAnalyser(Program):
         self._new_dataset_files = []
         self.grid = None
         self.datasets = PanddaDatasetList()
-        self.pickled_dataset_meta = None
+        self.pickled_dataset_meta = Meta({'number_of_datasets':0, 'dataset_labels':[],'dataset_pickle_list':[]})
         self.stat_maps = PanddaMultipleStatMapList()
         # ===============================================================================>
         # Analysis objects
@@ -281,22 +286,24 @@ class PanddaMultiDatasetAnalyser(Program):
         # Dataset summary graphs
         # ================================================>
         fm.add_dir(dir_name='dataset_summary_graphs', dir_tag='d_graphs', top_dir_tag='analyses', create=False, exists=False)
-        fm.add_file(file_name='dataset_resolutions.png',           file_tag='d_resolutions',           dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_rfactors.png',              file_tag='d_rfactors',              dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_global_rmsd_to_ref.png',    file_tag='d_global_rmsd_to_ref',    dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_cell_axes.png',             file_tag='d_cell_axes',             dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_cell_angles.png',           file_tag='d_cell_angles',           dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_cell_volumes.png',          file_tag='d_cell_volumes',          dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_unscaled_wilson_plots.png', file_tag='d_unscaled_wilson_plots', dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_unscaled_wilson_rmsds.png', file_tag='d_unscaled_wilson_rmsds', dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_scaled_wilson_plots.png',   file_tag='d_scaled_wilson_plots',   dir_tag='d_graphs')
-        fm.add_file(file_name='dataset_scaled_wilson_rmsds.png',   file_tag='d_scaled_wilson_rmsds',   dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_resolutions.png',              file_tag='d_resolutions',              dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_rfactors.png',                 file_tag='d_rfactors',                 dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_global_rmsd_to_ref.png',       file_tag='d_global_rmsd_to_ref',       dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_cell_axes.png',                file_tag='d_cell_axes',                dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_cell_angles.png',              file_tag='d_cell_angles',              dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_cell_volumes.png',             file_tag='d_cell_volumes',             dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_unscaled_wilson_plots.png',    file_tag='d_unscaled_wilson_plots',    dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_unscaled_wilson_rmsds.png',    file_tag='d_unscaled_wilson_rmsds',    dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_unscaled_wilson_ln_rmsds.png', file_tag='d_unscaled_wilson_ln_rmsds', dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_scaled_wilson_plots.png',      file_tag='d_scaled_wilson_plots',      dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_scaled_wilson_rmsds.png',      file_tag='d_scaled_wilson_rmsds',      dir_tag='d_graphs')
+        fm.add_file(file_name='dataset_scaled_wilson_ln_rmsds.png',   file_tag='d_scaled_wilson_ln_rmsds',   dir_tag='d_graphs')
         # ================================================>
         # Map analysis graphs
         # ================================================>
         fm.add_dir(dir_name='map_analysis_summary_graphs', dir_tag='m_graphs', top_dir_tag='analyses', create=False, exists=False)
-        fm.add_file(file_name='{}A-truncated_data_resolutions.png', file_tag='dataset_res_hist',       dir_tag='m_graphs')
-        fm.add_file(file_name='{}A-truncated_data_wilson_plot.png', file_tag='dataset_wilson_plot',    dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-truncated_data_resolutions.png', file_tag='truncated_res_hist',     dir_tag='m_graphs')
+        fm.add_file(file_name='{}A-truncated_data_wilson_plot.png', file_tag='truncated_wilson_plot',  dir_tag='m_graphs')
         fm.add_file(file_name='{}A-reference_map_distribution.png', file_tag='ref_map_dist',           dir_tag='m_graphs')
         fm.add_file(file_name='{}A-reference_v_mean_unsorted.png',  file_tag='ref_v_mean_map_unsort',  dir_tag='m_graphs')
         fm.add_file(file_name='{}A-reference_v_mean_sorted.png',    file_tag='ref_v_mean_map_sort',    dir_tag='m_graphs')
@@ -454,32 +461,11 @@ class PanddaMultiDatasetAnalyser(Program):
         else:
             self.update_status('done')
             self.log.heading('.. FINISHED! PANDDA EXITED NORMALLY ..')
+
         # ===============================================================================>
-        # Write list of datasets loaded into the PanDDA
+        # Make sure the meta is up-to-date
         # ===============================================================================>
-        self.log.bar()
-        self.log('Writing dataset information for any future runs', True)
-        try:
-            if self.pickled_dataset_meta and (not self.args.flags.reload_existing_datasets):
-                # Combine with existing meta
-                self.log('Combining old dataset meta with new meta for pickle')
-                number_of_datasets  = self.pickled_dataset_meta.number_of_datasets  + self.datasets.size()
-                dataset_labels      = self.pickled_dataset_meta.dataset_labels      + [d.tag for d in self.datasets.all()]
-                dataset_pickle_list = self.pickled_dataset_meta.dataset_pickle_list + [os.path.relpath(d.file_manager.get_file('dataset_pickle'), start=self.out_dir) for d in self.datasets.all()]
-            else:
-                # Create new meta containing only information about current datasets
-                self.log('Creating new meta for pickle')
-                number_of_datasets  = self.datasets.size()
-                dataset_labels      = [d.tag for d in self.datasets.all()]
-                dataset_pickle_list = [os.path.relpath(d.file_manager.get_file('dataset_pickle'), start=self.out_dir) for d in self.datasets.all()]
-            # Create a dictionary to be stored
-            dataset_meta = Meta({'number_of_datasets'    : number_of_datasets,
-                                 'dataset_labels'        : dataset_labels,
-                                 'dataset_pickle_list'   : dataset_pickle_list})
-            # Pickle the list of locations of the dataset pickles
-            self.pickle(pickle_file=self.pickle_handler.get_file('dataset_meta'), pickle_object=dataset_meta, overwrite=True)
-        except:
-            self.log('FAILED TO PICKLE META')
+        self.write_state()
         # ===============================================================================>
         # Lastly, pickle the main pandda object
         # ===============================================================================>
@@ -495,6 +481,21 @@ class PanddaMultiDatasetAnalyser(Program):
 
         sys.exit()
 
+    def write_state(self):
+        """Write the list of datasets for future runs"""
+
+        self.log.bar()
+        self.log('Writing dataset information for any future runs', True)
+        new_datasets = self.datasets.mask(mask_name='new datasets', invert=False)
+        # Filter out those already in the meta to make it safe
+        new_new_datasets = [d for d in new_datasets if d.tag not in self.pickled_dataset_meta.dataset_labels]
+        self.log('Adding information about {} new datasets (on future runs these will be known as "old" datasets).'.format(len(new_new_datasets)))
+        self.pickled_dataset_meta.number_of_datasets  += len(new_new_datasets)
+        self.pickled_dataset_meta.dataset_labels      += [d.tag for d in new_new_datasets]
+        self.pickled_dataset_meta.dataset_pickle_list += [os.path.relpath(d.file_manager.get_file('dataset_pickle'), start=self.out_dir) for d in new_new_datasets]
+        # Pickle the list of locations of the dataset pickles
+        self.pickle(pickle_file=self.pickle_handler.get_file('dataset_meta'), pickle_object=self.pickled_dataset_meta, overwrite=True)
+
     #########################################################################################################
     #                                                                                                       #
     #                                       Parameter Validation/Updating                                   #
@@ -506,17 +507,7 @@ class PanddaMultiDatasetAnalyser(Program):
 
         p = self.args
 
-        if not (p.shortcuts.run_characterisation_for_all_resolutions or \
-                p.shortcuts.run_in_single_dataset_mode):
-            return
-
         self.log.heading('Applying shortcuts to parameters')
-
-        # ================================================>
-        # Seeding mode
-        # ================================================>
-        if p.shortcuts.run_characterisation_for_all_resolutions:
-            self.log('Applying shortcut: run_characterisation_for_all_resolutions')
 
         # ================================================>
         # Seeding mode
@@ -564,6 +555,8 @@ class PanddaMultiDatasetAnalyser(Program):
             p.input.reference.pdb = os.path.abspath(p.input.reference.pdb)
         if p.input.reference.mtz:
             p.input.reference.mtz = os.path.abspath(p.input.reference.mtz)
+        if p.params.masks.pdb:
+            p.params.masks.pdb = os.path.abspath(p.params.masks.pdb)
         # ================================================>
         # Trim any unnecessary '/'
         # ================================================>
@@ -576,7 +569,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ================================================>
         # Whether or not to create a new ouput directory
         # ================================================>
-        if self.is_new_pandda() or p.flags.reprocess_existing_datasets:
+        if self.is_new_pandda() or p.flags.existing_datasets in ['reprocess','ignore']:
             self.log.bar()
             self.log('Setting output.new_analysis_dir = True')
             self.log('A new output analysis directory will be created')
@@ -643,19 +636,15 @@ class PanddaMultiDatasetAnalyser(Program):
         if not self.stat_maps.get_resolutions():
             self.log.bar()
             self.log('No statistical maps have been loaded from previous runs')
-            self.log('Setting method.recalculate_statistical_maps to "Yes"')
-            p.flags.recalculate_statistical_maps = "Yes"
-        elif (p.flags.recalculate_statistical_maps == 'Yes') and self.stat_maps.get_resolutions():
-            raise Sorry('method.recalculate_statistical_maps is set to Yes, but statistical maps have been reloaded when they should not have been.')
+            self.log('Setting method.recalculate_statistical_maps to "yes"')
+            p.flags.recalculate_statistical_maps = "yes"
+        elif (p.flags.recalculate_statistical_maps == 'yes') and self.stat_maps.get_resolutions():
+            raise Sorry('method.recalculate_statistical_maps is set to yes, but statistical maps have been reloaded when they should not have been.')
         # ================================================>
         # If any datasets are set to be reprocessed, reload all datasets (need to change this to allow for "reload_selected_datasets")
         # ================================================>
-        if p.flags.reprocess_existing_datasets or p.flags.reprocess_selected_datasets:
-            self.log.bar()
-            self.log('method.reprocess_existing_datasets or p.flags.reprocess_selected_datasets are set to True')
-            self.log('Old (previously processed) datasets will be reloaded')
-            self.log('Setting method.reload_existing_datasets = True')
-            p.flags.reload_existing_datasets = True
+        if p.input.flags.reprocess_datasets and (p.flags.existing_datasets=='reprocess'):
+            raise Sorry('Cannot provide input.flags.reprocess_datasets and set flags.existing_datasets=="reprocess" at the same time. The first sets a subset of old datasets to reprocess, and the latter sets all of them to be reprocessed.')
         # ================================================>
         # Developer flags
         # ================================================>
@@ -663,10 +652,12 @@ class PanddaMultiDatasetAnalyser(Program):
             self.log.bar()
             self.log('output.developer.write_all is set to True: updating developer flags')
             p.output.developer.write_reference_frame_maps = True
-            p.output.developer.write_reference_frame_grid_masks = True
-            p.output.developer.write_reference_frame_all_z_map_types = True
             self.log('output.developer.write_reference_frame_maps = {}'.format(p.output.developer.write_reference_frame_maps))
+            p.output.developer.write_reference_frame_grid_masks = True
             self.log('output.developer.write_reference_frame_grid_masks = {}'.format(p.output.developer.write_reference_frame_grid_masks))
+            p.output.developer.write_reference_frame_statistical_maps = True
+            self.log('output.developer.write_reference_frame_statistical_maps = {}'.format(p.output.developer.write_reference_frame_statistical_maps))
+            p.output.developer.write_reference_frame_all_z_map_types = True
             self.log('output.developer.write_reference_frame_all_z_map_types = {}'.format(p.output.developer.write_reference_frame_all_z_map_types))
 
     def check_number_of_datasets(self):
@@ -677,7 +668,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ================================================>
         # Check to see if we're reusing statistical maps
         # ================================================>
-        if (self.args.flags.recalculate_statistical_maps == "No") and self.stat_maps.get_resolutions():
+        if (self.args.flags.recalculate_statistical_maps == "no") and self.stat_maps.get_resolutions():
             pass
         # ================================================>
         # Check that enough datasets have been found - before any filtering
@@ -691,7 +682,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ================================================>
         # Check that enough VALID datasets have been loaded
         # ================================================>
-        elif self.datasets.all_masks().has_mask('rejected - total') and (self.datasets.size(mask_name='rejected - total', invert=True) < self.params.analysis.min_build_datasets):
+        elif self.datasets.all_masks().has_mask('characterisation') and (self.datasets.size(mask_name='characterisation') < self.params.analysis.min_build_datasets):
             self.log.bar()
             self.log('After filtering datasets, not enough datasets are available for statistical map characterisation.', True)
             self.log('The minimum number required is controlled by changing analysis.min_build_datasets', True)
@@ -804,28 +795,37 @@ class PanddaMultiDatasetAnalyser(Program):
             self.log('-> Loading reference dataset')
             self.datasets.set_reference(dataset=self.unpickle(self.pickle_handler.get_file('reference_dataset')))
         # ==============================>
-        # Load the datasets
+        # Load the old datasets(?)
         # ==============================>
         if os.path.exists(self.pickle_handler.get_file('dataset_meta')):
             pickles_found = True
             self.log('-> Loading old dataset information (existing datasets)')
             self.pickled_dataset_meta = self.unpickle(self.pickle_handler.get_file('dataset_meta'))
-            if self.args.flags.reload_existing_datasets:
+            # Select datasets for reloading
+            if self.args.flags.existing_datasets in ['reprocess','reload']:
+                self.log('-> Reloading all old datasets')
                 pickled_dataset_list = self.pickled_dataset_meta.dataset_pickle_list
-                for filename in pickled_dataset_list:
-                    assert os.path.isfile(os.path.join(self.out_dir, filename)), 'File does not exist: {!s}'.format(filename)
-                self.log('-> Reloading old datasets')
-                self.datasets.add([self.unpickle(os.path.join(self.out_dir,f)) for f in pickled_dataset_list])
+            elif self.args.input.reprocess_datasets:
+                self.log('-> Reloading selected datasets')
+                filter_list = self.args.input.reprocess_datasets.split(',')
+                pickled_dataset_list = [f for l,f in zip(self.pickled_dataset_meta.dataset_labels, self.pickled_dataset_meta.dataset_pickle_list) if l in filter_list]
             else:
                 self.log('-> Not reloading old datasets')
+                pickled_dataset_list = []
+            # Check and reload the selected datasets
+            if pickled_dataset_list:
+                # Check files exist
+                for filename in pickled_dataset_list:
+                    self.log('\t'+filename)
+                    assert os.path.isfile(os.path.join(self.out_dir, filename)), 'File does not exist: {!s}'.format(filename)
+                # Unpickle and load
+                self.datasets.add([self.unpickle(os.path.join(self.out_dir,f)) for f in pickled_dataset_list])
         else:
-            # No datasets to load - this must be False
-            self.args.flags.reload_existing_datasets = False
             self.log('-> No old datasets found')
         # ==============================>
         # Load Statistical Maps
         # ==============================>
-        if os.path.exists(self.pickle_handler.get_file('stat_maps')) and (self.args.flags.recalculate_statistical_maps != "Yes"):
+        if os.path.exists(self.pickle_handler.get_file('stat_maps')) and (self.args.flags.recalculate_statistical_maps != "yes"):
             pickles_found = True
             self.log('-> Loading old statistical maps')
             self.stat_maps = self.unpickle(self.pickle_handler.get_file('stat_maps'))
@@ -866,14 +866,39 @@ class PanddaMultiDatasetAnalyser(Program):
         # Initialise mask for datasets that have been previously pickled ("old" datasets)
         # ==============================>
         self.datasets.all_masks().add_mask(name='old datasets', values=False)
-        if self.pickled_dataset_meta and self.args.flags.reload_existing_datasets:
-            for tag in self.pickled_dataset_meta.dataset_labels:
+        if self.pickled_dataset_meta.dataset_labels:
+            self.log('Labelling old datasets:')
+            for tag in set(self.pickled_dataset_meta.dataset_labels).intersection(self.datasets.all_tags()):
+                self.log('\t'+tag)
                 self.datasets.all_masks().set_value(name='old datasets', id=tag, value=True)
             self.log('Considering {!s} datasets as "New Datasets"'.format(self.datasets.size(mask_name='old datasets', invert=True)))
             self.log('Considering {!s} datasets as "Old Datasets"'.format(self.datasets.size(mask_name='old datasets')))
         else:
             self.log('Considering all {!s} datasets as "New Datasets"'.format(self.datasets.size(mask_name='old datasets', invert=True)))
             assert self.datasets.size(mask_name='old datasets', invert=True) == self.datasets.size(), 'Total datasets should be same as total new datasets'
+        # Invert the mask for convenience
+        self.datasets.all_masks().add_mask(name='new datasets', values=self.datasets.all_masks().get_mask(name='old datasets', invert=True))
+
+        # ==============================>
+        # Reprocess masks
+        # ==============================>
+        self.datasets.all_masks().add_mask(name='reprocess', values=False)
+        if self.args.flags.existing_datasets=='reprocess':
+            self.log('Selecting all old datasets for reprocessing.')
+            self.datasets.all_masks().add_mask(name   = 'reprocess',
+                                               values = self.datasets.all_masks().get_mask(name='old datasets'),
+                                               overwrite=True)
+        elif self.args.input.flags.reprocess_datasets:
+            self.log('Flagging selected datasets for reprocessing:')
+            for tag in self.args.input.flags.reprocess_datasets.split(','):
+                self.log('\t'+tag)
+                self.datasets.all_masks().set_value(name='reprocess', id=tag, value=True)
+
+        # ==============================>
+        # Update the masks
+        # ==============================>
+        self.update_masks()
+
         # ==============================>
         # Initialise datasets log tables
         # ==============================>
@@ -884,12 +909,15 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Populate the event table with information from old datasets
         # ==============================>
-        old_datasets = self.datasets.mask(mask_name='old datasets')
-        if (not self.args.flags.reprocess_existing_datasets) and old_datasets:
+        no_process_old_datasets = self.datasets.mask(mask_name='not for analysis', invert=False)
+        if no_process_old_datasets:
+            self.log('Extracting information from previously analysed datasets:')
+            for d in no_process_old_datasets:
+                self.log('\t'+d.tag)
             self.log('Syncing old dataset information to dataset tables.', True)
-            self.sync_datasets(datasets=old_datasets)
+            self.sync_datasets(datasets=no_process_old_datasets)
             self.log('Syncing old dataset events to output tables.', True)
-            for dataset in old_datasets:
+            for dataset in no_process_old_datasets:
                 if dataset.events:
                     for e in dataset.events:
                         self.add_event_to_event_table(dataset=dataset, event=e)
@@ -906,22 +934,22 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log.bar()
         self.log('Creating Reference Grid', True)
 
-        # ==============================>
-        # Create grid size based on reference dataset atoms and buffer zone
-        # ==============================>
-        sites_cart = protein(dataset.model.hierarchy).atoms().extract_xyz()
+        # ============================================================================>
+        # Extract sites and calculate grid extent
+        # ============================================================================>
+        sites_cart = dataset.model.alignment.nat2ref(protein(dataset.model.hierarchy).atoms().extract_xyz())
+        # Calculate the extent of the grid
         buffer = self.params.masks.outer_mask + self.params.maps.padding
         grid_min = flex.double([s-buffer for s in sites_cart.min()])
         grid_max = flex.double([s+buffer for s in sites_cart.max()])
-
-        # TODO origin -> grid_min, approx_max -> grid_max TODO
-
-        # ==============================>
-        # Create grid object
-        # ==============================>
+        self.log('Grid minimum: {}'.format(tuple(grid_min)))
+        self.log('Grid maximum: {}'.format(tuple(grid_max)))
+        # ============================================================================>
+        # Create main grid object
+        # ============================================================================>
         self.grid = Grid(grid_spacing   = grid_spacing,
-                         origin         = (0,0,0),
-                         approx_max     = tuple(grid_max-grid_min),
+                         origin         = tuple(grid_min),
+                         approx_max     = tuple(grid_max),
                          verbose        = self.settings.verbose)
         self.log(self.grid.summary())
 
@@ -934,10 +962,10 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log('Masking Reference Grid', True)
 
         # ============================================================================>
-        # Get main and neighbouring symmetry copies of the reference structures
+        # Get main and neighbouring symmetry copies of the masking structure
         # ============================================================================>
         ref_sites_cart = dataset.model.alignment.nat2ref(protein(dataset.model.hierarchy).atoms().extract_xyz())
-        sym_copies = dataset.model.crystal_contacts(distance_cutoff=self.args.params.masks.outer_mask+5, combine_copies=True)
+        sym_copies = dataset.model.crystal_contacts(distance_cutoff=self.args.params.masks.outer_mask+5.0, combine_copies=True)
         sym_sites_cart = dataset.model.alignment.nat2ref(protein(sym_copies).atoms().extract_xyz())
         # ============================================================================>
         # Global mask used for removing points in the bulk solvent regions
@@ -980,7 +1008,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Select the sites for generating the voronoi alignments (calphas)
         # ============================================================================>
         partition_h = calphas(sel_altloc(dataset.model.hierarchy, altlocs=altlocs))
-        site_cart_ca = dataset.nat2grid(partition_h.atoms().extract_xyz())
+        site_cart_ca = partition_h.atoms().extract_xyz()
         # ============================================================================>
         # Create voronoi cells based on these atoms
         # ============================================================================>
@@ -1025,7 +1053,7 @@ class PanddaMultiDatasetAnalyser(Program):
                 self.grid.write_array_as_map(array=((self.grid.partition.nn_groups%10)==i_cell)*(self.grid.partition.nn_groups>=0).astype(int),
                                              f_name=self.file_manager.get_file('grid_voronoi').format('{:04}'.format(i_cell)))
             # Write out pymol script to allow results to be access easily
-            from bamboo.pymol import PythonScript, Sphere
+            from bamboo.pymol_utils import PythonScript, Sphere
             pml = PythonScript()
             pml.set_normalise_maps(False)
             for i_atom, atom in enumerate(partition_h.atoms_with_labels()):
@@ -1160,7 +1188,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Filter out the already added files
         # ==============================>
-        if self.pickled_dataset_meta:
+        if self.pickled_dataset_meta.dataset_labels:
             filtered_new_files = []
             for i, (pdb, mtz, tag) in enumerate(new_files):
                 if tag in self.pickled_dataset_meta.dataset_labels:
@@ -1193,10 +1221,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Report total number of datasets, and total number of new datasets
         # ==============================>
-        if self.pickled_dataset_meta:
-            num_old = self.pickled_dataset_meta.number_of_datasets
-        else:
-            num_old = 0
+        num_old = self.pickled_dataset_meta.number_of_datasets
         self.log.bar()
         self.log('{!s} DATASETS FOUND (TOTAL)'.format(len(filtered_new_files)+num_old), True)
         self.log('{!s} DATASETS FOUND (NEW)'.format(len(filtered_new_files)), True)
@@ -1239,8 +1264,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Counting offset for dataset index
         # ==============================>
-        if self.pickled_dataset_meta: n_offset = self.pickled_dataset_meta.number_of_datasets
-        else:                         n_offset = 0
+        n_offset = self.pickled_dataset_meta.number_of_datasets
         # ==============================>
         # Load datasets in parallel
         # ==============================>
@@ -1315,19 +1339,25 @@ class PanddaMultiDatasetAnalyser(Program):
             # Graphs
             # ==============================>
             dataset.file_manager.add_dir(dir_name='graphs', dir_tag='graphs', top_dir_tag='root')
-            dataset.file_manager.add_file(file_name=p.s_map_png.format(dataset.tag),                          file_tag='s_map_png',                        dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.d_mean_map_png.format(dataset.tag),                     file_tag='d_mean_map_png',                   dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.z_map_naive_png.format(dataset.tag),                    file_tag='z_map_naive_png',                  dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.z_map_naive_norm_png.format(dataset.tag),               file_tag='z_map_naive_normalised_png',       dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.z_map_uncertainty_png.format(dataset.tag),              file_tag='z_map_uncertainty_png',            dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.z_map_uncertainty_norm_png.format(dataset.tag),         file_tag='z_map_uncertainty_normalised_png', dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.z_map_corrected_png.format(dataset.tag),                file_tag='z_map_corrected_png',              dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.z_map_corrected_norm_png.format(dataset.tag),           file_tag='z_map_corrected_normalised_png',   dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.z_map_qq_plot_png.format(dataset.tag),                  file_tag='z_map_qq_plot_png',                dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.bdc_est_png.format(dataset.tag, '{!s}'),                file_tag='bdc_est_png',                      dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.unc_qqplot_png.format(dataset.tag),                     file_tag='unc_qqplot_png',                   dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.obs_qqplot_sorted_png.format(dataset.tag),              file_tag='obs_qqplot_sorted_png',            dir_tag='graphs')
-            dataset.file_manager.add_file(file_name=p.obs_qqplot_unsorted_png.format(dataset.tag),            file_tag='obs_qqplot_unsorted_png',          dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.s_map_png.format(dataset.tag),                   file_tag='s_map_png',                         dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.d_mean_map_png.format(dataset.tag),              file_tag='d_mean_map_png',                    dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_naive_png.format(dataset.tag),             file_tag='z_map_naive_png',                   dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_naive_norm_png.format(dataset.tag),        file_tag='z_map_naive_normalised_png',        dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_uncertainty_png.format(dataset.tag),       file_tag='z_map_uncertainty_png',             dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_uncertainty_norm_png.format(dataset.tag),  file_tag='z_map_uncertainty_normalised_png',  dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_corrected_png.format(dataset.tag),         file_tag='z_map_corrected_png',               dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_corrected_norm_png.format(dataset.tag),    file_tag='z_map_corrected_normalised_png',    dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.z_map_qq_plot_png.format(dataset.tag),           file_tag='z_map_qq_plot_png',                 dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.bdc_est_png.format(dataset.tag, '{!s}'),         file_tag='bdc_est_png',                       dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.unc_qqplot_png.format(dataset.tag),              file_tag='unc_qqplot_png',                    dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.obs_qqplot_sorted_png.format(dataset.tag),       file_tag='obs_qqplot_sorted_png',             dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.obs_qqplot_unsorted_png.format(dataset.tag),     file_tag='obs_qqplot_unsorted_png',           dir_tag='graphs')
+            dataset.file_manager.add_file(file_name=p.wilson_plot.format(dataset.tag),                 file_tag='wilson_plot_png',                   dir_tag='graphs')
+            # ==============================>
+            # HTML
+            # ==============================>
+            dataset.file_manager.add_dir(dir_name='html', dir_tag='html', top_dir_tag='root')
+            dataset.file_manager.add_file(file_name=dataset.tag+'.html', file_tag='dataset_html', dir_tag='html')
             # ==============================>
             # Scripts
             # ==============================>
@@ -1387,14 +1417,9 @@ class PanddaMultiDatasetAnalyser(Program):
         assert method in ['resolution','rfree'], 'METHOD FOR SELECTING THE REFERENCE DATASET NOT RECOGNISED: {!s}'.format(method)
 
         # ==============================>
-        # Create a mask of the datasets that can be selected as the reference dataset
-        # ==============================>
-        potential_reference_mask = self.datasets.all_masks().combine_masks(names=['exclude_from_characterisation', 'rejected - total'], invert_output=True)
-        self.datasets.all_masks().add_mask(name='potential reference datasets', values=potential_reference_mask)
-        # ==============================>
         # Get the potential reference datasets
         # ==============================>
-        filtered_datasets = self.datasets.mask(mask_name='potential reference datasets')
+        filtered_datasets = self.datasets.mask(mask_name='valid - all')
         if not filtered_datasets: raise Failure("Can't select a reference dataset - NO SUITABLE (NON-REJECTED) DATASETS REMAINING")
         # ==============================>
         # Select by either R-free or Resolution
@@ -1447,29 +1472,22 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         ref_dataset = PanddaReferenceDataset.from_file(model_filename=os.path.relpath(link_ref_pdb, start=self.out_dir),
                                                        data_filename=os.path.relpath(link_ref_mtz, start=self.out_dir)).label(num=-1, tag='reference')
-
-        # ==============================>
-        # Calculate the shift required to move the reference structure into the positive quadrant
-        # ==============================>
-        buffer = self.params.masks.outer_mask + self.params.maps.padding
-        sites_min = protein(ref_dataset.model.hierarchy).atoms().extract_xyz().min()
-        ref_dataset.set_origin_shift(shift=-1*flex.double(sites_min)+buffer)
-        self.log('Origin Shift for reference structure: {!s}'.format(tuple([round(s,3) for s in ref_dataset.origin_shift()])))
         # ==============================>
         # Set as the reference dataset for the analysis
         # ==============================>
         self.datasets.set_reference(dataset=ref_dataset)
+        assert ref_dataset is self.datasets.reference()
         # ==============================>
         # Write out structure in reference coordinate frames
         # ==============================>
-        tmp_r_hierarchy = ref_dataset.model.hierarchy.deep_copy()
-        if not os.path.exists(self.file_manager.get_file('reference_on_origin')):
-            tmp_r_hierarchy.atoms().set_xyz(ref_dataset.nat2grid(tmp_r_hierarchy.atoms().extract_xyz()))
-            tmp_r_hierarchy.write_pdb_file(self.file_manager.get_file('reference_on_origin'))
-        if not os.path.exists(self.file_manager.get_file('reference_symmetry')):
-            ref_sym_copies = ref_dataset.model.crystal_contacts(distance_cutoff=self.args.params.masks.outer_mask+5, combine_copies=True)
-            ref_sym_copies.atoms().set_xyz(ref_dataset.nat2grid(ref_sym_copies.atoms().extract_xyz()))
-            ref_sym_copies.write_pdb_file(self.file_manager.get_file('reference_symmetry'))
+#        tmp_r_hierarchy = ref_dataset.model.hierarchy.deep_copy()
+#        if not os.path.exists(self.file_manager.get_file('reference_on_origin')):
+#            tmp_r_hierarchy.atoms().set_xyz(ref_dataset.nat2grid(tmp_r_hierarchy.atoms().extract_xyz()))
+#            tmp_r_hierarchy.write_pdb_file(self.file_manager.get_file('reference_on_origin'))
+#        if not os.path.exists(self.file_manager.get_file('reference_symmetry')):
+#            ref_sym_copies = ref_dataset.model.crystal_contacts(distance_cutoff=self.args.params.masks.outer_mask+5, combine_copies=True)
+#            ref_sym_copies.atoms().set_xyz(ref_dataset.nat2grid(ref_sym_copies.atoms().extract_xyz()))
+#            ref_sym_copies.write_pdb_file(self.file_manager.get_file('reference_symmetry'))
 
         # ==============================>
         # Extract reference dataset SFs
@@ -1500,7 +1518,7 @@ class PanddaMultiDatasetAnalyser(Program):
         ref_dataset.meta.column_labels = dataset_sfs
         # Load the diffraction data
         self.log('Loading structure factors for reference dataset: {}'.format(dataset_sfs))
-        ref_dataset.data.miller_arrays[dataset_sfs] = self.datasets.reference().data.get_structure_factors(columns=dataset_sfs)
+        ref_dataset.data.miller_arrays[dataset_sfs] = ref_dataset.data.get_structure_factors(columns=dataset_sfs)
 
         return self.datasets.reference()
 
@@ -1514,25 +1532,17 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Select the datasets for alignment
         # ==============================>
-        datasets_for_alignment = [d for d in self.datasets.mask(mask_name='rejected - total', invert=True) if not d.model.alignment]
-        # ==============================>
-        # Report
-        # ==============================>
+        datasets_for_alignment = self.datasets.mask(mask_name='valid - new')
         self.log.bar(True, False)
         if not datasets_for_alignment:
             self.log('All datasets are already aligned/No datasets to align')
             return
         self.log('Generating Alignments (using {!s} cores) for {} datasets'.format(self.settings.cpus, len(datasets_for_alignment)))
         # ==============================>
-        # Create a shifted version of the reference model for alignment
-        # ==============================>
-        ref_model = copy.deepcopy(self.datasets.reference().model)
-        ref_model.hierarchy.atoms().set_xyz(ref_model.alignment.nat2ref(ref_model.hierarchy.atoms().extract_xyz()))
-        # ==============================>
         # Generate the alignments for each structure
         # ==============================>
         t1 = time.time()
-        arg_list = [DatasetAligner(model=d.model, other=ref_model, method=method, id=d.tag) for d in datasets_for_alignment]
+        arg_list = [DatasetAligner(model=d.model, other=self.datasets.reference().model, method=method, id=d.tag) for d in datasets_for_alignment]
         dataset_alignments = easy_mp.pool_map(func=wrapper_run, args=arg_list, processes=self.settings.cpus)
         t2 = time.time()
         # ==============================>
@@ -1624,7 +1634,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Remove poor/incompatible datasets
         # ==============================>
-        for dataset in self.datasets.mask(mask_name='rejected - total', invert=True):
+        for dataset in self.datasets.mask(mask_name='valid - all'):
             print('\rFiltering Dataset {!s}          '.format(dataset.tag), end=''); sys.stdout.flush()
             if self.params.filtering.flags.same_space_group_only and (dataset.model.space_group.info().symbol_and_number() != filter_dataset.model.space_group.info().symbol_and_number()):
                 self.log('\rRejecting Dataset: {!s}          '.format(dataset.tag))
@@ -1655,20 +1665,6 @@ class PanddaMultiDatasetAnalyser(Program):
         # Update the masks
         # ==============================>
         self.update_masks()
-        # ==============================>
-        # Report
-        # ==============================>
-        self.log.bar()
-        self.log('Rejected Datasets (Total):     {!s}'.format(sum(self.datasets.all_masks().get_mask(name='rejected - total'))), True)
-        self.log.bar()
-        # ==============================>
-        # Print summary of rejected datasets
-        # ==============================>
-        reject_reasons = self.tables.dataset_info['rejection_reason'].value_counts().sort_index()
-        if reject_reasons.any():
-            self.log('Reasons for Rejection:')
-            for reason, count in reject_reasons.iteritems():
-                self.log('{} Dataset(s) - {}'.format(count, reason))
 
     def filter_datasets_2(self):
         """Filter out the non-isomorphous datasets"""
@@ -1686,7 +1682,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Remove poor/incompatible datasets
         # ==============================>
-        for dataset in self.datasets.mask(mask_name='rejected - total', invert=True):
+        for dataset in self.datasets.mask(mask_name='valid - all'):
             print('\rFiltering Dataset {!s}          '.format(dataset.tag), end=''); sys.stdout.flush()
             if dataset.model.alignment.alignment_rmsd() > self.params.filtering.max_rmsd_to_reference:
                 self.log('\rRejecting Dataset: {!s}          '.format(dataset.tag))
@@ -1703,46 +1699,95 @@ class PanddaMultiDatasetAnalyser(Program):
         # Update the masks
         # ==============================>
         self.update_masks()
-        # ==============================>
-        # Report
-        # ==============================>
-        self.log.bar()
-        self.log('Rejected Datasets (Total):     {!s}'.format(sum(self.datasets.all_masks().get_mask(name='rejected - total'))), True)
-        self.log.bar()
-        # ==============================>
-        # Print summary of rejected datasets
-        # ==============================>
-        reject_reasons = self.tables.dataset_info['rejection_reason'].value_counts().sort_index()
-        if reject_reasons.any():
-            self.log('Reasons for Rejection:')
-            for reason, count in reject_reasons.iteritems():
-                self.log('{} Dataset(s) - {}'.format(count, reason))
 
     def update_masks(self):
         """Update the combined masks"""
 
-        self.log.bar()
-        self.log('Updating dataset masks', True)
+        self.log.subheading('Updating dataset masks')
 
         # ==============================>
         # Combine all "rejected" masks into one combined mask
         # ==============================>
         combined_reject_mask = self.datasets.all_masks().combine_masks(names=PanddaMaskNames.reject_mask_names)
         self.datasets.all_masks().add_mask(name='rejected - total', values=combined_reject_mask, overwrite=True)
+        self.log.bar()
+        self.log('Rejected datasets: {}'.format(self.datasets.size(mask_name='rejected - total')))
+        # ==============================>
+        # Print summary of rejected datasets
+        # ==============================>
+        reject_reasons = self.tables.dataset_info['rejection_reason'].value_counts().sort_index()
+        if reject_reasons.any():
+            self.log.bar()
+            self.log('Reasons for Rejection:')
+            for reason, count in reject_reasons.iteritems():
+                self.log('{} Dataset(s) - {}'.format(count, reason))
+        self.log.bar(False, True)
 
         # ==============================>
-        # Combine the combined "rejected" mask with the "old datasets" mask
+        # Partition the non-rejected datasets by whether they're new or old
         # ==============================>
-        valid_datasets_new = self.datasets.all_masks().combine_masks(names=['rejected - total', 'old datasets'],
-                                                                     invert=[True, True],
-                                                                     operation='and',
-                                                                     invert_output=False)
-        valid_datasets_old = self.datasets.all_masks().combine_masks(names=['rejected - total', 'old datasets'],
-                                                                     invert=[True, False],
-                                                                     operation='and',
-                                                                     invert_output=False)
-        self.datasets.all_masks().add_mask(name='valid - new', values=valid_datasets_new, overwrite=True)
-        self.datasets.all_masks().add_mask(name='valid - old', values=valid_datasets_old, overwrite=True)
+        # Combined (shortcut for non-rejected)
+        self.datasets.all_masks().add_mask(name   = 'valid - all',
+                                           values = self.datasets.all_masks().get_mask(name='rejected - total', invert=True),
+                                           overwrite=True)
+        # Old datasets
+        self.datasets.all_masks().add_mask(name   = 'valid - old',
+                                           values = self.datasets.all_masks().combine_masks(names=['valid - all', 'old datasets'],
+                                                                        invert=[False, False], operation='and', invert_output=False),
+                                           overwrite=True)
+        # New datasets
+        self.datasets.all_masks().add_mask(name   = 'valid - new',
+                                           values = self.datasets.all_masks().combine_masks(names=['valid - all', 'old datasets'],
+                                                                        invert=[False, True],  operation='and', invert_output=False),
+                                           overwrite=True)
+        self.log.bar()
+        self.log('Non-rejected new datasets: {}'.format(self.datasets.size(mask_name='valid - new')))
+        self.log('Non-rejected old datasets: {}'.format(self.datasets.size(mask_name='valid - old')))
+        self.log('Total datasets: {}'.format(self.datasets.size(mask_name='valid - all')))
+
+        # ==============================>
+        # Datasets available for characterisation
+        # ==============================>
+        self.datasets.all_masks().add_mask(name   = 'characterisation',
+                                           values = self.datasets.all_masks().combine_masks(names=['valid - all', 'exclude_from_characterisation'],
+                                                                        invert=[False, True], operation='and', invert_output=False),
+                                           overwrite=True)
+        self.log.bar()
+        self.log('Datasets for characterisation: {}'.format(self.datasets.size(mask_name='characterisation')))
+
+        # ==============================>
+        # Identify which of the valid datasets are to be analysed
+        # ==============================>
+        # Old datasets
+        self.datasets.all_masks().add_mask(name   = 'analyse - old',
+                                           values = self.datasets.all_masks().combine_masks(names=['valid - old', 'reprocess', 'exclude_from_zmap_analysis'],
+                                                                        invert=[False, False, True], operation='and', invert_output=False),
+                                           overwrite=True)
+        # New datasets (same as "valid - new")
+        self.datasets.all_masks().add_mask(name   = 'analyse - new',
+                                           values = self.datasets.all_masks().combine_masks(names=['valid - new', 'exclude_from_zmap_analysis'],
+                                                                        invert=[False, True], operation='and', invert_output=False),
+                                           overwrite=True)
+        # All datasets
+        self.datasets.all_masks().add_mask(name   = 'analyse - all',
+                                           values = self.datasets.all_masks().combine_masks(names=['analyse - new', 'analyse - old'],
+                                                                        invert=[False, False], operation='or', invert_output=False),
+                                           overwrite=True)
+        self.log.bar()
+        self.log('New datasets for analysis: {}'.format(self.datasets.size(mask_name='analyse - new')))
+        self.log('Old datasets for (re)analysis: {}'.format(self.datasets.size(mask_name='analyse - old')))
+        self.log('Total datasets for analysis: {}'.format(self.datasets.size(mask_name='analyse - all')))
+
+        # ==============================>
+        # Datasets that aren't being analyses
+        # ==============================>
+        self.datasets.all_masks().add_mask(name   = 'not for analysis',
+                                           values = self.datasets.all_masks().get_mask(name='analyse - all', invert=True),
+                                           overwrite=True)
+        self.log.bar()
+        self.log('Datasets that will not be analysed: {}'.format(self.datasets.size(mask_name='not for analysis')))
+
+        self.log.bar()
 
     #########################################################################################################
     #                                                                                                       #
@@ -1754,7 +1799,7 @@ class PanddaMultiDatasetAnalyser(Program):
         """Extract amplitudes and phases for creating map"""
 
         if datasets is None:
-            datasets=self.datasets.mask(mask_name='rejected - total', invert=True)
+            datasets=self.datasets.mask(mask_name='valid - all')
 
         # ==============================>
         # Prepare objects for scaling
@@ -1771,60 +1816,87 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log.heading('Loading and scaling structure factors for each dataset')
 
         for dataset in datasets:
+
+            self.log.bar()
+            self.log('Dataset {}'.format(dataset.tag))
+
             # Get the columns to be loaded for this dataset
             dataset_sfs = dataset.meta.column_labels
             # ==============================>
             # Load structure factors
             # ==============================>
             if dataset_sfs in dataset.data.miller_arrays.keys():
-                self.log('Structure factors already loaded {:<20} - Dataset {!s}'.format(dataset_sfs, dataset.tag))
+                self.log('Structure factors already loaded: {}'.format(dataset_sfs))
                 ma_unscaled_com = dataset.data.miller_arrays[dataset_sfs]
             else:
-                self.log('Loading structure factors {:<20} for dataset {!s}'.format(dataset_sfs, dataset.tag))
+                self.log('Loading structure factors: {}'.format(dataset_sfs))
                 ma_unscaled_com = dataset.data.get_structure_factors(columns=dataset_sfs)
-
+                # Store in the dataset object
+                dataset.data.miller_arrays[dataset_sfs] = ma_unscaled_com
             # ==============================>
-            # Compare data to reference - allow spotting of outliers
+            # Extract intensities and phases
             # ==============================>
-            # Extract miller array and calculate amplitudes
+            assert ma_unscaled_com.is_complex_array()
             ma_unscaled_int = ma_unscaled_com.as_intensity_array()
             ma_unscaled_phs = ma_unscaled_com*(1.0/ma_unscaled_com.as_amplitude_array().data())
+            # ==============================>
             # Scale to the reference dataset
-            scaling = factory.calculate_scaling(miller_array=ma_unscaled_int)
+            # ==============================>
+            if hasattr(dataset.data, 'scaling') and (dataset.data.scaling is not None):
+                self.log('Structure factors already scaled to the reference dataset')
+            else:
+                self.log('Calculating optimal B-factor scaling to reference dataset')
+                dataset.data.scaling = factory.calculate_scaling(miller_array=ma_unscaled_int)
+            # Extract scaling for dataset
+            scaling = dataset.data.scaling
+            # ==============================>
+            # Report
+            # ==============================>
+            self.log('Optimised B-factor Scaling Factor: {} ({})'.format(numpy.round(scaling.scaling_b_factor,3), 'sharpened' if scaling.scaling_b_factor<0 else 'blurred'))
+            self.log('RMSD to reference dataset: (unscaled) {}'.format(numpy.round(scaling.unscaled_rmsd,3)))
+            self.log('RMSD to reference dataset: (scaled)   {}'.format(numpy.round(scaling.scaled_rmsd,3)))
+
+            # ==============================>
+            # Record metrics for unscaled data
+            # ==============================>
             # Select high resolution and low resolution separately
             high_res_sel = scaling.x_values > 1/(4.0**2)
-            low_res_sel = scaling.x_values <= 1/(4.0**2)
+            low_res_sel  = scaling.x_values <= 1/(4.0**2)
             # Log unscaled rmsds values
             self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_rmsd_all', numpy.round(scaling.unscaled_rmsd,3))
             self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_rmsd_<4A', numpy.round(scaling.rmsd_to_ref(values=scaling.scl_values, sel=high_res_sel),3))
             self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_rmsd_>4A', numpy.round(scaling.rmsd_to_ref(values=scaling.scl_values, sel=low_res_sel),3))
-            self.log('RMSD to reference dataset: (before) {}'.format(numpy.round(scaling.unscaled_rmsd,3)))
+            # Log the scaled log-rmsd values
+            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_ln_rmsd', numpy.round(scaling.unscaled_ln_rmsd,3))
+            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_ln_dev',  numpy.round(scaling.unscaled_ln_dev,3))
+            # ==============================>
+            # Report metrics for scaled data
+            # ==============================>
+            # Log the scaling
+            self.tables.dataset_info.set_value(dataset.tag, 'applied_b_factor_scaling', numpy.round(scaling.scaling_b_factor,3))
+            # Log the scaled rmsd values
+            self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_all', numpy.round(scaling.scaled_rmsd,3))
+            self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_<4A', numpy.round(scaling.rmsd_to_ref(values=scaling.out_values, sel=high_res_sel),3))
+            self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_>4A', numpy.round(scaling.rmsd_to_ref(values=scaling.out_values, sel=low_res_sel),3))
+            # Log the scaled log-rmsd values
+            self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_ln_rmsd', numpy.round(scaling.scaled_ln_rmsd,3))
+            self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_ln_dev',  numpy.round(scaling.scaled_ln_dev,3))
 
             # ==============================>
-            # Scale data to reference
+            # Select which data to use for analysis
             # ==============================>
-            if not self.args.testing.perform_diffraction_data_scaling:
-                # No scaling
+            if not self.args.testing.use_b_factor_scaled_data:
+                self.log('use_b_factor_scaled_data is turned off -- using the unscaled data as the scaled data')
                 ma_scaled_com = ma_unscaled_com
             else:
-                # Report values
-                self.log('RMSD to reference dataset: (after)  {}'.format(numpy.round(scaling.scaled_rmsd,3)))
-                self.log('Optimised B-factor Scaling Factor: {} ({})'.format(numpy.round(scaling.scaling_b_factor,3), 'sharpened' if scaling.scaling_b_factor<0 else 'blurred'))
-                # Log scaled rmsds values
-                self.tables.dataset_info.set_value(dataset.tag, 'applied_b_factor_scaling', numpy.round(scaling.scaling_b_factor,3))
-                self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_all',   numpy.round(scaling.scaled_rmsd,3))
-                self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_<4A',   numpy.round(scaling.rmsd_to_ref(values=scaling.out_values, sel=high_res_sel),3))
-                self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_>4A',   numpy.round(scaling.rmsd_to_ref(values=scaling.out_values, sel=low_res_sel),3))
-                # Apply scaling to diffraction data
-                scaling.new_x_values(x_values=ma_unscaled_int.d_star_sq().data())
-                ma_scaled_int = ma_unscaled_int.array(data=scaling.transform(ma_unscaled_int.data())).set_observation_type_xray_intensity()
+                self.log('Scaling diffraction data')
+                # Need to create a copy to preserve the x-values of the original scaling object
+                new_scaling = copy.deepcopy(scaling)
+                new_scaling.new_x_values(x_values=ma_unscaled_int.d_star_sq().data())
+                ma_scaled_int = ma_unscaled_int.array(data=new_scaling.transform(ma_unscaled_int.data())).set_observation_type_xray_intensity()
                 ma_scaled_com = ma_unscaled_phs * ma_scaled_int.as_amplitude_array().data()
 
-            assert ma_unscaled_com.is_complex_array()
             assert ma_scaled_com.is_complex_array()
-            # Store in the dataset object
-            dataset.data.miller_arrays[dataset_sfs] = ma_unscaled_com
-            dataset.data.miller_arrays['scaled']    = ma_scaled_com
 
             # ==============================>
             # Wilson B-factors
@@ -1834,7 +1906,8 @@ class PanddaMultiDatasetAnalyser(Program):
             self.tables.dataset_info.set_value(index=dataset.tag, col='unscaled_wilson_B', value=dataset.meta.unscaled_wilson_b)
             self.tables.dataset_info.set_value(index=dataset.tag, col='scaled_wilson_B',   value=dataset.meta.scaled_wilson_b)
 
-            self.log.bar()
+            dataset.data.miller_arrays['scaled'] = ma_scaled_com
+
         # ==============================>
         # Report
         # ==============================>
@@ -1843,24 +1916,31 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Update Z-score columns
         # ==============================>
-        self.tables.dataset_info['unscaled_wilson_rmsd_all_z'] = scipy.stats.zscore(self.tables.dataset_info['unscaled_wilson_rmsd_all'])
-        self.tables.dataset_info['unscaled_wilson_rmsd_<4A_z'] = scipy.stats.zscore(self.tables.dataset_info['unscaled_wilson_rmsd_<4A'])
-        self.tables.dataset_info['unscaled_wilson_rmsd_>4A_z'] = scipy.stats.zscore(self.tables.dataset_info['unscaled_wilson_rmsd_>4A'])
-        if self.args.testing.perform_diffraction_data_scaling:
-            self.tables.dataset_info['scaled_wilson_rmsd_all_z'] = scipy.stats.zscore(self.tables.dataset_info['scaled_wilson_rmsd_all'])
-            self.tables.dataset_info['scaled_wilson_rmsd_<4A_z'] = scipy.stats.zscore(self.tables.dataset_info['scaled_wilson_rmsd_<4A'])
-            self.tables.dataset_info['scaled_wilson_rmsd_>4A_z'] = scipy.stats.zscore(self.tables.dataset_info['scaled_wilson_rmsd_>4A'])
+        self.tables.dataset_info['unscaled_wilson_rmsd_all_z'] = modified_z_scores(self.tables.dataset_info['unscaled_wilson_rmsd_all'])
+        self.tables.dataset_info['unscaled_wilson_rmsd_<4A_z'] = modified_z_scores(self.tables.dataset_info['unscaled_wilson_rmsd_<4A'])
+        self.tables.dataset_info['unscaled_wilson_rmsd_>4A_z'] = modified_z_scores(self.tables.dataset_info['unscaled_wilson_rmsd_>4A'])
+        self.tables.dataset_info['unscaled_wilson_ln_rmsd_z']  = modified_z_scores(self.tables.dataset_info['unscaled_wilson_ln_rmsd'])
+        self.tables.dataset_info['unscaled_wilson_ln_dev_z']   = modified_z_scores(self.tables.dataset_info['unscaled_wilson_ln_dev'])
+        self.tables.dataset_info['scaled_wilson_rmsd_all_z']   = modified_z_scores(self.tables.dataset_info['scaled_wilson_rmsd_all'])
+        self.tables.dataset_info['scaled_wilson_rmsd_<4A_z']   = modified_z_scores(self.tables.dataset_info['scaled_wilson_rmsd_<4A'])
+        self.tables.dataset_info['scaled_wilson_rmsd_>4A_z']   = modified_z_scores(self.tables.dataset_info['scaled_wilson_rmsd_>4A'])
+        self.tables.dataset_info['scaled_wilson_ln_rmsd_z']    = modified_z_scores(self.tables.dataset_info['scaled_wilson_ln_rmsd'])
+        self.tables.dataset_info['scaled_wilson_ln_dev_z']     = modified_z_scores(self.tables.dataset_info['scaled_wilson_ln_dev'])
         # ==============================>
         # Exclude from characterisation if poor quality diffraction
         # ==============================>
         self.log.subheading('Checking for datasets that exhibit large wilson plot RMSDs to the reference dataset')
-        pref = '' if self.args.testing.perform_diffraction_data_scaling else 'un'
         for dataset in datasets:
-            if (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_rmsd_all_z') > self.params.excluding.max_wilson_plot_rmsd_z_score) or \
-               (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_rmsd_<4A_z') > self.params.excluding.max_wilson_plot_rmsd_z_score) or \
-               (self.tables.dataset_info.get_value(index=dataset.tag, col=pref+'scaled_wilson_rmsd_>4A_z') > self.params.excluding.max_wilson_plot_rmsd_z_score):
+            if (self.tables.dataset_info.get_value(index=dataset.tag, col='scaled_wilson_rmsd_all_z') > self.params.excluding.max_wilson_plot_z_score) or \
+               (self.tables.dataset_info.get_value(index=dataset.tag, col='scaled_wilson_rmsd_<4A_z') > self.params.excluding.max_wilson_plot_z_score) or \
+               (self.tables.dataset_info.get_value(index=dataset.tag, col='scaled_wilson_rmsd_>4A_z') > self.params.excluding.max_wilson_plot_z_score) or \
+               (self.tables.dataset_info.get_value(index=dataset.tag, col='scaled_wilson_ln_rmsd_z')  > self.params.excluding.max_wilson_plot_z_score)  or \
+               (self.tables.dataset_info.get_value(index=dataset.tag, col='scaled_wilson_ln_dev_z')   > self.params.excluding.max_wilson_plot_z_score):
                 self.log('Dataset {} has a high wilson plot rmsd to the reference dataset (relative to other datasets) - excluding from characterisation'.format(dataset.tag))
                 self.datasets.all_masks().set_value(name='exclude_from_characterisation', id=dataset.tag, value=True)
+
+        # Make sure the exclude mask is propagated through
+        self.update_masks()
 
         return None
 
@@ -1908,12 +1988,9 @@ class PanddaMultiDatasetAnalyser(Program):
         """Load the reference map, and calculate some map statistics"""
 
         # ==============================>
-        # Get the reference dataset
+        # Take the scaled diffraction data for the reference dataset and create fft
         # ==============================>
         ref_dataset = self.datasets.reference()
-        # ==============================>
-        # Take the scaled diffraction data for the dataset and create fft
-        # ==============================>
         fft_map = ref_dataset.data.miller_arrays['truncated'].fft_map(resolution_factor = self.params.maps.resolution_factor,
                                                                       d_min             = map_resolution,
                                                                       symmetry_flags    = cctbx.maptbx.use_space_group_symmetry)
@@ -1927,9 +2004,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Transform to the reference frame
         # ==============================>
         # Extract the points for the map (in the grid frame)
-        masked_cart = self.grid.grid2cart(self.grid.global_mask().outer_mask(), origin=True)
-        # Transform to the frame of the reference dataset (this should become unnecessary in the future)
-        masked_cart = self.datasets.reference().grid2nat(masked_cart)
+        masked_cart = self.grid.grid2cart(self.grid.global_mask().outer_mask(), origin_shift=True)
         # Create map handler in the native frame and extract the map values
         ref_map_true = ElectronDensityMap.from_fft_map(fft_map).as_map()
         masked_vals = ref_map_true.get_cart_values(masked_cart)
@@ -1938,7 +2013,9 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         ref_map = ElectronDensityMap(map_data=masked_vals, unit_cell=self.grid.unit_cell(),
                         map_indices=self.grid.global_mask().outer_mask_indices(),
-                        map_size=self.grid.grid_size(), sparse=True)
+                        map_size=self.grid.grid_size(),
+                        map_origin=self.grid.cart_origin(),
+                        sparse=True)
         # Store the map as a child of the dataset
         ref_dataset.child = ref_map
         # ==============================>
@@ -2028,11 +2105,13 @@ class PanddaMultiDatasetAnalyser(Program):
     def reset_loaded_datasets(self):
         """Check that pickled datasets are ready for reprocessing, etc, if required"""
 
-        if self.args.flags.reprocess_existing_datasets:   datasets_for_reprocessing = self.datasets.all()
-        elif self.args.flags.reprocess_selected_datasets: datasets_for_reprocessing = [self.datasets.get(tag=t) for t in self.args.flags.reprocess_selected_datasets.split(',')]
-        else:                                             datasets_for_reprocessing = []
+        datasets_for_reprocessing = self.datasets.mask(mask_name='analyse - old')
 
         for dataset in datasets_for_reprocessing:
+            # ==============================>
+            # Reset the model and data
+            # ==============================>
+            dataset.data.scaling = None
             # ==============================>
             # Reset the meta objects
             # ==============================>
@@ -2287,7 +2366,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ================================================>
         # Use resolution of already-loaded maps
         # ================================================>
-        if (self.args.flags.recalculate_statistical_maps == "No"):
+        if (self.args.flags.recalculate_statistical_maps == "no"):
             res_limits = self.stat_maps.get_resolutions()
             assert len(self.stat_maps.get_resolutions()) > 0
             self.log('----------------------------------->>>', True)
@@ -2320,7 +2399,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ============================================================================>
         # Determine the range of resolutions already covered
         # ============================================================================>
-        if (self.args.flags.recalculate_statistical_maps == "Extend"):
+        if (self.args.flags.recalculate_statistical_maps == "extend"):
             # Extract the resolution limits from previous runs
             curr_res_limits = self.stat_maps.get_resolutions()
             curr_small_limit = min(curr_res_limits)
@@ -2352,13 +2431,9 @@ class PanddaMultiDatasetAnalyser(Program):
         # Counter for the number of datasets to select
         total_build = 0
         # Select from the datasets that haven't been rejected
-        for dataset in self.datasets.mask(mask_name='rejected - total', invert=True):
+        for dataset in self.datasets.mask(mask_name='characterisation'):
             # Check the resolution of the dataset
             if self.tables.dataset_info.get_value(index=dataset.tag, col='high_resolution') > high_res_cutoff:
-                continue
-            # Check to see if this has been excluded from building
-            elif self.datasets.all_masks().get_value(name='exclude_from_characterisation', id=dataset.tag) == True:
-                self.log('Rejecting Dataset {!s}: Excluded from building'.format(dataset.tag))
                 continue
             else:
                 self.datasets.all_masks().set_value(name=building_mask_name, id=dataset.tag, value=True)
@@ -2376,25 +2451,15 @@ class PanddaMultiDatasetAnalyser(Program):
 
         analysis_mask_name = 'analysis @ {!s}A'.format(high_res_large_cutoff)
 
-        if self.args.flags.reprocess_selected_datasets: datasets_for_reprocessing = self.args.flags.reprocess_selected_datasets.split(',')
-        else:                                           datasets_for_reprocessing = []
-
         # Create empty mask
         self.datasets.all_masks().add_mask(name=analysis_mask_name, values=False)
         # Select from the datasets that haven't been rejected
-        for dataset in self.datasets.mask(mask_name='rejected - total', invert=True):
+        for dataset in self.datasets.mask(mask_name='analyse - all'):
             # Check the resolution of the dataset (is not too low)
             if self.tables.dataset_info.get_value(index=dataset.tag, col='high_resolution') > high_res_large_cutoff:
                 continue
             # Check the resolution of the dataset (is not too high)
             elif self.tables.dataset_info.get_value(index=dataset.tag, col='high_resolution') <= high_res_small_cutoff:
-                continue
-            # Check to see if this has been excluded from building
-            elif self.datasets.all_masks().get_value(name='exclude_from_zmap_analysis', id=dataset.tag) == True:
-                self.log('Not selecting dataset {!s}: excluded from analysis'.format(dataset.tag))
-                continue
-            elif self.datasets.all_masks().get_value(name='old datasets', id=dataset.tag) and (not self.args.flags.reprocess_existing_datasets) and (dataset.tag not in datasets_for_reprocessing):
-                self.log('Not selecting dataset {!s}: already processed (old dataset)'.format(dataset.tag))
                 continue
             else:
                 self.datasets.all_masks().set_value(name=analysis_mask_name, id=dataset.tag, value=True)
@@ -2596,7 +2661,7 @@ class PanddaMultiDatasetAnalyser(Program):
         pymol_str =  '# Mark the identified sites on the protein\n'
         pymol_str += 'from pymol import cmd\n'
         pymol_str += 'from pymol.cgo import *\n'
-        pymol_str += 'cmd.load("{}", "reference")\n'.format(os.path.relpath(self.file_manager.get_file('reference_on_origin'), start=self.file_manager.get_dir('output_summaries')))
+        pymol_str += 'cmd.load("{}", "reference")\n'.format(os.path.relpath(self.file_manager.get_file('reference_structure'), start=self.file_manager.get_dir('output_summaries')))
         pymol_str += 'cmd.show_as("cartoon", "reference")\n'
         pymol_str += 'cmd.color("cyan", "reference")\n'
         # Add sphere at each of the sites
@@ -2604,7 +2669,7 @@ class PanddaMultiDatasetAnalyser(Program):
             # Only print the site if it has more than one event
             if len(site.children) > 1:
                 lab = 'site_{}'.format(site.id)
-                com = tuple(flex.double(site.info.centroid)*self.grid.grid_spacing())
+                com = tuple(self.grid.grid2cart([site.info.centroid])[0])
                 pymol_str += 'cmd.pseudoatom("{}", pos={}, vdw=2.5)\n'.format(lab, com)
                 pymol_str += 'cmd.show("sphere", "{}")\n'.format(lab)
                 pymol_str += 'cmd.label("{}", "{}")\n'.format(lab, site.id)
@@ -2613,7 +2678,7 @@ class PanddaMultiDatasetAnalyser(Program):
             # Label events as smaller spheres
             for event in site.children:
                 lab = 'event'
-                com = tuple(flex.double(event.cluster.centroid)*self.grid.grid_spacing())
+                com = tuple(self.grid.grid2cart([event.cluster.centroid])[0])
                 pymol_str += 'cmd.pseudoatom("{}", pos={}, vdw=0.5)\n'.format(lab, com)
                 pymol_str += 'cmd.show("sphere", "{}")\n'.format(lab)
                 pymol_str += 'cmd.color("blue", "{}")\n'.format(lab)
@@ -2668,8 +2733,10 @@ class PanddaMultiDatasetAnalyser(Program):
         self.tables.event_info.set_value(event.id, 'z_peak', round(event.cluster.max,2))
         self.tables.event_info.set_value(event.id, 'z_mean', round(event.cluster.mean,2))
         self.tables.event_info.set_value(event.id, 'cluster_size', event.cluster.size)
-        self.tables.event_info.set_value(event.id, ['refx','refy','refz'], list(self.grid.grid2cart([event.cluster.peak],origin=False)[0]))
-        self.tables.event_info.set_value(event.id, ['x','y','z'], list(dataset.model.alignment.ref2nat(coordinates=self.grid.grid2cart([event.cluster.peak],origin=False))[0]))
+#        self.tables.event_info.set_value(event.id, ['refx','refy','refz'], list(self.grid.grid2cart([event.cluster.peak],origin_shift=False)[0]))
+        self.tables.event_info.set_value(event.id, ['x','y','z'], list(dataset.model.alignment.ref2nat(coordinates=self.grid.grid2cart([event.cluster.peak],origin_shift=True))[0]))
+        self.tables.event_info.set_value(event.id, 'global_correlation_to_mean_map', event.info.global_correlation)
+        self.tables.event_info.set_value(event.id, 'local_correlation_to_mean_map',  event.info.local_correlation)
 
     def update_event_table_site_info(self, events):
         """Update the event table for pre-existing events"""

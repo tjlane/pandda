@@ -35,6 +35,11 @@ def sidechains(hierarchy, cache=None, copy=True):
     sel = cache.selection('(not element H) and pepnames and not (name C or name CA or name N or name O)')
     return hierarchy.select(sel, copy_atoms=copy)
 
+def non_water(hierarchy, cache=None, copy=True):
+    if not cache: cache=hierarchy.atom_selection_cache()
+    sel = cache.selection('(not resname HOH)')
+    return hierarchy.select(sel, copy_atoms=copy)
+
 ####################################################################################
 
 def sel_altloc(hierarchy, altlocs=['','A'], cache=None, copy=True):

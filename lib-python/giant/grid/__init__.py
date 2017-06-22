@@ -8,7 +8,7 @@ from libtbx.math_utils import ifloor, iceil
 from scitbx.array_family import flex
 
 import iotbx.crystal_symmetry_from_any, iotbx.ccp4_map
-import cctbx.uctbx, cctbx.sgtbx
+import cctbx.uctbx, cctbx.sgtbx, scitbx.matrix
 
 from giant.grid.utils import calculate_grid_size
 
@@ -45,20 +45,20 @@ class Grid(object):
     def cart_origin(self):
         return self._origin
 
-    def cart_points(self, origin=True):
-        return self.grid2cart(self.grid_points(), origin=origin)
+    def cart_points(self, origin_shift=True):
+        return self.grid2cart(self.grid_points(), origin_shift=origin_shift)
     def grid_points(self):
         return flex.nested_loop(self.grid_size())
 
-    def grid2cart(self, sites_grid, origin=True):
-        assert isinstance(origin, bool)
-        if origin: shift = self.cart_origin()
-        else:      shift = (0,0,0)
+    def grid2cart(self, sites_grid, origin_shift=True):
+        assert isinstance(origin_shift, bool)
+        if origin_shift: shift = self.cart_origin()
+        else:            shift = (0,0,0)
         return flex.vec3_double(sites_grid)*self.grid_spacing() + shift
-    def cart2grid(self, sites_cart, origin=True):
-        assert isinstance(origin, bool)
-        if origin: shift = self.cart_origin()
-        else:      shift = (0,0,0)
+    def cart2grid(self, sites_cart, origin_shift=True):
+        assert isinstance(origin_shift, bool)
+        if origin_shift: shift = self.cart_origin()
+        else:            shift = (0,0,0)
         return (flex.vec3_double(sites_cart) - shift)*(1.0/self.grid_spacing())
 
     def indexer(self):
@@ -113,7 +113,7 @@ class Grid(object):
                             'Size of Grid (Cart): {!s}'.format(tuple([round(x,3) for x in self.cart_size()]))
                         ])
 
-    def write_array_as_map(self, array, f_name):
+    def write_array_as_map(self, array, f_name, origin_shift=True):
         """Take array of values and write as map the shape of the grid"""
 
         # Convert from numpy array is necessary
@@ -124,6 +124,12 @@ class Grid(object):
         # Convert to flex.double and shape
         array = flex.double(array)
         array.reshape(self.indexer())
+        # If origin, apply shift to map
+        if origin_shift is True:
+            array = cctbx.maptbx.rotate_translate_map(unit_cell          = self.unit_cell(),
+                                                      map_data           = array,
+                                                      rotation_matrix    = scitbx.matrix.rec([1,0,0,0,1,0,0,0,1], (3,3)).elems,
+                                                      translation_vector = (-1.0*scitbx.matrix.rec(self.cart_origin(), (3,1))).elems    )
         # Write the map
         iotbx.ccp4_map.write_ccp4_map(file_name   = f_name,
                                       unit_cell   = self.unit_cell(),
@@ -131,14 +137,14 @@ class Grid(object):
                                       map_data    = array,
                                       labels      = flex.std_string(['']))
 
-    def write_indices_as_map(self, indices, f_name):
+    def write_indices_as_map(self, indices, f_name, origin_shift=True):
         """Create an array with 1s at the provided indices and write as map"""
 
         # Create boolean array and populate
         array = numpy.zeros(self.grid_size_1d(), dtype=bool)
         array.put(indices, True)
         # Write as array
-        self.write_array_as_map(array=array, f_name=f_name)
+        self.write_array_as_map(array=array, f_name=f_name, origin_shift=origin_shift)
 
     @staticmethod
     def index_on_other(query, other, assume_unique=True):
@@ -156,7 +162,7 @@ class GridPartition(object):
         assert isinstance(grid, Grid), 'grid must be of type Grid'
         self.parent = grid
         self.sites_cart = sites_cart
-        self.sites_grid = grid.cart2grid(sites_cart=sites_cart, origin=True)
+        self.sites_grid = grid.cart2grid(sites_cart=sites_cart, origin_shift=True)
 
     def partition(self, mask=None, cpus=1):
         """Find the nearest neighbour for each grid point (or the subset defined by mask.outer_mask() if mask is not None)"""

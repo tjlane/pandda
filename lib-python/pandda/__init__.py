@@ -5,9 +5,7 @@ import pandda.resources
 try:
     VERSION = pkg_resources.get_distribution("panddas").version
 except:
-    VERSION = '(unknown)'
-
-LOGO_PATH = os.path.join(os.path.realpath(pandda.resources.__path__[0]), 'pandda-logo-small.png')
+    VERSION = 'developer -- see setup.py file'
 
 HEADER_TEXT = """
 ------------------------------------------------------------------>
@@ -40,6 +38,13 @@ HEADER_TEXT = """
 {description}
 ------------------------------------------------------------------>
 """
+
+LOGO_PATH = os.path.join(os.path.realpath(pandda.resources.__path__[0]), 'pandda-logo-small.png')
+
+class module_info:
+    name        = 'pandda'
+    version     = VERSION
+    header_text = HEADER_TEXT
 
 def welcome(user=None):
     """Welcome message"""

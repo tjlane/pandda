@@ -7,30 +7,21 @@ from PyQt4.QtWebKit import *
 class PanddaHtmlWidget(QWidget):
     def __init__(self, name, content):
         super(PanddaHtmlWidget, self).__init__()
-        # Widget Name
+
         self.name = name
         self.content = content
-
-        # Add a VBox to the panddaWidget
         self.layout = QVBoxLayout(self)
         self.view = None
+        self._built = False
 
-#        # Add refresh button
-#        self.refresh_button = QPushButton('Refresh', self)
-#        self.refresh_button.clicked.connect(self.refresh)
-#        # Add the button to the vbox
-#        self.layout.addWidget(self.refresh_button)
-
-        # Add the html
-        self.build_html()
+    def is_built(self):
+        return self._built
 
     def build_html(self):
-        # Delete old view
+        print '> Loading HTML: {} ({})'.format(self.name, self.content)
         if self.view: self.view.deleteLater()
-        # Add a view to the panddaWidget
         self.view = QWebView(self)
         self.layout.addWidget(self.view)
-        # Add html to the view
         if os.path.exists(self.content):
             with open(self.content, 'r') as fh:
                 text = fh.read()
@@ -43,6 +34,7 @@ class PanddaHtmlWidget(QWidget):
             self.view.setHtml(text)
         else:
             self.view.setHtml('File does not yet exist: {}'.format(self.content))
+        self._built = True
         self.view.show()
 
     def refresh(self):
@@ -52,18 +44,40 @@ class PanddaHtmlWidget(QWidget):
 class PanddaTabBar(QTabWidget):
     def __init__(self, name=None, tabs=None):
         super(PanddaTabBar, self).__init__()
+
         self.name = name
-        # Create Tabs
         self.tabs = []
+
         if tabs is not None:
             for t in tabs:
                 self.add_tab(t)
+
+        self.currentChanged.connect(self.load_tab)
+
     def add_tab(self, widget):
         self.tabs.append(widget)
         self.addTab(widget, widget.name)
 
-class PanddaWindow(PanddaTabBar):
+    def load_tab(self, i):
+        t = self.tabs[i]
+        if not t.is_built():
+            t.build_html()
+
+class PanddaWindow(QTabWidget):
     def __init__(self, tabs=None, title='PanDDA HTML Summaries'):
-        super(PanddaWindow, self).__init__(name=None, tabs=tabs)
+        super(PanddaWindow, self).__init__()
+
         self.setWindowTitle(title)
+
+        self.tabs = []
+
+        if tabs is not None:
+            for t in tabs:
+                self.add_tab(t)
+
+    def add_tab(self, widget):
+        if isinstance(widget, PanddaHtmlWidget):
+            widget.build_html()
+        self.tabs.append(widget)
+        self.addTab(widget, widget.name)
 

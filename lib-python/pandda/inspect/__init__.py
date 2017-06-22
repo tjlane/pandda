@@ -12,9 +12,20 @@ from pandda.constants import PanddaAnalyserFilenames, PanddaInspectorFilenames, 
 import pandda.resources.inspect
 IMG_DIR = os.path.realpath(pandda.resources.inspect.__path__[0])
 
+# ANGLES FOR COLOURS
+COLOUR_YELLOW  = 20.0
+COLOUR_GREEN   = 80.0
+COLOUR_BLUE    = 200.0
+COLOUR_MAGENTA = 260.0
+
+# COLOUR FOR THE PROTEIN
+MOL_COLOUR = COLOUR_GREEN
+# COLOUR FOR THE LIGANDS
+LIG_COLOUR = COLOUR_MAGENTA
 
 #=========================================================================
-
+# GTK FUNCTIONS
+#=========================================================================
 
 def catchup(block=False):
     while gtk.events_pending():
@@ -40,22 +51,39 @@ def modal_msg(msg):
     d.run()
     d.destroy()
 
-
+#=========================================================================
+# COOT FUNCTIONS
 #=========================================================================
 
+def set_main_coot_molecule(i):
+    # Have to set colour manually!
+    set_molecule_bonds_colour_map_rotation(i, MOL_COLOUR); graphics_draw()
+    # Other settings
+    set_pointer_atom_molecule(i)
+    set_go_to_atom_molecule(i)
+    update_go_to_atom_window_on_new_mol()
 
 def coot_customisation():
+    set_nomenclature_errors_on_read("ignore")
+    set_recentre_on_read_pdb(0)
     set_show_symmetry_master(1)
     set_symmetry_shift_search_size(2)
+    set_colour_map_rotation_for_map(0.0)
+    set_colour_map_rotation_on_read_pdb(0.0)
+    set_colour_map_rotation_on_read_pdb_flag(1)
+    set_colour_map_rotation_on_read_pdb_c_only_flag(1)
+
+    add_key_binding("Add ligand",  "a", lambda: solvent_ligands_gui())
+    add_key_binding("Add water",   "w", lambda : place_typed_atom_at_pointer("Water"))
+
+def post_coot_windows():
     post_display_control_window()
+    post_go_to_atom_window()
     try:
         # Future-available function
         post_delete_item_dialog()
     except:
         pass
-
-    add_key_binding("Add ligand",  "a", lambda: solvent_ligands_gui())
-    add_key_binding("Add water",   "w", lambda : place_typed_atom_at_pointer("Water"))
 
 #=========================================================================
 
@@ -246,13 +274,16 @@ class SplashScreen:
 
     def close(self):
         self.window.destroy()
-        coot_customisation()
+        post_coot_windows()
 
 
 #=========================================================================
 
 
 class PanddaEvent(object):
+
+    FITTED_PRE = 'fitted-v'
+
     def __init__(self, rank, info, top_dir):
 
         # Key for the pandas table
@@ -313,33 +344,42 @@ class PanddaEvent(object):
 
     def find_current_fitted_model(self):
         """Get the most recent saved model of this protein"""
-        fitted_outputs = sorted(glob.glob(os.path.join(self.model_dir, 'fitted-v*')))
-        if fitted_outputs: return fitted_outputs[-1]
-        else:              return None
+        fitted_outputs = sorted(glob.glob(os.path.join(self.model_dir, self.FITTED_PRE+'*')))
+        if fitted_outputs:
+            print 'Current models: \n\t{}'.format('\n\t'.join(fitted_outputs))
+            return fitted_outputs[-1]
+        else:
+            print 'No current models'
+            return None
 
     def find_new_fitted_model(self):
         """Get the path for the next model"""
         current = self.find_current_fitted_model()
-        print 'CURRENT: {!s}'.format(current)
+        print 'Most recent saved model: {!s}'.format(current)
         if current: last_idx = int(current.replace('.pdb','')[-4:])
         else:       last_idx = 0
-        new_fitted = 'fitted-v{:04d}.pdb'.format(last_idx+1)
+        new_fitted = self.FITTED_PRE+'{:04d}.pdb'.format(last_idx+1)
         return os.path.join(self.model_dir, new_fitted)
 
     def write_fitted_model(self, protein_obj):
         new_fitted = self.find_new_fitted_model()
         # Save the fitted model to this file
+        print '======================>'
+        print 'SAVING PROTEIN MOL {!s} TO {!s}'.format(protein_obj, new_fitted)
+        print '======================>'
         write_pdb_file(protein_obj, new_fitted)
-        print '======================>'
-        print 'SAVED PROTEIN MOL {!s} TO {!s}'.format(protein_obj, new_fitted)
-        print '======================>'
+        self.update_fitted_link(filename=new_fitted)
+
+    def update_fitted_link(self, filename=None):
+        if filename is None: filename=self.find_current_fitted_model()
+        # No file -- leave as is
+        if filename is None: return
+        # Delete the symbolic link (or file -- shouldn't ever be a file...)
         if os.path.exists(self.fitted_link):
-#            assert os.path.islink(self.fitted_link), 'FILE IS NOT A LINK'
-            # Delete the symbolic link
             os.unlink(self.fitted_link)
-        print 'Linking {!s} -> {!s}'.format(new_fitted, self.fitted_link)
+        print 'Linking {!s} -> {!s}'.format(os.path.basename(filename), os.path.basename(self.fitted_link))
         # Create new link the most recent file
-        os.symlink(os.path.basename(new_fitted), self.fitted_link)
+        os.symlink(os.path.basename(filename), self.fitted_link)
 
 
 #=========================================================================
@@ -443,7 +483,9 @@ class PanddaSiteTracker(object):
 class PanddaInspector(object):
     """Main Object in pandda.inspect"""
 
-    def __init__(self, event_csv, site_csv, top_dir):
+    def __init__(self, event_csv, site_csv, top_dir, settings):
+
+        self.settings = settings
 
         self.validate_input(files=[event_csv, site_csv])
 
@@ -549,6 +591,21 @@ class PanddaInspector(object):
         # Reset the merge button
         self.gui.buttons['merge-ligand'].child.set_text("Merge Ligand\nWith Model")
 
+    def update_all_model_links(self):
+        print '\n=====================++>\n'
+        print 'Updating ALL model links'
+        print '\n=====================++>\n'
+        assert self.site_list.at_first_event()
+        event = self.site_list.get_new_current_event()
+        assert event.rank == 1
+        for idx in range(0, self.site_list.rank_tot):
+            print '=====================++>'
+            print 'Event {} of {}'.format(event.rank, self.site_list.rank_tot)
+            event.update_fitted_link()
+            event=self.site_list.get_next()
+        assert self.site_list.at_first_event()
+        assert event.rank == 1
+
     #-------------------------------------------------------------------------
 
     def save_current(self):
@@ -561,14 +618,14 @@ class PanddaInspector(object):
             p = read_pdb(self.current_event.fitted_link)
         else:
             p = read_pdb(self.current_event.input_model)
-        set_pointer_atom_molecule(p)
+        set_main_coot_molecule(p)
         self.coot.open_mols['p'] = p
         self.write_output_csvs()
 
     def reset_current_to_orig_model(self):
         close_molecule(self.coot.open_mols['p'])
         p = read_pdb(self.current_event.input_model)
-        set_pointer_atom_molecule(p)
+        set_main_coot_molecule(p)
         self.coot.open_mols['p'] = p
         self.write_output_csvs()
 
@@ -576,7 +633,7 @@ class PanddaInspector(object):
         if new_event is None:
             # TODO DO SOMETHING BETTER HERE TODO
             # Instead of loading new event, inform using the same model
-            modal_msg(msg='Reloading Same MODEL (Unchanged)')
+            modal_msg(msg='no new model loaded')
         else:
             self.current_event = self.coot.load_event(e=new_event)
         self.update_gui()
@@ -765,12 +822,25 @@ class PanddaMolHandler(object):
         # Re-centre camera
         set_rotation_centre(*e.nat_coords)
 
-        # 1 - Load input model or load fitted version if it exists
+        ##########
+        # MODELS
+        ##########
+
+        # Load ligand objects first - coot automatically focusses on the last
+        # loaded molecule and we want that to be the protein molecule!
+        self.ligand_index = 0
+        if e.lig_pdbs and e.lig_cifs:
+            self.open_mols['l'] = self.open_ligand(event=e, index=self.ligand_index)
+            if os.path.exists(e.fitted_link): set_mol_displayed(self.open_mols['l'], 0)
+
+        # Load input model or load fitted version if it exists
         if os.path.exists(e.fitted_link): p = read_pdb(e.fitted_link)
         else:                             p = read_pdb(e.input_model)
-        set_pointer_atom_molecule(p)
+        set_main_coot_molecule(p)
 
-        #set_last_map_contour_level_by_sigma(2)
+        ##########
+        # MAPS
+        ##########
 
         # 3 - Load z-map
         z = handle_read_ccp4_map(e.z_map, 1)
@@ -782,7 +852,11 @@ class PanddaMolHandler(object):
         set_last_map_contour_level(2*e.est_1_bdc)
         set_map_displayed(o, 1)
 
-        # More Settings
+        ##########
+        # SETTINGS AND STORE
+        ##########
+
+        # Set the main map
         set_scrollable_map(o)
         set_imol_refinement_map(o)
 
@@ -790,11 +864,6 @@ class PanddaMolHandler(object):
         self.open_mols['p'] = p
         self.open_mols['z'] = z
         self.open_mols['o'] = o
-
-        self.ligand_index = 0
-        if e.lig_pdbs and e.lig_cifs:
-            self.open_mols['l'] = self.open_ligand(event=e, index=self.ligand_index)
-            if os.path.exists(e.fitted_link): set_mol_displayed(self.open_mols['l'], 0)
 
         return e
 
@@ -836,6 +905,7 @@ class PanddaMolHandler(object):
         print 'Loading ligand {} of {}'.format(index+1, len(event.lig_pdbs))
         l_dict = read_cif_dictionary(event.lig_cifs[index])
         l = handle_read_draw_molecule_and_move_molecule_here(event.lig_pdbs[index])
+        set_molecule_bonds_colour_map_rotation(l, LIG_COLOUR)
         set_mol_displayed(l, 1)
         set_b_factor_molecule(l, 20)
         # Set the occupancy of the ligand to 2*(1-bdc)
@@ -956,6 +1026,7 @@ class PanddaGUI(object):
         self.buttons['prev-site'].connect("clicked", lambda x: [self.store(), self.parent.load_prev_site()])
 
         self.buttons['go-to'].connect("clicked", lambda x: [self.store(), self.parent.load_dataset(dataset_id=self.objects['go-to-text'].get_text().strip())]) #, self.objects['go-to-text'].set_text('')])
+        self.objects['go-to-text'].connect("activate", lambda x: [self.buttons['go-to'].emit("clicked")])
 
         # Quit
         self.buttons['quit'].connect("clicked", lambda x: [self.quit()])
@@ -982,6 +1053,7 @@ class PanddaGUI(object):
         # Map buttons
         self.buttons['load-ground-state-map'].connect("clicked", lambda x: self.parent.coot.load_ground_state_map(event=self.parent.current_event))
         self.buttons['load-full-dataset-mtz'].connect("clicked", lambda x: self.parent.coot.load_full_dataset_mtz(event=self.parent.current_event))
+        self.buttons['load-original-model'].connect("clicked", lambda x: read_pdb(self.parent.current_event.input_model))
 
         # Meta Recording buttons
         self.buttons['tp'].connect("clicked",         lambda x: self.parent.set_event_log_value(col='Interesting', value=True))
@@ -1241,6 +1313,11 @@ class PanddaGUI(object):
         self.buttons['load-ground-state-map'] = b
         hbox_1.pack_start(b, expand=False, fill=False, padding=5)
         # ---
+        b = gtk.Button('Load unfitted model\n(for comparison only)')
+        b.child.set_justify(gtk.JUSTIFY_CENTER)
+        self.buttons['load-original-model'] = b
+        hbox_1.pack_start(b, expand=False, fill=False, padding=5)
+        # ---
         hbox_1.pack_start(gtk.HBox(), expand=True, fill=False, padding=10)
         # ---------------------------------------------
         vbox_main = gtk.VBox(spacing=0)
@@ -1469,6 +1546,37 @@ class PanddaGUI(object):
 
         return vbox_main
 
+class InspectFlags(object):
+
+    _flags = ['--update-model-links']
+
+    def __init__(self, args=[]):
+
+        for f in self._flags:
+            self._set_flag(f, True if f in args else False)
+
+    def _set_flag(self, flag, value):
+        self.__dict__[self._translate_flag(flag)] = value
+
+    def _get_flag(self, flag):
+        return self.__dict__[self._translate_flag(flag)]
+
+    def _translate_flag(self, flag):
+        return flag.replace('-','_').strip('_')
+
+    def print_flags(self):
+        print '\n====================++>\n'
+        print 'Possible flags:\n'
+        for f in self._flags:
+            print '\t'+f
+        print '\n====================++>\n'
+
+    def show_flags(self):
+        print '\n====================++>\n'
+        print 'Current flags:\n'
+        for f in self._flags:
+            print '\t{:30}\t{}'.format(f, self._get_flag(f))
+        print '\n====================++>\n'
 
 if __name__=='__main__':
 
@@ -1479,12 +1587,16 @@ if __name__=='__main__':
     #############################################################################################
 
     try:
-        set_nomenclature_errors_on_read("ignore")
-        set_colour_map_rotation_for_map(0)
-        set_colour_map_rotation_on_read_pdb(0)
-        set_recentre_on_read_pdb(0)
+        coot_customisation()
     except:
         pass
+
+    flags = InspectFlags(args=sys.argv)
+    print flags.__dict__
+    flags.show_flags()
+    if '--show-options' in sys.argv:
+        flags.print_flags()
+        sys.exit()
 
     #############################################################################################
     #
@@ -1502,7 +1614,12 @@ if __name__=='__main__':
     #
     #############################################################################################
     splash = SplashScreen()
-    inspector = PanddaInspector(event_csv=hit_list, site_csv=site_csv, top_dir=work_dir)
+    inspector = PanddaInspector(event_csv=hit_list, site_csv=site_csv, top_dir=work_dir, settings=flags)
+
+    if flags.update_model_links:
+        inspector.update_all_model_links()
+        sys.exit()
+
     inspector.start_gui()
     inspector.refresh_event()
     splash.show_menu()

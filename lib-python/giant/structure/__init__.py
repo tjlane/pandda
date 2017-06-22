@@ -1,5 +1,5 @@
 
-import pandas
+import numpy, pandas
 import iotbx.pdb
 
 from scitbx.array_family import flex
@@ -86,8 +86,9 @@ def get_atom_pairs(residue_1, residue_2, fetch_labels=True):
 
 def calculate_residue_group_occupancy(residue_group):
     """
-    Calculate the occupancy of a whole residue, allowing for partial occupancy of partial conformers.
-    If conformers are present, the maximum occupancies of each conformer are summed
+    Extract the total occupancy of a residue, allowing for alternate conformers.
+    - If conformers are present, the occupancies of each conformer are summed.
+    - If multiple occupancies are present for a conformer, the maximum is taken for each.
     """
     rg = residue_group
     if [c.altloc for c in rg.conformers()] == ['']:
@@ -99,28 +100,45 @@ def calculate_residue_group_occupancy(residue_group):
         return None
     return res_occ
 
-def calculate_residue_group_rmsd(residue_group_1, residue_group_2):
-    """Calculate rmsd between two hierarchically-identical residue groups (only coordinates, occupancies, and b-factors allowed to be different)"""
-    rg_1 = residue_group_1; rg_2 = residue_group_2
-    ats_1 = rg_1.atoms();   ats_2 = rg_2.atoms()
-    # Check that the residues are equivalent
-    assert ats_1.size()                       == ats_2.size()
-    assert list(ats_1.extract_name()   )      == list(ats_2.extract_name()   )
-    assert list(ats_1.extract_element())      == list(ats_2.extract_element())
-    assert [a.parent().altloc for a in ats_1] == [a.parent().altloc for a in ats_2]
-    rmsd = (ats_1.extract_xyz()-ats_2.extract_xyz()).rms_length()
-    return rmsd
+def calculate_paired_conformer_rmsds(conformers_1, conformers_2):
+    """Return a list of rmsds between two list of conformers, paired by the minimum rmsd. Each conformer may only be paired once"""
 
-def calculate_rmsd(atoms_1, atoms_2, sort=True, truncate_to_common_set=True, remove_H=True):
+    rmsds = numpy.empty((len(conformers_1), len(conformers_2)))
+    rmsds[:] = None
+
+    for i, c1 in enumerate(conformers_1):
+        for j, c2 in enumerate(conformers_2):
+            rmsds[i,j] = calculate_paired_atom_rmsd(atoms_1=c1.atoms(), atoms_2=c2.atoms(), sort=True, truncate_to_common_set=True, remove_H=True)
+    ret_list = []
+    print rmsds
+    while not numpy.isnan(rmsds).all():
+        min_val = numpy.nanmin(rmsds)
+        i1,i2 = zip(*numpy.where(rmsds==min_val))[0]
+        # Clear these values so that a conformer cannot be used more than once
+        rmsds[i1, :] = None
+        rmsds[:, i2] = None
+        # Return conformers and the rmsd
+        ret_list.append((conformers_1[i1], conformers_2[i2], min_val))
+        print rmsds
+        print ret_list[-1]
+    return ret_list
+
+def calculate_paired_atom_rmsd(atoms_1, atoms_2, sort=True, truncate_to_common_set=True, remove_H=True):
     """
-    Calculate the RMSD between two sets of atoms
+    Calculate the RMSD between two sets of equivalent atoms (i.e. atoms with the same names)
     - sort                   - sort atoms prior to rmsd calculation (so that equivalent atoms are compared)
-    - truncate_to_common_set - only calculate rmsd over the common_set of atoms, return None if different atoms are provided. Setting this will set sort to true.
+    - truncate_to_common_set - only calculate rmsd over the common set of atoms, return None if different atoms are provided.
+    Raises error if atom names are present more than once in each list (e.g. alternate conformers of atoms)
     """
 
     # Need to sort by atoms to check if atoms are the same in both sets
     if truncate_to_common_set:
         sort=True
+
+    # Remove hydrogen atoms
+    if remove_H:
+        atoms_1 = atoms_1.select(atoms_1.extract_element() != ' H')
+        atoms_2 = atoms_2.select(atoms_2.extract_element() != ' H')
 
     # Sort atoms by name if required
     if sort:
@@ -132,6 +150,9 @@ def calculate_rmsd(atoms_1, atoms_2, sort=True, truncate_to_common_set=True, rem
         if (not truncate_to_common_set):
             if not (len(common_atoms)==len(atoms_1)==len(atoms_2)):
                 return None
+        # If sorting, require atom names unique
+        assert len(set(names_1)) == len(names_1), 'atom names can only be present once in each atom list -- no alternate conformers of atoms'
+        assert len(set(names_2)) == len(names_2), 'atom names can only be present once in each atom list -- no alternate conformers of atoms'
         # Get reorderings of atoms
         sort_1 = flex.size_t([names_1.index(an) for an in common_atoms])
         sort_2 = flex.size_t([names_2.index(an) for an in common_atoms])
@@ -139,13 +160,11 @@ def calculate_rmsd(atoms_1, atoms_2, sort=True, truncate_to_common_set=True, rem
         atoms_1 = atoms_1.select(sort_1)
         atoms_2 = atoms_2.select(sort_2)
 
-    # Remove hydrogen atoms
-    if remove_H:
-        sel_h = (atoms_1.extract_element() != ' H')
-        atoms_1 = atoms_1.select(sel_h)
-        atoms_2 = atoms_2.select(sel_h)
-    # Check selection working as it should
-    if not atoms_1.extract_name().all_eq(atoms_2.extract_name()):
+    # Check same number of atoms and atom names are the same, etc...
+    try:
+        assert atoms_1.size() == atoms_2.size()
+        assert atoms_1.extract_name().all_eq(atoms_2.extract_name())
+    except:
         return None
     # Calculate RMSD and return
     return flex.mean((atoms_1.extract_xyz() - atoms_2.extract_xyz()).dot())**0.5
