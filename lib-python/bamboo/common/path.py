@@ -6,6 +6,12 @@ import os, sys, shutil, glob, tempfile
 # ############################### #
 #:::::::::::::::::::::::::::::::::#
 
+def foldername(f):
+    return os.path.basename(os.path.dirname(f))
+
+def filename(f):
+    return os.path.basename(os.path.splitext(f)[0])
+
 def easy_directory(directory):
     """Checks a directory exists and creates it if not"""
     if not os.path.exists(directory):

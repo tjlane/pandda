@@ -12,15 +12,18 @@ import mmtbx.tls.tools
 
 from libtbx.utils import Sorry, Failure
 from scitbx.array_family import flex
-from scitbx import simplex, matrix
+from scitbx import simplex, matrix, linalg
 
 from bamboo.common.logs import Log
-from bamboo.common.path import easy_directory
+from bamboo.common.path import easy_directory, rel_symlink
+from bamboo.common.command import CommandManager
 
 from giant.dataset import CrystallographicModel
 from giant.structure.select import protein
 from giant.structure.tls import uij_from_tls_vector_and_origin, extract_tls_from_pdb
 from giant.structure.formatting import ShortLabeller
+
+from giant.jiffies import multi_table_ones
 
 import matplotlib
 matplotlib.interactive(False)
@@ -39,7 +42,7 @@ EIGHT_PI_SQ = 8*math.pi*math.pi
 PROGRAM = 'giant.datasets.b_factor_fitting'
 
 DESCRIPTION = """
-    Analyse the variation/conservartion of B-factors (under different models) of a set of related structures.
+    Fit a consensus B-factor model to a series of datasets
 """
 
 ############################################################################
@@ -63,8 +66,6 @@ output {
     out_dir = multi-dataset-b-factor-fitting
         .help = "output directory"
         .type = str
-    log_file = multi-dataset-b-factor-fitting.log
-        .type = str
 }
 fitting {
     number_of_macro_cycles = 1
@@ -80,14 +81,20 @@ fitting {
         number_of_models_per_group = 1
             .help = 'how many superposed TLS models should be fit to the same group of atoms?'
             .type = int
+        number_of_datasets_for_optimisation = None
+            .help = 'how many datasets should be used for optimising the TLS parameters?'
+            .type = int
     }
+}
+table_ones_options {
+    include scope giant.jiffies.multi_table_ones.options_phil
 }
 settings {
     cpus = 48
         .type = int
         .multiple = False
 }
-""")
+""", process_includes=True)
 
 ############################################################################
 
@@ -100,13 +107,14 @@ def rms(vals, axis=None):
 
 class MultiDatasetTLSParameterisation(object):
 
-    def __init__(self, models, groups=None, n_cpu=1, n_tls=1, log=None):
+    def __init__(self, models, groups=None, n_cpu=1, n_tls=1, n_opt=None, log=None):
 
         if log is None: log = Log(verbose=True)
         self.log = log
 
         self._n_cpu=n_cpu
         self._n_tls=n_tls
+        self._n_opt=n_opt
 
         self.models = models
         for mdl in self.models:
@@ -131,13 +139,18 @@ class MultiDatasetTLSParameterisation(object):
         for m in self.models:
             assert self.master_h.is_similar_hierarchy(m.hierarchy)
 
+            pdb = m.filename
+            mtz = pdb.replace('.pdb', '.mtz')
+            assert os.path.exists(pdb), 'PDB does not exist: {}'.format(pdb)
+            assert os.path.exists(mtz), 'MTZ does not exist: {}'.format(mtz)
+
     def blank_master_hierarchy(self):
         h = self.master_h.deep_copy()
         h.atoms().set_uij(flex.sym_mat3_double(h.atoms().size(), [0.0]*6))
         h.atoms().set_b(flex.double(h.atoms().size(), 0.0))
         return h
 
-    def fit(self, n_cycles=1):
+    def fit(self, n_cycles=2):
 
         for group in self.groups:
 
@@ -156,6 +169,7 @@ class MultiDatasetTLSParameterisation(object):
                                            observed_xyz = obs_xyz,
                                            n_tls = self._n_tls,
                                            n_cpu = self._n_cpu,
+                                           n_opt = self._n_opt,
                                            log   = self.log)
             # Calculate scaling
             fitter.fit(n_cycles)
@@ -164,7 +178,7 @@ class MultiDatasetTLSParameterisation(object):
 
         self.log.heading('Parameterisation complete')
 
-    def write_fitted_uij_structures(self, out_dir='./'):
+    def write_fitted_uij_structures(self, out_dir='.'):
         """Write residual B-factors to master hierarchy."""
 
         easy_directory(out_dir)
@@ -278,13 +292,58 @@ class MultiDatasetTLSParameterisation(object):
                 h.atoms().select(sel).set_uij(flex.sym_mat3_double(uij))
             h.write_pdb_file(mdl.outputfilename)
 
-    def generate_fitted_table_ones(self):
+    def generate_fitted_table_ones(self, params, out_dir='.'):
+
+        easy_directory(out_dir)
 
         self.log.subheading('Generating "Table Ones" for input and fitted B-factor models')
-        for i_mdl, mdl in enumerate(self.models):
-            pass
 
-    def write_summary_statistics_csv(self, out_dir='./'):
+        mtz_links = []
+        for mdl in self.models:
+            pdb_orig = mdl.filename
+            mtz_orig = mdl.filename.replace('.pdb', '.mtz')
+            pdb_fitd = mdl.outputfilename
+            mtz_fitd = mdl.outputfilename.replace('.pdb', '.mtz')
+
+            if not os.path.exists(mtz_fitd):
+                rel_symlink(mtz_orig, mtz_fitd)
+                mtz_links.append(mtz_fitd)
+
+            assert  os.path.exists(pdb_orig) and \
+                    os.path.exists(mtz_orig) and \
+                    os.path.exists(pdb_fitd) and \
+                    os.path.exists(mtz_fitd)
+
+        output_eff_orig = os.path.abspath(os.path.join(out_dir, 'table_one_input.eff'))
+        output_eff_fitd = os.path.abspath(os.path.join(out_dir, 'table_one_fitted.eff'))
+
+        phil = multi_table_ones.master_phil.extract()
+        phil.input.dir       = []
+        phil.input.labelling = params.input.labelling
+        phil.options         = params.table_ones_options
+        phil.settings.cpus   = params.settings.cpus
+
+        # Run 1
+        phil.input.pdb = [mdl.filename for mdl in self.models]
+        phil.output.parameter_file = output_eff_orig
+        phil.output.output_basename = os.path.splitext(output_eff_orig)[0]
+        multi_table_ones.run(params=phil)
+
+        # Run 2
+        phil.input.pdb = [mdl.outputfilename for mdl in self.models]
+        phil.output.parameter_file = output_eff_fitd
+        phil.output.output_basename = os.path.splitext(output_eff_fitd)[0]
+        multi_table_ones.run(params=phil)
+
+        self.log.subheading('Running phenix.table_one to calculate R-factors')
+        for f in [output_eff_orig,output_eff_fitd]:
+            cmd = CommandManager('phenix.table_one')
+            cmd.add_command_line_arguments([f])
+            cmd.run()
+            cmd.write_output(f.replace('.eff','.log'))
+        #for m in mtz_links: os.remove(m)
+
+    def write_summary_statistics_csv(self, out_dir='.'):
         """Add data to CSV and write"""
 
         easy_directory(out_dir)
@@ -446,12 +505,12 @@ class MultiDatasetTLSParameterisation(object):
 
 class MultiDatasetTLSFitter(object):
 
-    _tls_weight = 1.0
-    _amp_weight = 1.0
+    _tls_weight = 1e6
+    _amp_weight = 1e6
     _uij_weight = 1.0
     _ovr_weight = 1.0
 
-    def __init__(self, observed_xyz, observed_uij, tls_params=None, n_tls=None, n_cpu=1, log=None):
+    def __init__(self, observed_xyz, observed_uij, tls_params=None, n_tls=None, n_cpu=1, n_opt=None, log=None):
 
         if log is None: log = Log(verbose=True)
         self.log = log
@@ -460,6 +519,7 @@ class MultiDatasetTLSFitter(object):
         self._iter = 0
 
         self._n_cpu = n_cpu
+        self._n_opt = n_opt
 
         self.optimisation_rmsd = numpy.inf
         self.optimisation_penalty = numpy.inf
@@ -486,7 +546,7 @@ class MultiDatasetTLSFitter(object):
             #vec_tls = [[0.0]*21]*(num_tls)
             #vec_tls = [(0.50*numpy.mean(self.observed_uij, axis=(0,1))).tolist()+[0.0]*15]+[[0.0]*21]*(num_tls-1)
             # Select the initial Uij to be the Uij with the smallest largest eigenvalue (smallest of the largest eigenvalues)
-            eig_max = numpy.apply_along_axis(func1d=lambda uij: max(self.sym_mat3_eigenvalues(uij)), axis=2, arr=self.observed_uij)
+            eig_max = numpy.apply_along_axis(func1d=lambda uij: flex.max(self.sym_mat3_eigenvalues(uij)), axis=2, arr=self.observed_uij)
             uij_min = numpy.round(self.observed_uij[zip(*numpy.where(eig_max == numpy.min(eig_max)))[0]], 3)
             vec_tls = [uij_min.tolist()+[0.0]*15]+[[0.0]*21]*(num_tls-1)
         else:
@@ -699,6 +759,7 @@ class MultiDatasetTLSFitter(object):
         """Run the optimisation"""
 
         self._verbose=verbose
+        self._n_call = 0
 
         # Initialise the RMSD measure
         self.optimisation_rmsd = 1e6
@@ -732,19 +793,37 @@ class MultiDatasetTLSFitter(object):
         """Target function for the simplex optimisation"""
         # Combine the optimising parameters in the complete parameter set
         self._adopt(sub_vector)
+        # Extract parameters (model, amps, residuals)
+        parameters = self._extract_parameters()
+        # Calculate physical penalties - reject this set if model is not physical
+        ppen = self._physical_penalties(parameters=parameters)
+        # Print info line if necessary
+        if self._verbose:
+            if self._n_call%20==0:
+                header = '[{}] -> ({:^10}, {:^10})'.format(', '.join(['{:^10}'.format('parameter') for r in sub_vector]), 'fit/rmsd', 'penalty')
+                line = '-'*len(header)
+                self.log(line)
+                self.log(header)
+                self.log(line)
+            self._n_call += 1
+        # Return now if physical penalty if non-zero to save time
+        if ppen > 0.0:
+            if self._verbose:
+                self.log('[{}] -> ({:>10}, {:10.0f})'.format(', '.join(['{:+10.5f}'.format(r) for r in sub_vector]), 'UNPHYSICAL', ppen))
+            return ppen
         # Get the fitted and the observed uijs
-        uij_fit = self.extract_fitted_uij(datasets=self._cur_datasets, atoms=self._cur_atoms)
+        uij_fit = self.extract_fitted_uij(datasets=self._cur_datasets, atoms=self._cur_atoms, parameters=parameters)
         uij_obs = self.extract_observed_uij(datasets=self._cur_datasets, atoms=self._cur_atoms)
         # Calculate RMSD
         rmsd = numpy.sqrt(numpy.mean(numpy.power(uij_obs-uij_fit, 2)))
-        # Calculate penalties
-        pen = self._all_penalties(vector=self._var_current, uij_fit=uij_fit, uij_obs=uij_obs)
+        # Calculate fitting penalties (add to rmsd)
+        fpen = self._fitting_penalties(uij_fit=uij_fit, uij_obs=uij_obs)
         # Update minima
-        if rmsd+pen < self.optimisation_rmsd+self.optimisation_penalty:
-            self.optimisation_rmsd = rmsd
-            self.optimisation_penalty = pen
-        if self._verbose: print '[{}] -> ({:10.4f}, {:10.1f})'.format(', '.join(['{:+10.5f}'.format(r) for r in sub_vector]), numpy.round(rmsd,5), numpy.round(pen,5))
-        return rmsd+pen
+        if rmsd+fpen < self.optimisation_rmsd+self.optimisation_penalty:
+            self.optimisation_rmsd    = rmsd
+            self.optimisation_penalty = fpen
+        if self._verbose: print '[{}] -> ({:10.7f}, {:10.0f})'.format(', '.join(['{:+10.5f}'.format(r) for r in sub_vector]), numpy.round(rmsd,7), numpy.round(fpen,3))
+        return numpy.round(rmsd+fpen, 5)
 
     ################################################################################################
     ###
@@ -790,23 +869,26 @@ class MultiDatasetTLSFitter(object):
         self.log('Invalid Uij Penalty:           {}'.format(self._uij_weight))
         self.log('Fitted > Observed Uij Penalty: {}'.format(self._ovr_weight))
 
-    def _all_penalties(self, vector, uij_fit, uij_obs):
-        tls_mdl, tls_amp, uij_res = self._extract_parameters(vector=vector)
+    def _physical_penalties(self, parameters):
+        tls_mdl, tls_amp, uij_res = parameters
         tls_penalties = [self._tls_penalty(values=v) for v in tls_mdl]
         amp_penalties = [self._amp_penalty(values=v) for v in tls_amp]
         uij_penalties = [self._uij_penalty(values=v) for v in uij_res]
+        return numpy.sum(tls_penalties+amp_penalties+uij_penalties)
+
+    def _fitting_penalties(self, uij_fit, uij_obs):
         fit_penalties = []; #[fit_penalties.extend([self._uij_penalty(values=vv) for vv in v]) for v in uij_fit]
         ovr_penalties = []; [ovr_penalties.extend([self._ovr_penalty(*vv) for vv in zip(*v)]) for v in zip(uij_fit,uij_obs)]
-        return numpy.sum(tls_penalties+amp_penalties+uij_penalties+fit_penalties+ovr_penalties)
+        return numpy.sum(fit_penalties+ovr_penalties)
 
     def _tls_penalty(self, values):
         assert len(values) == 21
         t,l,s = self._unpack_tls_parameters(vals=values)
-        t_penalty = numpy.max((self.sym_mat3_eigenvalues(t)<0.0).astype(int))
-        l_penalty = numpy.max((self.sym_mat3_eigenvalues(l)<0.0).astype(int))
+        t_penalty = flex.max((self.sym_mat3_eigenvalues(t)<0.0).as_int())
+        l_penalty = flex.max((self.sym_mat3_eigenvalues(l)<0.0).as_int())
         if numpy.sum(numpy.abs(s)) > 0.0:
             s_uij_values = self.tls_uij(xyz=self._box_edge, tls_vectors=numpy.array([[0.0]*12+list(s)]), origin=self.observed_com)
-            s_penalty = numpy.max([numpy.max((self.sym_mat3_eigenvalues(uij)<0.0).astype(int)) for uij in s_uij_values])
+            s_penalty = numpy.max([flex.max((self.sym_mat3_eigenvalues(uij)<0.0).as_int()) for uij in s_uij_values])
         else:
             s_penalty = 0
         return self._tls_weight*numpy.sum([t_penalty, l_penalty, s_penalty])
@@ -816,14 +898,14 @@ class MultiDatasetTLSFitter(object):
 
     def _uij_penalty(self, values):
         assert len(values) == 6
-        eig_values = numpy.linalg.eigvals(matrix.sym(sym_mat3=values).as_numpy_array())
-        return self._uij_weight*numpy.sum(eig_values<0.0)
+        eig_values = self.sym_mat3_eigenvalues(values)
+        return self._uij_weight*flex.max((eig_values<0.0).as_int())
 
     def _ovr_penalty(self, fit, obs):
         """Add penalty for having fitted B-factors greater than observed"""
-        eig_values_fit = numpy.linalg.eigvals(matrix.sym(sym_mat3=fit).as_numpy_array())
-        eig_values_obs = numpy.linalg.eigvals(matrix.sym(sym_mat3=obs).as_numpy_array())
-        return self._ovr_weight*(max(eig_values_fit)>max(eig_values_obs))
+        eig_values_fit = self.sym_mat3_eigenvalues(fit)
+        eig_values_obs = self.sym_mat3_eigenvalues(obs)
+        return self._ovr_weight*(flex.max(eig_values_fit)>flex.max(eig_values_obs))
 
     ################################################################################################
     ###
@@ -871,8 +953,8 @@ class MultiDatasetTLSFitter(object):
                 self.log('Using {} datasets for TLS optimisation'.format(numpy.sum(self._mask_dsets)))
 
             #########################################
-            #self.log('Resetting tls amplitudes')
-            #self._reset_tls_amplitudes()
+            self.log('Resetting tls amplitudes')
+            self._reset_tls_amplitudes()
             self.log('Resetting uij residuals')
             self._reset_uij_residual()
 
@@ -884,14 +966,14 @@ class MultiDatasetTLSFitter(object):
                 for c_name, c_sel in [('T',self._sel_t), ('L',self._sel_l), ('S',self._sel_s)]:
                     #########################################
                     # Add these parameters to the parameters for optimisation
-                    prev_opt += self._sel_tls[i_tls]*c_sel
+                    this_opt = self._sel_tls[i_tls]*c_sel
+                    prev_opt += this_opt
                     #########################################
                     self.log.heading('Optimising {} parameters for TLS model {}'.format(c_name, i_tls+1))
                     self._select(parameter_selection = self._sel_tls[i_tls]*self._sel_tls_mdl*c_sel,
                                  datasets = None,
                                  atoms    = None,
-                                 max_datasets = 5)
-                    # COARSE OPTIMISATION
+                                 max_datasets = self._n_opt)
                     if (c_name=='T') and (i_tls==0):
                         self.set_penalty_weights(ovr_weight=1.0)
                         self.set_simplex_widths(tls_model=0.1)
@@ -900,49 +982,34 @@ class MultiDatasetTLSFitter(object):
                         self.set_simplex_widths(tls_model=1.0)
                     self.log.subheading('Running optimisation')
                     self._optimise(verbose=True)
-                    # FINEGRAIN OPTIMISATION
-                    self.set_simplex_widths(tls_model=0.01)
-                    self.log.subheading('Running optimisation')
-                    self._optimise(verbose=True)
                     self.optimisation_summary(False)
                     #########################################
-                    self.log.heading('Optimising {} amplitudes for TLS model {} for all datasets'.format(c_name, i_tls+1))
-                    self.set_simplex_widths(tls_amplitudes=0.1)
+                    self.log.heading('Optimising TLS amplitudes for all datasets')
+                    if ((c_name=='T') and (i_tls==0)):
+                        self.set_penalty_weights(ovr_weight=1.0)
+                    else:
+                        self.set_simplex_widths(tls_amplitudes=0.1)
+                        self.set_penalty_weights(ovr_weight=0.1)
                     proc_args = []
                     for i_dst in range(self._n_dst):
                         n = self.copy()
-                        n._select(parameter_selection = self._sel_dst[i_dst]*c_sel,
+                        n._select(parameter_selection = self._sel_dst[i_dst]*prev_opt,
                                   datasets = [i_dst],
                                   atoms    = None)
                         proc_args.append(n._prep_for_mp())
                     self.log.subheading('Running optimisation')
                     self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=proc_wrapper, args=proc_args, chunksize=1))
                     self.optimisation_summary(False)
-                    #########################################
-                    if not ((c_name=='T') and (i_tls==0)):
-                        self.log.heading('Optimising all amplitudes for all TLS models for all datasets'.format(i_tls+1))
-                        self.set_penalty_weights(ovr_weight=0.1)
-                        self.set_simplex_widths(tls_amplitudes=0.01)
-                        proc_args = []
-                        for i_dst in range(self._n_dst):
-                            n = self.copy()
-                            n._select(parameter_selection = self._sel_dst[i_dst]*prev_opt,
-                                      datasets = [i_dst],
-                                      atoms    = None)
-                            proc_args.append(n._prep_for_mp())
-                        self.log.subheading('Running optimisation')
-                        self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=proc_wrapper, args=proc_args, chunksize=1))
-                        self.optimisation_summary(False)
                 #########################################
-                #self.log.heading('Optimising all parameters and amplitudes for TLS model {}'.format(i_tls+1))
-                #self.set_penalty_weights(ovr_weight=1.0)
-                #self.set_simplex_widths(tls_model=0.01, tls_amplitudes=0.01)
-                #self._select(parameter_selection = self._sel_tls[i_tls],
-                #             datasets = None,
-                #             atoms    = None)
-                #self.log.subheading('Running optimisation')
-                #self._optimise()
-                #self.optimisation_summary(False)
+                self.log.heading('Optimising all parameters and amplitudes for TLS model {}'.format(i_tls+1))
+                self.set_penalty_weights(ovr_weight=1.0)
+                self.set_simplex_widths(tls_model=0.01, tls_amplitudes=0.01)
+                self._select(parameter_selection = self._sel_tls[i_tls],
+                             datasets = None,
+                             atoms    = None)
+                self.log.subheading('Running optimisation')
+                self._optimise()
+                self.optimisation_summary(False)
             #########################################
             self.log.heading('Optimising residual Uijs')
             self.set_penalty_weights(ovr_weight=0.0)
@@ -977,11 +1044,14 @@ class MultiDatasetTLSFitter(object):
         """Convert a set of parameter vectors to a set of uijs"""
         return numpy.sum([uij_from_tls_vector_and_origin(xyz=xyz, tls_vector=v, origin=origin) for v in tls_vectors], axis=0)
 
-    def extract_fitted_uij(self, datasets=None, atoms=None):
+    def extract_fitted_uij(self, datasets=None, atoms=None, parameters=None):
         """Extract total fitted uijs for a subset of datasets or atoms"""
         datasets, atoms = self._selection_filter(datasets=datasets, atoms=atoms)
         # Extract the optimised values
-        tls_p, tls_a, uij_r = self._extract_parameters()
+        if parameters is None:
+            tls_p, tls_a, uij_r = self._extract_parameters()
+        else:
+            tls_p, tls_a, uij_r = parameters
         # Extract relevant coordinates
         xyz = self.extract_observed_xyz(datasets=datasets, atoms=atoms)
         assert xyz.shape == (len(datasets), len(atoms), 3)
@@ -993,7 +1063,6 @@ class MultiDatasetTLSFitter(object):
         # Multiply tls amplitudes and models
         tls_f = self._expand_tls_amplitudes(tls_amps=tls_a) * tls_p
         assert tls_f.shape == (len(datasets), self._n_tls, 21)
-
         assert len(xyz) == len(tls_f)
         # Calculate the tls component of uij
         uij_fit = numpy.array([self.tls_uij(xyz=xyz[i], tls_vectors=tls_f[i], origin=self.observed_com) for i in range(len(datasets))])
@@ -1027,7 +1096,7 @@ class MultiDatasetTLSFitter(object):
 
     def sym_mat3_eigenvalues(self, vals):
         assert len(vals) == 6
-        return numpy.linalg.eigvals(matrix.sym(sym_mat3=vals).as_numpy_array())
+        return linalg.eigensystem_real_symmetric(vals).values()
 
     ################################################################################################
     ###
@@ -1133,7 +1202,12 @@ class MultiDatasetTLSFitter(object):
 
 def run(params):
 
-    log = Log(params.output.log_file, verbose=True)
+    easy_directory(params.output.out_dir)
+
+    assert params.table_ones_options.column_labels
+    assert params.table_ones_options.r_free_label
+
+    log = Log(os.path.join(params.output.out_dir, '_fitting.log'), verbose=True)
 
     log('Building model list')
     if params.input.labelling == 'foldername':
@@ -1161,13 +1235,14 @@ def run(params):
                                         groups = params.input.tls_group,
                                         n_tls  = params.fitting.tls.number_of_models_per_group,
                                         n_cpu  = params.settings.cpus,
+                                        n_opt  = params.fitting.tls.number_of_datasets_for_optimisation,
                                         log = log)
     p.fit(params.fitting.number_of_macro_cycles)
     p.write_summary_statistics_csv(out_dir=params.output.out_dir)
     p.write_summary_statistics_graphs_and_structures(out_dir=params.output.out_dir)
     p.write_fitted_uij_structures(out_dir=params.output.out_dir)
     p.write_parameterised_structures()
-    p.generate_fitted_table_ones()
+    p.generate_fitted_table_ones(params=params, out_dir=os.path.join(params.output.out_dir, 'table_ones'))
 
     #embed()
 
