@@ -165,7 +165,7 @@ class PanddaHtmlFilenames:
 
     initial_html            = 'pandda_initial.html'
 
-    map_html                = 'pandda_map_{}A.html'
+    map_html                = 'pandda_map_{:.2f}A.html'
 
     analyse_html            = 'pandda_analyse.html'
     analyse_site_graph      = 'pandda_analyse_sites_graph.png'

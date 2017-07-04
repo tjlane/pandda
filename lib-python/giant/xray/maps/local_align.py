@@ -20,8 +20,8 @@ def make_supercell(unit_cell, size=(3,3,3)):
     new_params = [a*b for a,b in zip(old_params, scales)]
     return cctbx.uctbx.unit_cell(new_params)
 
-def calculate_offset_to_centre_grid(grid_dimensions, centre_on):
-    return [a-(b/2.0) for a,b in zip(centre_on, grid_dimensions)]
+def calculate_offset_to_centre_grid(grid_centre, centre_on):
+    return [a-b for a,b in zip(centre_on, grid_centre)]
 
 def get_subset_of_grid_points(gridding, grid_indices):
     """Use a set of indices to mask the grid - returns masked grid points"""
@@ -74,7 +74,7 @@ def create_native_map(native_crystal_symmetry, native_sites, alignment, referenc
     # ===============================================================================>>>
     # calculate the origin of the supercell (centred on the protein model) - adding origin translates "grid frame" to "crystallographic frame"
     model_centroid = tuple((flex.double(native_sites.max()) + flex.double(native_sites.min()))/2.0)
-    origin = calculate_offset_to_centre_grid(grid_dimensions=supercell.parameters()[0:3], centre_on=model_centroid)
+    origin = calculate_offset_to_centre_grid(grid_centre=supercell.orthogonalize((0.5,0.5,0.5)), centre_on=model_centroid)
     # sample the map points near to the protein (transform the structure to be centre of the grid)
     masked_points_indices = cctbx.maptbx.grid_indices_around_sites(unit_cell  = supercell,
                                                                    fft_n_real = sc_gridding.n_real(),
