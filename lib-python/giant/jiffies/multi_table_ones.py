@@ -58,6 +58,8 @@ output {
 settings {
     cpus = 48
         .type = int
+    verbose = True
+        .type = bool
 }
 """.replace('{options_phil}', options_phil))
 
@@ -123,13 +125,14 @@ def run(params):
     file_list = []
     # From PDB files directly
     for pdb in params.input.pdb:
+        if params.settings.verbose: print '>', pdb
         mtz = pdb.replace('.pdb','.mtz')
         if not os.path.exists(pdb): raise Exception('PDB does not exist: {}'.format(pdb))
         if not os.path.exists(mtz): raise Exception('MTZ does not exist: {}\nMTZs must be named the same as the pdb files (except for .mtz extension) when using input.pdb option'.format(mtz))
         file_list.append((pdb,mtz))
     # From directories
     for d in sorted(params.input.dir):
-        print '>', d
+        if params.settings.verbose: print '>', d
         pdb = glob.glob(os.path.join(d, params.input.pdb_style))[0]
         mtz = glob.glob(os.path.join(d, params.input.mtz_style))[0]
         file_list.append((pdb,mtz))
@@ -147,7 +150,7 @@ def run(params):
     output = output_eff.format(structure_effs   = out_str,
                                out_base         = params.output.output_basename,
                                cpus             = params.settings.cpus).replace('{{','{').replace('}}','}')
-    print output
+    if params.settings.verbose: print output
 
     out_file = params.output.parameter_file
     assert not os.path.exists(out_file)
