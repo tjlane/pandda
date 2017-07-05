@@ -34,13 +34,12 @@ DESCRIPTION = """
 
 blank_arg_prepend = {'.pdb' : 'pdb='}
 
-master_phil = libtbx.phil.parse("""
-input {
+input_phil = """
     pdb = None
        .help = 'Protein model'
         .type = str
-}
-output {
+"""
+output_phil = """
     phenix = 'multi-state-restraints.phenix.params'
         .help = 'Output restraints file for phenix'
         .type = path
@@ -50,7 +49,8 @@ output {
     log = 'multi-state-restraints.log'
         .help = 'log file name'
         .type = path
-}
+"""
+options_phil = """
 modes {
     all = False
         .help = "Turn on all funcationality"
@@ -136,13 +136,19 @@ b_factors
         .help = "Sigma of the b-factor restraint controlling how strongly the restraint is enforced"
         .type = float
 }
+"""
+
+master_phil = libtbx.phil.parse("""
+input {{input_phil}}
+output {{output_phil}}
+{options_phil}
 settings {
     overwrite = True
         .type = bool
     verbose = True
         .type = bool
 }
-""")
+""".replace('{input_phil}',input_phil).replace('{output_phil}',output_phil).replace('{options_phil}',options_phil))
 
 ############################################################################
 

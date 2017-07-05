@@ -31,7 +31,7 @@ DESCRIPTION = """
 
 ############################################################################
 
-blank_arg_prepend = {'.pdb': 'pdb='}
+blank_arg_prepend = {'.pdb': 'input.pdb='}
 
 master_phil = libtbx.phil.parse("""
 input {
@@ -58,7 +58,10 @@ output {
         .type = bool
 }
 restraints {
-    include scope giant.jiffies.make_restraints.master_phil
+    output {
+    include scope giant.jiffies.make_restraints.output_phil
+    }
+    include scope giant.jiffies.make_restraints.options_phil
 }
 settings {
     overwrite = True
@@ -137,14 +140,15 @@ def merge_complementary_hierarchies(hierarchy_1, hierarchy_2, in_place=False, ve
 
     # Calculate number of altlocs and associated occupancy
     altlocs = [a for a in hierarchy_1.altloc_indices() if a]
-    new_occ = 1.0/len(altlocs)
-    log('Setting all conformer ({}) occupancies to {}'.format(','.join(altlocs), new_occ))
-    hierarchy_1 = set_conformer_occupancy(
-        hierarchy   = hierarchy_1,
-        altlocs     = altlocs,
-        occupancy   = new_occ,
-        in_place    = True,
-        verbose     = verbose)
+    if altlocs:
+        new_occ = 1.0/len(altlocs)
+        log('Setting all conformer ({}) occupancies to {}'.format(','.join(altlocs), new_occ))
+        hierarchy_1 = set_conformer_occupancy(
+            hierarchy   = hierarchy_1,
+            altlocs     = altlocs,
+            occupancy   = new_occ,
+            in_place    = True,
+            verbose     = verbose)
 
     return hierarchy_1
 
@@ -217,6 +221,13 @@ def run(params):
 
     # Run the restraint generation for the merged structure if requested
     if params.output.make_restraints:
+
+        # Transfer the other phil objects from the master phil
+        r_params = make_restraints.master_phil.extract()
+        for name, obj in r_params.__dict__.items():
+            if name.startswith('_'): continue
+            if name not in params.restraints.__dict__:
+                params.restraints.__inject__(name, obj)
 
         # Apply the output of merging to input of restraints
         params.restraints.input.pdb = params.output.pdb
