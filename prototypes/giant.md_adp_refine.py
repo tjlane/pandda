@@ -160,7 +160,7 @@ class BFactorRefiner(object):
     def refine_b_factors(self, mode='tls', suffix=None):
         """Refine the model with phenix.refine, including the TLS model"""
 
-        assert mode in ['tls', 'anisotropic']
+        assert mode in ['isotropic', 'tls', 'anisotropic']
 
         if suffix is None: suffix = mode
 
@@ -176,7 +176,10 @@ class BFactorRefiner(object):
             self.log('refined structure already exists: {} - skipping'.format(out_pdb))
             return out_pdb, out_mtz
 
-        if mode == 'tls':
+        if mode == 'isotropic':
+            strategy = 'individual_adp'
+            params = [r'convert_to_isotropic=True']
+        elif mode == 'tls':
             strategy = 'tls+individual_adp'
             params = [r'refinement.refine.adp.tls="{}"'.format(t) for t in self.tls_selections]
         else:
@@ -239,6 +242,7 @@ class BFactorRefiner(object):
 
 def wrapper_run(tls_fit):
     tls_fit.log.heading('Processing: {}'.format(tls_fit.tag))
+    tls_fit.refine_b_factors(mode='isotropic')
     tls_fit.refine_b_factors(mode='tls')
     tls_fit.refine_b_factors(mode='anisotropic')
     return tls_fit
@@ -271,7 +275,7 @@ def run(params):
         fit = BFactorRefiner(pdb_file=p,
                              mtz_file=p.replace('.pdb', '.mtz'),
                              cif_files=params.input.cif,
-                             out_dir=os.path.join(out_dir,tag+'-tls'),
+                             out_dir=os.path.join(out_dir,tag),
                              tag=tag,
                              tls_selections=tls_selections)
 

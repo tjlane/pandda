@@ -125,6 +125,8 @@ class MultiDatasetTLSParameterisation(object):
         self._n_tls = params.tls.number_of_models_per_group
         self._n_opt = params.tls.number_of_datasets_for_optimisation
 
+        self._allow_isotropic = True
+
         self._refine_tls_models = params.refine.tls_models
         self._refine_uij_resdls = params.refine.uij_residuals
 
@@ -202,6 +204,15 @@ class MultiDatasetTLSParameterisation(object):
             # Extract uij and xyz
             obs_uij = numpy.array([a.extract_uij() for a in atoms])
             obs_xyz = numpy.array([a.extract_xyz() for a in atoms])
+
+            # Check all uijs are present
+            if (obs_uij==-1).all() and (self._allow_isotropic is True):
+                self.log('All atoms are missing anisotropic displacement parameters -- using the isotropic parameters instead')
+                obs_uij = numpy.zeros(obs_uij.shape)
+                obs_uij[:,:,0] = numpy.array([a.extract_b()/EIGHT_PI_SQ for a in atoms])
+                obs_uij[:,:,2] = obs_uij[:,:,1] = obs_uij[:,:,0]
+            elif (obs_uij==-1).any():
+                raise Failure('Some atoms in {} do not have anisotropically-refined B-factors'.format(group))
 
             self.log.subheading('Fitting TLS models to data')
             fitter = MultiDatasetTLSFitter(observed_uij = obs_uij,
@@ -332,23 +343,38 @@ class MultiDatasetTLSParameterisation(object):
             pyplot.savefig(filename)
             pyplot.close(fig)
 
-    def write_parameterised_structures(self):
+    def write_parameterised_structures(self, out_dir='./'):
         """Write fitted B-factors to output structures."""
+        easy_directory(out_dir)
 
         # Extract the fitted output for each dataset
         self.log.subheading('Exporting parameterised B-factors')
         for i_mdl, mdl in enumerate(self.models):
             self.log('Writing structure for model: {}'.format(mdl.filename))
-            h = mdl.hierarchy.deep_copy()
+            # Model with full set of fitted B-factors
+            h_fit = mdl.hierarchy.deep_copy()
+            # Model with fitted TLS subtracted from input
+            h_sub = mdl.hierarchy.deep_copy()
             for group in self.groups:
                 sel = self.atom_selections[group]
+                # Model with full set of fitted B-factors
                 uij = self.fits[group].extract_fitted_uij(datasets=[i_mdl])[0]
-                h.atoms().select(sel).set_b(flex.double(h.atoms().select(sel).size(), 0))
-                h.atoms().select(sel).set_uij(flex.sym_mat3_double(uij))
-            h.write_pdb_file(mdl.o_pdb)
+                h_fit.atoms().select(sel).set_b(flex.double(h_fit.atoms().select(sel).size(), 0))
+                h_fit.atoms().select(sel).set_uij(flex.sym_mat3_double(uij))
+                # Model with fitted TLS subtracted from input
+                tls = self.fits[group].extract_fitted_uij_tls(datasets=[i_mdl])[0]
+                h_sub.atoms().select(sel).set_b(h_sub.atoms().select(sel).extract_b() - flex.double(EIGHT_PI_SQ*numpy.mean(tls[:,0:3],axis=1)))
+                h_sub.atoms().select(sel).set_uij(h_sub.atoms().select(sel).extract_uij() - flex.sym_mat3_double(tls))
+            # Fitted model
+            self.log('\t> {}'.format(mdl.o_pdb))
+            h_fit.write_pdb_file(mdl.o_pdb)
+            # Residual (tls-subtracted)
+            f_sub = os.path.join(out_dir, mdl.tag+'.tls-subtracted.pdb')
+            self.log('\t> {}'.format(f_sub))
+            h_sub.write_pdb_file(f_sub)
 
     def generate_fitted_table_ones(self, params, out_dir='.'):
-
+        """Write table-ones for each structure before and after fitting"""
         easy_directory(out_dir)
 
         self.log.subheading('Generating "Table Ones" for input and fitted B-factor models')
@@ -457,6 +483,8 @@ class MultiDatasetTLSParameterisation(object):
         """Write atom-by-atom and dataset-by-dataset graphs"""
 
         easy_directory(out_dir)
+        err_dir = easy_directory(os.path.join(out_dir, 'fit_quality'))
+        atm_dir = easy_directory(os.path.join(err_dir, 'atom_by_atom'))
 
         # ----------------------------------------------------
         # Write the rmsds from the refined uijs
@@ -476,7 +504,7 @@ class MultiDatasetTLSParameterisation(object):
             # Write boxplots for all atoms in each dataset
             # ------------------------
             for i_d in range(0, len(self.models), 50):
-                self.boxplot(filename=os.path.join(out_dir, 'dataset-by-dataset-rmsds-datasets-group-{:02d}-{:04d}-{:04d}.png'.format(i_g+1,i_d+1,i_d+50)),
+                self.boxplot(filename=os.path.join(err_dir, 'dataset-by-dataset-rmsds-datasets-group-{:02d}-{:04d}-{:04d}.png'.format(i_g+1,i_d+1,i_d+50)),
                              y_vals=rmsds.T[:,i_d:i_d+50], x_labels=numpy.arange(i_d,min(i_d+50,len(self.models)))+1,
                              title='rmsd of fitted and refined B-factors (by dataset)',
                              x_lab='dataset', y_lab='rmsd', rotate_x_labels=True,
@@ -487,7 +515,7 @@ class MultiDatasetTLSParameterisation(object):
             # Breaks between residues
             i_brk = numpy.array([float(i)+1.5 for i, (a1,a2) in enumerate(zip(sel_a,sel_a[1:])) if a1.parent().parent().resid()!=a2.parent().parent().resid()])
             for i_a in range(0, len(sel_a), 50):
-                self.boxplot(filename=os.path.join(out_dir, 'atom-by-atom-rmsds-group-{:02d}-atoms-{:06d}-{:06d}.png'.format(i_g+1,i_a+1,i_a+50)),
+                self.boxplot(filename=os.path.join(atm_dir, 'rmsds-group-{:02d}-atoms-{:06d}-{:06d}.png'.format(i_g+1,i_a+1,i_a+50)),
                              y_vals=rmsds[:,i_a:i_a+50], x_labels=[ShortLabeller.format(a) for a in sel_a[i_a:i_a+50]],
                              title='rmsd of fitted and refined B-factors (by atom)',
                              x_lab='atom', y_lab='rmsd', rotate_x_labels=True,
@@ -496,7 +524,7 @@ class MultiDatasetTLSParameterisation(object):
             # Write boxplots for atoms in each residue group separately
             # ------------------------
             for rg in sel_h.residue_groups():
-                self.boxplot(filename=os.path.join(out_dir, 'atom-by-atom-rmsds-residue-{}-group-{:02d}.png'.format(ShortLabeller.format(rg),i_g+1)),
+                self.boxplot(filename=os.path.join(atm_dir, 'rmsds-residue-{}-group-{:02d}.png'.format(ShortLabeller.format(rg),i_g+1)),
                              y_vals=rmsds[:, [sel_a.index(a) for a in rg.atoms()]],
                              x_labels=[ShortLabeller.format(a) for a in rg.atoms()],
                              title='average rmsd of fitted and refined B-factors: {}'.format(ShortLabeller.format(rg)),
@@ -505,7 +533,7 @@ class MultiDatasetTLSParameterisation(object):
         # ----------------------------------------------------
         # Write out structure
         # ----------------------------------------------------
-        h.write_pdb_file(os.path.join(out_dir, 'fit_rmsd_uij.pdb'))
+        h.write_pdb_file(os.path.join(err_dir, 'average_rmsd_uij.pdb'))
         sel_h = h.select(self.atom_selection_all)
         # ----------------------------------------------------
         # Write averaged rmsds for all atoms by residue
@@ -517,7 +545,7 @@ class MultiDatasetTLSParameterisation(object):
             all_rgs = list(sel_c.residue_groups())
             for i_rg in range(0, len(all_rgs), 50):
                 this_rgs = all_rgs[i_rg:i_rg+50]
-                self.boxplot(filename=os.path.join(out_dir, 'residue-by-residue-rmsds-chain-{}-residues-{:04d}-{:04d}.png'.format(sel_c.id,i_rg+1,i_rg+50)),
+                self.boxplot(filename=os.path.join(err_dir, 'residue-by-residue-rmsds-chain-{}-residues-{:04d}-{:04d}.png'.format(sel_c.id,i_rg+1,i_rg+50)),
                              y_vals=[numpy.array(rg.atoms().extract_b()) for rg in this_rgs],
                              x_labels=[ShortLabeller.format(rg) for rg in this_rgs],
                              title='averaged rmsds of fitted and refined B-factors (for each residue)',
@@ -532,7 +560,7 @@ class MultiDatasetTLSParameterisation(object):
             all_rmsds = numpy.append(all_rmsds, self.fits[g].uij_fit_obs_all_rmsds(), axis=1)
         for i_m in range(0, len(self.models), 50):
             m_idxs = numpy.arange(i_m,min(i_m+50,len(self.models)))
-            self.boxplot(filename=os.path.join(out_dir, 'dataset-by-dataset-rmsds-datasets-{:04d}-{:04d}.png'.format(i_m+1, i_m+50)),
+            self.boxplot(filename=os.path.join(err_dir, 'dataset-by-dataset-rmsds-datasets-{:04d}-{:04d}.png'.format(i_m+1, i_m+50)),
                          y_vals=[all_rmsds[:,i].flatten() for i in m_idxs], x_labels=m_idxs+1,
                          title='rmsds for each dataset of fitted and refined B-factors',
                          x_lab='dataset', y_lab='rmsd', rotate_x_labels=True,
@@ -995,7 +1023,7 @@ class MultiDatasetTLSFitter(object):
         t_penalty = flex.max((self.sym_mat3_eigenvalues(t)<0.0).as_int())
         l_penalty = flex.max((self.sym_mat3_eigenvalues(l)<0.0).as_int())
         if numpy.sum(numpy.abs(s)) > 0.0:
-            s_uij_values = self.tls_uij(xyz=self._box_edge, tls_vectors=numpy.array([[0.0]*12+list(s)]), origin=self.observed_com)
+            s_uij_values = self.uij_for_tls(xyz=self._box_edge, tls_vectors=numpy.array([[0.0]*12+list(s)]), origin=self.observed_com)
             s_penalty = numpy.max([flex.max((self.sym_mat3_eigenvalues(uij)<0.0).as_int()) for uij in s_uij_values])
         else:
             s_penalty = 0
@@ -1172,33 +1200,53 @@ class MultiDatasetTLSFitter(object):
         datasets, atoms = self._selection_filter(datasets=datasets, atoms=atoms)
         return self.observed_uij[datasets][:,atoms]
 
-    def tls_uij(self, xyz, tls_vectors, origin):
+    def uij_for_tls(self, xyz, tls_vectors, origin):
         """Convert a set of parameter vectors to a set of uijs"""
         return numpy.sum([uij_from_tls_vector_and_origin(xyz=xyz, tls_vector=v, origin=origin) for v in tls_vectors], axis=0)
 
-    def extract_fitted_uij(self, datasets=None, atoms=None, parameters=None):
-        """Extract total fitted uijs for a subset of datasets or atoms"""
+    def extract_fitted_uij_tls(self, datasets=None, atoms=None, parameters=None):
+        """Extract tls fitted uijs for a subset of datasets or atoms"""
+
+        # Get atoms and datasets if Nones
         datasets, atoms = self._selection_filter(datasets=datasets, atoms=atoms)
         # Extract the optimised values
         if parameters is None:
             tls_p, tls_a, uij_r = self._extract_parameters()
         else:
             tls_p, tls_a, uij_r = parameters
-        # Extract relevant coordinates
+
+        # Extract coordinates for selected atoms/datasets
         xyz = self.extract_observed_xyz(datasets=datasets, atoms=atoms)
         assert xyz.shape == (len(datasets), len(atoms), 3)
         # Extract only those that we're interested in
         tls_a = tls_a[datasets]
         assert tls_a.shape == (len(datasets), self._n_tls, 3)
-        uij_r = uij_r[atoms]
-        assert uij_r.shape == (len(atoms), 6)
         # Multiply tls amplitudes and models
         tls_f = self._expand_tls_amplitudes(tls_amps=tls_a) * tls_p
         assert tls_f.shape == (len(datasets), self._n_tls, 21)
         assert len(xyz) == len(tls_f)
         # Calculate the tls component of uij
-        uij_fit = numpy.array([self.tls_uij(xyz=xyz[i], tls_vectors=tls_f[i], origin=self.observed_com) for i in range(len(datasets))])
-        assert uij_fit.shape == (len(datasets), len(atoms), 6)
+        uij_tls = numpy.array([self.uij_for_tls(xyz=xyz[i], tls_vectors=tls_f[i], origin=self.observed_com) for i in range(len(datasets))])
+        assert uij_tls.shape == (len(datasets), len(atoms), 6)
+
+        return uij_tls
+
+    def extract_fitted_uij(self, datasets=None, atoms=None, parameters=None):
+        """Extract total fitted uijs for a subset of datasets or atoms"""
+
+        # Get atoms and datasets if Nones
+        datasets, atoms = self._selection_filter(datasets=datasets, atoms=atoms)
+        # Extract the optimised values
+        if parameters is None:
+            tls_p, tls_a, uij_r = self._extract_parameters()
+        else:
+            tls_p, tls_a, uij_r = parameters
+
+        # Extract the TLS components
+        uij_fit = self.extract_fitted_uij_tls(datasets=datasets, atoms=atoms, parameters=(tls_p, tls_a, uij_r))
+        # Extract the residual
+        uij_r = uij_r[atoms]
+        assert uij_r.shape == (len(atoms), 6)
         # Add the residual uij
         uij_fit += uij_r
 
@@ -1224,7 +1272,7 @@ class MultiDatasetTLSFitter(object):
         if t is not True: tls[:,00:06] = 0.0
         if l is not True: tls[:,06:12] = 0.0
         if s is not True: tls[:,12:21] = 0.0
-        return self.tls_uij(xyz=xyz, tls_vectors=tls, origin=self.observed_com)
+        return self.uij_for_tls(xyz=xyz, tls_vectors=tls, origin=self.observed_com)
 
     def sym_mat3_eigenvalues(self, vals):
         assert len(vals) == 6
@@ -1377,7 +1425,7 @@ def run(params):
     p.fit(params.fitting.number_of_macro_cycles, params.fitting.number_of_micro_cycles)
     p.write_summary_statistics_graphs_and_structures(out_dir=params.output.out_dir)
     p.write_fitted_uij_structures(out_dir=params.output.out_dir)
-    p.write_parameterised_structures()
+    p.write_parameterised_structures(out_dir=os.path.join(params.output.out_dir, 'structures'))
     p.generate_fitted_table_ones(params=params, out_dir=os.path.join(params.output.out_dir, 'table_ones'))
     p.write_summary_statistics_csv(out_dir=params.output.out_dir)
 
