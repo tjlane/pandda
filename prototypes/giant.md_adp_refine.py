@@ -176,15 +176,17 @@ class BFactorRefiner(object):
             self.log('refined structure already exists: {} - skipping'.format(out_pdb))
             return out_pdb, out_mtz
 
+        strategy = "individual_sites+individual_adp+occupancies"
+
         if mode == 'isotropic':
-            strategy = 'individual_adp'
+            strategy += ''
             params = [r'convert_to_isotropic=True']
         elif mode == 'tls':
-            strategy = 'tls+individual_adp'
+            strategy += '+tls'
             params = [r'refinement.refine.adp.tls="{}"'.format(t) for t in self.tls_selections]
         else:
-            strategy = 'individual_adp'
-            params = [r'refinement.refine.adp.individual.anisotropic="{}"'.format(t) for t in self.tls_selections]
+            strategy += ''
+            params = [r'refinement.refine.adp.individual.anisotropic="{}"'.format(' or '.join(['('+t+')' for t in self.tls_selections]))]
 
         self.log.subheading('Refining B-factor model with phenix.refine')
         self.log('writing to temporary output directory: {}'.format(tmp_dir))

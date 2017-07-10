@@ -1166,10 +1166,9 @@ class MultiDatasetTLSFitter(object):
                             proc_args.append(n._prep_for_mp())
                         self.log.subheading('Running optimisation')
                         self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=proc_wrapper, args=proc_args, chunksize=1))
-                        self.optimisation_summary(False)
-                        #########################################
                         self.log.subheading('Normalising all TLS amplitudes to average of one')
                         self._normalise_tls_amplitudes()
+                        self.optimisation_summary(False)
             #########################################
             self.log.heading('Optimising residual Uijs')
             self.set_penalty_weights(ovr_weight=0.0)
