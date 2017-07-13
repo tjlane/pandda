@@ -1,10 +1,10 @@
 #!/usr/bin/env ccp4-python
 
-import os, sys, re, glob, shutil, copy, tempfile, gc
-import math, re, time
+import os, sys, copy
+import math
 
 import scipy.stats
-import numpy, pandas
+import numpy, pandas, json
 
 import libtbx.phil, libtbx.easy_mp
 import iotbx.pdb
@@ -23,6 +23,7 @@ from giant.structure.select import protein
 from giant.structure.tls import uij_from_tls_vector_and_origin, extract_tls_from_pdb
 from giant.structure.formatting import ShortLabeller
 from giant.xray.crystal import CrystalSummary
+from giant.xray.refine import refine_phenix
 
 from giant.jiffies import multi_table_ones
 
@@ -69,12 +70,9 @@ output {
         .type = str
 }
 fitting {
-    number_of_macro_cycles = 2
-        .help = 'how many fitting cycles to run'
-        .type = int
-    number_of_micro_cycles = 2
-        .help = 'how many fitting cycles to run'
-        .type = int
+    optimise = *tls_models *uij_residuals
+        .help = "Which parameters should be optimised across the datasets?"
+        .type = choice(multi=True)
     tls {
         number_of_models_per_group = 1
             .help = 'how many superposed TLS models should be fit to the same group of atoms?'
@@ -82,18 +80,21 @@ fitting {
         number_of_datasets_for_optimisation = None
             .help = 'how many datasets should be used for optimising the TLS parameters?'
             .type = int
-        resolution_limit_for_fitting = 1.7
+        resolution_limit_for_fitting = 1.8
             .help = 'resolution limit for dataset to be used for TLS optimisation'
             .type = float
     }
-    refine {
-        tls_models = True
-            .help = "refine TLS parameters or only apply to input structures?"
-            .type = bool
-        uij_residuals = True
-            .help = "refine UIJ residual or only apply to input structures?"
-            .type = bool
-    }
+    number_of_macro_cycles = 2
+        .help = 'how many fitting cycles to run'
+        .type = int
+    number_of_micro_cycles = 2
+        .help = 'how many fitting cycles to run (for each T-L-S component)'
+        .type = int
+}
+refine {
+    refine_output_structures = True
+        .help = "Refine the structures after fitting (coordinates and occupancies)"
+        .type = bool
 }
 table_ones_options {
     include scope giant.jiffies.multi_table_ones.options_phil
@@ -107,55 +108,71 @@ settings {
 
 ############################################################################
 
-def proc_wrapper(arg):
+def wrapper_optimise(arg):
     arg._optimise(verbose=False)
     return arg
+
+def wrapper_run(arg):
+    return arg.run()
 
 def rms(vals, axis=None):
     return numpy.sqrt(numpy.mean(numpy.power(vals,2), axis=axis))
 
-class MultiDatasetTLSParameterisation(object):
+class MultiDatasetBFactorParameterisation(object):
 
     def __init__(self, models, groups, params, n_cpu=1, log=None):
 
         if log is None: log = Log(verbose=True)
         self.log = log
 
+        self.params = params
+
+        self.out_dir = params.output.out_dir
+
         self._n_cpu = n_cpu
-        self._n_tls = params.tls.number_of_models_per_group
-        self._n_opt = params.tls.number_of_datasets_for_optimisation
+        self._n_tls = params.fitting.tls.number_of_models_per_group
+        self._n_opt = params.fitting.tls.number_of_datasets_for_optimisation
 
         self._allow_isotropic = True
 
-        self._refine_tls_models = params.refine.tls_models
-        self._refine_uij_resdls = params.refine.uij_residuals
+        self._optimise_tls_models = ('tls_models' in params.fitting.optimise)
+        self._optimise_uij_resdls = ('uij_residuals' in params.fitting.optimise)
 
-        self._opt_datasets_res_limit = params.tls.resolution_limit_for_fitting
+        self._opt_datasets_res_limit = params.fitting.tls.resolution_limit_for_fitting
         self._opt_datasets_selection = []
 
         self.models = models
         self.groups = groups
         self.fits = {}
 
+        # Misc files
+        self.cifs = None
+
         # Validate and add output paths, etc.
         self._init_input_models()
         self._init_atom_selections()
 
         self.table = None
-        self.table_one_csv_input  = None
-        self.table_one_csv_fitted = None
+        self.table_one_csv_input   = None
+        self.table_one_csv_fitted  = None
+        self.table_one_csv_refined = None
 
     def _init_input_models(self):
+
         # Use the first hierarchy as the reference
         self.master_h = self.models[0].hierarchy.deep_copy()
+
+        s_dir = easy_directory(os.path.join(self.out_dir, 'parameterised_structures'))
 
         for i_m, m in enumerate(self.models):
             assert self.master_h.is_similar_hierarchy(m.hierarchy)
 
             m.i_pdb = m.filename
             m.i_mtz = m.i_pdb.replace('.pdb', '.mtz')
-            m.o_pdb = m.i_pdb.replace('.pdb', '.mda.pdb')
-            m.o_mtz = m.o_pdb.replace('.pdb', '.mtz')
+            m.o_pdb = None
+            m.o_mtz = None
+            m.r_pdb = None
+            m.r_mtz = None
 
             assert os.path.exists(m.i_pdb), 'PDB does not exist: {}'.format(m.i_pdb)
             assert os.path.exists(m.i_mtz), 'MTZ does not exist: {}'.format(m.i_mtz)
@@ -183,7 +200,16 @@ class MultiDatasetTLSParameterisation(object):
         h.atoms().set_b(flex.double(h.atoms().size(), 0.0))
         return h
 
-    def fit(self, n_macro_cycles, n_micro_cycles):
+    def iterate_groups(self):
+        return ((group, self.fits.get(group,None), self.atom_selections[group]) for group in self.groups)
+    def enumerate_groups(self):
+        return enumerate(self.iterate_groups())
+
+    def fit(self):
+        """Optimise the TLS+residual model against the input data"""
+
+        n_macro_cycles = self.params.fitting.number_of_macro_cycles
+        n_micro_cycles = self.params.fitting.number_of_micro_cycles
 
         self.log.heading('Fitting B-factors', spacer=True)
         self.log.subheading('TLS Groups')
@@ -193,14 +219,12 @@ class MultiDatasetTLSParameterisation(object):
         self.log('Macro-cycles: {}'.format(n_macro_cycles))
         self.log('Micro-cycles: {}'.format(n_micro_cycles))
 
-        for group in self.groups:
+        for group, _, sel in self.iterate_groups():
 
             self.log.heading('Parameterising Uijs for selection: {}'.format(group))
 
-            # Get the selection for this group
-            atom_sel = self.atom_selections[group]
             # Get all atoms for this group
-            atoms = [m.hierarchy.atoms().select(atom_sel) for m in self.models]
+            atoms = [m.hierarchy.atoms().select(sel) for m in self.models]
             # Extract uij and xyz
             obs_uij = numpy.array([a.extract_uij() for a in atoms])
             obs_xyz = numpy.array([a.extract_xyz() for a in atoms])
@@ -214,7 +238,6 @@ class MultiDatasetTLSParameterisation(object):
             elif (obs_uij==-1).any():
                 raise Failure('Some atoms in {} do not have anisotropically-refined B-factors'.format(group))
 
-            self.log.subheading('Fitting TLS models to data')
             fitter = MultiDatasetTLSFitter(observed_uij = obs_uij,
                                            observed_xyz = obs_xyz,
                                            n_tls = self._n_tls,
@@ -228,7 +251,75 @@ class MultiDatasetTLSParameterisation(object):
 
         self.log.heading('Parameterisation complete')
 
-    def write_fitted_uij_structures(self, out_dir='.'):
+    def write_output(self):
+        """Write output and summaries"""
+
+        self.log.heading('Writing parameterisation summaries')
+        self.write_parameterisation_summary(out_dir=self.out_dir)
+        self.write_parameterisation_models(out_dir=self.out_dir)
+        self.write_parameterisation_analysis(out_dir=os.path.join(self.out_dir,'parameterisation_quality'))
+
+        self.log.heading('Writing TLS-subtracted models')
+        self.write_tls_subtracted_models(out_dir=os.path.join(self.out_dir,'tls_subtracted_models'))
+
+        self.log.heading('Outputting fitted structures for each dataset')
+        self.write_fitted_dataset_models(out_dir=os.path.join(self.out_dir, 'fitted_structures'))
+        if self.params.refine.refine_output_structures:
+            self.refine_fitted_dataset_models()
+
+        self.log.heading('Generating Table Ones for all structures')
+        self.generate_fitted_table_ones(out_dir=os.path.join(self.out_dir, 'table_ones'))
+
+        self.log.heading('Writing output csvs')
+        self.write_combined_csv(out_dir=self.out_dir)
+
+    def write_parameterisation_summary(self, out_dir='.'):
+        """Write the TLS models and amplitudes to files"""
+
+        out_dir = easy_directory(out_dir)
+
+        # Output objects
+        amp_table = pandas.DataFrame(index=[mdl.tag for mdl in self.models])
+        tls_json = {}
+
+        for i_g, (group, fit, sel) in self.enumerate_groups():
+            # ----------------------------------------------------
+            # Add TLS models to json
+            # -----------i-----------------------------------------
+            tlss = fit.fitted_tls_models()
+            for i_tls in range(self._n_tls):
+                d = tls_json.setdefault(group, {}).setdefault('TLS model {}'.format(i_tls+1), {})
+                d['T'] = tlss[i_tls][00:06].tolist()
+                d['L'] = tlss[i_tls][06:12].tolist()
+                d['S'] = tlss[i_tls][12:21].tolist()
+                d['COM'] = None
+            # ----------------------------------------------------
+            # TLS ampltidues for all datasets
+            # ----------------------------------------------------
+            amps = fit.fitted_tls_amplitudes()
+            # Write histograms of amplitudes
+            x_vals = []; [[x_vals.append(amps[:,i_m,i_a]) for i_a in range(3)] for i_m in range(amps.shape[1])]
+            self.histograms(filename=os.path.join(out_dir, 'tls-model-amplitudes-group-{}.png'.format(i_g+1)), x_vals=x_vals,
+                            titles=numpy.concatenate(['T (group {a})-L (group {a})-S (group {a})'.format(a=i_m+1).split('-') for i_m in range(amps.shape[1])]),
+                            x_labs=['']*numpy.product(amps.shape[1:]), rotate_x_labels=True, shape=amps.shape[1:], n_bins=30)
+            # Add to table of amplitudes
+            for i_tls in range(self._n_tls):
+                amp_table['T'+str(i_tls+1)] = amps[:,i_tls,0]
+                amp_table['L'+str(i_tls+1)] = amps[:,i_tls,1]
+                amp_table['S'+str(i_tls+1)] = amps[:,i_tls,2]
+        # ----------------------------------------------------
+        # Write output
+        # ----------------------------------------------------
+        # Write amplitude CSV
+        filename = os.path.join(out_dir, 'tls_amplitudes.csv')
+        self.log('Writing: {}'.format(filename))
+        amp_table.to_csv(filename)
+        # Write model JSON
+        filename = os.path.join(out_dir, 'tls_models.json')
+        self.log('Writing: {}'.format(filename))
+        with open(filename, 'w') as fh: fh.write(json.dumps(tls_json, indent=True))
+
+    def write_parameterisation_models(self, out_dir='.'):
         """Write residual B-factors to master hierarchy."""
 
         easy_directory(out_dir)
@@ -236,40 +327,29 @@ class MultiDatasetTLSParameterisation(object):
         # ----------------------------------------------------
         # Apply the residual B-factors to the master h
         # ----------------------------------------------------
-        self.log.subheading('Writing fitted residual atomic B-factors')
+        self.log.subheading('Writing consensus residual atomic B-factors')
         h = self.blank_master_hierarchy()
-        for group in self.groups:
-            fit = self.fits[group]
-            sel = self.atom_selections[group]
+        for group, fit, sel in self.iterate_groups():
             uij = fit.fitted_uij_residual()
             h.atoms().select(sel).set_b(flex.double(EIGHT_PI_SQ*numpy.mean(uij[:,0:3],axis=1)))
             h.atoms().select(sel).set_uij(flex.sym_mat3_double(uij))
-        h.write_pdb_file(os.path.join(out_dir, 'fitted_uij_residual.pdb'))
+        h.write_pdb_file(os.path.join(out_dir, 'consensus_uij_residual.pdb'))
         # ----------------------------------------------------
         # Apply the TLS B-factors to the master h
         # ----------------------------------------------------
-        self.log.subheading('Writing fitted TLS atomic B-factors')
+        self.log.subheading('Writing consensus TLS components of atomic B-factors')
         # Combined TLS + individual hierarchies
         h = self.blank_master_hierarchy()
         t = self.blank_master_hierarchy()
         l = self.blank_master_hierarchy()
         s = self.blank_master_hierarchy()
-        #tl = self.blank_master_hierarchy()
-        # TLS-group boundaries
-        b = self.blank_master_hierarchy()
-
-        for group in self.groups:
-            fit = self.fits[group]
-            sel = self.atom_selections[group]
+        # Add components from each group
+        for i_g, (group, fit, sel) in self.enumerate_groups():
             xyz = h.atoms().select(sel).extract_xyz()
             # Which atoms are in this group anyway?
             g = self.blank_master_hierarchy()
             g.atoms().select(sel).set_b(flex.double(g.atoms().select(sel).size(), 10))
-            g.write_pdb_file(os.path.join(out_dir, 'tls-group-{:02d}-atoms.pdb'.format(self.groups.index(group)+1)))
-            # Where are the boundaries of the group?
-            sel_int = numpy.array(sel, dtype=int)
-            boundaries = numpy.array(b.atoms()[:-1].extract_b(), dtype=bool) + numpy.array((sel_int[:-1]*(1-sel_int[1:]))+(sel_int[1:]*(1-sel_int[:-1])), dtype=bool)
-            b.atoms()[:-1].set_b(flex.double(boundaries.tolist()))
+            g.write_pdb_file(os.path.join(out_dir, 'tls-group-{:02d}-atoms.pdb'.format(i_g+1)))
             # ALL TLS contributions
             uij = fit.average_fitted_uij_tls(xyz=xyz)
             h.atoms().select(sel).set_b(flex.double(EIGHT_PI_SQ*numpy.mean(uij[:,0:3],axis=1)))
@@ -286,16 +366,22 @@ class MultiDatasetTLSParameterisation(object):
             uij = fit.average_fitted_uij_tls(xyz=xyz, t=False, l=False, s=True)
             s.atoms().select(sel).set_b(flex.double(EIGHT_PI_SQ*numpy.mean(uij[:,0:3],axis=1)))
             s.atoms().select(sel).set_uij(flex.sym_mat3_double(uij))
-            # Combine T and L contributions
-            #tl.atoms().select(sel).set_b(t.atoms().select(sel).extract_b() + l.atoms().select(sel).extract_b())
-            #tl.atoms().select(sel).set_uij(t.atoms().select(sel).extract_uij() + l.atoms().select(sel).extract_uij())
         # Write out structures
-        b.write_pdb_file(os.path.join(out_dir, 'tls_boundaries.pdb'))
-        h.write_pdb_file(os.path.join(out_dir, 'fitted_uij_average_tls.pdb'))
-        t.write_pdb_file(os.path.join(out_dir, 'fitted_uij_average_tls_t_only.pdb'))
-        l.write_pdb_file(os.path.join(out_dir, 'fitted_uij_average_tls_l_only.pdb'))
-        s.write_pdb_file(os.path.join(out_dir, 'fitted_uij_average_tls_s_only.pdb'))
-
+        h.write_pdb_file(os.path.join(out_dir, 'consensus_uij_tls.pdb'))
+        t.write_pdb_file(os.path.join(out_dir, 'consensus_uij_tls_t_only.pdb'))
+        l.write_pdb_file(os.path.join(out_dir, 'consensus_uij_tls_l_only.pdb'))
+        s.write_pdb_file(os.path.join(out_dir, 'consensus_uij_tls_s_only.pdb'))
+        # ----------------------------------------------------
+        # Write a chain-by-chain summary of the TLS components
+        # ----------------------------------------------------
+        # Find the edges of each TLS group
+        b = self.blank_master_hierarchy()
+        for i_g, (group, fit, sel) in self.enumerate_groups():
+            # Where are the boundaries of the group?
+            sel_int = numpy.array(sel, dtype=int)
+            boundaries = numpy.array(b.atoms()[:-1].extract_b(), dtype=bool) + numpy.array((sel_int[:-1]*(1-sel_int[1:]))+(sel_int[1:]*(1-sel_int[:-1])), dtype=bool)
+            b.atoms()[:-1].set_b(flex.double(boundaries.tolist()))
+        # Iterate through chains
         for chain_id in [c.id for c in h.chains()]:
             sel = h.atom_selection_cache().selection('chain {}'.format(chain_id))
             sel_h = h.select(sel)
@@ -303,7 +389,7 @@ class MultiDatasetTLSParameterisation(object):
             sel_l = l.select(sel)
             sel_s = s.select(sel)
             # Write graphs of individual and cumulative Tls contributions
-            filename = os.path.join(out_dir, 'average_tls_contributions-chain-{}.png'.format(chain_id))
+            filename = os.path.join(out_dir, 'tls-contributions-chain-{}.png'.format(chain_id))
             x_vals   = numpy.array(range(len(list(sel_h.residue_groups()))))+1
             x_labels = ['']+[ShortLabeller.format(rg) for rg in sel_h.residue_groups()]
             l_styles = ['ro-', 'go-', 'bo-', 'ko-']
@@ -340,51 +426,241 @@ class MultiDatasetTLSParameterisation(object):
                 axes[1].axvline(x=val, ls='dotted')
             # Format and save
             pyplot.tight_layout()
+            self.log('Writing: {}'.format(filename))
             pyplot.savefig(filename)
             pyplot.close(fig)
 
-    def write_parameterised_structures(self, out_dir='./'):
-        """Write fitted B-factors to output structures."""
-        easy_directory(out_dir)
+    def write_parameterisation_analysis(self, out_dir='.'):
+        """Write atom-by-atom and dataset-by-dataset graphs"""
 
-        # Extract the fitted output for each dataset
-        self.log.subheading('Exporting parameterised B-factors')
+        easy_directory(out_dir)
+        atm_dir = easy_directory(os.path.join(out_dir, 'atom_by_atom'))
+        dst_dir = easy_directory(os.path.join(out_dir, 'dataset_by_dataset'))
+        cor_dir = easy_directory(os.path.join(out_dir, 'error_correlations'))
+
+        dst_labels = numpy.array([m.tag for m in self.models])
+
+        # ----------------------------------------------------
+        # Write the rmsds from the refined uijs
+        # ----------------------------------------------------
+        self.log.subheading('Calculating atom-by-atom rmsds to refined B-factors')
+        h = self.blank_master_hierarchy()
+        for i_g, (group, fit, sel) in self.enumerate_groups():
+            # Select the atoms in this group, as list to allow for indexing
+            sel_h = h.select(sel)
+            sel_a = list(sel_h.atoms())
+            # Extract the atom-by-atom rmsds fit/obs for each dataset
+            rmsds = fit.uij_fit_obs_all_rmsds()
+            # ------------------------
+            # Write boxplots for all atoms in each dataset
+            # ------------------------
+            for i_d in range(0, len(self.models), 50):
+                self.boxplot(filename=os.path.join(dst_dir, 'dataset-by-dataset-rmsds-datasets-group-{:02d}-{:04d}-{:04d}.png'.format(i_g+1,i_d+1,i_d+50)),
+                             y_vals=rmsds.T[:,i_d:i_d+50],
+                             x_labels=dst_labels[i_d:i_d+50].tolist(),
+                             title='rmsd of fitted and refined B-factors (by dataset)',
+                             x_lab='dataset', y_lab='rmsd', rotate_x_labels=True,
+                             x_lim=(0,51), y_lim=(numpy.min(rmsds), numpy.max(rmsds)))
+            # ------------------------
+            # Write boxplots for all of the atoms in this group
+            # ------------------------
+            # Breaks between residues
+            i_brk = numpy.array([float(i)+1.5 for i, (a1,a2) in enumerate(zip(sel_a,sel_a[1:])) if a1.parent().parent().resid()!=a2.parent().parent().resid()])
+            for i_a in range(0, len(sel_a), 50):
+                self.boxplot(filename=os.path.join(atm_dir, 'rmsds-group-{:02d}-atoms-{:06d}-{:06d}.png'.format(i_g+1,i_a+1,i_a+50)),
+                             y_vals=rmsds[:,i_a:i_a+50],
+                             x_labels=[ShortLabeller.format(a) for a in sel_a[i_a:i_a+50]],
+                             title='rmsd of fitted and refined B-factors (by atom)',
+                             x_lab='atom', y_lab='rmsd', rotate_x_labels=True,
+                             x_lim=(0,51), y_lim=(numpy.min(rmsds), numpy.max(rmsds)), vlines=i_brk-i_a)
+            # ------------------------
+            # Write boxplots for atoms in each residue group separately
+            # ------------------------
+            for rg in sel_h.residue_groups():
+                self.boxplot(filename=os.path.join(atm_dir, 'rmsds-residue-{}-group-{:02d}.png'.format(ShortLabeller.format(rg),i_g+1)),
+                             y_vals=rmsds[:, [sel_a.index(a) for a in rg.atoms()]],
+                             x_labels=[ShortLabeller.format(a) for a in rg.atoms()],
+                             title='average rmsd of fitted and refined B-factors: {}'.format(ShortLabeller.format(rg)),
+                             x_lab='atom', y_lab='rmsd', rotate_x_labels=True,
+                             y_lim=(numpy.min(rmsds), numpy.max(rmsds)))
+            # ------------------------
+            # Append to overall array
+            # ------------------------
+            if i_g == 0: all_rmsds = rmsds
+            else:        all_rmsds = numpy.append(all_rmsds, rmsds, axis=1)
+        # ----------------------------------------------------
+        # Write distribution of rmsds for each dataset
+        # ----------------------------------------------------
+        self.log.subheading('Calculating dataset-by-dataset rmsds (over all TLS groups)')
+        for i_m in range(0, len(self.models), 50):
+            m_idxs = numpy.arange(i_m,min(i_m+50,len(self.models)))
+            self.boxplot(filename=os.path.join(dst_dir, 'dataset-by-dataset-rmsds-datasets-{:04d}-{:04d}.png'.format(i_m+1, i_m+50)),
+                         y_vals=[all_rmsds[:,i].flatten() for i in m_idxs],
+                         x_labels=dst_labels[m_idxs].tolist(),
+                         title='rmsds for each dataset of fitted and refined B-factors',
+                         x_lab='dataset', y_lab='rmsd', rotate_x_labels=True,
+                         x_lim=(0,51), y_lim=(numpy.min(all_rmsds), numpy.max(all_rmsds)))
+
+        # ----------------------------------------------------
+        # Write averaged rmsds for all atoms
+        # ----------------------------------------------------
+        # Average values for all atoms + Interquartile range for all atoms
+        h_avg = self.blank_master_hierarchy()
+        h_iqr = self.blank_master_hierarchy()
+        for i_g, (group, fit, sel) in self.enumerate_groups():
+            # Extract rmsds for this group
+            rmsds = fit.uij_fit_obs_all_rmsds()
+            # Average over the datasets to obtain average per atom (also calculate the average fit/obs difference, should be ~0)
+            h_avg.select(sel).atoms().set_b(flex.double(numpy.mean(rmsds, axis=0)))
+            h_avg.select(sel).atoms().set_uij(flex.sym_mat3_double(fit.uij_fit_obs_atom_averaged_differences()))
+            # Calculate IQRs of rmsds for each atom
+            h_iqr.select(sel).atoms().set_b(flex.double(numpy.subtract(*numpy.percentile(rmsds, [75, 25],axis=0))))
+        # Write out structures
+        h_avg.write_pdb_file(os.path.join(out_dir, 'uij_fit_rmsds_averages.pdb'))
+        h_iqr.write_pdb_file(os.path.join(out_dir, 'uij_fit_rmsds_iqranges.pdb'))
+        # ----------------------------------------------------
+        # Select the fitted atoms of this structure for some more graphs!
+        # ----------------------------------------------------
+        sel_h = h_avg.select(self.atom_selection_all)
+        # ----------------------------------------------------
+        # Write distribution of average rmsds for each residue residue
+        # ----------------------------------------------------
+        self.log.subheading('Calculating residue-by-residue rmsds to refined B-factors')
+        all_bs = numpy.concatenate([list(rg.atoms().extract_b()) for rg in sel_h.residue_groups()])
+        min_b, max_b = numpy.min(all_bs), numpy.max(all_bs)
+        for sel_c in sel_h.chains():
+            all_rgs = list(sel_c.residue_groups())
+            for i_rg in range(0, len(all_rgs), 50):
+                this_rgs = all_rgs[i_rg:i_rg+50]
+                self.violinplot(filename=os.path.join(atm_dir, 'residue-by-residue-rmsds-chain-{}-residues-{:04d}-{:04d}.png'.format(sel_c.id,i_rg+1,i_rg+50)),
+                                y_vals=[numpy.array(rg.atoms().extract_b()) for rg in this_rgs],
+                                x_labels=[ShortLabeller.format(rg) for rg in this_rgs],
+                                title='averaged rmsds of fitted and refined B-factors (for each residue)',
+                                x_lab='residue', y_lab='rmsd', rotate_x_labels=True,
+                                x_lim=(0,51), y_lim=(numpy.min(all_bs), numpy.max(all_bs)))
+
+        # ----------------------------------------------------
+        # Calculate correlations between the residual uij and the fitting error
+        # ----------------------------------------------------
+        self.log.subheading('Calculating correlations between residual uij and fitting errors')
+        all_corr_table = pandas.DataFrame(index=[mdl.tag for mdl in self.models])
+        all_atom_labels = []
+        for i_g, (group, fit, sel) in self.enumerate_groups():
+            uij_err = fit.uij_fit_obs_differences()
+            uij_res = fit.fitted_uij_residual()
+            # -------------------
+            # Calculate the correlations between fitting error and residual uij
+            # -------------------
+            corr_table = pandas.DataFrame(index=[mdl.tag for mdl in self.models])
+            atom_labels = [ShortLabeller.format(a) for a in self.master_h.atoms().select(sel)]
+            all_atom_labels.extend(atom_labels)
+            for i_atm, atm in enumerate(atom_labels):
+                # Correlations between this atom uij_res and the fitting error across the datasets
+                corr = numpy.corrcoef(uij_err[:,i_atm,:], uij_res[i_atm])[-1,:-1]
+                assert corr.shape == (uij_err.shape[0],)
+                if numpy.isnan(corr).all(): corr = numpy.random.randn(len(corr)) * 0.0000001
+                corr_table[atm] = corr
+            # Append this group's atoms to the main table
+            all_corr_table = all_corr_table.join(corr_table, how="outer")
+            # -------------------
+            # Make violin plot of the correlations
+            # -------------------
+            sel_h = h.select(sel)
+            sel_a = list(sel_h.atoms())
+            i_brk = numpy.array([float(i)+1.5 for i, (a1,a2) in enumerate(zip(sel_a,sel_a[1:])) if a1.parent().parent().resid()!=a2.parent().parent().resid()])
+            for i_a in range(0, len(corr_table.columns), 20):
+                self.violinplot(filename=os.path.join(cor_dir, 'residual-correlation-group-{:02d}-atoms-{:06d}-{:06d}.png'.format(i_g+1,i_a+1,i_a+20)),
+                                y_vals=corr_table.values[:,i_a:i_a+20].T.tolist(),
+                                x_labels=[ShortLabeller.format(a) for a in sel_a[i_a:i_a+20]],
+                                title='correlation of residuals (by atom)',
+                                x_lab='atom', y_lab='correlation', rotate_x_labels=True,
+                                x_lim=(0,21), y_lim=(-1,1), vlines=i_brk-i_a)
+        # Write out csv
+        filename = os.path.join(cor_dir, 'correlation_uij_residual_to_fitting_residual.csv')
+        self.log('\nWriting: {}'.format(filename))
+        all_corr_table.to_csv(filename)
+
+    def write_tls_subtracted_models(self, out_dir):
+        """Write models for each dataset with the TLS component subtracted from refined uij"""
+
+        out_dir = easy_directory(out_dir)
+
+        # ----------------------------------------------------
+        # Write models for each dataset with uij(TLS) subtracted
+        # ----------------------------------------------------
         for i_mdl, mdl in enumerate(self.models):
-            self.log('Writing structure for model: {}'.format(mdl.filename))
-            # Model with full set of fitted B-factors
-            h_fit = mdl.hierarchy.deep_copy()
+            self.log('Writing tls-subtracted uij model for {}'.format(mdl.tag))
             # Model with fitted TLS subtracted from input
             h_sub = mdl.hierarchy.deep_copy()
-            for group in self.groups:
-                sel = self.atom_selections[group]
-                # Model with full set of fitted B-factors
-                uij = self.fits[group].extract_fitted_uij(datasets=[i_mdl])[0]
-                h_fit.atoms().select(sel).set_b(flex.double(h_fit.atoms().select(sel).size(), 0))
-                h_fit.atoms().select(sel).set_uij(flex.sym_mat3_double(uij))
+            for group, fit, sel in self.iterate_groups():
                 # Model with fitted TLS subtracted from input
-                tls = self.fits[group].extract_fitted_uij_tls(datasets=[i_mdl])[0]
+                tls = fit.extract_fitted_uij_tls(datasets=[i_mdl])[0]
                 h_sub.atoms().select(sel).set_b(h_sub.atoms().select(sel).extract_b() - flex.double(EIGHT_PI_SQ*numpy.mean(tls[:,0:3],axis=1)))
                 h_sub.atoms().select(sel).set_uij(h_sub.atoms().select(sel).extract_uij() - flex.sym_mat3_double(tls))
-            # Fitted model
-            self.log('\t> {}'.format(mdl.o_pdb))
-            h_fit.write_pdb_file(mdl.o_pdb)
             # Residual (tls-subtracted)
             f_sub = os.path.join(out_dir, mdl.tag+'.tls-subtracted.pdb')
             self.log('\t> {}'.format(f_sub))
             h_sub.write_pdb_file(f_sub)
 
-    def generate_fitted_table_ones(self, params, out_dir='.'):
+    def write_fitted_dataset_models(self, out_dir='./'):
+        """Write fitted B-factors to output structures."""
+
+        easy_directory(out_dir)
+
+        # Extract the fitted output for each dataset
+        for i_mdl, mdl in enumerate(self.models):
+            self.log('Writing structure for model: {}'.format(mdl.filename))
+            # Model with full set of fitted B-factors
+            h_fit = mdl.hierarchy.deep_copy()
+            for group, fit, sel in self.iterate_groups():
+                # Model with full set of fitted B-factors
+                uij = fit.extract_fitted_uij(datasets=[i_mdl])[0]
+                h_fit.atoms().select(sel).set_b(flex.double(h_fit.atoms().select(sel).size(), 0))
+                h_fit.atoms().select(sel).set_uij(flex.sym_mat3_double(uij))
+            # Create fitted model paths
+            mdl.o_pdb = os.path.join(out_dir, mdl.tag+'.mda.pdb')
+            mdl.o_mtz = os.path.join(out_dir, mdl.tag+'.mda.mtz')
+            if not os.path.exists(mdl.o_mtz):
+                rel_symlink(mdl.i_mtz, mdl.o_mtz)
+            # Write model
+            self.log('\t> {}'.format(mdl.o_pdb))
+            h_fit.write_pdb_file(mdl.o_pdb)
+
+    def refine_fitted_dataset_models(self, suffix='-refined'):
+        """Refine coordinates of the fitted structures"""
+
+        self.log.heading('Refining coordinates of fitted models')
+
+        refine_phenix.auto = False
+
+        proc_args = []
+        for mdl in self.models:
+            if not os.path.exists(mdl.o_mtz): rel_symlink(mdl.i_mtz, mdl.o_mtz)
+            obj = refine_phenix(pdb_file=mdl.o_pdb, mtz_file=mdl.o_mtz, cif_files=self.cifs,
+                                out_prefix=os.path.splitext(mdl.o_pdb)[0]+suffix,
+                                strategy='individual_sites+occupancies', n_cycles=1)
+            obj.tag = mdl.tag
+            proc_args.append(obj)
+
+        # Refine all of the models
+        refined = libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_run, args=proc_args, chunksize=1)
+
+        for mdl, ref in zip(self.models, proc_args):
+            assert mdl.tag == ref.tag
+            mdl.r_pdb = ref.out_pdb_file
+            mdl.r_mtz = ref.out_mtz_file
+            assert os.path.exists(mdl.r_pdb), '{} does not exist'.format(mdl.r_pdb)
+            assert os.path.exists(mdl.r_mtz), '{} does not exist'.format(mdl.r_mtz)
+
+    def generate_fitted_table_ones(self, out_dir='.'):
         """Write table-ones for each structure before and after fitting"""
+
         easy_directory(out_dir)
 
         self.log.subheading('Generating "Table Ones" for input and fitted B-factor models')
 
-        mtz_links = []
         for mdl in self.models:
-
-            if not os.path.exists(mdl.o_mtz):
-                rel_symlink(mdl.i_mtz, mdl.o_mtz)
-                mtz_links.append(mdl.o_mtz)
+            if not os.path.exists(mdl.o_mtz): rel_symlink(mdl.i_mtz, mdl.o_mtz)
 
             assert  os.path.exists(mdl.i_pdb) and \
                     os.path.exists(mdl.i_mtz) and \
@@ -393,12 +669,18 @@ class MultiDatasetTLSParameterisation(object):
 
         output_eff_orig = os.path.abspath(os.path.join(out_dir, 'table_one_input.eff'))
         output_eff_fitd = os.path.abspath(os.path.join(out_dir, 'table_one_fitted.eff'))
+        output_eff_refd = os.path.abspath(os.path.join(out_dir, 'table_one_refined.eff'))
+
+        # Save the names of the csvs (to be created)
+        self.table_one_csv_input   = output_eff_orig.replace('.eff', '.csv')
+        self.table_one_csv_fitted  = output_eff_fitd.replace('.eff', '.csv')
+        self.table_one_csv_refined = output_eff_refd.replace('.eff', '.csv')
 
         phil = multi_table_ones.master_phil.extract()
         phil.input.dir        = []
-        phil.input.labelling  = params.input.labelling
-        phil.options          = params.table_ones_options
-        phil.settings.cpus    = params.settings.cpus
+        phil.input.labelling  = self.params.input.labelling
+        phil.options          = self.params.table_ones_options
+        phil.settings.cpus    = self.params.settings.cpus
         phil.settings.verbose = False
 
         # Run 1
@@ -413,23 +695,32 @@ class MultiDatasetTLSParameterisation(object):
         phil.output.output_basename = os.path.splitext(output_eff_fitd)[0]
         multi_table_ones.run(params=phil)
 
+        # Run 3
+        if self.models[0].r_pdb is not None:
+            phil.input.pdb = [mdl.r_pdb for mdl in self.models]
+            phil.output.parameter_file = output_eff_refd
+            phil.output.output_basename = os.path.splitext(output_eff_refd)[0]
+            multi_table_ones.run(params=phil)
+
         self.log.subheading('Running phenix.table_one to calculate R-factors')
-        for f in [output_eff_orig,output_eff_fitd]:
+        for f in [output_eff_orig,output_eff_fitd,output_eff_refd]:
+            if not os.path.exists(f): continue
             cmd = CommandManager('phenix.table_one')
             cmd.add_command_line_arguments([f])
-            self.log('Running: {}'.format(' '.join(cmd.program+cmd.cmd_line_args)))
+            cmd.print_settings()
             cmd.run()
             cmd.write_output(f.replace('.eff','.log'))
-        #for m in mtz_links: os.remove(m)
 
-        # Now that created, save the names of the csvs
-        self.table_one_csv_input  = output_eff_orig.replace('.eff', '.csv')
-        self.table_one_csv_fitted = output_eff_fitd.replace('.eff', '.csv')
+        # Clear all of the symlinks
+        for mdl in self.models:
+            if os.path.islink(mdl.o_mtz):
+                os.remove(mdl.o_mtz)
 
         assert os.path.exists(self.table_one_csv_input)
         assert os.path.exists(self.table_one_csv_fitted)
+        assert os.path.exists(self.table_one_csv_refined)
 
-    def write_summary_statistics_csv(self, out_dir='.'):
+    def write_combined_csv(self, out_dir='.'):
         """Add data to CSV and write"""
 
         easy_directory(out_dir)
@@ -459,7 +750,8 @@ class MultiDatasetTLSParameterisation(object):
         # Extract data from the table one CSVs
         self.log.subheading('Looking for table one data')
         for pref, csv in [('old-', self.table_one_csv_input),
-                          ('new-', self.table_one_csv_fitted)]:
+                          ('new-', self.table_one_csv_fitted),
+                          ('ref-', self.table_one_csv_refined)]:
             self.log('Reading: {}'.format(csv))
             if not os.path.exists(csv):
                 raise Exception('Cannot read: {}'.format(csv))
@@ -479,104 +771,35 @@ class MultiDatasetTLSParameterisation(object):
         self.log('Writing output csv: {}'.format(filename))
         self.table.to_csv(filename)
 
-    def write_summary_statistics_graphs_and_structures(self, out_dir='./'):
-        """Write atom-by-atom and dataset-by-dataset graphs"""
+        # Make graphs for the table
+        self.write_r_factor_analysis(table=self.table, out_dir=os.path.join(out_dir,'graphs'))
 
-        easy_directory(out_dir)
-        err_dir = easy_directory(os.path.join(out_dir, 'fit_quality'))
-        atm_dir = easy_directory(os.path.join(err_dir, 'atom_by_atom'))
+    def write_r_factor_analysis(self, table, out_dir='./'):
+        """Look at pre- and post-refinement graphs"""
 
-        # ----------------------------------------------------
-        # Write the rmsds from the refined uijs
-        # ----------------------------------------------------
-        self.log.subheading('Calculating atom-by-atom rmsds to refined B-factors')
-        h = self.blank_master_hierarchy()
-        for i_g, group in enumerate(self.groups):
-            fit = self.fits[group]
-            sel_h = h.select(self.atom_selections[group])
-            # Apply rmsd values to structure
-            sel_h.atoms().set_b(flex.double(fit.uij_fit_obs_atom_averaged_rmsds()))
-            sel_h.atoms().set_uij(flex.sym_mat3_double(fit.uij_fit_obs_atom_averaged_differences()))
-            # Extract the atoms in this group as list for indexing
-            sel_a = list(sel_h.atoms())
-            rmsds = fit.uij_fit_obs_all_rmsds()
-            # ------------------------
-            # Write boxplots for all atoms in each dataset
-            # ------------------------
-            for i_d in range(0, len(self.models), 50):
-                self.boxplot(filename=os.path.join(err_dir, 'dataset-by-dataset-rmsds-datasets-group-{:02d}-{:04d}-{:04d}.png'.format(i_g+1,i_d+1,i_d+50)),
-                             y_vals=rmsds.T[:,i_d:i_d+50], x_labels=numpy.arange(i_d,min(i_d+50,len(self.models)))+1,
-                             title='rmsd of fitted and refined B-factors (by dataset)',
-                             x_lab='dataset', y_lab='rmsd', rotate_x_labels=True,
-                             x_lim=(0,51), y_lim=(numpy.min(rmsds), numpy.max(rmsds)))
-            # ------------------------
-            # Write boxplots for all of the atoms in this group
-            # ------------------------
-            # Breaks between residues
-            i_brk = numpy.array([float(i)+1.5 for i, (a1,a2) in enumerate(zip(sel_a,sel_a[1:])) if a1.parent().parent().resid()!=a2.parent().parent().resid()])
-            for i_a in range(0, len(sel_a), 50):
-                self.boxplot(filename=os.path.join(atm_dir, 'rmsds-group-{:02d}-atoms-{:06d}-{:06d}.png'.format(i_g+1,i_a+1,i_a+50)),
-                             y_vals=rmsds[:,i_a:i_a+50], x_labels=[ShortLabeller.format(a) for a in sel_a[i_a:i_a+50]],
-                             title='rmsd of fitted and refined B-factors (by atom)',
-                             x_lab='atom', y_lab='rmsd', rotate_x_labels=True,
-                             x_lim=(0,51), y_lim=(numpy.min(rmsds), numpy.max(rmsds)), vlines=i_brk-i_a)
-            # ------------------------
-            # Write boxplots for atoms in each residue group separately
-            # ------------------------
-            for rg in sel_h.residue_groups():
-                self.boxplot(filename=os.path.join(atm_dir, 'rmsds-residue-{}-group-{:02d}.png'.format(ShortLabeller.format(rg),i_g+1)),
-                             y_vals=rmsds[:, [sel_a.index(a) for a in rg.atoms()]],
-                             x_labels=[ShortLabeller.format(a) for a in rg.atoms()],
-                             title='average rmsd of fitted and refined B-factors: {}'.format(ShortLabeller.format(rg)),
-                             x_lab='atom', y_lab='rmsd', rotate_x_labels=True,
-                             y_lim=(numpy.min(rmsds), numpy.max(rmsds)))
-        # ----------------------------------------------------
-        # Write out structure
-        # ----------------------------------------------------
-        h.write_pdb_file(os.path.join(err_dir, 'average_rmsd_uij.pdb'))
-        sel_h = h.select(self.atom_selection_all)
-        # ----------------------------------------------------
-        # Write averaged rmsds for all atoms by residue
-        # ----------------------------------------------------
-        self.log.subheading('Calculating residue-by-residue rmsds to refined B-factors')
-        all_bs = numpy.concatenate([list(rg.atoms().extract_b()) for rg in sel_h.residue_groups()])
-        min_b, max_b = numpy.min(all_bs), numpy.max(all_bs)
-        for sel_c in sel_h.chains():
-            all_rgs = list(sel_c.residue_groups())
-            for i_rg in range(0, len(all_rgs), 50):
-                this_rgs = all_rgs[i_rg:i_rg+50]
-                self.boxplot(filename=os.path.join(err_dir, 'residue-by-residue-rmsds-chain-{}-residues-{:04d}-{:04d}.png'.format(sel_c.id,i_rg+1,i_rg+50)),
-                             y_vals=[numpy.array(rg.atoms().extract_b()) for rg in this_rgs],
-                             x_labels=[ShortLabeller.format(rg) for rg in this_rgs],
-                             title='averaged rmsds of fitted and refined B-factors (for each residue)',
-                             x_lab='residue', y_lab='rmsd', rotate_x_labels=True,
-                             x_lim=(0,51), y_lim=(numpy.min(all_bs), numpy.max(all_bs)))
-        # ----------------------------------------------------
-        # Write average rmsds for each dataset
-        # ----------------------------------------------------
-        self.log.subheading('Calculating dataset-by-dataset rmsds to refined B-factors')
-        all_rmsds = self.fits[self.groups[0]].uij_fit_obs_all_rmsds()
-        for g in self.groups[1:]:
-            all_rmsds = numpy.append(all_rmsds, self.fits[g].uij_fit_obs_all_rmsds(), axis=1)
-        for i_m in range(0, len(self.models), 50):
-            m_idxs = numpy.arange(i_m,min(i_m+50,len(self.models)))
-            self.boxplot(filename=os.path.join(err_dir, 'dataset-by-dataset-rmsds-datasets-{:04d}-{:04d}.png'.format(i_m+1, i_m+50)),
-                         y_vals=[all_rmsds[:,i].flatten() for i in m_idxs], x_labels=m_idxs+1,
-                         title='rmsds for each dataset of fitted and refined B-factors',
-                         x_lab='dataset', y_lab='rmsd', rotate_x_labels=True,
-                         x_lim=(0,51), y_lim=(numpy.min(all_rmsds), numpy.max(all_rmsds)))
-        # ----------------------------------------------------
-        # Write distributions of amplitudes for tls models
-        # ----------------------------------------------------
-        for i_g, group in enumerate(self.groups):
-            fit = self.fits[group]
-            amps = fit.fitted_tls_amplitudes()
-            x_vals = []; [[x_vals.append(amps[:,i_m,i_a]) for i_a in range(3)] for i_m in range(amps.shape[1])]
-            self.histograms(filename=os.path.join(out_dir, 'tls-model-amplitudes-group-{}.png'.format(i_g+1)), x_vals=x_vals,
-                            titles=numpy.concatenate(['T (group {a})-L (group {a})-S (group {a})'.format(a=i_m+1).split('-') for i_m in range(amps.shape[1])]),
-                            x_labs=['']*numpy.product(amps.shape[1:]), rotate_x_labels=True, shape=amps.shape[1:], n_bins=30)
+        out_dir = easy_directory(out_dir)
+
+        self.log.subheading('Writing final graphs')
+
+        filename = os.path.join(out_dir, 'r_free_change.png')
+        ax = table.plot(x='old-R-free', y='new-R-free', kind='scatter')
+        pyplot.savefig(filename)
+        pyplot.close(ax.get_figure())
+
+        filename = os.path.join(out_dir, 'r_work_change.png')
+        ax = table.plot(x='old-R-work', y='new-R-work', kind='scatter')
+        pyplot.savefig(filename)
+        pyplot.close(ax.get_figure())
+
+        filename = os.path.join(out_dir, 'dataset_mean_rmsds.png')
+        ax = table.plot(x='old-High Res Limit', y='mean_rmsds', kind='scatter')
+        pyplot.savefig(filename)
+        pyplot.close(ax.get_figure())
+
+        return
 
     def boxplot(self, filename, y_vals, x_labels, title, x_lab='x', y_lab='y', x_lim=None, y_lim=None, rotate_x_labels=True, vlines=None):
+        """Generate standard boxplot"""
 
         self.log('Writing: {}'.format(filename))
 
@@ -601,6 +824,7 @@ class MultiDatasetTLSParameterisation(object):
         return
 
     def histograms(self, filename, x_vals, titles, x_labs, rotate_x_labels=True, shape=None, n_bins=30):
+        """Generate standard histogram"""
 
         self.log('Writing: {}'.format(filename))
 
@@ -618,6 +842,33 @@ class MultiDatasetTLSParameterisation(object):
             if rotate_x_labels:
                 labels = axis.get_xticklabels()
                 pyplot.setp(labels, rotation=90)
+        pyplot.tight_layout()
+        pyplot.savefig(filename)
+        pyplot.close(fig)
+
+        return
+
+    def violinplot(self, filename, y_vals, x_labels, title, x_lab='x', y_lab='y', x_lim=None, y_lim=None, rotate_x_labels=True, vlines=None):
+        """Generate standard violin plot"""
+
+        self.log('Writing: {}'.format(filename))
+
+        fig = pyplot.figure()
+        pyplot.rc('font', family='monospace')
+        pyplot.title(title)
+        pyplot.violinplot(y_vals, showmeans=True)
+        pyplot.xticks(range(1,len(x_labels)+1), x_labels)
+        #pyplot.violinplot(y_vals, labels=x_labels, showmeans=True)
+        if (vlines is not None) and (y_lim is not None):
+            for v in vlines:
+                pyplot.vlines(v, y_lim[0], y_lim[1])
+        pyplot.xlabel(x_lab)
+        pyplot.ylabel(y_lab)
+        pyplot.xlim(x_lim)
+        pyplot.ylim(y_lim)
+        if rotate_x_labels:
+            locs, labels = pyplot.xticks()
+            pyplot.setp(labels, rotation=90)
         pyplot.tight_layout()
         pyplot.savefig(filename)
         pyplot.close(fig)
@@ -1105,7 +1356,7 @@ class MultiDatasetTLSFitter(object):
                               atoms    = None)
                     proc_args.append(n._prep_for_mp())
                 self.log.subheading('Running optimisation')
-                self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=proc_wrapper, args=proc_args, chunksize=1))
+                self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1))
                 self.optimisation_summary(False)
                 #########################################
 
@@ -1151,7 +1402,7 @@ class MultiDatasetTLSFitter(object):
                                           atoms    = None)
                                 proc_args.append(n._prep_for_mp())
                             self.log.subheading('Running optimisation')
-                            self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=proc_wrapper, args=proc_args, chunksize=1))
+                            self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1))
                             self.optimisation_summary(False)
                         #########################################
                         self.log.heading('Optimising TLS amplitudes for all datasets ({})'.format(cycle_str))
@@ -1165,7 +1416,7 @@ class MultiDatasetTLSFitter(object):
                                       atoms    = None)
                             proc_args.append(n._prep_for_mp())
                         self.log.subheading('Running optimisation')
-                        self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=proc_wrapper, args=proc_args, chunksize=1))
+                        self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1))
                         self.log.subheading('Normalising all TLS amplitudes to average of one')
                         self._normalise_tls_amplitudes()
                         self.optimisation_summary(False)
@@ -1183,7 +1434,7 @@ class MultiDatasetTLSFitter(object):
                               atoms    = [i])
                     proc_args.append(n._prep_for_mp())
                 self.log.subheading('Running optimisation')
-                self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=proc_wrapper, args=proc_args, chunksize=1))
+                self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1))
                 self.optimisation_summary(False)
             #########################################
             self.log.subheading('End of macrocycle {}'.format(i_macro+1))
@@ -1401,9 +1652,6 @@ def run(params):
         label_func = lambda f: os.path.basename(os.path.splitext(f)[0])
     models = [CrystallographicModel.from_file(f).label(tag=label_func(f)) for f in params.input.pdb]#[:10]
 
-    # Check that all models are the same
-    # TODO
-
 #    # Extract the TLS model of the first dataset
 #    log('No TLS models provided. Trying to extract from first crystallographic model')
 #    tls_params = extract_tls_from_pdb(models[0].filename).tls_params
@@ -1415,18 +1663,13 @@ def run(params):
 #        log('S: {}'.format(tuple(tls.s)))
 #    assert len(tls_params) != 0, 'No TLS models found in structure.'
 
-
-    p = MultiDatasetTLSParameterisation(models = models,
-                                        groups = params.input.tls_group,
-                                        params = params.fitting,
-                                        n_cpu  = params.settings.cpus,
-                                        log = log)
-    p.fit(params.fitting.number_of_macro_cycles, params.fitting.number_of_micro_cycles)
-    p.write_summary_statistics_graphs_and_structures(out_dir=params.output.out_dir)
-    p.write_fitted_uij_structures(out_dir=params.output.out_dir)
-    p.write_parameterised_structures(out_dir=os.path.join(params.output.out_dir, 'structures'))
-    p.generate_fitted_table_ones(params=params, out_dir=os.path.join(params.output.out_dir, 'table_ones'))
-    p.write_summary_statistics_csv(out_dir=params.output.out_dir)
+    p = MultiDatasetBFactorParameterisation(models = models,
+                                            groups = params.input.tls_group,
+                                            params = params,
+                                            n_cpu  = params.settings.cpus,
+                                            log = log)
+    p.fit()
+    p.write_output()
 
     #embed()
 

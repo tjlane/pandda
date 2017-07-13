@@ -1,0 +1,126 @@
+#!/usr/bin/env ccp4-python
+
+import os, sys
+import math
+
+import pandas, numpy
+
+import libtbx.phil, libtbx.easy_mp
+
+from libtbx.utils import Sorry, Failure
+
+from bamboo.common.path import easy_directory
+from bamboo.common.logs import Log
+
+from giant.xray.refine import BFactorRefinementFactory
+
+numpy.set_printoptions(threshold=numpy.nan)
+
+EIGHT_PI_SQ = 8*math.pi*math.pi
+
+############################################################################
+
+PROGRAM = 'giant.datasets.b_factor_refine'
+
+DESCRIPTION = """
+    Refine the B-factors of a series of datasets using different protocols.
+"""
+
+############################################################################
+
+blank_arg_prepend = {'.pdb':'pdb=', '.cif':'cif='}
+
+master_phil = libtbx.phil.parse("""
+input {
+    pdb = None
+        .help = "input pdb file"
+        .multiple = True
+        .type = str
+    cif = None
+        .type = str
+        .multiple = True
+    tls_selections = tls_selections.params
+        .help = "define the tls groups (used for all structures)"
+        .type = path
+        .multiple = False
+    labelling = filename *foldername
+        .type = choice
+        .multiple = False
+}
+output {
+    out_dir = refined-b-factors
+        .help = "output directory"
+        .type = str
+    log_file = refined-b-factors.log
+        .type = str
+}
+settings {
+    cpus = 48
+        .type = int
+        .multiple = False
+}
+""")
+
+############################################################################
+
+def wrapper_run(tls_fit):
+    for mode in ['isotropic','tls','anisotropic']:
+        tls_fit.log.heading('Refining {} model for {}'.format(mode, tls_fit.tag))
+        tls_fit.refine_b_factors(mode=mode)
+    return tls_fit
+
+def run(params):
+
+    log = Log(verbose=True)
+    log.heading('Validating input parameters')
+
+    out_dir = easy_directory(params.output.out_dir)
+
+    if os.path.exists(params.input.tls_selections):
+        tls_selections = open(params.input.tls_selections, 'r').read().strip().split('\n')
+        log('Using existing TLS selections:')
+        log('\t'+'\n\t'.join(tls_selections))
+    else:
+        tls_selections = None
+
+    log.heading('Fitting TLS Parameters')
+
+    all_fits = []
+
+    for p in params.input.pdb:
+
+        if params.input.labelling == 'foldername':
+            tag = os.path.basename(os.path.dirname(p))
+        elif params.input.labelling == 'filename':
+            tag = os.path.basename(os.path.splitext(p)[0])
+
+        fit = BFactorRefinementFactory(pdb_file=p,
+                                       mtz_file=p.replace('.pdb', '.mtz'),
+                                       cif_files=params.input.cif,
+                                       out_dir=os.path.join(out_dir,tag),
+                                       tag=tag,
+                                       tls_selections=tls_selections)
+
+        if tls_selections is None:
+            tls_selections=fit.tls_selections
+
+            assert not os.path.exists(params.input.tls_selections)
+            with open(params.input.tls_selections, 'w') as fh: fh.write('\n'.join(tls_selections))
+
+        all_fits.append(fit)
+
+    all_fits = libtbx.easy_mp.pool_map(fixed_func=wrapper_run, args=all_fits, processes=params.settings.cpus, chunksize=1)
+
+    log.heading('DONE')
+
+############################################################################
+
+if __name__=='__main__':
+    from giant.jiffies import run_default
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION)
