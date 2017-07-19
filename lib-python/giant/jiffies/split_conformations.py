@@ -68,6 +68,10 @@ options {
             .help = "Output filename component containing residues not selected through 'rename'"
             .type = str
     }
+    pruning {
+        rmsd_cutoff = 0.1
+            .type = float
+    }
 }
 settings {
     overwrite = False
@@ -119,13 +123,15 @@ def split_conformations(filename, params, log=None):
     else:
         raise Exception('Invalid selection for options.mode: {}'.format(params.options.mode))
 
-    print out_confs
-    print out_suffs
+    assert len(out_confs) == len(out_suffs), '{} not same length as {}'.format(str(out_confs), str(out_suffs))
+
+    for confs, suffix in zip(out_confs, out_suffs):
+        print 'Conformers {} -> {}'.format(str(confs), suffix)
 
     # Create paths from the suffixes
     out_paths = ['.'.join([os.path.splitext(filename)[0],params.output.suffix_prefix,suff,'pdb']) for suff in out_suffs]
 
-    log.subheading('Pruning conformers in {}'.format(filename[-70:]))
+    log.subheading('Processing {}'.format(filename[-70:]))
 
     for this_confs, this_path in zip(out_confs, out_paths):
 
@@ -141,18 +147,20 @@ def split_conformations(filename, params, log=None):
         log.bar()
         log('Keeping ANY atom with conformer id: {}'.format(' or '.join(['" "']+this_confs)))
         log('Selection: \n\t'+sel_string)
-        log.bar()
 
         if params.output.prune_duplicates:
+            log.bar()
+            log('Pruning redundant conformers')
             # Remove an alternate conformers than are duplicated after selection
             prune_redundant_alternate_conformations(
                 hierarchy           = sel_hiery,
-                required_altlocs    = sel_hiery.altloc_indices(),
-                rmsd_cutoff         = 0.1,
+                required_altlocs    = [a for a in sel_hiery.altloc_indices() if a],
+                rmsd_cutoff         = params.options.pruning.rmsd_cutoff,
                 in_place            = True,
                 verbose             = params.settings.verbose)
 
         if params.output.reset_altlocs:
+            log.bar()
             # Change the altlocs so that they start from "A"
             if len(this_confs) == 1:
                 conf_hash = {this_confs[0]: ' '}
@@ -161,14 +169,14 @@ def split_conformations(filename, params, log=None):
             log('Resetting structure altlocs:')
             for k in sorted(conf_hash.keys()):
                 log('\t{} -> "{}"'.format(k, conf_hash[k]))
-            log.bar()
+            if params.settings.verbose: log.bar()
             for ag in sel_hiery.atom_groups():
                 if ag.altloc in this_confs:
                     if params.settings.verbose:
                         log('{} -> alt {}'.format(Labeller.format(ag), conf_hash[ag.altloc]))
                     ag.altloc = conf_hash[ag.altloc]
-            if params.settings.verbose: log.bar()
 
+        log.bar()
         log('Writing structure: {}'.format(this_path))
         log.bar(False, True)
 
@@ -189,8 +197,6 @@ def run(params):
     log.heading('Validating input parameters')
 
     assert params.input.pdb, 'No PDB files given'
-
-    print params.options.by_conformer_group.conformers
 
     log.heading('Splitting multi-state structures')
 
