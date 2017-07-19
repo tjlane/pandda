@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+for i in "$@"; do
+  cp $CCP4/lib/data/monomers/*/$i.cif .
+done

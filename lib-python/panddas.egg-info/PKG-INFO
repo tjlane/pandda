@@ -1,0 +1,17 @@
+Metadata-Version: 1.1
+Name: panddas
+Version: 0.2.5
+Summary: Multi-dataset crystallographic analyses
+Home-page: http://pandda.bitbucket.org
+Author: Nicholas M Pearce
+Author-email: nicholas.pearce.0@gmail.com
+License: CC BY-SA 4.0
+Description: UNKNOWN
+Platform: UNKNOWN
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Natural Language :: English
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Operating System :: Unix

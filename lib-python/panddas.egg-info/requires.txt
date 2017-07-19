@@ -1,0 +1,5 @@
+pandas
+jinja2
+markupsafe
+ascii_graph
+numpy>=1.10.4
