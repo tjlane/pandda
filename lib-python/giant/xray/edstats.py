@@ -14,7 +14,7 @@ class Edstats(object):
         self.scores = pandas.DataFrame.from_dict(scores)
         self._command = command
 
-    def extract_residue_group_scores(residue_group, data_table=None, rg_label=None, column_suffix=''):
+    def extract_residue_group_scores(self, residue_group, data_table=None, rg_label=None, column_suffix=''):
         """Extract density quality metrics for a residue group from precalculated edstats scores"""
 
         rg = residue_group
