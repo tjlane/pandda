@@ -4,6 +4,8 @@ from bamboo.common.command import CommandManager
 from bamboo.common.path import easy_directory
 from bamboo.common.logs import Log
 
+from giant.xray.tls import phenix_find_tls_groups
+
 class _refiner(object):
 
     program = None
@@ -142,20 +144,7 @@ class BFactorRefinementFactory(object):
 
         self.log.subheading('Determining TLS groups for: {}'.format(pdb_file))
 
-        cmd = CommandManager('phenix.find_tls_groups')
-        cmd.add_command_line_arguments(pdb_file)
-
-        cmd.print_settings()
-        ret_code = cmd.run()
-
-        if ret_code != 0:
-            self.log(cmd.output)
-            self.log(cmd.error)
-            raise Exception('Failed to determine TLS groups: {}'.format(' '.join(cmd.program)))
-
-        regex = re.compile("refinement\.refine\.adp \{([\s\S]*?)\}")
-        tls_command = regex.findall(cmd.output)[0]
-        tls_selections = [s.strip() for s in tls_command.split('tls =') if s.strip()]
+        tls_selections = phenix_find_tls_groups(pdb_file)
 
         self.log.subheading('Identified TLS Selections:')
         for s in tls_selections:

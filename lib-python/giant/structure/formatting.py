@@ -223,13 +223,13 @@ class PhenixSelection(_Selection):
 
     remove = ['','model ']
 
-    model       = 'model {}'
-    chain       = 'chain {}'
-    resseq      = 'resseq "{}"'
-    icode       = 'icode "{:1}"'
-    resname     = 'resname {}'
-    altloc      = 'altid "{:1}"'
-    name        = 'name {}'
+    model       = "model {}"
+    chain       = "chain '{:1}'"
+    resseq      = "resseq {}"
+    icode       = "icode '{:1}'"
+    resname     = "resname '{}'"
+    altloc      = "altid '{:1}'"
+    name        = "name {}"
 
 
 class _Formatter:

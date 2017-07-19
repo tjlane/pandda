@@ -47,6 +47,10 @@ input {
         .type = choice
         .multiple = False
 }
+refinement {
+    b_factor_models = *isotropic *tls *anisotropic
+        type = choice(multi=True)
+}
 output {
     out_dir = refined-b-factors
         .help = "output directory"
@@ -64,7 +68,7 @@ settings {
 ############################################################################
 
 def wrapper_run(tls_fit):
-    for mode in ['isotropic','tls','anisotropic']:
+    for mode in tls_fit.b_factor_models:
         tls_fit.log.heading('Refining {} model for {}'.format(mode, tls_fit.tag))
         tls_fit.refine_b_factors(mode=mode)
     return tls_fit
@@ -100,12 +104,15 @@ def run(params):
                                        out_dir=os.path.join(out_dir,tag),
                                        tag=tag,
                                        tls_selections=tls_selections)
+        # Append models for MP step
+        fit.b_factor_models = params.refinement.b_factor_models
 
         if tls_selections is None:
             tls_selections=fit.tls_selections
 
-            assert not os.path.exists(params.input.tls_selections)
-            with open(params.input.tls_selections, 'w') as fh: fh.write('\n'.join(tls_selections))
+        # Rewrite the file with the sanitised TLS selections
+        assert not os.path.exists(params.input.tls_selections)
+        with open(params.input.tls_selections, 'w') as fh: fh.write('\n'.join(tls_selections))
 
         all_fits.append(fit)
 

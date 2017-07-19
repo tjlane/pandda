@@ -263,7 +263,7 @@ class MultiDatasetBFactorParameterisation(object):
         self.write_tls_subtracted_models(out_dir=os.path.join(self.out_dir,'tls_subtracted_models'))
 
         self.log.heading('Outputting fitted structures for each dataset')
-        self.write_fitted_dataset_models(out_dir=os.path.join(self.out_dir, 'fitted_structures'))
+        self.write_fitted_dataset_models(out_dir=os.path.join(self.out_dir, 'parameterised_structures'))
         if self.params.refine.refine_output_structures:
             self.refine_fitted_dataset_models()
 
@@ -277,6 +277,8 @@ class MultiDatasetBFactorParameterisation(object):
         """Write the TLS models and amplitudes to files"""
 
         out_dir = easy_directory(out_dir)
+
+        tls_dir = easy_directory(os.path.join(out_dir, 'tls_groups'))
 
         # Output objects
         amp_table = pandas.DataFrame(index=[mdl.tag for mdl in self.models])
@@ -299,7 +301,7 @@ class MultiDatasetBFactorParameterisation(object):
             amps = fit.fitted_tls_amplitudes()
             # Write histograms of amplitudes
             x_vals = []; [[x_vals.append(amps[:,i_m,i_a]) for i_a in range(3)] for i_m in range(amps.shape[1])]
-            self.histograms(filename=os.path.join(out_dir, 'tls-model-amplitudes-group-{}.png'.format(i_g+1)), x_vals=x_vals,
+            self.histograms(filename=os.path.join(tls_dir, 'tls-model-amplitudes-group-{}.png'.format(i_g+1)), x_vals=x_vals,
                             titles=numpy.concatenate(['T (group {a})-L (group {a})-S (group {a})'.format(a=i_m+1).split('-') for i_m in range(amps.shape[1])]),
                             x_labs=['']*numpy.product(amps.shape[1:]), rotate_x_labels=True, shape=amps.shape[1:], n_bins=30)
             # Add to table of amplitudes
@@ -323,6 +325,8 @@ class MultiDatasetBFactorParameterisation(object):
         """Write residual B-factors to master hierarchy."""
 
         easy_directory(out_dir)
+
+        tls_dir = easy_directory(os.path.join(out_dir, 'tls_groups'))
 
         # ----------------------------------------------------
         # Apply the residual B-factors to the master h
@@ -349,7 +353,7 @@ class MultiDatasetBFactorParameterisation(object):
             # Which atoms are in this group anyway?
             g = self.blank_master_hierarchy()
             g.atoms().select(sel).set_b(flex.double(g.atoms().select(sel).size(), 10))
-            g.write_pdb_file(os.path.join(out_dir, 'tls-group-{:02d}-atoms.pdb'.format(i_g+1)))
+            g.write_pdb_file(os.path.join(tls_dir, 'tls-group-{:02d}-atoms.pdb'.format(i_g+1)))
             # ALL TLS contributions
             uij = fit.average_fitted_uij_tls(xyz=xyz)
             h.atoms().select(sel).set_b(flex.double(EIGHT_PI_SQ*numpy.mean(uij[:,0:3],axis=1)))
@@ -488,6 +492,7 @@ class MultiDatasetBFactorParameterisation(object):
             # ------------------------
             if i_g == 0: all_rmsds = rmsds
             else:        all_rmsds = numpy.append(all_rmsds, rmsds, axis=1)
+        print  all_rmsds.shape
         # ----------------------------------------------------
         # Write distribution of rmsds for each dataset
         # ----------------------------------------------------
@@ -495,7 +500,8 @@ class MultiDatasetBFactorParameterisation(object):
         for i_m in range(0, len(self.models), 50):
             m_idxs = numpy.arange(i_m,min(i_m+50,len(self.models)))
             self.boxplot(filename=os.path.join(dst_dir, 'dataset-by-dataset-rmsds-datasets-{:04d}-{:04d}.png'.format(i_m+1, i_m+50)),
-                         y_vals=[all_rmsds[:,i].flatten() for i in m_idxs],
+#                         y_vals=[all_rmsds[:,i].flatten() for i in m_idxs],
+                         y_vals=[all_rmsds[i,:].flatten() for i in m_idxs],
                          x_labels=dst_labels[m_idxs].tolist(),
                          title='rmsds for each dataset of fitted and refined B-factors',
                          x_lab='dataset', y_lab='rmsd', rotate_x_labels=True,
@@ -515,6 +521,13 @@ class MultiDatasetBFactorParameterisation(object):
             h_avg.select(sel).atoms().set_uij(flex.sym_mat3_double(fit.uij_fit_obs_atom_averaged_differences()))
             # Calculate IQRs of rmsds for each atom
             h_iqr.select(sel).atoms().set_b(flex.double(numpy.subtract(*numpy.percentile(rmsds, [75, 25],axis=0))))
+            # Write output to csv
+            filename = os.path.join(out_dir, 'all_rmsd_scores_group_{}.csv'.format(i_g+1))
+            g_table = pandas.DataFrame(data    = rmsds,
+                                       index   = [m.tag for m in self.models],
+                                       columns = [ShortLabeller.format(a) for a in self.master_h.atoms().select(sel)])
+            self.log('Writing: {}'.format(filename))
+            g_table.to_csv(filename)
         # Write out structures
         h_avg.write_pdb_file(os.path.join(out_dir, 'uij_fit_rmsds_averages.pdb'))
         h_iqr.write_pdb_file(os.path.join(out_dir, 'uij_fit_rmsds_iqranges.pdb'))
@@ -618,8 +631,9 @@ class MultiDatasetBFactorParameterisation(object):
                 h_fit.atoms().select(sel).set_b(flex.double(h_fit.atoms().select(sel).size(), 0))
                 h_fit.atoms().select(sel).set_uij(flex.sym_mat3_double(uij))
             # Create fitted model paths
-            mdl.o_pdb = os.path.join(out_dir, mdl.tag+'.mda.pdb')
-            mdl.o_mtz = os.path.join(out_dir, mdl.tag+'.mda.mtz')
+            mdl_dir = easy_directory(os.path.join(out_dir, mdl.tag))
+            mdl.o_pdb = os.path.join(mdl_dir, 'md-adp.pdb')
+            mdl.o_mtz = os.path.join(mdl_dir, 'md-adp.mtz')
             if not os.path.exists(mdl.o_mtz):
                 rel_symlink(mdl.i_mtz, mdl.o_mtz)
             # Write model
@@ -678,19 +692,20 @@ class MultiDatasetBFactorParameterisation(object):
 
         phil = multi_table_ones.master_phil.extract()
         phil.input.dir        = []
-        phil.input.labelling  = self.params.input.labelling
         phil.options          = self.params.table_ones_options
         phil.settings.cpus    = self.params.settings.cpus
         phil.settings.verbose = False
 
         # Run 1
         phil.input.pdb = [mdl.i_pdb for mdl in self.models]
+        phil.input.labelling  = self.params.input.labelling
         phil.output.parameter_file = output_eff_orig
         phil.output.output_basename = os.path.splitext(output_eff_orig)[0]
         multi_table_ones.run(params=phil)
 
         # Run 2
         phil.input.pdb = [mdl.o_pdb for mdl in self.models]
+        phil.input.labelling = 'foldername'
         phil.output.parameter_file = output_eff_fitd
         phil.output.output_basename = os.path.splitext(output_eff_fitd)[0]
         multi_table_ones.run(params=phil)
@@ -698,6 +713,7 @@ class MultiDatasetBFactorParameterisation(object):
         # Run 3
         if self.models[0].r_pdb is not None:
             phil.input.pdb = [mdl.r_pdb for mdl in self.models]
+            phil.input.labelling = 'foldername'
             phil.output.parameter_file = output_eff_refd
             phil.output.output_basename = os.path.splitext(output_eff_refd)[0]
             multi_table_ones.run(params=phil)
@@ -725,17 +741,6 @@ class MultiDatasetBFactorParameterisation(object):
 
         easy_directory(out_dir)
         self.log.subheading('Writing output csvs')
-
-        # ----------------------------------------------------
-        # Group-by-group rmsds CSV
-        # ----------------------------------------------------
-        for i, g in enumerate(self.groups):
-            filename = os.path.join(out_dir, 'all_rmsd_scores_group_{}.csv'.format(i+1))
-            g_table = pandas.DataFrame(data    = self.fits[g].uij_fit_obs_all_rmsds(),
-                                       index   = [m.tag for m in self.models],
-                                       columns = [ShortLabeller.format(a) for a in self.master_h.atoms().select(self.atom_selections[g])])
-            self.log('Writing: {}'.format(filename))
-            g_table.to_csv(filename)
 
         # ----------------------------------------------------
         # Main output CSV
@@ -1195,8 +1200,7 @@ class MultiDatasetTLSFitter(object):
             self._n_call += 1
         # Return now if physical penalty if non-zero to save time
         if ppen > 0.0:
-            if self._verbose:
-                self.log('[{}] -> ({:>10}, {:10.0f})'.format(', '.join(['{:+10.5f}'.format(r) for r in sub_vector]), 'UNPHYSICAL', ppen))
+            if self._verbose: self.log('[{}] -> ({:>10}, {:10.0f})'.format(', '.join(['{:+10.5f}'.format(r) for r in sub_vector]), 'UNPHYSICAL', ppen))
             return ppen
         # Get the fitted and the observed uijs
         uij_fit = self.extract_fitted_uij(datasets=self._cur_datasets, atoms=self._cur_atoms, parameters=parameters)
@@ -1209,7 +1213,7 @@ class MultiDatasetTLSFitter(object):
         if rmsd+fpen < self.optimisation_rmsd+self.optimisation_penalty:
             self.optimisation_rmsd    = rmsd
             self.optimisation_penalty = fpen
-        if self._verbose: print '[{}] -> ({:10f}, {:10.0f})'.format(', '.join(['{:+10.5f}'.format(r) for r in sub_vector]), rmsd, fpen)
+        if self._verbose: self.log('[{}] -> ({:10f}, {:10.0f})'.format(', '.join(['{:+10.5f}'.format(r) for r in sub_vector]), rmsd, fpen))
         return rmsd+fpen
 
     ################################################################################################
