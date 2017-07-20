@@ -46,6 +46,17 @@ input {
         .type = str
         .multiple = True
 }
+options {
+    minor_occupancy = 0.5
+        .help = 'occupancy of the minor state after merging (multiplies existing occupancies)'
+        .type = float
+    major_occupancy = 0.5
+        .help = 'occupancy of the major state after merging (multiplies existing occupancies)'
+        .type = float
+    reset_all_occupancies = False
+        .help = 'set all conformer occupancies to the same value (1.0/<number of conformers>). overrides minor_occupancy=X and major_occupancy=X.'
+        .type = bool
+}
 output {
     pdb = 'multi-state-model.pdb'
         .help = 'output pdb file'
@@ -138,18 +149,6 @@ def merge_complementary_hierarchies(hierarchy_1, hierarchy_2, in_place=False, ve
         in_place            = True,
         verbose             = verbose)
 
-    # Calculate number of altlocs and associated occupancy
-    altlocs = [a for a in hierarchy_1.altloc_indices() if a]
-    if altlocs:
-        new_occ = 1.0/len(altlocs)
-        log('Setting all conformer ({}) occupancies to {}'.format(','.join(altlocs), new_occ))
-        hierarchy_1 = set_conformer_occupancy(
-            hierarchy   = hierarchy_1,
-            altlocs     = altlocs,
-            occupancy   = new_occ,
-            in_place    = True,
-            verbose     = verbose)
-
     return hierarchy_1
 
 ############################################################################
@@ -163,7 +162,7 @@ def run(params):
     log.heading('Validating input parameters and input files')
 
     # Check one or other have been provided
-    if (params.input.major or params.input.minor) and (params.input.pdb != [None]):
+    if (params.input.major or params.input.minor) and not (params.input.pdb==[None] or params.input.pdb==[]):
         raise Exception('Have provided input.major & input.minor, as well as files to input.pdb. Specify either input.major & input.minor, or two input.pdb.')
     # Assign files to major and minor if necessary
     if not (params.input.major and params.input.minor):
@@ -187,14 +186,18 @@ def run(params):
         else:
             raise Exception('Output file already exists: {}. Run with overwrite=True to remove this file'.format(params.output.pdb))
 
+    # Check that the input occupancies are valid
+    if params.options.minor_occupancy + params.options.major_occupancy > 1.0:
+        raise Exception('minor_occupancy + major_occupancy must be less than 1.0 (currently {}+{})'.format(params.options.minor_occupancy,params.options.major_occupancy))
+
     # Report validated parameters
-    log.heading('Processed merging parameters')
+    log.subheading('Processed merging parameters')
     for obj in master_phil.format(params).objects:
         if obj.name == 'restraints': continue
         log(obj.as_str().strip())
-    log.heading('Reading input files')
 
     # Read in the ligand file and set each residue to the requested conformer
+    log.subheading('Reading input files')
     maj_obj = strip_pdb_to_input(params.input.major, remove_ter=True)
     min_obj = strip_pdb_to_input(params.input.minor, remove_ter=True)
 
@@ -205,12 +208,42 @@ def run(params):
     except:
         raise Sorry('Input structures may only have one model')
 
+    # Multiply the input hierarchies by occupancy multipliers
+    log.subheading('Updating input occupancies prior to merging')
+    log('Multiplying occupancies of input.major by {}'.format(params.options.major_occupancy))
+    maj_obj.hierarchy.atoms().set_occ(maj_obj.hierarchy.atoms().extract_occ()*params.options.major_occupancy)
+    log('Multiplying occupancies of input.minor by {}'.format(params.options.minor_occupancy))
+    min_obj.hierarchy.atoms().set_occ(min_obj.hierarchy.atoms().extract_occ()*params.options.minor_occupancy)
+
     # Merge the hierarchies
     final_struct = merge_complementary_hierarchies(
         hierarchy_1 = maj_obj.hierarchy,
         hierarchy_2 = min_obj.hierarchy,
         in_place    = True,
         verbose     = params.settings.verbose)
+
+    # Set output occupancies
+    log.subheading('Post-processing occupancies')
+    # Set all main-conf occupancies to 1.0
+    log('Setting all main-conf occupancies to 1.0')
+    set_conformer_occupancy(hierarchy   = final_struct,
+                            altlocs     = [''],
+                            occupancy   = 1.0,
+                            in_place    = True,
+                            verbose     = params.settings.verbose)
+    # Reset occupancies if required
+    if params.options.reset_all_occupancies:
+        # Calculate number of altlocs and associated occupancy
+        altlocs = [a for a in final_struct.altloc_indices() if a]
+        if altlocs:
+            new_occ = 1.0/len(altlocs)
+            # Set the occupancies
+            log('Setting all conformer ({}) occupancies to {}'.format(','.join(altlocs), new_occ))
+            set_conformer_occupancy(hierarchy   = final_struct,
+                                    altlocs     = altlocs,
+                                    occupancy   = new_occ,
+                                    in_place    = True,
+                                    verbose     = params.settings.verbose)
 
     # Update the atoms numbering
     final_struct.sort_atoms_in_place()

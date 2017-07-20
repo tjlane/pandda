@@ -46,7 +46,7 @@ def expand_alternate_conformations(hierarchy, in_place=False, verbose=False):
     # If not altlocs found, expand all to "A"
     if full_altloc_set == []:
         if verbose:
-            print 'No altlocs found: expanding all residues to conformer "A"'
+            print 'No altlocs in structure: expanding all residues to conformer "A"'
         full_altloc_set = ['A']
     if verbose:
         print 'Expanding all (appropriate) residues to have altlocs {}'.format(full_altloc_set)
@@ -59,11 +59,14 @@ def expand_alternate_conformations(hierarchy, in_place=False, verbose=False):
                 if verbose: print '{} - expanding to pure conformer (altlocs {})'.format(Labeller.format(residue_group), [a.altloc for a in residue_group.atom_groups()])
                 # Convert all residue_groups to pure alt-conf
                 create_pure_alt_conf_from_proper_alt_conf(residue_group=residue_group, in_place=True)
+            # Can go to next if all conformers are present for this residue group
+            current_set = {a.altloc for a in residue_group.atom_groups()}
+            if not current_set.symmetric_difference(full_altloc_set): continue
             # Only want to expand conformers for protein atoms (which should be present in all conformers)
             # or where the residue group is only present in one conformation (single conformer water)
             # but DO NOT want to expand waters in conformer A to A,B,C etc...
             if protein_amino_acid_set.intersection(residue_group.unique_resnames()) or (not residue_group.have_conformers()):
-                if verbose: print '{} - populating missing conformers (current altlocs {}, target set {})'.format(Labeller.format(residue_group), [a.altloc for a in residue_group.atom_groups()], full_altloc_set)
+                if verbose: print '{} - populating missing conformers (current altlocs {}, target set {})'.format(Labeller.format(residue_group), current_set, full_altloc_set)
                 # Populate missing conformers (from the other conformers)
                 populate_missing_conformers(residue_group=residue_group, full_altloc_set=full_altloc_set, in_place=True)
                 assert [a.altloc for a in residue_group.atom_groups()] == full_altloc_set
@@ -169,7 +172,7 @@ def create_pure_alt_conf_from_proper_alt_conf(residue_group, in_place=False):
         new_main_ag = main_ag.detached_copy()
         # Set the occupancy of the main_conf atoms to be transferred
         max_occ = max(conf_ag.atoms().extract_occ())
-        new_main_ag.atoms().set_occ(flex.double([max_occ]*new_main_ag.atoms().size()))
+        new_main_ag.atoms().set_occ(flex.double(new_main_ag.atoms().size(), max_occ))
         # Change the altloc - very important
         new_main_ag.altloc = conf_ag.altloc
         # Merge the atom groups

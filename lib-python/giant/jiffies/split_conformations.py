@@ -40,12 +40,6 @@ output {
     log = None
         .help = ""
         .type = path
-    reset_altlocs = True
-        .help = 'Relabel conformers of kept residues to begin with "A" (i.e. C,D,E -> A,B,C)'
-        .type = bool
-    prune_duplicates = True
-        .help = 'Remove duplicated conformers in the output structure (convert to blank altloc)'
-        .type = bool
 }
 options {
     mode = by_conformer by_conformer_group *by_residue_name
@@ -69,9 +63,18 @@ options {
             .type = str
     }
     pruning {
+        prune_duplicates = True
+            .help = 'Remove duplicated conformers in the output structure (convert to blank altloc)'
+            .type = bool
         rmsd_cutoff = 0.1
             .type = float
     }
+    reset_altlocs = True
+        .help = 'Relabel conformers of kept residues to begin with "A" (i.e. C,D,E -> A,B,C)'
+        .type = bool
+    reset_occupancies = True
+        .help = 'Normalise the occupancies so that the maximum occupancy of the output structure is 1.0 (all relative occupancies are maintained)'
+        .type = bool
 }
 settings {
     overwrite = False
@@ -148,7 +151,7 @@ def split_conformations(filename, params, log=None):
         log('Keeping ANY atom with conformer id: {}'.format(' or '.join(['" "']+this_confs)))
         log('Selection: \n\t'+sel_string)
 
-        if params.output.prune_duplicates:
+        if params.options.pruning.prune_duplicates:
             log.bar()
             log('Pruning redundant conformers')
             # Remove an alternate conformers than are duplicated after selection
@@ -159,7 +162,7 @@ def split_conformations(filename, params, log=None):
                 in_place            = True,
                 verbose             = params.settings.verbose)
 
-        if params.output.reset_altlocs:
+        if params.options.reset_altlocs:
             log.bar()
             # Change the altlocs so that they start from "A"
             if len(this_confs) == 1:
@@ -175,6 +178,14 @@ def split_conformations(filename, params, log=None):
                     if params.settings.verbose:
                         log('{} -> alt {}'.format(Labeller.format(ag), conf_hash[ag.altloc]))
                     ag.altloc = conf_hash[ag.altloc]
+
+        if params.options.reset_occupancies:
+            log.bar()
+            log('Resetting output occupancies')
+            max_occ = max(sel_hiery.atoms().extract_occ())
+            assert max_occ > 0.0, 'maximum occupancy is 0.0?!?!'
+            log('Dividing all occupancies by {}'.format(max_occ))
+            sel_hiery.atoms().set_occ(sel_hiery.atoms().extract_occ() / max_occ)
 
         log.bar()
         log('Writing structure: {}'.format(this_path))

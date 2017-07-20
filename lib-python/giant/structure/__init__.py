@@ -9,6 +9,24 @@ import iotbx.pdb.hierarchy as iotbx_pdbh
 
 ###############################################################################
 ###                                                                         ###
+###                      General Hierarchy Functions                        ###
+###                                                                         ###
+###############################################################################
+
+def sanitise_hierarchy(hierarchy, in_place=True):
+    """Remove several common structure problems"""
+
+    if not in_place: hierarchy = hierarchy.deep_copy()
+
+    # Fix element problems
+    hierarchy.atoms().set_chemical_element_simple_if_necessary()
+    # Sort atoms (allows easier comparison)
+    hierarchy.sort_atoms_in_place()
+
+    return hierarchy
+
+###############################################################################
+###                                                                         ###
 ###                                LABELS                                   ###
 ###                                                                         ###
 ###############################################################################

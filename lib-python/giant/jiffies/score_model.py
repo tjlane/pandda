@@ -16,7 +16,7 @@ from bamboo.plot import Radar
 
 from giant.io.pdb import strip_pdb_to_input
 from giant.xray.edstats import Edstats
-from giant.structure import calculate_residue_group_occupancy, calculate_paired_conformer_rmsds
+from giant.structure import sanitise_hierarchy, calculate_residue_group_occupancy, calculate_paired_conformer_rmsds
 from giant.structure.b_factors import calculate_residue_group_bfactor_ratio
 from giant.structure.formatting import ShortLabeller
 from giant.structure.select import non_h, protein, backbone, sidechains
@@ -135,10 +135,6 @@ include scope giant.phil.settings_phil
 """+residue_plot_phil, process_includes=True)
 
 #######################################
-
-def sanitise_hierarchy(hierarchy):
-    hierarchy.atoms().set_chemical_element_simple_if_necessary()
-    hierarchy.sort_atoms_in_place()
 
 def prepare_table():
 

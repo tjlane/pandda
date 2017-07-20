@@ -36,12 +36,12 @@ def normalise_occupancies(hierarchy, exclude_conformers=None, max_occ=1.0, min_o
 
 def set_conformer_occupancy(hierarchy, altlocs, occupancy, in_place=False, verbose=False):
     """Normalise the occupancies of a hierarchy so that the occupancies for a residue sum to 1.0"""
-    if isinstance(altlocs, str): altlocs=[altlocs]
-    else: assert isinstance(altlocs, list), 'conf_id must be either str or list'
+    if isinstance(altlocs, str): altlocs=list(altlocs)
+    else: assert isinstance(altlocs, list), 'altlocs must be either str or list'
     if (not in_place): hierarchy = hierarchy.deep_copy()
     for ag in hierarchy.atom_groups():
         if ag.altloc in altlocs:
             if verbose: print '{} - setting occupancy to {}'.format(Labeller.format(ag), occupancy)
-            ag.atoms().set_occ(flex.double([occupancy]*len(ag.atoms())))
+            ag.atoms().set_occ(flex.double(ag.atoms().size(), occupancy))
     return hierarchy
 
