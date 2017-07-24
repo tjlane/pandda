@@ -2717,6 +2717,16 @@ class PanddaMultiDatasetAnalyser(Program):
         #os.remove(self.file_manager.get_file(file_tag='pymol_sites_pml'))
         #os.remove(self.file_manager.get_file(file_tag='pymol_sites_py'))
 
+    def add_map_info_to_table(self, dataset_maps, prefix='', suffix=''):
+        """Add map information to central table"""
+
+        for m in dataset_maps:
+            pandda.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'map_uncertainty' +suffix, round(m.meta.map_uncertainty,3))
+            pandda.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'obs_map_mean'    +suffix, round(m.meta.obs_map_mean,3))
+            pandda.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'obs_map_rms'     +suffix, round(m.meta.obs_map_rms,3))
+            pandda.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'scl_map_mean'    +suffix, round(m.meta.scl_map_mean,3))
+            pandda.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'scl_map_rms'     +suffix, round(m.meta.scl_map_rms,3))
+
     def add_event_to_event_table(self, dataset, event):
         """Add event entries to the event table"""
 
