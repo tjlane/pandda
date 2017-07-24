@@ -1885,7 +1885,7 @@ class PanddaMultiDatasetAnalyser(Program):
             # ==============================>
             # Select which data to use for analysis
             # ==============================>
-            if not self.args.testing.use_b_factor_scaled_data:
+            if not self.params.maps.use_b_factor_scaling:
                 self.log('use_b_factor_scaled_data is turned off -- using the unscaled data as the scaled data')
                 ma_scaled_com = ma_unscaled_com
             else:

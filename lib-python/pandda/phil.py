@@ -171,6 +171,9 @@ pandda
             structure_factors = None
                 .type = str
                 .multiple = True
+            use_b_factor_scaling = True
+                .help = "Use B-factor-scaled diffraction data"
+                .type = bool
             scaling = none *sigma volume
                 .type = choice
             resolution_factor = 0.25
@@ -320,14 +323,6 @@ pandda
             .type = bool
         calculate_first_mean_map_only = False
            .help = "Will calculate the highest resolution mean map and then exit - used for initial reference modelling."
-            .type = bool
-    }
-    testing
-        .help = "Functionality that is still in the process of being tested"
-        .expert_level = 2
-    {
-        use_b_factor_scaled_data = False
-        .help = "Apply B-factor scaling to the input data?"
             .type = bool
     }
 }
