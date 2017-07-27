@@ -226,7 +226,7 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix='', verbo
         # Create label for the output table
         #rg_label = (label_prefix+rg_sel.unique_resnames()[0]+'-'+rg_sel.parent().id+'-'+rg_sel.resseq+rg_sel.icode).replace(' ','')
         #rg_label = (label_prefix+rg_sel.parent().id+'-'+rg_sel.resseq+rg_sel.icode).replace(' ','')
-        rg_label = ShortLabeller.format(rg_sel)
+        rg_label = ShortLabeller.format(rg_sel).replace(' ','')
 
         if len(rg_sel.unique_resnames()) != 1:
             raise Exception(rg_label+': More than one residue name associated with residue group -- cannot process')
@@ -252,7 +252,7 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix='', verbo
                                  value = pdb2 )
 
             # Extract the equivalent residue in pdb2
-            rg_sel_2 = [rg for rg in h2_all.residue_groups() if ShortLabeller.format(rg) == rg_label]
+            rg_sel_2 = [rg for rg in h2_all.residue_groups() if ShortLabeller.format(rg).replace(' ','') == rg_label]
 
             try:
                 assert rg_sel_2, 'Residue is not present in pdb file: {} not in {}'.format(rg_label, pdb2)
