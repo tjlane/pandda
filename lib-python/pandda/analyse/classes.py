@@ -805,9 +805,9 @@ class PanddaMultiDatasetAnalyser(Program):
             if self.args.flags.existing_datasets in ['reprocess','reload']:
                 self.log('-> Reloading all old datasets')
                 pickled_dataset_list = self.pickled_dataset_meta.dataset_pickle_list
-            elif self.args.input.reprocess_datasets:
+            elif self.args.input.flags.reprocess_datasets:
                 self.log('-> Reloading selected datasets')
-                filter_list = self.args.input.reprocess_datasets.split(',')
+                filter_list = self.args.input.flags.reprocess_datasets.split(',')
                 pickled_dataset_list = [f for l,f in zip(self.pickled_dataset_meta.dataset_labels, self.pickled_dataset_meta.dataset_pickle_list) if l in filter_list]
             else:
                 self.log('-> Not reloading old datasets')
