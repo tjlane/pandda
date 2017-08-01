@@ -475,6 +475,11 @@ def pandda_main_loop(pandda):
             if pandda.args.output.pickling.pickle_map_analysers:
                 pandda.pickle(pickle_file=pandda.pickle_handler.get_file('map_analyser').format(cut_resolution), pickle_object=map_analyser, overwrite=True)
 
+            # ============================================================================>
+            # Log map information for each characterisation dataset
+            # ============================================================================>
+            pandda.add_map_info_to_table(dataset_maps=map_analyser.dataset_maps.all(), prefix='', suffix='-{}A'.format(cut_resolution))
+
             # TODO TODO TODO
             # ============================================================================>
             # Perform analysis of the characterised maps
@@ -543,6 +548,11 @@ def pandda_main_loop(pandda):
         # ============================================================================>
         inner_mask_idxs_reindx = pandda.grid.index_on_other(query=pandda.grid.global_mask().inner_mask_indices(), other=pandda.grid.global_mask().outer_mask_indices())
         map_analyser.calculate_map_uncertainties(masked_idxs=inner_mask_idxs_reindx, cpus=pandda.settings.cpus)
+        # ============================================================================>
+        # Log map information for each analysis dataset (record twice, with & without resolution tag)
+        # ============================================================================>
+        pandda.add_map_info_to_table(dataset_maps=map_analyser.dataset_maps.all(), prefix='', suffix='-{}A'.format(cut_resolution))
+        pandda.add_map_info_to_table(dataset_maps=map_analyser.dataset_maps.all(), prefix='', suffix='')
         # ============================================================================>
         # Create a new "dummy" map analyser for the parallel steps
         # ============================================================================>
@@ -621,11 +631,11 @@ def pandda_main_loop(pandda):
             # Store analysis data in dataset map table
             # ============================================================================>
             pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'analysed_resolution', dataset_meta.resolution)
-            pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'map_uncertainty',     round(dataset_meta.map_uncertainty,3))
-            pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'obs_map_mean',        round(dataset_meta.obs_map_mean,3))
-            pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'obs_map_rms',         round(dataset_meta.obs_map_rms,3))
-            pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'scl_map_mean',        round(dataset_meta.scl_map_mean,3))
-            pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'scl_map_rms',         round(dataset_meta.scl_map_rms,3))
+            #pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'map_uncertainty',     round(dataset_meta.map_uncertainty,3))
+            #pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'obs_map_mean',        round(dataset_meta.obs_map_mean,3))
+            #pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'obs_map_rms',         round(dataset_meta.obs_map_rms,3))
+            #pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'scl_map_mean',        round(dataset_meta.scl_map_mean,3))
+            #pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'scl_map_rms',         round(dataset_meta.scl_map_rms,3))
             pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'z_map_mean',          round(dataset_meta.z_mean,3))
             pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'z_map_std',           round(dataset_meta.z_stdv,3))
             pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'z_map_skew',          round(dataset_meta.z_skew,3))

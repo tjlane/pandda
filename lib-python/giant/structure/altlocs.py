@@ -42,7 +42,7 @@ def expand_alternate_conformations(hierarchy, in_place=False, verbose=False):
     """Convert all atoms to multiple conformers - full multi-conformer representation of the model"""
     if not in_place: hierarchy = hierarchy.deep_copy()
     # Get all of the altlocs that should be present for each atom
-    full_altloc_set = [a for a in hierarchy.altloc_indices() if a]
+    full_altloc_set = sorted([a for a in hierarchy.altloc_indices() if a])
     # If not altlocs found, expand all to "A"
     if full_altloc_set == []:
         if verbose:
@@ -69,7 +69,7 @@ def expand_alternate_conformations(hierarchy, in_place=False, verbose=False):
                 if verbose: print '{} - populating missing conformers (current altlocs {}, target set {})'.format(Labeller.format(residue_group), current_set, full_altloc_set)
                 # Populate missing conformers (from the other conformers)
                 populate_missing_conformers(residue_group=residue_group, full_altloc_set=full_altloc_set, in_place=True)
-                assert [a.altloc for a in residue_group.atom_groups()] == full_altloc_set
+                assert sorted([a.altloc for a in residue_group.atom_groups()]) == full_altloc_set
                 if verbose: print '{} - updated conformer list: (current altlocs {}, target set {})'.format(Labeller.format(residue_group), [a.altloc for a in residue_group.atom_groups()], full_altloc_set)
     if verbose: print '------------------>'
     return hierarchy
@@ -187,16 +187,24 @@ def populate_missing_conformers(residue_group, full_altloc_set, in_place=False):
     if not in_place: residue_group = residue_group.detached_copy()
     # Create pool of atom groups to use for the new conformers
     if residue_group.have_conformers():
-        # Use any atom_group with an altloc
-        pool_ags = [ag for ag in residue_group.atom_groups() if ag.altloc]
+        # Use any atom_group with an altloc - sort in decreasing occupancy
+        pool_ags = sorted([ag for ag in residue_group.atom_groups() if ag.altloc], key=lambda x: max(x.atoms().extract_occ()), reverse=True)
         pool_alts = [ag.altloc for ag in pool_ags]
     else:
         # Only one conformation
         pool_ags = [residue_group.only_atom_group()]
-        pool_alts = []
         assert pool_ags[0].altloc == ''
+        pool_alts = []
         # Remove the blank conformer (to add it again with different altlocs later)
         residue_group.remove_atom_group(pool_ags[0])
+    # Calculate number of atom groups input v output
+    num_cur = len(pool_alts)
+    num_tar = num_cur + len(set(full_altloc_set).difference(pool_alts))
+    # Occupancy multipliers for each atom group dependant on how much they'll be duplicated
+    occ_cor = [1.0/((num_tar//num_cur)+((num_tar%num_cur)>k)) for k in range(num_cur)]
+    # Apply occupancy multipliers
+    for mult, ag in zip(occ_cor,pool_ags):
+        ag.atoms().set_occ(ag.atoms().extract_occ()*mult)
     # Create cycle to iterate through ags as needed
     ag_cycle = cycle(pool_ags)
     # Iterate through and create alternate conformers as required

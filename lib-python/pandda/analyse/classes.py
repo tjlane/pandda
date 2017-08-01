@@ -805,9 +805,9 @@ class PanddaMultiDatasetAnalyser(Program):
             if self.args.flags.existing_datasets in ['reprocess','reload']:
                 self.log('-> Reloading all old datasets')
                 pickled_dataset_list = self.pickled_dataset_meta.dataset_pickle_list
-            elif self.args.input.reprocess_datasets:
+            elif self.args.input.flags.reprocess_datasets:
                 self.log('-> Reloading selected datasets')
-                filter_list = self.args.input.reprocess_datasets.split(',')
+                filter_list = self.args.input.flags.reprocess_datasets.split(',')
                 pickled_dataset_list = [f for l,f in zip(self.pickled_dataset_meta.dataset_labels, self.pickled_dataset_meta.dataset_pickle_list) if l in filter_list]
             else:
                 self.log('-> Not reloading old datasets')
@@ -1885,7 +1885,7 @@ class PanddaMultiDatasetAnalyser(Program):
             # ==============================>
             # Select which data to use for analysis
             # ==============================>
-            if not self.args.testing.use_b_factor_scaled_data:
+            if not self.params.maps.use_b_factor_scaling:
                 self.log('use_b_factor_scaled_data is turned off -- using the unscaled data as the scaled data')
                 ma_scaled_com = ma_unscaled_com
             else:
@@ -2716,6 +2716,16 @@ class PanddaMultiDatasetAnalyser(Program):
 
         #os.remove(self.file_manager.get_file(file_tag='pymol_sites_pml'))
         #os.remove(self.file_manager.get_file(file_tag='pymol_sites_py'))
+
+    def add_map_info_to_table(self, dataset_maps, prefix='', suffix=''):
+        """Add map information to central table"""
+
+        for m in dataset_maps:
+            self.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'map_uncertainty' +suffix, round(m.meta.map_uncertainty,3))
+            self.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'obs_map_mean'    +suffix, round(m.meta.obs_map_mean,3))
+            self.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'obs_map_rms'     +suffix, round(m.meta.obs_map_rms,3))
+            self.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'scl_map_mean'    +suffix, round(m.meta.scl_map_mean,3))
+            self.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'scl_map_rms'     +suffix, round(m.meta.scl_map_rms,3))
 
     def add_event_to_event_table(self, dataset, event):
         """Add event entries to the event table"""

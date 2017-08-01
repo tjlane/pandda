@@ -619,7 +619,7 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     fig = pyplot.figure()
     pyplot.title('Map Statistics Histrograms')
     # MAP UNCERTAINTIES
-    pyplot.hist(x=map_uncties, bins=n_bins, range=(min(map_uncties)-0.1,max(map_uncties)+0.1))
+    pyplot.hist(x=map_uncties, bins=n_bins, range=(numpy.nanmin(map_uncties)-0.1,numpy.nanmax(map_uncties)+0.1))
     pyplot.xlabel('Dataset Map Uncertainties')
     pyplot.ylabel('Count')
     #pyplot.tight_layout()
@@ -673,12 +673,12 @@ def write_map_analyser_graphs(pandda, resolution, analysis_mask_name, building_m
     pyplot.title('Z-Map Statistics Histograms')
     # RFree
     pyplot.subplot(2, 1, 1)
-    pyplot.hist(x=z_map_mean, bins=n_bins, range=(min(z_map_mean)-0.1,max(z_map_mean)+0.1))
+    pyplot.hist(x=z_map_mean, bins=n_bins, range=(numpy.nanmin(z_map_mean)-0.1,numpy.nanmax(z_map_mean)+0.1))
     pyplot.xlabel('Z-Map Mean')
     pyplot.ylabel('Count')
     # RWork
     pyplot.subplot(2, 1, 2)
-    pyplot.hist(x=z_map_std, bins=n_bins, range=(0, max(z_map_std)+0.1))
+    pyplot.hist(x=z_map_std, bins=n_bins, range=(0, numpy.nanmax(z_map_std)+0.1))
     pyplot.xlabel('Z-Map Std')
     pyplot.ylabel('Count')
     #pyplot.tight_layout()

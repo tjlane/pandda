@@ -1,4 +1,4 @@
-#!/bin/env bash
+#!/usr/bin/env bash
 
 if   [ $(uname -m) = 'x86_64' ]; then
   echo "System is x86_64"

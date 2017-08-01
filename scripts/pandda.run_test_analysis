@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+
+err_file="pandda-errors.log"
+
+if [ -n "$1" ]; then
+  n_cpus="$1"
+else
+  n_cpus="1"
+fi
+
+echo "Running with $n_cpus CPUS"
+
+if [ ! -d pandda-test ]; then 
+  mkdir pandda-test
+fi
+
+cd pandda-test
+
+if [ ! -f data.zip ]; then
+  echo "downloading test data"
+  wget https://zenodo.org/record/48768/files/data.zip
+fi
+
+if [ ! -d data ]; then
+  echo "unpacking test data"
+  unzip data.zip
+fi
+
+if [ -d pandda ]; then
+  rm -rf pandda
+fi
+
+echo "Running 1ST pandda analysis"
+pandda.analyse data_dirs="data/*" pdb_style="*.dimple.pdb" cpus=$n_cpus \
+  high_res_lower_limit=1.8 \
+  ignore_datasets=BAZ2BA-x434 \
+  exclude_from_zmap_analysis=BAZ2BA-x559 \
+  1> pandda-1.log 2>> $err_file
+
+echo "Running 2ND pandda analysis"
+pandda.analyse data_dirs="data/*" pdb_style="*.dimple.pdb" cpus=$n_cpus \
+  reprocess_datasets=BAZ2BA-x529 \
+  high_res_lower_limit=1.8 
+  1> pandda-2.log 2>> $err_file
+
+pandda.analyse data_dirs="data/*" pdb_style="*.dimple.pdb" cpus=$n_cpus \
+  reprocess_datasets=BAZ2BA-x559 \
+  high_res_lower_limit=1.8 
+  1> pandda-3.log 2>> $err_file
+
+exit
+
