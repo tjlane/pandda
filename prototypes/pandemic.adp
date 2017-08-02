@@ -54,7 +54,7 @@ blank_arg_prepend = {'.pdb':'pdb=', '.cif':'cif='}
 master_phil = libtbx.phil.parse("""
 input {
     pdb = None
-        .help = "input pdb files - with anisotropic b-factors"
+        .help = "input pdb files - with isotropic/anisotropic b-factors"
         .multiple = True
         .type = str
     labelling = filename *foldername
@@ -80,7 +80,7 @@ fitting {
         number_of_datasets_for_optimisation = None
             .help = 'how many datasets should be used for optimising the TLS parameters?'
             .type = int
-        resolution_limit_for_fitting = 1.8
+        resolution_limit_for_fitting = 3.0
             .help = 'resolution limit for dataset to be used for TLS optimisation'
             .type = float
     }
@@ -92,7 +92,7 @@ fitting {
         .type = int
 }
 refine {
-    refine_output_structures = True
+    refine_output_structures = False
         .help = "Refine the structures after fitting (coordinates and occupancies)"
         .type = bool
 }
@@ -164,8 +164,12 @@ class MultiDatasetBFactorParameterisation(object):
 
         s_dir = easy_directory(os.path.join(self.out_dir, 'parameterised_structures'))
 
+        errors = []
+
         for i_m, m in enumerate(self.models):
-            assert self.master_h.is_similar_hierarchy(m.hierarchy)
+            # Check that all of the structures are the same
+            if not self.master_h.is_similar_hierarchy(m.hierarchy):
+                errors.append(Failure("Structures are not all the same. Model {}. File: {}".format(i_m, m.filename)))
 
             m.i_pdb = m.filename
             m.i_mtz = m.i_pdb.replace('.pdb', '.mtz')
@@ -181,8 +185,16 @@ class MultiDatasetBFactorParameterisation(object):
             if cs.high_res < self._opt_datasets_res_limit:
                 self._opt_datasets_selection.append(i_m)
 
+        # Check for errors - Structures not all the same?
+        if errors:
+            for e in errors:
+                print str(e)
+            raise Failure("Not all structures are the same.")
+        # Check for errors - No high resolution structures?
         if len(self._opt_datasets_selection) == 0:
             raise Exception('No datasets above resolution cutoff: {}'.format(self._opt_datasets_res_limit))
+        
+        # Limit the number of datasets for optimisation
         if self._n_opt is not None:
             self._opt_datasets_selection = self._opt_datasets_selection[:self._n_opt]
 
@@ -721,11 +733,14 @@ class MultiDatasetBFactorParameterisation(object):
         self.log.subheading('Running phenix.table_one to calculate R-factors')
         for f in [output_eff_orig,output_eff_fitd,output_eff_refd]:
             if not os.path.exists(f): continue
+            self.log.bar()
             cmd = CommandManager('phenix.table_one')
             cmd.add_command_line_arguments([f])
             cmd.print_settings()
             cmd.run()
+            self.log('')
             cmd.write_output(f.replace('.eff','.log'))
+        self.log.bar()
 
         # Clear all of the symlinks
         for mdl in self.models:
@@ -734,7 +749,8 @@ class MultiDatasetBFactorParameterisation(object):
 
         assert os.path.exists(self.table_one_csv_input)
         assert os.path.exists(self.table_one_csv_fitted)
-        assert os.path.exists(self.table_one_csv_refined)
+        if self.models[0].r_pdb is not None:
+            assert os.path.exists(self.table_one_csv_refined)
 
     def write_combined_csv(self, out_dir='.'):
         """Add data to CSV and write"""
@@ -746,6 +762,7 @@ class MultiDatasetBFactorParameterisation(object):
         # Main output CSV
         # ----------------------------------------------------
         # Extract dataset-by-dataset RMSDs
+        self.log('Extracting RMSDs for all datasets')
         self.table = pandas.DataFrame(index=[m.tag for m in self.models])
         all_dataset_rmsds = numpy.array([numpy.concatenate([self.fits[g].uij_fit_obs_all_rmsds()[i] for g in self.groups]) for i in range(len(self.models))])
         medn_rmsds = numpy.median(all_dataset_rmsds, axis=1)
@@ -759,6 +776,7 @@ class MultiDatasetBFactorParameterisation(object):
                           ('ref-', self.table_one_csv_refined)]:
             self.log('Reading: {}'.format(csv))
             if not os.path.exists(csv):
+                if pref == 'ref-': continue
                 raise Exception('Cannot read: {}'.format(csv))
             table_one = pandas.read_csv(csv, index_col=0, dtype=str).transpose()
             table_one['Low Res Limit'], table_one['High Res Limit'] = zip(*table_one['Resolution range'].apply(lambda x: x.split('(')[0].split('-')))
@@ -783,6 +801,31 @@ class MultiDatasetBFactorParameterisation(object):
         """Look at pre- and post-refinement graphs"""
 
         out_dir = easy_directory(out_dir)
+
+        self.log.subheading('Model improvement summary')
+
+        # Extract Column averages (means and medians)
+        table_means = self.table.mean().round(3)
+        out_str = '{:>30s} | {:>15} | {:>15} | {:>15}'
+
+        self.log.bar()
+        self.log('Dataset Averages:')
+        self.log.bar()
+        # Columns without old/new prefix
+        for lab in table_means.index:
+            if lab.startswith('new') or lab.startswith('old'): 
+                continue
+            self.log(out_str.format(lab, table_means[lab], '', ''))
+        self.log.bar()
+        # Columns with old/new prefix
+        self.log(out_str.format('', 'Single-dataset', 'Multi-dataset', 'Difference'))
+        for new_lab in table_means.index:
+            if not new_lab.startswith('new'): 
+                continue
+            lab = new_lab[4:]
+            old_lab = 'old-'+lab
+            self.log(out_str.format(lab, table_means[old_lab], table_means[new_lab], table_means[new_lab]-table_means[old_lab]))
+        self.log.bar()
 
         self.log.subheading('Writing final graphs')
 
@@ -1649,23 +1692,12 @@ def run(params):
 
     log = Log(os.path.join(params.output.out_dir, '_fitting.log'), verbose=True)
 
-    log('Building model list')
+    log('Building model list ({} models)'.format(len(params.input.pdb)))
     if params.input.labelling == 'foldername':
         label_func = lambda f: os.path.basename(os.path.dirname(f))
     else:
         label_func = lambda f: os.path.basename(os.path.splitext(f)[0])
     models = [CrystallographicModel.from_file(f).label(tag=label_func(f)) for f in params.input.pdb]#[:10]
-
-#    # Extract the TLS model of the first dataset
-#    log('No TLS models provided. Trying to extract from first crystallographic model')
-#    tls_params = extract_tls_from_pdb(models[0].filename).tls_params
-#    # Print the found models
-#    for i_tls, tls in enumerate(tls_params):
-#        log.subheading('TLS MODEL: {}'.format(i_tls+1))
-#        log('T: {}'.format(tuple(tls.t)))
-#        log('L: {}'.format(tuple(tls.l)))
-#        log('S: {}'.format(tuple(tls.s)))
-#    assert len(tls_params) != 0, 'No TLS models found in structure.'
 
     p = MultiDatasetBFactorParameterisation(models = models,
                                             groups = params.input.tls_group,

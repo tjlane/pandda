@@ -62,9 +62,9 @@ options {
     tls_selections = tls_selections.params
         .type = path
         .multiple = False
-    refinements = *isotropic *tls *anisotropic
+    refinements = *isotropic tls *anisotropic
         .type = choice(multi=True)
-    fitting_groups = *tls *chain *residue *backbone_sidechain
+    fitting_groups = *tls *chain *residue backbone_sidechain
         .type = choice(multi=True)
 }
 parameterisation {
@@ -96,7 +96,7 @@ def run_refinements(params, log=None):
     if log is None: log = Log(verbose=True)
     log.heading('Creating B-factor refinement job')
 
-    cmd = CommandManager('multi.adp_refine')
+    cmd = CommandManager('giant.multi.adp_refine')
     cmd.add_command_line_arguments(params.input.pdb)
     cmd.add_command_line_arguments(params.input.cif)
     cmd.add_command_line_arguments(r'tls_selections={}'.format(params.options.tls_selections))
