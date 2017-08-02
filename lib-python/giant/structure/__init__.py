@@ -113,9 +113,6 @@ def calculate_residue_group_occupancy(residue_group):
         res_occ = max(rg.atoms().extract_occ())
     else:
         res_occ = sum([max(c.atoms().extract_occ()) for c in rg.conformers() if c.altloc])
-    if res_occ > 1:
-        # Currently errors silently by returning None
-        return None
     return res_occ
 
 def calculate_paired_conformer_rmsds(conformers_1, conformers_2):
@@ -186,4 +183,11 @@ def calculate_paired_atom_rmsd(atoms_1, atoms_2, sort=True, truncate_to_common_s
         return None
     # Calculate RMSD and return
     return flex.mean((atoms_1.extract_xyz() - atoms_2.extract_xyz()).dot())**0.5
+
+def normalise_occupancies(atoms, max_occ=1.0):
+    """Normalise the maximum occupancy of a group of atoms to max_occ"""
+    occ = atoms.extract_occ()
+    occ_mult = max_occ/max(occ)
+    atoms.set_occ(occ*occ_mult)
+    return atoms
 

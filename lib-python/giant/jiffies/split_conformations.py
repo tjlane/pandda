@@ -1,12 +1,16 @@
 import os, sys, copy
 
+import numpy
+
 import iotbx.pdb
 import libtbx.phil
 
 from bamboo.common.logs import Log
 
 from giant.io.pdb import strip_pdb_to_input, get_pdb_header
+from giant.structure import calculate_residue_group_occupancy
 from giant.structure.formatting import Labeller
+from giant.structure.iterators import residue_groups_with_complete_set_of_conformers
 from giant.structure.altlocs import prune_redundant_alternate_conformations
 
 ############################################################################
@@ -181,11 +185,26 @@ def split_conformations(filename, params, log=None):
 
         if params.options.reset_occupancies:
             log.bar()
-            log('Resetting output occupancies')
-            max_occ = max(sel_hiery.atoms().extract_occ())
-            assert max_occ > 0.0, 'maximum occupancy is 0.0?!?!'
-            log('Dividing all occupancies by {}'.format(max_occ))
-            sel_hiery.atoms().set_occ(sel_hiery.atoms().extract_occ() / max_occ)
+            log('Resetting output occupancies (maximum occupancy of 1.0, etc.)')
+            # Divide through by the smallest occupancy of any complete residues groups with occupancies of less than one
+            rg_occs = [calculate_residue_group_occupancy(rg) for rg in residue_groups_with_complete_set_of_conformers(sel_hiery)]
+            non_uni = [v for v in numpy.unique(rg_occs) if v < 1.0]
+            if non_uni:
+                div_occ = min(non_uni)
+                log('Dividing all occupancies by {}'.format(div_occ))
+                sel_hiery.atoms().set_occ(sel_hiery.atoms().extract_occ() / div_occ)
+            # Normalise the occupancies of any residue groups with more than unitary occupancy
+            log('Fixing any residues that have greater than unitary occupancy')
+            for rg in sel_hiery.residue_groups():
+                occ = calculate_residue_group_occupancy(rg)
+                if occ > 1.0:
+                    log('Normalising residue {} (occupancy {})'.format(Labeller.format(rg), occ))
+                    rg.atoms().set_occ(rg.atoms().extract_occ() / occ)
+            # Perform checks
+            max_occ = max([calculate_residue_group_occupancy(rg) for rg in sel_hiery.residue_groups()])
+            log('Maximum occupancy of output structue: {}'.format(max_occ))
+            assert max_occ >= 0.0, 'maximum occupancy is less than 0.0?!?!'
+            assert max_occ <= 1.0, 'maximum occupancy is greater than 1.0?!?!'
 
         log.bar()
         log('Writing structure: {}'.format(this_path))
