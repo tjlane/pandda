@@ -102,6 +102,7 @@ def prune_redundant_alternate_conformations(hierarchy, required_altlocs=[], rmsd
             for j,ag_2 in enumerate(alt_ags):
                 if j<=i: continue
                 d = calculate_paired_atom_rmsd(atoms_1=ag_1.atoms(), atoms_2=ag_2.atoms(), sort=True, truncate_to_common_set=False)
+                if verbose: print 'Residue {}, alt {} - alt {}: rmsd {}'.format(Labeller.format(residue_group), i,j,d)
                 if (d is None) or (d > rmsd_cutoff):
                     prune = False
                     break
