@@ -74,10 +74,6 @@ settings {
     cpus = 60
         .type = int
         .multiple = False
-    cpus_per_job = 5
-        .type = int
-        .multiple = False
-
 }
 """, process_includes=True)
 
@@ -87,9 +83,7 @@ def wrapper_run(arg):
     return arg.run()
 
 def validate_parameters(params):
-
-    assert params.settings.cpus > params.settings.cpus_per_job
-    assert params.settings.cpus % params.settings.cpus_per_job == 0, 'cpus must be integer multiple of cpus_per_job'
+    pass
 
 def run_refinements(params, log=None):
 
@@ -121,7 +115,7 @@ def create_sweep_tls_group_choice(input_pdbs, out_dir, params, log=None):
     base_manager = CommandManager("pandemic.adp")
     base_manager.add_command_line_arguments(input_pdbs)
     base_manager.add_command_line_arguments(r'labelling=foldername')
-    base_manager.add_command_line_arguments(r'cpus={}'.format(params.settings.cpus_per_job))
+    base_manager.add_command_line_arguments(r'cpus={}'.format(params.settings.cpus))
 
     # Load first structure for creating TLS groups
     h = protein(iotbx.pdb.hierarchy.input(input_pdbs[0]).hierarchy)
@@ -194,14 +188,12 @@ def run_sweeps(jobs, params, log=None):
 
     if log is None: log = Log(verbose=True)
 
-    n_jobs = params.settings.cpus // params.settings.cpus_per_job
+    log.heading('Running {} jobs'.format(len(jobs)))
 
-    #if n_jobs > len(jobs):
-    #    log('More process available than cores being used. Increasing cpus_per_job')
-
-    log.heading('Running {} jobs ({} at a time with {} cores each)'.format(len(jobs), n_jobs, params.settings.cpus_per_job))
-
-    ret = libtbx.easy_mp.pool_map(processes=n_jobs, func=wrapper_run, args=jobs, chunksize=1)
+    for i, j in enumerate(jobs):
+        log.subheading('Job {}'.format(i))
+        j.print_settings()
+        ret = wrapper_run(j)
 
 #    for i, j in enumerate(ret):
 #        j.write_output('job-{}.log'.format(i+1))

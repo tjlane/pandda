@@ -1403,7 +1403,7 @@ class MultiDatasetTLSFitter(object):
                               atoms    = None)
                     proc_args.append(n._prep_for_mp())
                 self.log.subheading('Running optimisation')
-                self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1))
+                self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1, maxtasksperchild=10))
                 self.optimisation_summary(False)
                 #########################################
 
@@ -1449,7 +1449,7 @@ class MultiDatasetTLSFitter(object):
                                           atoms    = None)
                                 proc_args.append(n._prep_for_mp())
                             self.log.subheading('Running optimisation')
-                            self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1))
+                            self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1, maxtasksperchild=10))
                             self.optimisation_summary(False)
                         #########################################
                         self.log.heading('Optimising TLS amplitudes for all datasets ({})'.format(cycle_str))
@@ -1463,7 +1463,7 @@ class MultiDatasetTLSFitter(object):
                                       atoms    = None)
                             proc_args.append(n._prep_for_mp())
                         self.log.subheading('Running optimisation')
-                        self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1))
+                        self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1, maxtasksperchild=10))
                         self.log.subheading('Normalising all TLS amplitudes to average of one')
                         self._normalise_tls_amplitudes()
                         self.optimisation_summary(False)
@@ -1481,7 +1481,7 @@ class MultiDatasetTLSFitter(object):
                               atoms    = [i])
                     proc_args.append(n._prep_for_mp())
                 self.log.subheading('Running optimisation')
-                self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1))
+                self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1, maxtasksperchild=10))
                 self.optimisation_summary(False)
             #########################################
             self.log.subheading('End of macrocycle {}'.format(i_macro+1))
