@@ -761,7 +761,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Write the header to the log file and write the updated parameters
         # ===============================================================================>
         self.log(self._TEXT.format(program=self._NAME, description=self._DESC), True)
-        self.write_running_parameters_to_log()
+        self.write_running_parameters_to_log(params=self._input_params)
         self.write_parameters_to_parameter_file(f_name=self.file_manager.get_file('eff_file'))
         # ===============================================================================>
         # Log the start time and update status

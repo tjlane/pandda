@@ -46,8 +46,14 @@ class CommandManager(object):
 
     def __str__(self):
         return '\n'.join([  'Program:\n\t'+' '.join(self.program), \
-                            'Command:\n\t'+'\n\t'.join(self.cmd_line_args), \
-                            'Inputs:\n\t'+'\n\t'.join(self.std_inp_lines)])
+                            'Command line arguments:\n\t'+'\n\t'.join(self.cmd_line_args), \
+                            'Standard Input:\n\t'+'\n\t'.join(self.std_inp_lines)])
+
+    def as_command(self):
+        """Return as a string that can be run from the command line"""
+        out_str = ' '.join(self.program+self.cmd_line_args)
+        if self.std_inp_lines: out_str += '\n'.join([' <<eof']+self.std_inp_lines+['eof'])
+        return out_str
 
     def set_timeout(self, timeout):
         """Set various program parameters"""

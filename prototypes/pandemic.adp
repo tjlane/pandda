@@ -18,6 +18,7 @@ from bamboo.common.logs import Log
 from bamboo.common.path import easy_directory, rel_symlink
 from bamboo.common.command import CommandManager
 
+from giant.manager import Program
 from giant.dataset import CrystallographicModel
 from giant.structure.select import protein
 from giant.structure.tls import uij_from_tls_vector_and_origin, extract_tls_from_pdb
@@ -118,13 +119,14 @@ def wrapper_run(arg):
 def rms(vals, axis=None):
     return numpy.sqrt(numpy.mean(numpy.power(vals,2), axis=axis))
 
-class MultiDatasetBFactorParameterisation(object):
+class MultiDatasetBFactorParameterisation(Program):
 
     def __init__(self, models, groups, params, n_cpu=1, log=None):
 
         if log is None: log = Log(verbose=True)
         self.log = log
 
+        self.master_phil = master_phil
         self.params = params
 
         self.out_dir = params.output.out_dir
@@ -157,9 +159,12 @@ class MultiDatasetBFactorParameterisation(object):
         self.table_one_csv_fitted  = None
         self.table_one_csv_refined = None
 
+        self.write_running_parameters_to_log(params=params)
+
     def _init_input_models(self):
 
         # Use the first hierarchy as the reference
+        self.log('Using {} as reference structure'.format(self.models[0].tag))
         self.master_h = self.models[0].hierarchy.deep_copy()
 
         s_dir = easy_directory(os.path.join(self.out_dir, 'parameterised_structures'))
@@ -200,11 +205,17 @@ class MultiDatasetBFactorParameterisation(object):
 
     def _init_atom_selections(self):
         # Extract the atoms for each tls group
-        self.atom_selections = dict([(g, self.master_h.atom_selection_cache().selection(g)) for g in self.groups])
+        atom_cache = self.master_h.atom_selection_cache()
+        self.atom_selections = dict([(g, atom_cache.selection(g)) for g in self.groups])
         # Find which atoms in the structure are part of any group
         self.atom_selection_all = flex.bool(self.master_h.atoms().size(), False)
-        for sel in self.atom_selections.values():
+        # Check for invalid group selections 
+        failures = []
+        for group, sel in sorted(self.atom_selections.items()):
+            self.log('Group "{}": {} atoms'.format(group, sum(sel)))
+            if sum(sel) == 0: failures.append('Group "{}": {} atoms'.format(group, sum(sel)))
             self.atom_selection_all.set_selected(sel, True)
+        if failures: raise Failure('One or more group selections do not select any atoms: \n{}'.format('\n'.join(failures)))
 
     def blank_master_hierarchy(self):
         h = self.master_h.deep_copy()
@@ -237,6 +248,8 @@ class MultiDatasetBFactorParameterisation(object):
 
             # Get all atoms for this group
             atoms = [m.hierarchy.atoms().select(sel) for m in self.models]
+            assert len(atoms) > 0, 'No models have been used?!'
+            assert len(atoms[0]) > 0, 'No atoms have been extracted from models'
             # Extract uij and xyz
             obs_uij = numpy.array([a.extract_uij() for a in atoms])
             obs_xyz = numpy.array([a.extract_xyz() for a in atoms])
@@ -256,7 +269,7 @@ class MultiDatasetBFactorParameterisation(object):
                                            n_cpu = self._n_cpu,
                                            optimisation_datasets = self._opt_datasets_selection,
                                            log   = self.log)
-            # Calculate scaling
+            # Calculate scaling TODO make this part multi-process rather than the amplitude calculation...
             fitter.fit(n_macro_cycles, n_micro_cycles)
 
             self.fits[group] = fitter
@@ -1397,13 +1410,11 @@ class MultiDatasetTLSFitter(object):
                 self.set_penalty_weights(ovr_weight=1.0)
                 proc_args = []
                 for i_dst in range(self._n_dst):
-                    n = self.copy()
-                    n._select(parameter_selection = self._sel_dst[i_dst],
-                              datasets = [i_dst],
-                              atoms    = None)
-                    proc_args.append(n._prep_for_mp())
-                self.log.subheading('Running optimisation')
-                self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1, maxtasksperchild=10))
+                    self._select(parameter_selection = self._sel_dst[i_dst],
+                                 datasets = [i_dst],
+                                 atoms    = None)
+                    self.log.subheading('Running optimisation (dataset {} of {})'.format(i_dst+1,self._n_dst))
+                    self._optimise(verbose=True)
                 self.optimisation_summary(False)
                 #########################################
 
@@ -1443,13 +1454,11 @@ class MultiDatasetTLSFitter(object):
                             self.set_penalty_weights(ovr_weight=0.01)
                             proc_args = []
                             for i_dst in range(self._n_dst):
-                                n = self.copy()
-                                n._select(parameter_selection = self._sel_dst[i_dst]*this_opt,
-                                          datasets = [i_dst],
-                                          atoms    = None)
-                                proc_args.append(n._prep_for_mp())
-                            self.log.subheading('Running optimisation')
-                            self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1, maxtasksperchild=10))
+                                self._select(parameter_selection = self._sel_dst[i_dst]*this_opt,
+                                             datasets = [i_dst],
+                                             atoms    = None)
+                                self.log.subheading('Running optimisation (dataset {} of {})'.format(i_dst+1,self._n_dst))
+                                self._optimise(verbose=True)
                             self.optimisation_summary(False)
                         #########################################
                         self.log.heading('Optimising TLS amplitudes for all datasets ({})'.format(cycle_str))
@@ -1457,13 +1466,11 @@ class MultiDatasetTLSFitter(object):
                         self.set_penalty_weights(ovr_weight=0.1)
                         proc_args = []
                         for i_dst in range(self._n_dst):
-                            n = self.copy()
-                            n._select(parameter_selection = self._sel_dst[i_dst]*prev_opt,
-                                      datasets = [i_dst],
-                                      atoms    = None)
-                            proc_args.append(n._prep_for_mp())
-                        self.log.subheading('Running optimisation')
-                        self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1, maxtasksperchild=10))
+                            self._select(parameter_selection = self._sel_dst[i_dst]*prev_opt,
+                                         datasets = [i_dst],
+                                         atoms    = None)
+                            self.log.subheading('Running optimisation (dataset {} of {})'.format(i_dst+1,self._n_dst))
+                            self._optimise(verbose=True)
                         self.log.subheading('Normalising all TLS amplitudes to average of one')
                         self._normalise_tls_amplitudes()
                         self.optimisation_summary(False)
@@ -1474,14 +1481,12 @@ class MultiDatasetTLSFitter(object):
                 self.log.subheading('Optimising residual Uijs (step {})'.format(i+1, 2))
                 self.set_simplex_widths(uij_residual=uij_del)
                 proc_args = []
-                for i in range(self._n_atm):
-                    n = self.copy()
-                    n._select(parameter_selection = self._sel_atm[i],
-                              datasets = None,
-                              atoms    = [i])
-                    proc_args.append(n._prep_for_mp())
-                self.log.subheading('Running optimisation')
-                self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1, maxtasksperchild=10))
+                for i_atm in range(self._n_atm):
+                    self._select(parameter_selection = self._sel_atm[i_atm],
+                                 datasets = None,
+                                 atoms    = [i_atm])
+                    self.log.subheading('Running optimisation (atom {} of {})'.format(i_atm+1,self._n_atm))
+                    self._optimise(verbose=True)
                 self.optimisation_summary(False)
             #########################################
             self.log.subheading('End of macrocycle {}'.format(i_macro+1))
@@ -1692,13 +1697,19 @@ def run(params):
 
     log = Log(os.path.join(params.output.out_dir, '_fitting.log'), verbose=True)
 
+    log.heading('Processed parameters')
+    log(master_phil.format(params).as_str())
+
+    log.heading('Running setup')
     log('Building model list ({} models)'.format(len(params.input.pdb)))
     if params.input.labelling == 'foldername':
         label_func = lambda f: os.path.basename(os.path.dirname(f))
     else:
         label_func = lambda f: os.path.basename(os.path.splitext(f)[0])
     models = [CrystallographicModel.from_file(f).label(tag=label_func(f)) for f in params.input.pdb]#[:10]
+    models = sorted(models, key=lambda m: m.tag)
 
+    # Run the program main
     p = MultiDatasetBFactorParameterisation(models = models,
                                             groups = params.input.tls_group,
                                             params = params,

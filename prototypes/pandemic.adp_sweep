@@ -57,6 +57,9 @@ output {
     out_dir = b-factor-fitting-sweep
         .help = "output directory"
         .type = str
+    out_script = run_adp_sweeps.sh
+        .help = "output script to run jobs"
+        .type = str
 }
 options {
     tls_selections = tls_selections.params
@@ -71,7 +74,10 @@ parameterisation {
     tbd = True
 }
 settings {
-    cpus = 60
+    cpus_per_job = 1
+        .type = int
+        .multiple = False
+    concurrent_jobs = 1
         .type = int
         .multiple = False
 }
@@ -98,7 +104,7 @@ def run_refinements(params, log=None):
     cmd.add_command_line_arguments(r'b_factor_models={}'.format('+'.join(params.options.refinements)))
     cmd.add_command_line_arguments(r'out_dir={}'.format(params.input.refinement_dir))
     cmd.add_command_line_arguments(r'log_file={}.log'.format(params.input.dir))
-    cmd.add_command_line_arguments(r'cpus={}'.format(params.settings.cpus))
+    cmd.add_command_line_arguments(r'cpus={}'.format(params.settings.cpus_per_job*params.settings.concurrent_jobs))
     cmd.print_settings()
     ret = cmd.run()
     if ret != 0:
@@ -110,12 +116,17 @@ def create_sweep_tls_group_choice(input_pdbs, out_dir, params, log=None):
 
     out_dir = easy_directory(out_dir)
 
+    # Write all pdb files to an input file to pass to program
+    pdb_eff = os.path.join(out_dir, 'input_pdbs.eff')
+    with open(pdb_eff, 'w') as fh:
+        fh.write('\n'.join([r'pdb="{}"'.format(p) for p in input_pdbs]))
+
     jobs = []
 
     base_manager = CommandManager("pandemic.adp")
-    base_manager.add_command_line_arguments(input_pdbs)
     base_manager.add_command_line_arguments(r'labelling=foldername')
-    base_manager.add_command_line_arguments(r'cpus={}'.format(params.settings.cpus))
+    base_manager.add_command_line_arguments(r'cpus={}'.format(params.settings.cpus_per_job))
+    base_manager.add_command_line_arguments(pdb_eff)
 
     # Load first structure for creating TLS groups
     h = protein(iotbx.pdb.hierarchy.input(input_pdbs[0]).hierarchy)
@@ -125,7 +136,7 @@ def create_sweep_tls_group_choice(input_pdbs, out_dir, params, log=None):
         cmd = copy.deepcopy(base_manager)
         jobs.append(cmd)
         # Create output directory
-        sweep_dir = os.path.join(out_dir, 'group_{}'.format(mode))
+        sweep_dir = easy_directory(os.path.join(out_dir, 'group_{}'.format(mode)))
         cmd.add_command_line_arguments(r'out_dir={}'.format(sweep_dir))
         # Create TLS groups for fitting
         tls_groups = []
@@ -150,12 +161,13 @@ def create_sweep_tls_group_choice(input_pdbs, out_dir, params, log=None):
                     continue
                 else:
                     tls_groups.append(PhenixSelection.format(ag)+" and not (name C or name CA or name N or name O)")
-
         assert tls_groups, 'No TLS groups found: mode={}'.format(mode)
 
-        # Add groups to command object
-        for g in sorted(tls_groups):
-            cmd.add_command_line_arguments(r'tls_group="{}"'.format(g))
+        # Add groups to a params file, and pass file to the command object
+        tls_eff = os.path.join(sweep_dir, 'fitting_groups.eff')
+        with open(tls_eff, 'w') as fh:
+            fh.write('\n'.join([r'tls_group="{}"'.format(g) for g in sorted(tls_groups)]))
+        cmd.add_command_line_arguments(tls_eff)
 
     assert len(params.options.fitting_groups) == len(jobs)
 
@@ -184,16 +196,42 @@ def create_sweep_refinement_type(params, log=None):
 
     return jobs
 
+def write_sweeps(jobs, params, log=None):
+
+    if log is None: log = Log(verbose=True)
+
+    log.heading('Writing commands for {} jobs'.format(len(jobs)))
+
+    with open(params.output.out_script, 'w') as fh:
+        fh.write('#!/usr/bin/env bash\n\n')
+        for i, j in enumerate(jobs):
+            log.subheading('Job {} of {}'.format(i+1, len(jobs)))
+            log(str(j))
+            job_file = os.path.splitext(params.output.out_script)[0]+'-job-{}.sh'.format(i+1)
+            log('Writing command to {}'.format(job_file))
+            with open(job_file, 'w') as jf:
+                cmd = j.as_command()
+                jf.write('#!/usr/bin/env bash\n\n')
+                jf.write(cmd+'\n')
+            fh.write('qsub {}\n'.format(os.path.abspath(job_file)))
+
 def run_sweeps(jobs, params, log=None):
 
     if log is None: log = Log(verbose=True)
 
     log.heading('Running {} jobs'.format(len(jobs)))
 
-    for i, j in enumerate(jobs):
-        log.subheading('Job {}'.format(i))
-        j.print_settings()
-        ret = wrapper_run(j)
+    if params.settings.concurrent_jobs > 1:
+        for i, j in enumerate(jobs):
+            log.subheading('Job {} of {}'.format(i+1, len(jobs)))
+            log(str(j))
+        log.subheading('Running {} jobs ({} at a time)'.format(len(jobs),params.settings.concurrent_jobs))
+        ret = libtbx.easy_mp.pool_map(processes=params.settings.concurrent_jobs, func=wrapper_run, args=jobs, chunksize=1)
+    else:
+        for i, j in enumerate(jobs):
+            log.subheading('Job {} of {}'.format(i+1, len(jobs)))
+            log(str(j))
+            ret = wrapper_run(j)
 
 #    for i, j in enumerate(ret):
 #        j.write_output('job-{}.log'.format(i+1))
@@ -201,6 +239,9 @@ def run_sweeps(jobs, params, log=None):
 ############################################################################
 
 def run(params):
+
+    params.output.out_dir = os.path.abspath(params.output.out_dir)
+    params.input.refinement_dir = os.path.abspath(params.input.refinement_dir)
 
     easy_directory(params.output.out_dir)
 
@@ -210,7 +251,10 @@ def run(params):
 
     jobs = create_sweep_refinement_type(params)
 
-    run_sweeps(jobs, params)
+    if params.output.out_script is not None:
+        write_sweeps(jobs, params)
+    else:
+        run_sweeps(jobs, params)
 
     #embed()
 
