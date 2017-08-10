@@ -5,7 +5,7 @@ import iotbx.pdb
 
 from scitbx.array_family import flex
 
-from giant.structure import get_atom_pairs, calculate_paired_atom_rmsd
+from giant.structure import get_atom_pairs, calculate_paired_atom_rmsd, normalise_occupancies
 from giant.structure.formatting import Labeller
 
 protein_amino_acid_set = set(iotbx.pdb.common_residue_names_amino_acid + iotbx.pdb.common_residue_names_modified_amino_acid)
@@ -68,7 +68,7 @@ def expand_alternate_conformations(hierarchy, in_place=False, verbose=False):
             if protein_amino_acid_set.intersection(residue_group.unique_resnames()) or (not residue_group.have_conformers()):
                 if verbose: print '{} - populating missing conformers (current altlocs {}, target set {})'.format(Labeller.format(residue_group), current_set, full_altloc_set)
                 # Populate missing conformers (from the other conformers)
-                populate_missing_conformers(residue_group=residue_group, full_altloc_set=full_altloc_set, in_place=True)
+                populate_missing_conformers(residue_group=residue_group, full_altloc_set=full_altloc_set, in_place=True, verbose=verbose)
                 assert sorted([a.altloc for a in residue_group.atom_groups()]) == full_altloc_set
                 if verbose: print '{} - updated conformer list: (current altlocs {}, target set {})'.format(Labeller.format(residue_group), [a.altloc for a in residue_group.atom_groups()], full_altloc_set)
     if verbose: print '------------------>'
@@ -102,6 +102,7 @@ def prune_redundant_alternate_conformations(hierarchy, required_altlocs=[], rmsd
             for j,ag_2 in enumerate(alt_ags):
                 if j<=i: continue
                 d = calculate_paired_atom_rmsd(atoms_1=ag_1.atoms(), atoms_2=ag_2.atoms(), sort=True, truncate_to_common_set=False)
+                if verbose: print 'Residue {}, alt {} - alt {}: rmsd {}'.format(Labeller.format(residue_group), i,j,d)
                 if (d is None) or (d > rmsd_cutoff):
                     prune = False
                     break
@@ -113,11 +114,13 @@ def prune_redundant_alternate_conformations(hierarchy, required_altlocs=[], rmsd
             # Merge one alt group with the main atom_group
             new_main_ag = alt_ags[0].detached_copy()
             new_main_ag.altloc = ''
+            normalise_occupancies(atoms=new_main_ag.atoms(), max_occ=max(main_ag.atoms().extract_occ()))
             residue_group.merge_atom_groups(main_ag, new_main_ag)
         else:
             # Remove one atom_group and set altloc to ''
             new_main_ag = alt_ags.pop(0)
             new_main_ag.altloc = ''
+            normalise_occupancies(atoms=new_main_ag.atoms(), max_occ=sum([max(ag.atoms().extract_occ()) for ag in [new_main_ag]+alt_ags]))
         # Remove all remaining alternate groups
         [residue_group.remove_atom_group(ag) for ag in alt_ags]
         assert len(residue_group.atom_groups())==1
@@ -179,7 +182,7 @@ def create_pure_alt_conf_from_proper_alt_conf(residue_group, in_place=False):
         residue_group.merge_atom_groups(primary=conf_ag, secondary=new_main_ag)
     return residue_group
 
-def populate_missing_conformers(residue_group, full_altloc_set, in_place=False):
+def populate_missing_conformers(residue_group, full_altloc_set, in_place=False, verbose=False):
     """
     Expand the alternate conformations of the residue_group to full_set, using the existing conformations
     - no conformers are deleted if existing conformers are not in full_altloc_set
@@ -190,18 +193,20 @@ def populate_missing_conformers(residue_group, full_altloc_set, in_place=False):
         # Use any atom_group with an altloc - sort in decreasing occupancy
         pool_ags = sorted([ag for ag in residue_group.atom_groups() if ag.altloc], key=lambda x: max(x.atoms().extract_occ()), reverse=True)
         pool_alts = [ag.altloc for ag in pool_ags]
+        # Occupancy multipliers for each atom group dependant on how much they'll be duplicated
+        num_cur = len(pool_alts)
+        num_tar = num_cur + len(set(full_altloc_set).difference(pool_alts))
+        occ_cor = [1.0/((num_tar//num_cur)+((num_tar%num_cur)>k)) for k in range(num_cur)]
     else:
         # Only one conformation
         pool_ags = [residue_group.only_atom_group()]
-        assert pool_ags[0].altloc == ''
         pool_alts = []
+        # Occupancy multipliers for each atom group dependant on how much they'll be duplicated
+        occ_cor = [1.0/len(full_altloc_set)]
         # Remove the blank conformer (to add it again with different altlocs later)
+        assert pool_ags[0].altloc == ''
         residue_group.remove_atom_group(pool_ags[0])
-    # Calculate number of atom groups input v output
-    num_cur = len(pool_alts)
-    num_tar = num_cur + len(set(full_altloc_set).difference(pool_alts))
-    # Occupancy multipliers for each atom group dependant on how much they'll be duplicated
-    occ_cor = [1.0/((num_tar//num_cur)+((num_tar%num_cur)>k)) for k in range(num_cur)]
+    if verbose: print 'Occupancy Corrections:', occ_cor
     # Apply occupancy multipliers
     for mult, ag in zip(occ_cor,pool_ags):
         ag.atoms().set_occ(ag.atoms().extract_occ()*mult)

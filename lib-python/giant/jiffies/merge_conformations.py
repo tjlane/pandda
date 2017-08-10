@@ -53,6 +53,9 @@ options {
     major_occupancy = 0.5
         .help = 'occupancy of the major state after merging (multiplies existing occupancies)'
         .type = float
+    prune_duplicates_rmsd = 0.1
+        .help = 'rmsd at which to remove duplicate residues'
+        .type = float
     reset_all_occupancies = False
         .help = 'set all conformer occupancies to the same value (1.0/<number of conformers>). overrides minor_occupancy=X and major_occupancy=X.'
         .type = bool
@@ -84,7 +87,7 @@ settings {
 
 ############################################################################
 
-def merge_complementary_hierarchies(hierarchy_1, hierarchy_2, in_place=False, verbose=False, log=None):
+def merge_complementary_hierarchies(hierarchy_1, hierarchy_2, prune_duplicates_rmsd=0.1, in_place=False, verbose=False, log=None):
     """Merge hierarchies that are alternate models of the same crystal by expanding alternate model conformations, merging, and then trimming alternate conformations where possible"""
 
     if log is None: log = Log(verbose=True)
@@ -145,7 +148,7 @@ def merge_complementary_hierarchies(hierarchy_1, hierarchy_2, in_place=False, ve
     prune_redundant_alternate_conformations(
         hierarchy           = hierarchy_1,
         required_altlocs    = hierarchy_1.altloc_indices(),
-        rmsd_cutoff         = 0.1,
+        rmsd_cutoff         = prune_duplicates_rmsd,
         in_place            = True,
         verbose             = verbose)
 
@@ -187,8 +190,8 @@ def run(params):
             raise Exception('Output file already exists: {}. Run with overwrite=True to remove this file'.format(params.output.pdb))
 
     # Check that the input occupancies are valid
-    if params.options.minor_occupancy + params.options.major_occupancy > 1.0:
-        raise Exception('minor_occupancy + major_occupancy must be less than 1.0 (currently {}+{})'.format(params.options.minor_occupancy,params.options.major_occupancy))
+    if (params.options.minor_occupancy>1.0) or (params.options.major_occupancy>1.0):
+        raise Exception('minor_occupancy and major_occupancy cannot be greater than 1.0 (currently {} and {})'.format(params.options.minor_occupancy,params.options.major_occupancy))
 
     # Report validated parameters
     log.subheading('Processed merging parameters')
@@ -219,6 +222,7 @@ def run(params):
     final_struct = merge_complementary_hierarchies(
         hierarchy_1 = maj_obj.hierarchy,
         hierarchy_2 = min_obj.hierarchy,
+        prune_duplicates_rmsd = params.options.prune_duplicates_rmsd,
         in_place    = True,
         verbose     = params.settings.verbose)
 

@@ -13,6 +13,14 @@ def conformers_via_residue_groups(pdb_hierarchy):
             for conf in rg.conformers():
                 yield conf
 
+def residue_groups_with_complete_set_of_conformers(pdb_hierarchy):
+    all_confs = set(pdb_hierarchy.altloc_indices())
+    all_confs.discard('')
+    for rg in pdb_hierarchy.residue_groups():
+        conf_altlocs = [c.altloc for c in rg.conformers()]
+        if conf_altlocs == [''] or not all_confs.difference(conf_altlocs):
+            yield rg
+
 ########################################################################################
 
 def generate_residue_triplets(pdb_hierarchy):
