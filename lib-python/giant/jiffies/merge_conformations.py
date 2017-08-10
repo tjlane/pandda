@@ -190,8 +190,8 @@ def run(params):
             raise Exception('Output file already exists: {}. Run with overwrite=True to remove this file'.format(params.output.pdb))
 
     # Check that the input occupancies are valid
-    if params.options.minor_occupancy + params.options.major_occupancy > 1.0:
-        raise Exception('minor_occupancy + major_occupancy must be less than 1.0 (currently {}+{})'.format(params.options.minor_occupancy,params.options.major_occupancy))
+    if (params.options.minor_occupancy>1.0) or (params.options.major_occupancy>1.0):
+        raise Exception('minor_occupancy and major_occupancy cannot be greater than 1.0 (currently {} and {})'.format(params.options.minor_occupancy,params.options.major_occupancy))
 
     # Report validated parameters
     log.subheading('Processed merging parameters')
