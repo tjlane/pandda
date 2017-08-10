@@ -101,7 +101,7 @@ table_ones_options {
     include scope giant.jiffies.multi_table_ones.options_phil
 }
 settings {
-    cpus = 48
+    cpus = 1
         .type = int
         .multiple = False
 }
@@ -115,6 +115,11 @@ def wrapper_optimise(arg):
 
 def wrapper_run(arg):
     return arg.run()
+
+def wrapper_fit(args):
+    fitter, kw_args = args
+    fitter.fit(**kw_args)
+    return fitter
 
 def rms(vals, axis=None):
     return numpy.sqrt(numpy.mean(numpy.power(vals,2), axis=axis))
@@ -242,9 +247,13 @@ class MultiDatasetBFactorParameterisation(Program):
         self.log('Macro-cycles: {}'.format(n_macro_cycles))
         self.log('Micro-cycles: {}'.format(n_micro_cycles))
 
-        for group, _, sel in self.iterate_groups():
+        # Create list of jobs for fitting
+        jobs = []
+        # Create fitting objects for each group
+        self.log.heading('Processing input Uijs for {} groups'.format(len(self.groups)))
+        for i_g, (group, _, sel) in self.enumerate_groups():
 
-            self.log.heading('Parameterising Uijs for selection: {}'.format(group))
+            self.log.subheading('Extracting Uijs for group: {}'.format(group))
 
             # Get all atoms for this group
             atoms = [m.hierarchy.atoms().select(sel) for m in self.models]
@@ -262,20 +271,29 @@ class MultiDatasetBFactorParameterisation(Program):
                 obs_uij[:,:,2] = obs_uij[:,:,1] = obs_uij[:,:,0]
             elif (obs_uij==-1).any():
                 raise Failure('Some atoms in {} do not have anisotropically-refined B-factors'.format(group))
-
-            fitter = MultiDatasetTLSFitter(observed_uij = obs_uij,
+            
+            # Create a log file for this fitter
+            fitter_log = Log(log_file=os.path.join(self.out_dir, '_fitting-group-{}.log'.format(i_g+1)), silent=(self._n_cpu>1))
+            self.log('Log file: {}'.format(fitter_log.log_file))
+            # Create fitter and append to list of jobs
+            fitter = MultiDatasetTLSFitter(name = group,
+                                           observed_uij = obs_uij,
                                            observed_xyz = obs_xyz,
                                            n_tls = self._n_tls,
-                                           n_cpu = self._n_cpu,
+                                           n_cpu = 1,
                                            optimisation_datasets = self._opt_datasets_selection,
-                                           log   = self.log)
-            # Calculate scaling TODO make this part multi-process rather than the amplitude calculation...
-            fitter.fit(n_macro_cycles, n_micro_cycles)
+                                           log = fitter_log)
+            jobs.append((fitter, {'n_macro_cycles':n_macro_cycles, 'n_micro_cycles':n_micro_cycles}))
 
-            self.fits[group] = fitter
-
+        # Run in parallel
+        self.log.heading('Running {} jobs using {} cpus'.format(len(jobs), self._n_cpu))
+        finished_jobs = libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_fit, args=jobs, chunksize=1)
+        # Store the output
+        for fitter in finished_jobs:
+            self.fits[fitter.name] = fitter
+       
         self.log.heading('Parameterisation complete')
-
+        
     def write_output(self):
         """Write output and summaries"""
 
@@ -943,10 +961,12 @@ class MultiDatasetTLSFitter(object):
     _uij_weight = 1.0
     _ovr_weight = 1.0
 
-    def __init__(self, observed_xyz, observed_uij, tls_params=None, n_tls=None, n_cpu=1, optimisation_datasets=None, log=None):
+    def __init__(self, name, observed_xyz, observed_uij, tls_params=None, n_tls=None, n_cpu=1, optimisation_datasets=None, log=None):
 
         if log is None: log = Log(verbose=True)
         self.log = log
+
+        self.name = name
 
         self._test = False
         self._iter = 0
@@ -1217,7 +1237,8 @@ class MultiDatasetTLSFitter(object):
         # Optimise these parameters
         optimised = simplex.simplex_opt(dimension = len(cur_simplex[0]),
                                         matrix    = map(flex.double, cur_simplex),
-                                        evaluator = self)
+                                        evaluator = self,
+                                        tolerance = 1e-04)
         # Extract and update current values
         self._adopt(optimised.get_solution())
         self._update_after_optimisation()
@@ -1262,7 +1283,8 @@ class MultiDatasetTLSFitter(object):
         uij_fit = self.extract_fitted_uij(datasets=self._cur_datasets, atoms=self._cur_atoms, parameters=parameters)
         uij_obs = self.extract_observed_uij(datasets=self._cur_datasets, atoms=self._cur_atoms)
         # Calculate RMSD
-        rmsd = numpy.round(numpy.sqrt(numpy.mean(numpy.power(uij_obs-uij_fit, 2))),3)
+        #rmsd = numpy.round(numpy.sqrt(numpy.mean(numpy.power(uij_obs-uij_fit, 2))),3)
+        rmsd = numpy.sqrt(numpy.mean(numpy.power(uij_obs-uij_fit, 2)))
         # Calculate fitting penalties (add to rmsd)
         fpen = self._fitting_penalties(uij_fit=uij_fit, uij_obs=uij_obs)
         # Update minima
@@ -1383,6 +1405,8 @@ class MultiDatasetTLSFitter(object):
 
     def fit(self, n_macro_cycles, n_micro_cycles):
         """Run macro-cycles of parameter optimisation"""
+            
+        self.log.heading('Fitting Uij model for {}'.format(self.name))
 
         # Cumulative selection for amplitude optimisation
         prev_opt = self._blank_parameter_selection()
@@ -1413,8 +1437,8 @@ class MultiDatasetTLSFitter(object):
                     self._select(parameter_selection = self._sel_dst[i_dst],
                                  datasets = [i_dst],
                                  atoms    = None)
-                    self.log.subheading('Running optimisation (dataset {} of {})'.format(i_dst+1,self._n_dst))
-                    self._optimise(verbose=True)
+                    self.log('Running optimisation (dataset {} of {})'.format(i_dst+1,self._n_dst))
+                    self._optimise(verbose=False)
                 self.optimisation_summary(False)
                 #########################################
 
@@ -1457,8 +1481,8 @@ class MultiDatasetTLSFitter(object):
                                 self._select(parameter_selection = self._sel_dst[i_dst]*this_opt,
                                              datasets = [i_dst],
                                              atoms    = None)
-                                self.log.subheading('Running optimisation (dataset {} of {})'.format(i_dst+1,self._n_dst))
-                                self._optimise(verbose=True)
+                                self.log('Running optimisation (dataset {} of {})'.format(i_dst+1,self._n_dst))
+                                self._optimise(verbose=False)
                             self.optimisation_summary(False)
                         #########################################
                         self.log.heading('Optimising TLS amplitudes for all datasets ({})'.format(cycle_str))
@@ -1469,28 +1493,35 @@ class MultiDatasetTLSFitter(object):
                             self._select(parameter_selection = self._sel_dst[i_dst]*prev_opt,
                                          datasets = [i_dst],
                                          atoms    = None)
-                            self.log.subheading('Running optimisation (dataset {} of {})'.format(i_dst+1,self._n_dst))
-                            self._optimise(verbose=True)
+                            self.log('Running optimisation (dataset {} of {})'.format(i_dst+1,self._n_dst))
+                            self._optimise(verbose=False)
                         self.log.subheading('Normalising all TLS amplitudes to average of one')
                         self._normalise_tls_amplitudes()
                         self.optimisation_summary(False)
             #########################################
             self.log.heading('Optimising residual Uijs')
             self.set_penalty_weights(ovr_weight=0.0)
-            for i, uij_del in enumerate([1.0,0.1]):
-                self.log.subheading('Optimising residual Uijs (step {})'.format(i+1, 2))
+            # Perform additional optimisation cycle on the last macrocycle
+            if i_macro+1 == n_macro_cycles:
+                uij_del_steps = [0.1,0.1]
+            else:
+                uij_del_steps = [0.1]
+            for i, uij_del in enumerate(uij_del_steps):
+                self.log.subheading('Optimising residual Uijs (step {} of {})'.format(i+1, len(uij_del_steps)))
                 self.set_simplex_widths(uij_residual=uij_del)
                 proc_args = []
                 for i_atm in range(self._n_atm):
                     self._select(parameter_selection = self._sel_atm[i_atm],
                                  datasets = None,
                                  atoms    = [i_atm])
-                    self.log.subheading('Running optimisation (atom {} of {})'.format(i_atm+1,self._n_atm))
-                    self._optimise(verbose=True)
+                    self.log('Running optimisation (atom {} of {})'.format(i_atm+1,self._n_atm))
+                    self._optimise(verbose=False)
                 self.optimisation_summary(False)
             #########################################
             self.log.subheading('End of macrocycle {}'.format(i_macro+1))
             self.optimisation_summary()
+
+        self.log.heading('Parameterisation complete')
 
         return self
 

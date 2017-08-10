@@ -74,7 +74,7 @@ parameterisation {
     tbd = True
 }
 settings {
-    cpus_per_job = 1
+    max_cpus_per_job = 1
         .type = int
         .multiple = False
     concurrent_jobs = 1
@@ -104,7 +104,7 @@ def run_refinements(params, log=None):
     cmd.add_command_line_arguments(r'b_factor_models={}'.format('+'.join(params.options.refinements)))
     cmd.add_command_line_arguments(r'out_dir={}'.format(params.input.refinement_dir))
     cmd.add_command_line_arguments(r'log_file={}.log'.format(params.input.dir))
-    cmd.add_command_line_arguments(r'cpus={}'.format(params.settings.cpus_per_job*params.settings.concurrent_jobs))
+    cmd.add_command_line_arguments(r'cpus={}'.format(params.settings.max_cpus_per_job*params.settings.concurrent_jobs))
     cmd.print_settings()
     ret = cmd.run()
     if ret != 0:
@@ -125,7 +125,6 @@ def create_sweep_tls_group_choice(input_pdbs, out_dir, params, log=None):
 
     base_manager = CommandManager("pandemic.adp")
     base_manager.add_command_line_arguments(r'labelling=foldername')
-    base_manager.add_command_line_arguments(r'cpus={}'.format(params.settings.cpus_per_job))
     base_manager.add_command_line_arguments(pdb_eff)
 
     # Load first structure for creating TLS groups
@@ -168,6 +167,9 @@ def create_sweep_tls_group_choice(input_pdbs, out_dir, params, log=None):
         with open(tls_eff, 'w') as fh:
             fh.write('\n'.join([r'tls_group="{}"'.format(g) for g in sorted(tls_groups)]))
         cmd.add_command_line_arguments(tls_eff)
+    
+        cmd.n_cpus = min(params.settings.max_cpus_per_job, len(tls_groups))
+        cmd.add_command_line_arguments(r'cpus={}'.format(cmd.n_cpus))
 
     assert len(params.options.fitting_groups) == len(jobs)
 
@@ -213,6 +215,7 @@ def write_sweeps(jobs, params, log=None):
                 cmd = j.as_command()
                 jf.write('#!/usr/bin/env bash\n\n')
                 jf.write(cmd+'\n')
+#            fh.write('qsub -pe orte {} {}\n'.format(j.n_cpus, os.path.abspath(job_file)))
             fh.write('qsub {}\n'.format(os.path.abspath(job_file)))
 
 def run_sweeps(jobs, params, log=None):
