@@ -1895,12 +1895,15 @@ class PanddaMultiDatasetAnalyser(Program):
                 new_scaling.new_x_values(x_values=ma_unscaled_int.d_star_sq().data())
                 ma_scaled_int = ma_unscaled_int.array(data=new_scaling.transform(ma_unscaled_int.data())).set_observation_type_xray_intensity()
                 ma_scaled_com = ma_unscaled_phs * ma_scaled_int.as_amplitude_array().data()
+                # Check for nan values and set to zero
+                ma_scaled_com.data().set_selected((ma_unscaled_int.data()==0.0), 0+0j)
 
             assert ma_scaled_com.is_complex_array()
 
             # ==============================>
             # Wilson B-factors
             # ==============================>
+            self.log('Calculating Wilson B-factors of scaled and unscaled data')
             dataset.meta.unscaled_wilson_b = estimate_wilson_b_factor(miller_array=ma_unscaled_com)
             dataset.meta.scaled_wilson_b   = estimate_wilson_b_factor(miller_array=ma_scaled_com)
             self.tables.dataset_info.set_value(index=dataset.tag, col='unscaled_wilson_B', value=dataset.meta.unscaled_wilson_b)
