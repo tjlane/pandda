@@ -53,7 +53,7 @@ options {
     major_occupancy = 0.5
         .help = 'occupancy of the major state after merging (multiplies existing occupancies)'
         .type = float
-    prune_duplicates_rmsd = 0.1
+    prune_duplicates_rmsd = 0.05
         .help = 'rmsd at which to remove duplicate residues'
         .type = float
     reset_all_occupancies = False

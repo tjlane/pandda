@@ -59,7 +59,7 @@ output {
 options {
     program = *phenix refmac
         .type = choice
-    split_conformations = True
+    split_conformations = False
         .help = "Split the output structure into different conformations for modelling."
         .type = bool
 }
