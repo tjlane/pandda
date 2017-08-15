@@ -1389,13 +1389,23 @@ class MultiDatasetTLSFitter(object):
         _, _, uij_res = self._extract_parameters()
         uij_max = numpy.max(numpy.abs(uij_res[:,:3]),axis=1)
         thresh = numpy.percentile(uij_max, 90)
-        self._mask_atoms *= (uij_max < thresh)
+        mask = (uij_max < thresh)
+        if sum(mask) > 0:
+          self.log('> {} atoms removed with mask'.format(sum(mask)))
+          self._mask_atoms *= mask
+        else:
+          self.log('> No atoms removed with mask')
 
     def _update_dataset_masks(self):
         thresh = 3.0
         d_rmsd = self.uij_fit_obs_dataset_averaged_rmsds()
         zscore = scipy.stats.zscore(d_rmsd)
-        self._mask_dsets *= (zscore < thresh)
+        mask = (zscore < thresh)
+        if sum(mask) > 0:
+          self.log('> {} datasets removed with mask'.format(sum(mask)))
+          self._mask_dsets *= mask
+        else:
+          self.log('> No datasets removed with mask')
 
     ################################################################################################
     ###
