@@ -1,5 +1,7 @@
 import cctbx.miller
 
+import numpy
+
 from scitbx.array_family import flex
 
 from giant.stats.optimisation import LinearScaling
@@ -35,9 +37,11 @@ def estimate_wilson_b_factor(miller_array, low_res_cutoff=4.0):
     # Convert to scale
     y_values = flex.log(flex.double(binned.data[1:-1]))
     x_values = flex.pow2(binner.bin_centers(1))
+    # Check all values are valid
+    mask = flex.bool((True - numpy.isnan(list(y_values)) - numpy.isnan(list(x_values))).tolist())
     # Perform scaling
-    scl = LinearScaling(x_values   = x_values,
-                        ref_values = y_values)
+    scl = LinearScaling(x_values   = x_values.select(mask),
+                        ref_values = y_values.select(mask))
 
     return -0.5*scl.optimised_values[1]
 
