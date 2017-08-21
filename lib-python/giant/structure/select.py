@@ -107,8 +107,9 @@ def complete_backbone(chn, altlocs=['','A']):
 
 def check_backbone_atoms(residue):
     """Returns True if N,CA,C,O are present, else False"""
-    return not bool(residue.residue_name_plus_atom_names_interpreter() \
-                        .atom_name_interpretation.missing_atom_names().intersection(['N','CA','C','O']))
+    intrp = residue.residue_name_plus_atom_names_interpreter().atom_name_interpretation
+    if not intrp: return False
+    return not bool(intrp.missing_atom_names().intersection(['N','CA','C','O']))
 
 def extract_backbone_atoms(residue, atoms=('N','CA','C')):
     """Extract N, CA, C triplets for a residue"""

@@ -68,11 +68,12 @@ class Heading(object):
 class Log(object):
 
 
-    def __init__(self, log_file=None, stdout=sys.stdout, verbose=False):
+    def __init__(self, log_file=None, stdout=sys.stdout, verbose=False, silent=False):
         """Log Object for writing to logs...?"""
         # File that the log will be written to
         self.log_file = log_file
         self.verbose = verbose
+        self.silent = silent
 
         # Set default heading
         self.set_bar_and_heading(bar        = Bar(),
@@ -80,10 +81,11 @@ class Log(object):
                                  subheading = Heading(spacer='-', decorator=' *** ')
                                 )
 
-    def __call__(self, message, show=False, hide=False):
+    # TODO remove "hide" as now unnecessary
+    def __call__(self, message, show=True, hide=False):
         """Log message to file, and mirror to stdout if verbose or force_print (hide overrules show)"""
         message = str(message)+'\n'
-        if (not hide) and (show or self.verbose):
+        if (not self.silent) and (self.verbose or (not hide and show)):
             self.show(message)
         self.write(message=message, mode='a')
 

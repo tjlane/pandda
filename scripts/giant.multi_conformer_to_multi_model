@@ -1,0 +1,74 @@
+#!/usr/bin/env ccp4-python
+
+import os, sys
+import iotbx.pdb
+
+from scitbx.array_family import flex
+
+from giant.structure.altlocs import create_pure_alt_conf_from_proper_alt_conf
+from giant.structure.select import sel_altloc
+from giant.structure.formatting import ShortLabeller as Labeller
+
+def multi_flex_loop(new_loop_size):
+
+    cur_loop_size = new_loop_size[:10]
+    sub_loop_size = new_loop_size[10:]
+
+    cur_loop = flex.nested_loop(cur_loop_size)
+    if not sub_loop_size:
+        for cur_val in cur_loop:
+            yield cur_val
+    else:
+        for cur_val in cur_loop:
+            sub_loop = multi_flex_loop(sub_loop_size)
+            for sub_val in sub_loop:
+                yield cur_val+sub_val
+
+pdb = sys.argv[1]
+
+ih = iotbx.pdb.hierarchy.input(pdb)
+h = ih.hierarchy
+
+# Make all alt confs proper alt confs
+for rg in h.residue_groups():
+    if rg.have_conformers() and rg.move_blank_altloc_atom_groups_to_front():
+        create_pure_alt_conf_from_proper_alt_conf(residue_group=rg, in_place=True)
+
+# Template model for new models
+tmp_model = h.models()[0]
+tmp_model.atoms().set_occ(flex.double(tmp_model.atoms().size(), 1.0))
+
+# Create new root
+new_root = iotbx.pdb.hierarchy.root()
+
+# Extract number of conformers for multi-conf residues
+num_ag_confs = [len(rg.atom_groups()) for rg in tmp_model.residue_groups() if rg.have_conformers()]
+
+print num_ag_confs
+
+for ag_sel_indices in multi_flex_loop(num_ag_confs):
+
+    ag_sel_indices = list(ag_sel_indices)
+    print ag_sel_indices
+
+    new_model = tmp_model.detached_copy()
+
+    # Strip out all but one ag for each residue
+    for rg in new_model.residue_groups():
+        if not rg.have_conformers(): continue
+        ag_idx = ag_sel_indices.pop(0)
+        for i_ag, ag in enumerate(rg.atom_groups()):
+            # Make blank altloc if keep, else remove
+            if ag_idx == i_ag:
+                print 'Keeping : {}'.format(Labeller.format(ag))
+                ag.altloc=''
+            else:
+                print 'Removing : {}'.format(Labeller.format(ag))
+                rg.remove_atom_group(ag)
+        print '>>', ag_sel_indices
+        if ag_sel_indices == []: break
+
+    new_root.append_model(new_model)
+
+new_root.write_pdb_file(os.path.splitext(pdb)[0]+'-ensemble.pdb', crystal_symmetry=ih.input.crystal_symmetry())
+

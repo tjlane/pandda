@@ -49,7 +49,7 @@ input {
 }
 refinement {
     b_factor_models = *isotropic *tls *anisotropic
-        type = choice(multi=True)
+        .type = choice(multi=True)
 }
 output {
     out_dir = refined-b-factors
@@ -78,6 +78,8 @@ def run(params):
     log = Log(verbose=True)
     log.heading('Validating input parameters')
 
+    assert params.input.tls_selections is not None, 'Must specify a file for TLS selections (this file does not need to exist yet).'
+ 
     out_dir = easy_directory(params.output.out_dir)
 
     if os.path.exists(params.input.tls_selections):
@@ -107,15 +109,17 @@ def run(params):
         # Append models for MP step
         fit.b_factor_models = params.refinement.b_factor_models
 
+        # Use the determined TLS selections if None were provided as input
         if tls_selections is None:
             tls_selections=fit.tls_selections
 
-        # Rewrite the file with the sanitised TLS selections
-        assert not os.path.exists(params.input.tls_selections)
-        with open(params.input.tls_selections, 'w') as fh: fh.write('\n'.join(tls_selections))
-
         all_fits.append(fit)
+        
+    # Rewrite the tls_selections file with the sanitised TLS selections
+    assert not os.path.exists(params.input.tls_selections)
+    with open(params.input.tls_selections, 'w') as fh: fh.write('\n'.join(tls_selections))
 
+    # Run all of the refinements
     all_fits = libtbx.easy_mp.pool_map(fixed_func=wrapper_run, args=all_fits, processes=params.settings.cpus, chunksize=1)
 
     log.heading('DONE')

@@ -18,11 +18,11 @@ class Program(object):
 
     file_manager = None
 
-    def write_running_parameters_to_log(self):
-        self.log.heading('PROCESSED ARGUMENTS')
-        self.log(self.master_phil.format(python_object=self._input_params).as_str(), True)
-        self.log.heading('ARGUMENTS DIFFERENT TO DEFAULTS')
-        self.log(self.master_phil.fetch_diff(source=self.master_phil.format(python_object=self._input_params)).as_str(), True)
+    def write_running_parameters_to_log(self, params):
+        self.log.heading('Processed parameters')
+        self.log(self.master_phil.format(python_object=params).as_str(), True)
+        self.log.heading('Parameters different to the defaults')
+        self.log(self.master_phil.fetch_diff(source=self.master_phil.format(python_object=params)).as_str(), True)
 
     def check_for_matplotlib(self, backend=None, interactive=False):
         """Check to see whether we can load matplotlib"""

@@ -18,6 +18,7 @@ from bamboo.common.logs import Log
 from bamboo.common.path import easy_directory, rel_symlink
 from bamboo.common.command import CommandManager
 
+from giant.manager import Program
 from giant.dataset import CrystallographicModel
 from giant.structure.select import protein
 from giant.structure.tls import uij_from_tls_vector_and_origin, extract_tls_from_pdb
@@ -54,7 +55,7 @@ blank_arg_prepend = {'.pdb':'pdb=', '.cif':'cif='}
 master_phil = libtbx.phil.parse("""
 input {
     pdb = None
-        .help = "input pdb files - with anisotropic b-factors"
+        .help = "input pdb files - with isotropic/anisotropic b-factors"
         .multiple = True
         .type = str
     labelling = filename *foldername
@@ -80,7 +81,7 @@ fitting {
         number_of_datasets_for_optimisation = None
             .help = 'how many datasets should be used for optimising the TLS parameters?'
             .type = int
-        resolution_limit_for_fitting = 1.8
+        resolution_limit_for_fitting = 3.0
             .help = 'resolution limit for dataset to be used for TLS optimisation'
             .type = float
     }
@@ -92,7 +93,7 @@ fitting {
         .type = int
 }
 refine {
-    refine_output_structures = True
+    refine_output_structures = False
         .help = "Refine the structures after fitting (coordinates and occupancies)"
         .type = bool
 }
@@ -100,7 +101,7 @@ table_ones_options {
     include scope giant.jiffies.multi_table_ones.options_phil
 }
 settings {
-    cpus = 48
+    cpus = 1
         .type = int
         .multiple = False
 }
@@ -115,16 +116,22 @@ def wrapper_optimise(arg):
 def wrapper_run(arg):
     return arg.run()
 
+def wrapper_fit(args):
+    fitter, kw_args = args
+    fitter.fit(**kw_args)
+    return fitter
+
 def rms(vals, axis=None):
     return numpy.sqrt(numpy.mean(numpy.power(vals,2), axis=axis))
 
-class MultiDatasetBFactorParameterisation(object):
+class MultiDatasetBFactorParameterisation(Program):
 
     def __init__(self, models, groups, params, n_cpu=1, log=None):
 
         if log is None: log = Log(verbose=True)
         self.log = log
 
+        self.master_phil = master_phil
         self.params = params
 
         self.out_dir = params.output.out_dir
@@ -157,15 +164,22 @@ class MultiDatasetBFactorParameterisation(object):
         self.table_one_csv_fitted  = None
         self.table_one_csv_refined = None
 
+        self.write_running_parameters_to_log(params=params)
+
     def _init_input_models(self):
 
         # Use the first hierarchy as the reference
+        self.log('Using {} as reference structure'.format(self.models[0].tag))
         self.master_h = self.models[0].hierarchy.deep_copy()
 
         s_dir = easy_directory(os.path.join(self.out_dir, 'parameterised_structures'))
 
+        errors = []
+
         for i_m, m in enumerate(self.models):
-            assert self.master_h.is_similar_hierarchy(m.hierarchy)
+            # Check that all of the structures are the same
+            if not self.master_h.is_similar_hierarchy(m.hierarchy):
+                errors.append(Failure("Structures are not all the same. Model {}. File: {}".format(i_m, m.filename)))
 
             m.i_pdb = m.filename
             m.i_mtz = m.i_pdb.replace('.pdb', '.mtz')
@@ -181,18 +195,32 @@ class MultiDatasetBFactorParameterisation(object):
             if cs.high_res < self._opt_datasets_res_limit:
                 self._opt_datasets_selection.append(i_m)
 
+        # Check for errors - Structures not all the same?
+        if errors:
+            for e in errors:
+                print str(e)
+            raise Failure("Not all structures are the same.")
+        # Check for errors - No high resolution structures?
         if len(self._opt_datasets_selection) == 0:
             raise Exception('No datasets above resolution cutoff: {}'.format(self._opt_datasets_res_limit))
+        
+        # Limit the number of datasets for optimisation
         if self._n_opt is not None:
             self._opt_datasets_selection = self._opt_datasets_selection[:self._n_opt]
 
     def _init_atom_selections(self):
         # Extract the atoms for each tls group
-        self.atom_selections = dict([(g, self.master_h.atom_selection_cache().selection(g)) for g in self.groups])
+        atom_cache = self.master_h.atom_selection_cache()
+        self.atom_selections = dict([(g, atom_cache.selection(g)) for g in self.groups])
         # Find which atoms in the structure are part of any group
         self.atom_selection_all = flex.bool(self.master_h.atoms().size(), False)
-        for sel in self.atom_selections.values():
+        # Check for invalid group selections 
+        failures = []
+        for group, sel in sorted(self.atom_selections.items()):
+            self.log('Group "{}": {} atoms'.format(group, sum(sel)))
+            if sum(sel) == 0: failures.append('Group "{}": {} atoms'.format(group, sum(sel)))
             self.atom_selection_all.set_selected(sel, True)
+        if failures: raise Failure('One or more group selections do not select any atoms: \n{}'.format('\n'.join(failures)))
 
     def blank_master_hierarchy(self):
         h = self.master_h.deep_copy()
@@ -219,12 +247,18 @@ class MultiDatasetBFactorParameterisation(object):
         self.log('Macro-cycles: {}'.format(n_macro_cycles))
         self.log('Micro-cycles: {}'.format(n_micro_cycles))
 
-        for group, _, sel in self.iterate_groups():
+        # Create list of jobs for fitting
+        jobs = []
+        # Create fitting objects for each group
+        self.log.heading('Processing input Uijs for {} groups'.format(len(self.groups)))
+        for i_g, (group, _, sel) in self.enumerate_groups():
 
-            self.log.heading('Parameterising Uijs for selection: {}'.format(group))
+            self.log.subheading('Extracting Uijs for group: {}'.format(group))
 
             # Get all atoms for this group
             atoms = [m.hierarchy.atoms().select(sel) for m in self.models]
+            assert len(atoms) > 0, 'No models have been used?!'
+            assert len(atoms[0]) > 0, 'No atoms have been extracted from models'
             # Extract uij and xyz
             obs_uij = numpy.array([a.extract_uij() for a in atoms])
             obs_xyz = numpy.array([a.extract_xyz() for a in atoms])
@@ -237,20 +271,29 @@ class MultiDatasetBFactorParameterisation(object):
                 obs_uij[:,:,2] = obs_uij[:,:,1] = obs_uij[:,:,0]
             elif (obs_uij==-1).any():
                 raise Failure('Some atoms in {} do not have anisotropically-refined B-factors'.format(group))
-
-            fitter = MultiDatasetTLSFitter(observed_uij = obs_uij,
+            
+            # Create a log file for this fitter
+            fitter_log = Log(log_file=os.path.join(self.out_dir, '_fitting-group-{}.log'.format(i_g+1)), silent=(self._n_cpu>1))
+            self.log('Log file: {}'.format(fitter_log.log_file))
+            # Create fitter and append to list of jobs
+            fitter = MultiDatasetTLSFitter(name = group,
+                                           observed_uij = obs_uij,
                                            observed_xyz = obs_xyz,
                                            n_tls = self._n_tls,
-                                           n_cpu = self._n_cpu,
+                                           n_cpu = 1,
                                            optimisation_datasets = self._opt_datasets_selection,
-                                           log   = self.log)
-            # Calculate scaling
-            fitter.fit(n_macro_cycles, n_micro_cycles)
+                                           log = fitter_log)
+            jobs.append((fitter, {'n_macro_cycles':n_macro_cycles, 'n_micro_cycles':n_micro_cycles}))
 
-            self.fits[group] = fitter
-
+        # Run in parallel
+        self.log.heading('Running {} jobs using {} cpus'.format(len(jobs), self._n_cpu))
+        finished_jobs = libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_fit, args=jobs, chunksize=1)
+        # Store the output
+        for fitter in finished_jobs:
+            self.fits[fitter.name] = fitter
+       
         self.log.heading('Parameterisation complete')
-
+        
     def write_output(self):
         """Write output and summaries"""
 
@@ -721,11 +764,14 @@ class MultiDatasetBFactorParameterisation(object):
         self.log.subheading('Running phenix.table_one to calculate R-factors')
         for f in [output_eff_orig,output_eff_fitd,output_eff_refd]:
             if not os.path.exists(f): continue
+            self.log.bar()
             cmd = CommandManager('phenix.table_one')
             cmd.add_command_line_arguments([f])
             cmd.print_settings()
             cmd.run()
+            self.log('')
             cmd.write_output(f.replace('.eff','.log'))
+        self.log.bar()
 
         # Clear all of the symlinks
         for mdl in self.models:
@@ -734,7 +780,8 @@ class MultiDatasetBFactorParameterisation(object):
 
         assert os.path.exists(self.table_one_csv_input)
         assert os.path.exists(self.table_one_csv_fitted)
-        assert os.path.exists(self.table_one_csv_refined)
+        if self.models[0].r_pdb is not None:
+            assert os.path.exists(self.table_one_csv_refined)
 
     def write_combined_csv(self, out_dir='.'):
         """Add data to CSV and write"""
@@ -746,6 +793,7 @@ class MultiDatasetBFactorParameterisation(object):
         # Main output CSV
         # ----------------------------------------------------
         # Extract dataset-by-dataset RMSDs
+        self.log('Extracting RMSDs for all datasets')
         self.table = pandas.DataFrame(index=[m.tag for m in self.models])
         all_dataset_rmsds = numpy.array([numpy.concatenate([self.fits[g].uij_fit_obs_all_rmsds()[i] for g in self.groups]) for i in range(len(self.models))])
         medn_rmsds = numpy.median(all_dataset_rmsds, axis=1)
@@ -759,6 +807,7 @@ class MultiDatasetBFactorParameterisation(object):
                           ('ref-', self.table_one_csv_refined)]:
             self.log('Reading: {}'.format(csv))
             if not os.path.exists(csv):
+                if pref == 'ref-': continue
                 raise Exception('Cannot read: {}'.format(csv))
             table_one = pandas.read_csv(csv, index_col=0, dtype=str).transpose()
             table_one['Low Res Limit'], table_one['High Res Limit'] = zip(*table_one['Resolution range'].apply(lambda x: x.split('(')[0].split('-')))
@@ -783,6 +832,31 @@ class MultiDatasetBFactorParameterisation(object):
         """Look at pre- and post-refinement graphs"""
 
         out_dir = easy_directory(out_dir)
+
+        self.log.subheading('Model improvement summary')
+
+        # Extract Column averages (means and medians)
+        table_means = self.table.mean().round(3)
+        out_str = '{:>30s} | {:>15} | {:>15} | {:>15}'
+
+        self.log.bar()
+        self.log('Dataset Averages:')
+        self.log.bar()
+        # Columns without old/new prefix
+        for lab in table_means.index:
+            if lab.startswith('new') or lab.startswith('old'): 
+                continue
+            self.log(out_str.format(lab, table_means[lab], '', ''))
+        self.log.bar()
+        # Columns with old/new prefix
+        self.log(out_str.format('', 'Single-dataset', 'Multi-dataset', 'Difference'))
+        for new_lab in table_means.index:
+            if not new_lab.startswith('new'): 
+                continue
+            lab = new_lab[4:]
+            old_lab = 'old-'+lab
+            self.log(out_str.format(lab, table_means[old_lab], table_means[new_lab], table_means[new_lab]-table_means[old_lab]))
+        self.log.bar()
 
         self.log.subheading('Writing final graphs')
 
@@ -887,10 +961,12 @@ class MultiDatasetTLSFitter(object):
     _uij_weight = 1.0
     _ovr_weight = 1.0
 
-    def __init__(self, observed_xyz, observed_uij, tls_params=None, n_tls=None, n_cpu=1, optimisation_datasets=None, log=None):
+    def __init__(self, name, observed_xyz, observed_uij, tls_params=None, n_tls=None, n_cpu=1, optimisation_datasets=None, log=None):
 
         if log is None: log = Log(verbose=True)
         self.log = log
+
+        self.name = name
 
         self._test = False
         self._iter = 0
@@ -1161,7 +1237,8 @@ class MultiDatasetTLSFitter(object):
         # Optimise these parameters
         optimised = simplex.simplex_opt(dimension = len(cur_simplex[0]),
                                         matrix    = map(flex.double, cur_simplex),
-                                        evaluator = self)
+                                        evaluator = self,
+                                        tolerance = 1e-04)
         # Extract and update current values
         self._adopt(optimised.get_solution())
         self._update_after_optimisation()
@@ -1206,7 +1283,8 @@ class MultiDatasetTLSFitter(object):
         uij_fit = self.extract_fitted_uij(datasets=self._cur_datasets, atoms=self._cur_atoms, parameters=parameters)
         uij_obs = self.extract_observed_uij(datasets=self._cur_datasets, atoms=self._cur_atoms)
         # Calculate RMSD
-        rmsd = numpy.round(numpy.sqrt(numpy.mean(numpy.power(uij_obs-uij_fit, 2))),3)
+        #rmsd = numpy.round(numpy.sqrt(numpy.mean(numpy.power(uij_obs-uij_fit, 2))),3)
+        rmsd = numpy.sqrt(numpy.mean(numpy.power(uij_obs-uij_fit, 2)))
         # Calculate fitting penalties (add to rmsd)
         fpen = self._fitting_penalties(uij_fit=uij_fit, uij_obs=uij_obs)
         # Update minima
@@ -1311,13 +1389,23 @@ class MultiDatasetTLSFitter(object):
         _, _, uij_res = self._extract_parameters()
         uij_max = numpy.max(numpy.abs(uij_res[:,:3]),axis=1)
         thresh = numpy.percentile(uij_max, 90)
-        self._mask_atoms *= (uij_max < thresh)
+        mask = (uij_max < thresh)
+        if sum(mask) > 0:
+          self.log('> {} atoms removed with mask'.format(sum(mask)))
+          self._mask_atoms *= mask
+        else:
+          self.log('> No atoms removed with mask')
 
     def _update_dataset_masks(self):
         thresh = 3.0
         d_rmsd = self.uij_fit_obs_dataset_averaged_rmsds()
         zscore = scipy.stats.zscore(d_rmsd)
-        self._mask_dsets *= (zscore < thresh)
+        mask = (zscore < thresh)
+        if sum(mask) > 0:
+          self.log('> {} datasets removed with mask'.format(sum(mask)))
+          self._mask_dsets *= mask
+        else:
+          self.log('> No datasets removed with mask')
 
     ################################################################################################
     ###
@@ -1327,6 +1415,8 @@ class MultiDatasetTLSFitter(object):
 
     def fit(self, n_macro_cycles, n_micro_cycles):
         """Run macro-cycles of parameter optimisation"""
+            
+        self.log.heading('Fitting Uij model for {}'.format(self.name))
 
         # Cumulative selection for amplitude optimisation
         prev_opt = self._blank_parameter_selection()
@@ -1354,13 +1444,11 @@ class MultiDatasetTLSFitter(object):
                 self.set_penalty_weights(ovr_weight=1.0)
                 proc_args = []
                 for i_dst in range(self._n_dst):
-                    n = self.copy()
-                    n._select(parameter_selection = self._sel_dst[i_dst],
-                              datasets = [i_dst],
-                              atoms    = None)
-                    proc_args.append(n._prep_for_mp())
-                self.log.subheading('Running optimisation')
-                self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1))
+                    self._select(parameter_selection = self._sel_dst[i_dst],
+                                 datasets = [i_dst],
+                                 atoms    = None)
+                    self.log('Running optimisation (dataset {} of {})'.format(i_dst+1,self._n_dst))
+                    self._optimise(verbose=False)
                 self.optimisation_summary(False)
                 #########################################
 
@@ -1400,13 +1488,11 @@ class MultiDatasetTLSFitter(object):
                             self.set_penalty_weights(ovr_weight=0.01)
                             proc_args = []
                             for i_dst in range(self._n_dst):
-                                n = self.copy()
-                                n._select(parameter_selection = self._sel_dst[i_dst]*this_opt,
-                                          datasets = [i_dst],
-                                          atoms    = None)
-                                proc_args.append(n._prep_for_mp())
-                            self.log.subheading('Running optimisation')
-                            self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1))
+                                self._select(parameter_selection = self._sel_dst[i_dst]*this_opt,
+                                             datasets = [i_dst],
+                                             atoms    = None)
+                                self.log('Running optimisation (dataset {} of {})'.format(i_dst+1,self._n_dst))
+                                self._optimise(verbose=False)
                             self.optimisation_summary(False)
                         #########################################
                         self.log.heading('Optimising TLS amplitudes for all datasets ({})'.format(cycle_str))
@@ -1414,35 +1500,38 @@ class MultiDatasetTLSFitter(object):
                         self.set_penalty_weights(ovr_weight=0.1)
                         proc_args = []
                         for i_dst in range(self._n_dst):
-                            n = self.copy()
-                            n._select(parameter_selection = self._sel_dst[i_dst]*prev_opt,
-                                      datasets = [i_dst],
-                                      atoms    = None)
-                            proc_args.append(n._prep_for_mp())
-                        self.log.subheading('Running optimisation')
-                        self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1))
+                            self._select(parameter_selection = self._sel_dst[i_dst]*prev_opt,
+                                         datasets = [i_dst],
+                                         atoms    = None)
+                            self.log('Running optimisation (dataset {} of {})'.format(i_dst+1,self._n_dst))
+                            self._optimise(verbose=False)
                         self.log.subheading('Normalising all TLS amplitudes to average of one')
                         self._normalise_tls_amplitudes()
                         self.optimisation_summary(False)
             #########################################
             self.log.heading('Optimising residual Uijs')
             self.set_penalty_weights(ovr_weight=0.0)
-            for i, uij_del in enumerate([1.0,0.1]):
-                self.log.subheading('Optimising residual Uijs (step {})'.format(i+1, 2))
+            # Perform additional optimisation cycle on the last macrocycle
+            if i_macro+1 == n_macro_cycles:
+                uij_del_steps = [0.1,0.1]
+            else:
+                uij_del_steps = [0.1]
+            for i, uij_del in enumerate(uij_del_steps):
+                self.log.subheading('Optimising residual Uijs (step {} of {})'.format(i+1, len(uij_del_steps)))
                 self.set_simplex_widths(uij_residual=uij_del)
                 proc_args = []
-                for i in range(self._n_atm):
-                    n = self.copy()
-                    n._select(parameter_selection = self._sel_atm[i],
-                              datasets = None,
-                              atoms    = [i])
-                    proc_args.append(n._prep_for_mp())
-                self.log.subheading('Running optimisation')
-                self._adopt_from_others(libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_optimise, args=proc_args, chunksize=1))
+                for i_atm in range(self._n_atm):
+                    self._select(parameter_selection = self._sel_atm[i_atm],
+                                 datasets = None,
+                                 atoms    = [i_atm])
+                    self.log('Running optimisation (atom {} of {})'.format(i_atm+1,self._n_atm))
+                    self._optimise(verbose=False)
                 self.optimisation_summary(False)
             #########################################
             self.log.subheading('End of macrocycle {}'.format(i_macro+1))
             self.optimisation_summary()
+
+        self.log.heading('Parameterisation complete')
 
         return self
 
@@ -1649,24 +1738,19 @@ def run(params):
 
     log = Log(os.path.join(params.output.out_dir, '_fitting.log'), verbose=True)
 
-    log('Building model list')
+    log.heading('Processed parameters')
+    log(master_phil.format(params).as_str())
+
+    log.heading('Running setup')
+    log('Building model list ({} models)'.format(len(params.input.pdb)))
     if params.input.labelling == 'foldername':
         label_func = lambda f: os.path.basename(os.path.dirname(f))
     else:
         label_func = lambda f: os.path.basename(os.path.splitext(f)[0])
     models = [CrystallographicModel.from_file(f).label(tag=label_func(f)) for f in params.input.pdb]#[:10]
+    models = sorted(models, key=lambda m: m.tag)
 
-#    # Extract the TLS model of the first dataset
-#    log('No TLS models provided. Trying to extract from first crystallographic model')
-#    tls_params = extract_tls_from_pdb(models[0].filename).tls_params
-#    # Print the found models
-#    for i_tls, tls in enumerate(tls_params):
-#        log.subheading('TLS MODEL: {}'.format(i_tls+1))
-#        log('T: {}'.format(tuple(tls.t)))
-#        log('L: {}'.format(tuple(tls.l)))
-#        log('S: {}'.format(tuple(tls.s)))
-#    assert len(tls_params) != 0, 'No TLS models found in structure.'
-
+    # Run the program main
     p = MultiDatasetBFactorParameterisation(models = models,
                                             groups = params.input.tls_group,
                                             params = params,
