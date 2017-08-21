@@ -1575,12 +1575,12 @@ class PanddaMultiDatasetAnalyser(Program):
         # Report Errors
         # ==============================>
         if errors:
-            for dataset, error in errors:
+            for dataset, err_msg in errors:
                 self.log.bar()
                 self.log('Failed to align dataset {}'.format(dataset.tag))
                 self.log.bar()
-                self.log(error)
-            raise Sorry('Failed to align {} datasets. Error messages printed above.'.format(len(errors)))
+                self.log(err_msg)
+            raise Failure('Failed to align {} datasets. Error messages printed above.'.format(len(errors)))
         # ==============================>
         # Report
         # ==============================>
@@ -2145,8 +2145,11 @@ class PanddaMultiDatasetAnalyser(Program):
             self.log('> {} and {}'.format(*sf_pair), True)
         self.log.bar()
         # ==============================>
-        # Check for these columns in each dataset
+        # Validate columns
         # ==============================>
+        # Record errors for all datasets without erroring (error at end)
+        errors = []
+        # Check for these columns in each dataset
         for dataset in datasets:
             # Check that the input files exist
             if not os.path.exists(dataset.model.filename):
@@ -2165,12 +2168,13 @@ class PanddaMultiDatasetAnalyser(Program):
                 if mtz_obj.has_column(sf_pair[0]) and mtz_obj.has_column(sf_pair[1]):
                     dataset_sfs = sf_pair
                     break
-            # Raise error if no columns are identified
+            # Error if no columns are identified
             if dataset_sfs is None:
-                raise Sorry('No matching structure factors were found in the reflection data for dataset {}. \n'.format(dataset.tag)+\
-                            'Looking for structure factors: \n\t{}\n'.format('\n\t'.join(map(' and '.join,sf_cols))) +\
-                            'Structure factors in this dataset: \n\t{}\n'.format('\n\t'.join(mtz_obj.column_labels()))+\
-                            'You may need to change the maps.structure_factors option.')
+                errors.append('No matching structure factors were found in the reflection data for dataset {}. \n'.format(dataset.tag)+\
+                              'Looking for structure factors: \n\t{}\n'.format('\n\t'.join(map(' and '.join,sf_cols))) +\
+                              'Structure factors in this dataset: \n\t{}\n'.format('\n\t'.join(mtz_obj.column_labels()))+\
+                              'You may need to change the maps.structure_factors option.')
+                continue
             # Store the column labels in the dataset object
             dataset.meta.column_labels = ','.join(dataset_sfs)
             # Report which are being used
@@ -2189,11 +2193,12 @@ class PanddaMultiDatasetAnalyser(Program):
                 # ==============================>
                 if self.params.checks.all_data_are_valid_values is True:
                     if sum(valid_selection) != len(valid_selection):
-                        raise Sorry('Structure factor column "{}" in dataset {} has missing reflections (some values are set to N/A or zero). '.format(c, dataset.tag)+\
-                                    '{} reflections have a value of zero. '.format(len(valid_selection)-sum(valid_selection))+\
-                                    'You should populate the structure factors for these reflections with their estimated values. '\
-                                    'Analysing maps with missing reflections (escepially low resolution reflections!) will degrade the quality of the analysis. '\
-                                    'However, you can continue by setting checks.all_data_are_valid_values=None.')
+                        errors.append('Structure factor column "{}" in dataset {} has missing reflections (some values are set to N/A or zero). '.format(c, dataset.tag)+\
+                                      '{} reflections have a value of zero. '.format(len(valid_selection)-sum(valid_selection))+\
+                                      'You should populate the structure factors for these reflections with their estimated values. '\
+                                      'Analysing maps with missing reflections (escepially low resolution reflections!) will degrade the quality of the analysis. '\
+                                      'However, you can continue by setting checks.all_data_are_valid_values=None.')
+                        continue
                 # ==============================>
                 # Check that the data is complete up until a certain resolution
                 # ==============================>
@@ -2204,20 +2209,32 @@ class PanddaMultiDatasetAnalyser(Program):
                     ms_c = ms.complete_set(d_min_tolerance=0.0, d_min=self.params.checks.low_resolution_completeness, d_max=999)
                     # Check that there are the same number of reflections in this set as the other set
                     if ms_c.size() != sum(low_res_sel):
-                        raise Sorry('Structure factor column "{}" in dataset {} has missing reflections below {}A (some reflections are not present in the miller set). '.format(c, dataset.tag, self.params.checks.low_resolution_completeness)+\
-                                    '{} reflections are missing from the miller set in the reflection file. '.format(ms_c.size()-sum(low_res_sel))+\
-                                    'You should add these missing reflections and populate the structure factors for these reflections with their estimated values. '\
-                                    'Analysing maps with missing reflections (escepially low resolution reflections!) will degrade the quality of the analysis. '\
-                                    'I really would not do this, but you can continue by setting checks.low_resolution_completeness to None.')
+                        errors.append('Structure factor column "{}" in dataset {} has missing reflections below {}A (some reflections are not present in the miller set). '.format(c, dataset.tag, self.params.checks.low_resolution_completeness)+\
+                                      '{} reflections are missing from the miller set in the reflection file. '.format(ms_c.size()-sum(low_res_sel))+\
+                                      'You should add these missing reflections and populate the structure factors for these reflections with their estimated values. '\
+                                      'Analysing maps with missing reflections (escepially low resolution reflections!) will degrade the quality of the analysis. '\
+                                      'I really would not do this, but you can continue by setting checks.low_resolution_completeness to None.')
+                        continue
                     # Calculate overlap between low resolution set and valid set to ensure none missing from low resolution set
                     valid_low_res = valid_selection.select(low_res_sel)
                     # Check if any low resolution reflections are invlaid
                     if sum(valid_low_res) != len(valid_low_res):
-                        raise Sorry('Structure factor column "{}" in dataset {} has missing reflections below {}A (some values are set to N/A or zero). '.format(c, dataset.tag, self.params.checks.low_resolution_completeness)+\
-                                    '{} reflections have a value of zero. '.format(len(valid_low_res)-sum(valid_low_res))+\
-                                    'You should populate the structure factors for these reflections with their estimated values. '\
-                                    'Analysing maps with missing reflections (escepially low resolution reflections!) will degrade the quality of the analysis. '\
-                                    'I really would not do this, but you can continue by setting checks.low_resolution_completeness=None.')
+                        errors.append('Structure factor column "{}" in dataset {} has missing reflections below {}A (some values are set to N/A or zero). '.format(c, dataset.tag, self.params.checks.low_resolution_completeness)+\
+                                      '{} reflections have a value of zero. '.format(len(valid_low_res)-sum(valid_low_res))+\
+                                      'You should populate the structure factors for these reflections with their estimated values. '\
+                                      'Analysing maps with missing reflections (escepially low resolution reflections!) will degrade the quality of the analysis. '\
+                                      'I really would not do this, but you can continue by setting checks.low_resolution_completeness=None.')
+                        continue
+        # ==============================>
+        # Report Errors
+        # ==============================>
+        if errors:
+            self.subheading('{} dataset checks failed'.format(len(errors)))
+            for err_msg in errors:
+                self.log.bar()
+                self.log(error)
+            self.log.bar()
+            raise Failure('{} dataset checks failed. Error messages printed above.'.format(len(errors)))
 
     def sync_datasets(self, datasets=None, overwrite_dataset_meta=False):
         """Sync the loaded datasets and the pandda dataset tables"""
