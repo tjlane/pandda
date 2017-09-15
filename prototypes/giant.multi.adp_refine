@@ -86,8 +86,10 @@ def run(params):
         tls_selections = open(params.input.tls_selections, 'r').read().strip().split('\n')
         log('Using existing TLS selections:')
         log('\t'+'\n\t'.join(tls_selections))
+        new_sel_file = False
     else:
         tls_selections = None
+        new_sel_file = True
 
     log.heading('Fitting TLS Parameters')
 
@@ -116,8 +118,9 @@ def run(params):
         all_fits.append(fit)
         
     # Rewrite the tls_selections file with the sanitised TLS selections
-    assert not os.path.exists(params.input.tls_selections)
-    with open(params.input.tls_selections, 'w') as fh: fh.write('\n'.join(tls_selections))
+    if new_sel_file: 
+        assert not os.path.exists(params.input.tls_selections)
+        with open(params.input.tls_selections, 'w') as fh: fh.write('\n'.join(tls_selections))
 
     # Run all of the refinements
     all_fits = libtbx.easy_mp.pool_map(fixed_func=wrapper_run, args=all_fits, processes=params.settings.cpus, chunksize=1)
