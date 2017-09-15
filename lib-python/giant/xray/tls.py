@@ -5,13 +5,12 @@ from bamboo.common.command import CommandManager
 def phenix_find_tls_groups(pdb_file):
     cmd = CommandManager('phenix.find_tls_groups')
     cmd.add_command_line_arguments(pdb_file)
-
-    cmd.print_settings()
+    #cmd.print_settings()
     ret_code = cmd.run()
 
     if ret_code != 0:
-        self.log(cmd.output)
-        self.log(cmd.error)
+        print cmd.output
+        print cmd.error
         raise Exception('Failed to determine TLS groups: {}'.format(' '.join(cmd.program)))
 
     regex = re.compile("refinement\.refine\.adp \{([\s\S]*?)\}")
