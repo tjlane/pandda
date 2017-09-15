@@ -7,7 +7,7 @@ import pandas
 import iotbx.pdb
 import libtbx.easy_mp
 
-from bamboo.rscb_utils import get_pdb_index, download_and_organise_pdb_as_necessary, download_structure_factors
+from bamboo.rcsb_utils import get_pdb_index, download_and_organise_pdb_as_necessary, download_structure_factors
 
 def process_line_wrap(line):
 
@@ -45,7 +45,7 @@ def process_line(line):
 
     chain_data = inp.sequence_from_SEQRES()
 
-    print chain_data
+#    print chain_data
 
     ret_tab = pandas.DataFrame(columns=['pdbid','seqres'])
     ret_tab = ret_tab.append([{ 'pdbid':    pdb_id,
@@ -73,7 +73,7 @@ def run():
         print '===> Extracting Sequences'
         print '==========================================================>'
         # Get the sequences from the PDB files
-        output = libtbx.easy_mp.pool_map(func=process_line_wrap, args=pdb_entries, processes=7)
+        output = libtbx.easy_mp.pool_map(func=process_line_wrap, args=pdb_entries, processes=48)
         # Collate sequences into one table
         all_tab = pandas.DataFrame(columns=['pdbid','seqres'])
         for ret in output:
