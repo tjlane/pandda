@@ -2,7 +2,16 @@
 
 import os, sys, glob
 
+import libtbx.easy_mp
+
 #######################################
+
+cpus = 40
+
+def wrapper_proc(arg):
+    d,cmd = arg
+    os.chdir(d)
+    os.system(cmd)
 
 if __name__=='__main__':
 
@@ -13,12 +22,16 @@ if __name__=='__main__':
 
     print 'Processing {} Directories'.format(len(proc_dirs))
 
+    commands = []
     for d in proc_dirs:
 
         print 'Processing {}'.format(d)
-        os.chdir(d)
-        if os.path.exists('./refine.pdb'):
+        if os.path.exists(os.path.join(d,'refine.pdb')):
             continue
         else:
-            os.system('giant.quick_refine params=phenix.params program=phenix *.cif *-ensemble-model.pdb *-pandda-input.mtz')
+            commands.append((d,'giant.quick_refine program=phenix *.pdb *.mtz'))
+            #os.system('giant.quick_refine params=phenix.params program=phenix *.cif *.pdb *.mtz')
+            #
+    print 'Running {} refinements'.format(len(commands))
+    libtbx.easy_mp.pool_map(func=wrapper_proc, args=commands, processes=cpus)
 
