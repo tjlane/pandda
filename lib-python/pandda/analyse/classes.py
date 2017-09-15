@@ -514,8 +514,8 @@ class PanddaMultiDatasetAnalyser(Program):
         # ================================================>
         if p.shortcuts.run_in_single_dataset_mode:
             self.log('Applying shortcut: run_in_single_dataset_mode')
-            p.params.analysis.min_build_datasets = 1
-            p.params.analysis.max_build_datasets = 1
+            p.params.statistical_maps.min_build_datasets = 1
+            p.params.statistical_maps.max_build_datasets = 1
 
     def check_and_update_input_parameters(self):
         """Validate and preprocess the loaded parameters"""
@@ -577,22 +577,26 @@ class PanddaMultiDatasetAnalyser(Program):
         # ================================================>
         # Check input parameters are valid values
         # ================================================>
-        if p.params.analysis.min_build_datasets < 1:
-            raise Sorry('params.analysis.min_build_datasets must be greater than 0. Current value: {}'.format(p.params.analysis.min_build_datasets))
-        if p.params.analysis.max_build_datasets < 1:
-            raise Sorry('params.analysis.max_build_datasets must be greater than 0. Current value: {}'.format(p.params.analysis.max_build_datasets))
-        if p.params.analysis.max_build_datasets < p.params.analysis.min_build_datasets:
-            raise Sorry('params.analysis.max_build_datasets must be larger than (or the same size as) params.analysis.min_build_datasets. Currently params.analysis.min_build_datasets={} and params.analysis.max_build_datasets={}'.format(p.params.analysis.min_build_datasets, p.params.analysis.max_build_datasets))
+        if p.params.statistical_maps.min_build_datasets < 1:
+            raise Sorry('statistical_maps.min_build_datasets must be greater than 0. Current value: {}'.format(
+                p.params.statistical_maps.min_build_datasets))
+        if p.params.statistical_maps.max_build_datasets < 1:
+            raise Sorry('statistical_maps.max_build_datasets must be greater than 0. Current value: {}'.format(
+                p.params.statistical_maps.max_build_datasets))
+        if p.params.statistical_maps.max_build_datasets < p.params.statistical_maps.min_build_datasets:
+            raise Sorry('statistical_maps.max_build_datasets must be larger than (or the same size as) statistical_maps.min_build_datasets. Currently min_build_datasets={} and max_build_datasets={}'.format(
+                p.params.statistical_maps.min_build_datasets,
+                p.params.statistical_maps.max_build_datasets))
         # ================================================>
         # Use default structure factors if none provided
         # ================================================>
-        if not p.params.maps.structure_factors:
+        if not p.params.diffraction_data.structure_factors:
             self.log.bar()
-            self.log('maps.structure_factors has not been provided.')
-            p.params.maps.structure_factors.append('FWT,PHWT')
-            p.params.maps.structure_factors.append('2FOFCWT_fill,PH2FOFCWT_fill')
-            p.params.maps.structure_factors.append('2FOFCWT,PH2FOFCWT')
-            self.log('Will look for the default PHENIX and REFMAC structure factor columns: {}'.format(' or '.join(p.params.maps.structure_factors)))
+            self.log('diffraction_data.structure_factors has not been provided.')
+            p.params.diffraction_data.structure_factors.append('FWT,PHWT')
+            p.params.diffraction_data.structure_factors.append('2FOFCWT_fill,PH2FOFCWT_fill')
+            p.params.diffraction_data.structure_factors.append('2FOFCWT,PH2FOFCWT')
+            self.log('Will look for the default PHENIX and REFMAC structure factor columns: {}'.format(' or '.join(p.params.diffraction_data.structure_factors)))
             self.log('(2FOFCWT_fill,PH2FOFCWT_fill are the "filled" phenix structure factors with missing values "filled" with DFc - if these are present it is prefereable to use these)')
         # ================================================>
         # Hardcoded limits
@@ -673,20 +677,20 @@ class PanddaMultiDatasetAnalyser(Program):
         # ================================================>
         # Check that enough datasets have been found - before any filtering
         # ================================================>
-        elif self.datasets.size()+len(self.new_files()) < self.params.analysis.min_build_datasets:
+        elif self.datasets.size()+len(self.new_files()) < self.params.statistical_maps.min_build_datasets:
             self.log.bar()
             self.log('Not enough datasets are available for statistical map characterisation.')
-            self.log('The minimum number required is controlled by changing analysis.min_build_datasets')
-            self.log('Number loaded ({!s}) is less than the {!s} currently needed.'.format(self.datasets.size()+len(self.new_files()), self.params.analysis.min_build_datasets))
+            self.log('The minimum number required is controlled by changing min_build_datasets')
+            self.log('Number loaded ({!s}) is less than the {!s} currently needed.'.format(self.datasets.size()+len(self.new_files()), self.params.statistical_maps.min_build_datasets))
             raise Sorry('Not enough datasets are available for statistical map characterisation')
         # ================================================>
         # Check that enough VALID datasets have been loaded
         # ================================================>
-        elif self.datasets.all_masks().has_mask('characterisation') and (self.datasets.size(mask_name='characterisation') < self.params.analysis.min_build_datasets):
+        elif self.datasets.all_masks().has_mask('characterisation') and (self.datasets.size(mask_name='characterisation') < self.params.statistical_maps.min_build_datasets):
             self.log.bar()
             self.log('After filtering datasets, not enough datasets are available for statistical map characterisation.')
-            self.log('The minimum number required is controlled by changing analysis.min_build_datasets')
-            self.log('Number loaded ({!s}) is less than the {!s} currently needed.'.format(self.datasets.size(mask_name='rejected - total', invert=True), self.params.analysis.min_build_datasets))
+            self.log('The minimum number required is controlled by changing min_build_datasets')
+            self.log('Number loaded ({!s}) is less than the {!s} currently needed.'.format(self.datasets.size(mask_name='rejected - total', invert=True), self.params.statistical_maps.min_build_datasets))
             raise Sorry('Not enough datasets are available for statistical map characterisation')
 
     #########################################################################################################
@@ -1504,7 +1508,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Extract reference dataset SFs
         # ==============================>
         sf_cols = [self.args.input.reference.structure_factors.split(',')] if self.args.input.reference.structure_factors \
-                    else [sf.split(',') for sf in self.args.params.maps.structure_factors]
+                    else [sf.split(',') for sf in self.args.params.diffraction_data.structure_factors]
         self.log('Checking for any of these structure factors in reference dataset:')
         for sf_pair in sf_cols:
             self.log('> {} and {}'.format(*sf_pair))
@@ -1524,7 +1528,7 @@ class PanddaMultiDatasetAnalyser(Program):
             raise Sorry('No matching structure factors were found in the reflection data for reference dataset. \n'+\
                         'Looking for structure factors: \n\t{}\n'.format('\n\t'.join(map(' and '.join,sf_cols))) +\
                         'Structure factors in this dataset: \n\t{}\n'.format('\n\t'.join(mtz_obj.column_labels()))+\
-                        'You may need to change the maps.structure_factors or the reference.structure_factors option.')
+                        'You may need to change the diffraction_data.structure_factors or the reference.structure_factors option.')
         # Store column labels for later
         ref_dataset.meta.column_labels = dataset_sfs
         # Load the diffraction data
@@ -1897,11 +1901,11 @@ class PanddaMultiDatasetAnalyser(Program):
             # ==============================>
             # Select which data to use for analysis
             # ==============================>
-            if not self.params.maps.use_b_factor_scaling:
+            if not self.params.diffraction_data.apply_b_factor_scaling:
                 self.log('use_b_factor_scaled_data is turned off -- using the unscaled data as the scaled data')
                 ma_scaled_com = ma_unscaled_com
             else:
-                self.log('Applying diffraction data scaling')
+                self.log('Applying b-factor scaling to diffraction data')
                 # Need to create a copy to preserve the x-values of the original scaling object
                 new_scaling = copy.deepcopy(scaling)
                 new_scaling.new_x_values(x_values=ma_unscaled_int.d_star_sq().data())
@@ -2015,9 +2019,9 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Scale the map
         # ==============================>
-        if   self.params.maps.scaling == 'none':   pass
-        elif self.params.maps.scaling == 'sigma':  fft_map.apply_sigma_scaling()
-        elif self.params.maps.scaling == 'volume': fft_map.apply_volume_scaling()
+        if   self.params.maps.density_scaling == 'none':   pass
+        elif self.params.maps.density_scaling == 'sigma':  fft_map.apply_sigma_scaling()
+        elif self.params.maps.density_scaling == 'volume': fft_map.apply_volume_scaling()
         # ==============================>
         # Transform to the reference frame
         # ==============================>
@@ -2153,7 +2157,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Extract structure factor column names
         # ==============================>
-        sf_cols = [c.split(',') for c in self.params.maps.structure_factors]
+        sf_cols = [c.split(',') for c in self.params.diffraction_data.structure_factors]
         # Print the columns we're looking for
         self.log('Checking for any of these structure factors in each dataset:')
         for sf_pair in sf_cols:
@@ -2188,7 +2192,7 @@ class PanddaMultiDatasetAnalyser(Program):
                 errors.append('No matching structure factors were found in the reflection data for dataset {}. \n'.format(dataset.tag)+\
                               'Looking for structure factors: \n\t{}\n'.format('\n\t'.join(map(' and '.join,sf_cols))) +\
                               'Structure factors in this dataset: \n\t{}\n'.format('\n\t'.join(mtz_obj.column_labels()))+\
-                              'You may need to change the maps.structure_factors option.')
+                              'You may need to change the diffraction_data.structure_factors option.')
                 continue
             # Store the column labels in the dataset object
             dataset.meta.column_labels = ','.join(dataset_sfs)
@@ -2206,7 +2210,7 @@ class PanddaMultiDatasetAnalyser(Program):
                 # ==============================>
                 # Check that all data are valid values
                 # ==============================>
-                if self.params.checks.all_data_are_valid_values is True:
+                if self.params.diffraction_data.checks.all_data_are_valid_values is True:
                     if sum(valid_selection) != len(valid_selection):
                         errors.append('Structure factor column "{}" in dataset {} has missing reflections (some values are set to N/A or zero). '.format(c, dataset.tag)+\
                                       '{} reflections have a value of zero. '.format(len(valid_selection)-sum(valid_selection))+\
@@ -2217,14 +2221,14 @@ class PanddaMultiDatasetAnalyser(Program):
                 # ==============================>
                 # Check that the data is complete up until a certain resolution
                 # ==============================>
-                if self.params.checks.low_resolution_completeness is not None:
+                if self.params.diffraction_data.checks.low_resolution_completeness is not None:
                     # Find selection for the low resolution reflections
-                    low_res_sel = ms.resolution_filter_selection(d_min=self.params.checks.low_resolution_completeness, d_max=999)
+                    low_res_sel = ms.resolution_filter_selection(d_min=self.params.diffraction_data.checks.low_resolution_completeness, d_max=999)
                     # Extract a complete set of miller indices up to cutoff resolution
-                    ms_c = ms.complete_set(d_min_tolerance=0.0, d_min=self.params.checks.low_resolution_completeness, d_max=999)
+                    ms_c = ms.complete_set(d_min_tolerance=0.0, d_min=self.params.diffraction_data.checks.low_resolution_completeness, d_max=999)
                     # Check that there are the same number of reflections in this set as the other set
                     if ms_c.size() != sum(low_res_sel):
-                        errors.append('Structure factor column "{}" in dataset {} has missing reflections below {}A (some reflections are not present in the miller set). '.format(c, dataset.tag, self.params.checks.low_resolution_completeness)+\
+                        errors.append('Structure factor column "{}" in dataset {} has missing reflections below {}A (some reflections are not present in the miller set). '.format(c, dataset.tag, self.params.diffraction_data.checks.low_resolution_completeness)+\
                                       '{} reflections are missing from the miller set in the reflection file. '.format(ms_c.size()-sum(low_res_sel))+\
                                       'You should add these missing reflections and populate the structure factors for these reflections with their estimated values. '\
                                       'Analysing maps with missing reflections (escepially low resolution reflections!) will degrade the quality of the analysis. '\
@@ -2234,7 +2238,7 @@ class PanddaMultiDatasetAnalyser(Program):
                     valid_low_res = valid_selection.select(low_res_sel)
                     # Check if any low resolution reflections are invlaid
                     if sum(valid_low_res) != len(valid_low_res):
-                        errors.append('Structure factor column "{}" in dataset {} has missing reflections below {}A (some values are set to N/A or zero). '.format(c, dataset.tag, self.params.checks.low_resolution_completeness)+\
+                        errors.append('Structure factor column "{}" in dataset {} has missing reflections below {}A (some values are set to N/A or zero). '.format(c, dataset.tag, self.params.diffraction_data.checks.low_resolution_completeness)+\
                                       '{} reflections have a value of zero. '.format(len(valid_low_res)-sum(valid_low_res))+\
                                       'You should populate the structure factors for these reflections with their estimated values. '\
                                       'Analysing maps with missing reflections (escepially low resolution reflections!) will degrade the quality of the analysis. '\
@@ -2474,8 +2478,8 @@ class PanddaMultiDatasetAnalyser(Program):
                 self.datasets.all_masks().set_value(name=building_mask_name, id=dataset.tag, value=True)
                 # Check to see if the number of datasets to use in building has been reached
                 total_build += 1
-                if total_build >= self.params.analysis.max_build_datasets:
-                    self.log('Maximum number of datasets for building reached: {!s}={!s}'.format(total_build, self.params.analysis.max_build_datasets))
+                if total_build >= self.params.statistical_maps.max_build_datasets:
+                    self.log('Maximum number of datasets for building reached: {!s}={!s}'.format(total_build, self.params.statistical_maps.max_build_datasets))
                     break
         return building_mask_name, self.datasets.all_masks().get_mask(name=building_mask_name)
 
@@ -2793,6 +2797,7 @@ class PanddaMultiDatasetAnalyser(Program):
 
 class PanddaMapAnalyser(object):
 
+    _average_map_name = 'mean_map'
 
     def __init__(self, dataset_maps, meta=None, statistical_maps=None, parent=None, log=None):
         """Class to hold dataset maps, statistical maps and meta data for a set of related maps. Also holds functions for analysing the maps."""
@@ -2826,6 +2831,8 @@ class PanddaMapAnalyser(object):
         self.parent = parent
         self.log = log
 
+        assert hasattr(self.statistical_maps,self._average_map_name)
+
         if self.dataset_maps is not None: self._validate()
 
     def _validate(self):
@@ -2844,7 +2851,15 @@ class PanddaMapAnalyser(object):
         self.meta.map_data_size  = m_ref.data.size()
         self.meta.map_data_shape = m_ref.data.all()
 
-    def calculate_mean_map(self, mask_name=None):
+    def set_average_map(self, map_name):
+        """Select which maps is used for calculating statistical maps"""
+        assert hasattr(self.statistical_maps, map_name)
+        self._average_map_name = map_name
+
+    def average_map(self):
+        return self.statistical_maps[self._average_map_name]
+
+    def calculate_average_maps(self, mask_name=None):
         """Calculate the mean map from all of the different observations"""
 
         # Extract the maps to be used for averaging
@@ -2898,7 +2913,7 @@ class PanddaMapAnalyser(object):
         self.statistical_maps.mean_map = m.new_from_template(map_data=flex.double(mean_map_vals.flatten()), sparse=m.is_sparse())
         self.statistical_maps.medn_map = m.new_from_template(map_data=flex.double(medn_map_vals.flatten()), sparse=m.is_sparse())
 
-        return self.statistical_maps.mean_map
+        return self.statistical_maps.mean_map, self.statistical_maps.medn_map
 
     def calculate_map_uncertainties(self, masked_idxs=None, mask_name=None, q_cut=1.5, cpus=1):
         """Calculate the uncertainty in each of the different maps"""
@@ -2910,7 +2925,7 @@ class PanddaMapAnalyser(object):
             masked_idxs = flex.size_t(masked_idxs)
 
         # Extract masked map values from the mean map... and sort them
-        mean_vals = self.statistical_maps.mean_map.data.select(masked_idxs)
+        comp_vals = self.statistical_maps.mean_map.data.select(masked_idxs)
 
         self.log.bar()
         self.log('Selecting datasets for uncertainty calculation')
@@ -2931,7 +2946,7 @@ class PanddaMapAnalyser(object):
             else:
                 fine_manager = None
 
-            u = UncertaintyCalculator(query_values=m.data.select(masked_idxs), ref_values=mean_vals, file_manager=file_manager)
+            u = UncertaintyCalculator(query_values=m.data.select(masked_idxs), ref_values=comp_vals, file_manager=file_manager)
             arg_list.append(u)
 
         t1 = time.time()
@@ -3072,7 +3087,7 @@ class PanddaMapAnalyser(object):
     def calculate_z_map(self, method, map=None, tag=None, uncertainty=None):
         """Calculate the z-map relative to the mean and std map"""
 
-        assert method in ['naive','adjusted','uncertainty','adjusted+uncertainty']
+        assert method in ['none','naive','adjusted','uncertainty','adjusted+uncertainty']
         assert [tag, map].count(None) == 1, 'Must provide tag OR map'
 
         if tag:
@@ -3087,10 +3102,12 @@ class PanddaMapAnalyser(object):
         # Extract maps in the right sparseness
         is_sparse = map.is_sparse()
         # Extract mean values (for subtraction)
-        mean_vals = self.statistical_maps.mean_map.get_map_data(sparse=is_sparse)
+        comp_vals = self.statistical_maps.mean_map.get_map_data(sparse=is_sparse)
 
         # Extract the normalisation values (for division)
-        if method == 'naive':
+        if method == 'none':
+            norm_vals = 1.0
+        elif method == 'naive':
             norm_vals = self.statistical_maps.stds_map.get_map_data(sparse=is_sparse)
         elif method == 'adjusted':
             norm_vals = self.statistical_maps.sadj_map.get_map_data(sparse=is_sparse)
@@ -3101,4 +3118,4 @@ class PanddaMapAnalyser(object):
         else:
             raise Exception('method not found: {!s}'.format(method))
 
-        return (map - mean_vals)*(1.0/norm_vals)
+        return (map - comp_vals)*(1.0/norm_vals)

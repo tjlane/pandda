@@ -297,8 +297,8 @@ def pandda_main_loop(pandda):
             pandda.log.bar()
             building_mask_name, building_mask = pandda.select_datasets_for_density_characterisation(high_res_cutoff=cut_resolution)
             # Check that we have enough datasets to build distributions
-            if sum(building_mask) < pandda.params.analysis.min_build_datasets:
-                pandda.log('Not enough datasets at this resolution to perform statistical density analysis ({!s}<{!s})'.format(sum(building_mask),pandda.params.analysis.min_build_datasets))
+            if sum(building_mask) < pandda.params.statistical_maps.min_build_datasets:
+                pandda.log('Not enough datasets at this resolution to perform statistical density analysis ({!s}<{!s})'.format(sum(building_mask),pandda.params.statistical_maps.min_build_datasets))
                 pandda.log.bar()
                 continue
             else:
@@ -421,7 +421,7 @@ def pandda_main_loop(pandda):
             # ============================================================================>
             # Calculate the mean map
             # ============================================================================>
-            map_analyser.calculate_mean_map()
+            map_analyser.calculate_average_maps()
             # ============================================================================>
             # If only mean map requested, output and exit
             # ============================================================================>
@@ -675,7 +675,7 @@ def pandda_main_loop(pandda):
             if (pandda.args.output.maps.write_z_maps=='interesting' and dataset.events) or (pandda.args.output.maps.write_z_maps=='all'):
                 ref_z_map = map_analyser.calculate_z_map(map         = dataset.child,
                                                          uncertainty = dataset.child.meta.map_uncertainty,
-                                                         method      = pandda.args.params.z_map.map_type)
+                                                         method      = pandda.args.params.statistical_maps.z_map_type)
                 ref_z_map = ref_z_map.normalised_copy()
                 map_maker = NativeMapMaker(dataset  = dataset,
                                            map_obj  = ref_z_map,

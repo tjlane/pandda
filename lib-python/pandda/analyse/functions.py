@@ -108,9 +108,9 @@ class MapLoader(object):
         # Extract the map data
         fft_map = dataset.data.fft_maps['truncated']
         # Scale the map
-        if   args.params.maps.scaling == 'none':   pass
-        elif args.params.maps.scaling == 'sigma':  fft_map.apply_sigma_scaling()
-        elif args.params.maps.scaling == 'volume': fft_map.apply_volume_scaling()
+        if   args.params.maps.density_scaling == 'none':   pass
+        elif args.params.maps.density_scaling == 'sigma':  fft_map.apply_sigma_scaling()
+        elif args.params.maps.density_scaling == 'volume': fft_map.apply_volume_scaling()
         # Create map object
         native_map_true = ElectronDensityMap.from_fft_map(fft_map).as_map()
 
@@ -361,12 +361,13 @@ class DatasetProcessor(object):
         # ============================================================================>
         assert dataset_map.data is not None, 'Something has gone wrong - this dataset has no loaded map'
         assert dataset_map.is_sparse() is map_analyser.statistical_maps.mean_map.is_sparse()
+        assert dataset_map.is_sparse() is map_analyser.statistical_maps.medn_map.is_sparse()
         assert dataset_map.is_sparse() is map_analyser.statistical_maps.stds_map.is_sparse()
         assert dataset_map.is_sparse() is map_analyser.statistical_maps.sadj_map.is_sparse()
         # ============================================================================>
         # CALCULATE MEAN-DIFF MAPS
         # ============================================================================>
-        mean_diff_map = dataset_map - map_analyser.statistical_maps.mean_map
+        mean_diff_map = map_analyser.calculate_z_map(map=dataset_map, method='none')
         # ============================================================================>
         # NAIVE Z-MAP - NOT USING UNCERTAINTY ESTIMATION OR ADJUSTED STDS
         # ============================================================================>
@@ -386,16 +387,16 @@ class DatasetProcessor(object):
         # ============================================================================>
         # SELECT WHICH MAP TO DO THE BLOB SEARCHING ON
         # ============================================================================>
-        if args.params.z_map.map_type == 'naive':
+        if args.params.statistical_maps.z_map_type == 'naive':
             z_map = z_map_naive_normalised
             z_map_stats = basic_statistics(flex.double(z_map_naive.data))
-#        elif args.params.z_map.map_type == 'adjusted':
+#        elif args.params.statistical_maps.z_map_type == 'adjusted':
 #            z_map = z_map_adjst_normalised
 #            z_map_stats = basic_statistics(flex.double(z_map_adjst.data))
-        elif args.params.z_map.map_type == 'uncertainty':
+        elif args.params.statistical_maps.z_map_type == 'uncertainty':
             z_map = z_map_uncty_normalised
             z_map_stats = basic_statistics(flex.double(z_map_uncty.data))
-        elif args.params.z_map.map_type == 'adjusted+uncertainty':
+        elif args.params.statistical_maps.z_map_type == 'adjusted+uncertainty':
             z_map = z_map_compl_normalised
             z_map_stats = basic_statistics(flex.double(z_map_compl.data))
         else: raise Exception('Invalid Z-map type')
