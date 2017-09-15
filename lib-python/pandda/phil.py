@@ -46,14 +46,17 @@ pandda
         flags
             .help = "Flags for individual datasets"
         {
+            ground_state_datasets = None
+                .help = "Define a set of known 'ground-state' (e.g. unbound) datasets. ONLY these datasets will be used for characterising the ground-state electron density."
+                .type = str
             exclude_from_zmap_analysis = None
-                .help = 'Don\'t analyse these datasets, only use them to build the distributions - comma separated list of dataset tags'
+                .help = "Don't analyse these datasets, only use them to build the distributions - comma separated list of dataset tags"
                 .type = str
             exclude_from_characterisation = None
-                .help = 'Don\'t use these datasets to build density distributions, only analyse them - comma separated list of dataset tags'
+                .help = "Don't use these datasets to characterise the ground-state electron density, only analyse them - comma separated list of dataset tags"
                 .type = str
             ignore_datasets = None
-                .help = 'Reject these datasets, don\'t even load them - comma separated list of dataset tags'
+                .help = "Reject these datasets, don't even load them - comma separated list of dataset tags"
                 .type = str
             reprocess_datasets = None
                 .help = "Selection of existing datasets to reproces (treat as new datasets) - comma separated list of dataset tags. Setting this will set flags.existing_datasets=reload."

@@ -850,6 +850,14 @@ class PanddaMultiDatasetAnalyser(Program):
         for mask_name in PanddaMaskNames.all_mask_names:
             self.datasets.all_masks().add_mask(name=mask_name, values=False)
         # ==============================>
+        # Initialise masks for ground-state datasets (set all other datasets to "excluded from characterisation")
+        # ==============================>
+        if self.args.input.flags.ground_state_datasets:
+            ground_state_tags = self.args.input.flags.ground_state_datasets.split(',')
+            self.log('Datasets for characterising ground-state electron density ({!s} datasets): \n\t{!s}'.format(len(ground_state_tags), '\n\t'.join(ground_state_tags)))
+            self.datasets.all_masks().add_mask(name='exclude_from_characterisation', values=True, overwrite=True)
+            for tag in ground_state_tags: self.datasets.all_masks().set_value(name='exclude_from_characterisation', id=tag, value=False)
+        # ==============================>
         # Initialise masks for datasets that shouldn't be analysed or used for building
         # ==============================>
         if self.args.input.flags.exclude_from_zmap_analysis:
@@ -859,18 +867,21 @@ class PanddaMultiDatasetAnalyser(Program):
             self.datasets.all_masks().add_mask(name='exclude_from_zmap_analysis', values=no_analyse_mask, overwrite=True)
         if self.args.input.flags.exclude_from_characterisation:
             no_build_tags = self.args.input.flags.exclude_from_characterisation.split(',')
-            self.log('Not building distributions from {!s} Datasets: \n\t{!s}'.format(len(no_build_tags), '\n\t'.join(no_build_tags)))
-            no_build_mask = [True if d.tag in no_build_tags else False for d in self.datasets.all()]
-            self.datasets.all_masks().add_mask(name='exclude_from_characterisation', values=no_build_mask, overwrite=True)
+            self.log('Excluding datasets from characterisation of ground-state electron density ({!s} datasets): \n\t{!s}'.format(len(no_build_tags), '\n\t'.join(no_build_tags)))
+            for tag in no_build_tags: self.datasets.all_masks().set_value(name='exclude_from_characterisation', id=tag, value=True)
         # ==============================>
         # Initialise mask for datasets that have been previously pickled ("old" datasets)
         # ==============================>
         self.datasets.all_masks().add_mask(name='old datasets', values=False)
         if self.pickled_dataset_meta.dataset_labels:
-            self.log('Labelling old datasets:')
+            self.log('Sorting through previously-added/reloaded datasets:')
             for tag in set(self.pickled_dataset_meta.dataset_labels).intersection(self.datasets.all_tags()):
-                self.log('\t'+tag)
-                self.datasets.all_masks().set_value(name='old datasets', id=tag, value=True)
+                d = self.datasets.get(tag=tag)
+                if d.meta.analysed == True:
+                    self.log('\t{} has been analysed on a previous run -- labelling as an old dataset'.format(tag))
+                    self.datasets.all_masks().set_value(name='old datasets', id=tag, value=True)
+                else:
+                    self.log('\t{} has not been previously analysed (or has been reset) -- labelling as a new dataset'.format(tag))
             self.log('Considering {!s} datasets as "New Datasets"'.format(self.datasets.size(mask_name='old datasets', invert=True)))
             self.log('Considering {!s} datasets as "Old Datasets"'.format(self.datasets.size(mask_name='old datasets')))
         else:
