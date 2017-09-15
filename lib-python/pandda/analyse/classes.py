@@ -1830,6 +1830,7 @@ class PanddaMultiDatasetAnalyser(Program):
 
             self.log.bar()
             self.log('Dataset {}'.format(dataset.tag))
+            self.log.bar()
 
             # Get the columns to be loaded for this dataset
             dataset_sfs = dataset.meta.column_labels
@@ -1900,7 +1901,7 @@ class PanddaMultiDatasetAnalyser(Program):
                 self.log('use_b_factor_scaled_data is turned off -- using the unscaled data as the scaled data')
                 ma_scaled_com = ma_unscaled_com
             else:
-                self.log('Scaling diffraction data')
+                self.log('Applying diffraction data scaling')
                 # Need to create a copy to preserve the x-values of the original scaling object
                 new_scaling = copy.deepcopy(scaling)
                 new_scaling.new_x_values(x_values=ma_unscaled_int.d_star_sq().data())
@@ -1919,6 +1920,8 @@ class PanddaMultiDatasetAnalyser(Program):
             dataset.meta.scaled_wilson_b   = estimate_wilson_b_factor(miller_array=ma_scaled_com)
             self.tables.dataset_info.set_value(index=dataset.tag, col='unscaled_wilson_B', value=dataset.meta.unscaled_wilson_b)
             self.tables.dataset_info.set_value(index=dataset.tag, col='scaled_wilson_B',   value=dataset.meta.scaled_wilson_b)
+            self.log('Unscaled:   {}'.format(round(dataset.meta.unscaled_wilson_b,3)))
+            self.log('Scaled:     {}'.format(round(dataset.meta.scaled_wilson_b,3)))
 
             dataset.data.miller_arrays['scaled'] = ma_scaled_com
 
@@ -1926,6 +1929,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Report
         # ==============================>
         t2 = time.time()
+        self.log.bar()
         self.log('\r> Structure factors extracted > Time taken: {!s} seconds'.format(int(t2-t1))+' '*30)
         # ==============================>
         # Update Z-score columns
