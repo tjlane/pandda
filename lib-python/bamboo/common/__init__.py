@@ -1,4 +1,21 @@
 
+class Report(object):
+    """Used to compile message strigns from functions -- useful for returning function history upon errors"""
+
+    def __init__(self, s='', verbose=False):
+        self.s = s
+        self.bar = '-'*100
+        self.verbose = verbose
+        if self.s and self.verbose: print self.s
+
+    def __call__(self, s):
+        if self.verbose: print s
+        self.s += '\n' + s
+
+    def __str__(self):
+        return self.bar + '\n' + self.s + '\n' + self.bar
+
+
 class ListStream:
     """Replaces a file object for functions that print to screen - writes to list of lines instead"""
 
