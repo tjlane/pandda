@@ -53,6 +53,4 @@ def pairwise_chain_sequence_identity(chains_1, chains_2, seq_identity_threshold=
     """
     seqs_1 = [''.join(c.as_sequence()) for c in chains_1]
     seqs_2 = [''.join(c.as_sequence()) for c in chains_2]
-    print seqs_1
-    print seqs_2
-    return pairwise_sequence_identity(seqs_1, seqs_2, seq_identity_threshold=None)
+    return pairwise_sequence_identity(seqs_1, seqs_2, seq_identity_threshold=seq_identity_threshold)

@@ -11,7 +11,7 @@ from libtbx.utils import Sorry, Failure
 from scitbx.math import superpose
 from scitbx.array_family import flex
 
-from bamboo.common import ListStream
+from bamboo.common import ListStream, Report
 
 from giant.structure import make_label
 from giant.structure.select import protein, backbone, complete_backbone, common_residues, extract_atom
@@ -203,7 +203,7 @@ def nearby_coords_bool(query, coords, cutoff):
 ####################################################################################
 
 def align_structures_flexible(mov_hierarchy, ref_hierarchy, altlocs=['','A'], cutoff_radius=15, sequence_identity_threshold=0.95,
-                              one_to_one_mapping=True, require_hierarchies_identical=True, verbose=True):
+                              one_to_one_mapping=True, require_hierarchies_identical=True, verbose=False):
     """
     Perform a flexible alignment on two hierarchies. Alignments are performed on a chain-by-chain basis.
     Each chain of mov_hierarchy is aligned
@@ -227,14 +227,29 @@ def align_structures_flexible(mov_hierarchy, ref_hierarchy, altlocs=['','A'], cu
     c_mov = list(mov_hierarchy.chains())
     c_ref = list(ref_hierarchy.chains())
     # Match chains in the two structures (c_mov is first so the array is first indexed by the chains in mov)
-    chn_sim = pairwise_chain_sequence_identity(c_mov, c_ref, seq_identity_threshold=sequence_identity_threshold)
-    if verbose:
-        print '{} chains in mov_hierarchy: {}'.format(len(c_mov),','.join([c.id for c in c_mov]))
-        print '{} chains in ref_hierarchy: {}'.format(len(c_ref),','.join([c.id for c in c_ref]))
-        print 'Chains meeting sequence identity threshold of {}%:'.format(100*sequence_identity_threshold)
-        print '     REF'
-        print 'MOV  {}'.format(' '.join([c.id for c in c_ref]))
-        for i,i_c in enumerate(c_mov): print '  {}  {}'.format(i_c.id, ' '.join(map(str,chn_sim[i])))
+    chn_sim = pairwise_chain_sequence_identity(c_mov, c_ref, seq_identity_threshold=None)
+    # Create strings for use in case of errors/verbose printing
+    s = 'Chain and sequences for aligment:'
+    s += '\n{} chains in mov_hierarchy:'.format(len(c_mov))
+    for c in c_mov: s += '\n\t{}: {}'.format(c.id, ''.join(c.as_sequence()))
+    s += '\n{} chains in ref_hierarchy:'.format(len(c_ref))
+    for c in c_ref: s += '\n\t{}: {}'.format(c.id, ''.join(c.as_sequence()))
+    s += '\nPairwise chain-by-chain sequence identities:'
+    s += '\n     REF'
+    s += '\nMOV  {}'.format(' '.join(['{:4}'.format(c.id) for c in c_ref]))
+    for i,i_c in enumerate(c_mov):
+        s+= '\n{:3}  {}'.format(i_c.id, ' '.join(['{:4}'.format(v) for v in chn_sim[i]]))
+    # Report to be returned in case of error
+    report = Report(s, verbose=verbose)
+    # Make the array boolean at the threshold value
+    chn_sim = (chn_sim>sequence_identity_threshold).astype(int)
+    # Report
+    s = 'Pairwise chain-by-chain sequence identities (thresholded at {}%):'.format(100*sequence_identity_threshold)
+    s += '\n     REF'
+    s += '\nMOV  {}'.format(' '.join(['{:4}'.format(c.id) for c in c_ref]))
+    for i,i_c in enumerate(c_mov):
+        s+= '\n{:3}  {}'.format(i_c.id, ' '.join(['{:4}'.format(v) for v in chn_sim[i]]))
+    report(s)
     # Iterate through and align the chains
     for i, chn_mov in enumerate(c_mov):
         # Skip if not protein
@@ -243,12 +258,15 @@ def align_structures_flexible(mov_hierarchy, ref_hierarchy, altlocs=['','A'], cu
         try:
             idx_ref = list(chn_sim[i]).index(1)
             chn_ref = c_ref[idx_ref]
-            if verbose: print 'Aligning chain {} of mov_hierarchy to chain {} in ref_hierarchy'.format(chn_mov.id, chn_ref.id)
+            report('Aligning chain {} of mov_hierarchy to chain {} in ref_hierarchy'.format(chn_mov.id, chn_ref.id))
             if one_to_one_mapping:
-                if verbose: print 'Removing chain {} of ref_hierarchy from the pool of alignment chains (one_to_one_mapping is turned on)'.format(chn_ref.id)
+                report('Removing chain {} of ref_hierarchy from the pool of alignment chains (one_to_one_mapping is turned on)'.format(chn_ref.id))
                 chn_sim[:,idx_ref] = 0
         except ValueError:
-            raise Failure('Unable to align chain {} from mov_hierarchy: there is no suitable chain in ref_hierarchy. \nThis may be fixed by setting one_to_one_mapping to False or decreasing sequence_identity_threshold.'.format(chn_mov.id))
+            raise Failure('Error raised during alignment.\n'
+                          'Unable to align chain {} from mov_hierarchy: there is no suitable chain in ref_hierarchy.\n'\
+                          'This might be fixed by setting one_to_one_mapping to False or decreasing sequence_identity_threshold.\n'.format(chn_mov.id)+
+                          str(report))
             continue
         # Align the selected chains
         l_ali = align_chains_flexible(chn_mov=chn_mov, chn_ref=chn_ref, altlocs=altlocs, cutoff_radius=cutoff_radius)
@@ -260,11 +278,7 @@ def align_structures_flexible(mov_hierarchy, ref_hierarchy, altlocs=['','A'], cu
         # Append to the alignments
         local_alignments.append(l_ali)
     # Print which chains were aligned to which
-    if verbose:
-        print 'Alignment finished:'
-        for l_ali in local_alignments:
-            print '\t(mov) chain {} aligned to (ref) chain {}'.format(*l_ali.id)
-
+    report('\n'.join(['Alignment finished:']+['\t(mov) chain {} aligned to (ref) chain {}'.format(*l_ali.id) for l_ali in local_alignments]))
     # Combine all of the local alignments
     return MultipleLocalAlignment(local_alignments=local_alignments)
 

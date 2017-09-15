@@ -1560,14 +1560,13 @@ class PanddaMultiDatasetAnalyser(Program):
         # Post-process the alignments and output the aligned structures
         # ==============================>
         self.log.bar()
-        self.log('Alignment Summaries:', True)
+        self.log.subheading('Alignment Summaries')
         errors = []
         for dataset, alignment in zip(datasets_for_alignment, dataset_alignments):
             # If errored, print and record
             if isinstance(alignment, str):
                 self.log.bar()
                 self.log('Failed to align dataset {}'.format(dataset.tag))
-                self.log(alignment)
                 errors.append((dataset,alignment))
                 continue
             # Attach alignment to dataset
@@ -1586,6 +1585,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Report Errors
         # ==============================>
         if errors:
+            self.log.subheading('Alignment errors')
             for dataset, err_msg in errors:
                 self.log.bar()
                 self.log('Failed to align dataset {}'.format(dataset.tag))
