@@ -2229,10 +2229,10 @@ class PanddaMultiDatasetAnalyser(Program):
         # Report Errors
         # ==============================>
         if errors:
-            self.subheading('{} dataset checks failed'.format(len(errors)))
+            self.log.subheading('{} dataset checks failed'.format(len(errors)))
             for err_msg in errors:
                 self.log.bar()
-                self.log(error)
+                self.log(err_msg)
             self.log.bar()
             raise Failure('{} dataset checks failed. Error messages printed above.'.format(len(errors)))
 
