@@ -24,16 +24,16 @@ class PanddaZMapAnalyser(object):
         self.log = log
 
     def print_settings(self):
-        self.log('----------------------------------->>>', True)
-        self.log('Z-Scores Clustering', True)
-        self.log('----------------------------------->>>', True)
-        self.log('Clustering Points with Z-Scores > {!s}'.format(self.params.contour_level), True)
-        self.log('----------------------------------->>>', True)
-        self.log('Clustering Cutoff (A):       {!s}'.format(self.real_clustering_cufoff), True)
-        self.log('----------------------------------->>>', True)
-        self.log('Minimum Cluster Z-Peak:      {!s}'.format(self.params.min_blob_z_peak), True)
-        self.log('Minimum Cluster Volume (A):  {!s}'.format(self.params.min_blob_volume), True)
-        self.log('Minimum Cluster Size:        {!s}'.format(self.grid_minimum_volume), True)
+        self.log('----------------------------------->>>')
+        self.log('Z-Scores Clustering')
+        self.log('----------------------------------->>>')
+        self.log('Clustering Points with Z-Scores > {!s}'.format(self.params.contour_level))
+        self.log('----------------------------------->>>')
+        self.log('Clustering Cutoff (A):       {!s}'.format(self.real_clustering_cufoff))
+        self.log('----------------------------------->>>')
+        self.log('Minimum Cluster Z-Peak:      {!s}'.format(self.params.min_blob_z_peak))
+        self.log('Minimum Cluster Volume (A):  {!s}'.format(self.params.min_blob_volume))
+        self.log('Minimum Cluster Size:        {!s}'.format(self.grid_minimum_volume))
 
     def cluster_high_z_values(self, z_map_data, point_mask_idx):
         """Finds all the points in the z-map above `z_cutoff`, points will then be clustered into groups of cutoff `clustering_cutoff` angstroms"""

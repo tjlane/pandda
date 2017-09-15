@@ -324,7 +324,7 @@ class DatasetProcessor(object):
         # Build new blob search object
         # ============================================================================>
         blob_finder = PanddaZMapAnalyser(params=args.params.blob_search, grid=grid,
-                                         log=Log(log_file=log_file, verbose=False))
+                                         log=Log(log_file=log_file, verbose=False, silent=True))
 
         print('Writing log for dataset {!s} to ...{}'.format(dataset.tag, log_file[log_file.index('processed'):]))
 
@@ -593,7 +593,7 @@ class DatasetProcessor(object):
                 global_values=global_corrs,
                 local_values=event_corrs)
             log_strs.append('=> Event Background Correction estimated as {!s}'.format(1-event_remain_est))
-            # Verbose Reporting
+            # Reporting (log is normally silenced)
             blob_finder.log('Min-Max: {} {}'.format(1.0-args.params.background_correction.max_bdc, 1.0-args.params.background_correction.min_bdc))
             blob_finder.log('Event number: {}'.format(event_num))
             blob_finder.log('Event Remains: {}'.format(','.join(map(str,event_remains))))
