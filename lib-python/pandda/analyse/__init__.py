@@ -703,7 +703,7 @@ def pandda_main_loop(pandda):
                 map_maker = NativeMapMaker(dataset  = dataset,
                                            map_obj  = dataset.child,
                                            sites_mask = pandda.grid.global_mask().sites_cart,
-                                           filename = dataset.file_manager.get_file('native_map'),
+                                           filename = dataset.file_manager.get_file('native_obs_map'),
                                            args     = pandda.args,
                                            verbose  = pandda.settings.verbose)
                 native_map_maker_list.append(map_maker)
