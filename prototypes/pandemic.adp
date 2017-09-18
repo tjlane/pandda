@@ -3,7 +3,7 @@
 import os, sys, copy
 import math, itertools
 
-import scipy.stats
+import scipy.stats, scipy.cluster
 import numpy, pandas, json
 
 import libtbx.phil, libtbx.easy_mp
@@ -23,6 +23,7 @@ from giant.dataset import CrystallographicModel
 from giant.structure.select import protein
 from giant.structure.tls import uij_from_tls_vector_and_origin, extract_tls_from_pdb
 from giant.structure.formatting import ShortLabeller, PhenixSelection
+from giant.structure.select import backbone, sidechains
 from giant.xray.crystal import CrystalSummary
 from giant.xray.refine import refine_phenix
 from giant.xray.tls import phenix_find_tls_groups
@@ -73,7 +74,7 @@ output {
         .type = str
 }
 fitting {
-    auto_levels = *chain *auto_group *residue backbone_sidechain
+    auto_levels = *chain *auto_group *residue *backbone *sidechain
         .type = choice(multi=True)
     custom_level
         .multiple = True
@@ -112,7 +113,7 @@ settings {
         .multiple = False
     verbose = True
         .type = bool
-    dry_run = True
+    dry_run = False
         .type = bool
 }
 """, process_includes=True)
@@ -178,16 +179,18 @@ class MultiDatasetUijParameterisation(Program):
         # Misc files
         self.cifs = None
 
+        # Create plot object
+        self.plot = MultiDatasetUijPlots(log=self.log)
+
         # Validate and add output paths, etc.
         self._init_input_models()
         self._init_level_groups()
+        self._init_fitter()
 
         self.table = None
         self.table_one_csv_input   = None
         self.table_one_csv_fitted  = None
         self.table_one_csv_refined = None
-
-        self.plot = MultiDatasetUijPlots(log=self.log)
 
         #self.write_running_parameters_to_log(params=params)
 
@@ -255,7 +258,7 @@ class MultiDatasetUijParameterisation(Program):
             self.log('\n> Level {} ({})\n'.format(i_level+1, self.level_labels[i_level]))
             for i_group, sel_group in enumerate(selections):
                 sel = numpy.array(atom_cache.selection(sel_group))
-                self.log('\tgroup {:<5d} - {:50}: {:<5d} atoms'.format(i_group+1, sel_group, sum(sel)))
+                self.log('\tgroup {:<5d} - {:50}: {:>5d} atoms'.format(i_group+1, sel_group, sum(sel)))
                 if sum(sel) == 0:
                     failures.append('Group "{}": {} atoms'.format(sel_group, sum(sel)))
                 level_array[i_level, sel] = i_group+1
@@ -270,6 +273,40 @@ class MultiDatasetUijParameterisation(Program):
         self.log('> {} levels for {} atoms'.format(*self.level_array.shape))
         for i_level, label in enumerate(self.level_labels):
             self.log('\tLevel {} ({}): {} atoms'.format(i_level+1, label, sum(self.level_array[i_level]!=-1)))
+
+    def _init_fitter(self):
+        """Create fitting object"""
+
+        # Extract all atoms from all datasets
+        atoms = [m.hierarchy.atoms() for m in self.models]
+        assert len(atoms) > 0, 'No models have been used?!'
+        assert len(atoms[0]) > 0, 'No atoms have been extracted from models'
+
+        # Extract uij and xyz from all datasets (and only select atoms we're interested in)
+        observed_uij = numpy.array([a.extract_uij() for a in atoms])[:,self.atom_mask]
+        observed_xyz = numpy.array([a.extract_xyz() for a in atoms])[:,self.atom_mask]
+
+        # Check all uijs are present
+        if (observed_uij==-1).all() and (self._allow_isotropic is True):
+            self.log('All atoms are missing anisotropic displacement parameters -- using the isotropic parameters instead')
+            observed_uij = numpy.zeros_like(observed_uij)
+            # Extract isotropic component from atoms (again only for the atoms we're interested in)
+            observed_uij[:,:,0] = numpy.array([a.extract_b()/EIGHT_PI_SQ for a in atoms])[:,self.atom_mask]
+            observed_uij[:,:,2] = observed_uij[:,:,1] = observed_uij[:,:,0]
+        elif (observed_uij==-1).any():
+            raise Failure('Some atoms for fitting (but not all) do not have anisotropically-refined B-factors -- either all atoms for fitting must have anistropic atoms or none')
+
+        # Create the fitting object
+        self.fitter = MultiDatasetHierarchicalUijFitter(observed_uij = observed_uij,
+                                                        observed_xyz = observed_xyz,
+                                                        level_array  = self.level_array,
+                                                        level_labels = self.level_labels,
+                                                        log = self.log)
+
+        # Write summary of the fitted model (groups & levels)
+        model_dir = easy_directory(os.path.join(self.out_dir, 'model'))
+        self.log.heading('Writing summary of the hierarchical model')
+        self.hierarchy_summary(out_dir=model_dir)
 
     def blank_master_hierarchy(self):
         h = self.master_h.deep_copy()
@@ -321,31 +358,6 @@ class MultiDatasetUijParameterisation(Program):
         self.log('Macro-cycles: {}'.format(n_macro_cycles))
         self.log('Micro-cycles: {}'.format(n_micro_cycles))
 
-        # Extract all atoms from all datasets
-        atoms = [m.hierarchy.atoms() for m in self.models]
-        assert len(atoms) > 0, 'No models have been used?!'
-        assert len(atoms[0]) > 0, 'No atoms have been extracted from models'
-
-        # Extract uij and xyz from all datasets (and only select atoms we're interested in)
-        observed_uij = numpy.array([a.extract_uij() for a in atoms])[:,self.atom_mask]
-        observed_xyz = numpy.array([a.extract_xyz() for a in atoms])[:,self.atom_mask]
-
-        # Check all uijs are present
-        if (observed_uij==-1).all() and (self._allow_isotropic is True):
-            self.log('All atoms are missing anisotropic displacement parameters -- using the isotropic parameters instead')
-            observed_uij = numpy.zeros_like(observed_uij)
-            # Extract isotropic component from atoms (again only for the atoms we're interested in)
-            observed_uij[:,:,0] = numpy.array([a.extract_b()/EIGHT_PI_SQ for a in atoms])[:,self.atom_mask]
-            observed_uij[:,:,2] = observed_uij[:,:,1] = observed_uij[:,:,0]
-        elif (observed_uij==-1).any():
-            raise Failure('Some atoms for fitting (but not all) do not have anisotropically-refined B-factors -- either all atoms for fitting must have anistropic atoms or none')
-
-        # Create the fitting object
-        self.fitter = MultiDatasetHierarchicalUijFitter(observed_uij = observed_uij,
-                                                        observed_xyz = observed_xyz,
-                                                        level_array  = self.level_array,
-                                                        level_labels = self.level_labels,
-                                                        log = self.log)
         # Run the fitting
         self.fitter.fit(n_cpus = self._n_cpu,
                         n_macro_cycles = n_macro_cycles,
@@ -423,10 +435,6 @@ class MultiDatasetUijParameterisation(Program):
 
         model_dir = easy_directory(os.path.join(self.out_dir, 'model'))
 
-        # Write summary of the fitted model (groups & levels)
-        self.log.heading('Writing summary of the hierarchical model')
-        self.hierarchy_summary(out_dir=model_dir)
-
         # Write average uijs for each level
         self.log.heading('Summaries of the level-by-level TLS fittings')
         self.tls_level_summary(out_dir=model_dir)
@@ -436,7 +444,7 @@ class MultiDatasetUijParameterisation(Program):
         self.residuals_summary(out_dir=model_dir)
 
         #------------------------------------------------------------------------------#
-        #---#      Plot distirubiton of parameterised uijs for all structures      #---#
+        #---#      Plot distribution of parameterised uijs for all structures      #---#
         #------------------------------------------------------------------------------#
 
         uij_dir = easy_directory(os.path.join(self.out_dir, 'fit_uijs'))
@@ -549,6 +557,23 @@ class MultiDatasetUijParameterisation(Program):
                 self.log('\t> {}'.format(filename))
                 g.write_pdb_file(filename)
 
+        # Generate hierarchy for each level with groups as b-factors
+        self.log('Writing partition figures for each chain')
+        level_hierarchies = []
+        for i_level, g_vals in enumerate(self.level_array):
+            h = self.custom_master_hierarchy()
+            h = self.custom_master_hierarchy(uij=None, iso=g_vals, mask=global_sel)
+            level_hierarchies.append(h)
+        # Write hierarchy plot for each chain
+        b_h = self.blank_master_hierarchy()
+        b_c = b_h.atom_selection_cache()
+        for c in b_h.chains():
+            chain_sel = b_c.selection('chain {}'.format(c.id))
+            hierarchies = [h.select(chain_sel, copy_atoms=True) for h in level_hierarchies]
+            filename = os.path.join(out_dir, 'chain-{}-level-array.png'.format(c.id))
+            self.log('\t> {}'.format(filename))
+            self.plot.level_plots(filename=filename, hierarchies=hierarchies, title='chain {}'.format(c.id))
+
     def tls_level_summary(self, out_dir='./'):
         """Write the various TLS uijs to the master hierarchy structure"""
 
@@ -597,7 +622,7 @@ class MultiDatasetUijParameterisation(Program):
             l = 'L' in tls_comp
             s = 'S' in tls_comp
             self.log.bar(blank_before=True)
-            self.log('{}{}{} components of fitter model'.format('T' if t else '_','L' if l else '_','S' if s else '_'))
+            self.log('{}{}{} components of fitted model'.format('T' if t else '_','L' if l else '_','S' if s else '_'))
             self.log.bar(blank_after=True)
             # Cumulative uijs (all)
             uij_all = None
@@ -677,6 +702,8 @@ class MultiDatasetUijParameterisation(Program):
                                      prefix=prefix)
 
     def fit_uij_distributions(self, uij_fit, uij_inp, out_dir='./'):
+
+        self.log('Not currently implemented')
 
         # Plot the distribution of B-factors for residues
         # Residues within groups
@@ -804,7 +831,7 @@ class MultiDatasetUijParameterisation(Program):
         m_f = prefix+'.pdb'
         self.log('\t> {}'.format(m_f))
         m_h.write_pdb_file(m_f)
-        self.log('\t> {}*.png'.format(prefix))
+        self.log('\t> {}...png'.format(prefix))
         # Output as b-factor plot
         self.plot.residue_by_residue(hierarchy=m_h,
                                      prefix=prefix)
@@ -818,7 +845,7 @@ class MultiDatasetUijParameterisation(Program):
         m_f = prefix+'.pdb'
         self.log('\t> {}'.format(m_f))
         m_h.write_pdb_file(m_f)
-        self.log('\t> {}*.png'.format(prefix))
+        self.log('\t> {}...png'.format(prefix))
         # Output as b-factor plot
         self.plot.residue_by_residue(hierarchy=m_h,
                                      prefix=prefix)
@@ -964,7 +991,7 @@ class MultiDatasetUijParameterisation(Program):
             phil.output.output_basename = os.path.splitext(output_eff_refd)[0]
             multi_table_ones.run(params=phil)
 
-        self.log.subheading('Running phenix.table_one to calculate R-factors')
+        self.log('Running phenix.table_one to calculate R-factors')
         for f in [output_eff_orig,output_eff_fitd,output_eff_refd]:
             if not os.path.exists(f): continue
             self.log.bar()
@@ -991,30 +1018,36 @@ class MultiDatasetUijParameterisation(Program):
 
         out_dir = easy_directory(out_dir)
 
-        self.log.subheading('Writing output csvs')
+        # Create output table
+        self.table = pandas.DataFrame(index=[m.tag for m in self.models])
 
+        self.log.bar()
+        self.log('Calculating mean and median fitting rmsds by dataset')
+        self.log.bar()
         # Calculate rmsd between input and fitted uijs
         uij_rmsd = rms(uij_inp-uij_fit, axis=2)
+        # Extract mean/median dataset-by-dataset RMSDs
+        dset_medn_rmsds = numpy.median(uij_rmsd, axis=1)
+        dset_mean_rmsds = numpy.mean(uij_rmsd, axis=1)
+        self.table['mean_rmsds']   = dset_mean_rmsds
+        self.table['median_rmsds'] = dset_medn_rmsds
+        for i in range(0, min(10, len(self.models))):
+            self.log('Model {:10}: {:6.3f} (mean), {:6.3f} (median)'.format(self.models[i].tag, dset_mean_rmsds[i], dset_medn_rmsds[i]))
 
-        return
+        self.log.bar(True, False)
+        self.log('Calculating isotropic ADPs for input and fitted ADPs by dataset')
+        self.log.bar()
+        # Calculate isotropic ADPs for input and fitted uijs
+        uij_inp_iso = numpy.array(map(uij_to_b, uij_inp))
+        uij_fit_iso = numpy.array(map(uij_to_b, uij_fit))
+        # Calculate mean/median ADPs for each atom
+        dset_mean_inp_iso = numpy.mean(uij_inp_iso, axis=1)
+        dset_mean_fit_iso = numpy.mean(uij_fit_iso, axis=1)
+        self.table['mean_input_iso_b']  = dset_mean_inp_iso
+        self.table['mean_fitted_iso_b'] = dset_mean_fit_iso
+        for i in range(0, min(10, len(self.models))):
+            self.log('Model {:10}: {:6.3f} (input) -> {:6.3f} (fitted)'.format(self.models[i].tag, dset_mean_inp_iso[i], dset_mean_fit_iso[i]))
 
-        # Calculate statistics of the input and fitted uijs
-        uij_inp_iso = map(uij_to_b, uij_inp)
-        #uij_iso_av  =
-        uij_fit_iso = map(uij_to_b, uij_fit)
-        #uij_
-
-        # ----------------------------------------------------
-        # Main output CSV
-        # ----------------------------------------------------
-        # Extract dataset-by-dataset RMSDs
-        self.log('Extracting RMSDs for all datasets')
-        self.table = pandas.DataFrame(index=[m.tag for m in self.models])
-        all_dataset_rmsds = numpy.array([numpy.concatenate([self.fits[g].uij_fit_obs_all_rmsds()[i] for g in self.groups]) for i in range(len(self.models))])
-        medn_rmsds = numpy.median(all_dataset_rmsds, axis=1)
-        self.table['median_rmsds'] = medn_rmsds
-        mean_rmsds = numpy.mean(all_dataset_rmsds, axis=1)
-        self.table['mean_rmsds'] = mean_rmsds
         # Extract data from the table one CSVs
         self.log.subheading('Looking for table one data')
         for pref, csv in [('old-', self.table_one_csv_input),
@@ -1035,6 +1068,7 @@ class MultiDatasetUijParameterisation(Program):
             table_one.columns = pref + table_one.columns
             # Transfer data to other
             self.table = self.table.join(table_one, how="outer")
+            self.log('')
         # Write output csv
         filename = os.path.join(out_dir, 'dataset_scores.csv')
         self.log('Writing output csv: {}'.format(filename))
@@ -1072,8 +1106,6 @@ class MultiDatasetUijParameterisation(Program):
             old_lab = 'old-'+lab
             self.log(out_str.format(lab, table_means[old_lab], table_means[new_lab], table_means[new_lab]-table_means[old_lab]))
         self.log.bar()
-
-        self.log.subheading('Writing final graphs')
 
 #        filename = os.path.join(out_dir, 'r_free_change.png')
 #        ax = table.plot(x='old-R-free', y='new-R-free', kind='scatter')
@@ -1170,6 +1202,52 @@ class MultiDatasetUijPlots(object):
 
         return
 
+    def level_plots(self, filename, hierarchies, title, rotate_x_labels=True):
+
+        fig, axis = pyplot.subplots()
+
+        for i_h, h in enumerate(hierarchies):
+            # Extract B-factors and atom labels
+            b_vals = numpy.array(h.atoms().extract_b())
+            # Iterate through b values and draw boxes for each
+            for b in numpy.unique(b_vals):
+                # Skip zero or negative values
+                if b <= 0: continue
+                # Indices of values in this group
+                idx = numpy.where((b_vals==b))[0]
+                # Cluster the indices to create bars
+                if len(idx)==1:
+                    cluster = [1]
+                else:
+                    cluster = scipy.cluster.hierarchy.fclusterdata(X=idx.reshape((len(idx),1)), t=1.1, criterion='distance', metric='euclidean', method='single')
+                # Iterate through clusters and draw
+                plot_vals = []
+                for g in numpy.unique(cluster):
+                    min_i = numpy.min(idx[g==cluster])
+                    max_i = numpy.max(idx[g==cluster])
+                    plot_vals.append((min_i-0.25, max_i-min_i+0.5))
+                # Plot
+                axis.broken_barh(plot_vals, (i_h+0.5, 1.0))
+
+        # Set axes, etc.
+        if title is not None: axis.set_title(label=str(title))
+        axis.set_xlabel('Atom')
+        axis.set_ylabel('')
+        a_labels = numpy.array([ShortLabeller.format(a.parent().parent()) for a in hierarchies[0].atoms()])
+#        axis.set_xticklabels([a_labels[int(i)] if ((i>0) and (i<len(a_labels)) and (float(int(i))==i)) else '' for i in axis.get_xticks()])
+        axis.set_xticks(range(0, len(a_labels), max(1, len(a_labels)//40)))
+        axis.set_xticklabels([a_labels[i] for i in axis.get_xticks()])
+        axis.set_yticks(range(1, len(hierarchies)+1))
+        axis.set_yticklabels(['Level {}'.format(i) for i in range(1, len(hierarchies)+1)])
+        pyplot.xlim((0, len(a_labels)+1))
+        pyplot.setp(axis.get_xticklabels(), rotation=90)
+        # Invert y-axis
+        pyplot.gca().invert_yaxis()
+        # Format and save
+        pyplot.tight_layout()
+        pyplot.savefig(filename, dpi=300)
+        pyplot.close(fig)
+
     def residue_by_residue(self, hierarchy, prefix, title=None, v_line_hierarchy=None):
         """Write out residue-by-residue b-factor graphs"""
 
@@ -1183,7 +1261,7 @@ class MultiDatasetUijPlots(object):
             x_labels = ['']+[ShortLabeller.format(rg) for rg in sel_h.residue_groups()]
             filename = prefix + '-chain_{}.png'.format(chain_id)
             fig, axis = pyplot.subplots(nrows=1, ncols=1, sharey=True)
-            if title is not None: axis.set_title(title=str(title))
+            if title is not None: axis.set_title(label=str(title))
             axis.set_xlabel('Residue')
             axis.set_ylabel('Isotropic B')
             axis.plot(x_vals, y_vals, '-ko', markersize=2)
@@ -1241,7 +1319,7 @@ class MultiDatasetHierarchicalUijFitter(object):
 
         self.apply_masks()
 
-        self.summary(show=True)
+        #self.summary(show=True)
 
     def _target_uij(self, fitted_uij_by_level, i_level):
         arr = fitted_uij_by_level.copy()
@@ -1375,6 +1453,10 @@ class _MultiDatasetUijFitter(object):
         self.log.heading('Running {} jobs using {} cpus'.format(len(jobs), n_cpus))
         finished_jobs = libtbx.easy_mp.pool_map(processes=n_cpus, func=wrapper_fit, args=jobs, chunksize=1)
         for i_iter, (i, sel, fitter) in enumerate(self):
+            if isinstance(finished_jobs[i_iter], str) or \
+               (finished_jobs[i_iter] is None):
+                print i_iter, i, sum(sel)
+                raise Exception('Error returned')
             self.fitters[i] = finished_jobs[i_iter]
         return self.extract()
 
@@ -2033,13 +2115,16 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                     s_cuml += s_this
                     # Optimise TLS model parameters
                     self.log.subheading('Optimising {} parameters for TLS model {}'.format(n_cmp, i_tls+1))
-                    self.penalty.set_weights(ovr_weight=0.0)
+                    if n_cmp == 'T':
+                        self.penalty.set_weights(ovr_weight=0.1)
+                    else:
+                        self.penalty.set_weights(ovr_weight=0.0)
                     self._select(self._sel_mdl*s_this)
                     self._optimise(verbose=False)
                     self.model_summary(show=True)
                     # Optimise TLS amplitude parameters (all ampltidues!)
                     self.log.subheading('Optimising TLS amplitudes for all datasets')
-                    self.penalty.set_weights(ovr_weight=0.1)
+                    self.penalty.set_weights(ovr_weight=1.0)
                     for i_dst in range(self._n_dst):
                         self.set_dataset_mask([i_dst])
                         self._select(selection=self._sel_dst(i_dst)*s_cuml)
@@ -2125,7 +2210,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         s = '> TLS parameters'
         for i, vals in enumerate(tls_prms):
             tls_vars = get_t_l_s_from_vector(vals=vals)
-            s += '\nModel {:2}'.format(i+1)
+            s += '\nMode {:2}'.format(i+1)
             s += '\n\tT: '+', '.join(['{:8.3f}'.format(v) for v in tls_vars[0]])
             s += '\n\tL: '+', '.join(['{:8.3f}'.format(v) for v in tls_vars[1]])
             s += '\n\tS: '+', '.join(['{:8.3f}'.format(v) for v in tls_vars[2]])
@@ -2139,7 +2224,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         for i, vals in enumerate(tls_amps):
             s += '\nDataset {:4}'.format(i+1)
             for i, a in enumerate(vals):
-                s += '\n\tModel {:2}:'.format(i+1)+' {:8.3f} (T) {:8.3f} (L) {:8.3f} (S)'.format(*a)
+                s += '\n\tMode {:2}:'.format(i+1)+' {:8.3f} (T) {:8.3f} (L) {:8.3f} (S)'.format(*a)
         if show: self.log(s)
         return s
 
@@ -2189,6 +2274,14 @@ def run(params):
         log('Level {}: Creating level with groups for each residue'.format(len(levels)+1))
         levels.append([PhenixSelection.format(r) for r in filter_h.residue_groups()])
         labels.append('residue')
+    if 'backbone' in params.fitting.auto_levels:
+        log('Level {}: Creating level with groups for each residue backbone'.format(len(levels)+1))
+        levels.append([PhenixSelection.format(r)+' and (name C or name CA or name N or name O)'     for r in backbone(filter_h).atom_groups() if (r.resname not in ['ALA','GLY','PRO'])])
+        labels.append('backbone')
+    if 'sidechain' in params.fitting.auto_levels:
+        log('Level {}: Creating level with groups for each residue sidechain'.format(len(levels)+1))
+        levels.append([PhenixSelection.format(r)+' and not (name C or name CA or name N or name O)' for r in sidechains(filter_h).atom_groups() if (r.resname not in ['ALA','GLY','PRO'])])
+        labels.append('sidechain')
     # TODO Take any custom groups and insert them here TODO (levels.insert)
     # Report
     log('\n> {} levels created\n'.format(len(levels)))
@@ -2198,10 +2291,6 @@ def run(params):
         log.bar()
         for l in level: log('\t'+l)
 
-    if params.settings.dry_run:
-        log.heading('Exiting after initialisation: dry_run=True')
-        sys.exit()
-
     # Run the program main
     log.heading('Beginning parameterisation')
     p = MultiDatasetUijParameterisation(models = models,
@@ -2209,6 +2298,11 @@ def run(params):
                                         level_labels = labels,
                                         params = params,
                                         log = log)
+
+    if params.settings.dry_run:
+        log.heading('Exiting after initialisation: dry_run=True')
+        sys.exit()
+
     p.fit_hierarchical_uij_model()
     p.process_results()
     log.heading('Parameterisation complete')
