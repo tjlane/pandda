@@ -336,7 +336,7 @@ class PanddaEvent(object):
         self.input_data         = os.path.join(self.dataset_dir, PanddaDatasetFilenames.input_data.format(dtag)          )
         self.z_map              = os.path.join(self.dataset_dir, PanddaDatasetFilenames.native_z_map.format(dtag)        )
         self.event_map          = os.path.join(self.dataset_dir, PanddaDatasetFilenames.native_event_map.format(dtag, self.event_idx, self.est_1_bdc))
-        self.mean_map           = os.path.join(self.dataset_dir, PanddaDatasetFilenames.native_mean_map.format(dtag)     )
+        self.mean_map           = os.path.join(self.dataset_dir, PanddaDatasetFilenames.native_average_map.format(dtag)     )
 
         # Ligand Files
         self.lig_pdbs = sorted(glob.glob(os.path.join(self.ligand_dir, '*.pdb')))

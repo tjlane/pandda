@@ -864,11 +864,11 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Initialise masks for datasets that shouldn't be analysed or used for building
         # ==============================>
-        if self.args.input.flags.exclude_from_zmap_analysis:
-            no_analyse_tags = self.args.input.flags.exclude_from_zmap_analysis.split(',')
+        if self.args.input.flags.exclude_from_z_map_analysis:
+            no_analyse_tags = self.args.input.flags.exclude_from_z_map_analysis.split(',')
             self.log('Not analysing {!s} Datasets: \n\t{!s}'.format(len(no_analyse_tags), '\n\t'.join(no_analyse_tags)))
             no_analyse_mask = [True if d.tag in no_analyse_tags else False for d in self.datasets.all()]
-            self.datasets.all_masks().add_mask(name='exclude_from_zmap_analysis', values=no_analyse_mask, overwrite=True)
+            self.datasets.all_masks().add_mask(name='exclude_from_z_map_analysis', values=no_analyse_mask, overwrite=True)
         if self.args.input.flags.exclude_from_characterisation:
             no_build_tags = self.args.input.flags.exclude_from_characterisation.split(',')
             self.log('Excluding datasets from characterisation of ground-state electron density ({!s} datasets): \n\t{!s}'.format(len(no_build_tags), '\n\t'.join(no_build_tags)))
@@ -957,8 +957,8 @@ class PanddaMultiDatasetAnalyser(Program):
         buffer = self.params.masks.outer_mask + self.params.maps.padding
         grid_min = flex.double([s-buffer for s in sites_cart.min()])
         grid_max = flex.double([s+buffer for s in sites_cart.max()])
-        self.log('Grid minimum: {}'.format(tuple(grid_min)))
-        self.log('Grid maximum: {}'.format(tuple(grid_max)))
+        self.log('Grid minimum: {}'.format(tuple([round(x,3) for x in grid_min])))
+        self.log('Grid maximum: {}'.format(tuple([round(x,3) for x in grid_max])))
         # ============================================================================>
         # Create main grid object
         # ============================================================================>
@@ -1323,7 +1323,7 @@ class PanddaMultiDatasetAnalyser(Program):
             dataset.file_manager.add_file(file_name=f.native_obs_map.format(dataset.tag),                     file_tag='native_obs_map'       )
             dataset.file_manager.add_file(file_name=f.native_z_map.format(dataset.tag),                       file_tag='native_z_map'         )
             dataset.file_manager.add_file(file_name=f.native_event_map.format(dataset.tag,'{!s}','{!s}'),     file_tag='native_event_map'     )
-            dataset.file_manager.add_file(file_name=f.native_mean_map.format(dataset.tag),                    file_tag='native_mean_map'      )
+            dataset.file_manager.add_file(file_name=f.native_average_map.format(dataset.tag),                 file_tag='native_average_map'   )
             # ==============================>
             # Map files (in reference frame)
             # ==============================>
@@ -1775,12 +1775,12 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Old datasets
         self.datasets.all_masks().add_mask(name   = 'analyse - old',
-                                           values = self.datasets.all_masks().combine_masks(names=['valid - old', 'reprocess', 'exclude_from_zmap_analysis'],
+                                           values = self.datasets.all_masks().combine_masks(names=['valid - old', 'reprocess', 'exclude_from_z_map_analysis'],
                                                                         invert=[False, False, True], operation='and', invert_output=False),
                                            overwrite=True)
         # New datasets (same as "valid - new")
         self.datasets.all_masks().add_mask(name   = 'analyse - new',
-                                           values = self.datasets.all_masks().combine_masks(names=['valid - new', 'exclude_from_zmap_analysis'],
+                                           values = self.datasets.all_masks().combine_masks(names=['valid - new', 'exclude_from_z_map_analysis'],
                                                                         invert=[False, True], operation='and', invert_output=False),
                                            overwrite=True)
         # All datasets
@@ -2215,7 +2215,7 @@ class PanddaMultiDatasetAnalyser(Program):
                         errors.append('Structure factor column "{}" in dataset {} has missing reflections (some values are set to N/A or zero). '.format(c, dataset.tag)+\
                                       '{} reflections have a value of zero. '.format(len(valid_selection)-sum(valid_selection))+\
                                       'You should populate the structure factors for these reflections with their estimated values. '\
-                                      'Analysing maps with missing reflections (escepially low resolution reflections!) will degrade the quality of the analysis. '\
+                                      'Analysing maps with missing reflections (especially low resolution reflections!) will degrade the quality of the analysis. '\
                                       'However, you can continue by setting checks.all_data_are_valid_values=None.')
                         continue
                 # ==============================>
@@ -2231,7 +2231,7 @@ class PanddaMultiDatasetAnalyser(Program):
                         errors.append('Structure factor column "{}" in dataset {} has missing reflections below {}A (some reflections are not present in the miller set). '.format(c, dataset.tag, self.params.diffraction_data.checks.low_resolution_completeness)+\
                                       '{} reflections are missing from the miller set in the reflection file. '.format(ms_c.size()-sum(low_res_sel))+\
                                       'You should add these missing reflections and populate the structure factors for these reflections with their estimated values. '\
-                                      'Analysing maps with missing reflections (escepially low resolution reflections!) will degrade the quality of the analysis. '\
+                                      'Analysing maps with missing reflections (especially low resolution reflections!) will degrade the quality of the analysis. '\
                                       'I really would not do this, but you can continue by setting checks.low_resolution_completeness to None.')
                         continue
                     # Calculate overlap between low resolution set and valid set to ensure none missing from low resolution set
@@ -2241,7 +2241,7 @@ class PanddaMultiDatasetAnalyser(Program):
                         errors.append('Structure factor column "{}" in dataset {} has missing reflections below {}A (some values are set to N/A or zero). '.format(c, dataset.tag, self.params.diffraction_data.checks.low_resolution_completeness)+\
                                       '{} reflections have a value of zero. '.format(len(valid_low_res)-sum(valid_low_res))+\
                                       'You should populate the structure factors for these reflections with their estimated values. '\
-                                      'Analysing maps with missing reflections (escepially low resolution reflections!) will degrade the quality of the analysis. '\
+                                      'Analysing maps with missing reflections (especially low resolution reflections!) will degrade the quality of the analysis. '\
                                       'I really would not do this, but you can continue by setting checks.low_resolution_completeness=None.')
                         continue
         # ==============================>
@@ -2628,6 +2628,8 @@ class PanddaMultiDatasetAnalyser(Program):
 
         self.grid.write_array_as_map(array  = stat_maps.mean_map.get_map_data(sparse=False).as_1d().set_selected(mask, 0.0),
                                      f_name = self.file_manager.get_file('mean_map').format(map_res))
+        self.grid.write_array_as_map(array  = stat_maps.medn_map.get_map_data(sparse=False).as_1d().set_selected(mask, 0.0),
+                                     f_name = self.file_manager.get_file('medn_map').format(map_res))
         self.grid.write_array_as_map(array  = stat_maps.stds_map.get_map_data(sparse=False).as_1d().set_selected(mask, 0.0),
                                      f_name = self.file_manager.get_file('stds_map').format(map_res))
         self.grid.write_array_as_map(array  = stat_maps.sadj_map.get_map_data(sparse=False).as_1d().set_selected(mask, 0.0),
@@ -2784,8 +2786,8 @@ class PanddaMultiDatasetAnalyser(Program):
         self.tables.event_info.set_value(event.id, 'cluster_size', event.cluster.size)
 #        self.tables.event_info.set_value(event.id, ['refx','refy','refz'], list(self.grid.grid2cart([event.cluster.peak],origin_shift=False)[0]))
         self.tables.event_info.set_value(event.id, ['x','y','z'], list(dataset.model.alignment.ref2nat(coordinates=self.grid.grid2cart([event.cluster.peak],origin_shift=True))[0]))
-        self.tables.event_info.set_value(event.id, 'global_correlation_to_mean_map', event.info.global_correlation)
-        self.tables.event_info.set_value(event.id, 'local_correlation_to_mean_map',  event.info.local_correlation)
+        self.tables.event_info.set_value(event.id, 'global_correlation_to_average_map', event.info.global_correlation)
+        self.tables.event_info.set_value(event.id, 'local_correlation_to_average_map',  event.info.local_correlation)
 
     def update_event_table_site_info(self, events):
         """Update the event table for pre-existing events"""
@@ -2851,23 +2853,36 @@ class PanddaMapAnalyser(object):
         self.meta.map_data_size  = m_ref.data.size()
         self.meta.map_data_shape = m_ref.data.all()
 
-    def set_average_map(self, map_name):
+    def _set_statistical_maps_from_array(self, template_map, map_array):
+        """Set the five non-average-based statistical maps from an array"""
+
+        assert map_array.shape == (self.meta.map_data_size, 5)
+
+        # Create the other statistical maps
+        self.statistical_maps.stds_map = template_map.new_from_template(map_data=flex.double(map_array[:,0].tolist()), sparse=template_map.is_sparse())
+        self.statistical_maps.sadj_map = template_map.new_from_template(map_data=flex.double(map_array[:,1].tolist()), sparse=template_map.is_sparse())
+        self.statistical_maps.skew_map = template_map.new_from_template(map_data=flex.double(map_array[:,2].tolist()), sparse=template_map.is_sparse())
+        self.statistical_maps.kurt_map = template_map.new_from_template(map_data=flex.double(map_array[:,3].tolist()), sparse=template_map.is_sparse())
+        self.statistical_maps.bimo_map = template_map.new_from_template(map_data=flex.double(map_array[:,4].tolist()), sparse=template_map.is_sparse())
+
+    def select_average_map_type(self, map_name):
         """Select which maps is used for calculating statistical maps"""
         assert hasattr(self.statistical_maps, map_name)
         self._average_map_name = map_name
 
     def average_map(self):
+        self.log('*** USING {} MAP ***'.format(self._average_map_name))
         return self.statistical_maps[self._average_map_name]
 
     def calculate_average_maps(self, mask_name=None):
-        """Calculate the mean map from all of the different observations"""
+        """Calculate the average map from all of the different observations"""
 
         # Extract the maps to be used for averaging
         dataset_maps = self.dataset_maps.mask(mask_name=mask_name)
 
         if len(dataset_maps) == 1:
             self.log.bar(True, False)
-            self.log('One dataset map provided for mean map calculation -- using this map.')
+            self.log('One dataset map provided for average map calculation -- using this map.')
 
             # Extract the map from the list
             m = dataset_maps[0]
@@ -2876,7 +2891,7 @@ class PanddaMapAnalyser(object):
 
         else:
             self.log.bar(True, False)
-            self.log('Calculating mean map from {} dataset maps'.format(len(dataset_maps)))
+            self.log('Calculating average maps from {} dataset maps'.format(len(dataset_maps)))
 
             # Chunk the points into groups - Compromise between cpu time and memory usage - ~200 dataset -> chunksize of 5000
             chunk_size = 500*iceil(1000.0/len(dataset_maps))
@@ -2907,11 +2922,15 @@ class PanddaMapAnalyser(object):
             status_bar_2(n=num_chunks, n_max=num_chunks)
 
             t2 = time.time()
-            self.log('> Calculation of mean map > Time Taken: {!s} seconds'.format(int(t2-t1)))
+            self.log('> Calculation of average maps > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
         # Store the mean and median map values in the statistical maps object
         self.statistical_maps.mean_map = m.new_from_template(map_data=flex.double(mean_map_vals.flatten()), sparse=m.is_sparse())
         self.statistical_maps.medn_map = m.new_from_template(map_data=flex.double(medn_map_vals.flatten()), sparse=m.is_sparse())
+
+        # Initialise/reset the other statistical maps with zero values
+        self._set_statistical_maps_from_array(template_map = self.statistical_maps.mean_map,
+                                              map_array    = numpy.zeros((self.meta.map_data_size, 5)))
 
         return self.statistical_maps.mean_map, self.statistical_maps.medn_map
 
@@ -2924,12 +2943,12 @@ class PanddaMapAnalyser(object):
             assert max(masked_idxs) < self.meta.map_data_size, 'masked_idxs out of range of map'
             masked_idxs = flex.size_t(masked_idxs)
 
-        # Extract masked map values from the mean map... and sort them
-        comp_vals = self.statistical_maps.mean_map.data.select(masked_idxs)
-
         self.log.bar()
         self.log('Selecting datasets for uncertainty calculation')
         self.log.bar()
+
+        # Extract masked map values from the average map... and sort them
+        comp_vals = self.average_map().data.select(masked_idxs)
 
         arg_list = []
 
@@ -2941,10 +2960,7 @@ class PanddaMapAnalyser(object):
                 continue
 
             # Get the file manager for the dataset to allow outputting of files
-            if self.parent:
-                file_manager = self.parent.datasets.get(tag=m.meta.tag).file_manager
-            else:
-                fine_manager = None
+            file_manager = self.parent.datasets.get(tag=m.meta.tag).file_manager if self.parent else None
 
             u = UncertaintyCalculator(query_values=m.data.select(masked_idxs), ref_values=comp_vals, file_manager=file_manager)
             arg_list.append(u)
@@ -2981,10 +2997,10 @@ class PanddaMapAnalyser(object):
         if len(dataset_maps) == 1:
             self.log.bar(True, False)
             self.log('One dataset map provided for statistical map calculation -- setting all statistical values to zero.')
+            self._set_statistical_maps_from_array(template_map = self.statistical_maps.mean_map,
+                                                  map_array    = numpy.zeros((self.meta.map_data_size, 5)))
 
-            # Output array of the 5 statistics for each map point
-            point_statistics = numpy.zeros((self.meta.map_data_size, 5))
-
+            return self.statistical_maps
         else:
             self.log.bar()
             self.log('Calculating statistics of {} grid points (using {!s} cores)'.format(self.meta.map_data_size, cpus))
@@ -3073,14 +3089,8 @@ class PanddaMapAnalyser(object):
             t2 = time.time()
             self.log('> Calculation of map variation statistics > Time Taken: {!s} seconds'.format(int(t2-t1)))
 
-        # Use the mean map as the template for the other maps
-        mean_map = self.statistical_maps.mean_map
-        # Create the other statistical maps
-        self.statistical_maps.stds_map = mean_map.new_from_template(map_data=flex.double(point_statistics[:,0].tolist()), sparse=mean_map.is_sparse())
-        self.statistical_maps.sadj_map = mean_map.new_from_template(map_data=flex.double(point_statistics[:,1].tolist()), sparse=mean_map.is_sparse())
-        self.statistical_maps.skew_map = mean_map.new_from_template(map_data=flex.double(point_statistics[:,2].tolist()), sparse=mean_map.is_sparse())
-        self.statistical_maps.kurt_map = mean_map.new_from_template(map_data=flex.double(point_statistics[:,3].tolist()), sparse=mean_map.is_sparse())
-        self.statistical_maps.bimo_map = mean_map.new_from_template(map_data=flex.double(point_statistics[:,4].tolist()), sparse=mean_map.is_sparse())
+        self._set_statistical_maps_from_array(template_map = self.statistical_maps.mean_map,
+                                              map_array    = point_statistics)
 
         return self.statistical_maps
 
@@ -3093,7 +3103,7 @@ class PanddaMapAnalyser(object):
         if tag:
             map = self.dataset_maps.get(tag=tag)
 
-        if uncertainty is not None:
+        if (uncertainty is None) and ('uncertainty' in method):
             uncertainty = map.meta.map_uncertainty
 
         if 'uncertainty' in method:
@@ -3102,7 +3112,7 @@ class PanddaMapAnalyser(object):
         # Extract maps in the right sparseness
         is_sparse = map.is_sparse()
         # Extract mean values (for subtraction)
-        comp_vals = self.statistical_maps.mean_map.get_map_data(sparse=is_sparse)
+        comp_vals = self.average_map().get_map_data(sparse=is_sparse)
 
         # Extract the normalisation values (for division)
         if method == 'none':

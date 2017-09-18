@@ -547,7 +547,7 @@ class DatasetProcessor(object):
         # Extract the map data in non-sparse format
         # ============================================================================>
         dset_map_data = dataset_map.get_map_data(sparse=False)
-        mean_map_data = map_analyser.statistical_maps.mean_map.get_map_data(sparse=False)
+        avrg_map_data = map_analyser.average_map().get_map_data(sparse=False)
         # ============================================================================>
         # Process the identified features
         # ============================================================================>
@@ -576,7 +576,7 @@ class DatasetProcessor(object):
             # Generate BDC-estimation curve and estimate BDC
             # ============================================================================>
             event_remains, event_corrs, global_corrs = calculate_varying_bdc_correlations(
-                ref_map_data   = mean_map_data,
+                ref_map_data   = avrg_map_data,
                 query_map_data = dset_map_data,
                 feature_idxs   = exp_event_idxs,
                 reference_idxs = reference_idxs,
@@ -607,11 +607,11 @@ class DatasetProcessor(object):
             # Calculate the map correlations at the selected BDC
             # ============================================================================>
             event_map_data = calculate_bdc_subtracted_map(
-                                    ref_map_data   = mean_map_data,
+                                    ref_map_data   = avrg_map_data,
                                     query_map_data = dset_map_data,
                                     bdc            = 1.0 - event_remain_est)
-            global_corr = numpy.corrcoef(event_map_data.select(reference_idxs), mean_map_data.select(reference_idxs))[0,1]
-            local_corr  = numpy.corrcoef(event_map_data.select(exp_event_idxs), mean_map_data.select(exp_event_idxs))[0,1]
+            global_corr = numpy.corrcoef(event_map_data.select(reference_idxs), avrg_map_data.select(reference_idxs))[0,1]
+            local_corr  = numpy.corrcoef(event_map_data.select(exp_event_idxs), avrg_map_data.select(exp_event_idxs))[0,1]
             # ============================================================================>
             # Write out EVENT map (in the reference frame) and grid masks
             # ============================================================================>

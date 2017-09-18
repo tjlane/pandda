@@ -11,7 +11,7 @@ FLAG_MASK_NAMES      = [    'rejected - total',
                             'noisy zmap',
                             'analysed',
                             'interesting',
-                            'exclude_from_zmap_analysis',
+                            'exclude_from_z_map_analysis',
                             'exclude_from_characterisation'    ]
 
 DATASET_INFO_FIELDS  = [    'high_resolution',
@@ -88,7 +88,7 @@ class PanddaDatasetFilenames:
     native_obs_map         = '{!s}-observed.native.ccp4'
     native_z_map           = '{!s}-z_map.native.ccp4'
     native_event_map       = '{!s}-event_{!s}_1-BDC_{!s}_map.native.ccp4'
-    native_mean_map        = '{!s}-ground-state-mean-map.native.ccp4'
+    native_average_map     = '{!s}-ground-state-average-map.native.ccp4'
     # Modelled Structures...
     modelled_structure     = '{!s}-pandda-model.pdb'
     ensemble_structure     = '{!s}-ensemble-model.pdb'

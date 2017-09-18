@@ -49,7 +49,7 @@ pandda
             ground_state_datasets = None
                 .help = "Define a set of known 'ground-state' (e.g. unbound) datasets. ONLY these datasets will be used for characterising the ground-state electron density."
                 .type = str
-            exclude_from_zmap_analysis = None
+            exclude_from_z_map_analysis = None
                 .help = "Don't analyse these datasets, only use them to build the distributions - comma separated list of dataset tags"
                 .type = str
             exclude_from_characterisation = None
@@ -80,8 +80,8 @@ pandda
             write_z_maps = none *interesting all
                 .help = "Output the z-maps in the native frame of datasets for selected datasets"
                 .type = choice
-            write_mean_map = none *interesting all
-                .help = "Output the mean map in the native frame of datasets for selected datasets"
+            write_average_map = none *interesting all
+                .help = "Output the average map in the native frame of datasets for selected datasets"
                 .type = choice
             write_dataset_map = *none interesting all
                 .help = "Output the analysed maps in the native frame of datasets for selected datasets"
@@ -128,11 +128,10 @@ pandda
     flags
         .help = "control which datasets are loaded and processed, and when statistical maps are calculated"
     {
-        stages = *add_datasets *characterisation *zmap_analysis
+        stages = *variation_analysis *z_map_analysis
             .help = "Which parts of the program should be turned on?
-                        add_datasets:       find and add new datasets (not needed to reload old datasets).
-                        characterisation:   perform statistical density analysis.
-                        zmap_analysis:      identify local events in each dataset."
+                        variation_analysis:  perform statistical density variation analysis (analyse differences between datasets).
+                        z_map_analysis:      contrast datasets against characterised density (identify events in each dataset)."
             .type = choice(multi=True)
         existing_datasets = reprocess *reload ignore
             .help = "What to do with previously-analysed datasets? reprocess: old datasets are treated as new and processed fully. reload: events identified in old datasets will be included in results. ignore: ..."
@@ -272,8 +271,10 @@ pandda
             max_build_datasets = 60
                 .help = 'Maximum number of datasets used to build distributions'
                 .type = int
-            deviation_from = *mean_map median_map
-                .help = 'Which statistical map should the uncertainties and Z-map be calculated from? (Median map is less sensitive to outliers)'
+            average_map = *mean_map medn_map
+                .help = 'Which statistical map should the uncertainties and Z-map be calculated from?
+                            mean_map: mean map      (simple averaging)
+                            medn_map: median map    (less sensitive to outliers)'
                 .type = choice
             z_map_type = naive uncertainty *adjusted+uncertainty
                 .help = 'Type of Z-map to calculate'
@@ -337,8 +338,8 @@ pandda
         setup_only = False
             .help = "Load datasets and create grid partition, but exit before analysis."
             .type = bool
-        calculate_first_mean_map_only = False
-           .help = "Will calculate the highest resolution mean map and then exit - used for initial reference modelling."
+        calculate_first_average_map_only = False
+           .help = "Will calculate the highest resolution average map and then exit - used for initial reference modelling."
             .type = bool
     }
 }
