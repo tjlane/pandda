@@ -32,7 +32,10 @@ from pandda.analyse import graphs as analyse_graphs
 
 def wrapper_run(c):
     if c is not None:
-        return c.run()
+        try:
+            return c.run()
+        except:
+            return traceback.format_exc()
     else:
         return c
 
@@ -323,8 +326,9 @@ class DatasetProcessor(object):
         # ============================================================================>
         # Build new blob search object
         # ============================================================================>
-        blob_finder = PanddaZMapAnalyser(params=args.params.blob_search, grid=grid,
-                                         log=Log(log_file=log_file, verbose=False, silent=True))
+        blob_finder = PanddaZMapAnalyser(params = args.params.z_map_analysis,
+                                         grid   = grid,
+                                         log    = Log(log_file=log_file, verbose=False, silent=True))
 
         print('Writing log for dataset {!s} to ...{}'.format(dataset.tag, log_file[log_file.index('processed'):]))
 
@@ -371,8 +375,8 @@ class DatasetProcessor(object):
         # ============================================================================>
         # NAIVE Z-MAP - NOT USING UNCERTAINTY ESTIMATION OR ADJUSTED STDS
         # ============================================================================>
-        z_map_naive = map_analyser.calculate_z_map(map=dataset_map, method='naive')
-        z_map_naive_normalised = z_map_naive.normalised_copy()
+#        z_map_naive = map_analyser.calculate_z_map(map=dataset_map, method='naive')
+#        z_map_naive_normalised = z_map_naive.normalised_copy()
         # ============================================================================>
         # UNCERTAINTY Z-MAP - NOT USING ADJUSTED STDS
         # ============================================================================>
@@ -387,13 +391,10 @@ class DatasetProcessor(object):
         # ============================================================================>
         # SELECT WHICH MAP TO DO THE BLOB SEARCHING ON
         # ============================================================================>
-        if args.params.statistical_maps.z_map_type == 'naive':
-            z_map = z_map_naive_normalised
-            z_map_stats = basic_statistics(flex.double(z_map_naive.data))
-#        elif args.params.statistical_maps.z_map_type == 'adjusted':
-#            z_map = z_map_adjst_normalised
-#            z_map_stats = basic_statistics(flex.double(z_map_adjst.data))
-        elif args.params.statistical_maps.z_map_type == 'uncertainty':
+#        if args.params.statistical_maps.z_map_type == 'naive':
+#            z_map = z_map_naive_normalised
+#            z_map_stats = basic_statistics(flex.double(z_map_naive.data))
+        if args.params.statistical_maps.z_map_type == 'uncertainty':
             z_map = z_map_uncty_normalised
             z_map_stats = basic_statistics(flex.double(z_map_uncty.data))
         elif args.params.statistical_maps.z_map_type == 'adjusted+uncertainty':
@@ -424,14 +425,14 @@ class DatasetProcessor(object):
         # Mean-Difference
         analyse_graphs.map_value_distribution(f_name    = dataset.file_manager.get_file('d_mean_map_png'),
                                               plot_vals = mean_diff_map.get_map_data(sparse=True))
-        # Naive Z-Map
-        analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_naive_png'),
-                                              plot_vals   = z_map_naive.get_map_data(sparse=True),
-                                              plot_normal = True)
-        # Normalised Naive Z-Map
-        analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_naive_normalised_png'),
-                                              plot_vals   = z_map_naive_normalised.get_map_data(sparse=True),
-                                              plot_normal = True)
+#        # Naive Z-Map
+#        analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_naive_png'),
+#                                              plot_vals   = z_map_naive.get_map_data(sparse=True),
+#                                              plot_normal = True)
+#        # Normalised Naive Z-Map
+#        analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_naive_normalised_png'),
+#                                              plot_vals   = z_map_naive_normalised.get_map_data(sparse=True),
+#                                              plot_normal = True)
         # Uncertainty Z-Map
         analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_uncertainty_png'),
                                               plot_vals   = z_map_uncty.get_map_data(sparse=True),
@@ -526,8 +527,8 @@ class DatasetProcessor(object):
         # Write different Z-Maps? (Probably only needed for testing)
         # ============================================================================>
         if args.output.developer.write_reference_frame_all_z_map_types:
-            z_map_naive.to_file(filename=dataset.file_manager.get_file('z_map_naive'), space_group=grid.space_group())
-            z_map_naive_normalised.to_file(filename=dataset.file_manager.get_file('z_map_naive_normalised'), space_group=grid.space_group())
+#            z_map_naive.to_file(filename=dataset.file_manager.get_file('z_map_naive'), space_group=grid.space_group())
+#            z_map_naive_normalised.to_file(filename=dataset.file_manager.get_file('z_map_naive_normalised'), space_group=grid.space_group())
             z_map_uncty.to_file(filename=dataset.file_manager.get_file('z_map_uncertainty'), space_group=grid.space_group())
             z_map_uncty_normalised.to_file(filename=dataset.file_manager.get_file('z_map_uncertainty_normalised'), space_group=grid.space_group())
             z_map_compl.to_file(filename=dataset.file_manager.get_file('z_map_corrected'), space_group=grid.space_group())

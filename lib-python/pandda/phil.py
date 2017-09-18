@@ -276,11 +276,11 @@ pandda
                             mean_map: mean map      (simple averaging)
                             medn_map: median map    (less sensitive to outliers)'
                 .type = choice
-            z_map_type = naive uncertainty *adjusted+uncertainty
+            z_map_type = uncertainty *adjusted+uncertainty
                 .help = 'Type of Z-map to calculate'
                 .type = choice
         }
-        blob_search
+        z_map_analysis
             .help = "Settings to control the finding of blobs"
             .expert_level = 1
         {
@@ -296,6 +296,9 @@ pandda
             min_blob_z_peak = 3.0
                 .help = 'Blob Z-peak filter for detecting blobs'
                 .type = float
+            selection_string = None
+                .help = 'Define custom part of the protein to search'
+                .type = str
         }
         background_correction
             .help = "Parameters to control the estimation of feature background corrections"

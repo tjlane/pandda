@@ -183,7 +183,7 @@ def pandda_grid_setup(pandda):
             mask_dataset = pandda.datasets.reference().copy()
         # Create the grid using the masking dataset (for determining size and extent of grid)
         pandda.create_reference_grid(dataset=mask_dataset, grid_spacing=pandda.params.maps.grid_spacing)
-        pandda.mask_reference_grid(dataset=mask_dataset)
+        pandda.mask_reference_grid(dataset=mask_dataset, selection=pandda.params.masks.selection_string)
         # Store the transformation to shift the reference dataset to the "grid frame", where the grid origin is (0,0,0)
         pandda.datasets.reference().set_origin_shift([-1.0*a for a in pandda.grid.cart_origin()])
         # Partition the grid with the reference dataset (which grid points use which coordinate transformations)
@@ -454,7 +454,7 @@ def pandda_main_loop(pandda):
             if 'variation_analysis' in pandda.args.flags.stages:
                 map_analyser.calculate_statistical_maps(cpus=pandda.settings.cpus)
             else:
-                self.log('Statistical map-variation analysis is turned off (flags.stages={})'.format('+'.join(pandda.args.flags.stages)))
+                pandda.log('Statistical map-variation analysis is turned off (flags.stages={})'.format('+'.join(pandda.args.flags.stages)))
             # ============================================================================>
             # Write the statistical maps
             # ============================================================================>
@@ -576,7 +576,9 @@ def pandda_main_loop(pandda):
             # ============================================================================>
             # Print blob-search object settings
             # ============================================================================>
-            dummy_blob_finder = PanddaZMapAnalyser(params=pandda.params.blob_search, grid=pandda.grid, log=pandda.log)
+            dummy_blob_finder = PanddaZMapAnalyser(params = pandda.params.z_map_analysis,
+                                                   grid   = pandda.grid,
+                                                   log    = pandda.log)
             dummy_blob_finder.print_settings()
 
             # ============================================================================>
@@ -607,9 +609,12 @@ def pandda_main_loop(pandda):
                 # ============================================================================>
                 # Compile arguments for this datasets
                 # ============================================================================>
-                dp = DatasetProcessor(dataset=dataset, dataset_map=dataset_map.make_sparse(),
-                                      grid=pandda.grid, map_analyser=dummy_map_analyser,
-                                      args=pandda.args, verbose=pandda.settings.verbose)
+                dp = DatasetProcessor(dataset      = dataset,
+                                      dataset_map  = dataset_map.make_sparse(),
+                                      grid         = pandda.grid,
+                                      map_analyser = dummy_map_analyser,
+                                      args         = pandda.args,
+                                      verbose      = pandda.settings.verbose)
                 dataset_processor_list.append(dp)
 
             # ===========================================================================>
@@ -626,7 +631,18 @@ def pandda_main_loop(pandda):
             # ============================================================================>
             pandda.log.bar()
             pandda.log('Updating with results from analysing {!s} Dataset(s) at {!s}A'.format(pandda.datasets.size(mask_name=analysis_mask_name), cut_resolution))
-            for results in proc_results:
+            # ===================================>
+            # Record errors and print all at end
+            # ===================================>
+            errors = []
+            for i_r, results in enumerate(proc_results):
+                # ===================================>
+                # Errors are returned as strings
+                # ===================================>
+                if isinstance(results, str):
+                    # Store dataset and error string
+                    errors.append((dataset_processor_list[i_r].data[0], results))
+                    continue
                 # ============================================================================>
                 # Unpack results
                 # ============================================================================>
@@ -664,6 +680,17 @@ def pandda_main_loop(pandda):
                 # ============================================================================>
                 master_dataset = pandda.datasets.get(tag=tmp_dataset.tag)
                 master_dataset.events = tmp_dataset.events
+            # ============================================================================>
+            # Print errors and exit!
+            # ============================================================================>
+            if errors:
+                pandda.log.subheading('Z-map analysis errors')
+                for dp, err_msg in errors:
+                    pandda.log.bar()
+                    pandda.log('Failed to process dataset {}'.format(dp.tag))
+                    pandda.log.bar()
+                    pandda.log(err_msg)
+                raise Failure('Failed to process Z-maps for {} datasets. Error messages printed above.'.format(len(errors)))
 
         # ============================================================================================= #
         #####                                                                                       #####
@@ -986,8 +1013,6 @@ def pandda_analyse_main(args):
     welcome()
 
     p=working_phil.extract()
-    print 'write_statistical_maps?\t', p.pandda.output.maps.write_statistical_maps
-    print 'existing_datasets?\t', p.pandda.flags.existing_datasets
 
     try:
         # ============================================================================>
