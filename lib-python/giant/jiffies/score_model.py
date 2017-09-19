@@ -227,27 +227,28 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix='', verbo
         #rg_label = (label_prefix+rg_sel.unique_resnames()[0]+'-'+rg_sel.parent().id+'-'+rg_sel.resseq+rg_sel.icode).replace(' ','')
         #rg_label = (label_prefix+rg_sel.parent().id+'-'+rg_sel.resseq+rg_sel.icode).replace(' ','')
         rg_label = ShortLabeller.format(rg_sel).replace(' ','')
+        tab_label = label_prefix + rg_label
 
         if len(rg_sel.unique_resnames()) != 1:
-            raise Exception(rg_label+': More than one residue name associated with residue group -- cannot process')
+            raise Exception(tab_label+': More than one residue name associated with residue group -- cannot process')
 
         # Append empty row to output table
-        data_table.loc[rg_label] = None
+        data_table.loc[tab_label] = None
 
-        data_table.set_value(index = rg_label,
+        data_table.set_value(index = tab_label,
                              col   = 'PDB',
                              value = pdb1 )
-        data_table.set_value(index = rg_label,
+        data_table.set_value(index = tab_label,
                              col   = 'Occupancy',
                              value = calculate_residue_group_occupancy(residue_group=rg_sel) )
 
         data_table = calculate_residue_group_bfactor_ratio(residue_group = rg_sel,
                                                            hierarchy     = h1_sch,
                                                            data_table    = data_table,
-                                                           rg_label      = rg_label)
+                                                           rg_label      = tab_label)
 
         if pdb2 is not None:
-            data_table.set_value(index = rg_label,
+            data_table.set_value(index = tab_label,
                                  col   = 'PDB-2',
                                  value = pdb2 )
 
@@ -261,14 +262,14 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix='', verbo
                 raise
 
             # Extract occupancy
-            data_table.set_value(index = rg_label,
+            data_table.set_value(index = tab_label,
                                  col   = 'Occupancy-2',
                                  value = calculate_residue_group_occupancy(residue_group=rg_sel_2[0]) )
 
             # Calculate the RMSD between the models
             try:
                 confs1, confs2, rmsds = zip(*calculate_paired_conformer_rmsds(conformers_1=rg_sel.conformers(), conformers_2=rg_sel_2[0].conformers()))
-                data_table.set_value(index=rg_label, col='Model RMSD', value=min(rmsds))
+                data_table.set_value(index=tab_label, col='Model RMSD', value=min(rmsds))
             except:
                 raise
                 print 'Could not calculate RMSD between pdb_1 and pdb_2 for residue {}'.format(rg_label)
@@ -276,21 +277,21 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix='', verbo
 
         # Extract Density Scores - MTZ 1
         if mtz1 is not None:
-            data_table.set_value(   index = rg_label, col='MTZ', value=mtz1)
+            data_table.set_value(index=tab_label, col='MTZ', value=mtz1)
         if mtz1_edstats_scores is not None:
             data_table = mtz1_edstats_scores.extract_residue_group_scores(  residue_group  = rg_sel,
                                                                             data_table     = data_table,
-                                                                            rg_label       = rg_label )
+                                                                            rg_label       = tab_label )
             # Normalise the RSZO by the Occupancy of the ligand
             data_table['RSZO/OCC'] = data_table['RSZO']/data_table['Occupancy']
 
         # Extract Density Scores - MTZ 2
         if mtz2 is not None:
-            data_table.set_value(   index = rg_label, col='MTZ-2', value=mtz2)
+            data_table.set_value(index=tab_label, col='MTZ-2', value=mtz2)
         if mtz2_edstats_scores is not None:
             data_table = mtz2_edstats_scores.extract_residue_group_scores(  residue_group  = rg_sel,
                                                                             data_table     = data_table,
-                                                                            rg_label       = rg_label,
+                                                                            rg_label       = tab_label,
                                                                             column_suffix  = '-2' )
             # Normalise the RSZO by the Occupancy of the ligand
             data_table['RSZO/OCC-2'] = data_table['RSZO-2']/data_table['Occupancy-2']
