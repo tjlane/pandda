@@ -31,7 +31,7 @@ from giant.manager import Program
 from giant.grid import Grid
 from giant.grid.masks import AtomicMask, GridMask
 from giant.structure.align import GlobalAlignment
-from giant.structure.select import calphas, protein, sel_altloc
+from giant.structure.select import calphas, protein, sel_altloc, non_water
 from giant.structure.formatting import Labeller, ShortLabeller
 from giant.xray.data import estimate_wilson_b_factor
 from giant.xray.scaling import IsotropicBfactorScalingFactory
@@ -344,11 +344,11 @@ class PanddaMultiDatasetAnalyser(Program):
         # Reference Structure Files (should only be needed once for writing and then only for reloading)
         # ===============================================================================>
         fm.add_dir(dir_name='reference', dir_tag='reference', top_dir_tag='root', create=False, exists=False)
-        fm.add_file(file_name=f.reference_structure,               file_tag='reference_structure', dir_tag='reference')
-        fm.add_file(file_name=f.reference_dataset,                 file_tag='reference_dataset',   dir_tag='reference')
-        fm.add_file(file_name=f.reference_on_origin,               file_tag='reference_on_origin', dir_tag='reference')
-        fm.add_file(file_name=f.reference_symmetry,                file_tag='reference_symmetry',  dir_tag='reference')
-        fm.add_file(file_name='grid-voronoi-{}.ccp4',              file_tag='grid_voronoi',        dir_tag='reference')
+        fm.add_file(file_name=f.reference_structure,               file_tag='reference_structure',          dir_tag='reference')
+        fm.add_file(file_name=f.reference_dataset,                 file_tag='reference_dataset',            dir_tag='reference')
+        fm.add_file(file_name=f.reference_shifted,                 file_tag='reference_shifted',            dir_tag='reference')
+        fm.add_file(file_name=f.reference_shifted_symmetry,        file_tag='reference_shifted_symmetry',   dir_tag='reference')
+        fm.add_file(file_name='grid-voronoi-{}.ccp4',              file_tag='grid_voronoi',                 dir_tag='reference')
         # ===============================================================================>
         # Standard template files that will be populated when needed
         # ===============================================================================>
@@ -602,6 +602,14 @@ class PanddaMultiDatasetAnalyser(Program):
             p.params.diffraction_data.structure_factors.append('2FOFCWT,PH2FOFCWT')
             self.log('Will look for the default PHENIX and REFMAC structure factor columns: {}'.format(' or '.join(p.params.diffraction_data.structure_factors)))
             self.log('(2FOFCWT_fill,PH2FOFCWT_fill are the "filled" phenix structure factors with missing values "filled" with DFc - if these are present it is prefereable to use these)')
+        # ================================================>
+        # Apply grid-masking values -> z_map_analysis-masking values if not given
+        # ================================================>
+        if p.params.z_map_analysis.masks.selection_string is not None:
+            if p.params.z_map_analysis.masks.outer_mask is None:
+                p.params.z_map_analysis.masks.outer_mask = p.params.masks.outer_mask
+            if p.params.z_map_analysis.masks.inner_mask is None:
+                p.params.z_map_analysis.masks.inner_mask = p.params.masks.inner_mask
         # ================================================>
         # Hardcoded limits
         # ================================================>
@@ -967,7 +975,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # ============================================================================>
         # Extract sites and calculate grid extent
         # ============================================================================>
-        sites_cart = dataset.model.alignment.nat2ref(protein(dataset.model.hierarchy).atoms().extract_xyz())
+        sites_cart = dataset.model.alignment.nat2ref(dataset.model.hierarchy.atoms().extract_xyz())
         # Calculate the extent of the grid
         buffer = self.params.masks.outer_mask + self.params.maps.padding
         grid_min = flex.double([s-buffer for s in sites_cart.min()])
@@ -1002,16 +1010,25 @@ class PanddaMultiDatasetAnalyser(Program):
         if selection:
             self.log('Masking grid using: "{}"'.format(selection))
             ref_h = ref_h.select(ref_h.atom_selection_cache().selection(selection), copy_atoms=True)
-            sym_h = sym_h.select(sym_h.atom_selection_cache().selection(selection), copy_atoms=True)
         else:
             self.log('Masking grid using: protein atoms')
             ref_h = protein(ref_h)
-            sym_h = protein(sym_h)
+        # ============================================================================>
+        # Always generate symmetry mask using all non-water atoms - TODO also allow custom definitions? TODO
+        # ============================================================================>
+        sym_h = non_water(sym_h)
+        # ============================================================================>
+        # Check that these contain atoms
+        # ============================================================================>
+        if len(ref_h.atoms()) == 0: raise Sorry('Zero atoms have been selected to mask the grid')
+        if len(sym_h.atoms()) == 0: raise Sorry('Zero atoms have been selected to mask the grid')
         # ============================================================================>
         # Extract coordinates
         # ============================================================================>
         ref_sites_cart = dataset.model.alignment.nat2ref(ref_h.atoms().extract_xyz())
         sym_sites_cart = dataset.model.alignment.nat2ref(sym_h.atoms().extract_xyz())
+        self.log('Masking grid with {} protein points'.format(len(ref_sites_cart)))
+        self.log('...and {} points from symmetry contacts'.format(len(sym_sites_cart)))
         # ============================================================================>
         # Global mask used for removing points in the bulk solvent regions
         # ============================================================================>
@@ -1109,7 +1126,7 @@ class PanddaMultiDatasetAnalyser(Program):
                 ca_nam = 'voronoi_centres'
                 pml.add_shape(shape=ca_sph, obj=ca_nam)
                 pml.colour(obj=ca_nam, colour='white')
-            pdb = pml.load_pdb(f_name=self.file_manager.get_file('reference_on_origin'))
+            pdb = pml.load_pdb(f_name=self.file_manager.get_file('reference_shifted'))
             pml.colour(obj=pdb, colour='grey')
             for grid_file in sorted(glob.glob(self.file_manager.get_file('grid_voronoi').format('*'))):
                 if not grid_file.endswith('.ccp4'): continue
@@ -1385,8 +1402,9 @@ class PanddaMultiDatasetAnalyser(Program):
             # ==============================>
             # Miscellaneous masks
             # ==============================>
-            dataset.file_manager.add_file(file_name=f.high_z_mask.format(dataset.tag), file_tag='high_z_mask')
-            dataset.file_manager.add_file(file_name=f.grid_mask.format(dataset.tag),   file_tag='grid_mask')
+            dataset.file_manager.add_file(file_name=f.grid_mask.format(dataset.tag),   file_tag='grid_mask'     )
+            dataset.file_manager.add_file(file_name=f.z_map_mask.format(dataset.tag),  file_tag='z_map_mask'    )
+            dataset.file_manager.add_file(file_name=f.high_z_mask.format(dataset.tag), file_tag='high_z_mask'   )
             # ==============================>
             # Links to ligand files (if they've been found)
             # ==============================>
@@ -1554,14 +1572,18 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         # Write out structure in reference coordinate frames
         # ==============================>
-#        tmp_r_hierarchy = ref_dataset.model.hierarchy.deep_copy()
-#        if not os.path.exists(self.file_manager.get_file('reference_on_origin')):
-#            tmp_r_hierarchy.atoms().set_xyz(ref_dataset.nat2grid(tmp_r_hierarchy.atoms().extract_xyz()))
-#            tmp_r_hierarchy.write_pdb_file(self.file_manager.get_file('reference_on_origin'))
-#        if not os.path.exists(self.file_manager.get_file('reference_symmetry')):
-#            ref_sym_copies = ref_dataset.model.crystal_contacts(distance_cutoff=self.args.params.masks.outer_mask+5, combine_copies=True)
-#            ref_sym_copies.atoms().set_xyz(ref_dataset.nat2grid(ref_sym_copies.atoms().extract_xyz()))
-#            ref_sym_copies.write_pdb_file(self.file_manager.get_file('reference_symmetry'))
+        if self.args.output.developer.write_reference_frame_maps or \
+           self.args.output.developer.write_reference_frame_grid_masks or \
+           self.args.output.developer.write_reference_frame_statistical_maps or \
+           self.args.output.developer.write_reference_frame_all_z_map_types:
+            tmp_r_hierarchy = ref_dataset.model.hierarchy.deep_copy()
+            if not os.path.exists(self.file_manager.get_file('reference_shifted')):
+                tmp_r_hierarchy.atoms().set_xyz(ref_dataset.ref2grid(tmp_r_hierarchy.atoms().extract_xyz()))
+                tmp_r_hierarchy.write_pdb_file(self.file_manager.get_file('reference_shifted'))
+            if not os.path.exists(self.file_manager.get_file('reference_shifted_symmetry')):
+                ref_sym_copies = ref_dataset.model.crystal_contacts(distance_cutoff=self.args.params.masks.outer_mask+5, combine_copies=True)
+                ref_sym_copies.atoms().set_xyz(ref_dataset.ref2grid(ref_sym_copies.atoms().extract_xyz()))
+                ref_sym_copies.write_pdb_file(self.file_manager.get_file('reference_shifted_symmetry'))
 
         # ==============================>
         # Extract reference dataset SFs

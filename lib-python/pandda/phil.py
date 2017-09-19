@@ -246,21 +246,22 @@ pandda
                 .help = "A PDB to mask the grid against (if none provided, use reference dataset)"
                 .type = str
                 .multiple = False
-            align_mask_to_reference = True
-                .help = "If masks.pdb is supplied, does it require alignment to the reference structure? If selecting a fragment of the structure, masks.pdb must already be aligned prior to running pandda (can't align fragments)."
+            align_mask_to_reference = False
+                .help = "If masks.pdb is supplied, does it require alignment to the reference structure?
+                            If selecting a fragment of the structure, masks.pdb must already be aligned prior to running pandda (can't align fragments)."
                 .type = bool
+            selection_string = None
+                .help = "Define a custom region of the protein to load electron density for (selection + outer_mask - inner_mask). If not defined, uses all protein atoms."
+                .type = str
+            outer_mask = 6
+                .help = 'include region within outer_mask of the atoms defined by selection_string (or protein if selection_string undefined)'
+                .type = float
             inner_mask = 1.8
-                .help = "Points are masked within this distance of protein atoms"
+                .help = 'exclude region within inner_mask of the atoms defined by selection_string (or protein if selection_string undefined)'
                 .type = float
             inner_mask_symmetry = 3.0
-                .help = "Points are masked within this distance of neighbouring symmetry copies of protein atoms"
+                .help = 'exclude region within inner_mask of the (symmetry) atoms defined by selection_string (or protein if selection_string undefined)'
                 .type = float
-            outer_mask = 6
-                .help = "Points are masked outside this distance of protein atoms"
-                .type = float
-            selection_string = None
-                .help = "A custom selection string for masking the reference grid (if not defined, uses all protein atoms)"
-                .type = str
         }
         statistical_maps
             .help = "Settings to control the calculation of z-maps"
@@ -296,9 +297,17 @@ pandda
             min_blob_z_peak = 3.0
                 .help = 'Blob Z-peak filter for detecting blobs'
                 .type = float
-            selection_string = None
-                .help = 'Define custom part of the protein to search'
-                .type = str
+            masks {
+                selection_string = None
+                    .help = 'Define a further mask to define a region for z-map analysis (selection + outer_mask - inner_mask). If not defined, uses the same region as defined in params.masks.'
+                    .type = str
+                outer_mask = None
+                    .help = 'include region within outer_mask of the atoms defined by selection_string (or protein if selection_string undefined)'
+                    .type = float
+                inner_mask = None
+                    .help = 'exclude region within inner_mask of the atoms defined by selection_string'
+                    .type = float
+            }
         }
         background_correction
             .help = "Parameters to control the estimation of feature background corrections"

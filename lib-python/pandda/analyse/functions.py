@@ -19,7 +19,7 @@ from bamboo.stats.ospina import estimate_true_underlying_sd
 
 from giant.dataset import ElectronDensityMap
 from giant.grid.masks import GridMask
-from giant.structure.select import protein, find_nearest_atoms
+from giant.structure.select import protein, non_water, find_nearest_atoms
 from giant.xray.maps.scale import scale_map_to_reference
 from giant.xray.maps.bdc import calculate_varying_bdc_correlations, calculate_maximum_series_discrepancy, calculate_bdc_subtracted_map
 from giant.xray.maps.local_align import create_native_map
@@ -322,39 +322,72 @@ class DatasetProcessor(object):
         # ============================================================================>
         log_strs = []
         log_file = dataset.file_manager.get_file('dataset_log')
+        log = Log(log_file=log_file, verbose=False, silent=True)
 
         # ============================================================================>
         # Build new blob search object
         # ============================================================================>
         blob_finder = PanddaZMapAnalyser(params = args.params.z_map_analysis,
                                          grid   = grid,
-                                         log    = Log(log_file=log_file, verbose=False, silent=True))
-
+                                         log    = log)
         print('Writing log for dataset {!s} to ...{}'.format(dataset.tag, log_file[log_file.index('processed'):]))
 
         # ============================================================================>
-        # Generate masks for this dataset
+        # Extract the global mask object from the grid
         # ============================================================================>
+        dset_total_temp = grid.global_mask().total_mask_binary().copy()
 
+        # ============================================================================>
+        # Generate symmetry masks for this dataset
+        # ============================================================================>
+        log.bar()
+        log('Masking symetry contacts from Z-map.')
         # Generate symmetry contacts for this dataset and align to reference frame
         dataset_sym_copies = dataset.model.crystal_contacts(distance_cutoff=args.params.masks.outer_mask+5, combine_copies=True)
         dataset_sym_copies.atoms().set_xyz(dataset.model.alignment.nat2ref(dataset_sym_copies.atoms().extract_xyz()))
         # Only need to write if writing reference frame maps
         if args.output.developer.write_reference_frame_maps:
             dataset_sym_copies.write_pdb_file(dataset.file_manager.get_file('symmetry_copies'))
-
         # Extract protein atoms from the symmetry copies
-        dataset_sym_sites_cart = protein(dataset_sym_copies).atoms().extract_xyz()
-
-        # Generate custom grid mask for the symmetry contacts
-        dataset_mask = GridMask(parent=grid, sites_cart=dataset_sym_sites_cart,
-                                max_dist=args.params.masks.outer_mask,
-                                min_dist=args.params.masks.inner_mask_symmetry)
-
+        dataset_sym_sites_cart = non_water(dataset_sym_copies).atoms().extract_xyz()
+        # Generate symmetry contacts grid mask
+        dataset_mask = GridMask(parent     = grid,
+                                sites_cart = dataset_sym_sites_cart,
+                                max_dist   = args.params.masks.outer_mask,
+                                min_dist   = args.params.masks.inner_mask_symmetry)
         # Combine with the total mask to generate custom mask for this dataset
-        dset_total_temp = grid.global_mask().total_mask_binary().copy()
         dset_total_temp.put(dataset_mask.inner_mask_indices(), 0)
         dset_total_idxs = numpy.where(dset_total_temp)[0]
+        log('After masking with symmetry contacts: {} points for Z-map analysis'.format(len(dset_total_idxs)))
+        # Write map of grid + symmetry mask
+        if args.output.developer.write_reference_frame_grid_masks:
+            grid.write_indices_as_map(indices = dset_total_idxs,
+                                      f_name  = dataset.file_manager.get_file('grid_mask'),
+                                      origin_shift = True)
+
+        # ============================================================================>
+        # Generate custom masks for this dataset
+        # ============================================================================>
+        if args.params.z_map_analysis.masks.selection_string is not None:
+            log.bar()
+            log('Applying custom mask to the Z-map: "{}"'.format(args.params.z_map_analysis.masks.selection_string))
+            cache = dataset.model.hierarchy.atom_selection_cache()
+            custom_mask_selection = cache.selection(args.params.z_map_analysis.masks.selection_string)
+            custom_mask_sites = dataset.model.hierarchy.select(custom_mask_selection).atoms().extract_xyz()
+            log('Masking with {} atoms'.format(len(custom_mask_sites)))
+            # Generate custom grid mask
+            dataset_mask = GridMask(parent     = grid,
+                                    sites_cart = custom_mask_sites,
+                                    max_dist   = args.params.z_map_analysis.masks.outer_mask,
+                                    min_dist   = args.params.z_map_analysis.masks.inner_mask)
+            # Combine with the total mask to generate custom mask for this dataset
+            dset_total_temp *= dataset_mask.total_mask_binary()
+            dset_total_idxs = numpy.where(dset_total_temp)[0]
+            log('After masking with custom mask: {} points for Z-map analysis'.format(len(dset_total_idxs)))
+            # Write out mask
+            grid.write_indices_as_map(indices = dset_total_idxs,
+                                      f_name  = dataset.file_manager.get_file('z_map_mask'),
+                                      origin_shift = True)
 
         # ============================================================================>
         #####
@@ -372,9 +405,9 @@ class DatasetProcessor(object):
         # CALCULATE MEAN-DIFF MAPS
         # ============================================================================>
         mean_diff_map = map_analyser.calculate_z_map(map=dataset_map, method='none')
-        # ============================================================================>
-        # NAIVE Z-MAP - NOT USING UNCERTAINTY ESTIMATION OR ADJUSTED STDS
-        # ============================================================================>
+#        # ============================================================================>
+#        # NAIVE Z-MAP - NOT USING UNCERTAINTY ESTIMATION OR ADJUSTED STDS
+#        # ============================================================================>
 #        z_map_naive = map_analyser.calculate_z_map(map=dataset_map, method='naive')
 #        z_map_naive_normalised = z_map_naive.normalised_copy()
         # ============================================================================>
@@ -467,7 +500,7 @@ class DatasetProcessor(object):
         # ============================================================================>
         if num_clusters == -1:
             # This dataset is too noisy to analyse - flag!
-            log_strs.append('Z-Map too noisy to analyse')
+            log_strs.append('Z-Map too noisy to analyse -- not sure what has gone wrong here...')
             return dataset, dataset_map.meta, log_strs
 
         # ============================================================================>
@@ -506,23 +539,23 @@ class DatasetProcessor(object):
         # WRITE MAPS
         #####
         # ============================================================================>
-        # WRITE REFERENCE FRAME MAPS (NOT ROTATED)
+        # write dataset maps in the reference frame
         # ============================================================================>
         if args.output.developer.write_reference_frame_maps:
             dataset_map.to_file(filename=dataset.file_manager.get_file('sampled_map'), space_group=grid.space_group())
             mean_diff_map.to_file(filename=dataset.file_manager.get_file('mean_diff_map'), space_group=grid.space_group())
             z_map.to_file(filename=dataset.file_manager.get_file('z_map'), space_group=grid.space_group())
         # ============================================================================>
-        # Write out DATASET and Z-MAP grid masks
+        # Write out mask of the high z-values
         # ============================================================================>
         if args.output.developer.write_reference_frame_grid_masks:
-            # Write map of grid + symmetry mask
-            grid.write_indices_as_map(indices=dset_total_idxs, f_name=dataset.file_manager.get_file('grid_mask'))
             # Write map of where the blobs are (high-Z mask)
             highz_points = []; [highz_points.extend(list(x[0])) for x in z_clusters]
             highz_points = [map(int, v) for v in highz_points]
             highz_indices = map(grid.indexer(), list(highz_points))
-            grid.write_indices_as_map(indices=highz_indices, f_name=dataset.file_manager.get_file('high_z_mask'))
+            grid.write_indices_as_map(indices = highz_indices,
+                                      f_name  = dataset.file_manager.get_file('high_z_mask'),
+                                      origin_shift=True)
         # ============================================================================>
         # Write different Z-Maps? (Probably only needed for testing)
         # ============================================================================>

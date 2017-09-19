@@ -104,8 +104,9 @@ class PanddaDatasetFilenames:
     z_map_corrected_norm   = '{!s}-z_map_adjusted_normalised.ccp4'
     event_map              = '{!s}-event_{!s}_1-BDC_{!s}_map.ccp4'
     # Grid masks files
-    high_z_mask            = '{!s}-high_z_mask.ccp4'
     grid_mask              = '{!s}-masked_grid.ccp4'
+    z_map_mask             = '{!s}-z_map-blob_search_mask.ccp4'
+    high_z_mask            = '{!s}-z_map-high_z_values_mask.ccp4'
     # Ligands files
     ligand_coordinates     = '{!s}-ligand.pdb'
     ligand_restraints      = '{!s}-ligand.cif'
@@ -151,10 +152,10 @@ class PanddaAnalyserFilenames:
     kurt_map                = '{!s}A-kurt_map.ccp4'
     bimo_map                = '{!s}A-bimo_map.ccp4'
 
-    reference_structure     = 'reference.pdb'
-    reference_dataset       = 'reference.mtz'
-    reference_on_origin     = 'reference.shifted.pdb'
-    reference_symmetry      = 'reference.symmetry.pdb'
+    reference_structure         = 'reference.pdb'
+    reference_dataset           = 'reference.mtz'
+    reference_shifted           = 'reference.shifted.pdb'
+    reference_shifted_symmetry  = 'reference.shifted-sym.pdb'
 
 class PanddaInspectorFilenames:
 
