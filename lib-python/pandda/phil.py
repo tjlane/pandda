@@ -55,6 +55,9 @@ pandda
             exclude_from_characterisation = None
                 .help = "Don't use these datasets to characterise the ground-state electron density, only analyse them - comma separated list of dataset tags"
                 .type = str
+            only_datasets = None
+                .help = 'Only load these datasets, don\'t load any others - comma separated list of dataset tags'
+                .type = str
             ignore_datasets = None
                 .help = "Reject these datasets, don't even load them - comma separated list of dataset tags"
                 .type = str

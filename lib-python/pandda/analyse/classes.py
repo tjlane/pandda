@@ -1249,46 +1249,74 @@ class PanddaMultiDatasetAnalyser(Program):
 
                 new_files.append(pdb_files+mtz_files+dataset_tag)
 
+        self.log.bar()
+        self.log('{} datasets found in input directory'.format(len(new_files)))
         # ==============================>
         # Filter out the already added files
         # ==============================>
         if self.pickled_dataset_meta.dataset_labels:
             filtered_new_files = []
+            self.log.bar()
+            self.log('Filtering previously-loaded datasets')
+            self.log.bar()
             for i, (pdb, mtz, tag) in enumerate(new_files):
                 if tag in self.pickled_dataset_meta.dataset_labels:
-                    self.log('Dataset with this tag has already been loaded: {!s} - Not loading'.format(tag))
+                    self.log('\tDataset with this tag has already been loaded: {!s} - Not loading'.format(tag))
                 else:
                     filtered_new_files.append(new_files[i])
+            self.log('> Keeping {} datasets'.format(len(filtered_new_files)))
+            self.log('> Removed {} datasets'.format(len(new_files)-len(filtered_new_files)))
         else:
             filtered_new_files = new_files
+        # ==============================>
+        # Select only those requested
+        # ==============================>
+        if self.args.input.flags.only_datasets:
+            only_tags = self.args.input.flags.only_datasets.split(',')
+            self.log.bar()
+            self.log('Filtering for {!s} datasets based on "only_datasets": {!s}'.format(len(only_tags), ', '.join(only_tags)))
+            self.log.bar()
+            re_filtered_new_files = []
+            for i, (pdb, mtz, tag) in enumerate(filtered_new_files):
+                if tag in only_tags:
+                    re_filtered_new_files.append(filtered_new_files[i])
+                else:
+                    self.log('\tIgnoring dataset: {!s}'.format(tag))
+            self.log('> Keeping {} datasets'.format(len(re_filtered_new_files)))
+            self.log('> Removed {} datasets'.format(len(filtered_new_files)-len(re_filtered_new_files)))
+            filtered_new_files = re_filtered_new_files
         # ==============================>
         # Filter out manually labelled datasets to ignore
         # ==============================>
         if self.args.input.flags.ignore_datasets:
             ignore_tags = self.args.input.flags.ignore_datasets.split(',')
-            self.log('Ignoring {!s} Datasets: {!s}'.format(len(ignore_tags), ', '.join(ignore_tags)))
+            self.log.bar()
+            self.log('Filtering for {!s} datasets based on "ignore_datasets": {!s}'.format(len(ignore_tags), ', '.join(ignore_tags)))
+            self.log.bar()
             re_filtered_new_files = []
             for i, (pdb, mtz, tag) in enumerate(filtered_new_files):
                 if tag in ignore_tags:
-                    self.log('Ignoring Dataset: {!s}'.format(tag))
+                    self.log('\tIgnoring dataset: {!s}'.format(tag))
                 else:
                     re_filtered_new_files.append(filtered_new_files[i])
+            self.log('> Keeping {} datasets'.format(len(re_filtered_new_files)))
+            self.log('> Removed {} datasets'.format(len(filtered_new_files)-len(re_filtered_new_files)))
             filtered_new_files = re_filtered_new_files
         # ==============================>
         # Report number of empty datasets
         # ==============================>
         self.log.bar()
-        self.log('{!s} EMPTY DIRECTORIES FOUND:'.format(len(empty_directories)))
+        self.log('{!s} empty directories found:'.format(len(empty_directories)))
         self.log.bar()
         for d in empty_directories:
-            self.log('Empty Directory: {}'.format(d))
+            self.log('\tEmpty directory: {}'.format(d))
         # ==============================>
         # Report total number of datasets, and total number of new datasets
         # ==============================>
         num_old = self.pickled_dataset_meta.number_of_datasets
         self.log.bar()
-        self.log('{!s} DATASETS FOUND (TOTAL)'.format(len(filtered_new_files)+num_old))
-        self.log('{!s} DATASETS FOUND (NEW)'.format(len(filtered_new_files)))
+        self.log('{!s} datasets found (total)'.format(len(filtered_new_files)+num_old))
+        self.log('{!s} datasets found (new)'.format(len(filtered_new_files)))
 
         return filtered_new_files
 
