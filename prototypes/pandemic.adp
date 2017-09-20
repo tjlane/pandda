@@ -1,6 +1,6 @@
 #!/usr/bin/env ccp4-python
 
-import os, sys, copy
+import os, sys, copy, traceback
 import math, itertools
 
 import scipy.stats, scipy.cluster
@@ -48,7 +48,7 @@ EIGHT_PI_SQ = 8*math.pi*math.pi
 
 ############################################################################
 
-PROGRAM = 'giant.datasets.b_factor_fitting'
+PROGRAM = 'pandemic.adp'
 
 DESCRIPTION = """
     Fit a consensus B-factor model to a series of datasets
@@ -80,13 +80,19 @@ fitting {
         .multiple = True
     {
         depth = None
-            .type = float
+            .help = "where to insert this level into the hierarchy? (after auto_levels have been determined)"
+            .type = int
             .multiple = False
         selection = None
+            .help = "list of selections that define groups for this level"
             .type = str
             .multiple = True
+        mask_atoms = False
+            .help = "remove atoms with high residual Uijs from this mask?"
+            .type = bool
+            .multiple = False
     }
-    max_datasets_for_optimisation = None
+    max_datasets_for_optimisation = 20
         .help = 'how many datasets should be used for optimising the TLS parameters?'
         .type = int
     max_resolution_for_optimisation = 3.0
@@ -144,8 +150,11 @@ def wrapper_run(arg):
 
 def wrapper_fit(args):
     fitter, kw_args = args
-    fitter.optimise(**kw_args)
-    return fitter
+    try:
+        fitter.optimise(**kw_args)
+        return fitter
+    except:
+        return traceback.format_exc()
 
 ############################################################################
 
@@ -232,12 +241,13 @@ class MultiDatasetUijParameterisation(Program):
             raise Failure("Not all structures are the same atomic model of the protein.")
         # Check for errors - No high resolution structures?
         if len(self._opt_datasets_selection) == 0:
-            raise Exception('No datasets above resolution cutoff: {}'.format(self._opt_datasets_res_limit))
+            raise Sorry('No datasets above resolution cutoff: {}'.format(self._opt_datasets_res_limit))
 
         # Limit the number of datasets for optimisation
         if self._n_opt is not None:
+            self.log('Limiting list of datasets for TLS optimisation to {} datasets'.format(self._n_opt))
             self._opt_datasets_selection = self._opt_datasets_selection[:self._n_opt]
-
+        # Print optimisation datasets
         self.log('Using {} datasets for TLS and residual parameterisation'.format(len(self._opt_datasets_selection)))
         for i_m in self._opt_datasets_selection:
             self.log('\t'+self.models[i_m].tag)
@@ -302,6 +312,8 @@ class MultiDatasetUijParameterisation(Program):
                                                         level_array  = self.level_array,
                                                         level_labels = self.level_labels,
                                                         log = self.log)
+        # Select the datasets for be used for TLS optimisation
+        self.fitter.set_optimisation_datasets(self._opt_datasets_selection)
 
         # Write summary of the fitted model (groups & levels)
         model_dir = easy_directory(os.path.join(self.out_dir, 'model'))
@@ -414,7 +426,7 @@ class MultiDatasetUijParameterisation(Program):
         # Level by level TLS-parameterised structures
         for i_level in range(len(self.levels)):
             self.log.bar()
-            self.log('Writing fitted structures (TLS components only - level {})'.format(i_level))
+            self.log('Writing fitted structures (TLS components only - level {})'.format(i_level+1))
             self.log.bar()
             self.output_structures(uij = uij_lvl[i_level],
                                    iso = map(uij_to_b, uij_lvl[i_level]),
@@ -560,7 +572,7 @@ class MultiDatasetUijParameterisation(Program):
         # Generate hierarchy for each level with groups as b-factors
         self.log('Writing partition figures for each chain')
         level_hierarchies = []
-        for i_level, g_vals in enumerate(self.level_array):
+        for g_vals in self.level_array:
             h = self.custom_master_hierarchy()
             h = self.custom_master_hierarchy(uij=None, iso=g_vals, mask=global_sel)
             level_hierarchies.append(h)
@@ -581,10 +593,10 @@ class MultiDatasetUijParameterisation(Program):
 
         self.log.subheading('Writing TLS models and amplitudes for each level')
         # Iterate through the levels
-        for i_level, level in enumerate(self.fitter.levels):
-            self.log('Level {}'.format(i_level+1))
+        for level in self.fitter.levels:
+            self.log('Level {}'.format(level.index))
             # Table for TLS model components
-            mdl_filename = os.path.join(out_dir, 'tls_models_level_{:04d}.csv'.format(i_level+1))
+            mdl_filename = os.path.join(out_dir, 'tls_models_level_{:04d}.csv'.format(level.index))
             mdl_table = pandas.DataFrame(columns=["group", "i_tls",
                                                   "T11","T22","T33","T12","T13","T23",
                                                   "L11","L22","L33","L12","L13","L23",
@@ -599,11 +611,11 @@ class MultiDatasetUijParameterisation(Program):
                     amp_table = pandas.DataFrame(index=[mdl.tag for mdl in self.models],
                                                  columns=list("TLS"),
                                                  data=tls_amps[:,i_tls,:])
-                    amp_filename = os.path.join(out_dir, 'tls_amplitudes_level_{:04d}_group_{:04d}_mode_{:04d}.csv'.format(i_level+1, i_group, i_tls+1))
+                    amp_filename = os.path.join(out_dir, 'tls_amplitudes_level_{:04d}_group_{:04d}_mode_{:04d}.csv'.format(level.index, i_group, i_tls+1))
                     amp_table.to_csv(amp_filename)
                     # Write histograms of amplitudes
                     x_vals = []; [[x_vals.append(tls_amps[:,i_t,i_a]) for i_a in range(3)] for i_t in range(tls_amps.shape[1])]
-                    filename = os.path.join(out_dir, 'tls-model-amplitudes-level-{}-group-{}.png'.format(i_level+1, i_group))
+                    filename = os.path.join(out_dir, 'tls-model-amplitudes-level-{}-group-{}.png'.format(level.index, i_group))
                     self.log('\t> {}'.format(filename))
                     self.plot.histograms(filename = filename,
                                          x_vals   = x_vals,
@@ -628,7 +640,7 @@ class MultiDatasetUijParameterisation(Program):
             uij_all = None
             # Iterate through the levels
             for i_level, level in enumerate(self.fitter.levels):
-                self.log('Level {}'.format(i_level+1))
+                self.log('Level {}'.format(level.index))
                 # Cumulative uijs (level)
                 uij_lvl = None
                 # Boundaries for this level
@@ -648,7 +660,7 @@ class MultiDatasetUijParameterisation(Program):
                     # Extract uijs
                     uij = l_copy.extract(average=True)
                     # Write out structure & graph of uijs (this level and this group)
-                    prefix = os.path.join(out_dir, 'level_{}-mode_{}-{}'.format(i_level+1, i_tls+1, tls_comp))
+                    prefix = os.path.join(out_dir, 'level_{}-mode_{}-{}'.format(level.index, i_tls+1, tls_comp))
                     m_h = self.custom_master_hierarchy(uij=uij, iso=uij_to_b(uij), mask=sel)
                     m_f = prefix+'.pdb'
                     self.log('\t> {}'.format(m_f))
@@ -661,7 +673,7 @@ class MultiDatasetUijParameterisation(Program):
                     # Add to cumulative uij (this level)
                     uij_lvl = uij if uij_lvl is None else uij_lvl+uij
                 # Write out structure & graph of uijs (this level)
-                prefix = os.path.join(out_dir, 'level_{}-{}'.format(i_level+1, tls_comp))
+                prefix = os.path.join(out_dir, 'level_{}-{}'.format(level.index, tls_comp))
                 m_h = self.custom_master_hierarchy(uij=uij_lvl, iso=uij_to_b(uij_lvl), mask=sel)
                 m_f = prefix+'.pdb'
                 self.log('\t> {}'.format(m_f))
@@ -731,7 +743,7 @@ class MultiDatasetUijParameterisation(Program):
         dst_labels = numpy.array([m.tag for m in self.models])
 
         # Labels for each group in each level
-        grp_labels = [[g.name for i,s,g in level] for level in self.fitter.levels]
+        grp_labels = [[g.label for i,s,g in level] for level in self.fitter.levels]
 
         # Extract residue and atom labels for fitted atoms from the master
         m_h = self.blank_master_hierarchy().select(flex.bool(self.atom_mask.tolist()), copy_atoms=True)
@@ -760,13 +772,13 @@ class MultiDatasetUijParameterisation(Program):
 
         self.log.subheading('Calculating dataset-by-dataset rmsds to input Uijs')
         for i_level, level in enumerate(self.fitter.levels):
-            self.log('Level {}'.format(i_level+1))
+            self.log('Level {}'.format(level.index))
             for i_group, sel, fitter in level:
                 # Extract the uij rmsds for this group
                 rmsds_sel = rmsds_all[:,sel]
                 # Create boxplots of the rmsds by dataset
                 for i_d in range(0, len(self.models), max_x_width):
-                    filename = os.path.join(dst_dir, 'rmsds_level-{}_group-{:04d}_datasets-{:04d}-{:04d}.png'.format(i_level+1, i_group, i_d+1, i_d+max_x_width))
+                    filename = os.path.join(dst_dir, 'rmsds_level-{}_group-{:04d}_datasets-{:04d}-{:04d}.png'.format(level.index, i_group, i_d+1, i_d+max_x_width))
                     self.log('\t> {}'.format(filename))
                     self.plot.violinplot(filename=filename,
                                          y_vals=rmsds_sel.T[:,i_d:i_d+max_x_width],
@@ -1298,7 +1310,7 @@ class MultiDatasetHierarchicalUijFitter(object):
         self.atomic_mask  = numpy.ones(observed_uij.shape[1], dtype=bool)
 
         # Level labels, and grouping for each level
-        self.level_labels = level_labels if level_labels else range(1, len(level_array)+1)
+        self.level_labels = level_labels if level_labels else ['Level {}'.format(i) for i in range(1, len(level_array)+1)]
         self.level_array = level_array
 
         # Series of objects to fit the Uij TLS groups
@@ -1307,7 +1319,7 @@ class MultiDatasetHierarchicalUijFitter(object):
             self.levels.append(MultiDatasetUijTLSGroupPartition(observed_uij = observed_uij,
                                                                 observed_xyz = observed_xyz,
                                                                 group_idxs   = group_idxs,
-                                                                index = idx,
+                                                                index = idx+1,
                                                                 label = lab,
                                                                 log=self.log))
 
@@ -1329,8 +1341,8 @@ class MultiDatasetHierarchicalUijFitter(object):
         return self.observed_uij - arr_sum
 
     def set_optimisation_datasets(self, dataset_indices):
-        self.dataset_mask *= 0
-        self.dataset_mask[dataset_indices] = 1
+        self.dataset_mask[:] = False
+        self.dataset_mask[dataset_indices] = True
 
     def apply_masks(self):
         for level in self.levels+[self.residual]:
@@ -1394,12 +1406,12 @@ class MultiDatasetHierarchicalUijFitter(object):
                 fitted_uij_by_level[-1] = 0.0
 
             # Ensure the masks are up-to-date
-            self.log('Updating atom and datasets masks')
+            self.log('Setting atom and datasets masks')
             self.apply_masks()
 
             # Iterate through the TLS levels of the fitting
             for i_level, fitter in enumerate(self.levels):
-                self.log.subheading('Fitting TLS Groups (level {} - {})'.format(i_level+1, fitter.label))
+                self.log.subheading('Fitting TLS Groups (level {} - {})'.format(fitter.index, fitter.label))
                 # Update settings
                 #self.log('Resetting TLS amplitudes')
                 #fitter.reset_amplitudes()
@@ -1408,9 +1420,7 @@ class MultiDatasetHierarchicalUijFitter(object):
                 fitter.set_target_uij(target_uij=self._target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=i_level))
                 # Optimise
                 self.log('Running optimisation')
-                fitter.run(n_cpus=n_cpus, n_cycles=n_micro_cycles)
-                # Extract results
-                fitted_uij_by_level[i_level] = fitter.extract()
+                fitted_uij_by_level[i_level] = fitter.run(n_cpus=n_cpus, n_cycles=n_micro_cycles)
 
             # Fit the residuals
             self.log.subheading('Fitting residual atomic Uijs')
@@ -1419,10 +1429,8 @@ class MultiDatasetHierarchicalUijFitter(object):
             self.residual.set_dataset_mask(mask=self.dataset_mask)
             # Update the target uij by subtracting contributions from other levels
             self.residual.set_target_uij(target_uij=self._target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=-1))
-            # Update fitters and optimise
-            self.residual.run(n_cpus=n_cpus, n_cycles=n_micro_cycles)
-            # Extract results
-            fitted_uij_by_level[-1] = self.residual.extract()
+            # Update fitters and optimise -- always run two cycles of this
+            fitted_uij_by_level[-1] = self.residual.run(n_cpus=n_cpus, n_cycles=2)
 
         return self.extract()
 
@@ -1451,13 +1459,26 @@ class _MultiDatasetUijFitter(object):
     def run(self, n_cpus=1, n_cycles=1):
         jobs = [(fitter, {'n_cycles':n_cycles}) for (i, sel, fitter) in self]
         self.log.heading('Running {} jobs using {} cpus'.format(len(jobs), n_cpus))
+        # Run jobs in parallel
         finished_jobs = libtbx.easy_mp.pool_map(processes=n_cpus, func=wrapper_fit, args=jobs, chunksize=1)
+        # Record list of errors and raise all at end
+        errors = []
         for i_iter, (i, sel, fitter) in enumerate(self):
-            if isinstance(finished_jobs[i_iter], str) or \
-               (finished_jobs[i_iter] is None):
-                print i_iter, i, sum(sel)
-                raise Exception('Error returned')
-            self.fitters[i] = finished_jobs[i_iter]
+            ret_job = finished_jobs[i_iter]
+            if isinstance(ret_job, str) or (ret_job is None):
+                errors.append((fitter,ret_job))
+                continue
+            self.fitters[i] = ret_job
+        # Report errors
+        if errors: 
+            for fitter, e in errors: 
+                self.log.bar()
+                self.log('Level "{}", Group "{}": error returned'.format(self.label, fitter.label))
+                self.log.bar()
+                self.log(e)
+            self.log.bar()
+            raise Failure('Errors raised during optimisation. Messages printed above')
+        # Return the fitted B-factors
         return self.extract()
 
     def set_target_uij(self, target_uij):
@@ -1467,7 +1488,12 @@ class _MultiDatasetUijFitter(object):
 
     def set_atomic_mask(self, mask):
         for i, sel, fitter in self:
-            fitter.set_atomic_mask(mask[sel])
+            # Apply the mask if contains more than one atoms
+            if sum(mask[sel]) > 1:
+                fitter.set_atomic_mask(mask[sel])
+            # Else do nothing
+            else:
+                self.log('Level "{}", Group "{}": Attempting to apply mask of less than one atom -- not applying mask'.format(self.label, fitter.label))
 
     def set_dataset_mask(self, mask):
         for i, sel, fitter in self:
@@ -1486,7 +1512,7 @@ class MultiDatasetUijTLSGroupPartition(_MultiDatasetUijFitter):
         assert observed_uij.shape[1]  == len(group_idxs)
 
         self.index = index
-        self.label = label if label else str(index)
+        self.label = label if label else 'Level {}'.format(index)
 
         self.group_idxs = group_idxs
 
@@ -1499,8 +1525,8 @@ class MultiDatasetUijTLSGroupPartition(_MultiDatasetUijFitter):
             assert f is None
             self.fitters[i] = MultiDatasetUijTLSOptimiser(target_uij = observed_uij[:,sel],
                                                           atomic_xyz = observed_xyz[:,sel],
-                                                          name       = 'group {:4d} of {:4d}'.format(i, self._n_groups),
-                                                          log        = self.log)
+                                                          label = '{:4d} of {:4d}'.format(i, self._n_groups),
+                                                          log = self.log)
 
     def __iter__(self):
         for i in numpy.unique(self.group_idxs):
@@ -1546,8 +1572,8 @@ class MultiDatasetUijResidualFitter(_MultiDatasetUijFitter):
         for i, sel, f in self:
             assert f is None
             self.fitters[i] = MultiDatasetUijAtomOptimiser(target_uij = observed_uij[:,sel],
-                                                           name       = 'atom {:5d} of {:5d}'.format(i,self._n_atm),
-                                                           log        = self.log)
+                                                           label = 'atom {:5d} of {:5d}'.format(i,self._n_atm),
+                                                           log = self.log)
 
     def __iter__(self):
         for i in range(self._n_atm):
@@ -1685,7 +1711,7 @@ class UijSimplex(_Simplex):
 
 class _UijOptimiser(object):
 
-    def __init__(self, target_uij, atomic_xyz=None, name='', log=None):
+    def __init__(self, target_uij, atomic_xyz=None, label='', log=None):
 
         if log is None: log = Log(verbose=True)
         self.log = log
@@ -1697,7 +1723,7 @@ class _UijOptimiser(object):
         self.target_uij = target_uij
         self.atomic_xyz = atomic_xyz
 
-        self.name = name
+        self.label = label
 
         self._var_current = None
         self._var_current_sel = None
@@ -1783,6 +1809,7 @@ class _UijOptimiser(object):
     def set_atomic_mask(self, mask):
         if not isinstance(mask, list):
             mask = list(numpy.where(mask)[0])
+        assert len(mask) > 0, 'No atoms in this mask!'
         self._mask_atom = mask
 
     def set_dataset_mask(self, mask):
@@ -1828,8 +1855,8 @@ class _UijOptimiser(object):
 
 class MultiDatasetUijAtomOptimiser(_UijOptimiser):
 
-    def __init__(self, target_uij, name='', log=None):
-        super(MultiDatasetUijAtomOptimiser, self).__init__(target_uij=target_uij, name=name, log=log)
+    def __init__(self, target_uij, label='', log=None):
+        super(MultiDatasetUijAtomOptimiser, self).__init__(target_uij=target_uij, label=label, log=log)
 
         # Should be n_dataset observations of 6 parameters
         assert len(self.target_uij.shape) == 2
@@ -1892,14 +1919,14 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
     def summary(self, show=True):
         """Print the number of parameters/input data"""
         uij = self.result()
-        s = 'Uij ({}): '.format(self.name)+', '.join(['{:8.3f}'.format(v) for v in uij])
+        s = 'Uij ({}): '.format(self.label)+', '.join(['{:8.3f}'.format(v) for v in uij])
         if show: self.log(s)
         return s
 
 class MultiDatasetUijTLSOptimiser(_UijOptimiser):
 
-    def __init__(self, target_uij, atomic_xyz, n_tls=1, tls_params=None, name='', log=None):
-        super(MultiDatasetUijTLSOptimiser, self).__init__(target_uij=target_uij, atomic_xyz=atomic_xyz, name=name, log=log)
+    def __init__(self, target_uij, atomic_xyz, n_tls=1, tls_params=None, label='', log=None):
+        super(MultiDatasetUijTLSOptimiser, self).__init__(target_uij=target_uij, atomic_xyz=atomic_xyz, label=label, log=log)
 
         # Should be n_dataset observations of n_atm with 6 parameters
         assert len(self.target_uij.shape) == 3
@@ -2103,9 +2130,11 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         s_cuml = self._blank_parameter_selection()
 
         for i_cycle in range(n_cycles):
-            self.log.heading('Optimisation cycle {} of {}'.format(i_cycle+1, n_cycles))
+            self.log.heading('Group {} - Optimisation cycle {} of {}'.format(self.label, i_cycle+1, n_cycles))
             for i_tls in range(self._n_tls):
                 self.log.subheading('Optimising TLS model {} of {}'.format(i_tls+1, self._n_tls))
+                self.log('Optimising using {} atoms'.format(len(opt_atom_mask)))
+                self.log('Optimising using {} datasets'.format(len(opt_dset_mask)))
                 # Extract selection for this TLS model's parameters
                 s_tls = self._sel_tls(i_tls)
                 # Optimise each T, L, S component separately
@@ -2176,7 +2205,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
 
     def summary(self, show=True):
         """Print the number of parameters/input data"""
-        s = self.log._bar()+'\nTLS Group Fit Summary: {}\n'.format(self.name)+self.log._bar()
+        s = self.log._bar()+'\nTLS Group Fit Summary: {}\n'.format(self.label)+self.log._bar()
         s += '\n> Input summary'
         s += '\nNumber of datasets:   {}'.format(self._n_dst)
         s += '\nNumber of atoms:      {}'.format(self._n_atm)
