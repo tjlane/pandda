@@ -70,6 +70,7 @@ class Log(object):
 
     def __init__(self, log_file=None, stdout=sys.stdout, verbose=False, silent=False):
         """Log Object for writing to logs...?"""
+        assert not (silent and verbose), 'cannot be both silent and verbose...'
         # File that the log will be written to
         self.log_file = log_file
         self.verbose = verbose
@@ -81,11 +82,10 @@ class Log(object):
                                  subheading = Heading(spacer='-', decorator=' *** ')
                                 )
 
-    # TODO remove "hide" as now unnecessary
-    def __call__(self, message, show=True, hide=False):
-        """Log message to file, and mirror to stdout if verbose or force_print (hide overrules show)"""
+    def __call__(self, message, show=True):
+        """Log message to file, and mirror to stdout if not silent and verbose or show is True"""
         message = str(message)+'\n'
-        if (not self.silent) and (self.verbose or (not hide and show)):
+        if (not self.silent) and (self.verbose or show):
             self.show(message)
         self.write(message=message, mode='a')
 

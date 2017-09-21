@@ -19,7 +19,7 @@ from bamboo.stats.ospina import estimate_true_underlying_sd
 
 from giant.dataset import ElectronDensityMap
 from giant.grid.masks import GridMask
-from giant.structure.select import protein, find_nearest_atoms
+from giant.structure.select import protein, non_water, find_nearest_atoms
 from giant.xray.maps.scale import scale_map_to_reference
 from giant.xray.maps.bdc import calculate_varying_bdc_correlations, calculate_maximum_series_discrepancy, calculate_bdc_subtracted_map
 from giant.xray.maps.local_align import create_native_map
@@ -32,7 +32,10 @@ from pandda.analyse import graphs as analyse_graphs
 
 def wrapper_run(c):
     if c is not None:
-        return c.run()
+        try:
+            return c.run()
+        except:
+            return traceback.format_exc()
     else:
         return c
 
@@ -108,9 +111,9 @@ class MapLoader(object):
         # Extract the map data
         fft_map = dataset.data.fft_maps['truncated']
         # Scale the map
-        if   args.params.maps.scaling == 'none':   pass
-        elif args.params.maps.scaling == 'sigma':  fft_map.apply_sigma_scaling()
-        elif args.params.maps.scaling == 'volume': fft_map.apply_volume_scaling()
+        if   args.params.maps.density_scaling == 'none':   pass
+        elif args.params.maps.density_scaling == 'sigma':  fft_map.apply_sigma_scaling()
+        elif args.params.maps.density_scaling == 'volume': fft_map.apply_volume_scaling()
         # Create map object
         native_map_true = ElectronDensityMap.from_fft_map(fft_map).as_map()
 
@@ -319,38 +322,72 @@ class DatasetProcessor(object):
         # ============================================================================>
         log_strs = []
         log_file = dataset.file_manager.get_file('dataset_log')
+        log = Log(log_file=log_file, verbose=False, silent=True)
 
         # ============================================================================>
         # Build new blob search object
         # ============================================================================>
-        blob_finder = PanddaZMapAnalyser(params=args.params.blob_search, grid=grid,
-                                         log=Log(log_file=log_file, verbose=False))
-
+        blob_finder = PanddaZMapAnalyser(params = args.params.z_map_analysis,
+                                         grid   = grid,
+                                         log    = log)
         print('Writing log for dataset {!s} to ...{}'.format(dataset.tag, log_file[log_file.index('processed'):]))
 
         # ============================================================================>
-        # Generate masks for this dataset
+        # Extract the global mask object from the grid
         # ============================================================================>
+        dset_total_temp = grid.global_mask().total_mask_binary().copy()
 
+        # ============================================================================>
+        # Generate symmetry masks for this dataset
+        # ============================================================================>
+        log.bar()
+        log('Masking symetry contacts from Z-map.')
         # Generate symmetry contacts for this dataset and align to reference frame
         dataset_sym_copies = dataset.model.crystal_contacts(distance_cutoff=args.params.masks.outer_mask+5, combine_copies=True)
         dataset_sym_copies.atoms().set_xyz(dataset.model.alignment.nat2ref(dataset_sym_copies.atoms().extract_xyz()))
         # Only need to write if writing reference frame maps
         if args.output.developer.write_reference_frame_maps:
             dataset_sym_copies.write_pdb_file(dataset.file_manager.get_file('symmetry_copies'))
-
         # Extract protein atoms from the symmetry copies
-        dataset_sym_sites_cart = protein(dataset_sym_copies).atoms().extract_xyz()
-
-        # Generate custom grid mask for the symmetry contacts
-        dataset_mask = GridMask(parent=grid, sites_cart=dataset_sym_sites_cart,
-                                max_dist=args.params.masks.outer_mask,
-                                min_dist=args.params.masks.inner_mask_symmetry)
-
+        dataset_sym_sites_cart = non_water(dataset_sym_copies).atoms().extract_xyz()
+        # Generate symmetry contacts grid mask
+        dataset_mask = GridMask(parent     = grid,
+                                sites_cart = dataset_sym_sites_cart,
+                                max_dist   = args.params.masks.outer_mask,
+                                min_dist   = args.params.masks.inner_mask_symmetry)
         # Combine with the total mask to generate custom mask for this dataset
-        dset_total_temp = grid.global_mask().total_mask_binary().copy()
         dset_total_temp.put(dataset_mask.inner_mask_indices(), 0)
         dset_total_idxs = numpy.where(dset_total_temp)[0]
+        log('After masking with symmetry contacts: {} points for Z-map analysis'.format(len(dset_total_idxs)))
+        # Write map of grid + symmetry mask
+        if args.output.developer.write_reference_frame_grid_masks:
+            grid.write_indices_as_map(indices = dset_total_idxs,
+                                      f_name  = dataset.file_manager.get_file('grid_mask'),
+                                      origin_shift = True)
+
+        # ============================================================================>
+        # Generate custom masks for this dataset
+        # ============================================================================>
+        if args.params.z_map_analysis.masks.selection_string is not None:
+            log.bar()
+            log('Applying custom mask to the Z-map: "{}"'.format(args.params.z_map_analysis.masks.selection_string))
+            cache = dataset.model.hierarchy.atom_selection_cache()
+            custom_mask_selection = cache.selection(args.params.z_map_analysis.masks.selection_string)
+            custom_mask_sites = dataset.model.hierarchy.select(custom_mask_selection).atoms().extract_xyz()
+            log('Masking with {} atoms'.format(len(custom_mask_sites)))
+            # Generate custom grid mask
+            dataset_mask = GridMask(parent     = grid,
+                                    sites_cart = custom_mask_sites,
+                                    max_dist   = args.params.z_map_analysis.masks.outer_mask,
+                                    min_dist   = args.params.z_map_analysis.masks.inner_mask)
+            # Combine with the total mask to generate custom mask for this dataset
+            dset_total_temp *= dataset_mask.total_mask_binary()
+            dset_total_idxs = numpy.where(dset_total_temp)[0]
+            log('After masking with custom mask: {} points for Z-map analysis'.format(len(dset_total_idxs)))
+            # Write out mask
+            grid.write_indices_as_map(indices = dset_total_idxs,
+                                      f_name  = dataset.file_manager.get_file('z_map_mask'),
+                                      origin_shift = True)
 
         # ============================================================================>
         #####
@@ -361,17 +398,18 @@ class DatasetProcessor(object):
         # ============================================================================>
         assert dataset_map.data is not None, 'Something has gone wrong - this dataset has no loaded map'
         assert dataset_map.is_sparse() is map_analyser.statistical_maps.mean_map.is_sparse()
+        assert dataset_map.is_sparse() is map_analyser.statistical_maps.medn_map.is_sparse()
         assert dataset_map.is_sparse() is map_analyser.statistical_maps.stds_map.is_sparse()
         assert dataset_map.is_sparse() is map_analyser.statistical_maps.sadj_map.is_sparse()
         # ============================================================================>
         # CALCULATE MEAN-DIFF MAPS
         # ============================================================================>
-        mean_diff_map = dataset_map - map_analyser.statistical_maps.mean_map
-        # ============================================================================>
-        # NAIVE Z-MAP - NOT USING UNCERTAINTY ESTIMATION OR ADJUSTED STDS
-        # ============================================================================>
-        z_map_naive = map_analyser.calculate_z_map(map=dataset_map, method='naive')
-        z_map_naive_normalised = z_map_naive.normalised_copy()
+        mean_diff_map = map_analyser.calculate_z_map(map=dataset_map, method='none')
+#        # ============================================================================>
+#        # NAIVE Z-MAP - NOT USING UNCERTAINTY ESTIMATION OR ADJUSTED STDS
+#        # ============================================================================>
+#        z_map_naive = map_analyser.calculate_z_map(map=dataset_map, method='naive')
+#        z_map_naive_normalised = z_map_naive.normalised_copy()
         # ============================================================================>
         # UNCERTAINTY Z-MAP - NOT USING ADJUSTED STDS
         # ============================================================================>
@@ -386,16 +424,13 @@ class DatasetProcessor(object):
         # ============================================================================>
         # SELECT WHICH MAP TO DO THE BLOB SEARCHING ON
         # ============================================================================>
-        if args.params.z_map.map_type == 'naive':
-            z_map = z_map_naive_normalised
-            z_map_stats = basic_statistics(flex.double(z_map_naive.data))
-#        elif args.params.z_map.map_type == 'adjusted':
-#            z_map = z_map_adjst_normalised
-#            z_map_stats = basic_statistics(flex.double(z_map_adjst.data))
-        elif args.params.z_map.map_type == 'uncertainty':
+#        if args.params.statistical_maps.z_map_type == 'naive':
+#            z_map = z_map_naive_normalised
+#            z_map_stats = basic_statistics(flex.double(z_map_naive.data))
+        if args.params.statistical_maps.z_map_type == 'uncertainty':
             z_map = z_map_uncty_normalised
             z_map_stats = basic_statistics(flex.double(z_map_uncty.data))
-        elif args.params.z_map.map_type == 'adjusted+uncertainty':
+        elif args.params.statistical_maps.z_map_type == 'adjusted+uncertainty':
             z_map = z_map_compl_normalised
             z_map_stats = basic_statistics(flex.double(z_map_compl.data))
         else: raise Exception('Invalid Z-map type')
@@ -423,14 +458,14 @@ class DatasetProcessor(object):
         # Mean-Difference
         analyse_graphs.map_value_distribution(f_name    = dataset.file_manager.get_file('d_mean_map_png'),
                                               plot_vals = mean_diff_map.get_map_data(sparse=True))
-        # Naive Z-Map
-        analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_naive_png'),
-                                              plot_vals   = z_map_naive.get_map_data(sparse=True),
-                                              plot_normal = True)
-        # Normalised Naive Z-Map
-        analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_naive_normalised_png'),
-                                              plot_vals   = z_map_naive_normalised.get_map_data(sparse=True),
-                                              plot_normal = True)
+#        # Naive Z-Map
+#        analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_naive_png'),
+#                                              plot_vals   = z_map_naive.get_map_data(sparse=True),
+#                                              plot_normal = True)
+#        # Normalised Naive Z-Map
+#        analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_naive_normalised_png'),
+#                                              plot_vals   = z_map_naive_normalised.get_map_data(sparse=True),
+#                                              plot_normal = True)
         # Uncertainty Z-Map
         analyse_graphs.map_value_distribution(f_name      = dataset.file_manager.get_file('z_map_uncertainty_png'),
                                               plot_vals   = z_map_uncty.get_map_data(sparse=True),
@@ -465,7 +500,7 @@ class DatasetProcessor(object):
         # ============================================================================>
         if num_clusters == -1:
             # This dataset is too noisy to analyse - flag!
-            log_strs.append('Z-Map too noisy to analyse')
+            log_strs.append('Z-Map too noisy to analyse -- not sure what has gone wrong here...')
             return dataset, dataset_map.meta, log_strs
 
         # ============================================================================>
@@ -504,29 +539,29 @@ class DatasetProcessor(object):
         # WRITE MAPS
         #####
         # ============================================================================>
-        # WRITE REFERENCE FRAME MAPS (NOT ROTATED)
+        # write dataset maps in the reference frame
         # ============================================================================>
         if args.output.developer.write_reference_frame_maps:
             dataset_map.to_file(filename=dataset.file_manager.get_file('sampled_map'), space_group=grid.space_group())
             mean_diff_map.to_file(filename=dataset.file_manager.get_file('mean_diff_map'), space_group=grid.space_group())
             z_map.to_file(filename=dataset.file_manager.get_file('z_map'), space_group=grid.space_group())
         # ============================================================================>
-        # Write out DATASET and Z-MAP grid masks
+        # Write out mask of the high z-values
         # ============================================================================>
         if args.output.developer.write_reference_frame_grid_masks:
-            # Write map of grid + symmetry mask
-            grid.write_indices_as_map(indices=dset_total_idxs, f_name=dataset.file_manager.get_file('grid_mask'))
             # Write map of where the blobs are (high-Z mask)
             highz_points = []; [highz_points.extend(list(x[0])) for x in z_clusters]
             highz_points = [map(int, v) for v in highz_points]
             highz_indices = map(grid.indexer(), list(highz_points))
-            grid.write_indices_as_map(indices=highz_indices, f_name=dataset.file_manager.get_file('high_z_mask'))
+            grid.write_indices_as_map(indices = highz_indices,
+                                      f_name  = dataset.file_manager.get_file('high_z_mask'),
+                                      origin_shift=True)
         # ============================================================================>
         # Write different Z-Maps? (Probably only needed for testing)
         # ============================================================================>
         if args.output.developer.write_reference_frame_all_z_map_types:
-            z_map_naive.to_file(filename=dataset.file_manager.get_file('z_map_naive'), space_group=grid.space_group())
-            z_map_naive_normalised.to_file(filename=dataset.file_manager.get_file('z_map_naive_normalised'), space_group=grid.space_group())
+#            z_map_naive.to_file(filename=dataset.file_manager.get_file('z_map_naive'), space_group=grid.space_group())
+#            z_map_naive_normalised.to_file(filename=dataset.file_manager.get_file('z_map_naive_normalised'), space_group=grid.space_group())
             z_map_uncty.to_file(filename=dataset.file_manager.get_file('z_map_uncertainty'), space_group=grid.space_group())
             z_map_uncty_normalised.to_file(filename=dataset.file_manager.get_file('z_map_uncertainty_normalised'), space_group=grid.space_group())
             z_map_compl.to_file(filename=dataset.file_manager.get_file('z_map_corrected'), space_group=grid.space_group())
@@ -546,7 +581,7 @@ class DatasetProcessor(object):
         # Extract the map data in non-sparse format
         # ============================================================================>
         dset_map_data = dataset_map.get_map_data(sparse=False)
-        mean_map_data = map_analyser.statistical_maps.mean_map.get_map_data(sparse=False)
+        avrg_map_data = map_analyser.average_map().get_map_data(sparse=False)
         # ============================================================================>
         # Process the identified features
         # ============================================================================>
@@ -575,7 +610,7 @@ class DatasetProcessor(object):
             # Generate BDC-estimation curve and estimate BDC
             # ============================================================================>
             event_remains, event_corrs, global_corrs = calculate_varying_bdc_correlations(
-                ref_map_data   = mean_map_data,
+                ref_map_data   = avrg_map_data,
                 query_map_data = dset_map_data,
                 feature_idxs   = exp_event_idxs,
                 reference_idxs = reference_idxs,
@@ -593,7 +628,7 @@ class DatasetProcessor(object):
                 global_values=global_corrs,
                 local_values=event_corrs)
             log_strs.append('=> Event Background Correction estimated as {!s}'.format(1-event_remain_est))
-            # Verbose Reporting
+            # Reporting (log is normally silenced)
             blob_finder.log('Min-Max: {} {}'.format(1.0-args.params.background_correction.max_bdc, 1.0-args.params.background_correction.min_bdc))
             blob_finder.log('Event number: {}'.format(event_num))
             blob_finder.log('Event Remains: {}'.format(','.join(map(str,event_remains))))
@@ -606,11 +641,11 @@ class DatasetProcessor(object):
             # Calculate the map correlations at the selected BDC
             # ============================================================================>
             event_map_data = calculate_bdc_subtracted_map(
-                                    ref_map_data   = mean_map_data,
+                                    ref_map_data   = avrg_map_data,
                                     query_map_data = dset_map_data,
                                     bdc            = 1.0 - event_remain_est)
-            global_corr = numpy.corrcoef(event_map_data.select(reference_idxs), mean_map_data.select(reference_idxs))[0,1]
-            local_corr  = numpy.corrcoef(event_map_data.select(exp_event_idxs), mean_map_data.select(exp_event_idxs))[0,1]
+            global_corr = numpy.corrcoef(event_map_data.select(reference_idxs), avrg_map_data.select(reference_idxs))[0,1]
+            local_corr  = numpy.corrcoef(event_map_data.select(exp_event_idxs), avrg_map_data.select(exp_event_idxs))[0,1]
             # ============================================================================>
             # Write out EVENT map (in the reference frame) and grid masks
             # ============================================================================>

@@ -20,9 +20,9 @@ class Program(object):
 
     def write_running_parameters_to_log(self, params):
         self.log.heading('Processed parameters')
-        self.log(self.master_phil.format(python_object=params).as_str(), True)
+        self.log(self.master_phil.format(python_object=params).as_str())
         self.log.heading('Parameters different to the defaults')
-        self.log(self.master_phil.fetch_diff(source=self.master_phil.format(python_object=params)).as_str(), True)
+        self.log(self.master_phil.fetch_diff(source=self.master_phil.format(python_object=params)).as_str())
 
     def check_for_matplotlib(self, backend=None, interactive=False):
         """Check to see whether we can load matplotlib"""
@@ -40,9 +40,9 @@ class Program(object):
             self.log('pyplot loaded successfully. Using backend "{!s}"'.format(current_backend))
             return True
         except:
-            self.log('===================================>>>', True)
-            self.log('>> COULD NOT IMPORT MATPLOTLIB. WILL NOT BE ABLE TO GENERATE GRAPHS.', True)
-            self.log('===================================>>>', True)
+            self.log('===================================>>>')
+            self.log('>> COULD NOT IMPORT MATPLOTLIB. WILL NOT BE ABLE TO GENERATE GRAPHS.')
+            self.log('===================================>>>')
             return False
 
     def initialise_file_manager(self, rootdir):
