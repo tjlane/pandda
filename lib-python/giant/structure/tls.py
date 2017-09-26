@@ -7,7 +7,7 @@ from scitbx.array_family import flex
 from mmtbx.tls.tools import tlso, u_cart_from_tls
 
 def uij_from_tls_vector_and_origin(xyz, tls_vector, origin):
-    assert tls_vector.shape == (21,)
+    assert len(tls_vector) == 21
     tls_obj = tlso(t=tls_vector[0:6], l=tls_vector[6:12], s=tls_vector[12:21], origin=origin)
     return uij_from_tls_object(xyz=xyz, tls_obj=tls_obj)
 
