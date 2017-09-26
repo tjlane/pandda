@@ -23,6 +23,9 @@ class ListStream:
     def __init__(self):
         self.data = []
 
+    def __call__(self, s):
+        self.write(s)
+
     def __str__(self):
         return ''.join(self.data)
 
