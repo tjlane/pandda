@@ -902,13 +902,17 @@ class MultiDatasetUijParameterisation(Program):
         # Write out the groups for each level
         for i_level, level in enumerate(self.fitter.levels):
             self.log('Writing partition groups for level {}'.format(i_level+1))
+            # Add all structures to the same root
+            level_root = None
             for i_group, sel, fitter in level:
                 sel = flex.bool(sel.tolist())
                 g = self.blank_master_hierarchy()
                 g.atoms().select(global_sel).select(sel).set_b(flex.double(sum(sel), 1))
-                filename = os.path.join(out_dir, 'level-{:04d}_group-{:04d}-atoms.pdb'.format(i_level+1,i_group))
-                self.log('\t> {}'.format(filename))
-                g.write_pdb_file(filename)
+                if level_root is None: level_root = g
+                else: [level_root.append_model(m.detached_copy()) for m in g.models()]
+            filename = os.path.join(out_dir, 'level-{:04d}_atoms.pdb'.format(i_level+1))
+            self.log('\t> {} ({} models)'.format(filename, len(g.models())))
+            g.write_pdb_file(filename)
 
         # Generate hierarchy for each level with groups as b-factors
         self.log('Writing partition figures for each chain')
@@ -2553,7 +2557,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                                      atoms      = None)
                         # Run optimisation
                         self._optimise(running_summary=False)
-                        self.log('> dataset {} of {} (rmsd {}; penalty {})'.format(i_dst+1,self._n_dst,self.optimisation_rmsd,self.optimisation_penalty))
+                        self.log('> dataset {} of {} (rmsd {:.3f}; penalty {:.1f})'.format(i_dst+1,self._n_dst,self.optimisation_rmsd,self.optimisation_penalty))
                     self.log.bar(blank_before=True, blank_after=True)
                     # Log model summary
                     self.log(self._parameters.get(index=i_tls).amplitudes.summary())
@@ -2618,7 +2622,8 @@ def run(params):
     assert params.table_ones_options.column_labels
     assert params.table_ones_options.r_free_label
 
-    log = Log(os.path.join(params.output.out_dir, '_fitting.log'), verbose=params.settings.verbose)
+    log_dir = easy_directory(os.path.join(params.output.out_dir, 'logs'))
+    log = Log(os.path.join(log_dir, '_fitting.log'), verbose=params.settings.verbose)
 
     # Report parameters
     log.heading('Processed parameters')
