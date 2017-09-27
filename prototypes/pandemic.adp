@@ -10,6 +10,8 @@ import libtbx.phil, libtbx.easy_mp
 import iotbx.pdb
 import mmtbx.tls.tools
 
+import multiprocessing, multiprocessing.pool
+
 from libtbx.utils import Sorry, Failure
 from scitbx.array_family import flex
 from scitbx import simplex, linalg
@@ -47,6 +49,21 @@ numpy.set_printoptions(threshold=numpy.nan)
 from IPython import embed
 
 EIGHT_PI_SQ = 8*math.pi*math.pi
+
+############################################################################
+
+DaemonicPool = multiprocessing.pool.Pool
+
+class NonDaemonicProcess(multiprocessing.Process):
+    # make 'daemon' attribute always return False
+    def _get_daemon(self):
+        return False
+    def _set_daemon(self, value):
+        pass
+    daemon = property(_get_daemon, _set_daemon)
+
+class NonDaemonicPool(multiprocessing.pool.Pool):
+    Process = NonDaemonicProcess
 
 ############################################################################
 
@@ -155,6 +172,16 @@ def wrapper_plot_histograms(args):
 
 def wrapper_run(arg):
     return arg.run()
+
+def wrapper_optimise(args):
+    fitter = args
+    try:
+        #print '> Start optimisation: Fitter {} - Datasets {}'.format(fitter.label, ','.join(map(str,fitter._opt_dsts)))
+        fitter._optimise(running_summary=False)
+        #print '> Finished optimisation: Fitter {} - Datasets {}'.format(fitter.label, ','.join(map(str,fitter._opt_dsts)))
+        return fitter
+    except:
+        return traceback.format_exc()
 
 def wrapper_fit(args):
     fitter, kw_args = args
@@ -375,8 +402,8 @@ class MultiDatasetTLSModelList(object):
         return r
 
 class _UijPenalties(object):
-    _mdl_weight = 1e6
-    _amp_weight = 1e6
+    _mdl_weight = 100
+    _amp_weight = 100
     _uij_weight = 1.0
     _ovr_weight = 1.0
 
@@ -708,6 +735,7 @@ class MultiDatasetUijParameterisation(Program):
         n_micro_cycles = self.params.fitting.number_of_micro_cycles
         self.log('Macro-cycles: {}'.format(n_macro_cycles))
         self.log('Micro-cycles: {}'.format(n_micro_cycles))
+        self.log('')
 
         # Run the fitting
         self.fitter.fit(n_cpus = self._n_cpu,
@@ -911,8 +939,8 @@ class MultiDatasetUijParameterisation(Program):
                 if level_root is None: level_root = g
                 else: [level_root.append_model(m.detached_copy()) for m in g.models()]
             filename = os.path.join(out_dir, 'level-{:04d}_atoms.pdb'.format(i_level+1))
-            self.log('\t> {} ({} models)'.format(filename, len(g.models())))
-            g.write_pdb_file(filename)
+            self.log('\t> {} ({} models)'.format(filename, len(level_root.models())))
+            level_root.write_pdb_file(filename)
 
         # Generate hierarchy for each level with groups as b-factors
         self.log('Writing partition figures for each chain')
@@ -1432,6 +1460,9 @@ class MultiDatasetUijParameterisation(Program):
                 table_one[col] = table_one[col].apply(lambda x: x.split('(')[0])
             # Redetermine data types
             table_one = table_one.apply(lambda x: pandas.to_numeric(x, errors='coerce'))
+            # Calculate additional columns
+            table_one['R-gap'] = table_one['R-free'] - table_one['R-work']
+            # Add prefix
             table_one.columns = pref + table_one.columns
             # Transfer data to other
             self.table = self.table.join(table_one, how="outer")
@@ -1484,14 +1515,34 @@ class MultiDatasetUijParameterisation(Program):
 
         self.log.subheading('Model improvement graphs')
 
-        # Histogram of the R-factors for input and fitted B-factors
-        filename = os.path.join(out_dir, 'r_free_resolution.png')
+        # Histogram of the R-FREE for input and fitted B-factors
+        filename = os.path.join(out_dir, 'r-free_resolution.png')
         self.plot.binned_boxplot(filename=filename,
                                  x=table['old-High Res Limit'],
                                  y_vals=[table['old-R-free'], table['new-R-free']],
                                  title = 'R-free for input and fitted B-factors',
                                  x_lab = 'Resolution',
                                  y_lab = 'R-free',
+                                 rotate_x_labels=True,
+                                 n_bins=10)
+        # Histogram of the R-WORK for input and fitted B-factors
+        filename = os.path.join(out_dir, 'r-work_resolution.png')
+        self.plot.binned_boxplot(filename=filename,
+                                 x=table['old-High Res Limit'],
+                                 y_vals=[table['old-R-work'], table['new-R-work']],
+                                 title = 'R-work for input and fitted B-factors',
+                                 x_lab = 'Resolution',
+                                 y_lab = 'R-work',
+                                 rotate_x_labels=True,
+                                 n_bins=10)
+        # Histogram of the R-GAP for input and fitted B-factors
+        filename = os.path.join(out_dir, 'r-gap_resolution.png')
+        self.plot.binned_boxplot(filename=filename,
+                                 x=table['old-High Res Limit'],
+                                 y_vals=[table['old-R-gap'], table['new-R-gap']],
+                                 title = 'R-gap for input and fitted B-factors',
+                                 x_lab = 'Resolution',
+                                 y_lab = 'R-gap',
                                  rotate_x_labels=True,
                                  n_bins=10)
 
@@ -1510,7 +1561,7 @@ class MultiDatasetUijPlots(object):
         # Assign data to bins
         indices = numpy.digitize(data, bins)
         # Generate bin labels
-        bin_labels = ['{:.1f} - {:.1f}'.format(bins[i],bins[i+1]) for i in xrange(n_bins)]
+        bin_labels = ['{:.2f} - {:.2f}'.format(bins[i],bins[i+1]) for i in xrange(n_bins)]
         return bins, indices, bin_labels
 
     @classmethod
@@ -1576,12 +1627,15 @@ class MultiDatasetUijPlots(object):
         else:
             nrow, ncol = (1,len(x_vals))
 
-        xlim = (numpy.min(x_vals), numpy.max(x_vals))
+        xlim = [numpy.min(x_vals), numpy.max(x_vals)]
+        if (xlim[1] - xlim[0]) < 0.1:
+            xlim[0] -= 0.5
+            xlim[1] += 0.5
 
         fig, axes = pyplot.subplots(nrows=nrow, ncols=ncol, sharey=True)
         for i, axis in enumerate(axes.flatten()):
             axis.set_title(titles[i])
-            axis.hist(x=x_vals[i], bins=n_bins)
+            axis.hist(x=x_vals[i], bins=n_bins, range=xlim)
             axis.set_xlabel(x_labs[0])
             axis.set_ylabel('Count')
             axis.set_xlim(xlim)
@@ -1815,7 +1869,7 @@ class MultiDatasetHierarchicalUijFitter(object):
     def fit(self, n_cpus=1, n_macro_cycles=1, n_micro_cycles=1):
         """Run macro-cycles of parameter optimisation"""
 
-        self.log.heading('Fitting TLS models for {} levels (+ residual)'.format(len(self.levels)))
+        self.log('Fitting TLS models for {} levels (+ residual)'.format(len(self.levels)))
 
         # Update logfiles if more that one cpu
         #logfile = os.path.splitext(log.log_file)[0]+'level-{:04}.log'.format(idx)
@@ -1844,16 +1898,15 @@ class MultiDatasetHierarchicalUijFitter(object):
 
             # Iterate through the TLS levels of the fitting
             for i_level, fitter in enumerate(self.levels):
-                self.log.subheading('Fitting TLS Groups (level {} - {})'.format(fitter.index, fitter.label))
+                self.log.subheading('Macrocycle {} of {}: '.format(i_macro+1, n_macro_cycles)+'Fitting TLS Groups (level {} - {})'.format(fitter.index, fitter.label))
                 # Update the target uij by subtracting contributions from other levels
                 self.log('Updating target Uijs for optimisation')
                 fitter.set_target_uij(target_uij=self._target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=i_level))
                 # Optimise
-                self.log('Running optimisation')
                 fitted_uij_by_level[i_level] = fitter.run(n_cpus=n_cpus, n_cycles=n_micro_cycles)
 
             # Fit the residuals
-            self.log.subheading('Fitting residual atomic Uijs')
+            self.log.subheading('Macrocycle {} of {}: '.format(i_macro+1, n_macro_cycles)+'Fitting residual atomic Uijs')
             # Update setttings
             self.log('Updating datasets masks')
             self.residual.set_dataset_mask(mask=self.dataset_mask)
@@ -1886,11 +1939,25 @@ class _MultiDatasetUijLevel(object):
 
     _uij_shape = None
 
-    def run(self, n_cpus=1, n_cycles=1):
-        jobs = [(fitter, {'n_cycles':n_cycles}) for (i, sel, fitter) in self]
-        self.log.heading('Running {} jobs using {} cpus'.format(len(jobs), n_cpus))
-        # Run jobs in parallel
-        finished_jobs = libtbx.easy_mp.pool_map(processes=n_cpus, func=wrapper_fit, args=jobs, chunksize=1)
+    def run(self, n_cycles=1, n_cpus=1):
+        # Check to see if multiple cpus are available per job
+        n_cpus_per_job = max(1, n_cpus//self._n_obj)
+        # Create job objects
+        jobs = [(fitter, {'n_cycles':n_cycles, 'n_cpus':n_cpus_per_job}) for (i, sel, fitter) in self]
+        # Drop CPUs if not required
+        n_cpus = min(len(jobs), n_cpus)
+        # Only do multiprocessing if actually needed
+        if n_cpus > 1:
+            # Run jobs in parallel
+            self.log('Running {} job(s) in {} process(es) [and {} cpu(s) per process]'.format(len(jobs), n_cpus, n_cpus_per_job))
+            workers = NonDaemonicPool(n_cpus)
+            finished_jobs = workers.map(func=wrapper_fit, iterable=jobs)
+            workers.close()
+            #finished_jobs = libtbx.easy_mp.pool_map(processes=n_cpus, func=wrapper_fit, args=jobs, chunksize=1)
+        else:
+            self.log('Running {} job(s) [with {} cpu(s)]'.format(len(jobs), n_cpus_per_job))
+            finished_jobs = [wrapper_fit(j) for j in jobs]
+
         # Record list of errors and raise all at end
         errors = []
         for i_iter, (i, sel, fitter) in enumerate(self):
@@ -1953,6 +2020,7 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
         self.group_idxs = group_idxs
 
         self._n_groups = sum(numpy.unique(self.group_idxs)!=-1)
+        self._n_obj = self._n_groups
 
         self._uij_shape = observed_uij.shape
 
@@ -2018,6 +2086,7 @@ class MultiDatasetUijResidualLevel(_MultiDatasetUijLevel):
         self._uij_shape = observed_uij.shape
 
         self._n_atm = self._uij_shape[1]
+        self._n_obj = self._n_atm
 
         # Create one log for all fitters
         ls = LogStream(log_file = os.path.splitext(self.log.log_file)[0]+'-levelXXXX.log',
@@ -2503,8 +2572,11 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         opt_atom_mask = self.get_atomic_mask()
 
         # Cumulative objects
-        cpt_cuml = ''
         mdl_cuml = []
+
+        # Workers for multiprocessing
+        if n_cpus > 1:
+            workers = DaemonicPool(n_cpus)
 
         # Optimise!
         for i_cycle in xrange(n_cycles):
@@ -2518,17 +2590,13 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 # Append to running list
                 if i_tls not in mdl_cuml: mdl_cuml.append(i_tls)
 
+                # ---------------------------------->
                 # Optimise each T, L, S component separately
                 for cpt in 'TLS':
-
-                    # Append to running list
-                    if cpt not in cpt_cuml: cpt_cuml += cpt
-
-                    # Optimise TLS model parameters
-                    self.log.subheading('Optimising {} parameters for TLS model {}'.format(cpt, i_tls+1))
+                    self.log.subheading('Optimising {} parameters for TLS mode {}'.format(cpt, i_tls+1))
                     # Set penalty weights (non-zero for T components to prevent sling-shotting)
-                    if cpt == 'T':  self.penalty.set_weights(ovr_weight=1.0)
-                    else:           self.penalty.set_weights(ovr_weight=0.0)
+                    if cpt == 'T':  self.penalty.set_weights(ovr_weight=1.00)
+                    else:           self.penalty.set_weights(ovr_weight=0.01)
                     # Select variables for optimisation -- model only
                     self._select(optimise_model      = True,
                                  optimise_amplitudes = False,
@@ -2541,33 +2609,57 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                     # Log model summary
                     self.log(self._parameters.get(index=i_tls).model.summary())
 
-                    # Optimise TLS amplitude parameters (all amplitudes!)
-                    self.log.subheading('Optimising TLS amplitudes for all datasets')
-                    self.penalty.set_weights(ovr_weight=10.0)
-                    # If it's the first iteration, assert all amplitudes are zero (in case ampltidues are optimised for zero-value TLS models)
-                    if i_cycle == 0: self._parameters.reset_amplitudes(components=cpt, modes=[i_tls])
-                    # Optimise all amplitudes dataset-by-dataset
-                    for i_dst in xrange(self._n_dst):
-                        # Select variables for optimisation -- amplitudes only
-                        self._select(optimise_model      = False,
-                                     optimise_amplitudes = True,
-                                     components = cpt_cuml,
-                                     models     = mdl_cuml,
-                                     datasets   = [i_dst],
-                                     atoms      = None)
-                        # Run optimisation
+                # ---------------------------------->
+                # Optimise TLS amplitude parameters (all amplitudes!)
+                self.log.subheading('Optimising TLS amplitudes for all datasets')
+                self.penalty.set_weights(ovr_weight=10.0)
+                # If it's the first iteration, assert all amplitudes are zero (in case amplitudes are optimised for zero-value TLS models)
+                if i_cycle == 0:
+                    self._parameters.reset_amplitudes(components='TLS', modes=[i_tls])
+                # Select variables for optimisation -- amplitudes only
+                self._select(optimise_model      = False,
+                             optimise_amplitudes = True,
+                             components = 'TLS',
+                             models     = mdl_cuml,
+                             datasets   = None,
+                             atoms      = None)
+                # Optimise all amplitudes dataset-by-dataset
+                jobs = []
+                for i_dst in xrange(self._n_dst):
+                    # Select this dataset
+                    self._select(datasets=[i_dst])
+                    # Append to job list (create copy) or run optimisation
+                    if n_cpus > 1:
+                        jobs.append(self.copy())
+                    else:
                         self._optimise(running_summary=False)
-                        self.log('> dataset {} of {} (rmsd {:.3f}; penalty {:.1f})'.format(i_dst+1,self._n_dst,self.optimisation_rmsd,self.optimisation_penalty))
-                    self.log.bar(blank_before=True, blank_after=True)
-                    # Log model summary
-                    self.log(self._parameters.get(index=i_tls).amplitudes.summary())
-                    # Reapply dataset mask
-                    self.set_dataset_mask(opt_dset_mask)
+                        self.log('> dataset {} of {} (rmsd {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, self.optimisation_rmsd, self.optimisation_penalty))
+                # Run parallel jobs and inject results
+                if n_cpus > 1:
+                    self.log.subheading('Running {} jobs using {} cpus'.format(len(jobs), min(n_cpus,len(jobs))))
+                    finished_jobs = workers.map(func=wrapper_optimise, iterable=jobs)
+                    for i_dst in xrange(self._n_dst):
+                        job = finished_jobs[i_dst]
+                        if isinstance(job, str):
+                            self.log(job)
+                            raise Failure('error returned')
+                        self._inject(values=job._values(), selection=job._select())
+                        self.log('> dataset {} of {} (rmsd {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, job.optimisation_rmsd,  job.optimisation_penalty))
+                # Log model summary
+                self.log.bar(blank_before=True, blank_after=True)
+                self.log(self._parameters.get(index=i_tls).amplitudes.summary())
+                # Reapply dataset mask
+                self.set_dataset_mask(opt_dset_mask)
 
             # End of cycle house-keeping and summary
+            self.log('Normalising TLS amplitudes')
             self._parameters.normalise_amplitudes()
             self.log.subheading('End-of-cycle summary')
             self.summary(show=True)
+
+        # Let's be good
+        if n_cpus > 1:
+            workers.close()
 
         self.log.subheading('Optimisation complete')
 
@@ -2584,32 +2676,33 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
     def summary(self, show=True):
         """Print the number of parameters/input data"""
         s = self.log._bar()+'\nTLS Group Fit Summary: {}\n'.format(self.label)+self.log._bar()
-        s += '\n> Input summary'
-        s += '\nNumber of datasets:   {}'.format(self._n_dst)
-        s += '\nNumber of atoms:      {}'.format(self._n_atm)
-        s += '\ninput uij parameters: {}'.format(self.target_uij.shape)
-        s += '\ninput xyz parameters: {}'.format(self.atomic_xyz.shape)
-        s += '\nCentre of mass: {}'.format(tuple(self.atomic_com.mean(axis=0).round(2).tolist()))
-        s += '\n> Parameterisation summary'
-        s += '\nNumber of TLS models: {}'.format(self._n_tls)
-        s += '\nNumber of parameters for TLS fitting: {}'.format(self._n_prm)
-        s += '\nNumber of observations (all): {}'.format(numpy.product(self.target_uij.shape))
-        s += '\nData/parameter ratio (all) is {:.3f}'.format(numpy.product(self.target_uij.shape)*1.0/self._n_prm)
-        if hasattr(self,'_target_uij'):
-            n_obs_used = numpy.product(self._target_uij.shape)
-            s += '\nNumber of observations (used): {}'.format(n_obs_used)
-            s += '\nData/parameter ratio (used) is {:.3f}'.format(n_obs_used*1.0/self._n_prm)
-        s += '\n> Atoms/Datasets for TLS model optimisation'
-        s += '\n\tUsing {}/{} atoms'.format(len(self.get_atomic_mask()), self._n_atm)
-        s += '\n\tUsing {}/{} datasets'.format(len(self.get_dataset_mask()), self._n_dst)
-        if self.optimisation_rmsd is not numpy.inf:
+#        s += '\n> Input summary'
+#        s += '\nNumber of datasets:   {}'.format(self._n_dst)
+#        s += '\nNumber of atoms:      {}'.format(self._n_atm)
+#        s += '\ninput uij parameters: {}'.format(self.target_uij.shape)
+#        s += '\ninput xyz parameters: {}'.format(self.atomic_xyz.shape)
+#        s += '\nCentre of mass: {}'.format(tuple(self.atomic_com.mean(axis=0).round(2).tolist()))
+#        s += '\n> Parameterisation summary'
+#        s += '\nNumber of TLS models: {}'.format(self._n_tls)
+#        s += '\nNumber of parameters for TLS fitting: {}'.format(self._n_prm)
+#        s += '\nNumber of observations (all): {}'.format(numpy.product(self.target_uij.shape))
+#        s += '\nData/parameter ratio (all) is {:.3f}'.format(numpy.product(self.target_uij.shape)*1.0/self._n_prm)
+#        if hasattr(self,'_target_uij'):
+#            n_obs_used = numpy.product(self._target_uij.shape)
+#            s += '\nNumber of observations (used): {}'.format(n_obs_used)
+#            s += '\nData/parameter ratio (used) is {:.3f}'.format(n_obs_used*1.0/self._n_prm)
+#        s += '\n> Atoms/Datasets for TLS model optimisation'
+#        s += '\n\tUsing {}/{} atoms'.format(len(self.get_atomic_mask()), self._n_atm)
+#        s += '\n\tUsing {}/{} datasets'.format(len(self.get_dataset_mask()), self._n_dst)
+        if self._optimise_model and (self.optimisation_rmsd is not numpy.inf):
             s += '\n> Optimisation Summary'
             s += '\nOptimisation RMSD:    {}'.format(self.optimisation_rmsd)
             s += '\nOptimisation Penalty: {}'.format(self.optimisation_penalty)
         for i_tls in xrange(self._n_tls):
+            s += '\n> TLS model {}'.format(i_tls+1)
             mode = self._parameters.get(index=i_tls)
-            s += '\n' + mode.model.summary()
-            s += '\n' + mode.amplitudes.summary()
+            s += '\n\t' + mode.model.summary().replace('\n','\n\t')
+            s += '\n\t' + mode.amplitudes.summary().replace('\n','\n\t')
         if show: self.log(s)
         return s
 
