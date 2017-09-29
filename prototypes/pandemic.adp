@@ -1610,8 +1610,8 @@ class MultiDatasetUijParameterisation(Program):
                                               ('R-free Change', 'R-free'),
                                               ('R-gap Change', 'R-gap'),
                                               ('Mean B-factor Change', 'Average B-factor')]:
-            self.log('> Creating col {} = new-{} - old-{}'.format(delta_col_name, full_col_name, full_col_name))
-            table_one[delta_col_name] = table_one['new-'+full_col_name] - table_one['old-'+full_col_name]
+            self.log('> Creating col "{}" = "new-{}" - "old-{}"'.format(delta_col_name, full_col_name, full_col_name))
+            self.table[delta_col_name] = self.table['new-'+full_col_name] - self.table['old-'+full_col_name]
 
         # Write output csv
         filename = os.path.join(out_dir, 'dataset_scores.csv')
@@ -1717,7 +1717,7 @@ class MultiDatasetUijParameterisation(Program):
                                  y_lab = 'R-value change (%)',
                                  rotate_x_labels = True,
                                  min_bin_width = 0.1,
-                                 hlines = [0])
+                                 hlines = [0.0])
         # ------------------------------------------------------------>
         # Correlations betwee variables
         # ------------------------------------------------------------>
@@ -1801,7 +1801,7 @@ class MultiDatasetUijPlots(object):
         axis.set_title(title)
         # Draw horizontal/vertical lines (do first so they're at the bottom)
         for v in hlines:
-           axis.axhline(y=v, linewidth=2)
+           axis.axhline(y=v, linewidth=2, zorder=1)
         for v in vlines:
            axis.axvline(x=v, linewidth=2)
         # Store plot objects
