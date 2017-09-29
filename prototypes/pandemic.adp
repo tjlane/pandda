@@ -1,7 +1,7 @@
 #!/usr/bin/env ccp4-python
 
 import os, sys, copy, traceback
-import math, itertools, collections
+import math, itertools, operator, collections
 
 import scipy.cluster
 import numpy, pandas
@@ -16,7 +16,7 @@ from libtbx.utils import Sorry, Failure
 from scitbx.array_family import flex
 from scitbx import simplex, linalg
 
-from bamboo.common import Info
+from bamboo.common import Info, ListStream
 from bamboo.common.logs import Log, LogStream
 from bamboo.common.path import easy_directory, rel_symlink
 from bamboo.common.command import CommandManager
@@ -96,7 +96,7 @@ output {
         .type = bool
 }
 fitting {
-    auto_levels = *chain *auto_group *residue *backbone *sidechain *atom
+    auto_levels = *chain *auto_group *residue *backbone *sidechain atom
         .type = choice(multi=True)
     custom_level
         .multiple = True
@@ -200,6 +200,9 @@ class TLSModel(object):
     def __init__(self, values=None):
         self.values = numpy.array(values) if (values is not None) else numpy.zeros(self._n_prm)
         assert len(self.values) == self._n_prm
+
+    def __add__(self, other):
+        return self.add(other)
 
     def _str_to_idx(self, components):
         """Map T-L-S to parameter indexes"""
@@ -371,6 +374,16 @@ class MultiDatasetTLSModelList(object):
             return (self.get(index=i) for i in index)
         else:
             raise Failure('Must provide integer or list of integers')
+
+    def expand(self, datasets=None):
+        """Generate amplitude-multiplied TLS models for selected datasets and sum over all modes"""
+        n_dst = len(datasets) if (datasets is not None) else self.n_dst
+        exp_models = [m.expand(datasets=datasets) for m in self]
+        assert len(exp_models) == self.n_mdl
+        assert len(exp_models[0]) == n_dst
+        dst_models = [reduce(operator.add, modes) for modes in zip(*exp_models)]
+        assert len(dst_models) == n_dst
+        return dst_models
 
     def n_params(self):
         return sum([m.n_params() for m in self])
@@ -808,15 +821,15 @@ class MultiDatasetUijParameterisation(Program):
         # Output structure (will contain folders for each dataset)
         structure_dir = easy_directory(os.path.join(self.out_dir, 'structures'))
 
-#        # Create TLS headers for each dataset
-#        tls_headers = self.tls_level_headers(out_dir=structure_dir, levels=None)
-
+        # Create TLS headers for each dataset
+        tls_headers = self.make_tls_headers(datasets=None, levels=None)
         # Fully parameterised structures
         self.log.bar()
         self.log('Writing fitted structures (full uij models)')
         self.log.bar()
         pdbs = self.output_structures(uij = uij_all,
                                       iso = map(uij_to_b, uij_all),
+                                      headers = tls_headers,
                                       out_dir = structure_dir,
                                       model_suffix = '.all.pdb')
         # Add these for models for table ones
@@ -922,7 +935,7 @@ class MultiDatasetUijParameterisation(Program):
         #                                                                              #
         #------------------------------------------------------------------------------#
 
-    def output_structures(self,  uij, iso=None, out_dir='./', model_suffix='.pdb'):
+    def output_structures(self,  uij, iso=None, headers=None, out_dir='./', model_suffix='.pdb'):
         """Write sets of uij to models."""
 
         # Make sure ouput directory exists
@@ -931,10 +944,18 @@ class MultiDatasetUijParameterisation(Program):
         # Validate AnoUijs
         uij = numpy.array(uij)
         assert uij.shape == (len(self.models), sum(self.atom_mask), 6)
-        # Validation IsoBs
+        # Validate IsoBs
         if iso is not None:
             iso = numpy.array(iso)
             assert iso.shape == (len(self.models), sum(self.atom_mask))
+        # Validate header lines
+        if headers is not None:
+            if isinstance(headers[0], str):
+                headers = [headers]
+            assert set(map(len,headers)) == {len(self.models)}
+            open_append = True
+        else:
+            open_append = False
 
         # Mask to allow us to apply uijs back to structure
         sel = flex.bool(self.atom_mask.tolist())
@@ -957,7 +978,11 @@ class MultiDatasetUijParameterisation(Program):
             mdl_d = easy_directory(os.path.join(out_dir, mdl.tag))
             mdl_f = os.path.join(mdl_d, mdl.tag+model_suffix)
             self.log('{} > {}'.format(mdl.tag, mdl_f))
-            h.write_pdb_file(mdl_f)
+            # Write headers
+            if headers is not None:
+                with open(mdl_f, 'w') as fh:
+                    [fh.write(l[i].strip()+'\n') for l in headers]
+            h.write_pdb_file(mdl_f, open_append=open_append)
             pdbs.append(mdl_f)
 
         return pdbs
@@ -1002,11 +1027,81 @@ class MultiDatasetUijParameterisation(Program):
             self.log('\t> {}'.format(filename))
             self.plot.level_plots(filename=filename, hierarchies=hierarchies, title='chain {}'.format(c.id))
 
+    def make_tls_headers(self, levels=None, datasets=None):
+
+        # If no levels given take all levels
+        if levels is None: levels = range(len(self.levels))
+        # If no datasets given take all datasets
+        n_dst = len(datasets) if (datasets is not None) else len(self.models)
+
+        # Validate levels and ensure they're sorted!
+        assert isinstance(levels, list)
+        assert set(map(type, levels)) == {int}
+        levels = sorted(levels)
+        n_levels = len(levels)
+
+        # Extract the centres of mass for each dataset
+        coms = self.fitter.observed_com if (datasets is None) else self.fitter.observed_com[datasets]
+
+        # Extract the selected level objects
+        sel_level_objs = [self.fitter.levels[i] for i in levels]
+        # Extract the selection strings for all levels
+        sel_level_selections = [self.levels[i] for i in levels]
+        # Extract the group assignments for the selected levels
+        sel_level_array = self.level_array[levels]
+        # Extract the unique group assignments for the selected levels
+        unique_combinations = sorted(set(map(tuple,sel_level_array.T.tolist())))
+
+        # List of tlso objects for each dataset
+        dataset_objs = [[] for i in xrange(n_dst)]
+
+        # Iterate through the different UNIQUE grouping combinations
+        for sel_groups in unique_combinations:
+
+            # Groups are indexed from 1 but level list is indexed from 0
+            sel_indexs = [g-1 if g>0 else None for g in sel_groups]
+            assert sel_indexs.count(None) != len(sel_indexs)
+
+            # Combine the selection strings for this combination
+            selection_string = '('+') and ('.join([sel_level_selections[i_l][i_g] for i_l, i_g in enumerate(sel_indexs) if (i_g is not None)])+')'
+
+            # Extract the fitters for each level
+            fitters = [sel_level_objs[i_l].fitters.get(g, None) for i_l, g in enumerate(sel_groups)]
+            # Extract the expanded TLS models for each dataset for each level
+            tls_models = zip(*[f.parameters().expand(datasets=datasets) for f in fitters if (f is not None)])
+            assert len(tls_models) == n_dst
+            assert len(tls_models[0]) == len(fitters)-fitters.count(None)
+
+            # Iterate through the datasets and create TLSOs for each dataset
+            for i_dst, tls_list in enumerate(tls_models):
+                # Add all the levels for each dataset
+                total_model = reduce(operator.add, tls_list)
+                # Extract TLS remark lines from the
+                tls_obj = mmtbx.tls.tools.tlso(t=total_model.get('T'), l=total_model.get('L'), s=total_model.get('S'), origin=coms[i_dst])
+                # Append to the tlso list
+                dataset_objs[i_dst].append((tls_obj, selection_string))
+
+        # Create header for each dataset
+        dataset_headers = []
+        for tls_tuples in dataset_objs:
+            # Turn list of tlso-string tuples into separate lists
+            tlsos, sel_strs = zip(*tls_tuples)
+            # Store output in list stream
+            l = ListStream()
+            # Get the remark records
+            mmtbx.tls.tools.remark_3_tls(tlsos=tlsos, selection_strings=sel_strs, out=l)
+            # And finally append
+            dataset_headers.append(str(l))
+        assert len(dataset_headers) == n_dst
+
+        return dataset_headers
+
     def tls_level_summary(self, out_dir='./'):
         """Write the various TLS uijs to the master hierarchy structure"""
 
         out_dir = easy_directory(out_dir)
         csv_dir = easy_directory(os.path.join(out_dir, 'csvs'))
+        png_dir = easy_directory(os.path.join(out_dir, 'csvs'))
 
         self.log.subheading('Writing TLS models and amplitudes for each level')
         # Iterate through the levels
@@ -1037,7 +1132,7 @@ class MultiDatasetUijParameterisation(Program):
                     amp_table.to_csv(amp_filename)
                 # Write histograms of amplitudes
                 x_vals = []; [[x_vals.append(tls_amps[i_m,:,i_c]) for i_c in xrange(tls_amps.shape[2])] for i_m in xrange(tls_amps.shape[0])]
-                filename = os.path.join(csv_dir, 'tls-model-amplitudes-level-{}-group-{}.png'.format(level.index, i_group))
+                filename = os.path.join(png_dir, 'tls-model-amplitudes-level-{}-group-{}.png'.format(level.index, i_group))
                 self.log('\t> {}'.format(filename))
                 plot_args.append({'filename': filename,
                                   'x_vals': x_vals,
@@ -1510,6 +1605,14 @@ class MultiDatasetUijParameterisation(Program):
             # Transfer data to other
             self.table = self.table.join(table_one, how="outer")
             self.log('')
+        # Create columns for the deltas between variables
+        for delta_col_name, full_col_name in [('R-work Change', 'R-work'),
+                                              ('R-free Change', 'R-free'),
+                                              ('R-gap Change', 'R-gap'),
+                                              ('Mean B-factor Change', 'Average B-factor')]:
+            self.log('> Creating col {} = new-{} - old-{}'.format(delta_col_name, full_col_name, full_col_name))
+            table_one[delta_col_name] = table_one['new-'+full_col_name] - table_one['old-'+full_col_name]
+
         # Write output csv
         filename = os.path.join(out_dir, 'dataset_scores.csv')
         self.log('Writing output csv: {}'.format(filename))
@@ -1562,7 +1665,7 @@ class MultiDatasetUijParameterisation(Program):
         # Raw scores
         # ------------------------------------------------------------>
         # Histogram of the R-FREE for input and fitted B-factors
-        filename = os.path.join(out_dir, 'r-free_resolution.png')
+        filename = os.path.join(out_dir, 'r-free-by-resolution.png')
         self.log('> {}'.format(filename))
         self.plot.binned_boxplot(filename = filename,
                                  x = table['old-High Res Limit'],
@@ -1571,10 +1674,10 @@ class MultiDatasetUijParameterisation(Program):
                                  title = 'R-free for input and fitted B-factors',
                                  x_lab = 'Resolution (A)',
                                  y_lab = 'R-free (%)',
-                                 rotate_x_labels=True,
-                                 min_bin_width=0.1)
+                                 rotate_x_labels = True,
+                                 min_bin_width = 0.1)
         # Histogram of the R-WORK for input and fitted B-factors
-        filename = os.path.join(out_dir, 'r-work_resolution.png')
+        filename = os.path.join(out_dir, 'r-work-by-resolution.png')
         self.log('> {}'.format(filename))
         self.plot.binned_boxplot(filename = filename,
                                  x = table['old-High Res Limit'],
@@ -1583,10 +1686,10 @@ class MultiDatasetUijParameterisation(Program):
                                  title = 'R-work for input and fitted B-factors',
                                  x_lab = 'Resolution (A)',
                                  y_lab = 'R-work (%)',
-                                 rotate_x_labels=True,
-                                 min_bin_width=0.1)
+                                 rotate_x_labels = True,
+                                 min_bin_width = 0.1)
         # Histogram of the R-GAP for input and fitted B-factors
-        filename = os.path.join(out_dir, 'r-gap_resolution.png')
+        filename = os.path.join(out_dir, 'r-gap-by-resolution.png')
         self.log('> {}'.format(filename))
         self.plot.binned_boxplot(filename = filename,
                                  x = table['old-High Res Limit'],
@@ -1595,25 +1698,45 @@ class MultiDatasetUijParameterisation(Program):
                                  title = 'R-gap for input and fitted B-factors',
                                  x_lab = 'Resolution (A)',
                                  y_lab = 'R-gap (%)',
-                                 rotate_x_labels=True,
-                                 min_bin_width=0.1)
+                                 rotate_x_labels = True,
+                                 min_bin_width = 0.1)
         # ------------------------------------------------------------>
         # Difference scores
         # ------------------------------------------------------------>
         # Histogram of the R-GAP for input and fitted B-factors
-        filename = os.path.join(out_dir, 'r-change_resolution.png')
+        filename = os.path.join(out_dir, 'r-values-change-by-resolution.png')
         self.log('> {}'.format(filename))
         self.plot.binned_boxplot(filename = filename,
                                  x = table['old-High Res Limit'],
-                                 y_vals = [100*(table['new-R-free']-table['old-R-free']),
-                                           100*(table['new-R-work']-table['old-R-work']),
-                                           100*(table['new-R-gap'] -table['old-R-gap'])],
+                                 y_vals = [100*table['R-free Change'],
+                                           100*table['R-work Change'],
+                                           100*table['R-gap Change']],
                                  y_legs = ['R-free change','R-work change','R-gap change'],
                                  title = 'R-value changes between for input and fitted B-factors',
                                  x_lab = 'Resolution (A)',
                                  y_lab = 'R-value change (%)',
-                                 rotate_x_labels=True,
-                                 min_bin_width=0.1)
+                                 rotate_x_labels = True,
+                                 min_bin_width = 0.1,
+                                 hlines = [0])
+        # ------------------------------------------------------------>
+        # Correlations betwee variables
+        # ------------------------------------------------------------>
+        # Histogram of the R-GAP for input and fitted B-factors
+#        filename = os.path.join(out_dir, 'r-change_resolution.png')
+#        self.log('> {}'.format(filename))
+#        self.plot.scatter(filename = filename,
+#                          x_vals = table['old-High Res Limit'],
+#                          y_vals = [100*(table['new-R-free']-table['old-R-free']),
+#                                           100*(table['new-R-work']-table['old-R-work']),
+#                                           100*(table['new-R-gap'] -table['old-R-gap'])],
+#                                 y_legs = ['R-free change','R-work change','R-gap change'],
+#                                 title = 'R-value changes between for input and fitted B-factors',
+#                                 x_lab = 'Resolution (A)',
+#                                 y_lab = 'R-value change (%)',
+#                                 rotate_x_labels = True,
+#                                 min_bin_width = 0.1,
+#                                 hlines = [0])
+
 
         return
 
@@ -1634,7 +1757,12 @@ class MultiDatasetUijPlots(object):
         return bins, indices, bin_labels
 
     @classmethod
-    def binned_boxplot(cls, filename, x, y=None, y_vals=None, y_legs=None, title='', x_lab='x', y_lab='y', rotate_x_labels=True, max_bins=10, min_bin_width=None):
+    def binned_boxplot(cls, filename,
+                       x, y=None, y_vals=None, y_legs=None,
+                       title='', x_lab='x', y_lab='y',
+                       rotate_x_labels=True,
+                       max_bins=10, min_bin_width=None,
+                       hlines=[], vlines=[]):
         """Generate a binned boxplot from data (or array of data)"""
 
         assert [y,y_vals].count(None) == 1, 'must provide y or y_vals'
@@ -1671,6 +1799,11 @@ class MultiDatasetUijPlots(object):
         # Create figures
         fig, axis = pyplot.subplots(nrows=1, ncols=1)
         axis.set_title(title)
+        # Draw horizontal/vertical lines (do first so they're at the bottom)
+        for v in hlines:
+           axis.axhline(y=v, linewidth=2)
+        for v in vlines:
+           axis.axvline(x=v, linewidth=2)
         # Store plot objects
         plot_dicts = []
         for i_y, y in enumerate(binned_y):
@@ -1722,6 +1855,12 @@ class MultiDatasetUijPlots(object):
         return
 
     @staticmethod
+    def scatter(filename, x=None, x_vals=None, y=None, y_vals=None,
+                title='', x_lab='x', y_lab='y',
+                x_lim=None, y_lim=None):
+        pass
+
+    @staticmethod
     def histograms(filename, x_vals, titles, x_labs, rotate_x_labels=True, shape=None, n_bins=30):
         """Generate standard histogram"""
 
@@ -1751,7 +1890,11 @@ class MultiDatasetUijPlots(object):
         return
 
     @staticmethod
-    def boxplot(filename, y_vals, x_labels, title, x_lab='x', y_lab='y', x_lim=None, y_lim=None, rotate_x_labels=True, vlines=None):
+    def boxplot(filename, y_vals, x_labels,
+                title, x_lab='x', y_lab='y',
+                x_lim=None, y_lim=None,
+                rotate_x_labels=True,
+                vlines=None):
         """Generate standard boxplot"""
 
         fig, axis = pyplot.subplots(nrows=1, ncols=1)
@@ -1806,6 +1949,7 @@ class MultiDatasetUijPlots(object):
             sel_h = h.select(sel)
             y_vals = numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in sel_h.residue_groups()])
             if not y_vals.any(): continue # Skip chains with no Bs
+            # Create x-values for each residue starting from 1
             x_vals = numpy.array(range(len(list(sel_h.residue_groups()))))+1
             x_labels = ['']+[ShortLabeller.format(rg) for rg in sel_h.residue_groups()]
             filename = prefix + '-chain_{}.png'.format(chain_id)
@@ -1813,7 +1957,8 @@ class MultiDatasetUijPlots(object):
             if title is not None: axis.set_title(label=str(title))
             axis.set_xlabel('Residue')
             axis.set_ylabel('Isotropic B')
-            axis.plot(x_vals, y_vals, '-ko', markersize=2)
+            #axis.plot(x_vals, y_vals, '-ko', markersize=2)
+            axis.bar(left=(x_vals-0.5), height=y_vals, width=1.0)
             axis.set_xticklabels([x_labels[int(i)] if (i<len(x_labels)) and (float(int(i))==i) else '' for i in axis.get_xticks()])
             pyplot.setp(axis.get_xticklabels(), rotation=90)
             # Plot boundaries
@@ -1889,6 +2034,7 @@ class MultiDatasetHierarchicalUijFitter(object):
         # Store observed values (needed for later)
         self.observed_uij = observed_uij
         self.observed_xyz = observed_xyz
+        self.observed_com = numpy.mean(observed_xyz, axis=1)
 
         # Masks to exclude datasets or atoms from optimisation
         self.dataset_mask = numpy.ones(observed_uij.shape[0], dtype=bool)
@@ -1904,7 +2050,8 @@ class MultiDatasetHierarchicalUijFitter(object):
             # Create fitter for each level
             self.levels.append(MultiDatasetUijTLSGroupLevel(observed_uij = observed_uij,
                                                             observed_xyz = observed_xyz,
-                                                            group_idxs   = group_idxs,
+                                                            observed_com = self.observed_com,
+                                                            group_idxs = group_idxs,
                                                             n_tls = n_tls,
                                                             index = idx+1,
                                                             label = lab,
@@ -2105,7 +2252,7 @@ class _MultiDatasetUijLevel(object):
 
 class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
 
-    def __init__(self, observed_uij, observed_xyz, group_idxs, n_tls=1, index=0, label=None, log=None):
+    def __init__(self, observed_uij, observed_xyz, observed_com, group_idxs, n_tls=1, index=0, label=None, log=None):
 
 #        if log is None: log = Log(verbose=False)
         self.log = log
@@ -2114,6 +2261,8 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
         assert observed_uij.shape[2]  == 6
         assert observed_xyz.shape[2]  == 3
         assert observed_uij.shape[1]  == len(group_idxs)
+        assert observed_com.shape[0] == observed_uij.shape[0]
+        assert observed_com.shape[1] == 3
 
         self.index = index
         self.label = label if label else 'Level {}'.format(index)
@@ -2135,7 +2284,7 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
             # Create fitter object
             self.fitters[i] = MultiDatasetUijTLSOptimiser(target_uij = observed_uij[:,sel],
                                                           atomic_xyz = observed_xyz[:,sel],
-                                                          #atomic_com = numpy.mean(observed_xyz, axis=1),
+                                                          atomic_com = observed_com,
                                                           n_tls = n_tls,
                                                           label = '{:4d} of {:4d}'.format(i, self._n_groups),
                                                           log = ls)
@@ -2320,6 +2469,9 @@ class _UijOptimiser(object):
 
     #=======================+>
 
+    def parameters(self):
+        return self._parameters
+
     def target(self, parameters):
         """Target function for the simplex optimisation"""
 
@@ -2443,24 +2595,24 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
 
 class MultiDatasetUijTLSOptimiser(_UijOptimiser):
 
-    def __init__(self, target_uij, atomic_xyz, atomic_com=None, n_tls=1, tls_params=None, label='', log=None):
+    def __init__(self, target_uij, atomic_xyz, atomic_com, n_tls=1, tls_params=None, label='', log=None):
         super(MultiDatasetUijTLSOptimiser, self).__init__(target_uij=target_uij, atomic_xyz=atomic_xyz, label=label, log=log)
+
+        # Store the centre of mass of the atoms (for the rotation/screw components)
+        self.atomic_com = atomic_com
 
         # Should be n_dataset observations of n_atm with 6 parameters
         assert len(self.target_uij.shape) == 3
         assert self.target_uij.shape[2] == 6
         assert self.atomic_xyz is not None
+        assert self.atomic_com is not None
 
         self._n_dst = self.target_uij.shape[0]
         self._n_atm = self.target_uij.shape[1]
 
         assert self.target_uij.shape == (self._n_dst, self._n_atm, 6)
         assert self.atomic_xyz.shape == (self._n_dst, self._n_atm, 3)
-
-        # (Calculate and) store the centre of mass of the atoms (for the rotation/screw components)
-        if atomic_com is None:
-            atomic_com = numpy.mean(self.atomic_xyz, axis=1)
-        self.atomic_com = atomic_com
+        assert self.atomic_com.shape == (self._n_dst, 3)
 
         # Allow for supplied TLS, or initialise new
         if tls_params is not None:
@@ -2900,8 +3052,6 @@ def run(params):
     p.fit_hierarchical_uij_model()
     p.process_results()
     log.heading('Parameterisation complete')
-
-    #embed()
 
 ############################################################################
 
