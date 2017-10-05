@@ -313,11 +313,11 @@ class TLSAmplitudeSet(object):
 
 class MultiDatasetTLSModel(object):
 
-    def __init__(self, n_dst=1, index=0):
-
+    def __init__(self, n_dst=1, index=0, log=None):
+#        if log is None: log = Log(verbose=False)
+        self.log = log
         self.index = index
         self.n_dst = n_dst
-
         self.model = TLSModel()
         self.amplitudes = TLSAmplitudeSet(n_dst=n_dst)
 
@@ -361,7 +361,7 @@ class MultiDatasetTLSModelList(object):
         self.log = log
         self.n_dst = n_dst
         self.n_mdl = n_mdl
-        self._list = [MultiDatasetTLSModel(n_dst=self.n_dst, index=i) for i in xrange(self.n_mdl)]
+        self._list = [MultiDatasetTLSModel(n_dst=self.n_dst, index=i, log=self.log) for i in xrange(self.n_mdl)]
 
     def __iter__(self):
         return iter(self._list)
@@ -400,16 +400,31 @@ class MultiDatasetTLSModelList(object):
         for m in self.get(modes):
             m.amplitudes.reset(components=components, datasets=datasets)
 
-    def reset_zero_value_modes(self):
+    def reset_zero_value_modes(self, tol=1e-6):
         """Reset models and amplitudes that refine to zero"""
         for i, m in enumerate(self):
             for c in 'TLS':
                 mdl_vals = m.model.get(components=c)
-                mdl_sumd = numpy.sum(numpy.abs(mdl_vals))
-                if (mdl_sumd < 1e-6):
-                    self.log('Resetting model {}, component {}: {}'.format(i+1, c, str(mdl_vals)))
+                mdl_avge = numpy.mean(numpy.abs(mdl_vals))
+                if (mdl_avge < tol):
+                    self.log('Resetting model {}, component {}, values {}'.format(i+1, c, str(mdl_vals)))
                     m.model.reset(components=c)
                     m.amplitudes.reset(components=c)
+
+    def reset_negative_amplitudes(self, error_tol=0.01):
+        """Reset negative ampltidues (raise error if amplitude < -1*error_tol)"""
+        error_cut = -1.0*abs(error_tol)
+        for i, m in enumerate(self):
+            for c in 'TLS':
+                amp_vals = m.amplitudes.get(components=c)
+                if (amp_vals < error_cut).any():
+                    raise Failure('Negative amplitudes < {} obtained for model {} component {}.\n'.format(error_cut, i+1, c) + \
+                                  '\n'.join(['> Dataset {}, value: {}'.format(d+1, a) for d,a in amp_vals if a<error_cut]))
+                reset_sel = (amp_vals < 0.0)
+                if reset_sel.any():
+                    reset_dst = numpy.where(reset_sel)[0]
+                    self.log('Resetting amplitudes for {} datasets in model {}, component {} (values {})'.format(len(reset_dst), i+1, c, str(amp_vals[reset_dst])))
+                    m.amplitudes.reset(components=c, datasets=reset_dst)
 
     def uij(self, xyzs, origins, datasets=None):
         """Convert a set of parameter vectors to a set of uijs"""
@@ -606,6 +621,41 @@ class MultiDatasetUijParameterisation(Program):
 #        self.plot.binned_boxplot(filename='test1.png', x=numpy.random.randn(n),
 #                                 y_vals=[numpy.random.randn(n)+5, numpy.random.randn(n)+10])
 #        sys.exit()
+#        self.plot.multi_scatter(filename = 'test1.png',
+#                                x = range(100),
+#                                y_vals = [range(000,100),
+#                                          range(100,200),
+#                                          range(200,300),
+#                                          range(300,400)],
+#                                x_lab = 'Resolution (A)',
+#                                y_lab = ['Mean RMSD',
+#                                         'Median RMSD',
+#                                         'Mean Input B-factor',
+#                                         'Mean Fitted B-factor'],
+#                                legends = ['Mean RMSD',
+#                                         'Median RMSD',
+#                                         'Mean Input B-factor',
+#                                         'Mean Fitted B-factor'],
+#                                title = 'Resolution and other variables',
+#                                shape=(2,2))
+#        self.plot.multi_scatter(filename = 'test2.png',
+#                                x = range(100),
+#                                y_vals = [range(000,100),
+#                                          range(100,200),
+#                                          range(200,300),
+#                                          range(300,400)],
+#                                x_lab = 'Resolution (A)',
+#                                y_lab = ['Mean RMSD',
+#                                         'Median RMSD',
+#                                         'Mean Input B-factor',
+#                                         'Mean Fitted B-factor'],
+#                                legends = ['Mean RMSD',
+#                                         'Median RMSD',
+#                                         'Mean Input B-factor',
+#                                         'Mean Fitted B-factor'],
+#                                title = 'Resolution and other variables',
+#                                shape=(2,1))
+#        raise Exception('ee')
 
         # Validate and add output paths, etc.
         self._init_input_models()
@@ -882,7 +932,7 @@ class MultiDatasetUijParameterisation(Program):
         #---#      Plot distribution of parameterised uijs for all structures      #---#
         #------------------------------------------------------------------------------#
 
-        uij_dir = easy_directory(os.path.join(self.out_dir, 'fit_uijs'))
+        uij_dir = easy_directory(os.path.join(self.out_dir, 'graphs'))
 
         # Distributions of the uijs for groups
         self.log.heading('Calculating distributions of uijs over the model')
@@ -896,7 +946,7 @@ class MultiDatasetUijParameterisation(Program):
 
         if self.params.output.diagnostics is True:
 
-            fit_dir = easy_directory(os.path.join(self.out_dir, 'fit_metrics'))
+            fit_dir = easy_directory(os.path.join(self.out_dir, 'diagnostics'))
 
             # Dataset-by-dataset and atom-by-atom fit rmsds
             self.log.heading('Calculating rmsd metrics between input and fitted Uijs')
@@ -1101,7 +1151,7 @@ class MultiDatasetUijParameterisation(Program):
 
         out_dir = easy_directory(out_dir)
         csv_dir = easy_directory(os.path.join(out_dir, 'csvs'))
-        png_dir = easy_directory(os.path.join(out_dir, 'csvs'))
+        png_dir = easy_directory(os.path.join(out_dir, 'graphs'))
 
         self.log.subheading('Writing TLS models and amplitudes for each level')
         # Iterate through the levels
@@ -1670,7 +1720,7 @@ class MultiDatasetUijParameterisation(Program):
         self.plot.binned_boxplot(filename = filename,
                                  x = table['old-High Res Limit'],
                                  y_vals = [100*table['old-R-free'], 100*table['new-R-free']],
-                                 y_legs = ['single-dataset', 'multi-dataset'],
+                                 legends = ['single-dataset', 'multi-dataset'],
                                  title = 'R-free for input and fitted B-factors',
                                  x_lab = 'Resolution (A)',
                                  y_lab = 'R-free (%)',
@@ -1682,7 +1732,7 @@ class MultiDatasetUijParameterisation(Program):
         self.plot.binned_boxplot(filename = filename,
                                  x = table['old-High Res Limit'],
                                  y_vals = [100*table['old-R-work'], 100*table['new-R-work']],
-                                 y_legs = ['single-dataset', 'multi-dataset'],
+                                 legends = ['single-dataset', 'multi-dataset'],
                                  title = 'R-work for input and fitted B-factors',
                                  x_lab = 'Resolution (A)',
                                  y_lab = 'R-work (%)',
@@ -1694,7 +1744,7 @@ class MultiDatasetUijParameterisation(Program):
         self.plot.binned_boxplot(filename = filename,
                                  x = table['old-High Res Limit'],
                                  y_vals = [100*table['old-R-gap'], 100*table['new-R-gap']],
-                                 y_legs = ['single-dataset', 'multi-dataset'],
+                                 legends = ['single-dataset', 'multi-dataset'],
                                  title = 'R-gap for input and fitted B-factors',
                                  x_lab = 'Resolution (A)',
                                  y_lab = 'R-gap (%)',
@@ -1711,7 +1761,7 @@ class MultiDatasetUijParameterisation(Program):
                                  y_vals = [100*table['R-free Change'],
                                            100*table['R-work Change'],
                                            100*table['R-gap Change']],
-                                 y_legs = ['R-free change','R-work change','R-gap change'],
+                                 legends = ['R-free change','R-work change','R-gap change'],
                                  title = 'R-value changes between for input and fitted B-factors',
                                  x_lab = 'Resolution (A)',
                                  y_lab = 'R-value change (%)',
@@ -1719,25 +1769,54 @@ class MultiDatasetUijParameterisation(Program):
                                  min_bin_width = 0.1,
                                  hlines = [0.0])
         # ------------------------------------------------------------>
-        # Correlations betwee variables
+        # Correlations between variables
         # ------------------------------------------------------------>
-        # Histogram of the R-GAP for input and fitted B-factors
-#        filename = os.path.join(out_dir, 'r-change_resolution.png')
-#        self.log('> {}'.format(filename))
-#        self.plot.scatter(filename = filename,
-#                          x_vals = table['old-High Res Limit'],
-#                          y_vals = [100*(table['new-R-free']-table['old-R-free']),
-#                                           100*(table['new-R-work']-table['old-R-work']),
-#                                           100*(table['new-R-gap'] -table['old-R-gap'])],
-#                                 y_legs = ['R-free change','R-work change','R-gap change'],
-#                                 title = 'R-value changes between for input and fitted B-factors',
-#                                 x_lab = 'Resolution (A)',
-#                                 y_lab = 'R-value change (%)',
-#                                 rotate_x_labels = True,
-#                                 min_bin_width = 0.1,
-#                                 hlines = [0])
-
-
+        # Scatter of resolution and fit RMSDs
+        filename = os.path.join(out_dir, 'resolution-vs-rmsds-and-bfactors.png')
+        self.log('> {}'.format(filename))
+        self.plot.multi_scatter(filename = filename,
+                                x = table['old-High Res Limit'],
+                                y_vals = [table['mean_rmsds'],
+                                          table['median_rmsds'],
+                                          table['mean_input_iso_b'],
+                                          table['mean_fitted_iso_b']],
+                                x_lab = 'Resolution (A)',
+                                y_lab = ['Mean RMSD',
+                                         'Median RMSD',
+                                         'Mean Input B-factor',
+                                         'Mean Fitted B-factor'],
+                                title = 'Resolution and other variables',
+                                shape = (2,2))
+        # Scatter of R-works and fit RMSDs
+        filename = os.path.join(out_dir, 'r-values-vs-rmsds-and-bfactors.png')
+        self.log('> {}'.format(filename))
+        self.plot.multi_scatter(filename = filename,
+                                x_vals = [table['mean_rmsds'],
+                                          table['median_rmsds'],
+                                          table['mean_input_iso_b'],
+                                          table['mean_fitted_iso_b']],
+                                y_vals = [table['R-free Change'],
+                                          table['R-free Change'],
+                                          table['R-free Change'],
+                                          table['R-free Change'],
+                                          table['R-gap Change'],
+                                          table['R-gap Change'],
+                                          table['R-gap Change'],
+                                          table['R-gap Change']],
+                                x_lab = ['Mean RMSD',
+                                         'Median RMSD',
+                                         'Mean Input B-factor',
+                                         'Mean Fitted B-factor'],
+                                y_lab = ['R-change'],
+                                legends = ['R-free Change',
+                                           'R-free Change',
+                                           'R-free Change',
+                                           'R-free Change',
+                                           'R-gap Change',
+                                           'R-gap Change',
+                                           'R-gap Change',
+                                           'R-gap Change'],
+                                shape = (2,2))
         return
 
 class MultiDatasetUijPlots(object):
@@ -1758,20 +1837,20 @@ class MultiDatasetUijPlots(object):
 
     @classmethod
     def binned_boxplot(cls, filename,
-                       x, y=None, y_vals=None, y_legs=None,
+                       x, y=None, y_vals=None, legends=None,
                        title='', x_lab='x', y_lab='y',
                        rotate_x_labels=True,
                        max_bins=10, min_bin_width=None,
                        hlines=[], vlines=[]):
         """Generate a binned boxplot from data (or array of data)"""
 
-        assert [y,y_vals].count(None) == 1, 'must provide y or y_vals'
+        assert [(y is None),(y_vals is None)].count(False) == 1, 'must provide y OR y_vals'
         if y is not None: y_vals = [y]
         y_vals = [numpy.array(y) for y in y_vals]
         n_y = len(y_vals)
 
-        if y_legs is not None:
-            assert len(y_legs) == n_y
+        if legends is not None:
+            assert len(legends) == n_y
 
         assert isinstance(max_bins, int) and max_bins>0
 
@@ -1800,10 +1879,8 @@ class MultiDatasetUijPlots(object):
         fig, axis = pyplot.subplots(nrows=1, ncols=1)
         axis.set_title(title)
         # Draw horizontal/vertical lines (do first so they're at the bottom)
-        for v in hlines:
-           axis.axhline(y=v, linewidth=2, zorder=1)
-        for v in vlines:
-           axis.axvline(x=v, linewidth=2)
+        for v in hlines: axis.axhline(y=v, linewidth=2, zorder=1)
+        for v in vlines: axis.axvline(x=v, linewidth=2, zorder=1)
         # Store plot objects
         plot_dicts = []
         for i_y, y in enumerate(binned_y):
@@ -1839,8 +1916,8 @@ class MultiDatasetUijPlots(object):
         if rotate_x_labels:
             pyplot.setp(axis.get_xticklabels(), rotation=45)
         # Make legend
-        if y_legs is not None:
-            handles = [patches.Patch(color=colors[i_y], label=y_legs[i_y]) for i_y in xrange(n_y)]
+        if legends is not None:
+            handles = [patches.Patch(color=colors[i_y], label=legends[i_y]) for i_y in xrange(n_y)]
             lgd = axis.legend(handles=handles,
                               bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
                               #bbox_to_anchor=(0.0, 1.02, 1.0, 0.102),
@@ -1854,11 +1931,95 @@ class MultiDatasetUijPlots(object):
 
         return
 
-    @staticmethod
-    def scatter(filename, x=None, x_vals=None, y=None, y_vals=None,
-                title='', x_lab='x', y_lab='y',
-                x_lim=None, y_lim=None):
-        pass
+    @classmethod
+    def multi_scatter(cls, filename,
+                      x=None, x_vals=None, y=None, y_vals=None,
+                      legends=None,
+                      title='', x_lab='x', y_lab='y',
+                      x_lim=None, y_lim=None,
+                      shape=None,
+                      hlines=[], vlines=[]):
+        """Generate a scatter plot from data (or list of data)"""
+
+        assert [(x is None),(x_vals is None)].count(False) == 1, 'must provide x OR x_vals'
+        assert [(y is None),(y_vals is None)].count(False) == 1, 'must provide y OR y_vals'
+        if x is not None: x_vals = [x]
+        if y is not None: y_vals = [y]
+        x_vals = [numpy.array(x) for x in x_vals]
+        y_vals = [numpy.array(y) for y in y_vals]
+        n_x = len(x_vals)
+        n_y = len(y_vals)
+        # Share X- or Y-axes?
+        share_x = (n_x==1)
+        share_y = (n_y==1)
+        # Allow for differently sized lists if one is of unitary length
+        #assert (n_x==1) or (n_y==1) or (n_x==n_y), 'number of x_vals not equal to number of y_vals'
+        # Create cycles for simplicity
+        x_vals = itertools.cycle(x_vals)
+        y_vals = itertools.cycle(y_vals)
+        # Create cycles of the x/y-labels
+        x_lab = itertools.cycle([x_lab]) if isinstance(x_lab, str) else itertools.cycle(x_lab)
+        y_lab = itertools.cycle([y_lab]) if isinstance(y_lab, str) else itertools.cycle(y_lab)
+
+        # Create one plot if no shape specified
+        if shape is None: shape = (1,1)
+
+        n_line = max(n_x, n_y)
+        n_plot = numpy.product(shape)
+
+        if legends is not None:
+            assert len(legends) == n_line
+
+        # Colors of each of y_vals
+        if n_plot == n_line:
+            colors = ['b']*n_line
+        elif (n_line % n_plot) == 0:
+            colors = sorted(numpy.concatenate([pyplot.cm.rainbow(numpy.linspace(0,1,n_line//n_plot))]*n_plot).tolist())
+        else:
+            colors = pyplot.cm.rainbow(numpy.linspace(0,1,n_line))
+        assert len(colors)==n_line
+
+        # Create figures
+        fig, axes = pyplot.subplots(nrows=shape[0], ncols=shape[1],
+                                    sharex=share_x, sharey=share_y)
+        # Create list if only one plot
+        if shape == (1,1): axes = [axes]
+        else: axes = numpy.array(axes).flatten()
+        # Set the figure title
+        fig.suptitle(title)
+        # Draw horizontal/vertical lines (do first so they're at the bottom)
+        for axis in axes:
+            for v in hlines: axis.axhline(y=v, linewidth=2, zorder=1)
+            for v in vlines: axis.axvline(x=v, linewidth=2, zorder=1)
+        # Store plot objects
+        plot_dicts = []
+        axes_cycle = itertools.cycle(axes)
+        for i in xrange(n_line):
+            axis = axes_cycle.next()
+            plt = axis.scatter(x=x_vals.next(),
+                               y=y_vals.next(),
+                               c=colors[i])
+            if legends: plt.set_label(legends[i])
+            plot_dicts.append(plt)
+        # Format axes
+        for axis in axes:
+            # Axis labels
+            axis.set_xlabel(x_lab.next())
+            axis.set_ylabel(y_lab.next())
+            # Make axis legends
+            if legends:
+                axis.legend()
+        # Axis limits
+        if x_lim: axis.set_xlim(x_lim)
+        if y_lim: axis.set_ylim(y_lim)
+        # X-axis rotations
+#        if rotate_x_labels:
+#            pyplot.setp(axis.get_xticklabels(), rotation=45)
+        fig.tight_layout()
+        fig.savefig(filename)
+        pyplot.close(fig)
+
+        return
 
     @staticmethod
     def histograms(filename, x_vals, titles, x_labs, rotate_x_labels=True, shape=None, n_bins=30):
@@ -1894,15 +2055,14 @@ class MultiDatasetUijPlots(object):
                 title, x_lab='x', y_lab='y',
                 x_lim=None, y_lim=None,
                 rotate_x_labels=True,
-                vlines=None):
+                hlines=[], vlines=[]):
         """Generate standard boxplot"""
 
         fig, axis = pyplot.subplots(nrows=1, ncols=1)
         axis.set_title(title)
         axis.boxplot(y_vals, labels=x_labels, showmeans=True)
-        if (vlines is not None) and (y_lim is not None):
-            for v in vlines:
-                axis.vlines(v, y_lim[0], y_lim[1])
+        for v in hlines: axis.axhline(v)
+        for v in vlines: axis.axvline(v)
         axis.set_xlabel(x_lab)
         axis.set_ylabel(y_lab)
         axis.set_xlim(x_lim)
@@ -1916,7 +2076,11 @@ class MultiDatasetUijPlots(object):
         return
 
     @staticmethod
-    def violinplot(filename, y_vals, x_labels, title, x_lab='x', y_lab='y', x_lim=None, y_lim=None, rotate_x_labels=True, vlines=None):
+    def violinplot(filename, y_vals, x_labels,
+                   title, x_lab='x', y_lab='y',
+                   x_lim=None, y_lim=None,
+                   rotate_x_labels=True,
+                   hlines=[], vlines=[]):
         """Generate standard violin plot"""
 
         fig, axis = pyplot.subplots(nrows=1, ncols=1)
@@ -1924,9 +2088,8 @@ class MultiDatasetUijPlots(object):
         axis.violinplot(y_vals, showmeans=True)
         axis.set_xticks(range(1,len(x_labels)+1))
         axis.set_xticklabels(x_labels)
-        if (vlines is not None) and (y_lim is not None):
-            for v in vlines:
-                axis.vlines(v, y_lim[0], y_lim[1])
+        for v in hlines: axis.axhline(v)
+        for v in vlines: axis.axvline(v)
         axis.set_xlabel(x_lab)
         axis.set_ylabel(y_lab)
         axis.set_xlim(x_lim)
@@ -2500,13 +2663,15 @@ class _UijOptimiser(object):
         rmsd = numpy.sqrt(numpy.mean(numpy.power(self._target_uij-self._fitted_uij, 2)))
         # Calculate fitting penalties (add to rmsd)
         fpen = self._fitting_penalties(uij_fit=self._fitted_uij, uij_obs=self._target_uij)
+        # Total target function value
+        tot_val = rmsd + fpen
         # Update minima
-        if rmsd+fpen < self.optimisation_rmsd+self.optimisation_penalty:
+        if tot_val < self.optimisation_rmsd+self.optimisation_penalty:
             self.optimisation_rmsd    = rmsd
             self.optimisation_penalty = fpen
         if self._running_summary:
             self.log('[{}] -> ({:10f}, {:10.0f})'.format(', '.join(['{:+10.5f}'.format(r) for r in parameters]), rmsd, fpen), show=False)
-        return rmsd+fpen
+        return tot_val
 
 class MultiDatasetUijAtomOptimiser(_UijOptimiser):
 
@@ -2855,7 +3020,11 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                     # Set penalty weights (non-zero for T components to prevent sling-shotting)
                     #if cpt == 'T':  self.penalty.set_weights(ovr_weight=1.00)
                     #else:           self.penalty.set_weights(ovr_weight=0.01)
-                    self.penalty.set_weights(ovr_weight=0.01)
+                    # Set penalty weights -- iteratively reduce weight over number of cycles
+                    if i_cycle == 0:
+                        self.penalty.set_weights(ovr_weight=0.01*(10**(-i_tls)))
+                    else:
+                        self.penalty.set_weights(ovr_weight=0.01)
                     # Select variables for optimisation -- model only
                     self._select(optimise_model      = True,
                                  optimise_amplitudes = False,
@@ -2910,13 +3079,17 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 # Reapply dataset mask
                 self.set_dataset_mask(opt_dset_mask)
 
-            # End of cycle house-keeping and summary
+            # End of cycle house-keeping
+            self.log('')
+            self.log('Looking for negative TLS amplitudes')
+            self._parameters.reset_negative_amplitudes()
             self.log('')
             self.log('Normalising TLS amplitudes')
             self._parameters.normalise_amplitudes()
             self.log('')
             self.log('Looking for zero-value modes')
             self._parameters.reset_zero_value_modes()
+
             self.log.subheading('End-of-cycle summary')
             self.summary(show=True)
 
