@@ -400,16 +400,26 @@ class MultiDatasetTLSModelList(object):
         for m in self.get(modes):
             m.amplitudes.reset(components=components, datasets=datasets)
 
-    def reset_zero_value_modes(self, tol=1e-6):
+    def reset_zero_value_modes(self, mdl_tol=1e-6, amp_tol=1e-6):
         """Reset models and amplitudes that refine to zero"""
         for i, m in enumerate(self):
             for c in 'TLS':
+                # Calculate the average model value
                 mdl_vals = m.model.get(components=c)
                 mdl_avge = numpy.mean(numpy.abs(mdl_vals))
-                if (mdl_avge < tol):
-                    self.log('Resetting model {}, component {}, values {}'.format(i+1, c, str(mdl_vals)))
+                if (mdl_avge < mdl_tol):
+                    self.log('Zero-value model: resetting model {}, component {}, values {}'.format(i+1, c, str(mdl_vals)))
                     m.model.reset(components=c)
                     m.amplitudes.reset(components=c)
+                    continue
+                # Calculate the average amplitude
+                amp_vals = m.amplitudes.get(components=c)
+                amp_avge = numpy.mean(numpy.abs(amp_vals))
+                if (amp_avge < amp_tol):
+                    self.log('Zero-value average amplitude: resetting model {}, component {}, values {}'.format(i+1, c, str(amp_vals)))
+                    m.model.reset(components=c)
+                    m.amplitudes.reset(components=c)
+                    continue
 
     def reset_negative_amplitudes(self, error_tol=0.01):
         """Reset negative ampltidues (raise error if amplitude < -1*error_tol)"""
@@ -420,10 +430,10 @@ class MultiDatasetTLSModelList(object):
                 if (amp_vals < error_cut).any():
                     raise Failure('Negative amplitudes < {} obtained for model {} component {}.\n'.format(error_cut, i+1, c) + \
                                   '\n'.join(['> Dataset {}, value: {}'.format(d+1, a) for d,a in amp_vals if a<error_cut]))
-                reset_sel = (amp_vals < 0.0)
+                reset_sel = (amp_vals < -0.0)
                 if reset_sel.any():
                     reset_dst = numpy.where(reset_sel)[0]
-                    self.log('Resetting amplitudes for {} datasets in model {}, component {} (values {})'.format(len(reset_dst), i+1, c, str(amp_vals[reset_dst])))
+                    self.log('Resetting negative amplitudes for {} datasets in model {}, component {} (values {})'.format(len(reset_dst), i+1, c, str(amp_vals[reset_dst])))
                     m.amplitudes.reset(components=c, datasets=reset_dst)
 
     def uij(self, xyzs, origins, datasets=None):
