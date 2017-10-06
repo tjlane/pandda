@@ -168,7 +168,7 @@ def uij_to_b(uij):
 ############################################################################
 
 def wrapper_plot_histograms(args):
-    MultiDatasetUijPlots.histograms(**args)
+    MultiDatasetUijPlots.multi_histogram(**args)
 
 def wrapper_run(arg):
     return arg.run()
@@ -938,17 +938,13 @@ class MultiDatasetUijParameterisation(Program):
         self.log.heading('Summaries of the residual atomic components')
         self.residuals_summary(out_dir=model_dir)
 
-        #------------------------------------------------------------------------------#
-        #---#      Plot distribution of parameterised uijs for all structures      #---#
-        #------------------------------------------------------------------------------#
-
-        uij_dir = easy_directory(os.path.join(self.out_dir, 'graphs'))
-
         # Distributions of the uijs for groups
         self.log.heading('Calculating distributions of uijs over the model')
-        self.fit_uij_distributions(uij_fit=uij_all,
-                                   uij_inp=uij_inp,
-                                   out_dir=uij_dir)
+        self.uij_distribution_summary(uij_lvl=uij_lvl,
+                                      uij_res=uij_res,
+                                      #uij_fit=uij_all,
+                                      uij_inp=uij_inp,
+                                      out_dir=model_dir)
 
         #------------------------------------------------------------------------------#
         #---#        Compare the fittend and input uijs for all structures         #---#
@@ -1083,7 +1079,7 @@ class MultiDatasetUijParameterisation(Program):
         for c in b_h.chains():
             chain_sel = b_c.selection('chain {}'.format(c.id))
             hierarchies = [h.select(chain_sel, copy_atoms=True) for h in level_hierarchies]
-            filename = os.path.join(out_dir, 'chain-{}-level-array.png'.format(c.id))
+            filename = os.path.join(out_dir, 'level-partitioning-chain-{}.png'.format(c.id))
             self.log('\t> {}'.format(filename))
             self.plot.level_plots(filename=filename, hierarchies=hierarchies, title='chain {}'.format(c.id))
 
@@ -1248,8 +1244,8 @@ class MultiDatasetUijParameterisation(Program):
                     self.log('\t> {}'.format(m_f))
                     m_h.write_pdb_file(m_f)
                     self.log('\t> {}xxx.png'.format(prefix))
-                    self.plot.residue_by_residue(hierarchy=m_h,
-                                                 prefix=prefix,
+                    self.plot.residue_by_residue(prefix=prefix,
+                                                 hierarchy=m_h,
                                                  v_line_hierarchy=boundaries)
                     # Add to cumulative uij (this level)
                     uij_lvl = uij if uij_lvl is None else uij_lvl+uij
@@ -1261,8 +1257,8 @@ class MultiDatasetUijParameterisation(Program):
                 self.log('\t> {}'.format(m_f))
                 m_h.write_pdb_file(m_f)
                 self.log('\t> {}xxx.png'.format(prefix))
-                self.plot.residue_by_residue(hierarchy=m_h,
-                                             prefix=prefix,
+                self.plot.residue_by_residue(prefix=prefix,
+                                             hierarchy=m_h,
                                              v_line_hierarchy=boundaries)
                 # Add to cumulative uij (all levels)
                 uij_all = uij_lvl if uij_all is None else uij_all+uij_lvl
@@ -1275,8 +1271,8 @@ class MultiDatasetUijParameterisation(Program):
             self.log('\t> {}'.format(m_f))
             m_h.write_pdb_file(m_f)
             self.log('\t> {}xxx.png'.format(prefix))
-            self.plot.residue_by_residue(hierarchy=m_h,
-                                         prefix=prefix)
+            self.plot.residue_by_residue(prefix=prefix,
+                                         hierarchy=m_h)
 
     def residuals_summary(self, out_dir='./'):
         """Write the residual uijs to the master hierarchy structure"""
@@ -1293,18 +1289,31 @@ class MultiDatasetUijParameterisation(Program):
         self.log('\t> {}'.format(m_f))
         m_h.write_pdb_file(m_f)
         self.log('\t> {}xxx.png'.format(prefix))
-        self.plot.residue_by_residue(hierarchy=m_h,
-                                     prefix=prefix)
+        self.plot.residue_by_residue(prefix=prefix,
+                                     hierarchy=m_h)
 
-    def fit_uij_distributions(self, uij_fit, uij_inp, out_dir='./'):
+    def uij_distribution_summary(self, uij_lvl, uij_res, uij_inp, out_dir='./'):
 
-        self.log('Not currently implemented')
+        out_dir = easy_directory(out_dir)
+
+        self.log('Writing distribution of TLS Uijs over the model')
+
+        uij_hierarchies = []
+        for i_level in range(len(uij_lvl)):
+            uij_lvl_av = numpy.mean(uij_lvl[i_level], axis=0)
+            h_lvl =self.custom_master_hierarchy(iso=uij_to_b(uij_lvl_av), mask=flex.bool(self.atom_mask.tolist()))
+            uij_hierarchies.append(h_lvl)
+        prefix = os.path.join(out_dir, 'all-stacked')
+        self.log('\t> {}xxx.png'.format(prefix))
+        self.plot.stacked_bar(prefix=prefix,
+                              hierarchies=uij_hierarchies,
+                              legends=['Level {}'.format(i+1) for i in range(len(uij_lvl))],
+                              title='TLS Contributions')
 
         # Plot the distribution of B-factors for residues
         # Residues within groups
         # distribution of average uijs for members of each group for each leve
         #   > chain level > distribution of average TLS components for each dataset
-        pass
 
     def fit_rms_distributions(self, uij_fit, uij_inp, out_dir='./', max_x_width=25):
         """Analyse the dataset-by-dataset and residue-by-residue and atom-by-atom fit qualities"""
@@ -1428,8 +1437,8 @@ class MultiDatasetUijParameterisation(Program):
         m_h.write_pdb_file(m_f)
         self.log('\t> {}...png'.format(prefix))
         # Output as b-factor plot
-        self.plot.residue_by_residue(hierarchy=m_h,
-                                     prefix=prefix)
+        self.plot.residue_by_residue(prefix=prefix,
+                                     hierarchy=m_h)
 
         self.log('Writing IQR rmsd for each atom (variability of quality of fit over all datasets)')
         # calculate dataset-IQR'd rmsds
@@ -1442,8 +1451,8 @@ class MultiDatasetUijParameterisation(Program):
         m_h.write_pdb_file(m_f)
         self.log('\t> {}...png'.format(prefix))
         # Output as b-factor plot
-        self.plot.residue_by_residue(hierarchy=m_h,
-                                     prefix=prefix)
+        self.plot.residue_by_residue(prefix=prefix,
+                                     hierarchy=m_h)
 
     def fit_residual_correlations(self, uij_diff, out_dir='./', max_x_width=25):
         """Calculate correlations between the atomic residuals and the fitted-input differences"""
@@ -1936,7 +1945,8 @@ class MultiDatasetUijPlots(object):
         fig.tight_layout()
         fig.savefig(filename,
                     bbox_extra_artists=extra_artists,
-                    bbox_inches='tight')
+                    bbox_inches='tight',
+                    dpi=300)
         pyplot.close(fig)
 
         return
@@ -2026,13 +2036,13 @@ class MultiDatasetUijPlots(object):
 #        if rotate_x_labels:
 #            pyplot.setp(axis.get_xticklabels(), rotation=45)
         fig.tight_layout()
-        fig.savefig(filename)
+        fig.savefig(filename, dpi=300)
         pyplot.close(fig)
 
         return
 
     @staticmethod
-    def histograms(filename, x_vals, titles, x_labs, rotate_x_labels=True, shape=None, n_bins=30):
+    def multi_histogram(filename, x_vals, titles, x_labs, rotate_x_labels=True, shape=None, n_bins=30):
         """Generate standard histogram"""
 
         if shape is not None:
@@ -2055,7 +2065,7 @@ class MultiDatasetUijPlots(object):
             if rotate_x_labels:
                 pyplot.setp(axis.get_xticklabels(), rotation=90)
         fig.tight_layout()
-        fig.savefig(filename)
+        fig.savefig(filename, dpi=300)
         pyplot.close(fig)
 
         return
@@ -2080,17 +2090,23 @@ class MultiDatasetUijPlots(object):
         if rotate_x_labels:
             pyplot.setp(axis.get_xticklabels(), rotation=90)
         fig.tight_layout()
-        fig.savefig(filename)
+        fig.savefig(filename, dpi=300)
         pyplot.close(fig)
 
         return
 
     @staticmethod
-    def violinplot(filename, y_vals, x_labels,
-                   title, x_lab='x', y_lab='y',
-                   x_lim=None, y_lim=None,
+    def violinplot(filename,
+                   y_vals,
+                   x_labels,
+                   title,
+                   x_lab='x',
+                   y_lab='y',
+                   x_lim=None,
+                   y_lim=None,
                    rotate_x_labels=True,
-                   hlines=[], vlines=[]):
+                   hlines=[],
+                   vlines=[]):
         """Generate standard violin plot"""
 
         fig, axis = pyplot.subplots(nrows=1, ncols=1)
@@ -2107,13 +2123,13 @@ class MultiDatasetUijPlots(object):
         if rotate_x_labels:
             pyplot.setp(axis.get_xticklabels(), rotation=90)
         fig.tight_layout()
-        fig.savefig(filename)
+        fig.savefig(filename, dpi=300)
         pyplot.close(fig)
 
         return
 
     @staticmethod
-    def residue_by_residue(hierarchy, prefix, title=None, v_line_hierarchy=None):
+    def residue_by_residue(prefix, hierarchy, title=None, v_line_hierarchy=None):
         """Write out residue-by-residue b-factor graphs"""
 
         h = hierarchy
@@ -2141,7 +2157,7 @@ class MultiDatasetUijPlots(object):
                     axis.axvline(x=val, ls='dotted')
             # Format and save
             fig.tight_layout()
-            fig.savefig(filename)
+            fig.savefig(filename, dpi=300)
             pyplot.close(fig)
 
     @staticmethod
@@ -2191,6 +2207,96 @@ class MultiDatasetUijPlots(object):
         fig.tight_layout()
         fig.savefig(filename, dpi=300)
         pyplot.close(fig)
+
+    @staticmethod
+    def stacked_bar(prefix,
+                    hierarchies,
+                    legends,
+                    title,
+                    y_lab='Isotropic B',
+                    y_lim=None,
+                    rotate_x_labels=True):
+        """Plot stacked bar plots for a series of hierarchies (plotted values are the B-factors of the hierarchies)"""
+
+        legends = list(legends)
+        assert len(hierarchies) == len(legends)
+
+        m_h = hierarchies[0]
+
+        # Check all hierarchies are the same
+        for h in hierarchies:
+            assert m_h.is_similar_hierarchy(h)
+
+        # Create a plot for each chain
+        for chain_id in [c.id for c in m_h.chains()]:
+
+            # Create a selection for each chain and select it in each hierarchy
+            sel = m_h.atom_selection_cache().selection('chain {}'.format(chain_id))
+            sel_hs = [h.select(sel) for h in hierarchies]
+            sel_mh = sel_hs[0]
+
+            # Filename!
+            filename = prefix + '-chain_{}.png'.format(chain_id)
+
+            # Create x-values for each residue starting from 1
+            x_vals = numpy.array(range(len(list(sel_mh.residue_groups()))))+1
+            x_labels = ['']+[ShortLabeller.format(rg) for rg in sel_mh.residue_groups()]
+            # Cumulative y-values (for bottoms of bars)
+            cuml_y = None
+
+            # Create colors + hatches
+            colors = pyplot.cm.rainbow(numpy.linspace(0,1,len(sel_hs)))
+            hatchs = itertools.cycle(['//', 'x', '\\'])
+
+            # Create the output figure
+            fig, axis = pyplot.subplots(nrows=1, ncols=1)
+            if title is not None: axis.set_title(label=str(title))
+            axis.set_xlabel('Residue')
+            axis.set_ylabel(y_lab)
+
+            # Iterative though hierarchies
+            handles = []
+            for i_h, h in enumerate(sel_hs):
+                # Extract b-factors from this hierarchy
+                y_vals = numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in h.residue_groups()])
+                # Skip chains with no Bs
+                if not y_vals.any():
+                    continue
+                # Initialise cumulative object
+                if cuml_y is None:
+                    cuml_y = numpy.zeros_like(y_vals)
+                # Plot the bar
+                hdl = axis.bar(left=(x_vals-0.5),
+                               height=y_vals,
+                               bottom=cuml_y,
+                               width=1.0,
+                               color=colors[i_h],
+                               label=legends[i_h],
+                               hatch=hatchs.next(),
+                               edgecolor='black')
+                handles.append(hdl)
+
+                # Append to cumulative y
+                cuml_y += y_vals
+
+            # No lines if cuml_y is None
+            if cuml_y is None:
+                continue
+
+            # Legends (reverse the plot legends!)
+            handles.reverse()
+            lgd = axis.legend(handles=handles, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+            # Axis labels
+            axis.set_xticklabels([x_labels[int(i)] if (i<len(x_labels)) and (float(int(i))==i) else '' for i in axis.get_xticks()])
+            if rotate_x_labels: pyplot.setp(axis.get_xticklabels(), rotation=90)
+
+            # Format and save
+            fig.tight_layout()
+            fig.savefig(filename,
+                        bbox_extra_artists=[lgd],
+                        bbox_inches='tight',
+                        dpi=300)
+            pyplot.close(fig)
 
 class MultiDatasetHierarchicalUijFitter(object):
 
