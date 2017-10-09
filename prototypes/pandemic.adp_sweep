@@ -13,6 +13,8 @@ from bamboo.common.logs import Log
 from bamboo.common.path import easy_directory, rel_symlink
 from bamboo.common.command import CommandManager
 
+from giant.dataset import ModelAndData
+
 from giant.structure.select import protein, backbone, sidechains
 from giant.structure.formatting import PhenixSelection
 
@@ -50,11 +52,14 @@ input {
         .help = "input directory, containing different B-factor refinements"
         .optional = False
         .type = str
+    analysis_dir = md_adp_analysis
+        .help = "directory to dunp the analysis into"
+        .type = str
     labelling = filename *foldername
         .type = choice
 }
 output {
-    out_dir = b-factor-fitting-sweep
+    out_dir = adp-characterisation-sweep
         .help = "output directory"
         .type = str
     out_script = run_adp_sweeps.sh
@@ -62,13 +67,21 @@ output {
         .type = str
 }
 options {
-    tls_selections = tls_selections.params
-        .type = path
-        .multiple = False
-    refinements = *isotropic tls *anisotropic
+    refinements = isotropic tls *anisotropic
         .type = choice(multi=True)
-    fitting_groups = *tls *chain *residue backbone_sidechain
+    fitting_groups = *chain *auto_group *secondary_structure *residue *backbone *sidechain atom
         .type = choice(multi=True)
+}
+sweep_parameters {
+    resolution_partitioning = *0.1 *0.5 *1.0 *10.0
+        .type = choice(multi=True)
+        .help = "Split datasets into groups for characterisation by resolution."
+    datasets_per_characterisation = *2 *3 *4 *5 *6 *7 *8 *9 *10 *15 *20 *30 *40 *50 *100 *150 *200
+        .type = choice(multi=True)
+        .help = "Once datasets are partitioned, select random samples of datasets."
+    optimisation_cutoffs = *1.5 *1.6 *1.7 *1.8 *1.9 *2.0 *2.5 *3.0 *3.5
+        .type = choice(multi=True)
+        .help = "Try different optimisation cutoffs for datasets in a partitioned group - can high resolution datasets parameterise low-resolution datasets?"
 }
 parameterisation {
     tbd = True
@@ -89,6 +102,15 @@ def wrapper_run(arg):
     return arg.run()
 
 def validate_parameters(params):
+    assert os.path.exists(params.input.refinement_dir)
+
+    params.sweep_parameters.resolution_partitioning         = map(float, params.sweep_parameters.resolution_partitioning        )
+    print 'Resolution partitions: {}'.format(params.sweep_parameters.resolution_partitioning)
+    params.sweep_parameters.datasets_per_characterisation   = map(int,   params.sweep_parameters.datasets_per_characterisation  )
+    print 'Datasets per characterisation: {}'.format(params.sweep_parameters.datasets_per_characterisation)
+    params.sweep_parameters.optimisation_cutoffs            = map(float, params.sweep_parameters.optimisation_cutoffs           )
+    print 'Optimisation cutoffs: {}'.format(params.sweep_parameters.optimisation_cutoffs)
+
     pass
 
 def run_refinements(params, log=None):
@@ -96,7 +118,7 @@ def run_refinements(params, log=None):
     if log is None: log = Log(verbose=True)
     log.heading('Creating B-factor refinement job')
 
-    cmd = CommandManager('giant.multi.adp_refine')
+    cmd = CommandManager('pandemic.adp')
     cmd.add_command_line_arguments(params.input.pdb)
     cmd.add_command_line_arguments(params.input.cif)
     cmd.add_command_line_arguments(r'tls_selections={}'.format(params.options.tls_selections))
@@ -110,91 +132,129 @@ def run_refinements(params, log=None):
     if ret != 0:
         raise Exception('Failed in refinement')
 
-def create_sweep_tls_group_choice(input_pdbs, out_dir, params, log=None):
+def actually_generate_sweep(sweep_dir,
+                            input_pdbs,
+                            #opt_cutoff,
+                            params):
 
-    if log is None: log = Log(verbose=True)
-
-    out_dir = easy_directory(out_dir)
+    sweep_dir = easy_directory(sweep_dir)
 
     # Write all pdb files to an input file to pass to program
-    pdb_eff = os.path.join(out_dir, 'input_pdbs.eff')
+    pdb_eff = os.path.join(sweep_dir, 'input_pdbs.eff')
     with open(pdb_eff, 'w') as fh:
         fh.write('\n'.join([r'pdb="{}"'.format(p) for p in input_pdbs]))
 
-    jobs = []
+    cmd = CommandManager("pandemic.adp")
+    cmd.add_command_line_arguments(r'cpus={}'.format(params.settings.max_cpus_per_job))
+    cmd.add_command_line_arguments(r'labelling=foldername')
+    cmd.add_command_line_arguments(pdb_eff)
+    cmd.add_command_line_arguments(r'out_dir={}'.format(sweep_dir))
+    cmd.print_settings()
 
-    base_manager = CommandManager("pandemic.adp")
-    base_manager.add_command_line_arguments(r'labelling=foldername')
-    base_manager.add_command_line_arguments(pdb_eff)
+    return cmd
 
-    # Load first structure for creating TLS groups
-    h = protein(iotbx.pdb.hierarchy.input(input_pdbs[0]).hierarchy)
-
-    for mode in params.options.fitting_groups:
-        # Compile command object
-        cmd = copy.deepcopy(base_manager)
-        jobs.append(cmd)
-        # Create output directory
-        sweep_dir = easy_directory(os.path.join(out_dir, 'group_{}'.format(mode)))
-        cmd.add_command_line_arguments(r'out_dir={}'.format(sweep_dir))
-        # Create TLS groups for fitting
-        tls_groups = []
-        if   mode == "chain":
-            for chain in h.chains():
-                #tls_groups.append("chain '{}'".format(chain.id))
-                tls_groups.append(PhenixSelection.format(chain))
-        elif mode == "residue":
-            for rg in h.residue_groups():
-                tls_groups.append(PhenixSelection.format(rg))
-        elif mode == "tls":
-            for gp in open(params.options.tls_selections, 'r').read().strip().split('\n'):
-                tls_groups.append(gp)
-        elif mode == "backbone_sidechain":
-            for ag in backbone(h).atom_groups():
-                if ag.resname in ['ALA','GLY']:
-                    tls_groups.append(PhenixSelection.format(ag))
-                else:
-                    tls_groups.append(PhenixSelection.format(ag)+" and (name C or name CA or name N or name O)")
-            for ag in sidechains(h).atom_groups():
-                if ag.resname in ['ALA','GLY']:
-                    continue
-                else:
-                    tls_groups.append(PhenixSelection.format(ag)+" and not (name C or name CA or name N or name O)")
-        assert tls_groups, 'No TLS groups found: mode={}'.format(mode)
-
-        # Add groups to a params file, and pass file to the command object
-        tls_eff = os.path.join(sweep_dir, 'fitting_groups.eff')
-        with open(tls_eff, 'w') as fh:
-            fh.write('\n'.join([r'tls_group="{}"'.format(g) for g in sorted(tls_groups)]))
-        cmd.add_command_line_arguments(tls_eff)
-    
-        cmd.n_cpus = min(params.settings.max_cpus_per_job, len(tls_groups))
-        cmd.add_command_line_arguments(r'cpus={}'.format(cmd.n_cpus))
-
-    assert len(params.options.fitting_groups) == len(jobs)
-
-    for mode, cmd in zip(params.options.fitting_groups, jobs):
-        log.subheading(mode)
-        cmd.print_settings()
-
-    return jobs
-
-def create_sweep_refinement_type(params, log=None):
+def create_sweeps(params, log=None):
 
     if log is None: log = Log(verbose=True)
 
+    # List of jobs
     jobs = []
 
+    # -------------------------------------->
+    # Create sweep by refinement type
+    # -------------------------------------->
     for ref_type in params.options.refinements:
-
         log.heading('Creating jobs to analyse {}-refined structures'.format(ref_type))
 
-        pdbs = sorted(glob.glob(os.path.join(params.input.refinement_dir, '*', '*-{}.pdb'.format(ref_type))))
-        log('Found {} files.'.format(len(pdbs)))
+        # Look for PDB files
+        all_pdbs = sorted(glob.glob(os.path.join(params.input.refinement_dir, '*', '*-{}.pdb'.format(ref_type))))
+        log('Found {} files.'.format(len(all_pdbs)))
+
         out_dir = easy_directory(os.path.join(params.output.out_dir, ref_type))
         log('Outputting to directory: {}'.format(out_dir))
 
-        jobs.extend(create_sweep_tls_group_choice(input_pdbs=pdbs, out_dir=out_dir, params=params))
+        # Read in the models
+        log('Loading datasets')
+        datasets = [ModelAndData.from_file(model_filename=p, data_filename=p.replace('.pdb','.mtz')) for p in all_pdbs]
+
+        # Extract the resolution limits
+        resolution_limits = numpy.array([d.data.summary.high_res for d in datasets])
+        log(str(resolution_limits))
+
+        # -------------------------------------->
+        # Iterate through the resolution range partitioning
+        # -------------------------------------->
+        for r_step in params.sweep_parameters.resolution_partitioning:
+            log.heading('Partitioning datasets by {}A'.format(r_step))
+
+            # Loop variables
+            r_min = 0.0
+            r_max = resolution_limits.max()
+
+            # Iterate through all resolutions
+            while r_min < r_max:
+                print r_step, r_min, r_max
+
+                # Resolution limits for this loop
+                r_loop_min = r_min
+                r_loop_max = r_min+r_step
+                # Datasets between these resolutions
+                d_sel = (resolution_limits <= r_loop_max) * (resolution_limits > r_loop_min)
+                n_sel = sum(d_sel)
+                log('{} new datasets at this resolution'.format(n_sel))
+
+                # Update loop variable
+                r_min = r_loop_max
+
+                # No datasets selected: skip to next iteration
+                if n_sel == 0:
+                    continue
+
+                # Select datasets at this resolution block
+                r_loop_datasets = [d for i,d in zip(d_sel, datasets) if i]
+                r_loop_d_reslns = resolution_limits[d_sel]
+
+                # -------------------------------------->
+                # Iterate through number of datasets for characterisation
+                # -------------------------------------->
+                for n_use in params.sweep_parameters.datasets_per_characterisation:
+                    if n_use > n_sel: continue
+                    log('> Sampling sets of {} datasets from {} datasets'.format(n_use, len(r_loop_datasets)))
+
+                    # -------------------------------------->
+                    # How many times to bootstrap this selection
+                    # -------------------------------------->
+                    n_bootstrap = 10
+                    for i_sample in range(n_bootstrap):
+                        # Sample datasets for this round
+                        sel_dataset = numpy.random.choice(r_loop_datasets, size=n_use, replace=False)
+
+#                        # -------------------------------------->
+#                        # Iterate through optimisation cutoffs
+#                        # -------------------------------------->
+#                        for opt_cutoff in params.sweep_parameters.optimisation_cutoffs:
+#                            if opt_cutoff > r_loop_max: continue
+#
+#                            # Number of datasets actually used for optimisation
+#                            n_eff = sum(r_loop_d_reslns < opt_cutoff)
+#                            if n_eff == 0: continue
+
+                        #############################################
+                        # Actually generate the sweep folders, etc.
+                        #############################################
+                        sweep_dir = easy_directory(os.path.join(out_dir,
+                                                 'range_{}-{}'.format(r_loop_min,r_loop_max)+
+                                                 '_ndatasets_{}'.format(n_use)+
+                                                 '_runnumber_{}'.format(i_sample+1)
+                                                 #'_optcutoff_{}'.format(opt_cutoff)+
+                                                 #'_optndsets_{}'.format(n_eff)
+                                                ))
+                        job = actually_generate_sweep(sweep_dir = sweep_dir,
+                                                      input_pdbs = [d.model.filename for d in sel_dataset],
+                                                      #opt_cutoff = opt_cutoff,
+                                                      params = params)
+
+                        jobs.append(job)
 
     return jobs
 
@@ -204,16 +264,22 @@ def write_sweeps(jobs, params, log=None):
 
     log.heading('Writing commands for {} jobs'.format(len(jobs)))
 
-    with open(params.output.out_script, 'w') as fh:
-        fh.write('#!/usr/bin/env bash\n\n')
+    # Store all commands in a sub dir (there may be thousands)
+    script_dir = easy_directory(os.path.join(params.output.out_dir, 'shell_scripts'))
+
+    # Name of the master shell script
+    out_script = os.path.join(script_dir, params.output.out_script)
+
+    with open(out_script, 'w') as fh:
+        fh.write('#!/usr/bin/env bash -l\n\n')
         for i, j in enumerate(jobs):
             log.subheading('Job {} of {}'.format(i+1, len(jobs)))
             log(str(j))
-            job_file = os.path.splitext(params.output.out_script)[0]+'-job-{}.sh'.format(i+1)
+            job_file = os.path.splitext(out_script)[0]+'-job-{}.sh'.format(i+1)
             log('Writing command to {}'.format(job_file))
             with open(job_file, 'w') as jf:
                 cmd = j.as_command()
-                jf.write('#!/usr/bin/env bash\n\n')
+                jf.write('#!/usr/bin/env bash -l\n\n')
                 jf.write(cmd+'\n')
 #            fh.write('qsub -pe orte {} {}\n'.format(j.n_cpus, os.path.abspath(job_file)))
             fh.write('qsub {}\n'.format(os.path.abspath(job_file)))
@@ -252,7 +318,7 @@ def run(params):
 
     if params.input.pdb: run_refinements(params)
 
-    jobs = create_sweep_refinement_type(params)
+    jobs = create_sweeps(params)
 
     if params.output.out_script is not None:
         write_sweeps(jobs, params)
