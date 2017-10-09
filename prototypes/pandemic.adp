@@ -120,10 +120,10 @@ fitting {
         number_of_modes_per_group = 1
             .help = 'how many TLS models to fit per group of atoms?'
             .type = int
-        max_datasets_for_optimisation = 20
+        max_datasets_for_optimisation = None
             .help = 'how many datasets should be used for optimising the TLS parameters?'
             .type = int
-        max_resolution_for_optimisation = 3.0
+        max_resolution_for_optimisation = None
             .help = 'resolution limit for dataset to be used for TLS optimisation'
             .type = float
     }
@@ -284,13 +284,13 @@ class TLSAmplitudeSet(object):
 
     def get(self, components, datasets=None):
         idx = self._str_to_idx(components)
-        if datasets: return self.values[datasets, idx]
-        else:        return self.values[:, idx]
+        if datasets is not None:    return self.values[datasets, idx]
+        else:                       return self.values[:, idx]
 
     def set(self, vals, components, datasets=None):
         idx = self._str_to_idx(components)
-        if datasets: self.values[datasets, idx] = vals
-        else:        self.values[:, idx] = vals
+        if datasets is not None:    self.values[datasets, idx] = vals
+        else:                       self.values[:, idx] = vals
 
     def reset(self, components, datasets=None):
         self.set(vals=1.0, components=components, datasets=datasets)
@@ -712,7 +712,7 @@ class MultiDatasetUijParameterisation(Program):
             assert os.path.exists(m.i_mtz), 'MTZ does not exist: {}'.format(m.i_mtz)
 
             cs = CrystalSummary.from_mtz(m.i_mtz)
-            if cs.high_res < self._opt_datasets_res_limit:
+            if (self._opt_datasets_res_limit is None) or (cs.high_res < self._opt_datasets_res_limit):
                 self._opt_datasets_selection.append(i_m)
 
         # Check for errors - Structures not all the same?
@@ -3199,13 +3199,13 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 for cpt in 'TLS':
                     self.log.subheading('Optimising {} parameters for TLS mode {}'.format(cpt, i_tls+1))
                     # Set penalty weights (non-zero for T components to prevent sling-shotting)
-                    #if cpt == 'T':  self.penalty.set_weights(ovr_weight=1.00)
-                    #else:           self.penalty.set_weights(ovr_weight=0.01)
+                    #if (i_cycle == 0) and (cpt == 'T'): self.penalty.set_weights(ovr_weight=1.00)
+                    #else:                               self.penalty.set_weights(ovr_weight=0.01)
                     # Set penalty weights -- fixed for T or iteratively reduce weight over number of cycles
                     #if cpt == 'T':  ovr_weight = 0.01
                     #else:           ovr_weight = 0.001 + 0.009*(10**(-i_tls))
-                    ovr_weight = 0.005 + 0.005*(10**(-i_cycle))
-                    self.penalty.set_weights(ovr_weight=ovr_weight)
+                    #ovr_weight = 0.005 + 0.005*(10**(-i_cycle))
+                    self.penalty.set_weights(ovr_weight=0.01)
                     # Select variables for optimisation -- model only
                     self._select(optimise_model      = True,
                                  optimise_amplitudes = False,
