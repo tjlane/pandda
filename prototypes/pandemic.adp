@@ -127,7 +127,7 @@ fitting {
             .help = 'resolution limit for dataset to be used for TLS optimisation'
             .type = float
     }
-    number_of_macro_cycles = 2
+    number_of_macro_cycles = 1
         .help = 'how many fitting cycles to run (over all levels)'
         .type = int
     number_of_micro_cycles = 3
@@ -434,7 +434,7 @@ class MultiDatasetTLSModelList(object):
                 amp_vals = m.amplitudes.get(components=c)
                 if (amp_vals < error_cut).any():
                     raise Failure('Negative amplitudes < {} obtained for model {} component {}.\n'.format(error_cut, i+1, c) + \
-                                  '\n'.join(['> Dataset {}, value: {}'.format(d+1, a) for d,a in amp_vals if a<error_cut]))
+                                  '\n'.join(['> Dataset {}, value: {}'.format(d+1, a) for d,a in enumerate(amp_vals) if a<error_cut]))
                 reset_sel = (amp_vals < -0.0)
                 if reset_sel.any():
                     reset_dst = numpy.where(reset_sel)[0]
@@ -460,8 +460,8 @@ class MultiDatasetTLSModelList(object):
 
 class _UijPenalties(object):
     _tol = 1e-6
-    _mdl_weight = 1000
-    _amp_weight = 1000
+    _mdl_weight = 10000
+    _amp_weight = 10000
     _uij_weight = 10.0
     _ovr_weight = 1.0
 
@@ -2476,8 +2476,8 @@ class MultiDatasetHierarchicalUijFitter(object):
                 self.update_atomic_mask(percentile=90, atomic_uij=self.residual.extract())
                 self.log('Removing datasets with high fit rmsds from TLS optimisation')
                 self.update_dataset_mask(percentile=95, observed_fitted_differences=self.observed_uij-fitted_uij_by_level.sum(axis=0))
-                self.log('Removing uij residuals from target function')
-                fitted_uij_by_level[-1] = 0.0
+                self.log('Resetting fitted Uijs to Zero for next cycle')
+                fitted_uij_by_level[:] = 0.0
 
             # Ensure the masks are up-to-date
             self.apply_masks()
@@ -2771,7 +2771,7 @@ class _UijOptimiser(object):
         optimised = simplex.simplex_opt(dimension = len(opt_simplex[0]),
                                         matrix    = map(flex.double, opt_simplex),
                                         evaluator = self.evaluator,
-                                        tolerance = 1e-02)
+                                        tolerance = 1e-03)
         # Extract and update current values
         self._inject(values=optimised.get_solution(), selection=sel_dict)
         if self._running_summary:

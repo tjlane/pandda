@@ -52,9 +52,6 @@ input {
         .help = "input directory, containing different B-factor refinements"
         .optional = False
         .type = str
-    analysis_dir = md_adp_analysis
-        .help = "directory to dunp the analysis into"
-        .type = str
     labelling = filename *foldername
         .type = choice
 }
@@ -64,6 +61,9 @@ output {
         .type = str
     out_script = run_adp_sweeps.sh
         .help = "output script to run jobs"
+        .type = str
+    analysis_dir = md_adp_analysis
+        .help = "directory to dunp the analysis into"
         .type = str
 }
 options {
@@ -134,8 +134,8 @@ def run_refinements(params, log=None):
 
 def actually_generate_sweep(sweep_dir,
                             input_pdbs,
-                            #opt_cutoff,
-                            params):
+                            params,
+                            opt_cutoff=None):
 
     sweep_dir = easy_directory(sweep_dir)
 
@@ -149,6 +149,9 @@ def actually_generate_sweep(sweep_dir,
     cmd.add_command_line_arguments(r'labelling=foldername')
     cmd.add_command_line_arguments(pdb_eff)
     cmd.add_command_line_arguments(r'out_dir={}'.format(sweep_dir))
+    if opt_cutoff is not None:
+        cmd.add_command_line_arguments(r'max_resolution_for_optimisation={}'.format(opt_cutoff))
+
     cmd.print_settings()
 
     return cmd
@@ -160,9 +163,11 @@ def create_sweeps(params, log=None):
     # List of jobs
     jobs = []
 
+    ######################################################################
     # -------------------------------------->
     # Create sweep by refinement type
     # -------------------------------------->
+    ######################################################################
     for ref_type in params.options.refinements:
         log.heading('Creating jobs to analyse {}-refined structures'.format(ref_type))
 
@@ -181,9 +186,11 @@ def create_sweeps(params, log=None):
         resolution_limits = numpy.array([d.data.summary.high_res for d in datasets])
         log(str(resolution_limits))
 
+        ######################################################################
         # -------------------------------------->
         # Iterate through the resolution range partitioning
         # -------------------------------------->
+        ######################################################################
         for r_step in params.sweep_parameters.resolution_partitioning:
             log.heading('Partitioning datasets by {}A'.format(r_step))
 
@@ -229,16 +236,6 @@ def create_sweeps(params, log=None):
                         # Sample datasets for this round
                         sel_dataset = numpy.random.choice(r_loop_datasets, size=n_use, replace=False)
 
-#                        # -------------------------------------->
-#                        # Iterate through optimisation cutoffs
-#                        # -------------------------------------->
-#                        for opt_cutoff in params.sweep_parameters.optimisation_cutoffs:
-#                            if opt_cutoff > r_loop_max: continue
-#
-#                            # Number of datasets actually used for optimisation
-#                            n_eff = sum(r_loop_d_reslns < opt_cutoff)
-#                            if n_eff == 0: continue
-
                         #############################################
                         # Actually generate the sweep folders, etc.
                         #############################################
@@ -251,10 +248,38 @@ def create_sweeps(params, log=None):
                                                 ))
                         job = actually_generate_sweep(sweep_dir = sweep_dir,
                                                       input_pdbs = [d.model.filename for d in sel_dataset],
-                                                      #opt_cutoff = opt_cutoff,
                                                       params = params)
 
                         jobs.append(job)
+
+        ######################################################################
+        # -------------------------------------->
+        # Create one sweep through optimisation cutoffs for all datasets
+        # -------------------------------------->
+        ######################################################################
+        out_dir = easy_directory(os.path.join(params.output.out_dir, ref_type+'-opt-cutoff'))
+        for opt_cutoff in params.sweep_parameters.optimisation_cutoffs:
+
+            # Number of datasets actually used for optimisation
+            n_eff = sum(resolution_limits < opt_cutoff)
+            # Skip if none above cutoff
+            if n_eff == 0: continue
+
+            # Create sweeps
+            sweep_dir = easy_directory(os.path.join(out_dir,
+                                     'all'+
+                                     '_optcutoff_{}'.format(opt_cutoff)+
+                                     '_optndsets_{}'.format(n_eff)
+                                    ))
+            job = actually_generate_sweep(sweep_dir = sweep_dir,
+                                          input_pdbs = [d.model.filename for d in datasets],
+                                          opt_cutoff = opt_cutoff,
+                                          params = params)
+            jobs.append(job)
+
+            # Break if this is higher than the lowest resolution dataset
+            if opt_cutoff > resolution_limits.max():
+                break
 
     return jobs
 
@@ -268,7 +293,7 @@ def write_sweeps(jobs, params, log=None):
     script_dir = easy_directory(os.path.join(params.output.out_dir, 'shell_scripts'))
 
     # Name of the master shell script
-    out_script = os.path.join(script_dir, params.output.out_script)
+    out_script = os.path.join(script_dir, os.path.basename(params.output.out_script))
 
     with open(out_script, 'w') as fh:
         fh.write('#!/usr/bin/env bash -l\n\n')
@@ -281,29 +306,7 @@ def write_sweeps(jobs, params, log=None):
                 cmd = j.as_command()
                 jf.write('#!/usr/bin/env bash -l\n\n')
                 jf.write(cmd+'\n')
-#            fh.write('qsub -pe orte {} {}\n'.format(j.n_cpus, os.path.abspath(job_file)))
             fh.write('qsub {}\n'.format(os.path.abspath(job_file)))
-
-def run_sweeps(jobs, params, log=None):
-
-    if log is None: log = Log(verbose=True)
-
-    log.heading('Running {} jobs'.format(len(jobs)))
-
-    if params.settings.concurrent_jobs > 1:
-        for i, j in enumerate(jobs):
-            log.subheading('Job {} of {}'.format(i+1, len(jobs)))
-            log(str(j))
-        log.subheading('Running {} jobs ({} at a time)'.format(len(jobs),params.settings.concurrent_jobs))
-        ret = libtbx.easy_mp.pool_map(processes=params.settings.concurrent_jobs, func=wrapper_run, args=jobs, chunksize=1)
-    else:
-        for i, j in enumerate(jobs):
-            log.subheading('Job {} of {}'.format(i+1, len(jobs)))
-            log(str(j))
-            ret = wrapper_run(j)
-
-#    for i, j in enumerate(ret):
-#        j.write_output('job-{}.log'.format(i+1))
 
 ############################################################################
 
@@ -312,18 +315,21 @@ def run(params):
     params.output.out_dir = os.path.abspath(params.output.out_dir)
     params.input.refinement_dir = os.path.abspath(params.input.refinement_dir)
 
-    easy_directory(params.output.out_dir)
-
     validate_parameters(params)
 
-    if params.input.pdb: run_refinements(params)
+    # Perform refinements if required
+    if params.input.pdb:
+        run_refinements(params)
 
-    jobs = create_sweeps(params)
-
-    if params.output.out_script is not None:
+    # Create parameterisation or analyse them
+    if not os.path.exists(params.output.out_dir):
+        # create mode
+        easy_directory(params.output.out_dir)
+        jobs = create_sweeps(params)
         write_sweeps(jobs, params)
     else:
-        run_sweeps(jobs, params)
+        # analysis mode
+        process_output(params)
 
     #embed()
 
