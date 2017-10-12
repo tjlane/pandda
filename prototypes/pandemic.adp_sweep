@@ -62,9 +62,6 @@ output {
     out_script = run_adp_sweeps.sh
         .help = "output script to run jobs"
         .type = str
-    analysis_dir = md_adp_analysis
-        .help = "directory to dunp the analysis into"
-        .type = str
 }
 options {
     refinements = isotropic tls *anisotropic
@@ -83,8 +80,9 @@ sweep_parameters {
         .type = choice(multi=True)
         .help = "Try different optimisation cutoffs for datasets in a partitioned group - can high resolution datasets parameterise low-resolution datasets?"
 }
-parameterisation {
-    tbd = True
+process {
+    out_csv = combined_data.csv
+        .type = str
 }
 settings {
     max_cpus_per_job = 1
@@ -103,6 +101,7 @@ def wrapper_run(arg):
 
 def validate_parameters(params):
     assert os.path.exists(params.input.refinement_dir)
+    params.input.refinement_dir = os.path.abspath(params.input.refinement_dir)
 
     params.sweep_parameters.resolution_partitioning         = map(float, params.sweep_parameters.resolution_partitioning        )
     print 'Resolution partitions: {}'.format(params.sweep_parameters.resolution_partitioning)
@@ -113,24 +112,6 @@ def validate_parameters(params):
 
     pass
 
-def run_refinements(params, log=None):
-
-    if log is None: log = Log(verbose=True)
-    log.heading('Creating B-factor refinement job')
-
-    cmd = CommandManager('pandemic.adp')
-    cmd.add_command_line_arguments(params.input.pdb)
-    cmd.add_command_line_arguments(params.input.cif)
-    cmd.add_command_line_arguments(r'tls_selections={}'.format(params.options.tls_selections))
-    cmd.add_command_line_arguments(r'labelling={}'.format(params.input.labelling))
-    cmd.add_command_line_arguments(r'b_factor_models={}'.format('+'.join(params.options.refinements)))
-    cmd.add_command_line_arguments(r'out_dir={}'.format(params.input.refinement_dir))
-    cmd.add_command_line_arguments(r'log_file={}.log'.format(params.input.dir))
-    cmd.add_command_line_arguments(r'cpus={}'.format(params.settings.max_cpus_per_job*params.settings.concurrent_jobs))
-    cmd.print_settings()
-    ret = cmd.run()
-    if ret != 0:
-        raise Exception('Failed in refinement')
 
 def actually_generate_sweep(sweep_dir,
                             input_pdbs,
@@ -308,21 +289,96 @@ def write_sweeps(jobs, params, log=None):
                 jf.write(cmd+'\n')
             fh.write('qsub {}\n'.format(os.path.abspath(job_file)))
 
+def process_output(params):
+
+    log = Log(verbose=True)
+
+    assert os.path.exists(params.output.out_dir)
+    out_csv = os.path.join(params.output.out_dir, params.process.out_csv)
+    assert not os.path.exists(out_csv), 'file already exists: {}'.format(out_csv)
+    ref_csv = os.path.join(params.output.out_dir, 'reference_r_values.csv')
+    assert os.path.exists(ref_csv), 'CSV containing reference R-free, R-work, etc, does not exist: {}'.format(ref_csv)
+    ref_table = pandas.read_csv(ref_csv, index_col=0)
+
+    # Create table to contain output
+    out_table = pandas.DataFrame(columns=['dataset', 'method', 'ref_type', 'n_dst', 'n_opt', 'n_run', 'res_opt', 'res_range', 'res_high', 'res_low', 'R-free', 'R-work', 'R-gap', 'dR-free', 'dR-work', 'dR-gap'])
+
+    program_csvs = glob.glob(os.path.join(params.output.out_dir,'*/*/dataset_scores.csv'))
+    assert program_csvs, 'no program csvs found'
+    for data_csv in program_csvs:
+        log.heading('Reading {}'.format(data_csv))
+
+        # Read data?
+        data_table = pandas.read_csv(data_csv, index_col=0)
+
+        run_dir = os.path.dirname(data_csv)
+        ref_dir = os.path.dirname(run_dir)
+
+        run_info = os.path.basename(run_dir).split('_')
+        log('> Run Info: {}'.format(run_info))
+
+        ref_type = os.path.basename(ref_dir).split('-')[0]
+        log('> Refinement type: {}'.format(ref_type))
+
+        if 'range' in run_info:
+            res_range = run_info[run_info.index('range')+1]
+            res_low, res_high = res_range.split('-')
+        else:
+            res_range = res_low = res_high = 'all'
+
+        if 'ndatasets' in run_info:
+            n_opt = run_info[run_info.index('ndatasets')+1]
+            n_dst = n_opt
+            res_opt = 'all'
+        elif 'optcutoff' in run_info:
+            n_opt = run_info[run_info.index('optndsets')+1]
+            n_dst = 'all'
+            res_opt = run_info[run_info.index('optcutoff')+1]
+        else:
+            n_opt = None
+            n_dst = None
+            res_opt = None
+
+        if 'runnumber' in run_info:
+            n_run = run_info[run_info.index('runnumber')+1]
+        else:
+            n_run = None
+
+        for method in ['single-dataset', 'multi-dataset']:
+
+            log.subheading(method)
+
+            if method == 'single-dataset':
+                prefix = 'old-'
+            elif method == 'multi-dataset':
+                prefix = 'new-'
+            else:
+                raise Exception()
+
+            for dataset in data_table.index:
+                log(dataset)
+                log(data_table.loc[dataset])
+
+                for r_val in ['R-free', 'R-work', 'R-gap']:
+
+                    pre_val = prefix+r_val
+
+
+
+
 ############################################################################
 
 def run(params):
 
     params.output.out_dir = os.path.abspath(params.output.out_dir)
-    params.input.refinement_dir = os.path.abspath(params.input.refinement_dir)
-
-    validate_parameters(params)
 
     # Perform refinements if required
-    if params.input.pdb:
-        run_refinements(params)
+#    if params.input.pdb and not os.path.exists(params.input.refinement_dir):
+#        run_refinements(params)
 
     # Create parameterisation or analyse them
     if not os.path.exists(params.output.out_dir):
+        validate_parameters(params)
         # create mode
         easy_directory(params.output.out_dir)
         jobs = create_sweeps(params)

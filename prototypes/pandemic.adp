@@ -3205,7 +3205,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                     #if cpt == 'T':  ovr_weight = 0.01
                     #else:           ovr_weight = 0.001 + 0.009*(10**(-i_tls))
                     #ovr_weight = 0.005 + 0.005*(10**(-i_cycle))
-                    self.penalty.set_weights(ovr_weight=0.01)
+                    self.penalty.set_weights(ovr_weight=0.001)
                     # Select variables for optimisation -- model only
                     self._select(optimise_model      = True,
                                  optimise_amplitudes = False,
