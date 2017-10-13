@@ -300,8 +300,10 @@ def process_output(params):
     assert os.path.exists(ref_csv), 'CSV containing reference R-free, R-work, etc, does not exist: {}'.format(ref_csv)
     ref_table = pandas.read_csv(ref_csv, index_col=0)
 
+    COLUMN_NAMES = ['dataset', 'resolution', 'method', 'ref_type', 'n_dst', 'n_opt', 'n_run', 'res_opt', 'sel_res_range', 'sel_res_high', 'sel_res_low', 'r_free', 'r_work', 'r_gap', 'dr_free', 'dr_work', 'dr_gap']
+
     # Create table to contain output
-    out_table = pandas.DataFrame(columns=['dataset', 'method', 'ref_type', 'n_dst', 'n_opt', 'n_run', 'res_opt', 'res_range', 'res_high', 'res_low', 'R-free', 'R-work', 'R-gap', 'dR-free', 'dR-work', 'dR-gap'])
+    out_table = pandas.DataFrame(columns=COLUMN_NAMES)
 
     program_csvs = glob.glob(os.path.join(params.output.out_dir,'*/*/dataset_scores.csv'))
     assert program_csvs, 'no program csvs found'
@@ -321,10 +323,10 @@ def process_output(params):
         log('> Refinement type: {}'.format(ref_type))
 
         if 'range' in run_info:
-            res_range = run_info[run_info.index('range')+1]
-            res_low, res_high = res_range.split('-')
+            sel_res_range = run_info[run_info.index('range')+1]
+            sel_res_high, sel_res_low = sel_res_range.split('-')
         else:
-            res_range = res_low = res_high = 'all'
+            sel_res_range = sel_res_low = sel_res_high = 'all'
 
         if 'ndatasets' in run_info:
             n_opt = run_info[run_info.index('ndatasets')+1]
@@ -344,25 +346,39 @@ def process_output(params):
         else:
             n_run = None
 
-        for method in ['single-dataset', 'multi-dataset']:
+        # Iterate through all of the datasets for this run
+        for dataset in data_table.index:
+            log(dataset)
 
-            log.subheading(method)
+            dataset_row = data_table.loc[dataset]
+            dataset_ref = ref_table.loc[dataset]
 
-            if method == 'single-dataset':
-                prefix = 'old-'
-            elif method == 'multi-dataset':
-                prefix = 'new-'
-            else:
-                raise Exception()
+            for method in ['single-dataset', 'multi-dataset']:
+                new_row_idx = len(out_table.index)
+                log('> '+str(new_row_idx)+'\t'+method)
 
-            for dataset in data_table.index:
-                log(dataset)
-                log(data_table.loc[dataset])
+                if method == 'single-dataset':
+                    prefix = 'old-'
+                elif method == 'multi-dataset':
+                    prefix = 'new-'
+                else:
+                    raise Exception()
 
-                for r_val in ['R-free', 'R-work', 'R-gap']:
+                resolution = dataset_ref['resolution']
+                r_free = dataset_row[prefix+'R-free']
+                r_work = dataset_row[prefix+'R-work']
+                r_gap  = dataset_row[prefix+'R-gap']
 
-                    pre_val = prefix+r_val
+                dr_free = r_free - dataset_ref['R-free']
+                dr_work = r_work - dataset_ref['R-work']
+                dr_gap  = r_gap  - dataset_ref['R-gap']
 
+                out_table.loc[new_row_idx] = map(eval, COLUMN_NAMES)
+                #log(out_table.loc[new_row_idx])
+
+    # Write output table
+    log('Writing output table of {} rows: {}'.format(len(out_table.index), out_csv))
+    out_table.to_csv(out_csv)
 
 
 

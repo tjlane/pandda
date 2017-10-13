@@ -1827,7 +1827,7 @@ class MultiDatasetUijParameterisation(Program):
                                            100*table['R-work Change'],
                                            100*table['R-gap Change']],
                                  legends = ['R-free change','R-work change','R-gap change'],
-                                 title = 'R-value changes between for input and fitted B-factors',
+                                 title = 'R-value changes between input and fitted B-factors',
                                  x_lab = 'Resolution (A)',
                                  y_lab = 'R-value change (%)',
                                  rotate_x_labels = True,
@@ -3011,7 +3011,8 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
 
     def _fitting_penalties(self, uij_fit, uij_obs):
         ovr_penalties = []; [ovr_penalties.extend([self.penalty.uij_size(*vv) for vv in zip(*v)]) for v in zip(uij_fit,uij_obs)]
-        return numpy.sum(ovr_penalties)
+        # Normalise penalties by the number of datasets!
+        return numpy.sum(ovr_penalties)*1.0/len(self._opt_dsts)
 
     def _parameter_penalties(self):
         tls_mdl, tls_amp = self.result()
