@@ -172,9 +172,9 @@ def run(params):
         real_pdb = glob.glob(output_prefix+'*.pdb')[0]
         real_mtz = glob.glob(output_prefix+'*.mtz')[0]
     except:
-        print('Refinement has failed - outptu files do not exist')
-        print(real_pdb)
-        print(real_mtz)
+        log('Refinement has failed - output files do not exist')
+        log('{}: {}'.format(output_prefix+'*.pdb', glob.glob(output_prefix+'*.pdb')))
+        log('{}: {}'.format(output_prefix+'*.mtz', glob.glob(output_prefix+'*.mtz')))
         raise
 
     # List of links to make at the end of the run
