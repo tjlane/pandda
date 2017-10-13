@@ -1,6 +1,6 @@
 from __future__ import print_function
 
-import os, sys, glob, time, re
+import os, sys, glob, time, re, shutil
 import copy, warnings
 
 import numpy, pandas, scipy.stats
@@ -1382,8 +1382,12 @@ class PanddaMultiDatasetAnalyser(Program):
             link_pdb = dataset.file_manager.get_file('input_model')
             link_mtz = dataset.file_manager.get_file('input_data')
             # Link the input files to the output folder
-            if not os.path.exists(link_pdb): rel_symlink(orig=dataset.model.filename, link=link_pdb)
-            if not os.path.exists(link_mtz): rel_symlink(orig=dataset.data.filename, link=link_mtz)
+            if not os.path.exists(link_pdb):
+                self.log('Linking ...{} to ...{}'.format(dataset.model.filename[-50:], link_pdb[-50:]))
+                rel_symlink(orig=dataset.model.filename, link=link_pdb)
+            if not os.path.exists(link_mtz):
+                self.log('Linking ...{} to ...{}'.format(dataset.data.filename[-50:], link_mtz[-50:]))
+                rel_symlink(orig=dataset.data.filename, link=link_mtz)
             # ==============================>
             # Search for ligand files and copy them to the output ligands folder
             # ==============================>
@@ -1395,8 +1399,11 @@ class PanddaMultiDatasetAnalyser(Program):
                 for lig in lig_matches:
                     out_path = os.path.join(dataset.file_manager.get_dir('ligand'), os.path.basename(lig))
                     if os.path.exists(lig) and (not os.path.exists(out_path)):
-                        try: shutil.copy(lig, out_path)
-                        except: pass
+                        self.log('Copying ...{} to ...{}'.format(lig[-50:], out_path[-50:]))
+                        try:
+                            shutil.copy(lig, out_path)
+                        except:
+                            self.log('Failed to copy -- but continuing anyway')
             # ==============================>
             # Lastly: Update the pointer to the new path (relative to the pandda directory)
             # ==============================>
@@ -1404,6 +1411,7 @@ class PanddaMultiDatasetAnalyser(Program):
             dataset.data.filename = os.path.relpath(link_mtz, start=self.out_dir)
 
         self.datasets.add(loaded_datasets)
+        self.log.bar()
         self.log('{!s} Datasets Loaded (New).          '.format(len(loaded_datasets), True))
         self.log('{!s} Datasets Loaded (Total).        '.format(self.datasets.size(), True))
 
