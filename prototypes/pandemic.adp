@@ -93,6 +93,8 @@ output {
     out_dir = multi-dataset-b-factor-fitting
         .help = "output directory"
         .type = str
+    residue_images = True
+        .help = "Write residue-by-residue images of the output B-factors"
     diagnostics = False
         .help = "Write diagnostic graphs"
         .type = bool
@@ -460,21 +462,31 @@ class MultiDatasetTLSModelList(object):
 
 class _UijPenalties(object):
     _tol = 1e-6
-    _mdl_weight = 10000
-    _amp_weight = 10000
-    _uij_weight = 10.0
-    _ovr_weight = 1.0
+    _mult = 1e6
+    _mdl_weight = 1e2
+    _mdl_slope  = 1e2
+    _amp_weight = 1e1
+    _amp_slope  = 1e1
+    _uij_weight = 1e2
+    _uij_slope  = 1e3
+    _ovr_weight = 1e0
+    _ovr_slope  = 1e3
 
     def set_test_xyz(self, xyz, com):
         self._tst_xyz = xyz
         self._tst_com = com
 
-    def set_weights(self, mdl_weight=None, amp_weight=None, uij_weight=None, ovr_weight=None, log=None):
+    def set_weights(self, mdl_weight=None, amp_weight=None, uij_weight=None, ovr_weight=None,
+                          mdl_slope=None,  amp_slope=None,  uij_slope=None,  ovr_slope=None):
         """Set penalties for parameters to be invalid"""
         if mdl_weight is not None: self._mdl_weight = mdl_weight
         if amp_weight is not None: self._amp_weight = amp_weight
         if uij_weight is not None: self._uij_weight = uij_weight
         if ovr_weight is not None: self._ovr_weight = ovr_weight
+        if mdl_slope is not None: self._mdl_slope = mdl_slope
+        if amp_slope is not None: self._amp_slope = amp_slope
+        if uij_slope is not None: self._uij_slope = uij_slope
+        if ovr_slope is not None: self._ovr_slope = ovr_slope
         return self.summary()
 
     def summary(self):
@@ -484,10 +496,6 @@ class _UijPenalties(object):
         s += '\nInvalid Uij Penalty:           {}'.format(self._uij_weight)
         s += '\nFitted > Observed Uij Penalty: {}'.format(self._ovr_weight)
         return s
-
-    def amplitudes(self, values):
-        """Return penalty for having amplitudes with negative values"""
-        return self._amp_weight*self._standard_penalty_function(penalty=-1.0*numpy.sum(values[values<0.0]))
 
     def tls_params(self, values):
         """Return penalty for having unphysical TLS models"""
@@ -505,25 +513,42 @@ class _UijPenalties(object):
         else:
             s_penalty = 0.0
         # Calculate and return total penalty
-        return self._mdl_weight*self._standard_penalty_function(penalty=numpy.sum([t_penalty, l_penalty, s_penalty]))
+        penalty = numpy.sum([t_penalty, l_penalty, s_penalty])
+        return self._standard_penalty_function(penalty       = penalty,
+                                               fixed_penalty = self._mdl_weight,
+                                               slope_weight  = self._mdl_slope)
 
-        # Old penalty functions TBD
-        #t_penalty = flex.sum((self._sym_mat3_eigenvalues(t)<0.0).as_int())
-        #l_penalty = flex.sum((self._sym_mat3_eigenvalues(l)<0.0).as_int())
-        #s_penalty = numpy.max([flex.sum((self._sym_mat3_eigenvalues(uij)<0.0).as_int()) for uij in s_uij_values])
+    def amplitudes(self, values):
+        """Return penalty for having amplitudes with negative values"""
+        penalty = abs(numpy.sum(values[values<-1.0*self._tol]))
+        return self._standard_penalty_function(penalty       = penalty,
+                                               fixed_penalty = self._amp_weight,
+                                               slope_weight  = self._amp_slope)
+
+    def uij_valid(self, values):
+        assert len(values) == 6
+        penalty = self._standard_negative_eigenvalue_penalty(sym_mat3_vals=values)
+        return self._standard_penalty_function(penalty       = penalty,
+                                               fixed_penalty = self._uij_weight,
+                                               slope_weight  = self._uij_slope)
 
     def uij_size(self, fitted, target):
         """Add penalty for having fitted B-factors greater than observed"""
         if self._ovr_weight == 0.0: return 0.0
         values = [a-b for a,b in zip(target,fitted)]
-        return self._ovr_weight*self._standard_negative_eigenvalue_penalty(sym_mat3_vals=values)
-        #eig_values_fit = self._sym_mat3_eigenvalues(fitted)
-        #eig_values_tar = self._sym_mat3_eigenvalues(target)
-        #return self._ovr_weight*(flex.max(eig_values_fit)>flex.max(eig_values_tar))
+        penalty = self._standard_negative_eigenvalue_penalty(sym_mat3_vals=values)
+        return self._standard_penalty_function(penalty       = penalty,
+                                               fixed_penalty = self._ovr_weight,
+                                               slope_weight  = self._ovr_slope)
 
-    def uij_valid(self, values):
-        assert len(values) == 6
-        return self._uij_weight*self._standard_negative_eigenvalue_penalty(values)
+    def _standard_penalty_function(self, penalty, fixed_penalty, slope_weight=1.0):
+        """Simple step function for non-zero penalty + slope to provide minimisation gradient"""
+        assert penalty > -1.0*self._tol, 'penalties cannot be negative!'
+        return (penalty>self._tol)*(fixed_penalty + slope_weight*penalty)
+
+    def _standard_negative_eigenvalue_penalty(self, sym_mat3_vals):
+        eigenvalues = self._sym_mat3_eigenvalues(vals=sym_mat3_vals)
+        return self._sym_mat3_penalty(eigenvalues=eigenvalues)
 
     def _sym_mat3_eigenvalues(self, vals):
         assert len(vals) == 6
@@ -531,16 +556,7 @@ class _UijPenalties(object):
 
     def _sym_mat3_penalty(self, eigenvalues):
         """Calculate penalty for eigenvalues"""
-        return -1.0*flex.sum(eigenvalues.select(eigenvalues<-1.0*self._tol))
-
-    def _standard_penalty_function(self, penalty):
-        assert penalty > -1.0*self._tol, 'penalties cannot be negative!'
-        return (penalty>self._tol) + penalty
-
-    def _standard_negative_eigenvalue_penalty(self, sym_mat3_vals):
-        eigenvalues = self._sym_mat3_eigenvalues(vals=sym_mat3_vals)
-        eigenpenalty = self._sym_mat3_penalty(eigenvalues=eigenvalues)
-        return self._standard_penalty_function(penalty=eigenpenalty)
+        return -1.0*flex.sum(eigenvalues.select(eigenvalues<(-1.0*self._tol)))
 
 class _Simplex(object):
     def get_simplex(self, start, **kw_args):
@@ -877,6 +893,8 @@ class MultiDatasetUijParameterisation(Program):
         #---#                            Extract uijs                              #---#
         #------------------------------------------------------------------------------#
 
+        self.log('Extracting output Uijs from parameterised model...')
+
         # Extract the different components of the fitted uij values
         uij_lvl = self.fitter.extract_tls(sum_levels=False)
         uij_tls = uij_lvl.sum(axis=0)
@@ -895,6 +913,7 @@ class MultiDatasetUijParameterisation(Program):
         structure_dir = easy_directory(os.path.join(self.out_dir, 'structures'))
 
         # Create TLS headers for each dataset
+        self.log('Creating TLS headers for each structure')
         tls_headers = self.make_tls_headers(datasets=None, levels=None)
         # Fully parameterised structures
         self.log.bar()
@@ -1033,26 +1052,33 @@ class MultiDatasetUijParameterisation(Program):
 
         # Apply to each model and write out
         for i, mdl in enumerate(self.models):
-            # Create new copy of hierarchy and extract atoms
-            h = mdl.hierarchy.deep_copy()
-            a = h.atoms().select(sel)
-            # Apply new uijs
-            a.set_uij(flex.sym_mat3_double(uij[i]))
-            # Apply iso if given or set to 0
-            if iso is not None:
-                a.set_b(flex.double(iso[i]))
-            else:
-                a.set_b(flex.double(a.size(), 0))
-            # Create model paths and write model
+            # Create model paths
             mdl_d = easy_directory(os.path.join(out_dir, mdl.tag))
             mdl_f = os.path.join(mdl_d, mdl.tag+model_suffix)
             self.log('{} > {}'.format(mdl.tag, mdl_f))
-            # Write headers
-            if headers is not None:
-                with open(mdl_f, 'w') as fh:
-                    [fh.write(l[i].strip()+'\n') for l in headers]
-            h.write_pdb_file(mdl_f, open_append=open_append)
-            pdbs.append(mdl_f)
+            try:
+                # Create new copy of hierarchy and extract atoms
+                h = mdl.hierarchy.deep_copy()
+                a = h.atoms().select(sel)
+                # Apply new uijs
+                a.set_uij(flex.sym_mat3_double(uij[i]))
+                # Apply iso if given or set to 0
+                if iso is not None:
+                    a.set_b(flex.double(iso[i]))
+                else:
+                    a.set_b(flex.double(a.size(), 0))
+                # Write headers
+                if headers is not None:
+                    with open(mdl_f, 'w') as fh:
+                        [fh.write(l[i].strip()+'\n') for l in headers]
+                h.write_pdb_file(mdl_f, open_append=open_append)
+                pdbs.append(mdl_f)
+            except:
+                self.log.bar()
+                self.log('ERROR: Failed to write structure for dataset {}: ({})'.format(mdl.tag, mdl_f))
+                self.log(traceback.format_exc())
+                self.log.bar()
+                continue
 
         return pdbs
 
@@ -2110,7 +2136,7 @@ class MultiDatasetUijPlots(object):
             axis.set_xlim(xlim)
             if rotate_x_labels:
                 pyplot.setp(axis.get_xticklabels(), rotation=90)
-        fig.tight_layout()
+        #fig.tight_layout()
         fig.savefig(filename, dpi=300)
         pyplot.close(fig)
 
@@ -2845,7 +2871,7 @@ class _UijOptimiser(object):
             self.optimisation_rmsd    = rmsd
             self.optimisation_penalty = fpen
         if self._running_summary:
-            self.log('[{}] -> ({:10f}, {:10.0f})'.format(', '.join(['{:+10.5f}'.format(r) for r in parameters]), rmsd, fpen), show=False)
+            self.log('[{}] -> ({:10f}, {:10.3f})'.format(', '.join(['{:+10.5f}'.format(r) for r in parameters]), rmsd, fpen), show=False)
         return tot_val
 
 class MultiDatasetUijAtomOptimiser(_UijOptimiser):
@@ -2890,7 +2916,7 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
         self._fitted_uij = self.extract()
 
     def _update_target(self):
-        self._target_uij = self.target_uij[self._mask_dset]
+        self._target_uij = self.target_uij[self.get_dataset_mask()]
 
     #=======================+>
 
@@ -3012,7 +3038,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
     def _fitting_penalties(self, uij_fit, uij_obs):
         ovr_penalties = []; [ovr_penalties.extend([self.penalty.uij_size(*vv) for vv in zip(*v)]) for v in zip(uij_fit,uij_obs)]
         # Normalise penalties by the number of datasets!
-        return numpy.sum(ovr_penalties)*1.0/len(self._opt_dsts)
+        return numpy.sum(ovr_penalties)*1.0/self._opt_dict['n_dst']
 
     def _parameter_penalties(self):
         tls_mdl, tls_amp = self.result()
@@ -3026,10 +3052,10 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
     #=======================+>
 
     def _update_fitted(self):
-        self._fitted_uij = self._extract(mask_datasets=self._mask_dset, mask_atoms=self._mask_atom)
+        self._fitted_uij = self._extract(mask_datasets=self.get_dataset_mask(), mask_atoms=self.get_atomic_mask())
 
     def _update_target(self):
-        self._target_uij = self.target_uij[self._mask_dset][:,self._mask_atom]
+        self._target_uij = self.target_uij[self.get_dataset_mask()][:,self.get_atomic_mask()]
 
     #=======================+>
 
@@ -3066,13 +3092,11 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         if datasets is not None:
             assert min(datasets) >= 0
             assert max(datasets) < self._n_dst
-            self._opt_dsts = datasets
             self.set_dataset_mask(datasets)
-#        if atm is not None:
-#            assert min(atoms) >= 0
-#            assert max(atoms) < self._n_atm
-#            self._opt_atms = atoms
-#            self.set_atomic_mask(atoms)
+        if atoms is not None:
+            assert min(atoms) >= 0
+            assert max(atoms) < self._n_atm
+            self.set_atomic_mask(atoms)
 
         # Create a dictionary that FULLY defines the optimisation cycle
         self._opt_dict = {'model'      : self._optimise_model,
@@ -3080,9 +3104,9 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                           'components' : self._opt_cpts,
                           'n_cpt' : len(self._opt_cpts),
                           'n_mdl' : len(self._opt_mdls),
-                          'n_dst' : len(self._opt_dsts),
+                          'n_dst' : len(self.get_dataset_mask()),
                           'i_mdl' : self._opt_mdls,
-                          'i_dst' : self._opt_dsts}
+                          'i_dst' : self.get_dataset_mask()}
 #                          'i_atm' : self._opt_atms
 
         return self._opt_dict
@@ -3199,21 +3223,15 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 # Optimise each T, L, S component separately
                 for cpt in 'TLS':
                     self.log.subheading('Optimising {} parameters for TLS mode {}'.format(cpt, i_tls+1))
-                    # Set penalty weights (non-zero for T components to prevent sling-shotting)
-                    #if (i_cycle == 0) and (cpt == 'T'): self.penalty.set_weights(ovr_weight=1.00)
-                    #else:                               self.penalty.set_weights(ovr_weight=0.01)
-                    # Set penalty weights -- fixed for T or iteratively reduce weight over number of cycles
-                    #if cpt == 'T':  ovr_weight = 0.01
-                    #else:           ovr_weight = 0.001 + 0.009*(10**(-i_tls))
-                    #ovr_weight = 0.005 + 0.005*(10**(-i_cycle))
+                    # Set penalty weights
                     self.penalty.set_weights(ovr_weight=0.001)
                     # Select variables for optimisation -- model only
                     self._select(optimise_model      = True,
                                  optimise_amplitudes = False,
                                  components = cpt,
                                  models     = [i_tls],
-                                 datasets   = None,
-                                 atoms      = None)
+                                 datasets   = opt_dset_mask,
+                                 atoms      = opt_atom_mask)
                     # Run optimisation
                     self._optimise(running_summary=True)
                     # Log model summary
@@ -3226,13 +3244,17 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 # If it's the first iteration, assert all amplitudes are zero (in case amplitudes are optimised for zero-value TLS models)
                 if i_cycle == 0:
                     self._parameters.reset_amplitudes(components='TLS', modes=[i_tls])
+                # XXX TEST XXX reset ampltiudes to zero to prevent overparameterisation
+                self.log('Resetting all amplitudes to zero')
+                self._parameters.get(index=i_tls).amplitudes.set(vals=0.0, components='TLS')
                 # Select variables for optimisation -- amplitudes only
                 self._select(optimise_model      = False,
                              optimise_amplitudes = True,
                              components = 'TLS',
                              models     = mdl_cuml,
                              datasets   = None,
-                             atoms      = None)
+                             # Optimise with all atoms to prevent over-sizing
+                             atoms      = range(self._n_atm))
                 # Optimise all amplitudes dataset-by-dataset
                 jobs = []
                 for i_dst in xrange(self._n_dst):
@@ -3258,8 +3280,10 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 # Log model summary
                 self.log.bar(blank_before=True, blank_after=True)
                 self.log(self._parameters.get(index=i_tls).amplitudes.summary())
-                # Reapply dataset mask
-                self.set_dataset_mask(opt_dset_mask)
+
+            # Reapply atom and dataset masks
+            self.set_dataset_mask(opt_dset_mask)
+            self.set_atomic_mask(opt_atom_mask)
 
             # End of cycle house-keeping
             self.log('')
