@@ -232,6 +232,25 @@ class PhenixSelection(_Selection):
     name        = "name {}"
 
 
+class PymolSelection(_Selection):
+
+
+    _join_and = ' and '
+    _join_or  = ' or '
+    _sep_and  = '{}'
+    _sep_or   = '({})'
+
+    remove = ['','model ']
+
+    model       = "model {}"
+    chain       = "chain {:1}"
+    resseq      = "resi {}"
+    icode       = ""
+    resname     = "resn '{}'"
+    altloc      = "alt '{}'"
+    name        = "name {}"
+
+
 class _Formatter:
 
 
