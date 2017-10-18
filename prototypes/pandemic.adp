@@ -27,8 +27,9 @@ from giant.manager import Program
 from giant.dataset import CrystallographicModel
 from giant.structure.select import protein
 from giant.structure.tls import uij_from_tls_vector_and_origin
-from giant.structure.formatting import ShortLabeller, PhenixSelection
+from giant.structure.formatting import ShortLabeller, PhenixSelection, PymolSelection
 from giant.structure.select import backbone, sidechains
+from giant.structure.pymol import auto_residue_images, auto_chain_images, selection_images
 from giant.xray.crystal import CrystalSummary
 from giant.xray.refine import refine_phenix
 from giant.xray.tls import phenix_find_tls_groups
@@ -93,8 +94,9 @@ output {
     out_dir = multi-dataset-b-factor-fitting
         .help = "output directory"
         .type = str
-    residue_images = True
+    pymol_images = True
         .help = "Write residue-by-residue images of the output B-factors"
+        .type = bool
     diagnostics = False
         .help = "Write diagnostic graphs"
         .type = bool
@@ -624,6 +626,9 @@ class MultiDatasetUijParameterisation(Program):
 #        if log is None: log = Log(verbose=False)
         self.log = log
 
+        # List of non-fatal errors from the program (to be reported at the end)
+        self.errors = []
+
         self.params = params
 
         self.out_dir = params.output.out_dir
@@ -825,6 +830,21 @@ class MultiDatasetUijParameterisation(Program):
         self.log('Number of model parameters: {}'.format(n_p))
         self.log('Number of observed values: {}'.format(n_o))
         self.log('Data-parameter ratio (should be >1): {}'.format(float(n_o)/float(n_p)))
+
+    def show_errors(self):
+        """Print non-fatal errors accumulated during running"""
+        if len(self.errors) == 0:
+            self.log('Program completed with 0 errors')
+            self.log('')
+            return
+        self.log.subheading('{} non-fatal errors occurred during the program'.format(len(self.errors)))
+        for i, e in enumerate(self.errors):
+            self.log.bar()
+            self.log('Error {} of {}'.format(i+1, len(self.errors)))
+            self.log.bar()
+            self.log(e)
+        self.log.bar()
+        self.log.subheading('{} non-fatal errors occurred during the program'.format(len(self.errors)))
 
     def blank_master_hierarchy(self):
         h = self.master_h.deep_copy()
@@ -1197,6 +1217,7 @@ class MultiDatasetUijParameterisation(Program):
         out_dir = easy_directory(out_dir)
         csv_dir = easy_directory(os.path.join(out_dir, 'csvs'))
         png_dir = easy_directory(os.path.join(out_dir, 'graphs'))
+        pml_dir = easy_directory(os.path.join(out_dir, 'pymol'))
 
         self.log.subheading('Writing TLS models and amplitudes for each level')
         # Iterate through the levels
@@ -1312,6 +1333,7 @@ class MultiDatasetUijParameterisation(Program):
                                           title='Level {}, Mode {} - TLS Contributions'.format(i_level+1, i_tls+1),
                                           v_line_hierarchy=boundaries)
 
+            self.log('\tWriting structures')
             # Prefix for structures & graphs of uijs for this level and mode
             prefix = os.path.join(out_dir, 'level_{}-all-modes'.format(i_level+1))
             # Dictionary to hold the TLS components for this mode+level
@@ -1332,7 +1354,24 @@ class MultiDatasetUijParameterisation(Program):
             m_f = prefix+'-TLS.pdb'
             self.log('\t> {}'.format(m_f))
             m_h.write_pdb_file(m_f)
+            # Write pymol images of each chain and residue
+            if self.params.output.pymol_images:
+                self.log('\tGenerating pymol images')
+                pml_prefix = os.path.join(pml_dir, os.path.basename(prefix))
+                self.log('\t> {}xxx.png'.format(pml_prefix))
+                # Images for each chain
+                auto_chain_images(structure_filename = m_f,
+                                  output_prefix = pml_prefix,
+                                  style = 'lines+ellipsoids')
+                # Images for each group
+                blank_h = self.blank_master_hierarchy()
+                cache_h = blank_h.atom_selection_cache()
+                selection_images(structure_filename = m_f,
+                                 output_prefix = pml_prefix+'-group_',
+                                 selections = [PymolSelection.join_or([PymolSelection.format(a) for a in blank_h.atoms().select(cache_h.selection(s))]) for s in self.levels[i_level]],
+                                 style = 'lines+ellipsoids')
             # Write stacked bar plot of TLS for this level
+            self.log('\tWriting stacked bar plot of TLS contributions for this level')
             self.log('\t> {}xxx.png'.format(prefix+'-TLS'))
             self.plot.stacked_bar(prefix=prefix+'-TLS',
                                   hierarchies=[str_lvl[cpt] for cpt in 'TLS'],
@@ -1346,6 +1385,7 @@ class MultiDatasetUijParameterisation(Program):
         """Write the residual uijs to the master hierarchy structure"""
 
         out_dir = easy_directory(out_dir)
+        pml_dir = easy_directory(os.path.join(out_dir, 'pymol'))
 
         uij = self.fitter.residual.extract()
 
@@ -1359,6 +1399,17 @@ class MultiDatasetUijParameterisation(Program):
         self.log('\t> {}xxx.png'.format(prefix))
         self.plot.residue_by_residue(prefix=prefix,
                                      hierarchy=m_h)
+        # Write pymol images of each chains and residue
+        if self.params.output.pymol_images:
+            self.log('\tGenerating pymol images')
+            pml_prefix = os.path.join(pml_dir, 'residual')
+            self.log('\t> {}xxx.png'.format(pml_prefix))
+            auto_chain_images(structure_filename = m_f,
+                              output_prefix = pml_prefix,
+                              style = 'lines+ellipsoids')
+            auto_residue_images(structure_filename = m_f,
+                                output_prefix = pml_prefix,
+                                style = 'lines+ellipsoids')
 
         # TODO Output CSV of all residual components
 
@@ -1382,10 +1433,6 @@ class MultiDatasetUijParameterisation(Program):
                               legends=['Level {}'.format(i+1) for i in range(len(uij_lvl))],
                               title='TLS Contributions',
                               reverse_legend_order=True)
-
-
-
-
 
     def fit_rms_distributions(self, uij_fit, uij_inp, out_dir='./', max_x_width=25):
         """Analyse the dataset-by-dataset and residue-by-residue and atom-by-atom fit qualities"""
@@ -2127,7 +2174,7 @@ class MultiDatasetUijPlots(object):
             xlim[0] -= 0.5
             xlim[1] += 0.5
 
-        fig, axes = pyplot.subplots(nrows=nrow, ncols=ncol, sharey=True)
+        fig, axes = pyplot.subplots(nrows=nrow, ncols=ncol, sharey=False)
         for i, axis in enumerate(axes.flatten()):
             axis.set_title(titles[i])
             axis.hist(x=x_vals[i], bins=n_bins, range=xlim)
@@ -3435,6 +3482,7 @@ def run(params):
     p.fit_hierarchical_uij_model()
     p.process_results()
     log.heading('Parameterisation complete')
+    p.show_errors()
 
 ############################################################################
 
