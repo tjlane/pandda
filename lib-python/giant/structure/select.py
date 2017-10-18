@@ -42,6 +42,15 @@ def non_water(hierarchy, cache=None, copy=True):
 
 ####################################################################################
 
+def get_select_function(selection):
+    if selection is None: return lambda x: x
+    functions = ['non_h','protein','calphas','backbone','sidechains','non_water']
+    assert selection in functions, 'Function not found. Choices: {}'.format(','.join(functions))
+    func = eval(selection)
+    return func
+
+####################################################################################
+
 def sel_altloc(hierarchy, altlocs=['','A'], cache=None, copy=True):
     if not cache: cache=hierarchy.atom_selection_cache()
     sel = cache.selection('(not element H) and ({})'.format(' or '.join(['altid "{:1}"'.format(c) for c in altlocs])))
