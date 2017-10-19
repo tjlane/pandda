@@ -6,7 +6,7 @@ import math, itertools, operator, collections
 import scipy.cluster
 import numpy, pandas
 
-import libtbx.phil, libtbx.easy_mp
+import libtbx.phil, libtbx.easy_mp, libtbx.easy_pickle
 import iotbx.pdb
 import mmtbx.tls.tools
 
@@ -35,6 +35,8 @@ from giant.xray.refine import refine_phenix
 from giant.xray.tls import phenix_find_tls_groups
 
 from giant.jiffies import multi_table_ones
+
+from pandemic.adp import html as pandemic_html
 
 try:
     import matplotlib
@@ -78,7 +80,7 @@ DESCRIPTION = """
 
 ############################################################################
 
-blank_arg_prepend = {'.pdb':'pdb=', '.cif':'cif='}
+blank_arg_prepend = {'.pdb':'pdb=', '.cif':'cif=', '.pickle':'input.pickle='}
 
 master_phil = libtbx.phil.parse("""
 input {
@@ -89,16 +91,22 @@ input {
     labelling = filename *foldername
         .type = choice
         .multiple = False
+    pickle = None
+        .type = path
+        .multiple = False
 }
 output {
     out_dir = multi-dataset-b-factor-fitting
         .help = "output directory"
         .type = str
-    pymol_images = True
-        .help = "Write residue-by-residue images of the output B-factors"
-        .type = bool
+    pickle = 'pandemic.pickle'
+        .type = path
+        .multiple = False
     diagnostics = False
         .help = "Write diagnostic graphs"
+        .type = bool
+    pymol_images = True
+        .help = "Write residue-by-residue images of the output B-factors"
         .type = bool
 }
 fitting {
@@ -3399,50 +3407,26 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
 
 ############################################################################
 
-def run(params):
+def build_levels(model, params, log=None):
+    """Build the levels for the hierarchical fitting"""
 
-    easy_directory(params.output.out_dir)
-
-    assert params.table_ones_options.column_labels
-    assert params.table_ones_options.r_free_label
-
-    log_dir = easy_directory(os.path.join(params.output.out_dir, 'logs'))
-    log = Log(os.path.join(log_dir, '_fitting.log'), verbose=params.settings.verbose)
-
-    # Report parameters
-    log.heading('Processed parameters')
-    log(master_phil.format(params).as_str())
-
-    log.heading('Running setup')
-
-    # Load input structures
-    log.subheading('Building model list'.format(len(params.input.pdb)))
-    if params.input.labelling == 'foldername':
-        label_func = lambda f: os.path.basename(os.path.dirname(f))
-    else:
-        label_func = lambda f: os.path.basename(os.path.splitext(f)[0])
-    models = [CrystallographicModel.from_file(f).label(tag=label_func(f)) for f in params.input.pdb]#[:10]
-    models = sorted(models, key=lambda m: m.tag)
-    log('{} models loaded'.format(len(models)))
-
-    # Build the levels for the hierarchical fitting
     log.subheading('Building hierarchy selections')
     levels = []; labels=[];
-    # TODO IF statement for if custom levels are defined TODO
-    # TODO allow ability to insert
+
     # FIXME Only run on the protein for the moment FIXME
-    filter_h = protein(models[0].hierarchy)
+    filter_h = protein(model.hierarchy)
+
     if 'chain' in params.fitting.auto_levels:
         log('Level {}: Creating level with groups for each chain'.format(len(levels)+1))
         levels.append([PhenixSelection.format(c) for c in filter_h.chains()])
         labels.append('chain')
     if 'auto_group' in params.fitting.auto_levels:
         log('Level {}: Creating level with groups determined by phenix.find_tls_groups'.format(len(levels)+1))
-        levels.append([s.strip('"') for s in phenix_find_tls_groups(models[0].filename)])
+        levels.append([s.strip('"') for s in phenix_find_tls_groups(model.filename)])
         labels.append('groups')
     if 'secondary_structure' in params.fitting.auto_levels:
         log('Level {}: Creating level with groups based on secondary structure'.format(len(levels)+1))
-        levels.append([s.strip('"') for s in default_secondary_structure_selections(models[0].hierarchy)])
+        levels.append([s.strip('"') for s in default_secondary_structure_selections(filter_h)])
         labels.append('secondary structure')
     if 'residue' in params.fitting.auto_levels:
         log('Level {}: Creating level with groups for each residue'.format(len(levels)+1))
@@ -3460,7 +3444,11 @@ def run(params):
         log('Level {}: Creating level with groups for each atom'.format(len(levels)+1))
         levels.append([PhenixSelection.format(a) for a in filter_h.atoms()])
         labels.append('atom')
+
+    # TODO IF statement for if custom levels are defined TODO
+    # TODO allow ability to insert
     # TODO Take any custom groups and insert them here TODO (levels.insert)
+
     # Report
     log('\n> {} levels created\n'.format(len(levels)))
     for i_l, level in enumerate(levels):
@@ -3469,22 +3457,77 @@ def run(params):
         log.bar()
         for l in level: log('\t'+l)
 
-    # Run the program main
-    log.heading('Beginning parameterisation')
-    p = MultiDatasetUijParameterisation(models = models,
-                                        levels = levels,
-                                        level_labels = labels,
-                                        params = params,
-                                        log = log)
+    return levels, labels
 
-    if params.settings.dry_run:
-        log.heading('Exiting after initialisation: dry_run=True')
-        sys.exit()
+def run(params):
 
-    p.fit_hierarchical_uij_model()
+    assert not os.path.exists(params.output.out_dir), 'Output directory already exists: {}'.format(params.output.out_dir)
+    easy_directory(params.output.out_dir)
+
+    assert params.table_ones_options.column_labels
+    assert params.table_ones_options.r_free_label
+
+    log_dir = easy_directory(os.path.join(params.output.out_dir, 'logs'))
+    log = Log(os.path.join(log_dir, '_fitting.log'), verbose=params.settings.verbose)
+
+    # Report parameters
+    log.heading('Processed parameters')
+    log(master_phil.format(params).as_str())
+
+    # Load input pickle object
+    if (params.input.pickle is None):
+        log.heading('Running setup')
+
+        # Load input structures
+        log.subheading('Building model list'.format(len(params.input.pdb)))
+        if params.input.labelling == 'foldername':
+            label_func = lambda f: os.path.basename(os.path.dirname(f))
+        else:
+            label_func = lambda f: os.path.basename(os.path.splitext(f)[0])
+        models = [CrystallographicModel.from_file(f).label(tag=label_func(f)) for f in params.input.pdb]#[:10]
+        models = sorted(models, key=lambda m: m.tag)
+        log('{} models loaded'.format(len(models)))
+
+        # Construct the groups of atoms for each level
+        levels, labels = build_levels(model=models[0], params=params, log=log)
+
+        # Run the program main
+        log.heading('Beginning parameterisation')
+        p = MultiDatasetUijParameterisation(models = models,
+                                            levels = levels,
+                                            level_labels = labels,
+                                            params = params,
+                                            log = log)
+
+        if params.settings.dry_run:
+            log.heading('Exiting after initialisation: dry_run=True')
+            sys.exit()
+
+        p.fit_hierarchical_uij_model()
+
+    else:
+        # Load previously-pickled parameterisation
+        assert os.path.exists(params.input.pickle), 'Input pickle file does not exist: {}'.format(params.input.pickle)
+        log.heading('Loading previous ADP parameterisation')
+        p = libtbx.easy_pickle.load(params.input.pickle)
+        assert isinstance(p, MultiDatasetUijParameterisation), 'Input pickle contains type: {}'.format(type(p))
+
+        # Update unpickled object
+        p.params = params
+        p.out_dir = os.path.abspath(params.output.out_dir)
+
+        # Re-write summaries
+        p.hierarchy_summary(out_dir=easy_directory(os.path.join(p.out_dir, 'model')))
+
+    # Write output
     p.process_results()
     log.heading('Parameterisation complete')
     p.show_errors()
+
+    # Pickle output object
+    if p.params.output.pickle is not None:
+        log.subheading('Pickling output')
+        p.pickle(pickle_file=p.params.output.pickle, pickle_object=p)
 
 ############################################################################
 
