@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+
+    <style>
+      #lightbox .modal-content {
+          display: inline-block;
+          text-align: center;
+      }
+
+      #lightbox .close {
+          opacity: 1;
+          color: rgb(255, 255, 255);
+          background-color: rgb(25, 25, 25);
+          padding: 5px 8px;
+          border-radius: 30px;
+          border: 2px solid rgb(255, 255, 255);
+          position: absolute;
+          top: -15px;
+          right: -55px;
+
+          z-index:1032;
+      }
+    </style>
+
+    {% if table is defined %}
+    <script type="text/javascript" class="init">
+      $(document).ready(function() {
+          $('#main-table').DataTable();
+      } );
+    </script>   
+    {% endif %}
+
+    <script type="text/javascript" class="init">
+      $(document).ready(function() {
+        var $lightbox = $('#lightbox');
+        $('[data-target="#lightbox"]').on('click', function(event) {
+          var $img = $(this).find('img'),
+          src = $img.attr('src'),
+          alt = $img.attr('alt'),
+          css = {
+            'maxWidth': $(window).width() - 100,
+            'maxHeight': $(window).height() - 100
+          };
+          $lightbox.find('.close').addClass('hidden');
+          $lightbox.find('img').attr('src', src);
+          $lightbox.find('img').attr('alt', alt);
+          $lightbox.find('img').css(css);
+        });
+        $lightbox.on('shown.bs.modal', function (e) {
+          var $img = $lightbox.find('img');    
+          $lightbox.find('.modal-dialog').css({'width': $img.width()});
+          $lightbox.find('.close').removeClass('hidden');
+        });
+      });
+    </script>
+    
+    <title>{{ header }}</title>
+
+  </head>
+  <body>
+
+    <div id="lightbox-holder">
+      <div id="lightbox" class="modal fade" tabindex="-1" role="dialog" aria-labelledby="modalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+          <button type="button" class="close hidden" data-dismiss="modal" aria-hidden="true">-</button>
+          <div class="modal-content">
+            <div class="modal-body">
+              <img src="" alt="" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+      <h1>{{ title }}</h1>
+      <h2>{{ introduction }}</h2>
+      <ul class="nav nav-tabs">
+        {% for tab in tabs %}
+        <li {% if tab.active -%}class="active"{% endif -%}><a data-toggle="tab" href="#{{ tab.id }}">{{ tab.short_name }}</a></li>
+        {%- endfor %}
+      </ul>
+      <div class="tab-content">
+        {% for tab in tabs %}
+        <div id="{{ tab.id }}" class="tab-pane fade {% if tab.active -%}in active{% endif -%}">
+          <h3>{{ tab.long_name }}</h3>
+          <p>{{ tab.description }}</p>
+          <div class="panel panel-primary">
+            <div class="panel-heading">
+              <h3 class="panel-title">{{ tab.table_title }}</h3>
+            </div>
+            {% if tab.type == 'overview' %}
+            <table class="table table-striped table-responsive">
+              <tr>
+                <th>Level</th>
+                <th>Description</th>
+                <th>Average Uijs</th>
+                <th>Uij distribution</th>
+              </tr>
+              {% for row in tab.rows %}
+              <tr>
+                <td>{{ row.id }}</td>
+                <td>{{ row.text }}</td>
+                <td>
+                  <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
+                    <img class="img-responsive" src="{{ row.chain_image }}" alt="No Image">
+                  </a>
+                </td>
+                <td>
+                  <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
+                    <img class="img-responsive" src="{{ row.stack_image }}" alt="No Image">
+                  </a>
+                </td>
+              </tr>
+              {%- endfor %}
+            </table>
+            {% elif tab.type == 'level' %}
+            <table class="table table-responsive">
+              <tr>
+                <th class="col-xs-3 col-md-2">Group</th>
+                <th class="col-xs-9 col-md-4">Description</th>
+                <th class="col-xs-12 col-md-3">Average Uijs</th>
+                <th class="col-xs-12 col-md-3">Amplitudes</th>
+              </tr>
+              {% for row in tab.rows %}
+              <tr>
+                <td>{{ row.id }}</td>
+                <td>{{ row.text }}</td>
+                <td>
+                  <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
+                    <img class="img-responsive" src="{{ row.adp_image }}" alt="No Image">
+                  </a>
+                </td>
+                <td>
+                  <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
+                    <img class="img-responsive" src="{{ row.amp_image }}" alt="No Image">
+                  </a>
+                </td>
+              </tr>
+              {%- endfor %}
+            </table>
+            {% elif tab.type == 'residual' %}
+            <table class="table table-responsive">
+              <tr>
+                <th class="col-xs-2 col-md-2">Residue</th>
+                <th class="col-xs-10 col-md-6">Description</th>
+                <th class="col-xs-12 col-md-4">Average Uijs</th>
+              </tr>
+              {% for row in tab.rows %}
+              <tr>
+                <td>{{ row.id }}</td>
+                <td>{{ row.text }}</td>
+                <td>
+                  <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
+                    <img class="img-responsive" src="{{ row.adp_image }}" alt="No Image">
+                  </a>
+                </td>
+              </tr>
+              {%- endfor %}
+            </table>
+            {%- endif %}
+          </div>
+        </div>
+        {%- endfor %}
+      </div>
+    </div>
+
+  </body>
+</html>
+

@@ -1,5 +1,3 @@
-#!/usr/bin/env ccp4-python
-
 import os, sys, copy, traceback
 import math, itertools, operator, collections
 
@@ -843,7 +841,6 @@ class MultiDatasetUijParameterisation(Program):
         """Print non-fatal errors accumulated during running"""
         if len(self.errors) == 0:
             self.log('Program completed with 0 errors')
-            self.log('')
             return
         self.log.subheading('{} non-fatal errors occurred during the program'.format(len(self.errors)))
         for i, e in enumerate(self.errors):
@@ -1810,6 +1807,9 @@ class MultiDatasetUijParameterisation(Program):
                                               ('Mean B-factor Change', 'Average B-factor')]:
             self.log('> Creating col "{}" = "new-{}" - "old-{}"'.format(delta_col_name, full_col_name, full_col_name))
             self.table[delta_col_name] = self.table['new-'+full_col_name] - self.table['old-'+full_col_name]
+            if os.path.exists(self.table_one_csv_refined):
+                self.log('> Creating col "refined-{}" = "ref-{}" - "old-{}"'.format(delta_col_name, full_col_name, full_col_name))
+                self.table['refined-'+delta_col_name] = self.table['ref-'+full_col_name] - self.table['old-'+full_col_name]
 
         # Write output csv
         filename = os.path.join(out_dir, 'dataset_scores.csv')
@@ -2485,6 +2485,10 @@ class MultiDatasetHierarchicalUijFitter(object):
 
         #self.summary(show=True)
 
+    def __iter__(self):
+        for i_level, level in enumerate(self.levels):
+            yield (i_level+1, self.level_labels[i_level], level)
+
     def _target_uij(self, fitted_uij_by_level, i_level):
         arr = fitted_uij_by_level.copy()
         arr[i_level] = 0.0
@@ -2714,6 +2718,9 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
         for i in numpy.unique(self.group_idxs):
             if i==-1: continue
             yield (i, (self.group_idxs==i), self.fitters.get(i, None))
+
+    def n_groups(self):
+        return self._n_groups
 
     def extract(self, average=False):
         fitted_uij = numpy.zeros(self._uij_shape)
@@ -3426,7 +3433,7 @@ def build_levels(model, params, log=None):
         labels.append('groups')
     if 'secondary_structure' in params.fitting.auto_levels:
         log('Level {}: Creating level with groups based on secondary structure'.format(len(levels)+1))
-        levels.append([s.strip('"') for s in default_secondary_structure_selections(filter_h)])
+        levels.append([s.strip('"') for s in default_secondary_structure_selections(model.hierarchy)])
         labels.append('secondary structure')
     if 'residue' in params.fitting.auto_levels:
         log('Level {}: Creating level with groups for each residue'.format(len(levels)+1))
@@ -3461,7 +3468,6 @@ def build_levels(model, params, log=None):
 
 def run(params):
 
-    assert not os.path.exists(params.output.out_dir), 'Output directory already exists: {}'.format(params.output.out_dir)
     easy_directory(params.output.out_dir)
 
     assert params.table_ones_options.column_labels
@@ -3503,7 +3509,11 @@ def run(params):
             log.heading('Exiting after initialisation: dry_run=True')
             sys.exit()
 
+        # Fit TLS models
         p.fit_hierarchical_uij_model()
+
+        # Process output
+        p.process_results()
 
     else:
         # Load previously-pickled parameterisation
@@ -3514,20 +3524,22 @@ def run(params):
 
         # Update unpickled object
         p.params = params
-        p.out_dir = os.path.abspath(params.output.out_dir)
+        #p.out_dir = os.path.abspath(params.output.out_dir)
 
-        # Re-write summaries
-        p.hierarchy_summary(out_dir=easy_directory(os.path.join(p.out_dir, 'model')))
+    # Write HTML
+    p.log.heading('Writing HTML output')
+    pandemic_html.write_adp_summary(parameterisation=p, out_dir=params.output.out_dir)
 
-    # Write output
-    p.process_results()
+    # Print all errors
     log.heading('Parameterisation complete')
     p.show_errors()
 
     # Pickle output object
     if p.params.output.pickle is not None:
         log.subheading('Pickling output')
-        p.pickle(pickle_file=p.params.output.pickle, pickle_object=p)
+        p.pickle(pickle_file    = os.path.join(p.params.output.out_dir, p.params.output.pickle),
+                 pickle_object  = p,
+                 overwrite      = True)
 
 ############################################################################
 

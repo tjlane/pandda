@@ -36,7 +36,8 @@ def selection_images(structure_filename,
 
     # Create script object
     s = PythonScript(pretty_models=False, pretty_maps=False)
-    s.set('opaque_background', 'off')
+    s.set('opaque_background', 1)
+    s.set('ray_opaque_background', 1)
     s.set('orthoscopic', 1)
     # Read in structure and hide all atoms
     s.load_pdb(f_name=structure_filename, obj='input_structure')
@@ -57,7 +58,7 @@ def selection_images(structure_filename,
         for sty in style:
             s.show(obj='sele', style=sty)
         if ray_trace:
-            s.ray()
+            s.ray(height=800, width=800)
         png_name = s.png(f_name=output_prefix+labels[i]+'.png')
         png_filenames.append(png_name)
         s.colour(obj='sele', colour="grey50")
