@@ -53,7 +53,7 @@ def selection_images(structure_filename,
     for i, selection in enumerate(selections):
         s.select(obj='sele', selection=selection)
         s.orient(obj='sele')
-        s.zoom(obj='sele', buffer=1, complete=0)
+        s.zoom(obj='sele', buffer=1, complete=1)
         s.colour_by_element(obj='sele', carbon_colour='green')
         for sty in style:
             s.show(obj='sele', style=sty)
