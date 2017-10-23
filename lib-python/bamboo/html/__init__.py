@@ -11,3 +11,6 @@ def png2base64str(path):
     """Convert a png for embedding into an html page"""
     contents = open(path, 'rb').read().encode('base64').replace('\n', '')
     return contents
+
+def png2base64src(path):
+    return 'data:image/png;base64,{}'.format(png2base64str(path))
