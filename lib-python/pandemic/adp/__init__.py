@@ -254,6 +254,9 @@ class TLSModel(object):
     def reset(self, components):
         self.set(vals=0.0, components=components)
 
+    def uij(self, xyz, origin):
+        return uij_from_tls_vector_and_origin(xyz=xyz, tls_vector=self.values, origin=origin)
+
     def summary(self):
         """Print summary of the TLS components"""
         r = '> TLS parameters'
@@ -262,9 +265,6 @@ class TLSModel(object):
         r += '\n\tL: '+', '.join(['{:8.3f}'.format(v) for v in l])
         r += '\n\tS: '+', '.join(['{:8.3f}'.format(v) for v in s])
         return r
-
-    def uij(self, xyz, origin):
-        return uij_from_tls_vector_and_origin(xyz=xyz, tls_vector=self.values, origin=origin)
 
 class TLSAmplitudeSet(object):
 
@@ -657,47 +657,6 @@ class MultiDatasetUijParameterisation(Program):
 
         # Create plot object
         self.plot = MultiDatasetUijPlots
-
-#        # TODO TEST DATA TODO
-#        n = 1000
-#        self.plot.binned_boxplot(filename='test1.png', x=numpy.random.randn(n),
-#                                 y_vals=[numpy.random.randn(n)+5, numpy.random.randn(n)+10])
-#        sys.exit()
-#        self.plot.multi_scatter(filename = 'test1.png',
-#                                x = range(100),
-#                                y_vals = [range(000,100),
-#                                          range(100,200),
-#                                          range(200,300),
-#                                          range(300,400)],
-#                                x_lab = 'Resolution (A)',
-#                                y_lab = ['Mean RMSD',
-#                                         'Median RMSD',
-#                                         'Mean Input B-factor',
-#                                         'Mean Fitted B-factor'],
-#                                legends = ['Mean RMSD',
-#                                         'Median RMSD',
-#                                         'Mean Input B-factor',
-#                                         'Mean Fitted B-factor'],
-#                                title = 'Resolution and other variables',
-#                                shape=(2,2))
-#        self.plot.multi_scatter(filename = 'test2.png',
-#                                x = range(100),
-#                                y_vals = [range(000,100),
-#                                          range(100,200),
-#                                          range(200,300),
-#                                          range(300,400)],
-#                                x_lab = 'Resolution (A)',
-#                                y_lab = ['Mean RMSD',
-#                                         'Median RMSD',
-#                                         'Mean Input B-factor',
-#                                         'Mean Fitted B-factor'],
-#                                legends = ['Mean RMSD',
-#                                         'Median RMSD',
-#                                         'Mean Input B-factor',
-#                                         'Mean Fitted B-factor'],
-#                                title = 'Resolution and other variables',
-#                                shape=(2,1))
-#        raise Exception('ee')
 
         # Validate and add output paths, etc.
         self._init_input_models()
@@ -1151,6 +1110,7 @@ class MultiDatasetUijParameterisation(Program):
             self.plot.level_plots(filename=filename, hierarchies=hierarchies, title='chain {}'.format(c.id))
 
     def make_tls_headers(self, levels=None, datasets=None):
+        """Create header lines for each pdb file containing the TLS matrices"""
 
         # If no levels given take all levels
         if levels is None: levels = range(len(self.levels))
@@ -1430,6 +1390,7 @@ class MultiDatasetUijParameterisation(Program):
         return
 
     def uij_distribution_summary(self, uij_lvl, uij_res, uij_inp, out_dir='./'):
+        """Write the distributions of each level TLS contributions over the structure"""
 
         out_dir = easy_directory(out_dir)
 
@@ -2489,8 +2450,6 @@ class MultiDatasetHierarchicalUijFitter(object):
 
         self.apply_masks()
 
-        #self.summary(show=True)
-
     def __iter__(self):
         for i_level, level in enumerate(self.levels):
             yield (i_level+1, self.level_labels[i_level], level)
@@ -2610,6 +2569,24 @@ class MultiDatasetHierarchicalUijFitter(object):
             s += level.summary(show=False).strip()
         if show: self.log(s)
         return s
+#        s += '\n> Input summary'
+#        s += '\nNumber of datasets:   {}'.format(self._n_dst)
+#        s += '\nNumber of atoms:      {}'.format(self._n_atm)
+#        s += '\ninput uij parameters: {}'.format(self.target_uij.shape)
+#        s += '\ninput xyz parameters: {}'.format(self.atomic_xyz.shape)
+#        s += '\nCentre of mass: {}'.format(tuple(self.atomic_com.mean(axis=0).round(2).tolist()))
+#        s += '\n> Parameterisation summary'
+#        s += '\nNumber of TLS models: {}'.format(self._n_tls)
+#        s += '\nNumber of parameters for TLS fitting: {}'.format(self._n_prm)
+#        s += '\nNumber of observations (all): {}'.format(numpy.product(self.target_uij.shape))
+#        s += '\nData/parameter ratio (all) is {:.3f}'.format(numpy.product(self.target_uij.shape)*1.0/self._n_prm)
+#        if hasattr(self,'_target_uij'):
+#            n_obs_used = numpy.product(self._target_uij.shape)
+#            s += '\nNumber of observations (used): {}'.format(n_obs_used)
+#            s += '\nData/parameter ratio (used) is {:.3f}'.format(n_obs_used*1.0/self._n_prm)
+#        s += '\n> Atoms/Datasets for TLS model optimisation'
+#        s += '\n\tUsing {}/{} atoms'.format(len(self.get_atomic_mask()), self._n_atm)
+#        s += '\n\tUsing {}/{} datasets'.format(len(self.get_dataset_mask()), self._n_dst)
 
 class _MultiDatasetUijLevel(object):
 
@@ -3015,14 +2992,6 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
         for i_cycle in xrange(n_cycles):
             #self.simplex.set_deltas(uij_delta=uij_del_steps.next())
             self._optimise()
-            #self.summary(show=True)
-
-    def summary(self, show=True):
-        """Print the number of parameters/input data"""
-        uij = self.result()
-        s = 'Uij ({}): '.format(self.label)+', '.join(['{:8.3f}'.format(v) for v in uij])
-        if show: self.log(s)
-        return s
 
     def result(self):
         """Return the fitted parameters (same as extract for this class)"""
@@ -3031,6 +3000,13 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
     def extract(self):
         """Return the fitted uijs - for all atoms"""
         return tuple(self._parameters)
+
+    def summary(self, show=True):
+        """Print the number of parameters/input data"""
+        uij = self.result()
+        s = 'Uij ({}): '.format(self.label)+', '.join(['{:8.3f}'.format(v) for v in uij])
+        if show: self.log(s)
+        return s
 
 class MultiDatasetUijTLSOptimiser(_UijOptimiser):
 
@@ -3388,24 +3364,6 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
     def summary(self, show=True):
         """Print the number of parameters/input data"""
         s = self.log._bar()+'\nTLS Group Fit Summary: {}\n'.format(self.label)+self.log._bar()
-#        s += '\n> Input summary'
-#        s += '\nNumber of datasets:   {}'.format(self._n_dst)
-#        s += '\nNumber of atoms:      {}'.format(self._n_atm)
-#        s += '\ninput uij parameters: {}'.format(self.target_uij.shape)
-#        s += '\ninput xyz parameters: {}'.format(self.atomic_xyz.shape)
-#        s += '\nCentre of mass: {}'.format(tuple(self.atomic_com.mean(axis=0).round(2).tolist()))
-#        s += '\n> Parameterisation summary'
-#        s += '\nNumber of TLS models: {}'.format(self._n_tls)
-#        s += '\nNumber of parameters for TLS fitting: {}'.format(self._n_prm)
-#        s += '\nNumber of observations (all): {}'.format(numpy.product(self.target_uij.shape))
-#        s += '\nData/parameter ratio (all) is {:.3f}'.format(numpy.product(self.target_uij.shape)*1.0/self._n_prm)
-#        if hasattr(self,'_target_uij'):
-#            n_obs_used = numpy.product(self._target_uij.shape)
-#            s += '\nNumber of observations (used): {}'.format(n_obs_used)
-#            s += '\nData/parameter ratio (used) is {:.3f}'.format(n_obs_used*1.0/self._n_prm)
-#        s += '\n> Atoms/Datasets for TLS model optimisation'
-#        s += '\n\tUsing {}/{} atoms'.format(len(self.get_atomic_mask()), self._n_atm)
-#        s += '\n\tUsing {}/{} datasets'.format(len(self.get_dataset_mask()), self._n_dst)
         if self._optimise_model and (self.optimisation_rmsd is not numpy.inf):
             s += '\n> Optimisation Summary'
             s += '\nOptimisation RMSD:    {}'.format(self.optimisation_rmsd)
