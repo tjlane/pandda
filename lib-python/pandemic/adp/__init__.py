@@ -2165,7 +2165,7 @@ class MultiDatasetUijPlots(object):
 #        if rotate_x_labels:
 #            pyplot.setp(axis.get_xticklabels(), rotation=45)
         fig.tight_layout()
-        fig.savefig(filename, dpi=300)
+        fig.savefig(filename)#, dpi=300)
         pyplot.close(fig)
 
         return
@@ -2194,7 +2194,7 @@ class MultiDatasetUijPlots(object):
             if rotate_x_labels:
                 pyplot.setp(axis.get_xticklabels(), rotation=90)
         #fig.tight_layout()
-        fig.savefig(filename, dpi=300)
+        fig.savefig(filename)#, dpi=300)
         pyplot.close(fig)
 
         return
@@ -2219,7 +2219,7 @@ class MultiDatasetUijPlots(object):
         if rotate_x_labels:
             pyplot.setp(axis.get_xticklabels(), rotation=90)
         fig.tight_layout()
-        fig.savefig(filename, dpi=300)
+        fig.savefig(filename)#, dpi=300)
         pyplot.close(fig)
 
         return
@@ -2252,7 +2252,7 @@ class MultiDatasetUijPlots(object):
         if rotate_x_labels:
             pyplot.setp(axis.get_xticklabels(), rotation=90)
         fig.tight_layout()
-        fig.savefig(filename, dpi=300)
+        fig.savefig(filename)#, dpi=300)
         pyplot.close(fig)
 
         return
@@ -2285,7 +2285,7 @@ class MultiDatasetUijPlots(object):
                 for val in v_lines: axis.axvline(x=val, ls='dotted')
             # Format and save
             fig.tight_layout()
-            fig.savefig(filename, dpi=300)
+            fig.savefig(filename)#, dpi=300)
             pyplot.close(fig)
 
     @staticmethod
@@ -2333,7 +2333,7 @@ class MultiDatasetUijPlots(object):
         axis.invert_yaxis()
         # Format and save
         fig.tight_layout()
-        fig.savefig(filename, dpi=300)
+        fig.savefig(filename)#, dpi=300)
         pyplot.close(fig)
 
     @staticmethod
