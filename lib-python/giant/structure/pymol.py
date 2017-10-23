@@ -29,6 +29,8 @@ def selection_images(structure_filename,
                      ray_trace      = True,
                      run_script     = True,
                      delete_script  = True,
+                     width  = 800,
+                     height = 600,
                     ):
 
     if labels is None:
@@ -58,7 +60,7 @@ def selection_images(structure_filename,
         for sty in style:
             s.show(obj='sele', style=sty)
         if ray_trace:
-            s.ray(height=800, width=800)
+            s.ray(height=height, width=width)
         png_name = s.png(f_name=output_prefix+labels[i]+'.png')
         png_filenames.append(png_name)
         s.colour(obj='sele', colour="grey50")
