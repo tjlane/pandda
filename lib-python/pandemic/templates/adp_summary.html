@@ -3,10 +3,16 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
 
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.16/css/jquery.dataTables.min.css"/>
+    <script type="text/javascript" src="https://cdn.datatables.net/1.10.16/js/jquery.dataTables.min.js"></script>
+
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 
     <style>
       #lightbox .modal-content {
@@ -28,14 +34,6 @@
           z-index:1032;
       }
     </style>
-
-    {% if table is defined %}
-    <script type="text/javascript" class="init">
-      $(document).ready(function() {
-          $('#main-table').DataTable();
-      } );
-    </script>   
-    {% endif %}
 
     <script type="text/javascript" class="init">
       $(document).ready(function() {
@@ -60,7 +58,108 @@
         });
       });
     </script>
-    
+
+    <script type="text/javascript" class="init">
+      $(document).ready(function() {
+        $(".dataframe").DataTable();
+      } );
+    </script>  
+
+    {% for tab in tabs %}
+    {% for plot in tab.plots %} 
+    <script type="text/javascript" class="init">
+      $(document).ready(function() {
+        plot_data = {{ plot.json }}
+
+        function rescaleToInterval(data, tmin=0, tmax=20) {
+          var dmin = Math.min.apply(null, data),
+              dmax = Math.max.apply(null, data);
+          var normed = data.map(function(x) { return ((x-dmin)*(tmax-tmin)/(dmax-dmin))+tmin; });
+          return normed
+        }
+
+        function makeTrace(ix,iy) {
+          return {
+            x: plot_data['data'][ix],
+            y: plot_data['data'][iy],
+            mode: 'markers',
+            type: 'scatter',
+            line: {
+              shape: 'marker' ,
+              color: 'blue'
+            },
+            text: plot_data['columns'],
+          };
+        }
+        
+        function makeSelectAxisButtons(ax) {
+          var buttons = [];
+          buttons.push({
+            method: '',
+            args: [],
+            label: 'Select '+ax
+          });
+          for (i=0; i < plot_data['index'].length; i++) {
+            buttons.push({
+              method: 'update',
+              args: [{[ax]: [plot_data['data'][i]]},
+                     {[ax+'axis']: {'title': plot_data['index'][i]}}],
+              label: plot_data['index'][i]
+            });
+          }
+          return buttons;
+        }
+        
+        function makeSelectColourButtons() {
+          var buttons = [];
+          buttons.push({
+            method: 'restyle',
+            args: ['marker.size', 5],
+            label: 'Fixed'
+          }); 
+          for (i=0; i < plot_data['index'].length; i++) {
+            buttons.push({
+              method: 'restyle',
+              args: ['marker.size', [rescaleToInterval(plot_data['data'][i])]],
+              label: plot_data['index'][i]
+            });
+          }
+          return buttons; 
+        }
+      
+        function makeLayout(ix,iy) {
+          return {
+            xaxis: {title: plot_data['index'][ix]},
+            yaxis: {title: plot_data['index'][iy]},
+            margin: {t: 20},
+            hovermode: 'closest',
+            annotations: [
+              {text:'X-axis', x:1.1, y:0.9, xanchor:'left', yanchor:'bottom', xref:'paper', yref:'paper', showarrow:false},
+              {text:'Y-axis', x:1.1, y:0.7, xanchor:'left', yanchor:'bottom', xref:'paper', yref:'paper', showarrow:false},
+              {text:'Marker Size', x:1.1, y:0.5, xanchor:'left', yanchor:'bottom', xref:'paper', yref:'paper', showarrow:false}
+            ],
+            updatemenus: [
+              {x: 1.1, y: 0.9, xanchor: 'left', yanchor: 'top', buttons: makeSelectAxisButtons('x')}, 
+              {x: 1.1, y: 0.7, xanchor: 'left', yanchor: 'top', buttons: makeSelectAxisButtons('y')},
+              {x: 1.1, y: 0.5, xanchor: 'left', yanchor: 'top', buttons: makeSelectColourButtons()}
+            ]
+          }
+        } 
+
+        function makePlot(ix, iy) {
+            trace = makeTrace(ix=ix, iy=iy);
+            layout = makeLayout(ix=ix, iy=iy);
+            Plotly.plot('{{ plot.div }}', [trace], layout);
+        }
+
+        makePlot(ix=plot_data['index'].indexOf("old-High Res Limit"), 
+                 iy=plot_data['index'].indexOf("R-free Change"));
+ 
+      });
+    </script> 
+    {% endfor %}
+    {% endfor %}
+
     <title>{{ header }}</title>
 
   </head>
@@ -92,86 +191,106 @@
         <div id="{{ tab.id }}" class="tab-pane fade {% if tab.active -%}in active{% endif -%}">
           <h3>{{ tab.long_name }}</h3>
           <p>{{ tab.description }}</p>
-          <div class="panel panel-primary">
-            <div class="panel-heading">
-              <h3 class="panel-title">{{ tab.table_title }}</h3>
+
+          {% if tab.id == 'overview' %}
+
+          <div id ="overview-tav">
+            <div class="panel panel-primary">
+              <div class="panel-heading">
+                <h3 class="panel-title">Model Partitioning</h3>
+              </div>
+              <div class="panel-body">
+                <p>Level partitions and stuff</p>
+              </div>
             </div>
-            {% if tab.type == 'overview' %}
-            <table class="table table-striped table-responsive">
-              <tr>
-                <th>Level</th>
-                <th>Description</th>
-                <th>Average Uijs</th>
-                <th>Uij distribution</th>
-              </tr>
-              {% for row in tab.rows %}
-              <tr>
-                <td>{{ row.id }}</td>
-                <td>{{ row.text }}</td>
-                <td>
-                  <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
-                    <img class="img-responsive" src="{{ row.chain_image }}" alt="No Image">
-                  </a>
-                </td>
-                <td>
-                  <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
-                    <img class="img-responsive" src="{{ row.stack_image }}" alt="No Image">
-                  </a>
-                </td>
-              </tr>
-              {%- endfor %}
-            </table>
-            {% elif tab.type == 'level' %}
-            <table class="table table-responsive">
-              <tr>
-                <th class="col-xs-3 col-md-2">Group</th>
-                <th class="col-xs-9 col-md-4">Description</th>
-                <th class="col-xs-12 col-md-3">Average Uijs</th>
-                <th class="col-xs-12 col-md-3">Amplitudes</th>
-              </tr>
-              {% for row in tab.rows %}
-              <tr>
-                <td>{{ row.id }}</td>
-                <td>{{ row.text }}</td>
-                <td>
-                  <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
-                    <img class="img-responsive" src="{{ row.adp_image }}" alt="No Image">
-                  </a>
-                </td>
-                <td>
-                  <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
-                    <img class="img-responsive" src="{{ row.amp_image }}" alt="No Image">
-                  </a>
-                </td>
-              </tr>
-              {%- endfor %}
-            </table>
-            {% elif tab.type == 'residual' %}
-            <table class="table table-responsive">
-              <tr>
-                <th class="col-xs-2 col-md-2">Residue</th>
-                <th class="col-xs-10 col-md-6">Description</th>
-                <th class="col-xs-12 col-md-4">Average Uijs</th>
-              </tr>
-              {% for row in tab.rows %}
-              <tr>
-                <td>{{ row.id }}</td>
-                <td>{{ row.text }}</td>
-                <td>
-                  <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
-                    <img class="img-responsive" src="{{ row.adp_image }}" alt="No Image">
-                  </a>
-                </td>
-              </tr>
-              {%- endfor %}
-            </table>
-            {%- endif %}
           </div>
-        </div>
-        {%- endfor %}
+
+          {% elif tab.id == 'statistics' %}
+
+          <div id="statistics-tab">
+
+            <div class="panel panel-primary">
+              <div class="panel-heading">
+                <h3 class="panel-title">Model Improvement Statistics</h3>
+              </div>
+              <div class="panel-body">
+                <p>Graphs and stuff</p>
+              </div>
+            </div>
+
+            <div class="panel panel-primary">
+              <div class="panel-heading">
+                <h3 class="panel-title">Summary graphs</h3>
+              </div>
+              <div class="panel-body">
+                {% for plot in tab.plots %}
+                <div id="{{ plot.div }}">
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="panel panel-primary">
+              <div class="panel-heading">
+                <h3 class="panel-title">Summary table from pandemic.adp</h3>
+              </div>
+              <div class="panel-body">
+                <p>Output CSV from pandemic.adp: dataset_scores.csv</p>
+                <div class="table-responsive">
+                  {{ tab.table }}
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {% elif tab.id == 'levels' %}
+
+          <div id="levels-tab">
+            <ul class="nav nav-tabs">
+              {% for sub_tab in tab.tabs %}
+              <li {% if sub_tab.active -%}class="active"{% endif -%}><a data-toggle="tab" href="#{{ sub_tab.id }}">{{ sub_tab.short_name }}</a></li>
+              {%- endfor %}
+            </ul>
+            <div class="tab-content">
+              {% for sub_tab in tab.tabs %}
+              <div id="{{ sub_tab.id }}" class="tab-pane fade {% if sub_tab.active -%}in active{% endif -%}">
+                <h3>{{ sub_tab.long_name }}</h3>
+                <p>{{ sub_tab.description }}</p>
+                <div class="row">
+                  {% for panel in sub_tab.panels %}
+                  <div class="col col-md-{{ panel.width|default(12) }}">
+                    <div class="panel panel-primary">
+                      <div class="panel-heading">
+                        <h3 class="panel-title">{{ panel.id }}</h3>
+                      </div>
+                      <div class="panel-body">
+                        <p>{{ panel.text }}</p>
+                        <div class="row">
+                          {% for image in panel.images %}
+                          <div class="col col-xs-12 col-md-6">
+                            <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
+                              <img class="img-responsive" src="{{ image }}" alt="No Image">
+                            </a>
+                          </div>
+                          {% endfor %}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          {% endif %}
+
+        </div> 
+        {% endfor %}
       </div>
     </div>
-
   </body>
 </html>
 
