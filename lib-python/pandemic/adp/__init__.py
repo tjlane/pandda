@@ -1370,14 +1370,16 @@ class MultiDatasetUijParameterisation(Program):
                 # Images for each chain
                 auto_chain_images(structure_filename = m_f,
                                   output_prefix = pml_prefix,
-                                  style = 'lines+ellipsoids')
+                                  style = 'lines+ellipsoids',
+                                  width=1000, height=750)
                 # Images for each group
                 blank_h = self.blank_master_hierarchy()
                 cache_h = blank_h.atom_selection_cache()
                 selection_images(structure_filename = m_f,
                                  output_prefix = pml_prefix+'-group_',
                                  selections = [PymolSelection.join_or([PymolSelection.format(a) for a in blank_h.atoms().select(cache_h.selection(s))]) for s in self.levels[i_level]],
-                                 style = 'lines+ellipsoids')
+                                 style = 'lines+ellipsoids',
+                                 width=250, height=250)
             # Write stacked bar plot of TLS for this level
             self.log('\tWriting stacked bar plot of TLS contributions for this level')
             self.log('\t> {}xxx.png'.format(prefix+'-TLS'))
@@ -1405,8 +1407,10 @@ class MultiDatasetUijParameterisation(Program):
         self.log('\t> {}'.format(m_f))
         m_h.write_pdb_file(m_f)
         self.log('\t> {}xxx.png'.format(prefix))
-        self.plot.residue_by_residue(prefix=prefix,
-                                     hierarchy=m_h)
+        self.plot.stacked_bar(prefix=prefix,
+                              hierarchies=[m_h],
+                              legends=['Residual'],
+                              title='Residual Level - fixed contributions')
         # Write pymol images of each chains and residue
         if self.params.output.pymol_images:
             self.log('\tGenerating pymol images')
@@ -1414,10 +1418,12 @@ class MultiDatasetUijParameterisation(Program):
             self.log('\t> {}xxx.png'.format(pml_prefix))
             auto_chain_images(structure_filename = m_f,
                               output_prefix = pml_prefix,
-                              style = 'lines+ellipsoids')
+                              style = 'lines+ellipsoids',
+                              width=1000, height=750)
             auto_residue_images(structure_filename = m_f,
                                 output_prefix = pml_prefix,
-                                style = 'lines+ellipsoids')
+                                style = 'lines+ellipsoids',
+                                width=250, height=250)
 
         # TODO Output CSV of all residual components
 
