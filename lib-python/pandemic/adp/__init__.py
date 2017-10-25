@@ -1339,7 +1339,8 @@ class MultiDatasetUijParameterisation(Program):
                                  output_prefix = pml_prefix+'-group_',
                                  selections = [PymolSelection.join_or([PymolSelection.format(a) for a in blank_h.atoms().select(cache_h.selection(s))]) for s in self.levels[i_level]],
                                  style = 'lines+ellipsoids',
-                                 width=250, height=250)
+                                 width = 250 if level.n_groups()>50 else 1000,
+                                 height= 250 if level.n_groups()>50 else 750)
             # Write stacked bar plot of TLS for this level
             self.log('\tWriting stacked bar plot of TLS contributions for this level')
             self.log('\t> {}xxx.png'.format(prefix+'-TLS'))
@@ -1347,7 +1348,8 @@ class MultiDatasetUijParameterisation(Program):
                                   hierarchies=[str_lvl[cpt] for cpt in 'TLS'],
                                   legends=list('TLS'),
                                   title='Level {} - TLS Contributions'.format(i_level+1),
-                                  v_line_hierarchy=boundaries)
+                                  v_line_hierarchy=boundaries if (sum(boundaries.atoms().extract_b()) < 0.5*len(list(boundaries.select(sel).residue_groups()))) else None)
+            #embed()
 
         return
 
@@ -1714,9 +1716,79 @@ class MultiDatasetUijParameterisation(Program):
         out_dir = easy_directory(out_dir)
 
         # Create output table
-        self.table = pandas.DataFrame(index=[m.tag for m in self.models])
+        self.table = pandas.DataFrame(index=[m.tag for m in self.models],
+                                      columns=['High Resolution Limit',
+                                               'Low Resolution Limit',
+                                               'R-free Change (Fitted-Input)',
+                                               'R-work Change (Fitted-Input)',
+                                               'R-gap Change (Fitted-Input)',
+                                               'R-free Change (Refined-Input)',
+                                               'R-work Change (Refined-Input)',
+                                               'R-gap Change (Refined-Input)',
+                                               'Average B-factor Change (Fitted-Input)',
+                                               'Average B-factor (fitted atoms) Change (Fitted-Input)',
+                                              ]
+                                     )
 
-        self.log.bar()
+        # columns to be extracted from each file
+        input_cols = ['High Resolution Limit', 'Low Resolution Limit', 'Unique reflections','Completeness (%)','Wilson B-factor']
+        other_cols = ['R-work','R-free','Average B-factor']
+        other_cols_sort = ['R-free','R-work','R-gap','Average B-factor']
+
+        # Extract data from the table one CSVs
+        self.log.subheading('Looking for table one data')
+        for suff, csv in [(' (Input)',      self.table_one_csv_input),
+                          (' (Fitted)',     self.table_one_csv_fitted),
+                          (' (Refined)',    self.table_one_csv_refined)]:
+            if not os.path.exists(csv):
+                if 'refined' in suff.lower():
+                    continue
+                raise Exception('Cannot read: {}'.format(csv))
+            self.log('Reading: {}'.format(csv))
+            table_one = pandas.read_csv(csv, index_col=0, dtype=str).transpose()
+            # Separate high- and low-resolution limits
+            table_one['Low Resolution Limit'], table_one['High Resolution Limit'] = zip(*table_one['Resolution range'].apply(lambda x: x.split('(')[0].split('-')))
+            # Select columns for export
+            if 'input' in suff.lower():
+                table_one = table_one[input_cols+other_cols]    # Pull many columns out of the first file
+            else:
+                table_one = table_one[other_cols]               # Only a subset of columns from the other files
+            # Remove "high-resolution shell" statistics
+            for col in table_one.columns:
+                self.log('> Formatting col: {}'.format(col))
+                table_one[col] = table_one[col].apply(lambda x: x.split('(')[0])
+            # Redetermine data types
+            table_one = table_one.apply(lambda x: pandas.to_numeric(x, errors='coerce'))
+            # If first file, transfer constant statistics
+            if 'input' in suff.lower():
+                # Transfer selected columns directly to main table
+                for col in input_cols:
+                    self.table[col] = table_one[col]
+                # Reselect the remaining columns
+                table_one = table_one[other_cols]
+            # Calculate additional columns
+            table_one['R-gap'] = table_one['R-free'] - table_one['R-work']
+            # Resort columns
+            table_one = table_one[other_cols_sort]
+            # Add suffix
+            table_one.columns = table_one.columns + suff
+            # Transfer data to other
+            self.table = self.table.join(table_one, how="outer")
+            self.log('')
+        # Create columns for the deltas between variables
+        for delta_col, col in [('R-work Change', 'R-work'),
+                               ('R-free Change', 'R-free'),
+                               ('R-gap Change', 'R-gap'),
+                               ('Average B-factor Change', 'Average B-factor')]:
+            for suff1, suff2 in [(' (Input)', ' (Fitted)'),
+                                 (' (Input)', ' (Refined)')]:
+                if (col+suff1 not in self.table.columns) or (col+suff2 not in self.table.columns):
+                    continue
+                suff = ' ({}-{})'.format(suff2.strip(' ()'), suff1.strip(' ()'))
+                self.log('> Creating col "{}" = "{}" - "{}"'.format(delta_col+suff, col+suff2, col+suff1))
+                self.table[delta_col+suff] = self.table[col+suff2] - self.table[col+suff1]
+
+        self.log.bar(True, False)
         self.log('Calculating mean and median fitting rmsds by dataset')
         self.log.bar()
         # Calculate rmsd between input and fitted uijs
@@ -1724,8 +1796,8 @@ class MultiDatasetUijParameterisation(Program):
         # Extract mean/median dataset-by-dataset RMSDs
         dset_medn_rmsds = numpy.median(uij_rmsd, axis=1)
         dset_mean_rmsds = numpy.mean(uij_rmsd, axis=1)
-        self.table['mean_rmsds']   = dset_mean_rmsds
-        self.table['median_rmsds'] = dset_medn_rmsds
+        self.table['Mean Fitting RMSD']   = dset_mean_rmsds
+        self.table['Median Fitting RMSD'] = dset_medn_rmsds
         for i in xrange(0, min(10, len(self.models))):
             self.log('Model {:10}: {:6.3f} (mean), {:6.3f} (median)'.format(self.models[i].tag, dset_mean_rmsds[i], dset_medn_rmsds[i]))
 
@@ -1738,48 +1810,18 @@ class MultiDatasetUijParameterisation(Program):
         # Calculate mean/median ADPs for each atom
         dset_mean_inp_iso = numpy.mean(uij_inp_iso, axis=1)
         dset_mean_fit_iso = numpy.mean(uij_fit_iso, axis=1)
-        self.table['mean_input_iso_b']  = dset_mean_inp_iso
-        self.table['mean_fitted_iso_b'] = dset_mean_fit_iso
+        self.table['Average B-factor (fitted atoms) (Input)']               = dset_mean_inp_iso
+        self.table['Average B-factor (fitted atoms) (Fitted)']              = dset_mean_fit_iso
+        self.table['Average B-factor (fitted atoms) Change (Fitted-Input)'] = dset_mean_fit_iso - dset_mean_inp_iso
         for i in xrange(0, min(10, len(self.models))):
             self.log('Model {:10}: {:6.3f} (input) -> {:6.3f} (fitted)'.format(self.models[i].tag, dset_mean_inp_iso[i], dset_mean_fit_iso[i]))
 
-        # Extract data from the table one CSVs
-        self.log.subheading('Looking for table one data')
-        for pref, csv in [('old-', self.table_one_csv_input),
-                          ('new-', self.table_one_csv_fitted),
-                          ('ref-', self.table_one_csv_refined)]:
-            self.log('Reading: {}'.format(csv))
-            if not os.path.exists(csv):
-                if pref == 'ref-': continue
-                raise Exception('Cannot read: {}'.format(csv))
-            table_one = pandas.read_csv(csv, index_col=0, dtype=str).transpose()
-            table_one['Low Res Limit'], table_one['High Res Limit'] = zip(*table_one['Resolution range'].apply(lambda x: x.split('(')[0].split('-')))
-            table_one = table_one[['High Res Limit', 'Low Res Limit', 'Unique reflections','Completeness (%)','Wilson B-factor','R-work','R-free','Average B-factor']]
-            for col in table_one:
-                self.log('> Formatting col: {}'.format(col))
-                table_one[col] = table_one[col].apply(lambda x: x.split('(')[0])
-            # Redetermine data types
-            table_one = table_one.apply(lambda x: pandas.to_numeric(x, errors='coerce'))
-            # Calculate additional columns
-            table_one['R-gap'] = table_one['R-free'] - table_one['R-work']
-            # Add prefix
-            table_one.columns = pref + table_one.columns
-            # Transfer data to other
-            self.table = self.table.join(table_one, how="outer")
-            self.log('')
-        # Create columns for the deltas between variables
-        for delta_col_name, full_col_name in [('R-work Change', 'R-work'),
-                                              ('R-free Change', 'R-free'),
-                                              ('R-gap Change', 'R-gap'),
-                                              ('Mean B-factor Change', 'Average B-factor')]:
-            self.log('> Creating col "{}" = "new-{}" - "old-{}"'.format(delta_col_name, full_col_name, full_col_name))
-            self.table[delta_col_name] = self.table['new-'+full_col_name] - self.table['old-'+full_col_name]
-            if os.path.exists(self.table_one_csv_refined):
-                self.log('> Creating col "refined-{}" = "ref-{}" - "old-{}"'.format(delta_col_name, full_col_name, full_col_name))
-                self.table['refined-'+delta_col_name] = self.table['ref-'+full_col_name] - self.table['old-'+full_col_name]
+        # Remove unpopulated columns
+        self.table = self.table.dropna(axis='columns', how='all')
 
         # Write output csv
         filename = os.path.join(out_dir, 'dataset_scores.csv')
+        self.log('')
         self.log('Writing output csv: {}'.format(filename))
         self.table.to_csv(filename)
 
@@ -1796,26 +1838,36 @@ class MultiDatasetUijParameterisation(Program):
 
         # Extract Column averages (means and medians)
         table_means = self.table.mean().round(3)
-        out_str = '{:>30s} | {:>15} | {:>15} | {:>15}'
+        out_str = '{:>35s} | {:>15} | {:>15} | {:>15}'
 
         self.log.bar()
         self.log('Dataset Averages:')
         self.log.bar()
         # Columns without old/new prefix
         for lab in table_means.index:
-            if lab.startswith('new') or lab.startswith('old'):
-                continue
+            if lab.lower().endswith('-input)'): continue
+            if lab.lower().endswith('(input)'): continue
+            if lab.lower().endswith('(fitted)'): continue
+            if lab.lower().endswith('(refined)'): continue
             self.log(out_str.format(lab, table_means[lab], '', ''))
         self.log.bar()
         # Columns with old/new prefix
-        self.log(out_str.format('', 'Single-dataset', 'Multi-dataset', 'Difference'))
-        for new_lab in table_means.index:
-            if not new_lab.startswith('new'):
+        for comp_lab in ['Fitted','Refined']:
+            comp_suff = ' ({})'.format(comp_lab)
+            # Check whether the columns are here - check the R-free as always should be present
+            if 'R-free ({})'.format(comp_lab) not in self.table.columns:
                 continue
-            lab = new_lab[4:]
-            old_lab = 'old-'+lab
-            self.log(out_str.format(lab, table_means[old_lab], table_means[new_lab], table_means[new_lab]-table_means[old_lab]))
-        self.log.bar()
+            self.log('Comparing Input and {} Uijs'.format(comp_lab))
+            self.log(out_str.format('', 'Input', comp_lab, 'Difference'))
+            for lab in table_means.index:
+                if not lab.endswith(comp_suff):
+                    continue
+                lab_base = lab[:lab.index(comp_suff)]
+                self.log(out_str.format(lab_base,
+                                        table_means[lab_base+' ({})'.format('Input')],
+                                        table_means[lab_base+' ({})'.format(comp_lab)],
+                                        table_means[lab_base+' Change ({}-{})'.format(comp_lab, 'Input')]))
+            self.log.bar()
 
         return
 
@@ -1826,41 +1878,45 @@ class MultiDatasetUijParameterisation(Program):
 
         self.log.subheading('Model improvement graphs')
 
+        labs = ['Input']   * ('R-free (Input)'   in table.columns) + \
+               ['Fitted']  * ('R-free (Fitted)'  in table.columns) + \
+               ['Refined'] * ('R-free (Refined)' in table.columns)
+
         # ------------------------------------------------------------>
         # Raw scores
         # ------------------------------------------------------------>
-        # Histogram of the R-FREE for input and fitted B-factors
+        # Histogram of the R-FREE for input+fitted+refined B-factors
         filename = os.path.join(out_dir, 'r-free-by-resolution.png')
         self.log('> {}'.format(filename))
         self.plot.binned_boxplot(filename = filename,
-                                 x = table['old-High Res Limit'],
-                                 y_vals = [100*table['old-R-free'], 100*table['new-R-free']],
-                                 legends = ['single-dataset', 'multi-dataset'],
-                                 title = 'R-free for input and fitted B-factors',
+                                 x = table['High Resolution Limit'],
+                                 y_vals = [100*table['R-free ({})'.format(l)] for l in labs],
+                                 legends = labs,
+                                 title = 'R-free for {} and {} fitted B-factors'.format(', '.join(labs[:-1]), labs[-1]),
                                  x_lab = 'Resolution (A)',
                                  y_lab = 'R-free (%)',
                                  rotate_x_labels = True,
                                  min_bin_width = 0.1)
-        # Histogram of the R-WORK for input and fitted B-factors
+        # Histogram of the R-WORK for input+fitted+refined B-factors
         filename = os.path.join(out_dir, 'r-work-by-resolution.png')
         self.log('> {}'.format(filename))
         self.plot.binned_boxplot(filename = filename,
-                                 x = table['old-High Res Limit'],
-                                 y_vals = [100*table['old-R-work'], 100*table['new-R-work']],
-                                 legends = ['single-dataset', 'multi-dataset'],
-                                 title = 'R-work for input and fitted B-factors',
+                                 x = table['High Resolution Limit'],
+                                 y_vals = [100*table['R-work ({})'.format(l)] for l in labs],
+                                 legends = labs,
+                                 title = 'R-work for {} and {} B-factors'.format(', '.join(labs[:-1]), labs[-1]),
                                  x_lab = 'Resolution (A)',
                                  y_lab = 'R-work (%)',
                                  rotate_x_labels = True,
                                  min_bin_width = 0.1)
-        # Histogram of the R-GAP for input and fitted B-factors
+        # Histogram of the R-GAP for input+fitted+refined B-factors
         filename = os.path.join(out_dir, 'r-gap-by-resolution.png')
         self.log('> {}'.format(filename))
         self.plot.binned_boxplot(filename = filename,
-                                 x = table['old-High Res Limit'],
-                                 y_vals = [100*table['old-R-gap'], 100*table['new-R-gap']],
-                                 legends = ['single-dataset', 'multi-dataset'],
-                                 title = 'R-gap for input and fitted B-factors',
+                                 x = table['High Resolution Limit'],
+                                 y_vals = [100*table['R-gap ({})'.format(l)] for l in labs],
+                                 legends = labs,
+                                 title = 'R-gap for {} and {} B-factors'.format(', '.join(labs[:-1]), labs[-1]),
                                  x_lab = 'Resolution (A)',
                                  y_lab = 'R-gap (%)',
                                  rotate_x_labels = True,
@@ -1872,10 +1928,10 @@ class MultiDatasetUijParameterisation(Program):
         filename = os.path.join(out_dir, 'r-values-change-by-resolution.png')
         self.log('> {}'.format(filename))
         self.plot.binned_boxplot(filename = filename,
-                                 x = table['old-High Res Limit'],
-                                 y_vals = [100*table['R-free Change'],
-                                           100*table['R-work Change'],
-                                           100*table['R-gap Change']],
+                                 x = table['High Resolution Limit'],
+                                 y_vals = [100*table['R-free Change (Fitted-Input)'],
+                                           100*table['R-work Change (Fitted-Input)'],
+                                           100*table['R-gap Change (Fitted-Input)']],
                                  legends = ['R-free change','R-work change','R-gap change'],
                                  title = 'R-value changes between input and fitted B-factors',
                                  x_lab = 'Resolution (A)',
@@ -1890,34 +1946,34 @@ class MultiDatasetUijParameterisation(Program):
         filename = os.path.join(out_dir, 'resolution-vs-rmsds-and-bfactors.png')
         self.log('> {}'.format(filename))
         self.plot.multi_scatter(filename = filename,
-                                x = table['old-High Res Limit'],
-                                y_vals = [table['mean_rmsds'],
-                                          table['median_rmsds'],
-                                          table['mean_input_iso_b'],
-                                          table['mean_fitted_iso_b']],
+                                x = table['High Resolution Limit'],
+                                y_vals = [table['Mean Fitting RMSD'],
+                                          table['Median Fitting RMSD'],
+                                          table['Average B-factor (fitted atoms) (Input)'],
+                                          table['Average B-factor (fitted atoms) (Fitted)']],
                                 x_lab = 'Resolution (A)',
                                 y_lab = ['Mean RMSD',
                                          'Median RMSD',
                                          'Mean Input B-factor',
                                          'Mean Fitted B-factor'],
-                                title = 'Resolution and other variables',
+                                title = 'Resolution v. fitting metrics',
                                 shape = (2,2))
         # Scatter of R-works and fit RMSDs
         filename = os.path.join(out_dir, 'r-values-vs-rmsds-and-bfactors.png')
         self.log('> {}'.format(filename))
         self.plot.multi_scatter(filename = filename,
-                                x_vals = [table['mean_rmsds'],
-                                          table['median_rmsds'],
-                                          table['mean_input_iso_b'],
-                                          table['mean_fitted_iso_b']],
-                                y_vals = [table['R-free Change'],
-                                          table['R-free Change'],
-                                          table['R-free Change'],
-                                          table['R-free Change'],
-                                          table['R-gap Change'],
-                                          table['R-gap Change'],
-                                          table['R-gap Change'],
-                                          table['R-gap Change']],
+                                x_vals = [table['Mean Fitting RMSD'],
+                                          table['Median Fitting RMSD'],
+                                          table['Average B-factor (fitted atoms) (Input)'],
+                                          table['Average B-factor (fitted atoms) (Fitted)']],
+                                y_vals = [table['R-free Change (Fitted-Input)'],
+                                          table['R-free Change (Fitted-Input)'],
+                                          table['R-free Change (Fitted-Input)'],
+                                          table['R-free Change (Fitted-Input)'],
+                                          table['R-gap Change (Fitted-Input)'],
+                                          table['R-gap Change (Fitted-Input)'],
+                                          table['R-gap Change (Fitted-Input)'],
+                                          table['R-gap Change (Fitted-Input)']],
                                 x_lab = ['Mean RMSD',
                                          'Median RMSD',
                                          'Mean Input B-factor',
@@ -2160,7 +2216,7 @@ class MultiDatasetUijPlots(object):
             axis.set_xlim(xlim)
             if rotate_x_labels:
                 pyplot.setp(axis.get_xticklabels(), rotation=90)
-        #fig.tight_layout()
+        fig.tight_layout()
         fig.savefig(filename)#, dpi=300)
         pyplot.close(fig)
 
@@ -2413,6 +2469,8 @@ class MultiDatasetHierarchicalUijFitter(object):
         assert observed_uij.shape[2]  == 6
         assert observed_xyz.shape[2]  == 3
 
+        self._n_modes = n_tls
+
         # Store observed values (needed for later)
         self.observed_uij = observed_uij
         self.observed_xyz = observed_xyz
@@ -2462,7 +2520,13 @@ class MultiDatasetHierarchicalUijFitter(object):
         return self.observed_uij - arr_sum
 
     def n_params(self):
-        return sum([l.n_params() for l in self.levels])
+        return sum([l.n_params() for l in self.levels+[self.residual]])
+
+    def n_levels(self):
+        return len(self.levels)
+
+    def parameter_ratio(self):
+        return numpy.product(self.observed_uij.shape) / self.n_params()
 
     def set_optimisation_datasets(self, dataset_indices):
         self.dataset_mask[:] = False
@@ -2564,27 +2628,19 @@ class MultiDatasetHierarchicalUijFitter(object):
 
     def summary(self, show=False):
         s = ''
-        for level in self.levels+[self.residual]:
-            s += '\n\n'
-            s += level.summary(show=False).strip()
+        s += '\n> Input data:'
+        s += '\nNumber of datasets: {}'.format(len(self.dataset_mask))
+        s += '\nNumber of atoms:    {}'.format(len(self.atomic_mask))
+        s += '\n'
+        s += '\n> Parameters:'
+        s += '\nNumber of TLS modes per group: {}'.format(self._n_modes)
+        s += '\nDatasets used for optimisation: {} of {}'.format(sum(self.dataset_mask), len(self.dataset_mask))
+        s += '\nAtoms used for optimisation:    {} of {}'.format(sum(self.atomic_mask), len(self.atomic_mask))
+        s += '\nEffective parameter ratio (input v fitted): {}'.format(self.parameter_ratio())
+        s += '\n'
         if show: self.log(s)
         return s
-#        s += '\n> Input summary'
-#        s += '\nNumber of datasets:   {}'.format(self._n_dst)
-#        s += '\nNumber of atoms:      {}'.format(self._n_atm)
-#        s += '\ninput uij parameters: {}'.format(self.target_uij.shape)
-#        s += '\ninput xyz parameters: {}'.format(self.atomic_xyz.shape)
-#        s += '\nCentre of mass: {}'.format(tuple(self.atomic_com.mean(axis=0).round(2).tolist()))
-#        s += '\n> Parameterisation summary'
-#        s += '\nNumber of TLS models: {}'.format(self._n_tls)
-#        s += '\nNumber of parameters for TLS fitting: {}'.format(self._n_prm)
-#        s += '\nNumber of observations (all): {}'.format(numpy.product(self.target_uij.shape))
-#        s += '\nData/parameter ratio (all) is {:.3f}'.format(numpy.product(self.target_uij.shape)*1.0/self._n_prm)
-#        if hasattr(self,'_target_uij'):
-#            n_obs_used = numpy.product(self._target_uij.shape)
-#            s += '\nNumber of observations (used): {}'.format(n_obs_used)
-#            s += '\nData/parameter ratio (used) is {:.3f}'.format(n_obs_used*1.0/self._n_prm)
-#        s += '\n> Atoms/Datasets for TLS model optimisation'
+
 #        s += '\n\tUsing {}/{} atoms'.format(len(self.get_atomic_mask()), self._n_atm)
 #        s += '\n\tUsing {}/{} datasets'.format(len(self.get_dataset_mask()), self._n_dst)
 
@@ -2728,10 +2784,11 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
             fitter._parameters.reset_amplitudes(components=components, modes=modes)
 
     def summary(self, show=True):
-        s = self.log._subheading('TLS Partitions Summary (index {}; label {})'.format(self.index, self.label), blank=True)
-        for i, sel, f in self:
-            s += '\n'
-            s += f.summary(show=False).strip()
+        #s = self.log._subheading('TLS Partitions Summary (index {}; label {})'.format(self.index, self.label), blank=True)
+        s = '> Level {} - {}'.format(self.index, self.label)
+        s += '\n\tNumber of Groups: {}'.format(self.n_groups())
+        s += '\n\tNumber of Parameters: {}'.format(self.n_params())
+        s += '\n'
         if show: self.log(s)
         return s
 
@@ -2743,7 +2800,7 @@ class MultiDatasetUijResidualLevel(_MultiDatasetUijLevel):
         self.log = log
 
         self.index = index
-        self.label = label if label else 'Level {}'.format(index)
+        self.label = label if label else 'Level {} (residual)'.format(index)
 
         self._uij_shape = observed_uij.shape
 
@@ -2775,8 +2832,9 @@ class MultiDatasetUijResidualLevel(_MultiDatasetUijLevel):
             fitted_uij = fitted_uij.reshape((1,)+fitted_uij.shape).repeat(self._uij_shape[0], axis=0)
         return fitted_uij
 
-    def summary(self, show=True):
-        s = self.log._subheading('Uij Residuals Summary', blank=True)
+    def summary(self, basic=True, show=True):
+        #s = self.log._subheading('Uij Residuals Summary', blank=True)
+        s = 'Level {} - {}'.format(self.index, self.label)
         for i, sel, f in self:
             s += '\n'
             s += f.summary(show=False).strip()
@@ -3475,9 +3533,17 @@ def run(params):
 
         # Fit TLS models
         p.fit_hierarchical_uij_model()
+        log.heading('Parameterisation complete')
 
         # Process output
         p.process_results()
+
+        # Pickle output object
+        if p.params.output.pickle is not None:
+            log.subheading('Pickling output')
+            p.pickle(pickle_file    = os.path.join(p.params.output.out_dir, p.params.output.pickle),
+                     pickle_object  = p,
+                     overwrite      = True)
 
     else:
         # Load previously-pickled parameterisation
@@ -3490,20 +3556,13 @@ def run(params):
         p.params = params
         #p.out_dir = os.path.abspath(params.output.out_dir)
 
+    # Print all errors
+    p.show_errors()
+
     # Write HTML
     p.log.heading('Writing HTML output')
     pandemic_html.write_adp_summary(parameterisation=p, out_dir=params.output.out_dir)
 
-    # Print all errors
-    log.heading('Parameterisation complete')
-    p.show_errors()
-
-    # Pickle output object
-    if p.params.output.pickle is not None:
-        log.subheading('Pickling output')
-        p.pickle(pickle_file    = os.path.join(p.params.output.out_dir, p.params.output.pickle),
-                 pickle_object  = p,
-                 overwrite      = True)
 
 ############################################################################
 

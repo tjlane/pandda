@@ -15,18 +15,40 @@
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 
     <style>
-    .row-centered {
-        text-align:center;
-    }
-    .col-centered {
-        display:inline-block;
-        float:none;
-        vertical-align:top;
-        /* reset the text-align */
-        text-align:left;
-        /* inline-block space fix */
-        margin-right:-4px;
-    }
+      .row-centered {
+          text-align:center;
+      }
+      .col-centered {
+          display:inline-block;
+          float:none;
+          vertical-align:top;
+          /* reset the text-align */
+          text-align:left;
+          /* inline-block space fix */
+          margin-right:-4px;
+      }
+    </style>
+
+    <style>
+      .matrix {
+          position: relative;
+      }
+      .matrix:before, .matrix:after {
+          content: "";
+          position: absolute;
+          top: 0;
+          border: 1px solid #000;
+          width: 6px;
+          height: 100%;
+      }
+      .matrix:before {
+          left: -6px;
+          border-right: 0;
+      }
+      .matrix:after {
+          right: -6px;
+          border-left: 0;
+      }
     </style>
 
     <style>
@@ -86,7 +108,7 @@
       $(document).ready(function() {
         plot_data = {{ plot.json }}
 
-        function rescaleToInterval(data, tmin=0, tmax=20) {
+        function rescaleToInterval(data, tmin=1, tmax=20) {
           var dmin = Math.min.apply(null, data),
               dmax = Math.max.apply(null, data);
           var normed = data.map(function(x) { return ((x-dmin)*(tmax-tmin)/(dmax-dmin))+tmin; });
@@ -151,7 +173,10 @@
           return {
             xaxis: {title: plot_data['index'][ix]},
             yaxis: {title: plot_data['index'][iy]},
-            margin: {t: 20},
+            autosize: false,
+            width: 1100,
+            height: 500,
+            margin: {t: 20, r:300},
             hovermode: 'closest',
             annotations: [
               {text:'', x:1.1, y:0.9, xanchor:'left', yanchor:'bottom', xref:'paper', yref:'paper', showarrow:false},
@@ -227,7 +252,7 @@
                   <div class="col col-centered col-xs-12 col-md-{{ thing.width }}">
                     <div {% if thing.class is defined %}class="{{thing.class[0]}} {{thing.class[0]}}-{{thing.class[1]}}"{% endif %}>
                       {% if thing.title is defined %}
-                      <h3>{{ thing.title }}</h3>
+                      <h4>{{ thing.title }}</h4>
                       {% endif %}
                       {% if thing.text is defined %}
                       <p>{{ thing.text }}</p>

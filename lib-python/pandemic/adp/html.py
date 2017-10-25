@@ -8,6 +8,23 @@ from giant.structure.formatting import Labeller, ShortLabeller
 from bamboo.html import png2base64src
 from pandemic.html import PANDEMIC_HTML_ENV
 
+def format_summary(text, width=12, cls_tuple=['alert','info']):
+    paragraphs = text.split('\n\n')
+    output = []
+    for p in paragraphs:
+        lines = p.strip('>\n ').split('\n')
+        if len(lines) > 1:
+            title = lines.pop(0).strip('>\n ')
+        else:
+            title = None
+        p_dict = {'width' : width,
+                  'text'  : '<br>'.join(lines).replace('\t','&emsp;'),
+                  'class' : cls_tuple}
+        if title is not None:
+            p_dict['title'] = title
+        output.append(p_dict)
+    return output
+
 def create_overview_tab(parameterisation):
     p = parameterisation
     f = parameterisation.fitter
@@ -18,11 +35,15 @@ def create_overview_tab(parameterisation):
            'short_name'     : 'Overview',
            'long_name'      : 'Hierarchical ADP Parameterisation Overview',
            'description'    : '',
-           'contents'       : [{'width':12,
-                                'title':'Hierarchy Summary:',
-                                'text': '{} levels (+residual level):{}'.format(len(p.levels), '<br>&nbsp;'.join(['']+['Level {}: {}'.format(il+1, l) for il,l in enumerate(p.level_labels)])),
-                                'class': ['alert','info'],
-                               }] +\
+           'contents'       : format_summary(f.summary(), width=6) + \
+                              numpy.concatenate([format_summary(l.summary(show=False), width=3) for l in f.levels]).tolist() + \
+                              #[format_summary(f.residual.summary(), width=12)] + \
+                              [{'width':12, 'text': '---'}] + \
+                              # [{'width': 12,
+                              #  'title': 'Hierarchy Summary:',
+                              #  'text':  f.html_summary(),#'{} levels (+residual level):{}'.format(len(p.levels), '<br>&nbsp;'.join(['']+['Level {}: {}'.format(il+1, l) for il,l in enumerate(p.level_labels)])),
+                              #  'class': ['alert','info'],
+                              # }] +\
                               numpy.concatenate(zip(*[[{'width':4, 'text': 'Partition Schematic',  'image':png2base64src(os.path.join(p.out_dir, 'model/level-partitioning-chain-{}.png'.format(c)))    } for c in chain_ids],
                                                       [{'width':4, 'text': 'TLS-level components', 'image':png2base64src(os.path.join(p.out_dir, 'model/all-stacked-chain_{}.png'.format(c)))           } for c in chain_ids],
                                                       [{'width':4, 'text': 'Residual component',   'image':png2base64src(os.path.join(p.out_dir, 'model/all-residual-chain_{}.png'.format(c)))          } for c in chain_ids]
@@ -45,8 +66,8 @@ def create_analysis_tab(parameterisation):
                                {'width':6, 'path':png2base64src(os.path.join(p.out_dir, 'graphs/r-work-by-resolution.png'))}],
            'plots'          : [{'div': 'variable-plots',
                                 'json': p.table.T.to_json(orient='split'),
-                                'default_x' : 'old-High Res Limit',
-                                'default_y' : 'R-free Change'}],
+                                'default_x' : 'High Resolution Limit',
+                                'default_y' : 'R-free Change (Fitted-Input)'}],
            'table'          : p.table.to_html(bold_rows=False, classes=['display nowrap'])\
                                         .replace('<th></th>','<th>Dataset</th>')\
                                         .replace('border="1" ', ''),
