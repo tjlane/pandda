@@ -2193,46 +2193,63 @@ class PanddaMultiDatasetAnalyser(Program):
             for c in dataset_sfs:
                 # Extract column from the dataset, and associated miller_set
                 col = mtz_obj.get_column(c)
-                ms = col.mtz_crystal().miller_set(False)
+                ms_d = col.mtz_crystal().miller_set(anomalous_flag=False)
                 # Get the boolean selection for valid reflections from the column
-                valid_selection = col.selection_valid()
+                values, valid = col.extract_values_and_selection_valid(-1).as_tuple()
+                # List of reflections that have missing values
+                zero_sel = flex.bool(valid.size(), True).set_selected(valid, 0)
                 # ==============================>
                 # Check that all data are valid values
                 # ==============================>
                 if self.params.checks.all_data_are_valid_values is True:
-                    if sum(valid_selection) != len(valid_selection):
-                        errors.append('Structure factor column "{}" in dataset {} has missing reflections (some values are set to N/A or zero). '.format(c, dataset.tag)+\
-                                      '{} reflections have a value of zero. '.format(len(valid_selection)-sum(valid_selection))+\
-                                      'You should populate the structure factors for these reflections with their estimated values. '\
-                                      'Analysing maps with missing reflections (escepially low resolution reflections!) will degrade the quality of the analysis. '\
-                                      'However, you can continue by setting checks.all_data_are_valid_values=None.')
-                        continue
+                    if sum(zero_sel) > 0:
+                        zero_refl = '\n\t'.join(['Reflection: ({:3d}, {:3d}, {:3d}) - resolution: {:6.3f}A - value: {}'.format(i[0], i[1], i[2], d, v)
+                                                    for (i,d), v in zip(ms_d.select(zero_sel).d_spacings(), values.select(zero_sel))])
+                        errors.append('Structure factor column "{}" in dataset {} has invalid reflections. \n'.format(c, dataset.tag) + \
+                                      '{} reflection(s) are set to N/A or zero. \n'.format(sum(zero_sel)) + \
+                                      'You should populate the structure factors for these reflections with their estimated values -- this is normally performed automatically in refinement with phenix or refmac. \n' + \
+                                      'Analysing maps with missing reflections (especially low resolution reflections!) will degrade the quality of the analysis. \n' + \
+                                      'However, you can continue by setting checks.all_data_are_valid_values=None. \n' + \
+                                      'Missing reflections (-1 indicates reflection set to N/A): \n\t{}'.format(zero_refl))
+                        #continue
                 # ==============================>
                 # Check that the data is complete up until a certain resolution
                 # ==============================>
                 if self.params.checks.low_resolution_completeness is not None:
                     # Find selection for the low resolution reflections
-                    low_res_sel = ms.resolution_filter_selection(d_min=self.params.checks.low_resolution_completeness, d_max=999)
+                    sel_low = ms_d.resolution_filter_selection(d_min=self.params.checks.low_resolution_completeness, d_max=999)
+                    # Select these reflections in the dataset miller set
+                    ms_d_low = ms_d.select(sel_low)
                     # Extract a complete set of miller indices up to cutoff resolution
-                    ms_c = ms.complete_set(d_min_tolerance=0.0, d_min=self.params.checks.low_resolution_completeness, d_max=999)
+                    ms_c_low = ms_d.complete_set(d_min_tolerance=0.0, d_min=self.params.checks.low_resolution_completeness, d_max=999)
                     # Check that there are the same number of reflections in this set as the other set
-                    if ms_c.size() != sum(low_res_sel):
-                        errors.append('Structure factor column "{}" in dataset {} has missing reflections below {}A (some reflections are not present in the miller set). '.format(c, dataset.tag, self.params.checks.low_resolution_completeness)+\
-                                      '{} reflections are missing from the miller set in the reflection file. '.format(ms_c.size()-sum(low_res_sel))+\
-                                      'You should add these missing reflections and populate the structure factors for these reflections with their estimated values. '\
-                                      'Analysing maps with missing reflections (escepially low resolution reflections!) will degrade the quality of the analysis. '\
-                                      'I really would not do this, but you can continue by setting checks.low_resolution_completeness to None.')
-                        continue
+                    if ms_c_low.size() != ms_d_low.size():
+                        # Calculate the lone set of the two sets
+                        lone_set = ms_c_low.lone_set(ms_d_low)
+                        miss_refl = '\n\t'.join(['Reflection: ({:3d}, {:3d}, {:3d}) - resolution: {:6.3f}A'.format(i[0], i[1], i[2], d)
+                                                    for (i,d) in lone_set.d_spacings()])
+                        # Record informative error message!
+                        errors.append('Structure factor column "{}" in dataset {} has missing reflections below {}A. \n'.format(c, dataset.tag, self.params.checks.low_resolution_completeness) + \
+                                      '{} reflection(s) are missing from the miller set in the reflection file. \n'.format(lone_set.size()) + \
+                                      'You should add these missing reflections to the miller set and populate the structure factors for these reflections with their estimated values. \n' + \
+                                      'The generation of missing miller indices can be done using uniqueify from CCP4; missing reflection values will then (by default) be automatically estimated during refinement with phenix or refmac. \n' + \
+                                      'Analysing maps with missing reflections (especially low resolution reflections!) will degrade the quality of the analysis. \n' + \
+                                      'You can ignore this -- though I really would not -- by setting checks.low_resolution_completeness to None. \n' + \
+                                      'Missing reflections: \n\t{}'.format(miss_refl))
+                        #continue
                     # Calculate overlap between low resolution set and valid set to ensure none missing from low resolution set
-                    valid_low_res = valid_selection.select(low_res_sel)
-                    # Check if any low resolution reflections are invlaid
-                    if sum(valid_low_res) != len(valid_low_res):
-                        errors.append('Structure factor column "{}" in dataset {} has missing reflections below {}A (some values are set to N/A or zero). '.format(c, dataset.tag, self.params.checks.low_resolution_completeness)+\
-                                      '{} reflections have a value of zero. '.format(len(valid_low_res)-sum(valid_low_res))+\
-                                      'You should populate the structure factors for these reflections with their estimated values. '\
-                                      'Analysing maps with missing reflections (escepially low resolution reflections!) will degrade the quality of the analysis. '\
-                                      'I really would not do this, but you can continue by setting checks.low_resolution_completeness=None.')
-                        continue
+                    zero_sel_low = zero_sel.select(sel_low)
+                    # Check if any low resolution reflections are invalid
+                    if sum(zero_sel_low) > 0:
+                        zero_refl = '\n\t'.join(['Reflection: ({:3d}, {:3d}, {:3d}) - resolution: {:6.3f}A - value: {}'.format(i[0], i[1], i[2], d, v)
+                                                    for (i,d), v in zip(ms_d_low.select(zero_sel_low).d_spacings(), values.select(sel_low).select(zero_sel_low))])
+                        errors.append('Structure factor column "{}" in dataset {} has invalid reflections below {}A. \n'.format(c, dataset.tag, self.params.checks.low_resolution_completeness)+\
+                                      '{} reflection(s) are set to N/A or zero. \n'.format(sum(zero_sel)) + \
+                                      'You should populate the structure factors for these reflections with their estimated values -- this is normally performed automatically in refinement with phenix or refmac. \n' + \
+                                      'Analysing maps with missing reflections (especially low resolution reflections!) will degrade the quality of the analysis. \n' + \
+                                      'You can ignore this -- though I really would not -- by setting checks.low_resolution_completeness to None. \n' + \
+                                      'Missing reflections (-1 indicates reflection set to N/A): \n\t{}'.format(zero_refl))
+                        #continue
         # ==============================>
         # Report Errors
         # ==============================>
