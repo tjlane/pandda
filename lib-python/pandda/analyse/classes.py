@@ -2222,10 +2222,10 @@ class PanddaMultiDatasetAnalyser(Program):
                     ms_d_low = ms_d.select(sel_low)
                     # Extract a complete set of miller indices up to cutoff resolution
                     ms_c_low = ms_d.complete_set(d_min_tolerance=0.0, d_min=self.params.checks.low_resolution_completeness, d_max=999)
+                    # Calculate the lone set of the two sets
+                    lone_set = ms_c_low.lone_set(ms_d_low)
                     # Check that there are the same number of reflections in this set as the other set
-                    if ms_c_low.size() != ms_d_low.size():
-                        # Calculate the lone set of the two sets
-                        lone_set = ms_c_low.lone_set(ms_d_low)
+                    if lone_set.size() != 0:
                         miss_refl = '\n\t'.join(['Reflection: ({:3d}, {:3d}, {:3d}) - resolution: {:6.3f}A'.format(i[0], i[1], i[2], d)
                                                     for (i,d) in lone_set.d_spacings()])
                         # Record informative error message!
