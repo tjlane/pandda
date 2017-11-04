@@ -14,6 +14,9 @@ class Edstats(object):
         self.scores = pandas.DataFrame.from_dict(scores)
         self._command = command
 
+        if self.scores.empty and self._command.error:
+            raise Exception('EDSTATS ERROR\n=========>\n{!s}\n=========>'.format(self._command.error))
+
     def extract_residue_group_scores(self, residue_group, data_table=None, rg_label=None, column_suffix=''):
         """Extract density quality metrics for a residue group from precalculated edstats scores"""
 
@@ -77,8 +80,6 @@ def score_file_with_edstats(mtz_file, pdb_file):
 
     # Score the complex with Edstats
     edstats = Edstats(mtz_file=mtz_file, pdb_file=pdb_file)
-    if edstats.scores.empty and edstats._command.error:
-        raise Exception('EDSTATS ERROR : {!s}'.format(edstats._command.error))
     # Process the std out of the program
     summary = EdstatsLogSummary(edstats._command.output)
 
