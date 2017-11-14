@@ -978,8 +978,6 @@ def pandda_analyse_main(args):
     welcome()
 
     p=working_phil.extract()
-    print 'write_statistical_maps?\t', p.pandda.output.maps.write_statistical_maps
-    print 'existing_datasets?\t', p.pandda.flags.existing_datasets
 
     try:
         # ============================================================================>
