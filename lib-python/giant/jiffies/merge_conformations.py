@@ -8,7 +8,7 @@ from bamboo.common.logs import Log
 from giant.io.pdb import strip_pdb_to_input
 from giant.structure.utils import resolve_residue_id_clashes, transfer_residue_groups_from_other
 from giant.structure.altlocs import expand_alternate_conformations, find_next_conformer_idx, increment_altlocs, prune_redundant_alternate_conformations
-from giant.structure.occupancy import set_conformer_occupancy
+from giant.structure.occupancy import set_conformer_occupancy, sanitise_occupancies
 
 from giant.jiffies import make_restraints
 
@@ -47,10 +47,10 @@ input {
         .multiple = True
 }
 options {
-    minor_occupancy = 0.5
+    minor_occupancy = 1.0
         .help = 'occupancy of the minor state after merging (multiplies existing occupancies)'
         .type = float
-    major_occupancy = 0.5
+    major_occupancy = 1.0
         .help = 'occupancy of the major state after merging (multiplies existing occupancies)'
         .type = float
     prune_duplicates_rmsd = 0.05
@@ -191,7 +191,7 @@ def run(params):
 
     # Check that the input occupancies are valid
     if (params.options.minor_occupancy>1.0) or (params.options.major_occupancy>1.0):
-        raise Exception('minor_occupancy and major_occupancy cannot be greater than 1.0 (currently {} and {})'.format(params.options.minor_occupancy,params.options.major_occupancy))
+        raise Exception('minor_occupancy or major_occupancy cannot be greater than 1.0 (currently {} and {})'.format(params.options.minor_occupancy,params.options.major_occupancy))
 
     # Report validated parameters
     log.subheading('Processed merging parameters')
@@ -228,13 +228,6 @@ def run(params):
 
     # Set output occupancies
     log.subheading('Post-processing occupancies')
-    # Set all main-conf occupancies to 1.0
-    log('Setting all main-conf occupancies to 1.0')
-    set_conformer_occupancy(hierarchy   = final_struct,
-                            altlocs     = [''],
-                            occupancy   = 1.0,
-                            in_place    = True,
-                            verbose     = params.settings.verbose)
     # Reset occupancies if required
     if params.options.reset_all_occupancies:
         # Calculate number of altlocs and associated occupancy
@@ -248,6 +241,19 @@ def run(params):
                                     occupancy   = new_occ,
                                     in_place    = True,
                                     verbose     = params.settings.verbose)
+    else:
+        # Perform minimal normalisation of occupancies so that residue occupancy is in range 0-1
+        log('Sanitising occupancies so that residue occupancies are between 0 and 1')
+        sanitise_occupancies(hierarchy = final_struct,
+                             in_place  = True,
+                             verbose   = params.settings.verbose)
+    # Set all main-conf occupancies to 1.0
+    log('Setting all main-conf occupancies to 1.0')
+    set_conformer_occupancy(hierarchy   = final_struct,
+                            altlocs     = [''],
+                            occupancy   = 1.0,
+                            in_place    = True,
+                            verbose     = params.settings.verbose)
 
     # Update the atoms numbering
     final_struct.sort_atoms_in_place()

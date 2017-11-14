@@ -16,8 +16,9 @@ from bamboo.plot import Radar
 
 from giant.io.pdb import strip_pdb_to_input
 from giant.xray.edstats import Edstats
-from giant.structure import sanitise_hierarchy, calculate_residue_group_occupancy, calculate_paired_conformer_rmsds
+from giant.structure import sanitise_hierarchy, calculate_paired_conformer_rmsds
 from giant.structure.b_factors import calculate_residue_group_bfactor_ratio
+from giant.structure.occupancy import calculate_residue_group_occupancy
 from giant.structure.formatting import ShortLabeller
 from giant.structure.select import non_h, protein, backbone, sidechains
 

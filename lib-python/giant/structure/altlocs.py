@@ -5,8 +5,9 @@ import iotbx.pdb
 
 from scitbx.array_family import flex
 
-from giant.structure import get_atom_pairs, calculate_paired_atom_rmsd, normalise_occupancies
+from giant.structure import get_atom_pairs, calculate_paired_atom_rmsd
 from giant.structure.formatting import Labeller
+from giant.structure.occupancy import normalise_occupancies
 
 protein_amino_acid_set = set(iotbx.pdb.common_residue_names_amino_acid + iotbx.pdb.common_residue_names_modified_amino_acid)
 

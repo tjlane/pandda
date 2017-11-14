@@ -102,19 +102,6 @@ def get_atom_pairs(residue_1, residue_2, fetch_labels=True):
             atom_pairs.append((a1_d[a_name],a2_d[a_name]))
     return atom_pairs
 
-def calculate_residue_group_occupancy(residue_group):
-    """
-    Extract the total occupancy of a residue, allowing for alternate conformers.
-    - If conformers are present, the occupancies of each conformer are summed.
-    - If multiple occupancies are present for a conformer, the maximum is taken for each.
-    """
-    rg = residue_group
-    if [c.altloc for c in rg.conformers()] == ['']:
-        res_occ = max(rg.atoms().extract_occ())
-    else:
-        res_occ = sum([max(c.atoms().extract_occ()) for c in rg.conformers() if c.altloc])
-    return res_occ
-
 def calculate_paired_conformer_rmsds(conformers_1, conformers_2):
     """Return a list of rmsds between two list of conformers, paired by the minimum rmsd. Each conformer may only be paired once"""
 
@@ -183,11 +170,4 @@ def calculate_paired_atom_rmsd(atoms_1, atoms_2, sort=True, truncate_to_common_s
         return None
     # Calculate RMSD and return
     return flex.mean((atoms_1.extract_xyz() - atoms_2.extract_xyz()).dot())**0.5
-
-def normalise_occupancies(atoms, max_occ=1.0):
-    """Normalise the maximum occupancy of a group of atoms to max_occ"""
-    occ = atoms.extract_occ()
-    occ_mult = max_occ/max(occ)
-    atoms.set_occ(occ*occ_mult)
-    return atoms
 
