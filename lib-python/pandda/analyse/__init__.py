@@ -92,7 +92,7 @@ def pandda_dataset_setup(pandda):
         pandda.align_datasets(method=pandda.params.alignment.method)
         # Pickle the new loaded datasets
         pandda.pickle_the_pandda(components=['datasets'], datasets=pandda.datasets.mask(mask_name='new datasets'))
-        pandda.write_state()
+        #pandda.write_state()
     else:
         # ============================================================================>
         # Build masks for reloaded datasets based on current input parameters (quick)
