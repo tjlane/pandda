@@ -2244,7 +2244,7 @@ class PanddaMultiDatasetAnalyser(Program):
                         zero_refl = '\n\t'.join(['Reflection: ({:3d}, {:3d}, {:3d}) - resolution: {:6.3f}A - value: {}'.format(i[0], i[1], i[2], d, v)
                                                     for (i,d), v in zip(ms_d_low.select(zero_sel_low).d_spacings(), values.select(sel_low).select(zero_sel_low))])
                         errors.append('Structure factor column "{}" in dataset {} has invalid reflections below {}A. \n'.format(c, dataset.tag, self.params.checks.low_resolution_completeness)+\
-                                      '{} reflection(s) are set to N/A or zero. \n'.format(sum(zero_sel)) + \
+                                      '{} reflection(s) are set to N/A or zero. \n'.format(sum(zero_sel_low)) + \
                                       'You should populate the structure factors for these reflections with their estimated values -- this is normally performed automatically in refinement with phenix or refmac. \n' + \
                                       'Analysing maps with missing reflections (especially low resolution reflections!) will degrade the quality of the analysis. \n' + \
                                       'You can ignore this -- though I really would not -- by setting checks.low_resolution_completeness to None. \n' + \
