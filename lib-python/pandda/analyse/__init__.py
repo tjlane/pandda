@@ -302,7 +302,7 @@ def pandda_main_loop(pandda):
                 pandda.log.bar()
                 continue
             else:
-                pandda.log('Sufficient datasets ar this resolution to perform statistical density analysis', True)
+                pandda.log('Sufficient datasets at this resolution to perform statistical density analysis', True)
                 pandda.log.bar()
                 pandda.log('Using {} datasets for statistical electron density characterisation'.format(sum(building_mask)), True)
                 pandda.log('Datasets to be used for density characterisation: {}'.format(','.join(['\n\t'*(not i%5)+d.tag for i,d in enumerate(pandda.datasets.mask(mask_name=building_mask_name))])))

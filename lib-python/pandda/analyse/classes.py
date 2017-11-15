@@ -674,7 +674,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Check that enough datasets have been found - before any filtering
         # ================================================>
         elif self.datasets.size()+len(self.new_files()) < self.params.analysis.min_build_datasets:
-            self.log.bar()
+            self.log.bar(True, False)
             self.log('Not enough datasets are available for statistical map characterisation.', True)
             self.log('The minimum number required is controlled by changing analysis.min_build_datasets', True)
             self.log('Number loaded ({!s}) is less than the {!s} currently needed.'.format(self.datasets.size()+len(self.new_files()), self.params.analysis.min_build_datasets), True)
@@ -683,11 +683,19 @@ class PanddaMultiDatasetAnalyser(Program):
         # Check that enough VALID datasets have been loaded
         # ================================================>
         elif self.datasets.all_masks().has_mask('characterisation') and (self.datasets.size(mask_name='characterisation') < self.params.analysis.min_build_datasets):
-            self.log.bar()
+            self.log.bar(True, False)
             self.log('After filtering datasets, not enough datasets are available for statistical map characterisation.', True)
             self.log('The minimum number required is controlled by changing analysis.min_build_datasets', True)
             self.log('Number loaded ({!s}) is less than the {!s} currently needed.'.format(self.datasets.size(mask_name='rejected - total', invert=True), self.params.analysis.min_build_datasets), True)
             raise Sorry('Not enough datasets are available for statistical map characterisation')
+        # ================================================>
+        # Check that ANY datasets are marked for analysis!
+        # ================================================>
+        elif self.datasets.all_masks().has_mask('analyse - all') and (self.datasets.size(mask_name='analyse - all') == 0):
+            raise Sorry('No datasets have been marked for analysis ({}/{} valid old datasets, {}/{} valid new datasets)'.format(self.datasets.size(mask_name='analyse - old'),
+                                                                                                                                self.datasets.size(mask_name='valid - old'),
+                                                                                                                                self.datasets.size(mask_name='analyse - new'),
+                                                                                                                                self.datasets.size(mask_name='valid - new')))
 
     #########################################################################################################
     #                                                                                                       #
