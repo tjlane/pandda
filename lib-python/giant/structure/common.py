@@ -1,6 +1,6 @@
 
 def split_main_and_alt_conf_atom_groups(residue_group):
-    return main_conf_ags(residue_group), alt_conf_ags(residue_group)
+    return main_conf_atom_groups(residue_group), alt_conf_atom_groups(residue_group)
 
 def main_conf_atom_groups(residue_group):
     ags = [ag for ag in residue_group.atom_groups() if ag.altloc=='']
