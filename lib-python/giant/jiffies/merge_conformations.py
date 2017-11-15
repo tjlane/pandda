@@ -247,6 +247,7 @@ def run(params):
         sanitise_occupancies(hierarchy = final_struct,
                              in_place  = True,
                              verbose   = params.settings.verbose)
+    log('')
     # Set all main-conf occupancies to 1.0
     log('Setting all main-conf occupancies to 1.0')
     set_conformer_occupancy(hierarchy   = final_struct,
@@ -259,6 +260,7 @@ def run(params):
     final_struct.sort_atoms_in_place()
     final_struct.atoms_reset_serial()
     # Write output file
+    log.subheading('Writing output structure')
     log('Writing output structure to {}'.format(params.output.pdb))
     final_struct.write_pdb_file(file_name=params.output.pdb, crystal_symmetry=maj_obj.crystal_symmetry())
 

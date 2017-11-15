@@ -62,9 +62,13 @@ def sanitise_occupancies(hierarchy, fixed_conformers=None, min_occ=0.0, max_occ=
         main_ag, alt_ags = split_main_and_alt_conf_atom_groups(rg)
         # Sanitise main conf
         if main_ag is not None:
-            if verbose: print 'sanitising main-conf atom group {}, occupancy {}'.format(Labeller.format(main_ag), max(main_ag.atoms().extract_occ()))
+            if verbose:
+                print '------------------>'
+                print 'Sanitising main-conf atom group:\n\t{}'.format(Labeller.format(main_ag))
+                print 'Current occupancy: {}'.format(max(main_ag.atoms().extract_occ()))
             sanitise_atom_group_occupancies_in_place(main_ag, min_occ=min_occ, max_occ=max_occ)
-            if verbose: print 'new occupancy: {}'.format(max(main_ag.atoms().extract_occ()))
+            if verbose:
+                print 'New occupancy:     {}'.format(max(main_ag.atoms().extract_occ()))
         # Sanitise alt confs
         if alt_ags is not None:
             # Get the groups to change and the groups to keep constant
@@ -75,11 +79,21 @@ def sanitise_occupancies(hierarchy, fixed_conformers=None, min_occ=0.0, max_occ=
             occ_const = sum([max(ag.atoms().extract_occ()) for ag in ag_const])
             if occ_const > max_occ: raise Exception('Occupancy of fixed atom groups ({}) is already greater than maximum ({})'.format(occ_const, max_occ))
             # Normalise the occupancies of the changing groups
-            if verbose: print 'sanitising alt-conf atom groups {}, occupancy {}'.format([Labeller.format(ag) for ag in ag_chnge], occ_chnge)
+            if verbose:
+                print '------------------>'
+                print 'Sanitising alt-conf atom groups:'
+                print 'Fixed conformers:\n\t{}'.format('\n\t'.join([Labeller.format(ag) for ag in ag_const]))
+                print 'Other conformers:\n\t{}'.format('\n\t'.join([Labeller.format(ag) for ag in ag_chnge]))
+                print 'Total occupancy (fixed): {}'.format(occ_const)
+                print 'Individual occupancies:  {}'.format(', '.join(map(str,[max(ag.atoms().extract_occ()) for ag in ag_const])))
+                print 'Total occupancy (other): {}'.format(occ_chnge)
+                print 'Individual occupancies:  {}'.format(', '.join(map(str,[max(ag.atoms().extract_occ()) for ag in ag_chnge])))
             sanitise_multiple_atom_group_occupancies_in_place(atom_groups = ag_chnge,
                                                               min_occ = max(0.0, min_occ-occ_const),
                                                               max_occ = min(1.0, max_occ-occ_const))
-            if verbose: print 'new occupancy: {}'.format(sum([max(ag.atoms().extract_occ()) for ag in ag_const]))
+            if verbose:
+                print 'New total occupancy (other): {}'.format(sum([max(ag.atoms().extract_occ()) for ag in ag_chnge]))
+                print 'Individual occupancies:  {}'.format(', '.join(map(str,[max(ag.atoms().extract_occ()) for ag in ag_chnge])))
 
     return hierarchy
 

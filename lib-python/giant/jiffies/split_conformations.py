@@ -133,7 +133,7 @@ def split_conformations(filename, params, log=None):
     assert len(out_confs) == len(out_suffs), '{} not same length as {}'.format(str(out_confs), str(out_suffs))
 
     for confs, suffix in zip(out_confs, out_suffs):
-        print 'Conformers {} -> {}'.format(str(confs), suffix)
+        log('Conformers {} -> {}'.format(str(confs), suffix))
 
     # Create paths from the suffixes
     out_paths = ['.'.join([os.path.splitext(filename)[0],params.output.suffix_prefix,suff,'pdb']) for suff in out_suffs]
