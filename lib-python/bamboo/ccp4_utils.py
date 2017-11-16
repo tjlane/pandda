@@ -4,6 +4,41 @@ from bamboo.common.command import CommandManager
 from bamboo.common.file import FileObj
 
 ######################################
+#          Ligand functions          #
+######################################
+
+def generate_ligand_with_acedrg(smiles, name='LIG', prefix='ligand', verbose=False):
+    """Generate pdb and cif files from smiles string"""
+
+    assert len(name) == 3
+
+    smiles = smiles.replace('CL', 'Cl')
+    smiles = smiles.replace('BR', 'Br')
+
+    out_pdb = prefix+'.pdb'
+    out_cif = prefix+'.cif'
+
+    if os.path.exists(out_pdb):
+        raise Exception('Output PDB file already exists')
+    if os.path.exists(out_cif):
+        raise Exception('Output CIF file already exists')
+
+    # Run acedrg
+    acedrg = CommandManager('acedrg')
+    acedrg.add_command_line_arguments([ '--smi={}'.format(smiles) ])
+    acedrg.add_command_line_arguments([ '-r', name ])
+    acedrg.add_command_line_arguments([ '-o', prefix ])
+    if verbose: acedrg.print_settings()
+    acedrg.run()
+
+    if not (os.path.exists(out_pdb) and os.path.exists(out_cif)):
+        e = Exception('acedrg failed during ligand generation')
+        e.command = acedrg
+        raise e
+
+    return out_pdb, out_cif
+
+######################################
 #    Misc - move to other module?    #
 ######################################
 

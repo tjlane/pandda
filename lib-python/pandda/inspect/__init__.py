@@ -7,6 +7,7 @@ from bamboo.plot import bar
 
 from pandda import LOGO_PATH
 from pandda.inspect import html as inspect_html
+from pandda.inspect.ligands import post_new_ligand_window
 from pandda.constants import PanddaAnalyserFilenames, PanddaInspectorFilenames, PanddaDatasetFilenames, PanddaHtmlFilenames
 
 import pandda.resources.inspect
@@ -339,8 +340,7 @@ class PanddaEvent(object):
         self.mean_map           = os.path.join(self.dataset_dir, PanddaDatasetFilenames.native_mean_map.format(dtag)     )
 
         # Ligand Files
-        self.lig_pdbs = sorted(glob.glob(os.path.join(self.ligand_dir, '*.pdb')))
-        self.lig_cifs = [os.path.splitext(f)[0]+'.cif' for f in self.lig_pdbs]
+        self.find_ligands()
 
     def find_current_fitted_model(self):
         """Get the most recent saved model of this protein"""
@@ -360,6 +360,10 @@ class PanddaEvent(object):
         else:       last_idx = 0
         new_fitted = self.FITTED_PRE+'{:04d}.pdb'.format(last_idx+1)
         return os.path.join(self.model_dir, new_fitted)
+
+    def find_ligands(self):
+        self.lig_pdbs = sorted(glob.glob(os.path.join(self.ligand_dir, '*.pdb')))
+        self.lig_cifs = [os.path.splitext(f)[0]+'.cif' for f in self.lig_pdbs]
 
     def write_fitted_model(self, protein_obj):
         new_fitted = self.find_new_fitted_model()
@@ -828,10 +832,11 @@ class PanddaMolHandler(object):
 
         # Load ligand objects first - coot automatically focusses on the last
         # loaded molecule and we want that to be the protein molecule!
-        self.ligand_index = 0
+        self.ligand_index = None
         if e.lig_pdbs and e.lig_cifs:
-            self.open_mols['l'] = self.open_ligand(event=e, index=self.ligand_index)
-            if os.path.exists(e.fitted_link): set_mol_displayed(self.open_mols['l'], 0)
+            self.load_ligand(event=e, index=0)
+            if os.path.exists(e.fitted_link):
+                set_mol_displayed(self.open_mols['l'], 0)
 
         # Load input model or load fitted version if it exists
         if os.path.exists(e.fitted_link): p = read_pdb(e.fitted_link)
@@ -890,15 +895,25 @@ class PanddaMolHandler(object):
         set_map_displayed(g, 1)
         self.open_mols['g'] = g
 
+    def load_ligand(self, event, index=None):
+        """Load a ligand and set this as the active ligand"""
+        if index is None:
+            index = self.ligand_index
+        else:
+            self.ligand_index = index
+        # Ensure current molecules are closed
+        if self.open_mols.get('l', None) is not None: close_molecule(self.open_mols['l'])
+        # Open new ligand
+        self.open_mols['l'] = self.open_ligand_file(event=event, index=index)
+
     def next_ligand(self, event):
         if len(event.lig_pdbs) == 0:
             modal_msg(msg='No ligand files found for this dataset')
             return
-        self.ligand_index = (self.ligand_index + 1)%len(event.lig_pdbs)
-        if self.open_mols['l']: close_molecule(self.open_mols['l'])
-        self.open_mols['l'] = self.open_ligand(event=event, index=self.ligand_index)
+        next_index = (self.ligand_index + 1)%len(event.lig_pdbs)
+        self.load_ligand(event=event, index=next_index)
 
-    def open_ligand(self, event, index):
+    def open_ligand_file(self, event, index, set_occupancy=True):
         if len(event.lig_pdbs) == 0:
             modal_msg(msg='No ligand files found for this dataset')
             return
@@ -909,12 +924,23 @@ class PanddaMolHandler(object):
         set_mol_displayed(l, 1)
         set_b_factor_molecule(l, 20)
         # Set the occupancy of the ligand to 2*(1-bdc)
-        all_residue_ids = all_residues(l)
-        if all_residue_ids:
-            for res_chn, res_num, res_ins in all_residue_ids:
-                set_alt_conf_occ(l, res_chn, res_num, res_ins, [['', 2.0*event.est_1_bdc]])
+        if set_occupancy:
+            all_residue_ids = all_residues(l)
+            if all_residue_ids:
+                for res_chn, res_num, res_ins in all_residue_ids:
+                    set_alt_conf_occ(l, res_chn, res_num, res_ins, [['', 2.0*event.est_1_bdc]])
         return l
 
+    def make_and_load_new_ligand(self, event):
+        """Create new ligand, add to event object and load ligand"""
+
+        # Create new ligand
+        ligand_id, ligand_name, ligand_smiles, ligand_pdb, ligand_cif = post_new_ligand_window(output_directory=event.ligand_dir)
+        # Update ligands
+        event.find_ligands()
+        # Find index of new ligand and open
+        new_index = event.lig_pdbs.index(ligand_pdb)
+        self.load_ligand(event=event, index=new_index)
 
 class PanddaGUI(object):
 
@@ -1054,6 +1080,7 @@ class PanddaGUI(object):
         self.buttons['load-ground-state-map'].connect("clicked", lambda x: self.parent.coot.load_ground_state_map(event=self.parent.current_event))
         self.buttons['load-full-dataset-mtz'].connect("clicked", lambda x: self.parent.coot.load_full_dataset_mtz(event=self.parent.current_event))
         self.buttons['load-original-model'].connect("clicked", lambda x: read_pdb(self.parent.current_event.input_model))
+        self.buttons['new-ligand'].connect("clicked", lambda x: self.parent.coot.make_and_load_new_ligand(event=self.parent.current_event))
 
         # Meta Recording buttons
         self.buttons['tp'].connect("clicked",         lambda x: self.parent.set_event_log_value(col='Interesting', value=True))
@@ -1316,6 +1343,11 @@ class PanddaGUI(object):
         b = gtk.Button('Load unfitted model\n(for comparison only)')
         b.child.set_justify(gtk.JUSTIFY_CENTER)
         self.buttons['load-original-model'] = b
+        hbox_1.pack_start(b, expand=False, fill=False, padding=5)
+        # ---
+        b = gtk.Button('Create new ligand')
+        b.child.set_justify(gtk.JUSTIFY_CENTER)
+        self.buttons['new-ligand'] = b
         hbox_1.pack_start(b, expand=False, fill=False, padding=5)
         # ---
         hbox_1.pack_start(gtk.HBox(), expand=True, fill=False, padding=10)
