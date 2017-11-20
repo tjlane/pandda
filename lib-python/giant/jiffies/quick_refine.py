@@ -57,7 +57,7 @@ output {
         .type = str
 }
 options {
-    program = *phenix refmac
+    program = phenix *refmac
         .type = choice
     split_conformations = False
         .help = "Split the output structure into different conformations for modelling."
@@ -67,7 +67,7 @@ split_conformations {
     include scope giant.jiffies.split_conformations.master_phil
 }
 settings {
-    verbose = True
+    verbose = False
         .type = bool
 }
 """, process_includes=True)
@@ -90,7 +90,8 @@ def run(params):
     os.mkdir(out_dir)
 
     # Create log object
-    log = Log(log_file=os.path.join(out_dir, params.output.out_prefix+'.quick-refine.log'), verbose=True)
+    log = Log(log_file = os.path.join(out_dir, params.output.out_prefix+'.quick-refine.log'),
+              verbose  = params.settings.verbose)
 
     # Report
     if current_dirs:
@@ -157,24 +158,30 @@ def run(params):
     # Report
     log(str(cm))
 
-    log.subheading('running refinement - {}'.format(cm.program[0]))
+    log.bar()
+    log('running refinement... ({})'.format(cm.program[0]))
     out = cm.run()
 
-    log.subheading('refinement output')
-    log(cm.output)
+    log.subheading('Refinement output')
+    if not log.verbose:
+        log('output written to log file ({} lines)'.format(cm.output.count('\n')))
+
+    log('\n'+cm.output, show=False)
 
     if out != 0:
-        log.subheading('errors')
+        log.subheading('Refinement Errors')
         log(cm.error)
+
+    log.subheading('Post-processing output files')
 
     # Find output files
     try:
         real_pdb = glob.glob(output_prefix+'*.pdb')[0]
         real_mtz = glob.glob(output_prefix+'*.mtz')[0]
     except:
-        print('Refinement has failed - outptu files do not exist')
-        print(real_pdb)
-        print(real_mtz)
+        log('Refinement has failed - output files do not exist')
+        log('{}: {}'.format(output_prefix+'*.pdb', glob.glob(output_prefix+'*.pdb')))
+        log('{}: {}'.format(output_prefix+'*.mtz', glob.glob(output_prefix+'*.mtz')))
         raise
 
     # List of links to make at the end of the run
@@ -184,7 +191,7 @@ def run(params):
     # Split conformations
     if params.options.split_conformations:
         params.split_conformations.settings.verbose = params.settings.verbose
-        log.subheading('splitting refined structure conformations')
+        log.subheading('Splitting refined structure conformations')
         # Running split conformations
         out_files = split_conformations.split_conformations(filename=real_pdb, params=params.split_conformations, log=log)
         # Link output files to top

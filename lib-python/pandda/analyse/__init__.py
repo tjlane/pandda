@@ -92,7 +92,7 @@ def pandda_dataset_setup(pandda):
         pandda.align_datasets(method=pandda.params.alignment.method)
         # Pickle the new loaded datasets
         pandda.pickle_the_pandda(components=['datasets'], datasets=pandda.datasets.mask(mask_name='new datasets'))
-        pandda.write_state()
+        #pandda.write_state()
     else:
         # ============================================================================>
         # Build masks for reloaded datasets based on current input parameters (quick)
@@ -302,7 +302,7 @@ def pandda_main_loop(pandda):
                 pandda.log.bar()
                 continue
             else:
-                pandda.log('Sufficient datasets ar this resolution to perform statistical density analysis')
+                pandda.log('Sufficient datasets at this resolution to perform statistical density analysis')
                 pandda.log.bar()
                 pandda.log('Using {} datasets for statistical electron density characterisation'.format(sum(building_mask)))
                 pandda.log('Datasets to be used for density characterisation: {}'.format(','.join(['\n\t'*(not i%5)+d.tag for i,d in enumerate(pandda.datasets.mask(mask_name=building_mask_name))])))

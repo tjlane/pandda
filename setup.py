@@ -42,7 +42,7 @@ for s in install_scripts:
 #####################################################################################
 
 setup(  name                = 'panddas',
-        version             = '0.2.10',
+        version             = '0.2.12-dev',
         description         = 'Multi-dataset crystallographic analyses',
         author              = 'Nicholas M Pearce',
         author_email        = 'nicholas.pearce.0@gmail.com',
@@ -64,12 +64,12 @@ setup(  name                = 'panddas',
                                                         )
                                             ),
         include_package_data= True,
-        classifiers         = ( 'Development Status :: 4 - Beta',
+        classifiers         = [ 'Development Status :: 4 - Beta',
                                 'Intended Audience :: Developers',
                                 'Natural Language :: English',
                                 'Programming Language :: Python',
                                 'Programming Language :: Python :: 2.7',
                                 'Topic :: Software Development :: Libraries :: Python Modules',
                                 'Operating System :: Unix',
-                                ),
+                              ],
         )

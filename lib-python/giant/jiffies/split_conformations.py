@@ -8,7 +8,7 @@ import libtbx.phil
 from bamboo.common.logs import Log
 
 from giant.io.pdb import strip_pdb_to_input, get_pdb_header
-from giant.structure import calculate_residue_group_occupancy
+from giant.structure.occupancy import calculate_residue_group_occupancy, sanitise_occupancies
 from giant.structure.formatting import Labeller
 from giant.structure.iterators import residue_groups_with_complete_set_of_conformers
 from giant.structure.altlocs import prune_redundant_alternate_conformations
@@ -76,7 +76,7 @@ options {
     reset_altlocs = True
         .help = 'Relabel conformers of kept residues to begin with "A" (i.e. C,D,E -> A,B,C)'
         .type = bool
-    reset_occupancies = True
+    reset_occupancies = False
         .help = 'Normalise the occupancies so that the maximum occupancy of the output structure is 1.0 (all relative occupancies are maintained)'
         .type = bool
 }
@@ -133,7 +133,7 @@ def split_conformations(filename, params, log=None):
     assert len(out_confs) == len(out_suffs), '{} not same length as {}'.format(str(out_confs), str(out_suffs))
 
     for confs, suffix in zip(out_confs, out_suffs):
-        print 'Conformers {} -> {}'.format(str(confs), suffix)
+        log('Conformers {} -> {}'.format(str(confs), suffix))
 
     # Create paths from the suffixes
     out_paths = ['.'.join([os.path.splitext(filename)[0],params.output.suffix_prefix,suff,'pdb']) for suff in out_suffs]
@@ -188,18 +188,18 @@ def split_conformations(filename, params, log=None):
             log('Resetting output occupancies (maximum occupancy of 1.0, etc.)')
             # Divide through by the smallest occupancy of any complete residues groups with occupancies of less than one
             rg_occs = [calculate_residue_group_occupancy(rg) for rg in residue_groups_with_complete_set_of_conformers(sel_hiery)]
-            non_uni = [v for v in numpy.unique(rg_occs) if v < 1.0]
+            non_uni = [v for v in numpy.unique(rg_occs) if 0.0 < v < 1.0]
             if non_uni:
                 div_occ = min(non_uni)
                 log('Dividing all occupancies by {}'.format(div_occ))
                 sel_hiery.atoms().set_occ(sel_hiery.atoms().extract_occ() / div_occ)
             # Normalise the occupancies of any residue groups with more than unitary occupancy
             log('Fixing any residues that have greater than unitary occupancy')
-            for rg in sel_hiery.residue_groups():
-                occ = calculate_residue_group_occupancy(rg)
-                if occ > 1.0:
-                    log('Normalising residue {} (occupancy {})'.format(Labeller.format(rg), occ))
-                    rg.atoms().set_occ(rg.atoms().extract_occ() / occ)
+            sanitise_occupancies(hierarchy = sel_hiery,
+                                 min_occ   = 0.0,
+                                 max_occ   = 1.0,
+                                 in_place  = True,
+                                 verbose   = params.settings.verbose)
             # Perform checks
             max_occ = max([calculate_residue_group_occupancy(rg) for rg in sel_hiery.residue_groups()])
             log('Maximum occupancy of output structue: {}'.format(max_occ))
