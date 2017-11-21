@@ -16,7 +16,7 @@ from scitbx import simplex, linalg
 
 from mmtbx.secondary_structure import dssp
 
-from bamboo.common import Info, ListStream
+from bamboo.common import Meta, Info, ListStream
 from bamboo.common.logs import Log, LogStream
 from bamboo.common.path import easy_directory, rel_symlink
 from bamboo.common.command import CommandManager
@@ -680,8 +680,6 @@ class MultiDatasetUijParameterisation(Program):
 
         self.params = params
 
-        self.out_dir = params.output.out_dir
-
         self._n_cpu = params.settings.cpus
         self._n_opt = params.fitting.max_datasets_for_optimisation
 
@@ -702,6 +700,7 @@ class MultiDatasetUijParameterisation(Program):
         self.plot = MultiDatasetUijPlots
 
         # Validate and add output paths, etc.
+        self._init_file_system()
         self._init_input_models()
         self._init_level_groups()
         self._init_fitter()
@@ -712,6 +711,17 @@ class MultiDatasetUijParameterisation(Program):
         self.table_one_csv_refined = None
 
         #self.write_running_parameters_to_log(params=params)
+
+    def _init_file_system(self):
+
+        self.out_dir = easy_directory(self.params.output.out_dir)
+        fm = self.initialise_file_manager(rootdir=self.out_dir)
+        for d in ['logs','model','graphs','structures','table_ones']:
+            fm.add_dir(dir_name=d, dir_tag=d)
+
+        if self.params.output.diagnostics is True:
+            for d in ['diagnostics']:
+                fm.add_dir(dir_name=d, dir_tag=d)
 
     def _init_input_models(self):
         """Prepare the input models"""
@@ -827,7 +837,7 @@ class MultiDatasetUijParameterisation(Program):
         self.fitter.set_optimisation_datasets(self._opt_datasets_selection)
 
         # Write summary of the fitted model (groups & levels)
-        model_dir = easy_directory(os.path.join(self.out_dir, 'model'))
+        model_dir = self.file_manager.get_dir('model')
         self.log.heading('Writing summary of the hierarchical model')
         self.hierarchy_summary(out_dir=model_dir)
 
@@ -937,7 +947,7 @@ class MultiDatasetUijParameterisation(Program):
         self.log.subheading('Writing various sets of output structures')
 
         # Output structure (will contain folders for each dataset)
-        structure_dir = easy_directory(os.path.join(self.out_dir, 'structures'))
+        structure_dir = self.file_manager.get_dir('structures')
 
         # Create TLS headers for each dataset
         self.log('Creating TLS headers for each structure')
@@ -987,7 +997,7 @@ class MultiDatasetUijParameterisation(Program):
         #---#                         Model summaries                              #---#
         #------------------------------------------------------------------------------#
 
-        model_dir = easy_directory(os.path.join(self.out_dir, 'model'))
+        model_dir = self.file_manager.get_dir('model')
 
         # Write average uijs for each level
         self.log.heading('Summaries of the level-by-level TLS fittings')
@@ -1011,7 +1021,8 @@ class MultiDatasetUijParameterisation(Program):
 
         if self.params.output.diagnostics is True:
 
-            fit_dir = easy_directory(os.path.join(self.out_dir, 'diagnostics'))
+            self.file_manager.add_dir(dir_name='diagnostics', dir_tag='diagnostics')
+            fit_dir = self.file_manager.get_dir('diagnostics')
 
             # Dataset-by-dataset and atom-by-atom fit rmsds
             self.log.heading('Calculating rmsd metrics between input and fitted Uijs')
@@ -1038,13 +1049,13 @@ class MultiDatasetUijParameterisation(Program):
 
         # Calculate new R-frees, etc.
         self.log.heading('Generating Table Ones for all structures')
-        self.generate_fitted_table_ones(out_dir=os.path.join(self.out_dir, 'table_ones'))
+        self.generate_fitted_table_ones(out_dir=self.file_manager.get_dir('table_ones'))
 
         # Write output CSV of... everything
         self.log.heading('Writing output csvs')
         self.write_combined_csv(uij_fit=uij_all,
                                 uij_inp=uij_inp,
-                                out_dir=self.out_dir)
+                                out_dir=self.file_manager.get_dir('root'))
 
         #------------------------------------------------------------------------------#
         #                                                                              #
@@ -3443,6 +3454,11 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                     self._optimise(running_summary=True)
                     # Log model summary
                     self.log(self._parameters.get(index=i_tls).model.summary())
+                    # Log current RMSD and penalty
+                    self.log.bar()
+                    self.log('> Optimisation RMSD: {}'.format(self.optimisation_rmsd))
+                    self.log('> Optimisation Pen.: {}'.format(self.optimisation_penalty))
+                    self.log.bar()
 
                 # ---------------------------------->
                 # Optimise TLS amplitude parameters (all amplitudes!)
