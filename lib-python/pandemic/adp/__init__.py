@@ -101,13 +101,13 @@ output {
         .type = path
         .multiple = False
     diagnostics = False
-        .help = "Write diagnostic graphs"
+        .help = "Write diagnostic graphs -- adds a significant amount of runtime"
         .type = bool
     pymol_images = True
         .help = "Write residue-by-residue images of the output B-factors"
         .type = bool
 }
-fitting {
+levels {
     auto_levels = *chain auto_group *secondary_structure *residue *backbone *sidechain atom
         .type = choice(multi=True)
     custom_level
@@ -126,71 +126,69 @@ fitting {
             .type = bool
             .multiple = False
     }
-    tls {
-        number_of_modes_per_group = 1
-            .help = 'how many TLS models to fit per group of atoms?'
-            .type = int
-        max_datasets_for_optimisation = None
-            .help = 'how many datasets should be used for optimising the TLS parameters?'
-            .type = int
-        max_resolution_for_optimisation = None
-            .help = 'resolution limit for dataset to be used for TLS optimisation'
-            .type = float
-    }
-    optimisation {
-        number_of_macro_cycles = 1
-            .help = 'how many fitting cycles to run (over all levels)'
-            .type = int
-        number_of_micro_cycles = 3
-            .help = 'how many fitting cycles to run (for each level)'
-            .type = int
-        penalties
-            .help = 'penalties during optimisation. penalty function is 0 if p is 0, else (a + b*p), i.e. (p>0)*(a+b*p).'
-            .expert_level = 1
+}
+fitting {
+    number_of_macro_cycles = 1
+        .help = 'how many fitting cycles to run (over all levels)'
+        .type = int
+    number_of_micro_cycles = 3
+        .help = 'how many fitting cycles to run (for each level)'
+        .type = int
+    number_of_modes_per_group = 1
+        .help = 'how many TLS models to fit per group of atoms?'
+        .type = int
+    max_datasets_for_optimisation = None
+        .help = 'how many datasets should be used for optimising the TLS parameters?'
+        .type = int
+    max_resolution_for_optimisation = None
+        .help = 'resolution limit for dataset to be used for TLS optimisation'
+        .type = float
+    penalties
+        .help = 'penalties during optimisation. penalty function is 0 if p is 0, else (a + b*p), i.e. (p>0)*(a+b*p).'
+        .expert_level = 1
+    {
+        invalid_tls_values
+            .help = 'penalties for invalid TLS models. penalty p is number of T L or S matrices that is unphysical.'
+            .expert_level = 3
         {
-            invalid_tls_values
-                .help = 'penalties for invalid TLS models. penalty p is number of T L or S matrices that is unphysical.'
-                .expert_level = 3
-            {
-                a = 1e2
-                    .type = float
-                    .help = 'fixed penalty for positive penalty values'
-                b = 1e2
-                    .type = float
-                    .help = 'multiplicative penalty for positive penalty values'
-            }
-            invalid_amplitudes
-                .help = 'penalties for negative TLS amplitudes. penalty p is sum of amplitudes less than zero.'
-                .expert_level = 3
-            {
-                a = 1e2
-                    .type = float
-                    .help = 'fixed penalty for positive penalty values'
-                b = 1e2
-                    .type = float
-                    .help = 'multiplicative penalty for positive penalty values'
-            }
-            invalid_uij_values
-                .help = 'penalties for invalid Uij values. penalty p is total number of negative eigenvalues for each Uij.'
-                .expert_level = 3
-            {
-                a = 1e2
-                    .type = float
-                    .help = 'fixed penalty for positive penalty values'
-                b = 1e3
-                    .type = float
-                    .help = 'multiplicative penalty for positive penalty values'
-            }
-            over_target_values
-                .help = 'penalties when the fitted Uij is greater than the target Uij. penalty p is number of atoms with a Uij(fitted) > Uij(target). calculated as number of negative eigenvalues of tensor Uij(fitted)-Uij(target).'
-            {
-                a = 0.0
-                    .type = float
-                    .help = 'fixed penalty for positive penalty values'
-                b = 1e3
-                    .type = float
-                    .help = 'multiplicative penalty for positive penalty values'
-            }
+            a = 1e2
+                .type = float
+                .help = 'fixed penalty for positive penalty values'
+            b = 1e2
+                .type = float
+                .help = 'multiplicative penalty for positive penalty values'
+        }
+        invalid_amplitudes
+            .help = 'penalties for negative TLS amplitudes. penalty p is sum of amplitudes less than zero.'
+            .expert_level = 3
+        {
+            a = 1e2
+                .type = float
+                .help = 'fixed penalty for positive penalty values'
+            b = 1e2
+                .type = float
+                .help = 'multiplicative penalty for positive penalty values'
+        }
+        invalid_uij_values
+            .help = 'penalties for invalid Uij values. penalty p is total number of negative eigenvalues for each Uij.'
+            .expert_level = 3
+        {
+            a = 1e2
+                .type = float
+                .help = 'fixed penalty for positive penalty values'
+            b = 1e3
+                .type = float
+                .help = 'multiplicative penalty for positive penalty values'
+        }
+        over_target_values
+            .help = 'penalties when the fitted Uij is greater than the target Uij. penalty p is number of atoms with a Uij(fitted) > Uij(target). calculated as number of negative eigenvalues of tensor Uij(fitted)-Uij(target).'
+        {
+            a = 0.0
+                .type = float
+                .help = 'fixed penalty for positive penalty values'
+            b = 1e3
+                .type = float
+                .help = 'multiplicative penalty for positive penalty values'
         }
     }
 }
@@ -685,11 +683,11 @@ class MultiDatasetUijParameterisation(Program):
         self.out_dir = params.output.out_dir
 
         self._n_cpu = params.settings.cpus
-        self._n_opt = params.fitting.tls.max_datasets_for_optimisation
+        self._n_opt = params.fitting.max_datasets_for_optimisation
 
         self._allow_isotropic = True
 
-        self._opt_datasets_res_limit = params.fitting.tls.max_resolution_for_optimisation
+        self._opt_datasets_res_limit = params.fitting.max_resolution_for_optimisation
         self._opt_datasets_selection = []
 
         self.models = models
@@ -900,8 +898,8 @@ class MultiDatasetUijParameterisation(Program):
 
         self.log.heading('Fitting hierarchical B-factor model', spacer=True)
 
-        n_macro_cycles = self.params.fitting.optimisation.number_of_macro_cycles
-        n_micro_cycles = self.params.fitting.optimisation.number_of_micro_cycles
+        n_macro_cycles = self.params.fitting.number_of_macro_cycles
+        n_micro_cycles = self.params.fitting.number_of_micro_cycles
         self.log('Macro-cycles: {}'.format(n_macro_cycles))
         self.log('Micro-cycles: {}'.format(n_micro_cycles))
         self.log('')
@@ -1250,8 +1248,8 @@ class MultiDatasetUijParameterisation(Program):
             # Iterate through the groups in this level
             for i_group, sel, fitter in level:
                 tls_model, tls_amps = fitter.result()
-                assert tls_model.shape == (self.params.fitting.tls.number_of_modes_per_group, 21)
-                assert tls_amps.shape  == (self.params.fitting.tls.number_of_modes_per_group, len(self.models), 3)
+                assert tls_model.shape == (self.params.fitting.number_of_modes_per_group, 21)
+                assert tls_amps.shape  == (self.params.fitting.number_of_modes_per_group, len(self.models), 3)
 
                 # Add to model and amplitudes tables
                 for i_tls in xrange(tls_model.shape[0]):
@@ -1291,7 +1289,7 @@ class MultiDatasetUijParameterisation(Program):
             # Boundaries for this level
             boundaries = self.partition_boundaries_for_level(i_level=i_level)
             # Iterate through the different tls models
-            for i_tls in xrange(self.params.fitting.tls.number_of_modes_per_group):
+            for i_tls in xrange(self.params.fitting.number_of_modes_per_group):
                 # Prefix for structures & graphs of uijs for this level and mode
                 prefix = os.path.join(out_dir, 'level_{}-mode_{}'.format(i_level+1, i_tls+1))
                 # Cumulative uijs (for this mode)
@@ -1309,8 +1307,8 @@ class MultiDatasetUijParameterisation(Program):
                     # Reset the required TLS of this mode
                     l_copy.reset_models(modes=[i_tls], t=(not t), l=(not l), s=(not s))
                     # Reset the TLS for all other modes
-                    if self.params.fitting.tls.number_of_modes_per_group > 1:
-                        other_modes = range(self.params.fitting.tls.number_of_modes_per_group)
+                    if self.params.fitting.number_of_modes_per_group > 1:
+                        other_modes = range(self.params.fitting.number_of_modes_per_group)
                         other_modes.remove(i_tls)
                         l_copy.reset_models(modes=other_modes, t=True, l=True, s=True)
                     # Extract uijs
@@ -1319,7 +1317,7 @@ class MultiDatasetUijParameterisation(Program):
                     # Create structure for this level and mode
                     m_h = self.custom_master_hierarchy(uij=uij, iso=uij_to_b(uij), mask=sel)
                     # Only write if more than one mode
-                    if self.params.fitting.tls.number_of_modes_per_group > 1:
+                    if self.params.fitting.number_of_modes_per_group > 1:
                         m_f = prefix+'-{}.pdb'.format(cpt)
                         self.log('\t> {}'.format(m_f))
                         m_h.write_pdb_file(m_f)
@@ -1331,7 +1329,7 @@ class MultiDatasetUijParameterisation(Program):
                     uij_lvl[cpt] += uij_mode[cpt]
 
                 # Write output for this MODE
-                if self.params.fitting.tls.number_of_modes_per_group > 1:
+                if self.params.fitting.number_of_modes_per_group > 1:
                     # Write structure with combined TLS values
                     uij_mode_tls = uij_mode['T'] + uij_mode['L'] + uij_mode['S']
                     m_h = self.custom_master_hierarchy(uij=uij_mode_tls, iso=uij_to_b(uij_mode_tls), mask=sel)
@@ -2542,17 +2540,17 @@ class MultiDatasetHierarchicalUijFitter(object):
                                                             observed_xyz = observed_xyz,
                                                             observed_com = self.observed_com,
                                                             group_idxs = group_idxs,
-                                                            n_tls = self.params.tls.number_of_modes_per_group,
+                                                            n_tls = self.params.number_of_modes_per_group,
                                                             index = idx+1,
                                                             label = lab,
-                                                            penalties = self.params.optimisation.penalties,
+                                                            penalties = self.params.penalties,
                                                             log = self.log))
 
         # One object to fit all the Uij residuals
         self.residual = MultiDatasetUijResidualLevel(observed_uij = observed_uij,
                                                      index = len(self.levels)+1,
                                                      label = 'residual',
-                                                     penalties = params.optimisation.penalties,
+                                                     penalties = self.params.penalties,
                                                      log = self.log)
 
         assert len(self.level_labels) == len(self.level_array)
@@ -2685,7 +2683,7 @@ class MultiDatasetHierarchicalUijFitter(object):
         s += '\nNumber of atoms:    {}'.format(len(self.atomic_mask))
         s += '\n'
         s += '\n> Parameters:'
-        s += '\nNumber of TLS modes per group: {}'.format(self.params.tls.number_of_modes_per_group)
+        s += '\nNumber of TLS modes per group: {}'.format(self.params.number_of_modes_per_group)
         s += '\nDatasets used for optimisation: {} of {}'.format(sum(self.dataset_mask), len(self.dataset_mask))
         s += '\nAtoms used for optimisation:    {} of {}'.format(sum(self.atomic_mask), len(self.atomic_mask))
         s += '\nEffective parameter ratio (input v fitted): {}'.format(self.parameter_ratio())
@@ -3553,31 +3551,31 @@ def build_levels(model, params, log=None):
     # FIXME Only run on the protein for the moment FIXME
     filter_h = protein(model.hierarchy)
 
-    if 'chain' in params.fitting.auto_levels:
+    if 'chain' in params.levels.auto_levels:
         log('Level {}: Creating level with groups for each chain'.format(len(levels)+1))
         levels.append([PhenixSelection.format(c) for c in filter_h.chains()])
         labels.append('chain')
-    if 'auto_group' in params.fitting.auto_levels:
+    if 'auto_group' in params.levels.auto_levels:
         log('Level {}: Creating level with groups determined by phenix.find_tls_groups'.format(len(levels)+1))
         levels.append([s.strip('"') for s in phenix_find_tls_groups(model.filename)])
         labels.append('groups')
-    if 'secondary_structure' in params.fitting.auto_levels:
+    if 'secondary_structure' in params.levels.auto_levels:
         log('Level {}: Creating level with groups based on secondary structure'.format(len(levels)+1))
         levels.append([s.strip('"') for s in default_secondary_structure_selections(model.hierarchy)])
         labels.append('secondary structure')
-    if 'residue' in params.fitting.auto_levels:
+    if 'residue' in params.levels.auto_levels:
         log('Level {}: Creating level with groups for each residue'.format(len(levels)+1))
         levels.append([PhenixSelection.format(r) for r in filter_h.residue_groups()])
         labels.append('residue')
-    if 'backbone' in params.fitting.auto_levels:
+    if 'backbone' in params.levels.auto_levels:
         log('Level {}: Creating level with groups for each residue backbone'.format(len(levels)+1))
         levels.append([PhenixSelection.format(r)+' and (name C or name CA or name N or name O)'     for r in backbone(filter_h).atom_groups() if (r.resname not in ['ALA','GLY','PRO'])])
         labels.append('backbone')
-    if 'sidechain' in params.fitting.auto_levels:
+    if 'sidechain' in params.levels.auto_levels:
         log('Level {}: Creating level with groups for each residue sidechain'.format(len(levels)+1))
         levels.append([PhenixSelection.format(r)+' and not (name C or name CA or name N or name O)' for r in sidechains(filter_h).atom_groups() if (r.resname not in ['ALA','GLY','PRO'])])
         labels.append('sidechain')
-    if 'atom' in params.fitting.auto_levels:
+    if 'atom' in params.levels.auto_levels:
         log('Level {}: Creating level with groups for each atom'.format(len(levels)+1))
         levels.append([PhenixSelection.format(a) for a in filter_h.atoms()])
         labels.append('atom')
@@ -3641,7 +3639,6 @@ def run(params):
 
         # Fit TLS models
         p.fit_hierarchical_uij_model()
-        log.heading('Parameterisation complete')
 
         # Process output
         p.process_results()

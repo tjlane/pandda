@@ -139,7 +139,7 @@ def create_levels_tab(parameterisation):
         for i_group, (group_num, sel, group_fitter) in enumerate(level):
             adp_image = os.path.join(p.out_dir, 'model/pymol/level_{}-all-modes-group_{}.png'.format(level_num, group_num))
             amp_image = os.path.join(p.out_dir, 'model/graphs/tls-model-amplitudes-level-{}-group-{}.png'.format(level_num, group_num))
-            tls_mdl_str = '<br>'.join(['Mode {}:<br>T : {T11}, {T22}, {T33}, {T12}, {T13}, {T23},<br>L : {L11}, {L22}, {L33}, {L12}, {L13}, {L23},<br>S : {S11}, {S12}, {S13}, {S21}, {S22}, {S23}, {S31}, {S32}, {S33}'.format(i_mode+1, **tls_models.loc[(group_num, i_mode)].round(3)) for i_mode in xrange(p.params.fitting.tls.number_of_modes_per_group)])
+            tls_mdl_str = '<br>'.join(['Mode {}:<br>T : {T11}, {T22}, {T33}, {T12}, {T13}, {T23},<br>L : {L11}, {L22}, {L33}, {L12}, {L13}, {L23},<br>S : {S11}, {S12}, {S13}, {S21}, {S22}, {S23}, {S31}, {S32}, {S33}'.format(i_mode+1, **tls_models.loc[(group_num, i_mode)].round(3)) for i_mode in xrange(p.params.fitting.number_of_modes_per_group)])
             panel = {'id'    : 'Group {} - {}'.format(group_num, p.levels[i_level][i_group]),
                      'text'  : '<br>'.join(['Number of atoms: {}'.format(sum(sel)),tls_mdl_str]),
                      'width' : max(4,12//level.n_groups()),
