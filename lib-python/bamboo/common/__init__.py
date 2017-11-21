@@ -58,7 +58,7 @@ class Meta(object):
 
     def summary(self):
         out = []
-        for k in self.__dict__:
+        for k in sorted(self.__dict__):
             out.append('{!s}: {!s}'.format(k, self.__dict__[k]))
         return '\n'.join(out)
 
