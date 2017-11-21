@@ -371,7 +371,7 @@ class TLSAmplitudeSet(object):
         """Print summary of the TLS amplitudes"""
         r = '> TLS amplitudes'
         for i, vals in enumerate(self.values):
-            r += '\nDataset {:4}: '.format(i+1)+'{:8.3f} (T) {:8.3f} (L) {:8.3f} (S)'.format(*vals)
+            r += '\n\tDataset {:4}: '.format(i+1)+'{:8.3f} (T) {:8.3f} (L) {:8.3f} (S)'.format(*vals)
         return r
 
 class MultiDatasetTLSModel(object):
@@ -706,9 +706,6 @@ class MultiDatasetUijParameterisation(Program):
         self._init_fitter()
 
         self.table = None
-        self.table_one_csv_input   = None
-        self.table_one_csv_fitted  = None
-        self.table_one_csv_refined = None
 
         #self.write_running_parameters_to_log(params=params)
 
@@ -1049,7 +1046,7 @@ class MultiDatasetUijParameterisation(Program):
 
         # Calculate new R-frees, etc.
         self.log.heading('Generating Table Ones for all structures')
-        self.generate_fitted_table_ones(out_dir=self.file_manager.get_dir('table_ones'))
+        self.generate_fitted_table_ones()
 
         # Write output CSV of... everything
         self.log.heading('Writing output csvs')
@@ -1692,10 +1689,12 @@ class MultiDatasetUijParameterisation(Program):
             assert os.path.exists(mdl.r_pdb), '{} does not exist'.format(mdl.r_pdb)
             assert os.path.exists(mdl.r_mtz), '{} does not exist'.format(mdl.r_mtz)
 
-    def generate_fitted_table_ones(self, out_dir='.'):
+    def generate_fitted_table_ones(self):
         """Write table-ones for each structure before and after fitting"""
 
-        easy_directory(out_dir)
+        table_one_csv_orig = self.file_manager.add_file(file_name='table_one_input.csv',   file_tag='table_one_input',   dir_tag='table_ones')
+        table_one_csv_fitd = self.file_manager.add_file(file_name='table_one_fitted.csv',  file_tag='table_one_fitted',  dir_tag='table_ones')
+        table_one_csv_refd = self.file_manager.add_file(file_name='table_one_refined.csv', file_tag='table_one_refined', dir_tag='table_ones')
 
         for mdl in self.models:
             if not os.path.exists(mdl.o_mtz): rel_symlink(mdl.i_mtz, mdl.o_mtz)
@@ -1705,15 +1704,11 @@ class MultiDatasetUijParameterisation(Program):
                     os.path.exists(mdl.o_pdb) and \
                     os.path.exists(mdl.o_mtz)
 
-        output_eff_orig = os.path.abspath(os.path.join(out_dir, 'table_one_input.eff'))
-        output_eff_fitd = os.path.abspath(os.path.join(out_dir, 'table_one_fitted.eff'))
-        output_eff_refd = os.path.abspath(os.path.join(out_dir, 'table_one_refined.eff'))
+        output_eff_orig = table_one_csv_orig.replace('.csv', '.eff')
+        output_eff_fitd = table_one_csv_fitd.replace('.csv', '.eff')
+        output_eff_refd = table_one_csv_refd.replace('.csv', '.eff')
 
-        # Save the names of the csvs (to be created)
-        self.table_one_csv_input   = output_eff_orig.replace('.eff', '.csv')
-        self.table_one_csv_fitted  = output_eff_fitd.replace('.eff', '.csv')
-        self.table_one_csv_refined = output_eff_refd.replace('.eff', '.csv')
-
+        # Populate table one phil
         phil = multi_table_ones.master_phil.extract()
         phil.input.dir        = []
         phil.options          = self.params.table_ones_options
@@ -1759,10 +1754,10 @@ class MultiDatasetUijParameterisation(Program):
             if os.path.islink(mdl.o_mtz):
                 os.remove(mdl.o_mtz)
 
-        assert os.path.exists(self.table_one_csv_input)
-        assert os.path.exists(self.table_one_csv_fitted)
+        assert os.path.exists(table_one_csv_orig)
+        assert os.path.exists(table_one_csv_fitd)
         if self.models[0].r_pdb is not None:
-            assert os.path.exists(self.table_one_csv_refined)
+            assert os.path.exists(table_one_csv_refd)
 
     def write_combined_csv(self, uij_fit, uij_inp, out_dir='./'):
         """Add data to CSV and write"""
@@ -1791,9 +1786,9 @@ class MultiDatasetUijParameterisation(Program):
 
         # Extract data from the table one CSVs
         self.log.subheading('Looking for table one data')
-        for suff, csv in [(' (Input)',      self.table_one_csv_input),
-                          (' (Fitted)',     self.table_one_csv_fitted),
-                          (' (Refined)',    self.table_one_csv_refined)]:
+        for suff, csv in [(' (Input)',      self.file_manager.get_file('table_one_input')),
+                          (' (Fitted)',     self.file_manager.get_file('table_one_fitted')),
+                          (' (Refined)',    self.file_manager.get_file('table_one_refined'))]:
             if not os.path.exists(csv):
                 if 'refined' in suff.lower():
                     continue

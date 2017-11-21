@@ -29,6 +29,7 @@ class FileManager(object):
             self._make_directory_if_necessary(dir_tag)
         if exists:
             assert os.path.exists(self.output_dirs[dir_tag])
+        return self.get_dir(dir_tag=dir_tag)
 
     def get_dir(self, dir_tag):
         """Retrieve a dirname by it's dir_tag"""
@@ -44,6 +45,8 @@ class FileManager(object):
         dir_name = self.output_dirs[dir_tag]
         # Create filename and store
         self.output_files[file_tag] = FileObj(file=os.path.join(dir_name, file_name), tag=file_tag)
+        # Return filename
+        return self.get_file(file_tag=file_tag)
 
     def get_file(self, file_tag):
         """Retrieve a filename by it's file_tag"""
