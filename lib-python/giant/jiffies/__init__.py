@@ -39,7 +39,9 @@ def show_defaults_and_exit_maybe(master_phil, args):
     if '-h' in args: attributes_level = 1
     if '-hh' in args: attributes_level = 2
     if '-hhh' in args: attributes_level = 3
-    if '-a' in args: expert_level = 3
+    if '-a' in args: expert_level = 1
+    if '-aa' in args: expert_level = 2
+    if '-aaa' in args: expert_level = 3
 
     if ('?' in args) or ('--show-defaults' in args) or (not args) or (not attributes_level==expert_level==0):
         print('\n====================== Showing Default Parameters =====================\n')
