@@ -128,7 +128,7 @@ levels {
     }
 }
 fitting {
-    number_of_macro_cycles = 1
+    number_of_macro_cycles = 2
         .help = 'how many fitting cycles to run (over all levels)'
         .type = int
     number_of_micro_cycles = 3
@@ -703,9 +703,8 @@ class MultiDatasetUijParameterisation(Program):
         self._init_file_system()
         self._init_input_models()
         self._init_level_groups()
+        self._init_tables()
         self._init_fitter()
-
-        self.table = None
 
         #self.write_running_parameters_to_log(params=params)
 
@@ -801,6 +800,17 @@ class MultiDatasetUijParameterisation(Program):
         for i_level, label in enumerate(self.level_labels):
             self.log('\tLevel {} ({}): {} atoms'.format(i_level+1, label, sum(self.level_array[i_level]!=-1)))
 
+    def _init_tables(self):
+        """Create tables"""
+
+        self.tables = Meta(['statistics', 'tracking'])
+        self.tables.tracking = pandas.DataFrame(columns=['cycle', 'level', #'group',
+                                                         'rmsd',
+                                                         'u_iso (level)',
+                                                         'b_iso (level)',
+                                                         'u_iso (total)',
+                                                         'b_iso (total)'])
+
     def _init_fitter(self):
         """Create fitting object"""
 
@@ -832,6 +842,9 @@ class MultiDatasetUijParameterisation(Program):
                                                         log = self.log)
         # Select the datasets for be used for TLS optimisation
         self.fitter.set_optimisation_datasets(self._opt_datasets_selection)
+
+        # Table to be populated during optimisation
+        self.fitter.set_tracking(table=self.tables.tracking, out_dir=self.file_manager.get_dir('graphs'))
 
         # Write summary of the fitted model (groups & levels)
         model_dir = self.file_manager.get_dir('model')
@@ -1765,7 +1778,7 @@ class MultiDatasetUijParameterisation(Program):
         out_dir = easy_directory(out_dir)
 
         # Create output table
-        self.table = pandas.DataFrame(index=[m.tag for m in self.models],
+        main_table = pandas.DataFrame(index=[m.tag for m in self.models],
                                       columns=['High Resolution Limit',
                                                'Low Resolution Limit',
                                                'R-free Change (Fitted-Input)',
@@ -1776,8 +1789,7 @@ class MultiDatasetUijParameterisation(Program):
                                                'R-gap Change (Refined-Input)',
                                                'Average B-factor Change (Fitted-Input)',
                                                'Average B-factor (fitted atoms) Change (Fitted-Input)',
-                                              ]
-                                     )
+                                     ])
 
         # columns to be extracted from each file
         input_cols = ['High Resolution Limit', 'Low Resolution Limit', 'Unique reflections','Completeness (%)','Wilson B-factor']
@@ -1812,7 +1824,7 @@ class MultiDatasetUijParameterisation(Program):
             if 'input' in suff.lower():
                 # Transfer selected columns directly to main table
                 for col in input_cols:
-                    self.table[col] = table_one[col]
+                    main_table[col] = table_one[col]
                 # Reselect the remaining columns
                 table_one = table_one[other_cols]
             # Calculate additional columns
@@ -1822,20 +1834,21 @@ class MultiDatasetUijParameterisation(Program):
             # Add suffix
             table_one.columns = table_one.columns + suff
             # Transfer data to other
-            self.table = self.table.join(table_one, how="outer")
+            main_table = main_table.join(table_one, how="outer")
             self.log('')
         # Create columns for the deltas between variables
+        self.log('Creating additonal columns:')
         for delta_col, col in [('R-work Change', 'R-work'),
                                ('R-free Change', 'R-free'),
                                ('R-gap Change', 'R-gap'),
                                ('Average B-factor Change', 'Average B-factor')]:
             for suff1, suff2 in [(' (Input)', ' (Fitted)'),
                                  (' (Input)', ' (Refined)')]:
-                if (col+suff1 not in self.table.columns) or (col+suff2 not in self.table.columns):
+                if (col+suff1 not in main_table.columns) or (col+suff2 not in main_table.columns):
                     continue
                 suff = ' ({}-{})'.format(suff2.strip(' ()'), suff1.strip(' ()'))
                 self.log('> Creating col "{}" = "{}" - "{}"'.format(delta_col+suff, col+suff2, col+suff1))
-                self.table[delta_col+suff] = self.table[col+suff2] - self.table[col+suff1]
+                main_table[delta_col+suff] = main_table[col+suff2] - main_table[col+suff1]
 
         self.log.bar(True, False)
         self.log('Calculating mean and median fitting rmsds by dataset')
@@ -1845,8 +1858,8 @@ class MultiDatasetUijParameterisation(Program):
         # Extract mean/median dataset-by-dataset RMSDs
         dset_medn_rmsds = numpy.median(uij_rmsd, axis=1)
         dset_mean_rmsds = numpy.mean(uij_rmsd, axis=1)
-        self.table['Mean Fitting RMSD']   = dset_mean_rmsds
-        self.table['Median Fitting RMSD'] = dset_medn_rmsds
+        main_table['Mean Fitting RMSD']   = dset_mean_rmsds
+        main_table['Median Fitting RMSD'] = dset_medn_rmsds
         for i in xrange(0, min(10, len(self.models))):
             self.log('Model {:10}: {:6.3f} (mean), {:6.3f} (median)'.format(self.models[i].tag, dset_mean_rmsds[i], dset_medn_rmsds[i]))
 
@@ -1859,24 +1872,27 @@ class MultiDatasetUijParameterisation(Program):
         # Calculate mean/median ADPs for each atom
         dset_mean_inp_iso = numpy.mean(uij_inp_iso, axis=1)
         dset_mean_fit_iso = numpy.mean(uij_fit_iso, axis=1)
-        self.table['Average B-factor (fitted atoms) (Input)']               = dset_mean_inp_iso
-        self.table['Average B-factor (fitted atoms) (Fitted)']              = dset_mean_fit_iso
-        self.table['Average B-factor (fitted atoms) Change (Fitted-Input)'] = dset_mean_fit_iso - dset_mean_inp_iso
+        main_table['Average B-factor (fitted atoms) (Input)']               = dset_mean_inp_iso
+        main_table['Average B-factor (fitted atoms) (Fitted)']              = dset_mean_fit_iso
+        main_table['Average B-factor (fitted atoms) Change (Fitted-Input)'] = dset_mean_fit_iso - dset_mean_inp_iso
         for i in xrange(0, min(10, len(self.models))):
             self.log('Model {:10}: {:6.3f} (input) -> {:6.3f} (fitted)'.format(self.models[i].tag, dset_mean_inp_iso[i], dset_mean_fit_iso[i]))
 
         # Remove unpopulated columns
-        self.table = self.table.dropna(axis='columns', how='all')
+        main_table = main_table.dropna(axis='columns', how='all')
 
         # Write output csv
         filename = os.path.join(out_dir, 'dataset_scores.csv')
         self.log('')
         self.log('Writing output csv: {}'.format(filename))
-        self.table.to_csv(filename)
+        main_table.to_csv(filename)
+
+        # Store table for HTML output
+        self.tables.statistics = main_table
 
         # Make graphs for the table
-        self.table_one_summaries(table=self.table, out_dir=os.path.join(out_dir,'graphs'))
-        self.table_one_graphs(table=self.table, out_dir=os.path.join(out_dir,'graphs'))
+        self.table_one_summaries(table=main_table, out_dir=os.path.join(out_dir,'graphs'))
+        self.table_one_graphs(table=main_table,    out_dir=os.path.join(out_dir,'graphs'))
 
     def table_one_summaries(self, table, out_dir='./'):
         """Look at pre- and post-fitting statistics"""
@@ -1886,7 +1902,7 @@ class MultiDatasetUijParameterisation(Program):
         self.log.subheading('Model improvement summary')
 
         # Extract Column averages (means and medians)
-        table_means = self.table.mean().round(3)
+        table_means = table.mean().round(3)
         out_str = '{:>35s} | {:>15} | {:>15} | {:>15}'
 
         self.log.bar()
@@ -1904,7 +1920,7 @@ class MultiDatasetUijParameterisation(Program):
         for comp_lab in ['Fitted','Refined']:
             comp_suff = ' ({})'.format(comp_lab)
             # Check whether the columns are here - check the R-free as always should be present
-            if 'R-free ({})'.format(comp_lab) not in self.table.columns:
+            if 'R-free ({})'.format(comp_lab) not in table.columns:
                 continue
             self.log('Comparing Input and {} Uijs'.format(comp_lab))
             self.log(out_str.format('', 'Input', comp_lab, 'Difference'))
@@ -2040,6 +2056,15 @@ class MultiDatasetUijParameterisation(Program):
         return
 
 class MultiDatasetUijPlots(object):
+
+    @staticmethod
+    def failure_graph(filename, exception=None, title=None, **args):
+        fig = pyplot.figure()
+        if title is None: title=filename
+        if exception is not None: title += '\n---\n'+str(exception) + '\n---'
+        pyplot.title('Failed to make {}'.format( title ))
+        fig.savefig(filename)
+        pyplot.close(fig)
 
     @staticmethod
     def bin_x_values(data, n_bins=10):
@@ -2506,6 +2531,68 @@ class MultiDatasetUijPlots(object):
                         dpi=300)
             pyplot.close(fig)
 
+    @staticmethod
+    def tracking_plots(table, filename):
+
+        fig, axes = pyplot.subplots(nrows=2, ncols=1, sharex=True, sharey=False)
+        # Create list if only one plot
+        axes = numpy.array(axes).flatten()
+        # Set the figure title
+        fig.suptitle('Tracking data', y=0.99)
+
+        # Create xpositions and labels
+        x_vals = numpy.arange(0, len(table.index))
+        x_max = max(x_vals)
+        x_labs = [v if v in ['start','reset','residual'] else 'level {}'.format(v) for v in table['level'].values.astype(str).tolist() ]
+
+        # FIRST AXIS
+        ax = axes[0]
+        # Create RMSD plot
+        ax.plot(x_vals, table['rmsd'].tolist(), 'bo-')
+        # Axis stuff
+        ax.xaxis.set_ticks_position('bottom')
+        ax.set_ylabel('rmsd (A^2)')
+        ax.set_ylim(bottom=0.0)
+
+        # SECOND AXIS
+        ax = axes[1]
+        # Create B-iso lines for all of the levels in the table
+        levels = [l for l in table['level'][table['cycle']==table['cycle'][0]] if l not in ['start','reset']]
+        for l in levels:
+            l_sel = (table['level'] == l)
+            l_x_vals = x_vals[l_sel]
+            l_y_vals = table['b_iso (level)'][l_sel]
+            ax.bar(left=l_x_vals-0.2, height=l_y_vals, width=0.4)
+        # Create an overall B-iso line
+        ax.plot(x_vals, table['b_iso (total)'], 'ko-')
+        # Axis stuff
+        ax.xaxis.set_ticks_position('bottom')
+        ax.set_xlabel('Optimisation stage')
+        ax.set_ylabel('B-iso (A^2)')
+        ax.set_xticks(x_vals)
+        ax.set_xticklabels(x_labs, rotation=90, ha='center')
+        ax.set_xlim(left=-0.5, right=max(x_vals)+0.5)
+
+        # BOTH AXES -- Add vertical lines between macro-cycles
+        curr_v = -0.5
+        for i, v in enumerate(x_vals[(table['level']=='residual')] + 0.5):
+            # Dashed lines to separate cycles
+            if v < x_max:
+                for ax in axes:
+                    ax.axvline(x=v, linewidth=1, zorder=1, color='k', linestyle='--')
+            # Text to label each cycle
+            axes[0].text(x=(v+curr_v)/2.0,
+                         y=0.95*axes[0].get_ylim()[0] + 0.05*axes[0].get_ylim()[1],
+                         s='cycle {}'.format(i+1),
+                         horizontalalignment='center',
+                         verticalalignment='bottom',
+                        )
+            curr_v = v
+
+        fig.tight_layout()
+        fig.savefig(filename)
+        pyplot.close(fig)
+
 class MultiDatasetHierarchicalUijFitter(object):
 
     def __init__(self,
@@ -2588,6 +2675,70 @@ class MultiDatasetHierarchicalUijFitter(object):
         self.dataset_mask[:] = False
         self.dataset_mask[dataset_indices] = True
 
+    def set_tracking(self, table, out_dir):
+        self.tracking_data = table
+        self._tracking_dir = out_dir
+
+    def update_tracking(self, uij_lvl, i_cycle, i_level=None):
+        """Update the tracking table"""
+
+        self.log.subheading('Updating tracking...')
+
+        # Extract uijs for all of the levels for all datasets
+        uij_tot = uij_lvl.sum(axis=0)
+        # Calculate the rms between fitted and input
+        rmsd = rms(self.observed_uij-uij_tot, axis=None)
+
+        # Average over all datasets
+        uij_tot = uij_tot.mean(axis=0)
+        uij_lvl = uij_lvl.mean(axis=1)
+
+        assert uij_lvl.shape == (len(self.levels)+1,) + self.observed_uij.shape[1:]
+        assert uij_tot.shape == self.observed_uij.shape[1:]
+
+        # Extract the Uij for the selected level
+        if isinstance(i_level, int):
+            uij_sel = uij_lvl[i_level]
+            level_lab = str(i_level + 1)
+        elif i_level == 'residual':
+            uij_sel = uij_lvl[-1]
+            level_lab = str(i_level)
+        else:
+            uij_sel = None
+            level_lab = str(i_level)
+
+        # Calculate U-iso & B-iso for selected level
+        if uij_sel is not None:
+            assert uij_sel.shape == self.observed_uij.shape[1:]
+            b_iso_sel = numpy.mean(uij_to_b(uij_sel))
+            u_iso_sel = b_iso_sel / EIGHT_PI_SQ
+        else:
+            b_iso_sel = None
+            u_iso_sel = None
+
+        # Calculate U-iso & B-iso for complete model
+        b_iso_tot = numpy.mean(uij_to_b(uij_tot))
+        u_iso_tot = b_iso_tot / EIGHT_PI_SQ
+
+        # Create human-readable cycle number
+        cycle_lab = str(i_cycle+1)
+
+        # Add to tracking table
+        self.tracking_data.loc[len(self.tracking_data.index)] = {'cycle' : cycle_lab,
+                                                                 'level' : level_lab,
+                                                                 'rmsd'  : rmsd,
+                                                                 'u_iso (level)' : u_iso_sel,
+                                                                 'b_iso (level)' : b_iso_sel,
+                                                                 'u_iso (total)' : u_iso_tot,
+                                                                 'b_iso (total)' : b_iso_tot}
+
+        self.log(self.tracking_data.loc[len(self.tracking_data.index)-1].to_string())
+        # Dump to csv
+        self.tracking_data.to_csv(os.path.join(self._tracking_dir, 'tracking_data.csv'))
+
+        # Make plots
+        MultiDatasetUijPlots.tracking_plots(table=self.tracking_data, filename=os.path.join(self._tracking_dir, 'tracking_data.png'))
+
     def apply_masks(self):
         self.log.subheading('Setting atom and datasets masks')
         self.log('> Applying dataset masks')
@@ -2642,14 +2793,19 @@ class MultiDatasetHierarchicalUijFitter(object):
             self.log.heading('Macrocycle {} of {}'.format(i_macro+1, n_macro_cycles), spacer=True)
 
             # Update masks at beginning of each cycles
-            if i_macro > 0:
+            if i_macro == 0:
+                # Initialise tracking at the beginning of the run
+                self.update_tracking(uij_lvl=fitted_uij_by_level, i_cycle=i_macro, i_level='start')
+            else:
                 self.log.subheading('Updating parameters for next iteration')
                 self.log('Removing atoms with high residual uij from TLS optimisation')
                 self.update_atomic_mask(percentile=90, atomic_uij=self.residual.extract())
                 self.log('Removing datasets with high fit rmsds from TLS optimisation')
                 self.update_dataset_mask(percentile=95, observed_fitted_differences=self.observed_uij-fitted_uij_by_level.sum(axis=0))
-                self.log('Resetting fitted Uijs to Zero for next cycle')
-                fitted_uij_by_level[:] = 0.0
+                self.log('Resetting residual Uijs to zero for next cycle')
+                fitted_uij_by_level[-1] = 0.0
+                # Re-initialise tracking at the beginning of each subsequent cycle
+                self.update_tracking(uij_lvl=fitted_uij_by_level, i_cycle=i_macro, i_level='reset')
 
             # Ensure the masks are up-to-date
             self.apply_masks()
@@ -2662,6 +2818,8 @@ class MultiDatasetHierarchicalUijFitter(object):
                 fitter.set_target_uij(target_uij=self._target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=i_level))
                 # Optimise
                 fitted_uij_by_level[i_level] = fitter.run(n_cpus=n_cpus, n_cycles=n_micro_cycles)
+                # Update tracking
+                self.update_tracking(uij_lvl=fitted_uij_by_level, i_cycle=i_macro, i_level=i_level)
 
             # Fit the residuals
             self.log.subheading('Macrocycle {} of {}: '.format(i_macro+1, n_macro_cycles)+'Fitting residual atomic Uijs')
@@ -2669,6 +2827,8 @@ class MultiDatasetHierarchicalUijFitter(object):
             self.residual.set_target_uij(target_uij=self._target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=-1))
             # Update fitters and optimise -- always run two cycles of this
             fitted_uij_by_level[-1] = self.residual.run(n_cpus=n_cpus, n_cycles=2)
+            # Update tracking
+            self.update_tracking(uij_lvl=fitted_uij_by_level, i_cycle=i_macro, i_level='residual')
 
         return self.extract()
 
@@ -3451,8 +3611,8 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                     self.log(self._parameters.get(index=i_tls).model.summary())
                     # Log current RMSD and penalty
                     self.log.bar()
-                    self.log('> Optimisation RMSD: {}'.format(self.optimisation_rmsd))
-                    self.log('> Optimisation Pen.: {}'.format(self.optimisation_penalty))
+                    self.log('> Optimisation RMSD: {:5.3f}'.format(self.optimisation_rmsd))
+                    self.log('> Optimisation Pen.: {:5.3f}'.format(self.optimisation_penalty))
                     self.log.bar()
 
                 # ---------------------------------->
@@ -3541,8 +3701,8 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         s = self.log._bar()+'\nTLS Group Fit Summary: {}\n'.format(self.label)+self.log._bar()
         if self._optimise_model and (self.optimisation_rmsd is not numpy.inf):
             s += '\n> Optimisation Summary'
-            s += '\nOptimisation RMSD:    {}'.format(self.optimisation_rmsd)
-            s += '\nOptimisation Penalty: {}'.format(self.optimisation_penalty)
+            s += '\nOptimisation RMSD:    {:5.3f}'.format(self.optimisation_rmsd)
+            s += '\nOptimisation Penalty: {:5.3f}'.format(self.optimisation_penalty)
         for i_tls in xrange(self._n_tls):
             s += '\n> TLS model {}'.format(i_tls+1)
             mode = self._parameters.get(index=i_tls)

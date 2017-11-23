@@ -244,10 +244,10 @@
 
             <div class="panel panel-primary">
               <div class="panel-heading">
-                <h3 class="panel-title">Patitioning Summary</h3>
+                <h3 class="panel-title">Partitioning Summary</h3>
               </div>
               <div class="panel-body">
-                <div class="row">
+                <div class="row row-centered">
                   {% for thing in tab.contents -%}
                   <div class="col col-centered col-xs-12 col-md-{{ thing.width }}">
                     <div {% if thing.class is defined %}class="{{thing.class[0]}} {{thing.class[0]}}-{{thing.class[1]}}"{% endif %}>

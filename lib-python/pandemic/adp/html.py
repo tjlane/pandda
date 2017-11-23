@@ -8,6 +8,12 @@ from giant.structure.formatting import Labeller, ShortLabeller
 from bamboo.html import png2base64src
 from pandemic.html import PANDEMIC_HTML_ENV
 
+def png2base64src_maybe(path):
+    if os.path.exists(path):
+        return png2base64src(path)
+    else:
+        return 'none'
+
 def format_summary(text, width=12, cls_tuple=['alert','info']):
     paragraphs = text.split('\n\n')
     output = []
@@ -35,19 +41,16 @@ def create_overview_tab(parameterisation):
            'short_name'     : 'Overview',
            'long_name'      : 'Hierarchical ADP Parameterisation Overview',
            'description'    : '',
-           'contents'       : format_summary(f.summary(), width=6) + \
+           'contents'       : [{'width':8, 'text': '', 'image':png2base64src_maybe(os.path.join(p.out_dir, 'graphs/tracking_data.png'))}] + \
+                              format_summary(f.summary(), width=6) + \
+                              [{'width':12, 'text': '-'*20}] + \
+                              numpy.concatenate(zip(*[[{'width':4, 'text': 'Partition Schematic',  'image':png2base64src_maybe(os.path.join(p.out_dir, 'model/level-partitioning-chain-{}.png'.format(c)))    } for c in chain_ids],
+                                                      [{'width':4, 'text': 'TLS-level components', 'image':png2base64src_maybe(os.path.join(p.out_dir, 'model/all-stacked-chain_{}.png'.format(c)))           } for c in chain_ids],
+                                                      [{'width':4, 'text': 'Residual component',   'image':png2base64src_maybe(os.path.join(p.out_dir, 'model/all-residual-chain_{}.png'.format(c)))          } for c in chain_ids]
+                                                     ])).tolist() + \
+                              [{'width':12, 'text': '-'*20}] + \
                               numpy.concatenate([format_summary(l.summary(show=False), width=3) for l in f.levels]).tolist() + \
-                              #[format_summary(f.residual.summary(), width=12)] + \
-                              [{'width':12, 'text': '---'}] + \
-                              # [{'width': 12,
-                              #  'title': 'Hierarchy Summary:',
-                              #  'text':  f.html_summary(),#'{} levels (+residual level):{}'.format(len(p.levels), '<br>&nbsp;'.join(['']+['Level {}: {}'.format(il+1, l) for il,l in enumerate(p.level_labels)])),
-                              #  'class': ['alert','info'],
-                              # }] +\
-                              numpy.concatenate(zip(*[[{'width':4, 'text': 'Partition Schematic',  'image':png2base64src(os.path.join(p.out_dir, 'model/level-partitioning-chain-{}.png'.format(c)))    } for c in chain_ids],
-                                                      [{'width':4, 'text': 'TLS-level components', 'image':png2base64src(os.path.join(p.out_dir, 'model/all-stacked-chain_{}.png'.format(c)))           } for c in chain_ids],
-                                                      [{'width':4, 'text': 'Residual component',   'image':png2base64src(os.path.join(p.out_dir, 'model/all-residual-chain_{}.png'.format(c)))          } for c in chain_ids]
-                                                     ])).tolist(),
+                              [{'width':12, 'text': '-'*20}]
           }
 
     return tab
@@ -59,16 +62,16 @@ def create_analysis_tab(parameterisation):
     tab = {'id'             : 'statistics',
            'short_name'     : 'Results/Analysis',
            'long_name'      : 'Model Improvement Statistics from hierarchical TLS parameterisation',
-           'description'    : 'things',
-           'images'         : [{'width':6, 'path':png2base64src(os.path.join(p.out_dir, 'graphs/r-values-change-by-resolution.png'))},
-                               {'width':6, 'path':png2base64src(os.path.join(p.out_dir, 'graphs/r-gap-by-resolution.png'))},
-                               {'width':6, 'path':png2base64src(os.path.join(p.out_dir, 'graphs/r-free-by-resolution.png'))},
-                               {'width':6, 'path':png2base64src(os.path.join(p.out_dir, 'graphs/r-work-by-resolution.png'))}],
+           'description'    : '',
+           'images'         : [{'width':6, 'path':png2base64src_maybe(os.path.join(p.out_dir, 'graphs/r-values-change-by-resolution.png'))},
+                               {'width':6, 'path':png2base64src_maybe(os.path.join(p.out_dir, 'graphs/r-gap-by-resolution.png'))},
+                               {'width':6, 'path':png2base64src_maybe(os.path.join(p.out_dir, 'graphs/r-free-by-resolution.png'))},
+                               {'width':6, 'path':png2base64src_maybe(os.path.join(p.out_dir, 'graphs/r-work-by-resolution.png'))}],
            'plots'          : [{'div': 'variable-plots',
-                                'json': p.table.T.to_json(orient='split'),
+                                'json': p.tables.statistics.T.to_json(orient='split'),
                                 'default_x' : 'High Resolution Limit',
                                 'default_y' : 'R-free Change (Fitted-Input)'}],
-           'table'          : p.table.to_html(bold_rows=False, classes=['display nowrap'])\
+           'table'          : p.tables.statistics.to_html(bold_rows=False, classes=['display nowrap'])\
                                         .replace('<th></th>','<th>Dataset</th>')\
                                         .replace('border="1" ', ''),
           }
@@ -92,7 +95,7 @@ def create_levels_tab(parameterisation):
                     'active'        : True,
                     'short_name'    : 'Overview',
                     'long_name'     : 'Overview of the parameterised hierarchical ADP model',
-                    'description'   : 'things',
+                    'description'   : '',
                     'panels'        : [],
                    }
     tab['tabs'].append(overview_tab)
@@ -104,8 +107,8 @@ def create_levels_tab(parameterisation):
                  'text'           : '{} atoms.'.format('X'),
                  'width'          : 4,
                  'table'          : None,
-                 'images'         : [{'width':12, 'path':png2base64src(chain_image) if os.path.exists(chain_image) else ''},
-                                     {'width':12, 'path':png2base64src(stack_image) if os.path.exists(stack_image) else ''}],
+                 'images'         : [{'width':12, 'path':png2base64src_maybe(chain_image) if os.path.exists(chain_image) else ''},
+                                     {'width':12, 'path':png2base64src_maybe(stack_image) if os.path.exists(stack_image) else ''}],
                 }
         overview_tab['panels'].append(panel)
     # Format residual level
@@ -115,8 +118,8 @@ def create_levels_tab(parameterisation):
              'text'           : '{} atoms.'.format('X'),
              'width'          : 4,
              'table'          : None,
-             'images'         : [{'width':12, 'path':png2base64src(chain_image) if os.path.exists(chain_image) else ''},
-                                 {'width':12, 'path':png2base64src(stack_image) if os.path.exists(stack_image) else ''}],
+             'images'         : [{'width':12, 'path':png2base64src_maybe(chain_image) if os.path.exists(chain_image) else ''},
+                                 {'width':12, 'path':png2base64src_maybe(stack_image) if os.path.exists(stack_image) else ''}],
               }
     overview_tab['panels'].append(panel)
     # -------------------------------->
@@ -133,19 +136,32 @@ def create_levels_tab(parameterisation):
               }
         tab['tabs'].append(level_tab)
         # Read in the TLS models and amplitudes for this level
-        tls_models     = pandas.read_csv(os.path.join(p.out_dir, 'model/csvs/tls_models_level_{:04d}.csv'.format(level_num))).set_index(['group','mode'])
-        tls_amplitudes = pandas.read_csv(os.path.join(p.out_dir, 'model/csvs/tls_amplitudes_level_{:04d}.csv'.format(level_num))).set_index(['group','mode','cpt'])
+        tls_models     = pandas.read_csv(os.path.join(p.out_dir, 'model/csvs/tls_models_level_{:04d}.csv'.format(level_num))).set_index(['group','mode']).drop('Unnamed: 0', axis=1, errors='ignore')
+        tls_amplitudes = pandas.read_csv(os.path.join(p.out_dir, 'model/csvs/tls_amplitudes_level_{:04d}.csv'.format(level_num))).set_index(['group','mode','cpt']).drop('Unnamed: 0', axis=1, errors='ignore')
         # Extract groups for each level
         for i_group, (group_num, sel, group_fitter) in enumerate(level):
+            # Extract TLS values for this group
+            tls_vals = [tls_models.loc[(group_num, i_mode)] for i_mode in xrange(p.params.fitting.number_of_modes_per_group)]
+            # Skip if no TLS values
+            if numpy.abs(tls_vals).sum() == 0.0:
+                continue
+            # Get images and format values
             adp_image = os.path.join(p.out_dir, 'model/pymol/level_{}-all-modes-group_{}.png'.format(level_num, group_num))
             amp_image = os.path.join(p.out_dir, 'model/graphs/tls-model-amplitudes-level-{}-group-{}.png'.format(level_num, group_num))
-            tls_mdl_str = '<br>'.join(['Mode {}:<br>T : {T11}, {T22}, {T33}, {T12}, {T13}, {T23},<br>L : {L11}, {L22}, {L33}, {L12}, {L13}, {L23},<br>S : {S11}, {S12}, {S13}, {S21}, {S22}, {S23}, {S31}, {S32}, {S33}'.format(i_mode+1, **tls_models.loc[(group_num, i_mode)].round(3)) for i_mode in xrange(p.params.fitting.number_of_modes_per_group)])
+            tls_mdl_str = '<br>'.join([('Mode {}:<br>' + \
+                                        '<samp>' + \
+                                        'T: {T11:+6.3f}, {T22:+6.3f}, {T33:+6.3f},<br>&nbsp;&nbsp;&nbsp;{T12:+6.3f}, {T13:+6.3f}, {T23:+6.3f},<br>' + \
+                                        'L: {L11:+6.3f}, {L22:+6.3f}, {L33:+6.3f},<br>&nbsp;&nbsp;&nbsp;{L12:+6.3f}, {L13:+6.3f}, {L23:+6.3f},<br>' + \
+                                        'S: {S11:+6.3f}, {S12:+6.3f}, {S13:+6.3f},<br>&nbsp;&nbsp;&nbsp;{S21:+6.3f}, {S22:+6.3f}, {S23:+6.3f},<br>&nbsp;&nbsp;&nbsp;{S31:+6.3f}, {S32:+6.3f}, {S33:+6.3f}' + \
+                                        '</samp>'
+                                       ).format(i_mode+1, **mode_vals.round(3)) for i_mode, mode_vals in enumerate(tls_vals)])
+            # Create panel dictionary
             panel = {'id'    : 'Group {} - {}'.format(group_num, p.levels[i_level][i_group]),
                      'text'  : '<br>'.join(['Number of atoms: {}'.format(sum(sel)),tls_mdl_str]),
                      'width' : max(4,12//level.n_groups()),
                      'table' : None,
-                     'images': [{'width':12, 'path': png2base64src(adp_image)},
-                                {'width':12, 'path': png2base64src(amp_image)}],
+                     'images': [{'width':12, 'path': png2base64src_maybe(adp_image)},
+                                {'width':12, 'path': png2base64src_maybe(amp_image)}],
                     }
             level_tab['panels'].append(panel)
     # -------------------------------->
@@ -167,7 +183,7 @@ def create_levels_tab(parameterisation):
                  'width' : 4,
                  'text'  : '',
                  'table' : None,
-                 'images': [{'width':12, 'path': png2base64src(adp_image)}],
+                 'images': [{'width':12, 'path': png2base64src_maybe(adp_image)}],
                 }
         residual_tab['panels'].append(panel)
 
