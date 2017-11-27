@@ -42,15 +42,15 @@ def create_overview_tab(parameterisation):
            'long_name'      : 'Hierarchical ADP Parameterisation Overview',
            'description'    : '',
            'contents'       : [{'width':8, 'text': '', 'image':png2base64src_maybe(os.path.join(p.out_dir, 'graphs/tracking_data.png'))}] + \
+                              [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'class':['text-center']}] + \
                               format_summary(f.summary(), width=6) + \
-                              [{'width':12, 'text': '-'*20}] + \
+                              [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'class':['text-center']}] + \
                               numpy.concatenate(zip(*[[{'width':4, 'text': 'Partition Schematic',  'image':png2base64src_maybe(os.path.join(p.out_dir, 'model/level-partitioning-chain-{}.png'.format(c)))    } for c in chain_ids],
                                                       [{'width':4, 'text': 'TLS-level components', 'image':png2base64src_maybe(os.path.join(p.out_dir, 'model/all-stacked-chain_{}.png'.format(c)))           } for c in chain_ids],
                                                       [{'width':4, 'text': 'Residual component',   'image':png2base64src_maybe(os.path.join(p.out_dir, 'model/all-residual-chain_{}.png'.format(c)))          } for c in chain_ids]
                                                      ])).tolist() + \
-                              [{'width':12, 'text': '-'*20}] + \
-                              numpy.concatenate([format_summary(l.summary(show=False), width=3) for l in f.levels]).tolist() + \
-                              [{'width':12, 'text': '-'*20}]
+                              [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'class':['text-center']}] + \
+                              numpy.concatenate([format_summary(l.summary(show=False), width=6) for l in f.levels+[f.residual]]).tolist()
           }
 
     return tab

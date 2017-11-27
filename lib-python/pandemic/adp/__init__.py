@@ -305,6 +305,13 @@ class TLSModel(object):
     def uij(self, xyz, origin):
         return uij_from_tls_vector_and_origin(xyz=xyz, tls_vector=self.values, origin=origin)
 
+    def n_params(self, non_zero=False):
+        if non_zero is False:
+            return self._n_prm
+        else:
+            t,l,s = get_t_l_s_from_vector(vals=self.values)
+            return (t!=0.0).any()*(t.size) + (l!=0.0).any()*(l.size) + (s!=0.0).any()*(s.size)
+
     def summary(self):
         """Print summary of the TLS components"""
         r = '> TLS parameters'
@@ -367,6 +374,13 @@ class TLSAmplitudeSet(object):
         assert exp_amps.shape == (n_dst,21)
         return exp_amps
 
+    def n_params(self, non_zero=False):
+        if non_zero is False:
+            return self._n_prm
+        else:
+            n_dst = len(self.values)
+            return sum([(self.values[:,i]!=1.0).any()*(n_dst) for i in range(3)])
+
     def summary(self):
         """Print summary of the TLS amplitudes"""
         r = '> TLS amplitudes'
@@ -384,8 +398,8 @@ class MultiDatasetTLSModel(object):
         self.model = TLSModel()
         self.amplitudes = TLSAmplitudeSet(n_dst=n_dst)
 
-    def n_params(self):
-        return self.model._n_prm + self.amplitudes._n_prm
+    def n_params(self, non_zero=False):
+        return self.model.n_params(non_zero=non_zero) + self.amplitudes.n_params(non_zero=non_zero)
 
     def normalise(self):
         """Normalise the TLS ampltidues to an average of 1"""
@@ -448,8 +462,8 @@ class MultiDatasetTLSModelList(object):
         assert len(dst_models) == n_dst
         return dst_models
 
-    def n_params(self):
-        return sum([m.n_params() for m in self])
+    def n_params(self, non_zero=False):
+        return sum([m.n_params(non_zero=non_zero) for m in self])
 
     def normalise_amplitudes(self):
         for m in self:
@@ -825,13 +839,18 @@ class MultiDatasetUijParameterisation(Program):
 
         # Check all uijs are present
         if (observed_uij==-1).all() and (self._allow_isotropic is True):
+            # Set model type to isotropic
+            self.disorder_model = 'isotropic'
+            # Extract isotropic component from atoms (again only for the atoms we're interested in)
             self.log('All atoms are missing anisotropic displacement parameters -- using the isotropic parameters instead')
             observed_uij = numpy.zeros_like(observed_uij)
-            # Extract isotropic component from atoms (again only for the atoms we're interested in)
             observed_uij[:,:,0] = numpy.array([a.extract_b()/EIGHT_PI_SQ for a in atoms])[:,self.atom_mask]
             observed_uij[:,:,2] = observed_uij[:,:,1] = observed_uij[:,:,0]
         elif (observed_uij==-1).any():
             raise Failure('Some atoms for fitting (but not all) do not have anisotropically-refined B-factors -- either all atoms for fitting must have anistropic atoms or none')
+        else:
+            # Set model type to anisotropic
+            self.disorder_model = 'anisotropic'
 
         # Create the fitting object
         self.fitter = MultiDatasetHierarchicalUijFitter(observed_uij = observed_uij,
@@ -840,6 +859,8 @@ class MultiDatasetUijParameterisation(Program):
                                                         level_labels = self.level_labels,
                                                         params = self.params.fitting,
                                                         log = self.log)
+        # Set whether input is anisotropic or isotropic
+        self.fitter.set_input_info(disorder_model=self.disorder_model)
         # Select the datasets for be used for TLS optimisation
         self.fitter.set_optimisation_datasets(self._opt_datasets_selection)
 
@@ -853,11 +874,11 @@ class MultiDatasetUijParameterisation(Program):
 
         # Calculate Parameter-observed data ratio
         self.log.subheading('Data-Parameter Ratios')
-        n_p = self.fitter.n_params()
         n_o = numpy.product(self.fitter.observed_uij.shape)
+        n_p = self.fitter.n_params(non_zero=False)
         self.log('Number of model parameters: {}'.format(n_p))
-        self.log('Number of observed values: {}'.format(n_o))
-        self.log('Data-parameter ratio (should be >1): {}'.format(float(n_o)/float(n_p)))
+        self.log('Number of input uij values: {}'.format(n_o))
+        self.log('Parameter ratio Gain (should be <1): {}'.format(float(n_p)/float(n_o)))
 
     def show_errors(self):
         """Print non-fatal errors accumulated during running"""
@@ -1265,7 +1286,7 @@ class MultiDatasetUijParameterisation(Program):
             amp_filename = os.path.join(csv_dir, 'tls_amplitudes_level_{:04d}.csv'.format(level.index))
             amp_table = pandas.DataFrame(columns=["group", "mode", "cpt"]+[mdl.tag for mdl in self.models])
             # Create list of plot arguments and generate all at end
-            plot_args = []
+            #plot_args = []
             # Iterate through the groups in this level
             for i_group, sel, fitter in level:
                 tls_model, tls_amps = fitter.result()
@@ -1280,23 +1301,24 @@ class MultiDatasetUijParameterisation(Program):
                     for i_cpt, cpt in enumerate('TLS'):
                         amp_table.loc[len(amp_table.index)] = numpy.concatenate([[i_group, i_tls, cpt], tls_amps[i_tls,:,i_cpt]])
 
-                # Write histograms of amplitudes
-                x_vals = []; [[x_vals.append(tls_amps[i_m,:,i_c]) for i_c in xrange(tls_amps.shape[2])] for i_m in xrange(tls_amps.shape[0])]
-                filename = os.path.join(png_dir, 'tls-model-amplitudes-level-{}-group-{}.png'.format(level.index, i_group))
-                self.log('\t> {}'.format(filename))
-                plot_args.append({'filename': filename,
-                                  'x_vals': x_vals,
-                                  'titles': numpy.concatenate(['T (mode {a})-L (mode {a})-S (mode {a})'.format(a=i_t+1).split('-') for i_t in xrange(tls_amps.shape[0])]),
-                                  'x_labs': ['']*tls_amps.shape[0]*tls_amps.shape[2],
-                                  'rotate_x_labels' : True,
-                                  'shape': (tls_amps.shape[0], tls_amps.shape[2]),
-                                  'n_bins': 30})
+                # Write histograms of amplitudes -- only for non-zero models
+                if tls_model.sum() > 0.0:
+                    x_vals = []; [[x_vals.append(tls_amps[i_m,:,i_c]) for i_c in xrange(tls_amps.shape[2])] for i_m in xrange(tls_amps.shape[0])]
+                    filename = os.path.join(png_dir, 'tls-model-amplitudes-level-{}-group-{}.png'.format(level.index, i_group))
+                    self.log('\t> {}'.format(filename))
+                    self.plot.multi_histogram(filename  = filename,
+                                              x_vals    = x_vals,
+                                              titles    = numpy.concatenate(['T (mode {a})-L (mode {a})-S (mode {a})'.format(a=i_t+1).split('-') for i_t in xrange(tls_amps.shape[0])]),
+                                              x_labs    = ['']*tls_amps.shape[0]*tls_amps.shape[2],
+                                              rotate_x_labels = True,
+                                              shape     = (tls_amps.shape[0], tls_amps.shape[2]),
+                                              n_bins    = 30)
             # Write tables
             mdl_table.to_csv(mdl_filename)
             amp_table.to_csv(amp_filename)
             # Generate plots
-            self.log('Generating {} histogram plots of TLS mode amplitudes'.format(len(plot_args)))
-            libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_plot_histograms, args=plot_args)
+            #self.log('Generating {} histogram plots of TLS mode amplitudes'.format(len(plot_args)))
+            #libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_plot_histograms, args=plot_args)
 
         self.log.subheading('Writing T-L-S Uij components for each level')
         # Extract the atom mask to apply b-factors
@@ -2371,7 +2393,7 @@ class MultiDatasetUijPlots(object):
             fig, axis = pyplot.subplots(nrows=1, ncols=1, sharey=True)
             if title is not None: axis.set_title(label=str(title))
             axis.set_xlabel('Residue')
-            axis.set_ylabel('Isotropic B')
+            axis.set_ylabel('Isotropic B ($\AA^2$)')
             #axis.plot(x_vals, y_vals, '-ko', markersize=2)
             axis.bar(left=(x_vals-0.5), height=y_vals, width=1.0)
             axis.set_xticklabels([x_labels[int(i)] if (i<len(x_labels)) and (float(int(i))==i) else '' for i in axis.get_xticks()])
@@ -2438,7 +2460,7 @@ class MultiDatasetUijPlots(object):
                     hierarchies,
                     legends,
                     title,
-                    y_lab='Isotropic B',
+                    y_lab='Isotropic B ($\AA^2$)',
                     y_lim=None,
                     v_line_hierarchy=None,
                     rotate_x_labels=True,
@@ -2547,31 +2569,43 @@ class MultiDatasetUijPlots(object):
 
         # FIRST AXIS
         ax = axes[0]
+        handles = []
         # Create RMSD plot
-        ax.plot(x_vals, table['rmsd'].tolist(), 'bo-')
+        hdl = ax.plot(x_vals, table['rmsd'].tolist(), 'bo-', label='model')
+        handles.extend(hdl)
         # Axis stuff
         ax.xaxis.set_ticks_position('bottom')
-        ax.set_ylabel('rmsd (A^2)')
+        ax.set_ylabel('rmsd to input ($\AA^2$)')
         ax.set_ylim(bottom=0.0)
+        # Create legend for axis
+        lgd0 = ax.legend(handles=handles, bbox_to_anchor=(0.98, 0.95), loc=1, borderaxespad=0.)
 
         # SECOND AXIS
         ax = axes[1]
+        handles = []
         # Create B-iso lines for all of the levels in the table
         levels = [l for l in table['level'][table['cycle']==table['cycle'][0]] if l not in ['start','reset']]
         for l in levels:
             l_sel = (table['level'] == l)
             l_x_vals = x_vals[l_sel]
             l_y_vals = table['b_iso (level)'][l_sel]
-            ax.bar(left=l_x_vals-0.2, height=l_y_vals, width=0.4)
+            hdl = ax.bar(left=l_x_vals-0.2, height=l_y_vals, width=0.4, label='level')
+            handles.append(hdl)
+        # Only want to print once
+        handles = handles[:1]
         # Create an overall B-iso line
-        ax.plot(x_vals, table['b_iso (total)'], 'ko-')
+        hdl = ax.plot(x_vals, table['b_iso (total)'], 'ko-', label='total')
+        handles.extend(hdl)
         # Axis stuff
         ax.xaxis.set_ticks_position('bottom')
         ax.set_xlabel('Optimisation stage')
-        ax.set_ylabel('B-iso (A^2)')
+        ax.set_ylabel('B-iso Equivalent ($\AA^2$)')
         ax.set_xticks(x_vals)
         ax.set_xticklabels(x_labs, rotation=90, ha='center')
         ax.set_xlim(left=-0.5, right=max(x_vals)+0.5)
+        ax.set_ylim(bottom=0.0)
+        # Create legend for axis
+        lgd1 = ax.legend(handles=handles, bbox_to_anchor=(0.02, 0.95), loc=2, borderaxespad=0.)
 
         # BOTH AXES -- Add vertical lines between macro-cycles
         curr_v = -0.5
@@ -2590,7 +2624,9 @@ class MultiDatasetUijPlots(object):
             curr_v = v
 
         fig.tight_layout()
-        fig.savefig(filename)
+        fig.savefig(filename,
+                    bbox_extra_artists=[lgd0,lgd1],
+                    bbox_inches='tight')
         pyplot.close(fig)
 
 class MultiDatasetHierarchicalUijFitter(object):
@@ -2662,14 +2698,33 @@ class MultiDatasetHierarchicalUijFitter(object):
         assert arr_sum.shape == self.observed_uij.shape
         return self.observed_uij - arr_sum
 
-    def n_params(self):
-        return sum([l.n_params() for l in self.levels+[self.residual]])
-
     def n_levels(self):
         return len(self.levels)
 
-    def parameter_ratio(self):
-        return numpy.product(self.observed_uij.shape) / self.n_params()
+    def n_params(self, non_zero=False):
+        return sum([l.n_params(non_zero=non_zero) for l in self.levels+[self.residual]])
+
+    def n_params_per_atom(self, non_zero=False):
+        return self.n_params(non_zero=non_zero) / (self.observed_uij.shape[0] * self.observed_uij.shape[1])
+
+    def n_input_params_per_atom(self):
+        return self._input_params_per_atom
+
+    def n_input_values(self):
+        return self.observed_uij.shape[0] * self.observed_uij.shape[1] * self.n_input_params_per_atom()
+
+    def parameter_ratio_gain(self, non_zero=False):
+        """Total number of input values divided by number of model parameters (used or total)"""
+        return self.n_params(non_zero=non_zero) / self.n_input_values()
+
+    def set_input_info(self, disorder_model):
+        self.input_disorder_model = disorder_model
+        if disorder_model == 'anisotropic':
+            self._input_params_per_atom = 6
+        elif disorder_model == 'isotropic':
+            self._input_params_per_atom = 3
+        else:
+            raise Exception('Invalid disorder model?!')
 
     def set_optimisation_datasets(self, dataset_indices):
         self.dataset_mask[:] = False
@@ -2844,15 +2899,27 @@ class MultiDatasetHierarchicalUijFitter(object):
 
     def summary(self, show=False):
         s = ''
-        s += '\n> Input data:'
+        s += '\n> Input Data:'
         s += '\nNumber of datasets: {}'.format(len(self.dataset_mask))
         s += '\nNumber of atoms:    {}'.format(len(self.atomic_mask))
+        s += '\nNumber of input values: {}'.format(self.n_input_values())
+        s += '\nInput Uij Type: {}'.format(self.input_disorder_model)
         s += '\n'
-        s += '\n> Parameters:'
+        s += '\n> Hierarchical Model:'
+        s += '\nNumber of levels (incl. residual): {}'.format(self.n_levels()+1)
         s += '\nNumber of TLS modes per group: {}'.format(self.params.number_of_modes_per_group)
-        s += '\nDatasets used for optimisation: {} of {}'.format(sum(self.dataset_mask), len(self.dataset_mask))
-        s += '\nAtoms used for optimisation:    {} of {}'.format(sum(self.atomic_mask), len(self.atomic_mask))
-        s += '\nEffective parameter ratio (input v fitted): {}'.format(self.parameter_ratio())
+        s += '\nNumber of model parameters: {}'.format(self.n_params())
+        s += '\n'
+        s += '\n> Optimisation:'
+        s += '\nDatasets used for TLS optimisation: {} of {}'.format(sum(self.dataset_mask), len(self.dataset_mask))
+        s += '\nAtoms used for TLS optimisation:    {} of {}'.format(sum(self.atomic_mask), len(self.atomic_mask))
+        s += '\n'
+        s += '\n> Parameterisation:'
+        s += '\nNumber of parameters per atom:'
+        s += '\n... in input data: {:2.0f}'.format(self.n_input_params_per_atom())
+        s += '\n... in fitted model (possible): {:5.2f}'.format(self.n_params_per_atom(non_zero=False))
+        s += '\n... in fitted model (non-zero): {:5.2f}'.format(self.n_params_per_atom(non_zero=True))
+        s += '\nNon-zero model parameters / number of input data: {:5.2%}'.format(self.parameter_ratio_gain(non_zero=True))
         s += '\n'
         if show: self.log(s)
         return s
@@ -2864,8 +2931,8 @@ class _MultiDatasetUijLevel(object):
 
     _uij_shape = None
 
-    def n_params(self):
-        return sum([f.n_params() for i,g,f in self])
+    def n_params(self, non_zero=False):
+        return sum([f.n_params(non_zero=non_zero) for i,g,f in self])
 
     def run(self, n_cycles=1, n_cpus=1):
         # Check to see if multiple cpus are available per job
@@ -3010,10 +3077,15 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
             fitter._parameters.reset_amplitudes(components=components, modes=modes)
 
     def summary(self, show=True):
-        #s = self.log._subheading('TLS Partitions Summary (index {}; label {})'.format(self.index, self.label), blank=True)
+        num_model_params = self.n_params(non_zero=False)
+        num_used_params = self.n_params(non_zero=True)
+        n_dst, n_atm, _ = self._uij_shape
         s = '> Level {} - {}'.format(self.index, self.label)
         s += '\n\tNumber of Groups: {}'.format(self.n_groups())
-        s += '\n\tNumber of Parameters: {}'.format(self.n_params())
+        s += '\n\tNumber of model parameters (total): {}'.format(num_model_params)
+        s += '\n\tNumber of model parameters (used): {}'.format(num_used_params)
+        s += '\n\tNumber of model parameters per atom (total): {:5.3f}'.format(num_model_params/(n_dst*n_atm))
+        s += '\n\tNumber of model parameters per atom (used):  {:5.3f}'.format(num_used_params/(n_dst*n_atm))
         s += '\n'
         if show: self.log(s)
         return s
@@ -3064,12 +3136,17 @@ class MultiDatasetUijResidualLevel(_MultiDatasetUijLevel):
             fitted_uij = fitted_uij.reshape((1,)+fitted_uij.shape).repeat(self._uij_shape[0], axis=0)
         return fitted_uij
 
-    def summary(self, basic=True, show=True):
-        #s = self.log._subheading('Uij Residuals Summary', blank=True)
-        s = 'Level {} - {}'.format(self.index, self.label)
-        for i, sel, f in self:
-            s += '\n'
-            s += f.summary(show=False).strip()
+    def summary(self, show=True):
+        num_model_params = self.n_params(non_zero=False)
+        num_used_params = self.n_params(non_zero=True)
+        n_dst, n_atm, _ = self._uij_shape
+        s = '> Level {} - {}'.format(self.index, self.label)
+        s += '\n\tNumber of Atoms: {}'.format(n_atm)
+        s += '\n\tNumber of model parameters (total): {}'.format(num_model_params)
+        s += '\n\tNumber of model parameters (used): {}'.format(num_used_params)
+        s += '\n\tNumber of model parameters per atom (total): {:5.3f}'.format(num_model_params/(n_dst*n_atm))
+        s += '\n\tNumber of model parameters per atom (used):  {:5.3f}'.format(num_used_params/(n_dst*n_atm))
+        s += '\n'
         if show: self.log(s)
         return s
 
@@ -3294,8 +3371,11 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
     # Public Functions - common to parent class
     #===========================================+>
 
-    def n_params(self):
-        return numpy.product(self._parameters.shape)
+    def n_params(self, non_zero=False):
+        if non_zero is False:
+            return numpy.product(self._parameters.shape)
+        else:
+            return (self.parameters()!=0.0).any()*(self.n_params(non_zero=False))
 
     def optimise(self, n_cycles=1, n_cpus=1):
         """Optimise the residual for a set of atoms"""
@@ -3559,8 +3639,8 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
     # Public Functions
     #===========================================+>
 
-    def n_params(self):
-        return self._parameters.n_params()
+    def n_params(self, non_zero=False):
+        return self._parameters.n_params(non_zero=non_zero)
 
     def optimise(self, n_cycles=1, n_cpus=1):
         """Optimise a (series of) TLS model(s) against the target data"""
@@ -3620,6 +3700,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 self.log.subheading('Optimising TLS amplitudes for all datasets')
                 self.log.bar()
                 self.log('Updating penalty weights --->')
+                self.log.bar()
                 self.log(self.penalty.set_weights(ovr_fixed=10.0))
                 self.log.bar()
                 # If it's the first iteration, assert all amplitudes are zero (in case amplitudes are optimised for zero-value TLS models)
