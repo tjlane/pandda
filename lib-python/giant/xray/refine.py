@@ -65,22 +65,34 @@ class _refiner(object):
 
     def export(self):
         """Copy files to output destination"""
-        # Find pdb file in the output folder
-        tmp_pdb = glob.glob(self.tmp_pre+'*.pdb')
-        assert tmp_pdb, 'No refined files found: {}'.format(self.tmp_dir)
-        tmp_pdb = tmp_pdb[0]
-        tmp_mtz = tmp_pdb.replace('.pdb', '.mtz')
-        assert os.path.exists(tmp_pdb)
-        assert os.path.exists(tmp_mtz)
-        # Copy to output folder
-        shutil.copy(tmp_pdb, self.out_pdb_file)
-        shutil.copy(tmp_mtz, self.out_mtz_file)
-        assert os.path.exists(self.out_pdb_file)
-        assert os.path.exists(self.out_mtz_file)
-        # Write the log to the output log file
-        self.cmd.write_output(self.out_log_file)
-        # Delete temporary directory
-        shutil.rmtree(self.tmp_dir)
+
+        try:
+            # Find pdb file in the output folder
+            tmp_pdb = glob.glob(self.tmp_pre+'*.pdb')
+            assert tmp_pdb, 'No refined files found: {}'.format(self.tmp_dir)
+            tmp_pdb = tmp_pdb[0]
+            tmp_mtz = tmp_pdb.replace('.pdb', '.mtz')
+            assert os.path.exists(tmp_pdb)
+            assert os.path.exists(tmp_mtz)
+            # Copy to output folder
+            shutil.copy(tmp_pdb, self.out_pdb_file)
+            shutil.copy(tmp_mtz, self.out_mtz_file)
+            assert os.path.exists(self.out_pdb_file)
+            assert os.path.exists(self.out_mtz_file)
+            # Write the log to the output log file
+            self.cmd.write_output(self.out_log_file)
+        except Exception as e:
+            print '------------>'
+            print e
+            print '------------>'
+            print self.cmd.output
+            print '------------>'
+            print self.cmd.error
+            print '------------>'
+            raise Exception('Failed during refinement')
+        finally:
+            # Delete temporary directory
+            shutil.rmtree(self.tmp_dir)
 
 
 class refine_phenix(_refiner):

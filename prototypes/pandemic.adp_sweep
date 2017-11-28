@@ -1,22 +1,19 @@
 #!/usr/bin/env ccp4-python
 
-import os, sys, copy, glob
+import os, sys, copy, glob, time
 
-import numpy, pandas, json
+import numpy, pandas
 
-import libtbx.phil, libtbx.easy_mp
+import libtbx.phil
 import iotbx.pdb
 
 from libtbx.utils import Sorry, Failure
 
 from bamboo.common.logs import Log
-from bamboo.common.path import easy_directory, rel_symlink
+from bamboo.common.path import easy_directory
 from bamboo.common.command import CommandManager
 
 from giant.dataset import ModelAndData
-
-from giant.structure.select import protein, backbone, sidechains
-from giant.structure.formatting import PhenixSelection
 
 import matplotlib
 matplotlib.interactive(False)
@@ -38,17 +35,11 @@ DESCRIPTION = """
 
 ############################################################################
 
-blank_arg_prepend = {None:'refinement_dir=', '.pdb':'pdb='}
+blank_arg_prepend = {None:'input_dir='}
 
 master_phil = libtbx.phil.parse("""
 input {
-    pdb = None
-        .help = "input pdb files for refinement"
-        .multiple = True
-        .type = str
-    cif = None
-        .type = str
-    refinement_dir = None
+    input_dir = None
         .help = "input directory, containing different B-factor refinements"
         .optional = False
         .type = str
@@ -56,67 +47,73 @@ input {
         .type = choice
 }
 output {
-    out_dir = adp-characterisation-sweep
+    out_dir = adp-fitting-sweep
         .help = "output directory"
         .type = str
-    out_script = run_adp_sweeps.sh
+    out_script = adp_sweeps.sh
         .help = "output script to run jobs"
         .type = str
 }
 options {
     refinements = isotropic tls *anisotropic
         .type = choice(multi=True)
-    fitting_groups = *chain *auto_group *secondary_structure *residue *backbone *sidechain atom
+    fitting_groups = *chain *auto_group *residue *backbone *sidechain
         .type = choice(multi=True)
 }
 sweep_parameters {
-    resolution_partitioning = *0.1 *0.5 *1.0 *10.0
+    resolution_partitioning = *0.1 *0.2 *0.3 *0.4 *0.5 *1.0 *2.0
         .type = choice(multi=True)
         .help = "Split datasets into groups for characterisation by resolution."
-    datasets_per_characterisation = *2 *3 *4 *5 *6 *7 *8 *9 *10 *15 *20 *30 *40 *50 *100 *150 *200
+    datasets_per_characterisation = *2 *3 *4 *5 *6 *7 *8 *9 *10 *20 *30 *40 *50 *100 *150 *200 *300
         .type = choice(multi=True)
         .help = "Once datasets are partitioned, select random samples of datasets."
-    optimisation_cutoffs = *1.5 *1.6 *1.7 *1.8 *1.9 *2.0 *2.5 *3.0 *3.5
+    optimisation_cutoffs = *1.3 *1.4 *1.5 *1.6 *1.7 *1.8 *1.9 *2.0 *2.1 *2.2 *2.3 *2.4 *2.5 *3.0 *3.5
         .type = choice(multi=True)
         .help = "Try different optimisation cutoffs for datasets in a partitioned group - can high resolution datasets parameterise low-resolution datasets?"
+    custom
+    {
+        option = None
+            .multiple = True
+            .type = str
+        values = None
+            .multiple = True
+            .type = str
+    }
+    n_bootstrap = 10
+        .type = int
 }
 process {
     out_csv = combined_data.csv
         .type = str
 }
-settings {
-    max_cpus_per_job = 1
+sweep_settings {
+    max_cpus_per_job = 10
         .type = int
         .multiple = False
-    concurrent_jobs = 1
-        .type = int
-        .multiple = False
+    submit_command = 'qsub'
+        .type = str
+    additional_lines = None
+        .type = str
+        .multiple = True
 }
 """, process_includes=True)
 
 ############################################################################
 
-def wrapper_run(arg):
-    return arg.run()
-
 def validate_parameters(params):
-    assert os.path.exists(params.input.refinement_dir)
-    params.input.refinement_dir = os.path.abspath(params.input.refinement_dir)
+    assert os.path.exists(params.input.input_dir)
+    params.input.input_dir = os.path.abspath(params.input.input_dir)
 
-    params.sweep_parameters.resolution_partitioning         = map(float, params.sweep_parameters.resolution_partitioning        )
+    params.sweep_parameters.resolution_partitioning         = sorted(map(float, params.sweep_parameters.resolution_partitioning        ), reverse=False)
     print 'Resolution partitions: {}'.format(params.sweep_parameters.resolution_partitioning)
-    params.sweep_parameters.datasets_per_characterisation   = map(int,   params.sweep_parameters.datasets_per_characterisation  )
+    params.sweep_parameters.datasets_per_characterisation   = sorted(map(int,   params.sweep_parameters.datasets_per_characterisation  ), reverse=False)
     print 'Datasets per characterisation: {}'.format(params.sweep_parameters.datasets_per_characterisation)
-    params.sweep_parameters.optimisation_cutoffs            = map(float, params.sweep_parameters.optimisation_cutoffs           )
+    params.sweep_parameters.optimisation_cutoffs            = sorted(map(float, params.sweep_parameters.optimisation_cutoffs           ), reverse=False)
     print 'Optimisation cutoffs: {}'.format(params.sweep_parameters.optimisation_cutoffs)
-
-    pass
-
 
 def actually_generate_sweep(sweep_dir,
                             input_pdbs,
-                            params,
-                            opt_cutoff=None):
+                            cmd_line_args=None):
 
     sweep_dir = easy_directory(sweep_dir)
 
@@ -126,14 +123,11 @@ def actually_generate_sweep(sweep_dir,
         fh.write('\n'.join([r'pdb="{}"'.format(p) for p in input_pdbs]))
 
     cmd = CommandManager("pandemic.adp")
-    cmd.add_command_line_arguments(r'cpus={}'.format(params.settings.max_cpus_per_job))
-    cmd.add_command_line_arguments(r'labelling=foldername')
+    cmd.add_command_line_arguments()
     cmd.add_command_line_arguments(pdb_eff)
     cmd.add_command_line_arguments(r'out_dir={}'.format(sweep_dir))
-    if opt_cutoff is not None:
-        cmd.add_command_line_arguments(r'max_resolution_for_optimisation={}'.format(opt_cutoff))
-
-    cmd.print_settings()
+    if cmd_line_args is not None:
+        cmd.add_command_line_arguments(cmd_line_args)
 
     return cmd
 
@@ -144,6 +138,53 @@ def create_sweeps(params, log=None):
     # List of jobs
     jobs = []
 
+    # Common list of args for ALL jobs
+    common_args = [r'cpus={}'.format(params.sweep_settings.max_cpus_per_job),
+                   r'labelling=foldername',
+                   r'output.pickle=False',
+                   r'pymol_images=False',
+                   r'group_graphs=False',
+                   r'refine_output_structures=True']
+
+    # Create custom parameter sweeps
+    all_custom_args = []
+    for custom_option, custom_values in zip(params.sweep_parameters.custom.option, params.sweep_parameters.custom.values):
+        # Skip the first one which is always None
+        if (custom_option is None) or (custom_values is None):
+            continue
+        # Convert from comma-separated to list
+        custom_values = custom_values.replace(' ','').split(',')
+        # Report
+        print '\nCustom Option: {}'.format(custom_option)
+        print 'Values: {}'.format(custom_values)
+        # Number of current combinations
+        n_curr = len(all_custom_args)
+        # Number of variables for new option
+        n_this = len(custom_values)
+        # New is the product
+        n_new = n_curr * n_this
+
+        # Create list of new options
+        new_args = [[r'{}={}'.format(custom_option, v)] for v in custom_values]
+
+        # Combine with the existing list
+        if not all_custom_args:
+            all_custom_args = new_args
+        else:
+            all_custom_args = [a+b for a,b in zip(numpy.repeat(all_custom_args, n_this, axis=0).tolist(), (new_args*n_curr))]
+
+    # Create underscore-separated strings for folder names
+    custom_dir_segs = ['='.join(a).replace('_','').replace('=','_') for a in all_custom_args]
+
+    if all_custom_args:
+        custom_loop = zip(custom_dir_segs, all_custom_args)
+        print '\nCustom args:'
+        for n, a in custom_loop:
+            print '\t', n, '--->', a
+    else:
+        custom_loop = [('', [])]
+        print '\nNo custom sweeps provided'
+
     ######################################################################
     # -------------------------------------->
     # Create sweep by refinement type
@@ -153,7 +194,7 @@ def create_sweeps(params, log=None):
         log.heading('Creating jobs to analyse {}-refined structures'.format(ref_type))
 
         # Look for PDB files
-        all_pdbs = sorted(glob.glob(os.path.join(params.input.refinement_dir, '*', '*-{}.pdb'.format(ref_type))))
+        all_pdbs = sorted(glob.glob(os.path.join(params.input.input_dir, '*', '*-{}.pdb'.format(ref_type))))
         log('Found {} files.'.format(len(all_pdbs)))
 
         out_dir = easy_directory(os.path.join(params.output.out_dir, ref_type))
@@ -167,100 +208,124 @@ def create_sweeps(params, log=None):
         resolution_limits = numpy.array([d.data.summary.high_res for d in datasets])
         log(str(resolution_limits))
 
-        ######################################################################
+        #############################################
         # -------------------------------------->
-        # Iterate through the resolution range partitioning
+        # Iterate through the "custom" sweep choices (may be a 1-loop)
         # -------------------------------------->
-        ######################################################################
-        for r_step in params.sweep_parameters.resolution_partitioning:
-            log.heading('Partitioning datasets by {}A'.format(r_step))
+        #############################################
+        for custom_dir, custom_args in custom_loop:
 
-            # Loop variables
-            r_min = 0.0
-            r_max = resolution_limits.max()
+            print custom_dir, '->', custom_args
 
-            # Iterate through all resolutions
-            while r_min < r_max:
-                print r_step, r_min, r_max
+            ######################################################################
+            # -------------------------------------->
+            # Iterate through the resolution range partitioning
+            # -------------------------------------->
+            ######################################################################
+            for r_step in params.sweep_parameters.resolution_partitioning:
+                log.heading('Partitioning datasets by {}A'.format(r_step))
 
-                # Resolution limits for this loop
-                r_loop_min = r_min
-                r_loop_max = r_min+r_step
-                # Datasets between these resolutions
-                d_sel = (resolution_limits <= r_loop_max) * (resolution_limits > r_loop_min)
-                n_sel = sum(d_sel)
-                log('{} new datasets at this resolution'.format(n_sel))
+                # Loop variables
+                r_min = 0.0
+                r_max = resolution_limits.max()
 
-                # Update loop variable
-                r_min = r_loop_max
+                # Iterate through all resolutions (that include new datasets)
+                while r_min < r_max:
+                    print r_min, r_max, '(', r_step, ')'
 
-                # No datasets selected: skip to next iteration
-                if n_sel == 0:
-                    continue
+                    # Resolution limits for this loop
+                    r_loop_min = r_min
+                    r_loop_max = r_min+r_step
 
-                # Select datasets at this resolution block
-                r_loop_datasets = [d for i,d in zip(d_sel, datasets) if i]
-                r_loop_d_reslns = resolution_limits[d_sel]
+                    # Only process if "within the resolution range of the data"
+                    if r_loop_max > r_max:
+                        break
 
-                # -------------------------------------->
-                # Iterate through number of datasets for characterisation
-                # -------------------------------------->
-                for n_use in params.sweep_parameters.datasets_per_characterisation:
-                    if n_use > n_sel: continue
-                    log('> Sampling sets of {} datasets from {} datasets'.format(n_use, len(r_loop_datasets)))
+                    # Datasets between these resolutions
+                    d_sel = (resolution_limits <= r_loop_max) * (resolution_limits > r_loop_min)
+                    n_sel = sum(d_sel)
+                    log('{} datasets in this resolution slice ({}->{})'.format(n_sel, r_loop_min, r_loop_max))
+
+                    # Update loop variable
+                    r_min = r_loop_max
+
+                    # No datasets selected: skip to next iteration
+                    if n_sel == 0:
+                        log('skipping')
+                        continue
+
+                    # Select datasets at this resolution block
+                    r_loop_datasets = [d for i,d in zip(d_sel, datasets) if i]
+                    r_loop_d_reslns = resolution_limits[d_sel]
 
                     # -------------------------------------->
-                    # How many times to bootstrap this selection
+                    # Iterate through number of datasets for characterisation
                     # -------------------------------------->
-                    n_bootstrap = 10
-                    for i_sample in range(n_bootstrap):
-                        # Sample datasets for this round
-                        sel_dataset = numpy.random.choice(r_loop_datasets, size=n_use, replace=False)
+                    for n_use in params.sweep_parameters.datasets_per_characterisation:
+                        if n_use > n_sel: continue
+                        log('> Sampling sets of {} datasets from {} datasets'.format(n_use, len(r_loop_datasets)))
 
-                        #############################################
-                        # Actually generate the sweep folders, etc.
-                        #############################################
-                        sweep_dir = easy_directory(os.path.join(out_dir,
-                                                 'range_{}-{}'.format(r_loop_min,r_loop_max)+
-                                                 '_ndatasets_{}'.format(n_use)+
-                                                 '_runnumber_{}'.format(i_sample+1)
-                                                 #'_optcutoff_{}'.format(opt_cutoff)+
-                                                 #'_optndsets_{}'.format(n_eff)
-                                                ))
-                        job = actually_generate_sweep(sweep_dir = sweep_dir,
-                                                      input_pdbs = [d.model.filename for d in sel_dataset],
-                                                      params = params)
+                        # -------------------------------------->
+                        # How many times to bootstrap this selection
+                        # -------------------------------------->
+                        # Don't do lots of selections when selecting many datasets!
+                        n_bootstrap = params.sweep_parameters.n_bootstrap if (n_use < 50) else min(3, params.sweep_parameters.n_bootstrap)
+                        for i_sample in range(n_bootstrap):
 
-                        jobs.append(job)
+                            # Sample datasets for this round
+                            sel_dataset = numpy.random.choice(r_loop_datasets, size=n_use, replace=False)
+                            input_pdbs = [d.model.filename for d in sel_dataset]
+                            input_rsns = [d.data.summary.high_res for d in sel_dataset]
 
-        ######################################################################
-        # -------------------------------------->
-        # Create one sweep through optimisation cutoffs for all datasets
-        # -------------------------------------->
-        ######################################################################
-        out_dir = easy_directory(os.path.join(params.output.out_dir, ref_type+'-opt-cutoff'))
-        for opt_cutoff in params.sweep_parameters.optimisation_cutoffs:
+                            # Create names for the sweep directory name
+                            r_loop_lab = 'range_{}-{}'.format(r_loop_min,r_loop_max)
+                            d_loop_lab = 'avg_{}_rng_{}'.format(round(numpy.mean(input_rsns),1), round(numpy.std(input_rsns),2))
+                            n_used_lab = 'ndatasets_{}'.format(n_use)
+                            n_boot_lab = 'run_{}'.format(i_sample+1)
 
-            # Number of datasets actually used for optimisation
-            n_eff = sum(resolution_limits < opt_cutoff)
-            # Skip if none above cutoff
-            if n_eff == 0: continue
+                            #############################################
+                            # Actually generate the sweep folders, etc.
+                            #############################################
+                            sweep_dir = easy_directory(os.path.join(out_dir, '_'.join([r_loop_lab,
+                                                                                       d_loop_lab,
+                                                                                       n_used_lab,
+                                                                                       n_boot_lab,
+                                                                                       custom_dir]).replace('__','_')))
+                            print sweep_dir
+                            job = actually_generate_sweep(sweep_dir = sweep_dir,
+                                                          input_pdbs = input_pdbs,
+                                                          cmd_line_args = common_args+custom_args)
 
-            # Create sweeps
-            sweep_dir = easy_directory(os.path.join(out_dir,
-                                     'all'+
-                                     '_optcutoff_{}'.format(opt_cutoff)+
-                                     '_optndsets_{}'.format(n_eff)
-                                    ))
-            job = actually_generate_sweep(sweep_dir = sweep_dir,
-                                          input_pdbs = [d.model.filename for d in datasets],
-                                          opt_cutoff = opt_cutoff,
-                                          params = params)
-            jobs.append(job)
+                            jobs.append(job)
 
-            # Break if this is higher than the lowest resolution dataset
-            if opt_cutoff > resolution_limits.max():
-                break
+            ######################################################################
+            # -------------------------------------->
+            # Create one sweep through optimisation cutoffs for all datasets
+            # -------------------------------------->
+            ######################################################################
+            cutoff_dir = easy_directory(os.path.join(params.output.out_dir, ref_type+'-opt-cutoff'))
+            for opt_cutoff in params.sweep_parameters.optimisation_cutoffs:
+
+                # Number of datasets actually used for optimisation
+                n_eff = sum(resolution_limits < opt_cutoff)
+                # Skip if none above cutoff
+                if n_eff == 0: continue
+
+                cmds = [r'max_resolution_for_optimisation={}'.format(opt_cutoff)]
+
+                # Create sweeps
+                sweep_dir = easy_directory(os.path.join(cutoff_dir, '_'.join(['all',
+                                                                              'optcutoff_{}'.format(opt_cutoff),
+                                                                              'optndsets_{}'.format(n_eff),
+                                                                              custom_dir]).replace('__','_')))
+                job = actually_generate_sweep(sweep_dir = sweep_dir,
+                                              input_pdbs = [d.model.filename for d in datasets],
+                                              cmd_line_args = common_args+custom_args+cmds)
+                jobs.append(job)
+
+                # Break if this is higher than the lowest resolution dataset
+                if opt_cutoff > resolution_limits.max():
+                    break
 
     return jobs
 
@@ -274,20 +339,31 @@ def write_sweeps(jobs, params, log=None):
     script_dir = easy_directory(os.path.join(params.output.out_dir, 'shell_scripts'))
 
     # Name of the master shell script
-    out_script = os.path.join(script_dir, os.path.basename(params.output.out_script))
+    out_script = os.path.join(params.output.out_dir, os.path.basename(params.output.out_script))
 
     with open(out_script, 'w') as fh:
-        fh.write('#!/usr/bin/env bash -l\n\n')
+        fh.write('#!/usr/bin/env bash\n\n')
         for i, j in enumerate(jobs):
             log.subheading('Job {} of {}'.format(i+1, len(jobs)))
             log(str(j))
-            job_file = os.path.splitext(out_script)[0]+'-job-{}.sh'.format(i+1)
+            job_file = os.path.join(script_dir, 'job-{}.sh'.format(i+1))
             log('Writing command to {}'.format(job_file))
             with open(job_file, 'w') as jf:
                 cmd = j.as_command()
-                jf.write('#!/usr/bin/env bash -l\n\n')
-                jf.write(cmd+'\n')
-            fh.write('qsub {}\n'.format(os.path.abspath(job_file)))
+                jf.write('#!/usr/bin/env bash\n\n')
+                for l in params.sweep_settings.additional_lines if params.sweep_settings.additional_lines else []:
+                    jf.write(l+'\n')
+                jf.write(cmd.replace(' ', ' \\\n    ')+'\n')
+                # remove the log directories
+                job_dir = [a.split('=')[1] for a in j.cmd_line_args if a.startswith('out_dir')][0]
+                jf.write('rm -rf {}\n'.format(os.path.join(job_dir,'logs','_fitting-level*.log')))
+            fh.write('{} {}\n'.format(params.sweep_settings.submit_command, os.path.abspath(job_file)))
+
+def get_and_pop(my_list, marker):
+    idx = my_list.index(marker)
+    mrk = my_list.pop(idx)
+    assert mrk == marker
+    return my_list.pop(idx)
 
 def process_output(params):
 
@@ -300,15 +376,20 @@ def process_output(params):
     assert os.path.exists(ref_csv), 'CSV containing reference R-free, R-work, etc, does not exist: {}'.format(ref_csv)
     ref_table = pandas.read_csv(ref_csv, index_col=0)
 
-    COLUMN_NAMES = ['dataset', 'resolution', 'method', 'ref_type', 'n_dst', 'n_opt', 'n_run', 'res_opt', 'sel_res_range', 'sel_res_high', 'sel_res_low', 'r_free', 'r_work', 'r_gap', 'dr_free', 'dr_work', 'dr_gap']
+    COLUMN_NAMES = ['dataset', 'resolution', 'method', 'disorder', 'refined', 
+                    'n_dst',         'n_opt',        'n_run',
+                    'res_opt_avg',   'res_opt_rng',  'res_opt_cut', 
+                    'sel_res_range', 'sel_res_high', 'sel_res_low', 
+                    'r_free',  'r_work',  'r_gap', 
+                    'dr_free', 'dr_work', 'dr_gap']
 
     # Create table to contain output
     out_table = pandas.DataFrame(columns=COLUMN_NAMES)
 
-    program_csvs = glob.glob(os.path.join(params.output.out_dir,'*/*/dataset_scores.csv'))
+    program_csvs = sorted(glob.glob(os.path.join(params.output.out_dir,'*/*/dataset_scores.csv')))
     assert program_csvs, 'no program csvs found'
     for data_csv in program_csvs:
-        log.heading('Reading {}'.format(data_csv))
+        log.heading('Reading {}'.format(data_csv[-50:]))
 
         # Read data?
         data_table = pandas.read_csv(data_csv, index_col=0)
@@ -319,32 +400,45 @@ def process_output(params):
         run_info = os.path.basename(run_dir).split('_')
         log('> Run Info: {}'.format(run_info))
 
-        ref_type = os.path.basename(ref_dir).split('-')[0]
-        log('> Refinement type: {}'.format(ref_type))
+        disorder = os.path.basename(ref_dir).split('-')[0]
+        log('> Refinement type: {}'.format(disorder))
 
+        ##############################
+        # Number-of-datasets-mode
+        ##############################
         if 'range' in run_info:
-            sel_res_range = run_info[run_info.index('range')+1]
+            # What resolution are the input datasets
+            sel_res_range = get_and_pop(run_info, 'range')
             sel_res_high, sel_res_low = sel_res_range.split('-')
-        else:
-            sel_res_range = sel_res_low = sel_res_high = 'all'
-
-        if 'ndatasets' in run_info:
-            n_opt = run_info[run_info.index('ndatasets')+1]
+            # Dataset resolution info
+            res_opt_avg = get_and_pop(run_info, 'avg')
+            res_opt_rng = get_and_pop(run_info, 'rng')
+            # Optimisation resolution
+            res_opt_cut = 'all'
+            # Number of datasets
+            n_opt = get_and_pop(run_info, 'ndatasets')
             n_dst = n_opt
-            res_opt = 'all'
-        elif 'optcutoff' in run_info:
-            n_opt = run_info[run_info.index('optndsets')+1]
+            # Run info
+            n_run = get_and_pop(run_info, 'run')
+        ##############################
+        # Optimisation cutoff mode
+        ##############################
+        else:
+            # Resolution selections for the input datasets
+            sel_res_range = sel_res_low = sel_res_high = 'all'
+            # Dataset resolution info
+            res_opt_avg = res_opt_rng = 'all'
+            # Optimisation resolution
+            res_opt_cut = get_and_pop(run_info, 'optcutoff')
+            # What resolution are the input datasets
+            n_opt = get_and_pop(run_info, 'optndsets')
             n_dst = 'all'
-            res_opt = run_info[run_info.index('optcutoff')+1]
-        else:
-            n_opt = None
-            n_dst = None
-            res_opt = None
+            # Run info
+            n_run = 1
 
-        if 'runnumber' in run_info:
-            n_run = run_info[run_info.index('runnumber')+1]
-        else:
-            n_run = None
+        # Residuals
+        assert len(run_info) % 2 == 0
+        misc_tuples = [(run_info[i], run_info[i+1]) for i in range(len(run_info)/2)]
 
         # Iterate through all of the datasets for this run
         for dataset in data_table.index:
@@ -353,28 +447,44 @@ def process_output(params):
             dataset_row = data_table.loc[dataset]
             dataset_ref = ref_table.loc[dataset]
 
-            for method in ['single-dataset', 'multi-dataset']:
+            for method, refined in [('single-dataset', 'refined'), 
+                                    ('multi-dataset',  'unrefined'),
+                                    ('multi-dataset',  'refined')]:
                 new_row_idx = len(out_table.index)
-                log('> '+str(new_row_idx)+'\t'+method)
+                log('> '+str(new_row_idx)+'\t'+method+' ({})'.format(refined))
 
-                if method == 'single-dataset':
-                    prefix = 'old-'
-                elif method == 'multi-dataset':
-                    prefix = 'new-'
+                if (method == 'single-dataset'):
+                    suffix = 'Input'
+                elif (method == 'multi-dataset') and (refined == 'unrefined'):
+                    suffix = 'Fitted'
+                elif (method == 'multi-dataset') and (refined == 'refined'):
+                    prefix = 'Refined'
                 else:
                     raise Exception()
 
                 resolution = dataset_ref['resolution']
-                r_free = dataset_row[prefix+'R-free']
-                r_work = dataset_row[prefix+'R-work']
-                r_gap  = dataset_row[prefix+'R-gap']
+                r_free = dataset_row['R-free ({})'.format(suffix)]
+                r_work = dataset_row['R-work ({})'.format(suffix)]
+                r_gap  = dataset_row['R-gap ({})'.format(suffix)]
 
                 dr_free = r_free - dataset_ref['R-free']
                 dr_work = r_work - dataset_ref['R-work']
                 dr_gap  = r_gap  - dataset_ref['R-gap']
+                
+                # Create column if necessary
+                cols, vals = zip(*misc_tuples)
+                for c in cols:
+                    if c not in out_table.columns:
+                        print 'Creating:', c
+                        out_table[c] = None
 
-                out_table.loc[new_row_idx] = map(eval, COLUMN_NAMES)
-                #log(out_table.loc[new_row_idx])
+                # get cols for filling 
+                need_cols = [c for c in out_table.columns if c not in COLUMN_NAMES]
+                need_vals = [vals[cols.index(c)] if (c in cols) else None for c in need_cols]
+                print need_vals
+
+                # Create new row
+                out_table.loc[new_row_idx] = map(eval, COLUMN_NAMES) + need_vals
 
     # Write output table
     log('Writing output table of {} rows: {}'.format(len(out_table.index), out_csv))
@@ -387,10 +497,6 @@ def process_output(params):
 def run(params):
 
     params.output.out_dir = os.path.abspath(params.output.out_dir)
-
-    # Perform refinements if required
-#    if params.input.pdb and not os.path.exists(params.input.refinement_dir):
-#        run_refinements(params)
 
     # Create parameterisation or analyse them
     if not os.path.exists(params.output.out_dir):

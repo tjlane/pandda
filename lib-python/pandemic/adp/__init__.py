@@ -97,14 +97,17 @@ output {
     out_dir = multi-dataset-b-factor-fitting
         .help = "output directory"
         .type = str
-    pickle = 'pandemic.pickle'
-        .type = path
+    pickle = True
+        .type = bool
         .multiple = False
     diagnostics = False
         .help = "Write diagnostic graphs -- adds a significant amount of runtime"
         .type = bool
     pymol_images = True
         .help = "Write residue-by-residue images of the output B-factors"
+        .type = bool
+    group_graphs = True
+        .help = "Write distribution graphs for each TLS group"
         .type = bool
 }
 levels {
@@ -145,7 +148,6 @@ fitting {
         .type = float
     penalties
         .help = 'penalties during optimisation. penalty function is 0 if p is 0, else (a + b*p), i.e. (p>0)*(a+b*p).'
-        .expert_level = 1
     {
         invalid_tls_values
             .help = 'penalties for invalid TLS models. penalty p is number of T L or S matrices that is unphysical.'
@@ -869,8 +871,8 @@ class MultiDatasetUijParameterisation(Program):
 
         # Write summary of the fitted model (groups & levels)
         model_dir = self.file_manager.get_dir('model')
-        self.log.heading('Writing summary of the hierarchical model')
-        self.hierarchy_summary(out_dir=model_dir)
+        #self.log.heading('Writing summary of the hierarchical model')
+        #self.hierarchy_summary(out_dir=model_dir)
 
         # Calculate Parameter-observed data ratio
         self.log.subheading('Data-Parameter Ratios')
@@ -1302,7 +1304,7 @@ class MultiDatasetUijParameterisation(Program):
                         amp_table.loc[len(amp_table.index)] = numpy.concatenate([[i_group, i_tls, cpt], tls_amps[i_tls,:,i_cpt]])
 
                 # Write histograms of amplitudes -- only for non-zero models
-                if tls_model.sum() > 0.0:
+                if (tls_model.sum() > 0.0) and self.params.output.group_graphs:
                     x_vals = []; [[x_vals.append(tls_amps[i_m,:,i_c]) for i_c in xrange(tls_amps.shape[2])] for i_m in xrange(tls_amps.shape[0])]
                     filename = os.path.join(png_dir, 'tls-model-amplitudes-level-{}-group-{}.png'.format(level.index, i_group))
                     self.log('\t> {}'.format(filename))
@@ -3226,7 +3228,7 @@ class _UijOptimiser(object):
         optimised = simplex.simplex_opt(dimension = len(opt_simplex[0]),
                                         matrix    = map(flex.double, opt_simplex),
                                         evaluator = self.evaluator,
-                                        tolerance = 1e-03)
+                                        tolerance = 1e-04)
         # Extract and update current values
         self._inject(values=optimised.get_solution(), selection=sel_dict)
         if self._running_summary:
@@ -3896,9 +3898,9 @@ def run(params):
         p.process_results()
 
         # Pickle output object
-        if p.params.output.pickle is not None:
+        if p.params.output.pickle is True:
             log.subheading('Pickling output')
-            p.pickle(pickle_file    = os.path.join(p.params.output.out_dir, p.params.output.pickle),
+            p.pickle(pickle_file    = os.path.join(p.params.output.out_dir, 'pandemic.pickle'),
                      pickle_object  = p,
                      overwrite      = True)
 
