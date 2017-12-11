@@ -103,7 +103,7 @@ output {
     diagnostics = False
         .help = "Write diagnostic graphs -- adds a significant amount of runtime"
         .type = bool
-    pymol_images = True
+    pymol_images = False
         .help = "Write residue-by-residue images of the output B-factors"
         .type = bool
     group_graphs = True
@@ -111,7 +111,7 @@ output {
         .type = bool
 }
 levels {
-    auto_levels = *chain auto_group *secondary_structure *residue *backbone *sidechain atom
+    auto_levels = *chain *auto_group secondary_structure *residue *backbone *sidechain atom
         .type = choice(multi=True)
     custom_level
         .multiple = True
@@ -125,7 +125,7 @@ levels {
             .type = str
             .multiple = True
         mask_atoms = False
-            .help = "remove atoms with high residual Uijs from this mask?"
+            .help = "remove atoms with high residual Uijs from this level?"
             .type = bool
             .multiple = False
     }
@@ -140,12 +140,14 @@ fitting {
     number_of_modes_per_group = 1
         .help = 'how many TLS models to fit per group of atoms?'
         .type = int
-    max_datasets_for_optimisation = None
-        .help = 'how many datasets should be used for optimising the TLS parameters?'
-        .type = int
-    max_resolution_for_optimisation = None
-        .help = 'resolution limit for dataset to be used for TLS optimisation'
-        .type = float
+    optimisation {
+        max_datasets = None
+            .help = 'takes up to this number of datasets for TLS parameter optimisation'
+            .type = int
+        max_resolution = None
+            .help = 'resolution limit for dataset to be used for TLS optimisation'
+            .type = float
+    }
     penalties
         .help = 'penalties during optimisation. penalty function is 0 if p is 0, else (a + b*p), i.e. (p>0)*(a+b*p).'
     {
@@ -697,11 +699,11 @@ class MultiDatasetUijParameterisation(Program):
         self.params = params
 
         self._n_cpu = params.settings.cpus
-        self._n_opt = params.fitting.max_datasets_for_optimisation
+        self._n_opt = params.fitting.optimisation.max_datasets
 
         self._allow_isotropic = True
 
-        self._opt_datasets_res_limit = params.fitting.max_resolution_for_optimisation
+        self._opt_datasets_res_limit = params.fitting.optimisation.max_resolution
         self._opt_datasets_selection = []
 
         self.models = models
@@ -2857,8 +2859,9 @@ class MultiDatasetHierarchicalUijFitter(object):
                 self.log.subheading('Updating parameters for next iteration')
                 self.log('Removing atoms with high residual uij from TLS optimisation')
                 self.update_atomic_mask(percentile=90, atomic_uij=self.residual.extract())
-                self.log('Removing datasets with high fit rmsds from TLS optimisation')
-                self.update_dataset_mask(percentile=95, observed_fitted_differences=self.observed_uij-fitted_uij_by_level.sum(axis=0))
+                # XXX Currently disabled -- need to think of better method XXX
+                #self.log('Removing datasets with high fit rmsds from TLS optimisation')
+                #self.update_dataset_mask(percentile=95, observed_fitted_differences=self.observed_uij-fitted_uij_by_level.sum(axis=0))
                 self.log('Resetting residual Uijs to zero for next cycle')
                 fitted_uij_by_level[-1] = 0.0
                 # Re-initialise tracking at the beginning of each subsequent cycle
@@ -2883,7 +2886,7 @@ class MultiDatasetHierarchicalUijFitter(object):
             # Update the target uij by subtracting contributions from other levels
             self.residual.set_target_uij(target_uij=self._target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=-1))
             # Update fitters and optimise -- always run two cycles of this
-            fitted_uij_by_level[-1] = self.residual.run(n_cpus=n_cpus, n_cycles=2)
+            fitted_uij_by_level[-1] = self.residual.run(n_cpus=n_cpus, n_cycles=3)
             # Update tracking
             self.update_tracking(uij_lvl=fitted_uij_by_level, i_cycle=i_macro, i_level='residual')
 
@@ -3381,9 +3384,12 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
 
     def optimise(self, n_cycles=1, n_cpus=1):
         """Optimise the residual for a set of atoms"""
-        #uij_del_steps = itertools.cycle([0.1])
+        # If only 1 dataset provided, set current values to target values and return
+        if self.target_uij.shape[0] == 1:
+            self._inject(values=self.target_uij[0])
+            return
+        # Otherwise optimise
         for i_cycle in xrange(n_cycles):
-            #self.simplex.set_deltas(uij_delta=uij_del_steps.next())
             self._optimise()
 
     def result(self):
