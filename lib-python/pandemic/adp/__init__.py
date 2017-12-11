@@ -1008,6 +1008,7 @@ class MultiDatasetUijParameterisation(Program):
         self.log.bar()
         self.output_structures(uij = uij_tls,
                                iso = map(uij_to_b, uij_tls),
+                               headers = tls_headers,
                                out_dir = structure_dir,
                                model_suffix = '.tls.pdb')
         # Level by level TLS-parameterised structures
@@ -1017,6 +1018,7 @@ class MultiDatasetUijParameterisation(Program):
             self.log.bar()
             self.output_structures(uij = uij_lvl[i_level],
                                    iso = map(uij_to_b, uij_lvl[i_level]),
+                                   headers = self.make_tls_headers(datasets=None, levels=[i_level]),
                                    out_dir = structure_dir,
                                    model_suffix = '.tls-level-{:04}.pdb'.format(i_level))
         # TLS-subtracted structures ("residual structures")
@@ -1144,7 +1146,7 @@ class MultiDatasetUijParameterisation(Program):
                 if headers is not None:
                     with open(mdl_f, 'w') as fh:
                         [fh.write(l[i].strip()+'\n') for l in headers]
-                h.write_pdb_file(mdl_f, open_append=open_append)
+                h.write_pdb_file(mdl_f, open_append=open_append, crystal_symmetry=mdl.crystal_symmetry)
                 pdbs.append(mdl_f)
             except:
                 self.log.bar()
@@ -2968,7 +2970,8 @@ class _MultiDatasetUijLevel(object):
             # Write out the summary to its own log
             ret_job.log.write_to_log(clear_data=True)
             # Print summaries (in main log)
-            self.log.subheading('Results - level {} ({}) - group {}'.format(self.index, self.label, ret_job.label))
+            if self.label != 'residual':
+                self.log.subheading('Results - level {} ({}) - group {}'.format(self.index, self.label, ret_job.label))
             self.log(ret_job.summary(show=False))
             # Store the returned job
             self.fitters[i] = ret_job
@@ -3717,6 +3720,8 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 # Reset amplitudes to zero to prevent overparameterisation
                 self.log('Resetting all amplitudes to zero')
                 self._parameters.get(index=i_tls).amplitudes.set(vals=0.0, components='TLS')
+                # Optimise amplitudes
+                self.log('Setting up T-L-S amplitude optimisation')
                 # Select variables for optimisation -- amplitudes only
                 self._select(optimise_model      = False,
                              optimise_amplitudes = True,
