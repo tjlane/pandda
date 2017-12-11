@@ -748,18 +748,30 @@ class MultiDatasetUijParameterisation(Program):
 
         errors = []
 
+        # Extract the TableOne columns as a set to compare with the columns in the MTZs
+        table_one_cols = set(self.params.table_ones_options.column_labels.split(',')+[self.params.table_ones_options.r_free_label])
+
         for i_m, m in enumerate(self.models):
             # Check that all of the structures are the same
             if not self.master_h.is_similar_hierarchy(m.hierarchy):
                 errors.append(Failure("Structures are not all the same. Model {}. File: {}".format(i_m, m.filename)))
                 continue
 
-            m.i_pdb = m.filename
-            m.i_mtz = m.i_pdb.replace('.pdb', '.mtz')
+            # Directory for this model
+            m_dir = easy_directory(os.path.join(self.file_manager.get_dir('structures'), m.tag))
+
+            # Copy input files to folder
+            m.i_pdb = os.path.join(m_dir, m.tag+'.input.pdb')
+            m.i_mtz = os.path.join(m_dir, m.tag+'.input.mtz')
             m.o_pdb = None
             m.o_mtz = None
             m.r_pdb = None
             m.r_mtz = None
+
+            # Write the input pdb to the output folder (without the header as this can affect R-factors calculations)
+            m.hierarchy.write_pdb_file(m.i_pdb, crystal_symmetry=m.crystal_symmetry)
+            # Link the input mtz to the output folder
+            rel_symlink(m.filename.replace('.pdb','.mtz'), m.i_mtz)
 
             assert os.path.exists(m.i_pdb), 'PDB does not exist: {}'.format(m.i_pdb)
             assert os.path.exists(m.i_mtz), 'MTZ does not exist: {}'.format(m.i_mtz)
@@ -768,11 +780,21 @@ class MultiDatasetUijParameterisation(Program):
             if (self._opt_datasets_res_limit is None) or (cs.high_res < self._opt_datasets_res_limit):
                 self._opt_datasets_selection.append(i_m)
 
+            if table_one_cols.difference(cs.column_labels):
+                errors.append(Failure("MTZ {} does not contain the correct columns.".format(m.filename) + \
+                                      "\n\tLooking for: {}".format(','.join(table_one_cols)) + \
+                                      "\n\tMTZ contains: {}".format(','.join(cs.column_labels)) + \
+                                      "\n\tCan't find: {}".format(','.join(table_one_cols.difference(cs.column_labels))) + \
+                                      "\nChange required columns with {}".format("table_ones_options.column_labels or table_ones_options.r_free_label")))
+
         # Check for errors - Structures not all the same?
         if errors:
+            self.log.heading('Errors found while processing input files')
             for e in errors:
-                print str(e)
-            raise Failure("Not all structures are the same atomic model of the protein.")
+                self.log(str(e))
+                self.log('')
+            self.log.bar(False, True)
+            raise Failure("Some structures are invalid or missing information.")
         # Check for errors - No high resolution structures?
         if len(self._opt_datasets_selection) == 0:
             raise Sorry('No datasets above resolution cutoff: {}'.format(self._opt_datasets_res_limit))
@@ -1234,7 +1256,9 @@ class MultiDatasetUijParameterisation(Program):
 
             # Groups are indexed from 1 but level list is indexed from 0
             sel_indexs = [g-1 if g>0 else None for g in sel_groups]
-            assert sel_indexs.count(None) != len(sel_indexs)
+            # All Nones -> no contribution for this part for this level
+            if sel_indexs.count(None) == len(sel_indexs):
+                continue
 
             # Combine the selection strings for this combination
             selection_string = '('+') and ('.join([sel_level_selections[i_l][i_g] for i_l, i_g in enumerate(sel_indexs) if (i_g is not None)])+')'
@@ -1791,9 +1815,9 @@ class MultiDatasetUijParameterisation(Program):
         self.log.bar()
 
         # Clear all of the symlinks
-        for mdl in self.models:
-            if os.path.islink(mdl.o_mtz):
-                os.remove(mdl.o_mtz)
+        #for mdl in self.models:
+        #    if os.path.islink(mdl.o_mtz):
+        #        os.remove(mdl.o_mtz)
 
         assert os.path.exists(table_one_csv_orig)
         assert os.path.exists(table_one_csv_fitd)
@@ -2386,7 +2410,7 @@ class MultiDatasetUijPlots(object):
     def residue_by_residue(prefix, hierarchy, title=None, v_line_hierarchy=None):
         """Write out residue-by-residue b-factor graphs"""
 
-        h = hierarchy
+        h = protein(hierarchy)
         for chain_id in [c.id for c in h.chains()]:
             sel = h.atom_selection_cache().selection('chain {}'.format(chain_id))
             sel_h = h.select(sel)
@@ -2959,7 +2983,9 @@ class _MultiDatasetUijLevel(object):
         else:
             self.log('Running {} job(s) [with {} cpu(s)]'.format(len(jobs), n_cpus_per_job))
             finished_jobs = [wrapper_fit(j) for j in jobs]
-
+        self.log('')
+        self.log('Optimisation complete')
+        self.log.subheading('Optimised values')
         # Record list of errors and raise all at end
         errors = []
         for i_iter, (i, sel, fitter) in enumerate(self):
@@ -2969,9 +2995,10 @@ class _MultiDatasetUijLevel(object):
                 continue
             # Write out the summary to its own log
             ret_job.log.write_to_log(clear_data=True)
-            # Print summaries (in main log)
+            # Print heading for every group for other levels
             if self.label != 'residual':
                 self.log.subheading('Results - level {} ({}) - group {}'.format(self.index, self.label, ret_job.label))
+            # Print summaries (in main log)
             self.log(ret_job.summary(show=False))
             # Store the returned job
             self.fitters[i] = ret_job
@@ -3669,7 +3696,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
 
         # Optimise!
         for i_cycle in xrange(n_cycles):
-            self.log.heading('Group {} - Optimisation cycle {} of {}'.format(self.label, i_cycle+1, n_cycles))
+            self.log.subheading('Group {} - Optimisation cycle {} of {}'.format(self.label, i_cycle+1, n_cycles))
 
             for i_tls in xrange(self._n_tls):
                 self.log.subheading('Optimising TLS model {} of {}'.format(i_tls+1, self._n_tls))
@@ -3777,8 +3804,6 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         # Let's be good
         if n_cpus > 1:
             workers.close()
-
-        self.log.subheading('Optimisation complete')
 
     def extract(self):
         """Extract the fitted uij"""
