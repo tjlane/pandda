@@ -94,7 +94,7 @@ input {
         .multiple = False
 }
 output {
-    out_dir = multi-dataset-b-factor-fitting
+    out_dir = pandemic-adp
         .help = "output directory"
         .type = str
     pickle = True
@@ -106,7 +106,7 @@ output {
     pymol_images = False
         .help = "Write residue-by-residue images of the output B-factors"
         .type = bool
-    group_graphs = True
+    group_graphs = False
         .help = "Write distribution graphs for each TLS group"
         .type = bool
 }
@@ -3895,6 +3895,8 @@ def run(params):
     log = Log(os.path.join(log_dir, '_fitting.log'), verbose=params.settings.verbose)
 
     # Report parameters
+    log.heading('Input command')
+    log(' \\\n\t'.join(['pandemic.adp'] + sys.argv[1:]))
     log.heading('Processed parameters')
     log(master_phil.format(params).as_str())
 
