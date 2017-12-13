@@ -216,12 +216,16 @@ settings {
 """, process_includes=True)
 
 ############################################################################
+#                             Utility Functions                            #
+############################################################################
 
 def get_t_l_s_from_vector(vals):
+    assert len(vals) == 21
     return vals[0:6], vals[6:12], vals[12:21]
 
-def str_to_n_params(s):
-    return 6*('T' in s) + 6*('L' in s) + 9*('S' in s)
+def str_to_n_params(s, include_szz=True):
+    assert not set(s).difference('TLS')
+    return 6*('T' in s) + 6*('L' in s) + (8+include_szz)*('S' in s)
 
 def rms(vals, axis=None):
     return numpy.sqrt(numpy.mean(numpy.power(vals,2), axis=axis))
@@ -233,6 +237,8 @@ def default_secondary_structure_selections(hierarchy):
     return dssp.dssp(hierarchy).get_annotation().as_atom_selections()
 
 ############################################################################
+#                        Multi-processing functions                        #
+############################################################################
 
 def wrapper_plot_histograms(args):
     MultiDatasetUijPlots.multi_histogram(**args)
@@ -243,9 +249,7 @@ def wrapper_run(arg):
 def wrapper_optimise(args):
     fitter = args
     try:
-        #print '> Start optimisation: Fitter {} - Datasets {}'.format(fitter.label, ','.join(map(str,fitter._opt_dsts)))
         fitter._optimise(running_summary=False)
-        #print '> Finished optimisation: Fitter {} - Datasets {}'.format(fitter.label, ','.join(map(str,fitter._opt_dsts)))
         return fitter
     except:
         return traceback.format_exc()
@@ -271,25 +275,35 @@ class TLSModel(object):
     def __add__(self, other):
         return self.add(other)
 
-    def _str_to_idx(self, components):
+    def _str_to_idx(self, components, include_szz=True):
         """Map T-L-S to parameter indexes"""
         components = components.upper()
         assert not set(components).difference('TLS'), 'components can only contain letters "TLS"'
-        idx = (range(00,06) if 'T' in components else []) + \
-              (range(06,12) if 'L' in components else []) + \
-              (range(12,21) if 'S' in components else [])
+        idx = (range(00,06)                    if 'T' in components else []) + \
+              (range(06,12)                    if 'L' in components else []) + \
+              (range(12,20)+[20]*(include_szz) if 'S' in components else [])
+              # One of the S parameters is not free so may be deselected with include_szz=False
         return idx
 
     def copy(self):
         return copy.deepcopy(self)
 
-    def get(self, components):
-        idx = self._str_to_idx(components=components)
+    def get(self, components, include_szz=True):
+        idx = self._str_to_idx(components=components, include_szz=include_szz)
         return self.values[idx]
 
-    def set(self, vals, components):
-        idx = self._str_to_idx(components=components)
+    def set(self, vals, components, include_szz=True):
+        idx = self._str_to_idx(components=components, include_szz=include_szz)
         self.values[idx] = vals
+        if (include_szz is False) and ('S' in components):
+            self.set_szz_value_from_sxx_and_syy(target_trace=0)
+
+    def set_szz_value_from_sxx_and_syy(self, target_trace=0.0):
+        """Update Szz so that Sxx+Syy+Szz=target_trace"""
+        # S stored as S11, S12, S13, S21, S22, S23, S31, S32, S33
+        # So this is: Sxx, Sxy, Sxz, Syx, Syy, Syz, Szx, Szy, Szz
+        # So indexed:  12,  13,  14,  15,  16,  17,  18,  19,  20
+        self.values[20] = target_trace - (self.values[12] + self.values[16])
 
     def multiply(self, amplitudes):
         assert len(amplitudes) == self._n_prm
@@ -304,17 +318,17 @@ class TLSModel(object):
         return self
 
     def reset(self, components):
-        self.set(vals=0.0, components=components)
+        self.set(vals=0.0, components=components, include_szz=True)
 
     def uij(self, xyz, origin):
         return uij_from_tls_vector_and_origin(xyz=xyz, tls_vector=self.values, origin=origin)
 
-    def n_params(self, non_zero=False):
+    def n_params(self, free=True, non_zero=False):
         if non_zero is False:
-            return self._n_prm
+            return self._n_prm - 1*(free)
         else:
             t,l,s = get_t_l_s_from_vector(vals=self.values)
-            return (t!=0.0).any()*(t.size) + (l!=0.0).any()*(l.size) + (s!=0.0).any()*(s.size)
+            return (t!=0.0).any()*(t.size) + (l!=0.0).any()*(l.size) + (s!=0.0).any()*(s.size-free)
 
     def summary(self):
         """Print summary of the TLS components"""
@@ -550,7 +564,7 @@ class UijPenalties(object):
         self.set_weights(**args)
 
     def set_test_xyz(self, xyz, com):
-        self._tst_xyz = xyz
+        self._tst_xyz = flex.vec3_double(xyz)
         self._tst_com = com
 
     def set_weights(self, **args):
@@ -643,9 +657,9 @@ class TLSSimplex(_Simplex):
         p_mdl = 0
         p_amp = 0
         if model is True:
-            p_mdl += str_to_n_params(components)*n_mdl
+            p_mdl += str_to_n_params(components, include_szz=False)*n_mdl
         if amplitudes is True:
-            p_mdl += n_mdl*n_cpt*n_dst
+            p_amp += n_mdl*n_cpt*n_dst
         return numpy.array((self._del_mdl,)*p_mdl + (self._del_amp,)*p_amp)
 
     def set_deltas(self, mdl_delta=None, amp_delta=None):
@@ -3261,7 +3275,7 @@ class _UijOptimiser(object):
         optimised = simplex.simplex_opt(dimension = len(opt_simplex[0]),
                                         matrix    = map(flex.double, opt_simplex),
                                         evaluator = self.evaluator,
-                                        tolerance = 1e-04)
+                                        tolerance = 1e-03)
         # Extract and update current values
         self._inject(values=optimised.get_solution(), selection=sel_dict)
         if self._running_summary:
@@ -3506,7 +3520,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                      atoms    = range(0, self._n_atm))
 
         # Initialise simplex generator
-        self.simplex = TLSSimplex(mdl_delta=0.1, amp_delta=0.1)
+        self.simplex = TLSSimplex(mdl_delta=None, amp_delta=None)
 
         # Initialse penalty set of test points (for identifying physically-valid TLS matrices)
         box_size = (numpy.min(self.atomic_xyz, axis=(0,1)),
@@ -3611,7 +3625,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         if s.model is True:
             for i in s.i_mdl:
                 mdl = self._parameters.get(index=i)
-                values.append(mdl.model.get(components=s.components))
+                values.append(mdl.model.get(components=s.components, include_szz=False))
         if s.amplitudes is True:
             for i in s.i_mdl:
                 mdl = self._parameters.get(index=i)
@@ -3629,11 +3643,12 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         # Iterate through objects and extract requested parameter values
         values = collections.deque(values)
         if s.model is True:
-            n_tls_params = str_to_n_params(s.components)
+            n_tls_params = str_to_n_params(s.components, include_szz=False)
             for i in s.i_mdl:
                 mdl = self._parameters.get(index=i)
                 mdl.model.set(vals = [values.popleft() for _ in xrange(n_tls_params)],
-                              components = s.components)
+                              components = s.components,
+                              include_szz = False)
         if s.amplitudes is True:
             for i in s.i_mdl:
                 mdl = self._parameters.get(index=i)
