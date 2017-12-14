@@ -1,10 +1,23 @@
 
+import math
 import numpy
 
 import iotbx.pdb
 
+from bamboo.common.logs import LogStream
+
+from scitbx import matrix
 from scitbx.array_family import flex
-from mmtbx.tls.tools import tlso, u_cart_from_tls
+from mmtbx.tls import tlso, uaniso_from_tls_one_group, analysis
+
+deg_to_rad_scale = math.pi/180
+
+############
+
+def extract_tls_from_pdb(pdb_file):
+    ih = iotbx.pdb.hierarchy.input(pdb_file)
+    tls_params = ih.input.extract_tls_params(ih.hierarchy)
+    return tls_params
 
 def uij_from_tls_vector_and_origin(xyz, tls_vector, origin):
     assert len(tls_vector) == 21
@@ -12,13 +25,27 @@ def uij_from_tls_vector_and_origin(xyz, tls_vector, origin):
     return uij_from_tls_object(xyz=xyz, tls_obj=tls_obj)
 
 def uij_from_tls_object(xyz, tls_obj):
-    uij_tls = u_cart_from_tls(sites_cart = flex.vec3_double(xyz),
-                              selections = [flex.bool(len(xyz), True)],
-                              tlsos      = [tls_obj]                        )
+    uij_tls = uaniso_from_tls_one_group(tlso       = tls_obj,
+                                        sites_cart = flex.vec3_double(xyz),
+                                        zeroize_trace = False)
     return numpy.array(uij_tls)
 
-def extract_tls_from_pdb(pdb_file):
-    ih = iotbx.pdb.hierarchy.input(pdb_file)
-    tls_params = ih.input.extract_tls_params(ih.hierarchy)
-    return tls_params
+############
+
+def validate_tls_params(tls_vector, origin):
+    assert len(tls_vector) == 21
+    tls_obj = tlso(t=tls_vector[0:6], l=tls_vector[6:12], s=tls_vector[12:21], origin=origin)
+    return validate_tls_object(tls_object=tls_obj)
+
+def validate_tls_object(tls_object, silent=False):
+    """Validate a set of TLS matrices using the approach from phenix.tls_analysis. Returns True or False."""
+    try:
+        checker = analysis.run(T = matrix.sym(sym_mat3=tls_object.t),
+                               L = matrix.sym(sym_mat3=tls_object.l)*(deg_to_rad_scale**2),
+                               S = matrix.sqr(tls_object.s)*deg_to_rad_scale,
+                               log = LogStream(silent=silent))
+    except Exception as e:
+        return e
+
+    return True
 

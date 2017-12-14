@@ -24,7 +24,7 @@ from bamboo.common.command import CommandManager
 from giant.manager import Program
 from giant.dataset import CrystallographicModel
 from giant.structure.select import protein
-from giant.structure.tls import uij_from_tls_vector_and_origin
+from giant.structure.tls import uij_from_tls_vector_and_origin, validate_tls_params
 from giant.structure.formatting import ShortLabeller, PhenixSelection, PymolSelection
 from giant.structure.select import backbone, sidechains
 from giant.structure.pymol import auto_residue_images, auto_chain_images, selection_images
@@ -577,21 +577,12 @@ class UijPenalties(object):
     def tls_params(self, values):
         """Return penalty for having unphysical TLS models"""
         assert len(values) == 21
-        t,l,s = get_t_l_s_from_vector(vals=values)
         # Calculate eigenvalues of T+L matrices, and penalise negative eigenvalues (proportional to size of negative eigenvalues)
-        t_penalty = self._sym_mat3_penalty(self._sym_mat3_eigenvalues(t))
-        l_penalty = self._sym_mat3_penalty(self._sym_mat3_eigenvalues(l))
-        # Only calculate S-penalties if S is non-zero
-        if numpy.sum(numpy.abs(s)) > 0.0:
-            # Calculate test Uijs for S-matrices
-            s_uij_values = uij_from_tls_vector_and_origin(xyz=self._tst_xyz, tls_vector=[0.0]*12+list(s), origin=self._tst_com)
-            # Only take the penalty of the largest invalid Uij (should be enough!)
-            s_penalty = numpy.max([self._sym_mat3_penalty(self._sym_mat3_eigenvalues(uij)) for uij in s_uij_values])
-        else:
-            s_penalty = 0.0
+        tls_penalty = validate_tls_params(tls_vector=values, origin=self._tst_com)
+        #if tls_penalty is not True: print tls_penalty
+        tls_penalty = 0.0 if tls_penalty is True else 1.0
         # Calculate and return total penalty
-        penalty = numpy.sum([t_penalty, l_penalty, s_penalty])
-        return self._standard_penalty_function(penalty       = penalty,
+        return self._standard_penalty_function(penalty       = tls_penalty,
                                                fixed_penalty = self.values.mdl_fixed,
                                                slope_penalty = self.values.mdl_slope)
 
