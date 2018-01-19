@@ -12,6 +12,8 @@ import libtbx.phil
 
 import numpy, pandas
 
+from libtbx.utils import Sorry, Failure
+
 from bamboo.plot import Radar
 
 from giant.io.pdb import strip_pdb_to_input
@@ -122,6 +124,11 @@ input {
     label = ''
         .type = str
         .multiple = False
+
+    f_label = None
+        .help = 'Column label for experimental amplitudes in input mtz files. If left blank will try to guess the labels.'
+        .type = str
+        .multiple = False
 }
 selection {
     res_names = LIG,UNL,DRG
@@ -208,14 +215,14 @@ def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix='', verbo
     if mtz1 is not None:
         print 'Scoring model against mtz file'
         print 'Scoring {} >>> {}'.format(pdb1, mtz1)
-        mtz1_edstats_scores = Edstats(mtz_file=mtz1, pdb_file=pdb1)
+        mtz1_edstats_scores = Edstats(mtz_file=mtz1, pdb_file=pdb1, f_label=params.input.f_label)
     else:
         mtz1_edstats_scores = None
     # Score MTZ2
     if mtz2 is not None:
         print 'Scoring model against mtz file'
         print 'Scoring {} >>> {}'.format(pdb1, mtz2)
-        mtz2_edstats_scores = Edstats(mtz_file=mtz2, pdb_file=pdb1)
+        mtz2_edstats_scores = Edstats(mtz_file=mtz2, pdb_file=pdb1, f_label=params.input.f_label)
     else:
         mtz2_edstats_scores = None
 
@@ -445,18 +452,27 @@ def run(params):
     output_dir, images_dir = prepare_output_directory(params)
     scores_file = os.path.join(output_dir, 'residue_scores.csv')
 
-    print bar
-    print 'Scoring model...'
-    data_table = score_model(   params = params,
-                                pdb1   = params.input.pdb1,
-                                mtz1   = params.input.mtz1,
-                                pdb2   = params.input.pdb2,
-                                mtz2   = params.input.mtz2,
-                                label_prefix = params.input.label,
-                                verbose = params.settings.verbose
-                            )
-    print '...Done'
-    print bar
+    try:
+        print bar
+        print 'Scoring model...'
+        data_table = score_model(   params = params,
+                                    pdb1   = params.input.pdb1,
+                                    mtz1   = params.input.mtz1,
+                                    pdb2   = params.input.pdb2,
+                                    mtz2   = params.input.mtz2,
+                                    label_prefix = params.input.label,
+                                    verbose = params.settings.verbose
+                                )
+        print '...Done'
+        print bar
+    except Sorry as e:
+        print '===========================>'
+        print 'Program exited with an error:'
+        print 'Sorry: {}'.format(e)
+        print '===========================>'
+        sys.exit(1)
+    except Failure as e:
+        raise
 
     data_table.dropna(axis=1, how='all').to_csv(scores_file)
     print 'Output written to {}'.format(scores_file)
