@@ -32,10 +32,10 @@ def get_wilson_plot_vals(miller_array):
     binner = miller_array.setup_binner(auto_binning=True)
     # Create the wilson plot
     binned = miller_array.wilson_plot(use_binning=True)
-    x_bin_cent = binner.bin_centers(1)
-    y_bin_data = binned.data[1:-1]
+    x_bin_cent = numpy.array(binner.bin_centers(1), dtype=float)
+    y_bin_data = numpy.array(binned.data[1:-1],     dtype=float)
     assert len(x_bin_cent) == len(y_bin_data)
-    return numpy.power(x_bin_cent,2), numpy.log(y_bin_data)
+    return numpy.square(x_bin_cent), numpy.log(y_bin_data)
 
 #################################
 
