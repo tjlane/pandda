@@ -61,10 +61,10 @@ options {
         .type = choice(multi=True)
 }
 sweep_parameters {
-    resolution_partitioning = *0.1 *0.2 *0.3 *0.4 *0.5 *1.0 *2.0
+    resolution_partitioning = *0.1 *0.5 *1.0 *5.0
         .type = choice(multi=True)
         .help = "Split datasets into groups for characterisation by resolution."
-    datasets_per_characterisation = *2 *3 *4 *5 *6 *7 *8 *9 *10 *20 *30 *40 *50 *100 *150 *200 *300
+    datasets_per_characterisation = *2 *3 *4 *5 *6 *7 *8 *9 *10 *11 *12 *13 *14 *15 *20 *30 *50
         .type = choice(multi=True)
         .help = "Once datasets are partitioned, select random samples of datasets."
     optimisation_cutoffs = *1.3 *1.4 *1.5 *1.6 *1.7 *1.8 *1.9 *2.0 *2.1 *2.2 *2.3 *2.4 *2.5 *3.0 *3.5
@@ -269,7 +269,7 @@ def create_sweeps(params, log=None):
                         # How many times to bootstrap this selection
                         # -------------------------------------->
                         # Don't do lots of selections when selecting many datasets!
-                        n_bootstrap = params.sweep_parameters.n_bootstrap if (n_use < 50) else min(3, params.sweep_parameters.n_bootstrap)
+                        n_bootstrap = params.sweep_parameters.n_bootstrap if (n_use <= 10) else min(3, params.sweep_parameters.n_bootstrap)
                         for i_sample in range(n_bootstrap):
 
                             # Sample datasets for this round
@@ -279,7 +279,9 @@ def create_sweeps(params, log=None):
 
                             # Create names for the sweep directory name
                             r_loop_lab = 'range_{}-{}'.format(r_loop_min,r_loop_max)
-                            d_loop_lab = 'avg_{}_rng_{}'.format(round(numpy.mean(input_rsns),1), round(numpy.std(input_rsns),2))
+                            d_loop_lab = 'avg_{}_std_{}_rng_{}'.format(round(numpy.mean(input_rsns),2), 
+                                                                       round(numpy.std(input_rsns),3),
+                                                                       round(numpy.max(input_rsns)-numpy.min(input_rsns),3))
                             n_used_lab = 'ndatasets_{}'.format(n_use)
                             n_boot_lab = 'run_{}'.format(i_sample+1)
 
@@ -287,8 +289,8 @@ def create_sweeps(params, log=None):
                             # Actually generate the sweep folders, etc.
                             #############################################
                             sweep_dir = easy_directory(os.path.join(out_dir, '_'.join([r_loop_lab,
-                                                                                       d_loop_lab,
                                                                                        n_used_lab,
+                                                                                       d_loop_lab,
                                                                                        n_boot_lab,
                                                                                        custom_dir]).replace('__','_')))
                             print sweep_dir
@@ -337,6 +339,8 @@ def write_sweeps(jobs, params, log=None):
 
     # Store all commands in a sub dir (there may be thousands)
     script_dir = easy_directory(os.path.join(params.output.out_dir, 'shell_scripts'))
+    # create other directory for convenience
+    easy_directory(os.path.join(params.output.out_dir, 'shell_logs'))
 
     # Name of the master shell script
     out_script = os.path.join(params.output.out_dir, os.path.basename(params.output.out_script))
@@ -378,7 +382,7 @@ def process_output(params):
 
     COLUMN_NAMES = ['dataset', 'resolution', 'method', 'disorder', 'refined', 
                     'n_dst',         'n_opt',        'n_run',
-                    'res_opt_avg',   'res_opt_rng',  'res_opt_cut', 
+                    'res_opt_avg',   'res_opt_std',  'res_opt_rng',  'res_opt_cut', 
                     'sel_res_range', 'sel_res_high', 'sel_res_low', 
                     'r_free',  'r_work',  'r_gap', 
                     'dr_free', 'dr_work', 'dr_gap']
@@ -412,9 +416,10 @@ def process_output(params):
             sel_res_high, sel_res_low = sel_res_range.split('-')
             # Dataset resolution info
             res_opt_avg = get_and_pop(run_info, 'avg')
+            res_opt_std = get_and_pop(run_info, 'std')
             res_opt_rng = get_and_pop(run_info, 'rng')
             # Optimisation resolution
-            res_opt_cut = 'all'
+            res_opt_cut = None
             # Number of datasets
             n_opt = get_and_pop(run_info, 'ndatasets')
             n_dst = n_opt
@@ -424,25 +429,27 @@ def process_output(params):
         # Optimisation cutoff mode
         ##############################
         else:
+            first_arg = run_info.pop(0)
+            assert first_arg == 'all'
             # Resolution selections for the input datasets
-            sel_res_range = sel_res_low = sel_res_high = 'all'
+            sel_res_range = sel_res_low = sel_res_high = None
             # Dataset resolution info
-            res_opt_avg = res_opt_rng = 'all'
+            res_opt_avg = res_opt_std = res_opt_rng = None
             # Optimisation resolution
             res_opt_cut = get_and_pop(run_info, 'optcutoff')
             # What resolution are the input datasets
             n_opt = get_and_pop(run_info, 'optndsets')
-            n_dst = 'all'
+            n_dst = None
             # Run info
             n_run = 1
 
         # Residuals
-        assert len(run_info) % 2 == 0
+        assert len(run_info) % 2 == 0, run_info
         misc_tuples = [(run_info[i], run_info[i+1]) for i in range(len(run_info)/2)]
 
         # Iterate through all of the datasets for this run
         for dataset in data_table.index:
-            log(dataset)
+            #log(dataset)
 
             dataset_row = data_table.loc[dataset]
             dataset_ref = ref_table.loc[dataset]
@@ -451,14 +458,13 @@ def process_output(params):
                                     ('multi-dataset',  'unrefined'),
                                     ('multi-dataset',  'refined')]:
                 new_row_idx = len(out_table.index)
-                log('> '+str(new_row_idx)+'\t'+method+' ({})'.format(refined))
 
                 if (method == 'single-dataset'):
                     suffix = 'Input'
                 elif (method == 'multi-dataset') and (refined == 'unrefined'):
                     suffix = 'Fitted'
                 elif (method == 'multi-dataset') and (refined == 'refined'):
-                    prefix = 'Refined'
+                    suffix = 'Refined'
                 else:
                     raise Exception()
 
@@ -481,14 +487,15 @@ def process_output(params):
                 # get cols for filling 
                 need_cols = [c for c in out_table.columns if c not in COLUMN_NAMES]
                 need_vals = [vals[cols.index(c)] if (c in cols) else None for c in need_cols]
-                print need_vals
 
                 # Create new row
                 out_table.loc[new_row_idx] = map(eval, COLUMN_NAMES) + need_vals
-
-    # Write output table
-    log('Writing output table of {} rows: {}'.format(len(out_table.index), out_csv))
-    out_table.to_csv(out_csv)
+  
+        # Write the one for the last thing in the loop
+        log('> '+str(new_row_idx)+'\t'+dataset+'\t'+method+' ({})'.format(refined))
+        # Write output table
+        log('Writing output table of {} rows: {}'.format(len(out_table.index), out_csv))
+        out_table.to_csv(out_csv)
 
 
 

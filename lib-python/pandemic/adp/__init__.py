@@ -140,6 +140,9 @@ fitting {
     number_of_modes_per_group = 1
         .help = 'how many TLS models to fit per group of atoms?'
         .type = int
+    tls_amplitude_model = *single_amplitude
+        .help = 'which amplitudes should be used for multiplying each TLS group in each dataset? single_amplitude - one amplitude for each TLS group.'
+        .type = choice(multi=True)
     optimisation {
         max_datasets = None
             .help = 'takes up to this number of datasets for TLS parameter optimisation'
@@ -277,7 +280,7 @@ class TLSModel(object):
 
     def _str_to_idx(self, components, include_szz=True):
         """Map T-L-S to parameter indexes"""
-        components = components.upper()
+        assert isinstance(components, str), 'not a string: {}'.format(components)
         assert not set(components).difference('TLS'), 'components can only contain letters "TLS"'
         idx = (range(00,06)                    if 'T' in components else []) + \
               (range(06,12)                    if 'L' in components else []) + \
@@ -305,11 +308,8 @@ class TLSModel(object):
         # So indexed:  12,  13,  14,  15,  16,  17,  18,  19,  20
         self.values[20] = target_trace - (self.values[12] + self.values[16])
 
-    def multiply(self, amplitudes):
-        assert len(amplitudes) == self._n_prm
-        self = self.copy()
-        self.values = amplitudes*self.values
-        return self
+    def reset(self, components):
+        self.set(vals=0.0, components=components, include_szz=True)
 
     def add(self, other):
         assert len(other.values) == len(self.values)
@@ -317,11 +317,11 @@ class TLSModel(object):
         self.values += other.values
         return self
 
-    def reset(self, components):
-        self.set(vals=0.0, components=components, include_szz=True)
-
-    def uij(self, xyz, origin):
-        return uij_from_tls_vector_and_origin(xyz=xyz, tls_vector=self.values, origin=origin)
+    def multiply(self, amplitudes):
+        assert len(amplitudes) == self._n_prm
+        self = self.copy()
+        self.values = amplitudes*self.values
+        return self
 
     def n_params(self, free=True, non_zero=False):
         if non_zero is False:
@@ -339,11 +339,21 @@ class TLSModel(object):
         r += '\n\tS: '+', '.join(['{:8.3f}'.format(v) for v in s])
         return r
 
-class TLSAmplitudeSet(object):
+    def uij(self, xyz, origin):
+        return uij_from_tls_vector_and_origin(xyz=xyz, tls_vector=self.values, origin=origin)
+
+class _TLSAmplitudeSet(object):
+
+    _model = None
+    _n_amp = None
+    _terms = None
+    _terms_ordered = None
 
     def __init__(self, n_dst=1):
-        self.values = numpy.ones((n_dst, 3))
+        assert len(self._terms) == self._n_amp, 'length of amplitude names not equal to number of amplitudes'
+        self.values = numpy.ones((n_dst, self._n_amp))
         self._n_prm = numpy.product(self.values.shape)
+        self._terms_ordered = list(self._terms)
 
     def __getitem__(self, key):
         if isinstance(key, list) or isinstance(key, tuple):
@@ -354,16 +364,24 @@ class TLSAmplitudeSet(object):
         return self.values[key]
 
     def _str_to_idx(self, components):
-        """Map T-L-S to parameter indexes"""
-        components = components.upper()
-        assert not set(components).difference('TLS'), 'components can only contain letters "TLS"'
-        idx = ([0] if 'T' in components else []) + \
-              ([1] if 'L' in components else []) + \
-              ([2] if 'S' in components else [])
-        return idx
+        """Map T-L-S string to amplitude parameter indexes"""
+        if isinstance(components, str):
+            components = [components]
+        idxs = [self._terms.index(c) for c in components]
+        assert len(idxs) > 0, 'invalid components {} (should be one of {})'.format(components, self._terms)
+        return idxs
 
     def copy(self):
         return copy.deepcopy(self)
+
+    def component_sets(self):
+        """Get a list of all of the "modes" of this amplitude set (the set of matrices that each amplitude affects, e.g. [TLS] or [TS,LS])"""
+        return list(self._terms_ordered)
+
+    def set_component_sets_order(self, sequence):
+        """Change the order of the component sets as returned by component_sets"""
+        assert not set(self._terms).symmetric_difference(sequence), 'terms must contain each of {} (currently {})'.format(self._terms, sequence)
+        self._terms_ordered = sequence
 
     def get(self, components, datasets=None):
         idx = self._str_to_idx(components)
@@ -379,59 +397,162 @@ class TLSAmplitudeSet(object):
         self.set(vals=1.0, components=components, datasets=datasets)
 
     def expand(self, datasets=None):
-        """Convert 3-element vector into 21 element vector for TLS multiplication"""
-        amps = self.values
-        if datasets is not None:
-            amps = amps[datasets]
-        n_dst = len(amps)
-        assert amps.shape == (n_dst,3)
-        t_amps = numpy.repeat(amps[:,0], 6, axis=0).reshape((n_dst, 6))
-        l_amps = numpy.repeat(amps[:,1], 6, axis=0).reshape((n_dst, 6))
-        s_amps = numpy.repeat(amps[:,2], 9, axis=0).reshape((n_dst, 9))
+        """Convert n-element vector into 21 element vector for TLS multiplication"""
+        # Get the multipliers for each of the TLS matrices
+        t_mult, l_mult, s_mult = self.t_l_s_multipliers(datasets)
+        n_dst = len(datasets) if datasets is not None else len(self.values)
+        # Expand the multipliers to 21-length parameters for multiplying onto the TLS model
+        t_amps = numpy.repeat(t_mult, 6, axis=0).reshape((n_dst, 6))
+        l_amps = numpy.repeat(l_mult, 6, axis=0).reshape((n_dst, 6))
+        s_amps = numpy.repeat(s_mult, 9, axis=0).reshape((n_dst, 9))
+        # Combine into one matrix
         exp_amps = numpy.concatenate([t_amps, l_amps, s_amps], axis=1)
         assert exp_amps.shape == (n_dst,21)
         return exp_amps
+
+    def n_amplitudes(self):
+        return self._n_amp
 
     def n_params(self, non_zero=False):
         if non_zero is False:
             return self._n_prm
         else:
             n_dst = len(self.values)
-            return sum([(self.values[:,i]!=1.0).any()*(n_dst) for i in range(3)])
+            return sum([(self.values[:,i]!=1.0).any()*(n_dst) for i in range(self._n_amp)])
+
+    def normalise(self):
+        raise Exception('Not implemented for base class!')
 
     def summary(self):
         """Print summary of the TLS amplitudes"""
-        r = '> TLS amplitudes'
+        r = '> TLS amplitudes ({})'.format(self._model)
         for i, vals in enumerate(self.values):
-            r += '\n\tDataset {:4}: '.format(i+1)+'{:8.3f} (T) {:8.3f} (L) {:8.3f} (S)'.format(*vals)
+            r += '\n\tDataset {:4}: '.format(i+1)+' '.join(['{:8.3f} ({})'.format(v,g) for v,g in zip(vals, self._terms)])
         return r
 
+    def t_l_s_multipliers(self, datasets):
+        raise Exception('Not implemented for base class!')
+
+class SimpleTLSAmplitudeSet(_TLSAmplitudeSet):
+
+    _model = 'one amplitude per TLS group'
+    _terms = ['TLS']
+    _n_amp = 1
+
+    def normalise(self):
+        """Normalise the amplitudes and return multipliers to be applied to the TLS model object"""
+        # Calculate the average of all the amplitudes
+        amp_mean = numpy.mean(self.get(components='TLS'))
+        # Abort normalisation if average amplitude is approx zero
+        if amp_mean < 1e-6:
+            return (None, None, None)
+        # Normalise amplitudes and return multipliers
+        self.set(vals=self.get(components='TLS')*(1.0/amp_mean), components='TLS')
+        # Multipliers are all the same under this model
+        return amp_mean, amp_mean, amp_mean
+
+    def t_l_s_multipliers(self, datasets):
+        """Return T, L, and S matrix multipliers for each dataset"""
+        amps = self.values
+        if datasets is not None:
+            amps = amps[datasets]
+        n_dst = len(amps)
+        assert amps.shape == (n_dst,self._n_amp)
+        # Extract the only columns as the multipliers
+        mult = amps[:,0]
+        return (mult, mult, mult)
+
+class TwoParameterTLSAmplitudeSet(_TLSAmplitudeSet):
+    """Test-class for more complicated TLS-amplitude models"""
+
+    _model = 'individual T- and L-amplitudes per TLS group'
+    _terms = ['TS', 'LS']
+    _n_amp = 2
+
+    def normalise(self):
+        raise Exception('Not yet implemented for this class!')
+
+    def t_l_s_multipliers(self, datasets):
+        """Return T, L, and S matrix multipliers for each dataset"""
+        amps = self.values
+        if datasets is not None:
+            amps = amps[datasets]
+        n_dst = len(amps)
+        assert amps.shape == (n_dst,self._n_amp)
+        t_mult = amps[:,0]
+        l_mult = amps[:,1]
+        s_mult = numpy.sqrt(amps[:,0]*amps[:,1])
+        return (t_mult, l_mult, s_mult)
+
 class MultiDatasetTLSModel(object):
+
+    _mdl_class = TLSModel
+    _amp_class = SimpleTLSAmplitudeSet
 
     def __init__(self, n_dst=1, index=0, log=None):
 #        if log is None: log = Log(verbose=False)
         self.log = log
         self.index = index
         self.n_dst = n_dst
-        self.model = TLSModel()
-        self.amplitudes = TLSAmplitudeSet(n_dst=n_dst)
+        self.model = self._mdl_class()
+        self.amplitudes = self._amp_class(n_dst=n_dst)
 
-    def n_params(self, non_zero=False):
-        return self.model.n_params(non_zero=non_zero) + self.amplitudes.n_params(non_zero=non_zero)
+    def component_sets(self):
+        return self.amplitudes.component_sets()
 
-    def normalise(self):
-        """Normalise the TLS ampltidues to an average of 1"""
-        for cpt in 'TLS':
-            amp_mean = numpy.mean(self.amplitudes.get(components=cpt))
-            if abs(amp_mean) < 1e-6: continue
-            # Apply normalisation to amplitudes and TLS model
-            self.model.set(vals=self.model.get(components=cpt)*(1.0*amp_mean), components=cpt)
-            self.amplitudes.set(vals=self.amplitudes.get(components=cpt)*(1.0/amp_mean), components=cpt)
+    def set_component_sets_order(self, sequence):
+        return self.amplitudes.set_component_sets_order(sequence)
 
     def expand(self, datasets=None):
         """Generate amplitude-multiplied TLS models for selected datasets"""
         exp_amps = self.amplitudes.expand(datasets=datasets)
         return [self.model.multiply(amplitudes=a) for a in exp_amps]
+
+    def n_params(self, non_zero=False):
+        return self.model.n_params(non_zero=non_zero) + self.amplitudes.n_params(non_zero=non_zero)
+
+    def normalise(self):
+        """Normalise the TLS amplitudes to an average of 1"""
+        # Normalise amplitudes and extract multipliers for model
+        multipliers = self.amplitudes.normalise()
+        # Iterate through each matrix
+        for cpt, mult in zip('TLS', multipliers):
+            # Skip if multiplier is None
+            if mult is None: continue
+            self.log('> Normalising {} matrix of mode {} -- applying multiplier of {:5.3f}'.format(cpt, self.index, mult))
+            # Apply normalisation to TLS model
+            self.model.set(vals=self.model.get(components=cpt)*(1.0*mult), components=cpt)
+
+    def reset_zero_value_sets(self, mdl_tol=1e-9, amp_tol=1e-6):
+        """Identify if either model or amplitudes have zero-values, and reset accordingly"""
+
+        # Iterate through the amplitude sets (e.g. ['TLS'] or ['TS', 'LS'])
+        for cpts in self.component_sets():
+            self.log('Check for zero modes of {} of mode {}'.format(cpts, self.index))
+
+            # Check if all of the TLS model is approx zeroes
+            mdl_vals = self.model.get(components=cpts)
+            mdl_avge = numpy.mean(numpy.abs(mdl_vals))
+            if (mdl_avge < mdl_tol):
+                self.log('Zero-value model: resetting mode {}, component(s) {}, values {}'.format(self.index+1, cpts, str(mdl_vals)))
+                self.model.reset(components=cpts)
+                self.amplitudes.reset(components=cpts)
+                continue
+            # Calculate the average amplitude
+            amp_vals = self.amplitudes.get(components=cpts)
+            amp_avge = numpy.mean(numpy.abs(amp_vals))
+            if (amp_avge < amp_tol):
+                self.log('Zero-value average amplitude: resetting mode {}, component(s) {}, values {}'.format(self.index+1, cpts, str(amp_vals)))
+                m.model.reset(components=cpts)
+                m.amplitudes.reset(components=cpts)
+                continue
+
+    def summary(self):
+        """Print summary of the TLS model"""
+        r = '> TLS Mode {}'.format(self.index)
+        r += '\n\t'+self.model.summary().replace('\n','\n\t')
+        r += '\n\t'+self.amplitudes.summary().replace('\n','\n\t')
+        return r
 
     def uij(self, xyzs, origins, datasets=None):
         """Generate Uijs from TLS models"""
@@ -441,13 +562,6 @@ class MultiDatasetTLSModel(object):
         assert len(exp_models) == n_dst
         uij = numpy.array([m.uij(xyz=xyzs[i], origin=origins[i]) for i,m in enumerate(exp_models)])
         return uij
-
-    def summary(self):
-        """Print summary of the TLS model"""
-        r = '> TLS Mode {}'.format(self.index)
-        r += '\n\t'+self.model.summary().replace('\n','\n\t')
-        r += '\n\t'+self.amplitudes.summary().replace('\n','\n\t')
-        return r
 
 class MultiDatasetTLSModelList(object):
 
@@ -487,40 +601,19 @@ class MultiDatasetTLSModelList(object):
         for m in self:
             m.normalise()
 
+    def reset_amplitudes(self, modes, datasets=None):
+        for m in self.get(modes):
+            m.amplitudes.reset(components=m.amplitudes.component_sets(), datasets=datasets)
+
     def reset_models(self, components, modes):
         for m in self.get(modes):
             m.model.reset(components=components)
-
-    def reset_amplitudes(self, components, modes, datasets=None):
-        for m in self.get(modes):
-            m.amplitudes.reset(components=components, datasets=datasets)
-
-    def reset_zero_value_modes(self, mdl_tol=1e-3, amp_tol=1e-6):
-        """Reset models and amplitudes that refine to zero"""
-        for i, m in enumerate(self):
-            for c in 'TLS':
-                # Calculate the average model value
-                mdl_vals = m.model.get(components=c)
-                mdl_avge = numpy.mean(numpy.abs(mdl_vals))
-                if (mdl_avge < mdl_tol):
-                    self.log('Zero-value model: resetting model {}, component {}, values {}'.format(i+1, c, str(mdl_vals)))
-                    m.model.reset(components=c)
-                    m.amplitudes.reset(components=c)
-                    continue
-                # Calculate the average amplitude
-                amp_vals = m.amplitudes.get(components=c)
-                amp_avge = numpy.mean(numpy.abs(amp_vals))
-                if (amp_avge < amp_tol):
-                    self.log('Zero-value average amplitude: resetting model {}, component {}, values {}'.format(i+1, c, str(amp_vals)))
-                    m.model.reset(components=c)
-                    m.amplitudes.reset(components=c)
-                    continue
 
     def reset_negative_amplitudes(self, error_tol=0.01):
         """Reset negative ampltidues (raise error if amplitude < -1*error_tol)"""
         error_cut = -1.0*abs(error_tol)
         for i, m in enumerate(self):
-            for c in 'TLS':
+            for c in m.component_sets():
                 amp_vals = m.amplitudes.get(components=c)
                 if (amp_vals < error_cut).any():
                     raise Failure('Negative amplitudes < {} obtained for model {} component {}.\n'.format(error_cut, i+1, c) + \
@@ -530,6 +623,11 @@ class MultiDatasetTLSModelList(object):
                     reset_dst = numpy.where(reset_sel)[0]
                     self.log('Resetting negative amplitudes for {} datasets in model {}, component {} (values {})'.format(len(reset_dst), i+1, c, str(amp_vals[reset_dst])))
                     m.amplitudes.reset(components=c, datasets=reset_dst)
+
+    def reset_zero_value_sets(self, mdl_tol=1e-9, amp_tol=1e-6):
+        """Reset models and amplitudes that refine to zero"""
+        for i, m in enumerate(self):
+            m.reset_zero_value_sets(mdl_tol=mdl_tol, amp_tol=amp_tol)
 
     def uij(self, xyzs, origins, datasets=None):
         """Convert a set of parameter vectors to a set of uijs"""
@@ -637,8 +735,8 @@ class _Simplex(object):
         return start_simplex
 
 class TLSSimplex(_Simplex):
-    _del_mdl = 0.05
-    _del_amp = 0.05
+    _del_mdl = 0.1
+    _del_amp = 0.1
 
     def __init__(self, mdl_delta=None, amp_delta=None):
         """Initialise TLS Simplex"""
@@ -3109,12 +3207,10 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
         for i, sel, fitter in self:
             fitter._parameters.reset_models(components=components, modes=modes)
 
-    def reset_amplitudes(self, modes, t=False, l=False, s=False):
-        components = 'T'*t + 'L'*l + 'S'*s
-        assert components is not ''
+    def reset_amplitudes(self, modes):
         # Iterate through each group/partition
         for i, sel, fitter in self:
-            fitter._parameters.reset_amplitudes(components=components, modes=modes)
+            fitter._parameters.reset_amplitudes(modes=modes)
 
     def summary(self, show=True):
         num_model_params = self.n_params(non_zero=False)
@@ -3266,7 +3362,7 @@ class _UijOptimiser(object):
         optimised = simplex.simplex_opt(dimension = len(opt_simplex[0]),
                                         matrix    = map(flex.double, opt_simplex),
                                         evaluator = self.evaluator,
-                                        tolerance = 1e-03)
+                                        tolerance = 1e-02)
         # Extract and update current values
         self._inject(values=optimised.get_solution(), selection=sel_dict)
         if self._running_summary:
@@ -3317,7 +3413,7 @@ class _UijOptimiser(object):
         # Print info line if necessary
         if self._running_summary:
             if self._n_call%20==1:
-                header = '[{}] -> ({:^10}, {:^10})'.format(', '.join(['{:>10}'.format('parameter') for r in parameters]), 'fit/rmsd', 'penalty')
+                header = '[{}] -> ({:^10}, {:^10})'.format(', '.join(['{:>7}'.format('param') for r in parameters]), 'fit/rmsd', 'penalty')
                 line = '-'*len(header)
                 self.log(line, show=False)
                 self.log(header, show=False)
@@ -3325,7 +3421,7 @@ class _UijOptimiser(object):
         # Return now if physical penalty if non-zero to save time
         if ppen > 0.0:
             if self._running_summary:
-                self.log('[{}] -> ({:>10}, {:10.0f})'.format(', '.join(['{:+10.5f}'.format(r) for r in parameters]), 'UNPHYSICAL', ppen), show=False)
+                self.log('[{}] -> ({:>10}, {:10.0f})'.format(', '.join(['{:+7.4f}'.format(r) for r in parameters]), 'UNPHYSICAL', ppen), show=False)
             return ppen
         # Get the fitted uijs (including masked atoms)
         self._update_fitted()
@@ -3340,7 +3436,7 @@ class _UijOptimiser(object):
             self.optimisation_rmsd    = rmsd
             self.optimisation_penalty = fpen
         if self._running_summary:
-            self.log('[{}] -> ({:10f}, {:10.3f})'.format(', '.join(['{:+10.5f}'.format(r) for r in parameters]), rmsd, fpen), show=False)
+            self.log('[{}] -> ({:10f}, {:10.3f})'.format(', '.join(['{:+7.4f}'.format(r) for r in parameters]), rmsd, fpen), show=False)
         return tot_val
 
 class MultiDatasetUijAtomOptimiser(_UijOptimiser):
@@ -3533,12 +3629,25 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         return numpy.sum(ovr_penalties)*1.0/self._opt_dict['n_dst']
 
     def _parameter_penalties(self):
-        tls_mdl, tls_amp = self.result()
-        # Calculate model penalties (if required -- not required if not optimising model...)
-        if self._opt_dict['model']:         tls_penalties = [self.penalty.tls_params(values=v) for v in tls_mdl]
-        else:                               tls_penalties = []
-        if self._opt_dict['amplitudes']:    amp_penalties = [self.penalty.amplitudes(values=v) for v in tls_amp]
-        else:                               amp_penalties = []
+
+        tls_penalties = []
+        amp_penalties = []
+
+        for mode in self._parameters:
+
+            # Calculate model penalties (if required -- not required if not optimising model...)
+            if self._opt_dict['model']:
+                # Penalise physically-invalid TLS models
+                tls_penalties.append(self.penalty.tls_params(values=mode.model.values))
+
+            # Calculate dataset penalties
+            if self._opt_dict['amplitudes']:
+                # Penalties for negative amplitudes, etc
+                amp_penalties.append(self.penalty.amplitudes(values=mode.amplitudes.values))
+                # Penalties for combinations of amplitudes that lead to non-physical TLS models
+                #datasets = self._opt_dict['i_dst']
+                #amp_penalties += [self.penalty.tls_params(values=model.values) for model in mode.expand(datasets=datasets)]
+
         return numpy.sum(tls_penalties+amp_penalties)
 
     #=======================+>
@@ -3575,7 +3684,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             assert isinstance(optimise_amplitudes, bool)
             self._optimise_amplitudes = optimise_amplitudes
         if components is not None:
-            assert not set(components).difference('TLS')
+            assert not set(''.join(components) if isinstance(components, list) else components).difference('TLS')
             self._opt_cpts = components
         if models is not None:
             assert min(models) >= 0
@@ -3704,7 +3813,12 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         for i_cycle in xrange(n_cycles):
             self.log.subheading('Group {} - Optimisation cycle {} of {}'.format(self.label, i_cycle+1, n_cycles))
 
+            # Optimise one TLS "mode" at time
             for i_tls in xrange(self._n_tls):
+                # How should T-L-S be optimised - if first cycle, optimise all separately then as those for each amplitude
+                cpt_groups = list('TLS')*(i_cycle==0) + self.parameters().get(index=i_tls).component_sets()
+                self.log(cpt_groups)
+
                 self.log.subheading('Optimising TLS model {} of {}'.format(i_tls+1, self._n_tls))
                 self.log('Optimising using {} atoms'.format(len(opt_atom_mask)))
                 self.log('Optimising using {} datasets'.format(len(opt_dset_mask)))
@@ -3714,8 +3828,8 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
 
                 # ---------------------------------->
                 # Optimise each T, L, S component separately
-                for cpt in 'TLS':
-                    self.log.subheading('Optimising {} parameters for TLS mode {}'.format(cpt, i_tls+1))
+                for cpts in cpt_groups:
+                    self.log.subheading('Optimising {} parameters for TLS mode {}'.format(cpts, i_tls+1))
                     # Set penalty weights
                     self.log.bar()
                     self.log('Updating penalty weights --->')
@@ -3725,14 +3839,14 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                     # Select variables for optimisation -- model only
                     self._select(optimise_model      = True,
                                  optimise_amplitudes = False,
-                                 components = cpt,
+                                 components = cpts,
                                  models     = [i_tls],
                                  datasets   = opt_dset_mask,
                                  atoms      = opt_atom_mask)
                     # Run optimisation
                     self._optimise(running_summary=True)
                     # Log model summary
-                    self.log(self._parameters.get(index=i_tls).model.summary())
+                    self.log(self.parameters().get(index=i_tls).model.summary())
                     # Log current RMSD and penalty
                     self.log.bar()
                     self.log('> Optimisation RMSD: {:5.3f}'.format(self.optimisation_rmsd))
@@ -3746,23 +3860,24 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 self.log('Updating penalty weights --->')
                 self.log.bar()
                 self.log(self.penalty.set_weights(ovr_fixed=10.0))
-                self.log.bar()
-                # If it's the first iteration, assert all amplitudes are zero (in case amplitudes are optimised for zero-value TLS models)
-                if i_cycle == 0:
-                    self._parameters.reset_amplitudes(components='TLS', modes=[i_tls])
+                self.log.bar(blank_after=True)
                 # Reset amplitudes to zero to prevent overparameterisation
                 self.log('Resetting all amplitudes to zero')
-                self._parameters.get(index=i_tls).amplitudes.set(vals=0.0, components='TLS')
+                self.parameters().reset_amplitudes(modes=[i_tls])
                 # Optimise amplitudes
                 self.log('Setting up T-L-S amplitude optimisation')
                 # Select variables for optimisation -- amplitudes only
                 self._select(optimise_model      = False,
                              optimise_amplitudes = True,
-                             components = 'TLS',
+                             components = self.parameters().get(index=i_tls).component_sets(),
                              models     = mdl_cuml,
                              datasets   = None,
                              # Optimise with all atoms to prevent over-sizing
                              atoms      = range(self._n_atm))
+                # ---------------------------------->
+                self.log.bar(blank_before=True)
+                self.log('Running amplitude optimisations: --->')
+                self.log.bar()
                 # Optimise all amplitudes dataset-by-dataset
                 jobs = []
                 for i_dst in xrange(self._n_dst):
@@ -3787,7 +3902,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                         self.log('> dataset {} of {} (rmsd {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, job.optimisation_rmsd,  job.optimisation_penalty))
                 # Log model summary
                 self.log.bar(blank_before=True, blank_after=True)
-                self.log(self._parameters.get(index=i_tls).amplitudes.summary())
+                self.log(self.parameters().get(index=i_tls).amplitudes.summary())
 
             # Reapply atom and dataset masks
             self.set_dataset_mask(opt_dset_mask)
@@ -3802,7 +3917,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             self._parameters.normalise_amplitudes()
             self.log('')
             self.log('Looking for zero-value modes')
-            self._parameters.reset_zero_value_modes()
+            self._parameters.reset_zero_value_sets()
 
             self.log.subheading('End-of-cycle summary')
             self.summary(show=True)
