@@ -7,6 +7,7 @@ import cctbx.maptbx, cctbx.uctbx
 import cctbx_uctbx_ext
 import scitbx.matrix
 from scitbx.array_family import flex
+from libtbx.utils import Sorry, Failure
 
 from bamboo.common import Meta, Info
 from bamboo.common.file import FileManager
@@ -103,8 +104,14 @@ class CrystallographicModel(AtomicModel):
     def __init__(self, input, hierarchy):
         super(CrystallographicModel, self).__init__(input=input, hierarchy=hierarchy)
         self.crystal_symmetry = self.input.crystal_symmetry()
+        if self.crystal_symmetry is None:
+            raise Sorry('There is no crystal symmetry for this structure')
         self.unit_cell = self.crystal_symmetry.unit_cell()
+        if self.unit_cell is None:
+            raise Sorry('There is no unit cell information for this structure')
         self.space_group = self.crystal_symmetry.space_group()
+        if self.space_group is None:
+            raise Sorry('There is no space group information for this structure')
 
         self._crystal_contacts_operators = None
 
