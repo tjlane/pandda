@@ -1284,6 +1284,7 @@ class PanddaMultiDatasetAnalyser(Program):
         for num, (pdb, mtz, dtag) in enumerate(self.new_files()):
             try:
                 dataset = PanddaDataset.from_file(model_filename=pdb, data_filename=mtz).label(num=num+n_offset, tag=dtag)
+                loaded_datasets.append(dataset)
             except Sorry as e:
                 if str(e) in ['There is no crystal symmetry for this structure',
                               'There is no unit cell information for this structure',
