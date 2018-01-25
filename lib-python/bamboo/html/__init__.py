@@ -1,4 +1,5 @@
 
+import os
 import jinja2
 import urlparse, urllib
 
@@ -14,3 +15,10 @@ def png2base64str(path):
 
 def png2base64src(path):
     return 'data:image/png;base64,{}'.format(png2base64str(path))
+
+def png2base64src_maybe(path):
+    if os.path.exists(path):
+        return png2base64src(path)
+    else:
+        return 'none'
+

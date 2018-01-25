@@ -1,4 +1,4 @@
-import os, sys, copy, traceback
+import os, sys, copy, traceback, re
 import math, itertools, operator, collections
 
 import scipy.cluster
@@ -23,10 +23,9 @@ from bamboo.common.command import CommandManager
 
 from giant.manager import Program
 from giant.dataset import CrystallographicModel
-from giant.structure.select import protein
 from giant.structure.tls import uij_from_tls_vector_and_origin, validate_tls_params
 from giant.structure.formatting import ShortLabeller, PhenixSelection, PymolSelection
-from giant.structure.select import backbone, sidechains
+from giant.structure.select import protein, backbone, sidechains
 from giant.structure.pymol import auto_residue_images, auto_chain_images, selection_images
 from giant.xray.crystal import CrystalSummary
 from giant.xray.refine import refine_phenix
@@ -103,7 +102,7 @@ output {
     diagnostics = False
         .help = "Write diagnostic graphs -- adds a significant amount of runtime"
         .type = bool
-    pymol_images = False
+    pymol_images = True
         .help = "Write residue-by-residue images of the output B-factors"
         .type = bool
     group_graphs = True
@@ -137,10 +136,10 @@ fitting {
     number_of_micro_cycles = 3
         .help = 'how many fitting cycles to run (for each level)'
         .type = int
-    number_of_modes_per_group = 1
+    tls_models_per_tls_group = 1
         .help = 'how many TLS models to fit per group of atoms?'
         .type = int
-    tls_amplitudes = *TLS
+    tls_amplitude_model = *TLS
         .help = 'which amplitudes should be used for multiplying each TLS group in each dataset? TLS = one amplitude for each TLS group.'
         .type = choice(multi=True)
     optimisation {
@@ -200,7 +199,7 @@ fitting {
     }
 }
 refine {
-    refine_output_structures = False
+    refine_output_structures = True
         .help = "Refine the structures after fitting (coordinates and occupancies)"
         .type = bool
 }
@@ -238,6 +237,58 @@ def uij_to_b(uij):
 
 def default_secondary_structure_selections(hierarchy):
     return dssp.dssp(hierarchy).get_annotation().as_atom_selections()
+
+def default_secondary_structure_selections_filled(hierarchy):
+    """Return secondary structure selections and fill gaps with new selections"""
+
+    # Get automatic secondary structure elements
+    auto_sel = default_secondary_structure_selections(hierarchy=hierarchy)
+    # Extract chain and residue numbers
+    sel_regex = re.compile("chain '(.*?)' and resid (.*?). through (.*)")
+    auto_sel_proc = [sel_regex.findall(s)[0] for s in auto_sel]
+
+    # Output template and list
+    sel_template = "chain '{}' and resid {:d}  through {:d} "
+    output_sel = []
+
+    # Extract the chain IDs
+    chain_ids = numpy.unique(zip(*auto_sel_proc)[0])
+
+    # Iterate through chains
+    for c_id in chain_ids:
+        # Extract residue start and end numbers
+        c_sels = [map(int, s[1:]) for s in auto_sel_proc if s[0]==c_id]
+        # Extract chain
+        c_obj  = [c for c in hierarchy.chains() if (c.is_protein() and c.id==c_id)]
+        assert len(c_obj) == 1
+        c_obj = c_obj[0]
+        # Get the first and last residues of the chain
+        c_start = min([r.resseq_as_int() for r in c_obj.residue_groups()])
+        c_end   = max([r.resseq_as_int() for r in c_obj.residue_groups()])
+
+        # Beginning of the chain (unless one residue)
+        if (c_start < c_sels[0][0]) and (c_sels[0][0] - c_start > 2):
+            new_sel = sel_template.format(c_id, c_start, c_sels[0][0]-1)
+            output_sel.append(new_sel)
+
+        # Middle of the chain
+        for i in xrange(len(c_sels)):
+            # Recreate selection for this group
+            new_sel = sel_template.format(c_id, c_sels[i][0], c_sels[i][1])
+            output_sel.append(new_sel)
+            # Break if end of chain
+            if i+1 == len(c_sels): break
+            # Check if gap between this and next (and that more than one residue in gap)
+            if (c_sels[i+1][0] - c_sels[i][1]) > 2:
+                new_sel = sel_template.format(c_id, c_sels[i][1]+1, c_sels[i+1][0]-1)
+                output_sel.append(new_sel)
+
+        # End of the chain (unless one residue)
+        if (c_end > c_sels[-1][1]) and (c_end - c_sels[-1][1] > 2):
+            new_sel = sel_template.format(c_id, c_sels[-1][1]+1, c_end)
+            output_sel.append(new_sel)
+
+    return output_sel
 
 ############################################################################
 #                        Multi-processing functions                        #
@@ -497,11 +548,16 @@ class MultiDatasetTLSModel(object):
         self.model = self._mdl_class()
         self.amplitudes = self._amp_class(n_dst=n_dst)
 
+        # Block class function - should not be used after initialisation
+        self.set_amplitude_model = None
+
+    @classmethod
+    def set_amplitude_model(cls, amplitude_class):
+        cls._amp_class = amplitude_class
+        return cls
+
     def component_sets(self):
         return self.amplitudes.component_sets()
-
-    def set_component_sets_order(self, sequence):
-        return self.amplitudes.set_component_sets_order(sequence)
 
     def expand(self, datasets=None):
         """Generate amplitude-multiplied TLS models for selected datasets"""
@@ -525,7 +581,7 @@ class MultiDatasetTLSModel(object):
 
     def summary(self):
         """Print summary of the TLS model"""
-        r = '> TLS Mode {}'.format(self.index)
+        r = '> TLS Model {}'.format(self.index)
         r += '\n\t'+self.model.summary().replace('\n','\n\t')
         r += '\n\t'+self.amplitudes.summary().replace('\n','\n\t')
         return r
@@ -605,12 +661,12 @@ class MultiDatasetTLSModelList(object):
             raise Failure('Must provide integer or list of integers')
 
     def expand(self, datasets=None):
-        """Generate amplitude-multiplied TLS models for selected datasets and sum over all modes"""
+        """Generate amplitude-multiplied TLS models for selected datasets and sum over all models"""
         n_dst = len(datasets) if (datasets is not None) else self.n_dst
         exp_models = [m.expand(datasets=datasets) for m in self]
         assert len(exp_models) == self.n_mdl
         assert len(exp_models[0]) == n_dst
-        dst_models = [reduce(operator.add, modes) for modes in zip(*exp_models)]
+        dst_models = [reduce(operator.add, m) for m in zip(*exp_models)]
         assert len(dst_models) == n_dst
         return dst_models
 
@@ -618,13 +674,13 @@ class MultiDatasetTLSModelList(object):
         return sum([m.n_params(non_zero=non_zero) for m in self])
 
     def normalise_amplitudes(self):
-        """Normalise amplitudes mode by mode to average of 1"""
+        """Normalise amplitudes model by model to average of 1"""
         for m in self:
             m.normalise()
 
-    def reset_amplitudes(self, modes, datasets=None, components=None):
-        """Reset amplitudes for selected modes to 1"""
-        for m in self.get(modes):
+    def reset_amplitudes(self, models, datasets=None, components=None):
+        """Reset amplitudes for selected models to 1"""
+        for m in self.get(models):
             cpts = components if (components is not None) else m.component_sets()
             m.amplitudes.reset(components=cpts, datasets=datasets)
 
@@ -640,20 +696,20 @@ class MultiDatasetTLSModelList(object):
 
     def summary(self):
         """Print summary of the TLS collection"""
-        r = '> Multi-TLS Mode summary'
+        r = '> Multi-TLS Model summary'
         for m in self:
             r += '\n\t'+m.summary().replace('\n','\n\t')
         return r
 
-    def zero_amplitudes(self, modes, datasets=None, components=None):
-        """Reset amplitudes for selected modes to 1"""
-        for m in self.get(modes):
+    def zero_amplitudes(self, models, datasets=None, components=None):
+        """Reset amplitudes for selected models to 1"""
+        for m in self.get(models):
             cpts = components if (components is not None) else m.component_sets()
             m.amplitudes.set(vals=1.0, components=cpts, datasets=datasets)
 
-    def zero_matrices(self, modes, components=None):
+    def zero_matrices(self, models, components=None):
         """Reset selected TLS matrices to 0"""
-        for m in self.get(modes):
+        for m in self.get(models):
             cpts = components if (components is not None) else m.component_sets()
             m.model.reset(components=cpts)
 
@@ -1168,7 +1224,7 @@ class MultiDatasetUijParameterisation(Program):
                                    out_dir = structure_dir,
                                    model_suffix = '.tls-level-{:04}.pdb'.format(i_level+1))
         # Level by level TLS-parameterised structures (cumulative level contributions)
-        for i_level in xrange(len(self.levels)):
+        for i_level in xrange(1, len(self.levels)):
             self.log.bar()
             self.log('Writing fitted structures (cumulative TLS components - level {})'.format(i_level+1))
             self.log.bar()
@@ -1443,29 +1499,33 @@ class MultiDatasetUijParameterisation(Program):
             # Iterate through the groups in this level
             for i_group, sel, fitter in level:
                 tls_model, tls_amps = fitter.result()
-                assert tls_model.shape == (self.params.fitting.number_of_modes_per_group, 21)
-                assert tls_amps.shape  == (self.params.fitting.number_of_modes_per_group, len(self.models), self.params.fitting.tls_amplitudes.count('/')+1)
+                assert tls_model.shape == (self.params.fitting.tls_models_per_tls_group, 21)
+                assert tls_amps.shape  == (self.params.fitting.tls_models_per_tls_group, len(self.models), self.params.fitting.tls_amplitude_model.count('/')+1)
+
+                # Extract parameters
+                p = fitter.parameters()
 
                 # Add to model and amplitudes tables
                 for i_tls in xrange(tls_model.shape[0]):
                     # Add model values to last row of table
                     mdl_table.loc[len(mdl_table.index)] = numpy.concatenate([[i_group, i_tls], tls_model[i_tls]])
                     # Add amplitudes to last row of table
-                    for i_cpt, cpt in enumerate(fitter.parameters().get(index=i_tls).component_sets()):
+                    for i_cpt, cpt in enumerate(p.get(index=i_tls).component_sets()):
                         amp_table.loc[len(amp_table.index)] = numpy.concatenate([[i_group, i_tls, cpt], tls_amps[i_tls,:,i_cpt]])
 
                 # Write histograms of amplitudes -- only for non-zero models
                 if (tls_model.sum() > 0.0) and self.params.output.group_graphs:
-                    x_vals = []; [[x_vals.append(tls_amps[i_m,:,i_c]) for i_c in xrange(tls_amps.shape[2])] for i_m in xrange(tls_amps.shape[0])]
                     filename = os.path.join(png_dir, 'tls-model-amplitudes-level-{}-group-{}.png'.format(level.index, i_group))
                     self.log('\t> {}'.format(filename))
+                    titles = numpy.concatenate([['Model {}: {}'.format(i_t+1, c) for c in p.get(index=i_t).component_sets()] for i_t in xrange(tls_amps.shape[0])])
+                    x_vals = numpy.concatenate([[tls_amps[i_t,:,i_c]             for i_c in xrange(tls_amps.shape[2])]       for i_t in xrange(tls_amps.shape[0])])
                     self.plot.multi_histogram(filename  = filename,
                                               x_vals    = x_vals,
-                                              titles    = numpy.concatenate(['TLS (model {a})'.format(a=i_t+1) for i_t in xrange(tls_amps.shape[0])]),
+                                              titles    = titles,
                                               x_labs    = ['']*tls_amps.shape[0]*tls_amps.shape[2],
                                               rotate_x_labels = True,
                                               shape     = (tls_amps.shape[0], tls_amps.shape[2]),
-                                              n_bins    = 30)
+                                              n_bins    = 30, x_lim=[0, None])
             # Write tables
             mdl_table.to_csv(mdl_filename)
             amp_table.to_csv(amp_filename)
@@ -1489,16 +1549,16 @@ class MultiDatasetUijParameterisation(Program):
             uij_all = []
 
             # Extract Uijs for individual modes/models
-            for i_tls in xrange(self.params.fitting.number_of_modes_per_group):
+            for i_tls in xrange(self.params.fitting.tls_models_per_tls_group):
                 self.log('\tExtracting TLS contributions of model {} of level {}'.format(i_tls+1, i_level+1))
 
                 # Create copy of the level for resetting T-L-S components
                 l_copy = copy.deepcopy(level)
                 # Reset the TLS for all other models
-                if self.params.fitting.number_of_modes_per_group > 1:
-                    other_models = range(self.params.fitting.number_of_modes_per_group)
+                if self.params.fitting.tls_models_per_tls_group > 1:
+                    other_models = range(self.params.fitting.tls_models_per_tls_group)
                     other_models.remove(i_tls)
-                    l_copy.zero_amplitudes(modes=other_models)
+                    l_copy.zero_amplitudes(models=other_models)
 
                 # Extract uijs
                 uij = l_copy.extract(average=True)
@@ -1506,7 +1566,7 @@ class MultiDatasetUijParameterisation(Program):
                 uij_all.append((i_tls, uij))
 
                 # Output structure for MODEL
-                if True or (self.params.fitting.number_of_modes_per_group > 1):
+                if True or (self.params.fitting.tls_models_per_tls_group > 1):
                     uij_sel = numpy.sum([t[-1] for t in uij_all if (t[0]==i_tls)], axis=0)
                     m_h = self.custom_master_hierarchy(uij=uij_sel, iso=uij_to_b(uij_sel), mask=sel)
                     m_f = prefix+'-model_{}.pdb'.format(i_tls+1)
@@ -1547,7 +1607,7 @@ class MultiDatasetUijParameterisation(Program):
             self.log('\t> {}.png'.format(plt_prefix))
             self.plot.stacked_bar(prefix        = plt_prefix,
                                   hierarchies   = [self.custom_master_hierarchy(uij=u, iso=uij_to_b(u), mask=sel) for u in uijs],
-                                  legends       = ['TLS Model {}'.format(i+1) for i in mdls],
+                                  legends       = ['TLS (Model {})'.format(i+1) for i in mdls],
                                   title         = 'Level {} - individual TLS model contributions'.format(i_level+1),
                                   v_line_hierarchy = boundaries if (sum(boundaries.atoms().extract_b()) < 0.5*len(list(boundaries.select(sel).residue_groups()))) else None)
 
@@ -1601,16 +1661,21 @@ class MultiDatasetUijParameterisation(Program):
         self.log('Writing distribution of TLS Uijs over the model')
 
         uij_hierarchies = []
+        # One hierarchy for each level
         for i_level in range(len(uij_lvl)):
             uij_lvl_av = numpy.mean(uij_lvl[i_level], axis=0)
-            h_lvl =self.custom_master_hierarchy(iso=uij_to_b(uij_lvl_av), mask=flex.bool(self.atom_mask.tolist()))
+            h_lvl = self.custom_master_hierarchy(iso=uij_to_b(uij_lvl_av), mask=flex.bool(self.atom_mask.tolist()))
             uij_hierarchies.append(h_lvl)
+        # One hierarchy for the residual
+        h_res = self.custom_master_hierarchy(iso=uij_to_b(uij_res), mask=flex.bool(self.atom_mask.tolist()))
+        uij_hierarchies.append(h_res)
+        # Create stacked plot
         prefix = os.path.join(out_dir, 'all-stacked')
         self.log('\t> {}xxx.png'.format(prefix))
         self.plot.stacked_bar(prefix=prefix,
                               hierarchies=uij_hierarchies,
-                              legends=['Level {}'.format(i+1) for i in range(len(uij_lvl))],
-                              title='TLS Contributions',
+                              legends=['Level {}'.format(i+1) for i in range(len(uij_lvl))]+['Residual'],
+                              title='TLS and residual contributions',
                               reverse_legend_order=True)
 
     def fit_rms_distributions(self, uij_fit, uij_inp, out_dir='./', max_x_width=25):
@@ -2041,7 +2106,8 @@ class MultiDatasetUijParameterisation(Program):
 
         # Extract Column averages (means and medians)
         table_means = table.mean().round(3)
-        out_str = '{:>35s} | {:>15} | {:>15} | {:>15}'
+        shrt_str = '{:>35s} | {:>15} |'
+        long_str = '{:>35s} | {:>15} | {:>15} | {:>15}'
 
         self.log.bar()
         self.log('Dataset Averages:')
@@ -2052,7 +2118,7 @@ class MultiDatasetUijParameterisation(Program):
             if lab.lower().endswith('(input)'): continue
             if lab.lower().endswith('(fitted)'): continue
             if lab.lower().endswith('(refined)'): continue
-            self.log(out_str.format(lab, table_means[lab], '', ''))
+            self.log(shrt_str.format(lab, table_means[lab]))
         self.log.bar()
         # Columns with old/new prefix
         for comp_lab in ['Fitted','Refined']:
@@ -2061,15 +2127,15 @@ class MultiDatasetUijParameterisation(Program):
             if 'R-free ({})'.format(comp_lab) not in table.columns:
                 continue
             self.log('Comparing Input and {} Uijs'.format(comp_lab))
-            self.log(out_str.format('', 'Input', comp_lab, 'Difference'))
+            self.log(long_str.format('', 'Input', comp_lab, 'Difference'))
             for lab in table_means.index:
                 if not lab.endswith(comp_suff):
                     continue
                 lab_base = lab[:lab.index(comp_suff)]
-                self.log(out_str.format(lab_base,
-                                        table_means[lab_base+' ({})'.format('Input')],
-                                        table_means[lab_base+' ({})'.format(comp_lab)],
-                                        table_means[lab_base+' Change ({}-{})'.format(comp_lab, 'Input')]))
+                self.log(long_str.format(lab_base,
+                                         '{:.3f}'.format(table_means[lab_base+' ({})'.format('Input')]),
+                                         '{:.3f}'.format(table_means[lab_base+' ({})'.format(comp_lab)]),
+                                         '{:.3f}'.format(table_means[lab_base+' Change ({}-{})'.format(comp_lab, 'Input')])))
             self.log.bar()
 
         return
@@ -2406,7 +2472,7 @@ class MultiDatasetUijPlots(object):
         return
 
     @staticmethod
-    def multi_histogram(filename, x_vals, titles, x_labs, rotate_x_labels=True, shape=None, n_bins=30):
+    def multi_histogram(filename, x_vals, titles, x_labs, rotate_x_labels=True, shape=None, n_bins=30, x_lim=None):
         """Generate standard histogram"""
 
         if shape is not None:
@@ -2414,10 +2480,16 @@ class MultiDatasetUijPlots(object):
         else:
             nrow, ncol = (1,len(x_vals))
 
-        xlim = [numpy.min(x_vals), numpy.max(x_vals)]
-        if (xlim[1] - xlim[0]) < 0.1:
-            xlim[0] -= 0.5
-            xlim[1] += 0.5
+        if x_lim is not None:
+            assert len(x_lim) == 2
+            x_lim = [min(numpy.min(x_vals), x_lim[0]) if (x_lim[0] is not None) else numpy.min(x_vals),
+                     max(numpy.max(x_vals), x_lim[1]) if (x_lim[1] is not None) else numpy.max(x_vals)]
+        else:
+            x_lim = [numpy.min(x_vals), numpy.max(x_vals)]
+        # Make sure does not have zero width
+        if (x_lim[1] - x_lim[0]) < 0.1:
+            x_lim[0] -= 0.5
+            x_lim[1] += 0.5
 
         fig, axes = pyplot.subplots(nrows=nrow, ncols=ncol, sharey=False)
 
@@ -2426,10 +2498,10 @@ class MultiDatasetUijPlots(object):
 
         for i, axis in enumerate(axes.flatten()):
             axis.set_title(titles[i])
-            axis.hist(x=x_vals[i], bins=n_bins, range=xlim)
+            axis.hist(x=x_vals[i], bins=n_bins, range=x_lim)
             axis.set_xlabel(x_labs[0])
             axis.set_ylabel('Count')
-            axis.set_xlim(xlim)
+            axis.set_xlim(x_lim)
             if rotate_x_labels:
                 pyplot.setp(axis.get_xticklabels(), rotation=90)
         fig.tight_layout()
@@ -2789,7 +2861,7 @@ class MultiDatasetHierarchicalUijFitter(object):
                                                             observed_xyz = observed_xyz,
                                                             observed_com = self.observed_com,
                                                             group_idxs = group_idxs,
-                                                            n_tls = self.params.number_of_modes_per_group,
+                                                            n_tls = self.params.tls_models_per_tls_group,
                                                             index = idx+1,
                                                             label = lab,
                                                             penalties = self.params.penalties,
@@ -2888,8 +2960,8 @@ class MultiDatasetHierarchicalUijFitter(object):
             b_iso_sel = numpy.mean(uij_to_b(uij_sel))
             u_iso_sel = b_iso_sel / EIGHT_PI_SQ
         else:
-            b_iso_sel = None
-            u_iso_sel = None
+            b_iso_sel = numpy.nan
+            u_iso_sel = numpy.nan
 
         # Calculate U-iso & B-iso for complete model
         b_iso_tot = numpy.mean(uij_to_b(uij_tot))
@@ -2901,11 +2973,11 @@ class MultiDatasetHierarchicalUijFitter(object):
         # Add to tracking table
         self.tracking_data.loc[len(self.tracking_data.index)] = {'cycle' : cycle_lab,
                                                                  'level' : level_lab,
-                                                                 'rmsd'  : rmsd,
-                                                                 'u_iso (level)' : u_iso_sel,
-                                                                 'b_iso (level)' : b_iso_sel,
-                                                                 'u_iso (total)' : u_iso_tot,
-                                                                 'b_iso (total)' : b_iso_tot}
+                                                                 'rmsd'  : numpy.round(rmsd,3),
+                                                                 'u_iso (level)' : numpy.round(u_iso_sel,3),
+                                                                 'b_iso (level)' : numpy.round(b_iso_sel,3),
+                                                                 'u_iso (total)' : numpy.round(u_iso_tot,3),
+                                                                 'b_iso (total)' : numpy.round(b_iso_tot,3)}
 
         self.log(self.tracking_data.loc[len(self.tracking_data.index)-1].to_string())
         # Dump to csv
@@ -3028,7 +3100,7 @@ class MultiDatasetHierarchicalUijFitter(object):
         s += '\n'
         s += '\n> Hierarchical Model:'
         s += '\nNumber of levels (incl. residual): {}'.format(self.n_levels()+1)
-        s += '\nNumber of TLS modes per group: {}'.format(self.params.number_of_modes_per_group)
+        s += '\nNumber of TLS models TLS per group: {}'.format(self.params.tls_models_per_tls_group)
         s += '\nNumber of model parameters: {}'.format(self.n_params())
         s += '\n'
         s += '\n> Optimisation:'
@@ -3187,10 +3259,10 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
             fitted_uij = fitted_uij.mean(axis=0)
         return fitted_uij
 
-    def reset_amplitudes(self, modes):
+    def reset_amplitudes(self, models):
         # Iterate through each group/partition
         for i, sel, fitter in self:
-            fitter.parameters().reset_amplitudes(modes=modes)
+            fitter.parameters().reset_amplitudes(models=models)
 
     def summary(self, show=True):
         num_model_params = self.n_params(non_zero=False)
@@ -3206,15 +3278,15 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
         if show: self.log(s)
         return s
 
-    def zero_amplitudes(self, modes, components=None):
+    def zero_amplitudes(self, models, components=None):
         # Iterate through each group/partition
         for i, sel, fitter in self:
-            fitter.parameters().zero_amplitudes(modes=modes, components=components)
+            fitter.parameters().zero_amplitudes(models=models, components=components)
 
-    def zero_matrices(self, modes, components=None):
+    def zero_matrices(self, models, components=None):
         # Iterate through each group/partition
         for i, sel, fitter in self:
-            fitter.parameters().zero_matrices(modes=modes, components=components)
+            fitter.parameters().zero_matrices(models=models, components=components)
 
 class MultiDatasetUijResidualLevel(_MultiDatasetUijLevel):
 
@@ -3863,7 +3935,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 self.log.bar(blank_after=True)
                 # Reset amplitudes to zero to prevent overparameterisation
                 self.log('Resetting all amplitudes to zero')
-                self.parameters().reset_amplitudes(modes=[i_tls])
+                self.parameters().reset_amplitudes(models=[i_tls])
                 # Optimise amplitudes
                 self.log('Setting up TLS amplitude optimisation')
                 # Select variables for optimisation -- amplitudes only
@@ -3972,7 +4044,7 @@ def build_levels(model, params, log=None):
         labels.append('groups')
     if 'secondary_structure' in params.levels.auto_levels:
         log('Level {}: Creating level with groups based on secondary structure'.format(len(levels)+1))
-        levels.append([s.strip('"') for s in default_secondary_structure_selections(model.hierarchy)])
+        levels.append([s.strip('"') for s in default_secondary_structure_selections_filled(model.hierarchy)])
         labels.append('secondary structure')
     if 'residue' in params.levels.auto_levels:
         log('Level {}: Creating level with groups for each residue'.format(len(levels)+1))

@@ -5,14 +5,8 @@ from scitbx.array_family import flex
 
 from giant.structure.formatting import Labeller, ShortLabeller
 
-from bamboo.html import png2base64src
+from bamboo.html import png2base64src_maybe
 from pandemic.html import PANDEMIC_HTML_ENV
-
-def png2base64src_maybe(path):
-    if os.path.exists(path):
-        return png2base64src(path)
-    else:
-        return 'none'
 
 def format_summary(text, width=12, cls_tuple=['alert','info']):
     paragraphs = text.split('\n\n')
@@ -101,8 +95,8 @@ def create_levels_tab(parameterisation):
     tab['tabs'].append(overview_tab)
     # Add images to the overview tab for each TLS level
     for i_level, (level_num, level_lab, level) in enumerate(f):
-        chain_image = os.path.join(p.out_dir, 'model/pymol/level_{}-all-modes-chain_A.png'.format(level_num))
-        stack_image = os.path.join(p.out_dir, 'model/level_{}-all-modes-TLS-chain_A.png'.format(level_num))
+        chain_image = os.path.join(p.out_dir, 'model/pymol/level_{}-all-models-chain_A.png'.format(level_num))
+        stack_image = os.path.join(p.out_dir, 'model/level_{}-all-models-chain_A.png'.format(level_num))
         panel = {'id'             : 'Level {} of {} ({})'.format(level_num, len(f.levels),level_lab),
                  'text'           : '{} atoms.'.format('X'),
                  'width'          : 4,
@@ -136,12 +130,12 @@ def create_levels_tab(parameterisation):
               }
         tab['tabs'].append(level_tab)
         # Read in the TLS models and amplitudes for this level
-        tls_models     = pandas.read_csv(os.path.join(p.out_dir, 'model/csvs/tls_models_level_{:04d}.csv'.format(level_num))).set_index(['group','mode']).drop('Unnamed: 0', axis=1, errors='ignore')
-        tls_amplitudes = pandas.read_csv(os.path.join(p.out_dir, 'model/csvs/tls_amplitudes_level_{:04d}.csv'.format(level_num))).set_index(['group','mode','cpt']).drop('Unnamed: 0', axis=1, errors='ignore')
+        tls_models     = pandas.read_csv(os.path.join(p.out_dir, 'model/csvs/tls_models_level_{:04d}.csv'.format(level_num))).set_index(['group','model']).drop('Unnamed: 0', axis=1, errors='ignore')
+        tls_amplitudes = pandas.read_csv(os.path.join(p.out_dir, 'model/csvs/tls_amplitudes_level_{:04d}.csv'.format(level_num))).set_index(['group','model','cpt']).drop('Unnamed: 0', axis=1, errors='ignore')
         # Extract groups for each level
         for i_group, (group_num, sel, group_fitter) in enumerate(level):
             # Extract TLS values for this group
-            tls_vals = [tls_models.loc[(group_num, i_mode)] for i_mode in xrange(p.params.fitting.number_of_modes_per_group)]
+            tls_vals = [tls_models.loc[(group_num, i_mode)] for i_mode in xrange(p.params.fitting.tls_models_per_tls_group)]
             # Skip if no TLS values
             if numpy.abs(tls_vals).sum() == 0.0:
                 continue
