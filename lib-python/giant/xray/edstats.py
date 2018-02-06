@@ -141,6 +141,7 @@ def score_with_edstats_to_list(mtz_file, pdb_file, f_label=None):
 
     # Process the output header
     if output:
+        # Check header and then remove the first three columns
         header = output.pop(0).split()
         assert header[:3] == ['RT', 'CI', 'RN'], 'edstats output headers are not as expected! {!s}'.format(output)
         num_fields = len(header)
@@ -161,7 +162,7 @@ def score_with_edstats_to_list(mtz_file, pdb_file, f_label=None):
         if len(fields) != num_fields:
             raise ValueError("Error Parsing EDSTATS output: Header & Data rows have different numbers of fields")
 
-        # Get and process the residue information
+        # Get and process the residue information - TODO CI column can include alternate conformer?! TODO
         residue, chain, resnum = fields[:3]
         try:
             resnum = int(resnum)
@@ -181,7 +182,10 @@ def score_with_edstats_to_list(mtz_file, pdb_file, f_label=None):
                 try:
                     fields[i] = int(x)
                 except ValueError:
-                    fields[i] = float(x)
+                    try:
+                        fields[i] = float(x)
+                    except ValueError:
+                        pass
 
         outputdata.append([(residue, chain, resnum, inscode),fields])
 
