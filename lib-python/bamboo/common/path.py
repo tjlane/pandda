@@ -27,6 +27,14 @@ def rel_symlink(orig, link):
     assert not link.endswith('/'), 'LINK CANNOT END WITH /'
     os.symlink(os.path.relpath(orig, start=os.path.dirname(link)), link)
 
+def splice_ext(path, new, position=-1):
+    dirname, basename = os.path.split(path)
+    split = basename.split(os.path.extsep)
+    assert abs(position) <= len(split), 'invalid position selected ({}) to insert "{}" into {}'.format(position, new, split)
+    spliced = split[:position] + [new] + split[position:]
+    joined = os.path.extsep.join(spliced)
+    return os.path.join(dirname, joined)
+
 def delete_with_glob(glob_str, verbose=True):
     for file in sorted(glob.glob(glob_str)):
         # I know that unlink is the same as remove...
