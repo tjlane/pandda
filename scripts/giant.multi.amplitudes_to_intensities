@@ -74,10 +74,10 @@ def run(params):
         if params.method.package == 'phenix':
             cm = CommandManager('phenix.reflection_file_converter')
             cm.add_command_line_arguments([ mtz_file,
-                                            '--mtz-root-label='+params.output.column,
+                                            '--mtz_root_label='+params.output.column,
                                             '--label='+params.input.columns,
-                                            '--non-anomalous',
-                                            '--write-mtz-intensities',
+                                            '--non_anomalous',
+                                            '--write_mtz_intensities',
                                             '--mtz='+output_mtz     ])
         elif params.method.package == 'ccp4':
             raise Exception('NOT IMPLEMENTED')
