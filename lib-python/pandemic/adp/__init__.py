@@ -23,7 +23,7 @@ from bamboo.common.command import CommandManager
 
 from giant.manager import Program
 from giant.dataset import CrystallographicModel
-from giant.structure.tls import validate_tls_params
+from giant.structure.tls import tls_str_to_n_params, validate_tls_params
 from giant.structure.formatting import ShortLabeller, PhenixSelection, PymolSelection
 from giant.structure.select import protein, backbone, sidechains
 from giant.structure.pymol import auto_residue_images, auto_chain_images, selection_images
@@ -34,7 +34,7 @@ from giant.xray.tls import phenix_find_tls_groups
 from giant.jiffies import multi_table_ones
 
 from pandemic.adp import html as pandemic_html
-from pandemic.adp.tls import MultiDatasetTLSModelList, str_to_n_params
+from pandemic.adp.tls import MultiDatasetTLSModelList
 
 try:
     import matplotlib
@@ -140,9 +140,9 @@ fitting {
     tls_models_per_tls_group = 1
         .help = 'how many TLS models to fit per group of atoms?'
         .type = int
-    tls_amplitude_model = *TLS
+    tls_amplitude_model = *TLS TS/LS
         .help = 'which amplitudes should be used for multiplying each TLS group in each dataset? TLS = one amplitude for each TLS group.'
-        .type = choice(multi=True)
+        .type = choice(multi=False)
     optimisation {
         max_datasets = None
             .help = 'takes up to this number of datasets for TLS parameter optimisation'
@@ -303,6 +303,7 @@ def wrapper_optimise(args):
 
 def wrapper_fit(args):
     fitter, kw_args = args
+    s = kw_args.pop('silent', True)
     try:
         fitter.optimise(**kw_args)
         return fitter
@@ -340,11 +341,9 @@ class UijPenalties(object):
     def tls_params(self, values):
         """Return penalty for having unphysical TLS models"""
         assert len(values) == 21
-        # Calculate eigenvalues of T+L matrices, and penalise negative eigenvalues (proportional to size of negative eigenvalues)
-#        if values[12:21] == 0.0:
-#            validate_tls_params_with_zero_screw_matrix(tls_vector=values)
-        tls_penalty = validate_tls_params(tls_vector=values, origin=self._tst_com)
-        #if tls_penalty is not True: print tls_penalty
+        # Returns True or <error string>
+        tls_penalty = validate_tls_params(tls_vector=values)
+        # Convert to float for penalty
         tls_penalty = 0.0 if tls_penalty is True else 1.0
         # Calculate and return total penalty
         return self._standard_penalty_function(penalty       = tls_penalty,
@@ -409,11 +408,17 @@ class TLSSimplex(_Simplex):
         """Initialise TLS Simplex"""
         self.set_deltas(mdl_delta=mdl_delta, amp_delta=amp_delta)
 
+    def model_delta(self):
+        return self._del_mdl
+
+    def amplitude_delta(self):
+        return self._del_amp
+
     def get_deltas(self, model, amplitudes, components, n_cpt, n_mdl, n_dst, **kw_args):
         p_mdl = 0
         p_amp = 0
         if model is True:
-            p_mdl += str_to_n_params(components, include_szz=False)*n_mdl
+            p_mdl += tls_str_to_n_params(components, include_szz=False)*n_mdl
         if amplitudes is True:
             p_amp += n_mdl*n_cpt*n_dst
         return numpy.array((self._del_mdl,)*p_mdl + (self._del_amp,)*p_amp)
@@ -647,6 +652,12 @@ class MultiDatasetUijParameterisation(Program):
         else:
             # Set model type to anisotropic
             self.disorder_model = 'anisotropic'
+
+        # TODO Create a for-loop here with one fitter for each CHAIN
+        # TODO This will mean that a different centre of mass is used for each chain
+        # TODO Necessary for very large models!
+        # TODO Could also create fitter for each group in highest level (normally chain...)
+        # TODO Need to consider the case where two chains may be put in one group!
 
         # Create the fitting object
         self.fitter = MultiDatasetHierarchicalUijFitter(observed_uij = observed_uij,
@@ -2454,6 +2465,7 @@ class MultiDatasetHierarchicalUijFitter(object):
                                                             n_tls = self.params.tls_models_per_tls_group,
                                                             index = idx+1,
                                                             label = lab,
+                                                            amplitudes = self.params.tls_amplitude_model,
                                                             penalties = self.params.penalties,
                                                             log = self.log))
 
@@ -2721,7 +2733,7 @@ class _MultiDatasetUijLevel(object):
         # Check to see if multiple cpus are available per job
         n_cpus_per_job = max(1, n_cpus//self._n_obj)
         # Create job objects
-        jobs = [(fitter, {'n_cycles':n_cycles, 'n_cpus':n_cpus_per_job}) for (i, sel, fitter) in self]
+        jobs = [(fitter, {'n_cycles':n_cycles, 'n_cpus':n_cpus_per_job, 'silent':(n_cpus>1)}) for (i, sel, fitter) in self]
         # Drop CPUs if not required
         n_cpus = min(len(jobs), n_cpus)
         # Only do multiprocessing if actually needed
@@ -2794,6 +2806,7 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
                  n_tls=1,
                  index=0,
                  label=None,
+                 amplitudes=None,
                  penalties=None,
                  log=None):
 
@@ -2823,13 +2836,15 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
             # Create a separate log for each fitter
             ls = LogStream(log_file = os.path.splitext(self.log.log_file)[0] + '-level{:04d}-group{:06d}.log'.format(self.index, i),
                            verbose  = (self.log.verbose) or (self._n_groups==1),
-                           silent   = not(self._n_groups==1))
+                           #silent   = False)
+                           silent   = not (self._n_groups==1))
             # Create fitter object
             self.fitters[i] = MultiDatasetUijTLSOptimiser(target_uij = observed_uij[:,sel],
                                                           atomic_xyz = observed_xyz[:,sel],
                                                           atomic_com = observed_com,
                                                           n_tls = n_tls,
                                                           label = '{:4d} of {:4d}'.format(i, self._n_groups),
+                                                          amplitudes = amplitudes,
                                                           penalties = penalties,
                                                           log = ls)
 
@@ -3073,7 +3088,7 @@ class _UijOptimiser(object):
         # Return now if physical penalty if non-zero to save time
         if ppen > 0.0:
             if self._running_summary:
-                self.log('[{}] -> ({:>10}, {:10.0f})'.format(', '.join(['{:+7.4f}'.format(r) for r in parameters]), 'UNPHYSICAL', ppen), show=False)
+                self.log('[{}] -> ({:>10}, {:10.3f})'.format(', '.join(['{:+7.4f}'.format(r) for r in parameters]), 'UNPHYSICAL', ppen), show=False)
             return ppen
         # Get the fitted uijs (including masked atoms)
         self._update_fitted()
@@ -3199,6 +3214,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                  n_tls=1,
                  tls_params=None,
                  label='',
+                 amplitudes=None,
                  penalties=None,
                  log=None):
         super(MultiDatasetUijTLSOptimiser, self).__init__(target_uij=target_uij,
@@ -3243,8 +3259,9 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         self._n_prm_amp = 03 * self._n_tls * self._n_dst
 
         # Model-Amplitude parameter sets
-        self._parameters = MultiDatasetTLSModelList(n_mdl=self._n_tls,
-                                                    n_dst=self._n_dst,
+        self._parameters = MultiDatasetTLSModelList(n_mdl = self._n_tls,
+                                                    n_dst = self._n_dst,
+                                                    amplitudes = amplitudes,
                                                     log = self.log)
 
         # Extract number of parameters
@@ -3294,11 +3311,11 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
 
             # Calculate dataset penalties
             if self._opt_dict['amplitudes']:
+                # Penalties for combinations of amplitudes that lead to non-physical TLS models
+                datasets = self._opt_dict['i_dst']
+                amp_penalties.extend([self.penalty.tls_params(values=model.values) for model in mode.expand(datasets=datasets)])
                 # Penalties for negative amplitudes, etc
                 amp_penalties.append(self.penalty.amplitudes(values=mode.amplitudes.values))
-                # Penalties for combinations of amplitudes that lead to non-physical TLS models
-                #datasets = self._opt_dict['i_dst']
-                #amp_penalties += [self.penalty.tls_params(values=model.values) for model in mode.expand(datasets=datasets)]
 
         return numpy.sum(tls_penalties+amp_penalties)
 
@@ -3395,7 +3412,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         # Iterate through objects and extract requested parameter values
         values = collections.deque(values)
         if s.model is True:
-            n_tls_params = str_to_n_params(s.components, include_szz=False)
+            n_tls_params = tls_str_to_n_params(s.components, include_szz=False)
             for i in s.i_mdl:
                 mdl = self._parameters.get(index=i)
                 mdl.model.set(vals = [values.popleft() for _ in xrange(n_tls_params)],
@@ -3454,12 +3471,8 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         opt_dset_mask = self.get_dataset_mask()
         opt_atom_mask = self.get_atomic_mask()
 
-        # Cumulative objects
+        # Cumulative i_tls indices
         mdl_cuml = []
-
-        # Workers for multiprocessing
-        if n_cpus > 1:
-            workers = DaemonicPool(n_cpus)
 
         # Optimise!
         for i_cycle in xrange(n_cycles):
@@ -3497,15 +3510,12 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                     self.log.bar()
                     self.log(self.penalty.set_weights(ovr_fixed=self.penalties.over_target_values.a))
                     self.log.bar(False, True)
-                    # Select variables for optimisation -- model only
-                    self._select(optimise_model      = True,
-                                 optimise_amplitudes = False,
-                                 components = cpts,
-                                 models     = [i_tls],
-                                 datasets   = opt_dset_mask,
-                                 atoms      = opt_atom_mask)
                     # Run optimisation
-                    self._optimise(running_summary=True)
+                    self.optimise_models(
+                        models      = [i_tls],
+                        components  = cpts,
+                        datasets    = opt_dset_mask,
+                        atoms       = opt_atom_mask)
                     # Log model summary
                     self.log(self.parameters().get(index=i_tls).model.summary())
                     # Log current RMSD and penalty
@@ -3529,47 +3539,19 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                     # Reset amplitudes to zero to prevent overparameterisation
                     self.log('Resetting all amplitudes to zero')
                     self.parameters().reset_amplitudes(models=[i_tls])
-                    # Optimise amplitudes
-                    self.log('Setting up TLS amplitude optimisation')
-                    # Select variables for optimisation -- amplitudes only
-                    self._select(optimise_model      = False,
-                                 optimise_amplitudes = True,
-                                 components = self.parameters().get(index=i_tls).component_sets(),
-                                 models     = mdl_cuml,
-                                 datasets   = None,
-                                 # Optimise with all atoms to prevent over-sizing
-                                 atoms      = range(self._n_atm))
-                    # ---------------------------------->
-                    self.log.bar(blank_before=True)
-                    self.log('Running amplitude optimisations: --->')
-                    self.log.bar()
-                    # Optimise all amplitudes dataset-by-dataset
-                    jobs = []
-                    for i_dst in xrange(self._n_dst):
-                        # Select this dataset
-                        self._select(datasets=[i_dst])
-                        # Append to job list (create copy) or run optimisation
-                        if n_cpus > 1:
-                            jobs.append(self.copy())
-                        else:
-                            self._optimise(running_summary=False)
-                            self.log('> dataset {} of {} (rmsd {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, self.optimisation_rmsd, self.optimisation_penalty))
-                    # Run parallel jobs and inject results
-                    if n_cpus > 1:
-                        self.log.subheading('Running {} jobs using {} cpus'.format(len(jobs), min(n_cpus,len(jobs))))
-                        finished_jobs = workers.map(func=wrapper_optimise, iterable=jobs)
-                        for i_dst in xrange(self._n_dst):
-                            job = finished_jobs[i_dst]
-                            if isinstance(job, str):
-                                self.log(job)
-                                raise Failure('error returned')
-                            self._inject(values=job._values(), selection=job._select())
-                            self.log('> dataset {} of {} (rmsd {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, job.optimisation_rmsd,  job.optimisation_penalty))
-                    # Log model summary
+                    # Run optimisation
+                    self.optimise_amplitudes(
+                        models      = mdl_cuml,
+                        components  = self.parameters().get(index=i_tls).component_sets(),
+                        datasets    = None,
+                        atoms       = range(self._n_atm),   # Optimise with all atoms to prevent over-sizing
+                        n_cpus = n_cpus)
+                    # Log amplitudes summary
                     self.log.bar(blank_before=True, blank_after=True)
                     self.log(self.parameters().get(index=i_tls).amplitudes.summary())
                 else:
                     self.log('TLS matrices are all zero -- not optimising amplitudes')
+                    self.parameters().get(index=i_tls).reset()
 
             # Reapply atom and dataset masks
             self.set_dataset_mask(opt_dset_mask)
@@ -3586,12 +3568,161 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             self.log('Looking for zero-value modes')
             self.parameters().zero_null_modes()
 
+            # Report
+            self.log.subheading('Checking for invalid TLS matrices after normalisation')
+            self.log.bar()
+            self.log('Updating penalty weights --->')
+            self.log.bar()
+            self.log(self.penalty.set_weights(ovr_fixed=10.0))
+            self.log.bar(blank_after=True)
+            # Check that normalisation has not made any of the models invalid and correct if possible
+            self.optimise_invalid_models(model_delta=0.001, amplitude_delta=0.001)
+
+            # Show summary at end of cycle...
             self.log.subheading('End-of-cycle summary')
             self.summary(show=True)
 
-        # Let's be good
+    def optimise_models(self, models, components, datasets=None, atoms=None):
+        """Optimise the matrices for combinations of models/componenets/datasets"""
+
+        # Take all datasets/atoms if not provided
+        if datasets is None: datasets = range(self._n_dst)
+        if atoms is None:    atoms = range(self._n_atm)
+
+        # Select variables for optimisation -- model only
+        self._select(optimise_model      = True,
+                     optimise_amplitudes = False,
+                     models     = models,
+                     components = components,
+                     datasets   = datasets,
+                     atoms      = atoms)
+
+        # Run optimisation
+        self._optimise(running_summary=True)
+
+    def optimise_amplitudes(self, models, components, datasets=None, atoms=None, n_cpus=1):
+        """Optimise the amplitudes for combinations of models/components/datasets"""
+
+        # Take all datasets/atoms if not provided
+        if datasets is None: datasets = range(self._n_dst)
+        if atoms is None:    atoms = range(self._n_atm)
+
+        self.log('Setting up TLS amplitude optimisation')
+        # Select variables for optimisation -- amplitudes only
+        self._select(optimise_model      = False,
+                     optimise_amplitudes = True,
+                     models     = models,
+                     components = components,
+                     datasets   = None,         # This will be set individually
+                     atoms      = atoms)
+        # ---------------------------------->
+        self.log.bar(blank_before=True)
+        self.log('Running amplitude optimisations: --->')
+        self.log.bar()
+        # Optimise all amplitudes dataset-by-dataset
+        jobs = []
+        for i_dst in datasets:
+            # Select this dataset
+            self._select(datasets=[i_dst])
+            # Append to job list (create copy) or run optimisation
+            if n_cpus > 1:
+                jobs.append(self.copy())
+            else:
+                self._optimise(running_summary=True)
+                self.log('> dataset {} of {} (rmsd {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, self.optimisation_rmsd, self.optimisation_penalty))
+        # Run parallel jobs and inject results
         if n_cpus > 1:
+            # Workers for multiprocessing
+            workers = DaemonicPool(n_cpus)
+            # Report and map to workers
+            self.log.subheading('Running {} jobs using {} cpus'.format(len(jobs), min(n_cpus,len(jobs))))
+            finished_jobs = workers.map(func=wrapper_optimise, iterable=jobs)
+            for i_dst in datasets:
+                job = finished_jobs[i_dst]
+                if isinstance(job, str):
+                    self.log(job)
+                    raise Failure('error returned')
+                self._inject(values=job._values(), selection=job._select())
+                self.log('> dataset {} of {} (rmsd {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, job.optimisation_rmsd,  job.optimisation_penalty))
+            # Let's be good
             workers.close()
+
+    def optimise_invalid_models(self, model_delta=0.001, amplitude_delta=0.001, n_cpus=1):
+        """Check if models are invalid and attempt to correct them"""
+
+        # Extract the current model delat
+        mdl_delta = self.simplex.model_delta()
+        amp_delta = self.simplex.amplitude_delta()
+
+        # Set model delta to rounding precision
+        self.simplex.set_deltas(mdl_delta=model_delta, amp_delta=amplitude_delta)
+
+        for i_tls, model in enumerate(self._parameters):
+
+            self.log('Checking physicality of model {}'.format(i_tls+1))
+            self.log.bar()
+            # Check that the core model is valid
+            if model.model.is_valid():
+                self.log('Core model is valid')
+            else:
+                self.log('Core model is invalid -- attempting to re-optimise \n{}'.format(model.model.summary()))
+                # Run optimisations with the small model delta
+                self.optimise_models(models=[i_tls],
+                                     components='TLS',
+                                     datasets=None,
+                                     atoms=None)
+                # Check again if the core model is valid
+                model = self.parameters().get(index=i_tls)
+                if not model.model.is_valid():
+                    self.log('Core model is still invalid -- resetting both model and amplitudes')
+                    # XXX XXX XXX
+                    raise Failure('----')
+                    # XXX XXX XXX
+                    model.reset('all')
+                    continue
+
+            # Now iterate through the expanded models
+            self.log.bar()
+            for i_dst, dst_model in enumerate(model.expand()):
+                # Check that the dataset model is valid
+                if dst_model.is_valid():
+                    self.log('Dataset {} model is valid'.format(i_dst+1))
+                else:
+                    if (i_dst > 0): self.log.bar()
+                    self.log('Dataset {} model is invalid -- attempting to re-optimise \n{}'.format(i_dst+1, dst_model.summary()))
+                    # Run optimisations with the small amplitude delta
+                    self.optimise_amplitudes(models=[i_tls],
+                                             components=model.component_sets(),
+                                             datasets=[i_dst],
+                                             atoms=None,
+                                             n_cpus=n_cpus)
+                    # Check again if the model is valid
+                    dst_model = model.expand(datasets=[i_dst])[0]
+                    if dst_model.is_valid():
+                        self.log('Dataset {} model now valid')
+                        self.log.bar()
+                    else:
+                        self.log('Dataset {} model is still invalid -- resetting amplitudes and re-optimising'.format(i_dst+1))
+                        # Reset the amplitudes for the model to zero
+                        model.amplitudes.reset(components='all', datasets=[i_dst])
+                        # Try optimisation one last time...
+                        self.optimise_amplitudes(models=[i_tls],
+                                                 components=model.component_sets(),
+                                                 datasets=[i_dst],
+                                                 atoms=None,
+                                                 n_cpus=n_cpus)
+                        # Check again if the model is valid
+                        dst_model = model.expand(datasets=[i_dst])[0]
+                        if not dst_model.is_valid():
+                            # XXX XXX XXX
+                            raise Failure('Dataset model still invalid after multiple attempts to renormalise...')
+                            # XXX XXX XXX
+                        else:
+                            self.log('Dataset {} model now valid')
+                            self.log.bar()
+
+        # Reset the old model delta
+        self.simplex.set_deltas(mdl_delta=mdl_delta, amp_delta=amp_delta)
 
     def extract(self):
         """Extract the fitted uij"""
