@@ -16,9 +16,10 @@ def png2base64str(path):
 def png2base64src(path):
     return 'data:image/png;base64,{}'.format(png2base64str(path))
 
-def png2base64src_maybe(path):
+def png2base64src_maybe(path, print_on_missing=False):
     if os.path.exists(path):
         return png2base64src(path)
     else:
+        print 'missing file: {}'.format(path)
         return 'none'
 

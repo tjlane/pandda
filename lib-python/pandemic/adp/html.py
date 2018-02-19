@@ -35,13 +35,13 @@ def create_overview_tab(parameterisation):
            'short_name'     : 'Overview',
            'long_name'      : 'Hierarchical ADP Parameterisation Overview',
            'description'    : '',
-           'contents'       : [{'width':8, 'text': '', 'image':png2base64src_maybe(os.path.join(p.out_dir, 'graphs/tracking_data.png'))}] + \
+           'contents'       : [{'width':8, 'text': '', 'image':png2base64src_maybe(os.path.join(p.out_dir, 'graphs/tracking_data.png'), print_on_missing=True)}] + \
                               [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'class':['text-center']}] + \
                               format_summary(f.summary(), width=6) + \
                               [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'class':['text-center']}] + \
-                              numpy.concatenate(zip(*[[{'width':4, 'text': 'Partition Schematic',  'image':png2base64src_maybe(os.path.join(p.out_dir, 'model/level-partitioning-chain-{}.png'.format(c)))    } for c in chain_ids],
-                                                      [{'width':4, 'text': 'TLS-level components', 'image':png2base64src_maybe(os.path.join(p.out_dir, 'model/all-stacked-chain_{}.png'.format(c)))           } for c in chain_ids],
-                                                      [{'width':4, 'text': 'Residual component',   'image':png2base64src_maybe(os.path.join(p.out_dir, 'model/all-residual-chain_{}.png'.format(c)))          } for c in chain_ids]
+                              numpy.concatenate(zip(*[[{'width':4, 'text': 'Partition Schematic',  'image':png2base64src_maybe(os.path.join(p.out_dir, 'model/level-partitioning-chain-{}.png'.format(c)), print_on_missing=True)    } for c in chain_ids],
+                                                      [{'width':4, 'text': 'TLS-level components', 'image':png2base64src_maybe(os.path.join(p.out_dir, 'model/all-stacked-chain_{}.png'.format(c)), print_on_missing=True)           } for c in chain_ids],
+                                                      [{'width':4, 'text': 'Residual component',   'image':png2base64src_maybe(os.path.join(p.out_dir, 'model/all-residual-chain_{}.png'.format(c)), print_on_missing=True)          } for c in chain_ids]
                                                      ])).tolist() + \
                               [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'class':['text-center']}] + \
                               numpy.concatenate([format_summary(l.summary(show=False), width=6) for l in f.levels+[f.residual]]).tolist()
@@ -57,10 +57,10 @@ def create_analysis_tab(parameterisation):
            'short_name'     : 'Results/Analysis',
            'long_name'      : 'Model Improvement Statistics from hierarchical TLS parameterisation',
            'description'    : '',
-           'images'         : [{'width':6, 'path':png2base64src_maybe(os.path.join(p.out_dir, 'graphs/r-values-change-by-resolution.png'))},
-                               {'width':6, 'path':png2base64src_maybe(os.path.join(p.out_dir, 'graphs/r-gap-by-resolution.png'))},
-                               {'width':6, 'path':png2base64src_maybe(os.path.join(p.out_dir, 'graphs/r-free-by-resolution.png'))},
-                               {'width':6, 'path':png2base64src_maybe(os.path.join(p.out_dir, 'graphs/r-work-by-resolution.png'))}],
+           'images'         : [{'width':6, 'path':png2base64src_maybe(os.path.join(p.out_dir, 'graphs/r-values-change-by-resolution.png'), print_on_missing=True)},
+                               {'width':6, 'path':png2base64src_maybe(os.path.join(p.out_dir, 'graphs/r-gap-by-resolution.png'), print_on_missing=True)},
+                               {'width':6, 'path':png2base64src_maybe(os.path.join(p.out_dir, 'graphs/r-free-by-resolution.png'), print_on_missing=True)},
+                               {'width':6, 'path':png2base64src_maybe(os.path.join(p.out_dir, 'graphs/r-work-by-resolution.png'), print_on_missing=True)}],
            'plots'          : [{'div': 'variable-plots',
                                 'json': p.tables.statistics.T.to_json(orient='split'),
                                 'default_x' : 'High Resolution Limit',
@@ -101,8 +101,8 @@ def create_levels_tab(parameterisation):
                  'text'           : '{} atoms.'.format('X'),
                  'width'          : 4,
                  'table'          : None,
-                 'images'         : [{'width':12, 'path':png2base64src_maybe(chain_image) if os.path.exists(chain_image) else ''},
-                                     {'width':12, 'path':png2base64src_maybe(stack_image) if os.path.exists(stack_image) else ''}],
+                 'images'         : [{'width':12, 'path':png2base64src_maybe(chain_image, print_on_missing=True) if os.path.exists(chain_image) else ''},
+                                     {'width':12, 'path':png2base64src_maybe(stack_image, print_on_missing=True) if os.path.exists(stack_image) else ''}],
                 }
         overview_tab['panels'].append(panel)
     # Format residual level
@@ -112,8 +112,8 @@ def create_levels_tab(parameterisation):
              'text'           : '{} atoms.'.format('X'),
              'width'          : 4,
              'table'          : None,
-             'images'         : [{'width':12, 'path':png2base64src_maybe(chain_image) if os.path.exists(chain_image) else ''},
-                                 {'width':12, 'path':png2base64src_maybe(stack_image) if os.path.exists(stack_image) else ''}],
+             'images'         : [{'width':12, 'path':png2base64src_maybe(chain_image, print_on_missing=True) if os.path.exists(chain_image) else ''},
+                                 {'width':12, 'path':png2base64src_maybe(stack_image, print_on_missing=True) if os.path.exists(stack_image) else ''}],
               }
     overview_tab['panels'].append(panel)
     # -------------------------------->
@@ -140,7 +140,7 @@ def create_levels_tab(parameterisation):
             if numpy.abs(tls_vals).sum() == 0.0:
                 continue
             # Get images and format values
-            adp_image = os.path.join(p.out_dir, 'model/pymol/level_{}-all-modes-group_{}.png'.format(level_num, group_num))
+            adp_image = os.path.join(p.out_dir, 'model/pymol/level_{}-all-models-group_{}.png'.format(level_num, group_num))
             amp_image = os.path.join(p.out_dir, 'model/graphs/tls-model-amplitudes-level-{}-group-{}.png'.format(level_num, group_num))
             tls_mdl_str = '<br>'.join([('Mode {}:<br>' + \
                                         '<samp>' + \
@@ -154,8 +154,8 @@ def create_levels_tab(parameterisation):
                      'text'  : '<br>'.join(['Number of atoms: {}'.format(sum(sel)),tls_mdl_str]),
                      'width' : max(4,12//level.n_groups()),
                      'table' : None,
-                     'images': [{'width':12, 'path': png2base64src_maybe(adp_image)},
-                                {'width':12, 'path': png2base64src_maybe(amp_image)}],
+                     'images': [{'width':12, 'path': png2base64src_maybe(adp_image, print_on_missing=True)},
+                                {'width':12, 'path': png2base64src_maybe(amp_image, print_on_missing=True)}],
                     }
             level_tab['panels'].append(panel)
     # -------------------------------->
@@ -177,7 +177,7 @@ def create_levels_tab(parameterisation):
                  'width' : 4,
                  'text'  : '',
                  'table' : None,
-                 'images': [{'width':12, 'path': png2base64src_maybe(adp_image)}],
+                 'images': [{'width':12, 'path': png2base64src_maybe(adp_image, print_on_missing=True)}],
                 }
         residual_tab['panels'].append(panel)
 
