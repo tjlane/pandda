@@ -119,6 +119,8 @@ class _TLSAmplitudeSet(object):
     _terms = None
     _terms_ordered = None
 
+    _description = None
+
     def __init__(self, n_dst=1, log=None):
 #        if log is None: log = Log(verbose=False)
         self.log = log
@@ -126,6 +128,10 @@ class _TLSAmplitudeSet(object):
         self.values = numpy.ones((n_dst, self._n_amp), dtype=self._dtype)
         self._n_prm = numpy.product(self.values.shape)
         self._terms_ordered = list(self._terms)
+
+    @classmethod
+    def description(cls):
+        return cls._description
 
     def __getitem__(self, key):
         if isinstance(key, list) or isinstance(key, tuple):
@@ -148,12 +154,12 @@ class _TLSAmplitudeSet(object):
         assert len(idxs) > 0, 'invalid components {} (should be one of {})'.format(components, self._terms)
         return idxs
 
-    def copy(self):
-        return copy.deepcopy(self)
-
     def component_sets(self):
         """Get a list of all of the "modes" of this amplitude set (the set of matrices that each amplitude affects, e.g. [TLS] or [TS,LS])"""
         return list(self._terms_ordered)
+
+    def copy(self):
+        return copy.deepcopy(self)
 
     def expand(self, datasets=None):
         """Convert n-element vector into 21 element vector for TLS multiplication"""
@@ -216,11 +222,22 @@ class _TLSAmplitudeSet(object):
     def t_l_s_multipliers(self, datasets):
         raise Exception('Not implemented for base class!')
 
-class SimpleTLSAmplitudeSet(_TLSAmplitudeSet):
+class TLS_TLSAmplitudeSet(_TLSAmplitudeSet):
+    """Single-amplitude TLS-amplitude model"""
 
-    _model = 'one amplitude per TLS group'
+    _model = 'single amplitude per TLS group'
     _terms = ['TLS']
     _n_amp = 1
+
+    _description = """
+    TLS amplitude model:
+        One amplitude (a) per TLS model.
+        All TLS matrices are coupled together.
+
+        T -> a * T
+        L -> a * L
+        S -> a * S
+    """
 
     def normalise(self):
         """Normalise the amplitudes and return multipliers to be applied to the TLS model object"""
@@ -246,12 +263,24 @@ class SimpleTLSAmplitudeSet(_TLSAmplitudeSet):
         mult = amps[:,0]
         return (mult, mult, mult)
 
-class TSLSTLSAmplitudeSet(_TLSAmplitudeSet):
-    """Test-class for more complicated TLS-amplitude models"""
+class TS_LS_TLSAmplitudeSet(_TLSAmplitudeSet):
+    """Two-amplitude TLS-amplitude model"""
 
-    _model = 'individual T- and L-amplitudes per TLS group'
+    _model = 'individual translational (TS) and librational (LS) amplitudes per TLS group'
     _terms = ['TS', 'LS']
     _n_amp = 2
+
+    _description = """
+    TS/LS amplitude model:
+        Two amplitudes (a,b) per TLS model.
+        The amplitude of translational (a) and librational (b) motion are varied independently.
+        The resulting T and L matrices are proportional to the square of these amplitudes (a*a and b*b, respectively).
+        The correlation between translation and libration is fixed, so the S matrix is proportional to the product of the two amplitudes.
+
+        T -> a*a * T
+        L -> b*b * L
+        S -> a*b * S
+    """
 
     def normalise(self):
         """Normalise the amplitudes and return multipliers to be applied to the TLS model object"""
@@ -298,10 +327,90 @@ class TSLSTLSAmplitudeSet(_TLSAmplitudeSet):
         s_mult = amps[:,0] * amps[:,1]
         return (t_mult, l_mult, s_mult)
 
+class TS_LS_S_TLSAmplitudeSet(_TLSAmplitudeSet):
+    """Three-amplitude TLS-amplitude model"""
+
+    _model = 'individual translational (TS) and librational (LS) amplitudes per TLS group, with additional S matrix multiplier'
+    _terms = ['TS', 'LS', 'S']
+    _n_amp = 3
+
+    _description = """
+    TS/LS/S amplitude model:
+        Three amplitudes (a,b,c) per TLS model.
+        The amplitude of translational (a) and librational (b) motion are varied independently.
+        The resulting T and L matrices are proportional to the square of these amplitudes (a*a and b*b, respectively).
+        The amount of correlation between translational and librational motion is variable.
+        The S matrix is proportional to the product of the two translational (a) and librational (b) amplitudes and a factor which modifies the amount of correlation (c).
+
+        T ->   a*a * T
+        L ->   b*b * L
+        S -> c*a*b * S
+    """
+    def normalise(self):
+        """Normalise the amplitudes and return multipliers to be applied to the TLS model object"""
+        # Calculate the average of all the amplitudes
+        ts_mean = numpy.round(numpy.mean(self.get(components='TS')), self._decimals)
+        ls_mean = numpy.round(numpy.mean(self.get(components='LS')), self._decimals)
+        s_mean  = numpy.round(numpy.mean(self.get(components='S')), self._decimals)
+        # Start with unitary multipliers
+        t_mult = l_mult = s_mult = 1.0
+        # Normalise T-S amplitude
+        if ts_mean > 1e-6:
+            # Normalise amplitudes and return multipliers
+            self.log('> Normalising TS amplitudes -- dividing by {}'.format(ts_mean))
+            self.set(vals=self.get(components='TS')*(1.0/ts_mean), components='TS')
+            # Calculate normalisation for matrix values
+            t_mult *= ts_mean * ts_mean
+            s_mult *= ts_mean
+        else:
+            self.log('> Average TS amplitude is approximately zero -- not normalising.')
+            t_mult = None
+        # Normalise L-S amplitude
+        if ls_mean > 1e-6:
+            # Normalise amplitudes and return multipliers
+            self.log('> Normalising LS amplitudes -- dividing by {}'.format(ls_mean))
+            self.set(vals=self.get(components='LS')*(1.0/ls_mean), components='LS')
+            # Calculate normalisation for matrix values
+            l_mult *= ls_mean * ls_mean
+            s_mult *= ls_mean
+        else:
+            self.log('> Average LS amplitude is approximately zero -- not normalising.')
+            l_mult = None
+        # Normalise S amplitude
+        if (t_mult is None) and (l_mult is None):
+            self.log('> Average TS and LS amplitudes are approximately zero -- not normalising S amplitude')
+            s_mult = None
+        elif s_mean > 1e-6:
+            # Normalise amplitudes and return multipliers
+            self.log('> Normalising S amplitudes -- dividing by {}'.format(s_mean))
+            self.set(vals=self.get(components='S')*(1.0/s_mean), components='S')
+            # Calculate normalisation for matrix values
+            s_mult *= s_mean
+        else:
+            self.log('> Average S amplitude is approximately zero -- not normalising.')
+            pass
+
+        # Return the multipliers for the T-L-S matrices
+        return t_mult, l_mult, s_mult
+
+    def t_l_s_multipliers(self, datasets):
+        """Return T, L, and S matrix multipliers for each dataset"""
+        amps = self.values
+        if datasets is not None:
+            amps = amps[datasets]
+        n_dst = len(amps)
+        assert amps.shape == (n_dst,self._n_amp)
+        t_mult = amps[:,0] * amps[:,0]
+        l_mult = amps[:,1] * amps[:,1]
+        s_mult = amps[:,0] * amps[:,1] * amps[:,2]
+        return (t_mult, l_mult, s_mult)
+
 class MultiDatasetTLSModel(object):
 
     _mdl_classes = {'TLS': TLSModel}
-    _amp_classes = {'TLS': SimpleTLSAmplitudeSet, 'TS/LS': TSLSTLSAmplitudeSet}
+    _amp_classes = {'TLS':      TLS_TLSAmplitudeSet,
+                    'TS/LS':    TS_LS_TLSAmplitudeSet,
+                    'TS/LS/S':  TS_LS_S_TLSAmplitudeSet}
 
     def __init__(self, n_dst=1, index=0, model='TLS', amplitudes='TLS', log=None):
 #        if log is None: log = Log(verbose=False)
@@ -312,7 +421,16 @@ class MultiDatasetTLSModel(object):
         self.amplitudes = self._amp_classes.get(amplitudes)(n_dst=n_dst, log=self.log)
 
         # Block class function and delete attributes - should not be used after initialisation
-        self.set_amplitude_model = None
+        self.get_amplitude_model_class = None
+
+    @classmethod
+    def get_amplitude_model_class(cls, amplitude_model):
+        if amplitude_model not in cls._amp_classes:
+            raise Sorry('Amplitude model "{}" not found. Possible choices: {}'.format(amplitude_model, sorted(cls._amp_classes.keys())))
+        return cls._amp_classes.get(amplitude_model)
+
+    def copy(self):
+        return copy.deepcopy(self)
 
     def component_sets(self):
         return self.amplitudes.component_sets()
@@ -328,9 +446,6 @@ class MultiDatasetTLSModel(object):
     def normalise(self, check_models=False):
         """Normalise the TLS amplitudes to an average of 1"""
 
-        if check_models and (not self.model.is_valid()):
-            raise Failure('model not valid before normalisation: \n{}'.format(self.model.summary()))
-
         # Normalise amplitudes and extract multipliers for model
         multipliers = self.amplitudes.normalise()
 
@@ -342,17 +457,6 @@ class MultiDatasetTLSModel(object):
             # Apply normalisation to TLS model
             self.model.set(vals=self.model.get(components=cpt)*mult,
                            components=cpt)
-
-        # Check that core-model is valid after normalisation
-        if check_models and (not self.model.is_valid()):
-            raise Failure('model not valid after normalisation: \namplitudes {}\n\n{}'.format(multipliers, self.model.summary()))
-            self.reset('all')
-
-#        # Check all dataset-multiplied models
-#        for i, model in enumerate(self.expand()):
-#            if not model.is_valid():
-#                raise Failure('dataset-model not valid after normalisation: \ndataset {}\n\n amplitudes {}\n\n{}'.format(i, multipliers, self.model.summary()))
-#                self.amplitudes.set(vals=0.0, components='all', datasets=[i])
 
     def reset(self, components='all'):
         """Reset model back to zero-value matrices and unitary amplitudes"""
@@ -385,10 +489,13 @@ class MultiDatasetTLSModel(object):
         for cpts in self.component_sets():
             self.log('Check for negative {} amplitudes of model {}'.format(cpts, self.index+1))
 
+            # Extract amplitudes
             amp_vals = self.amplitudes.get(components=cpts)
+            # Error for any negative amplitudes below cutoff
             if (amp_vals < error_cut).any():
                 raise Failure('Negative amplitudes < {} obtained for model {} component {}.\n'.format(error_cut, self.index+1, cpts) + \
                               '\n'.join(['> Dataset {}, value: {}'.format(d+1, a) for d,a in enumerate(amp_vals) if a<error_cut]))
+            # Reset any other negative amplitudes
             reset_sel = (amp_vals < 0.0)
             if reset_sel.any():
                 reset_dst = numpy.where(reset_sel)[0]
@@ -428,6 +535,9 @@ class MultiDatasetTLSModelList(object):
 
     def __iter__(self):
         return iter(self._list)
+
+    def copy(self):
+        return copy.deepcopy(self)
 
     def get(self, index):
         if isinstance(index, int):

@@ -34,7 +34,7 @@ from giant.xray.tls import phenix_find_tls_groups
 from giant.jiffies import multi_table_ones
 
 from pandemic.adp import html as pandemic_html
-from pandemic.adp.tls import MultiDatasetTLSModelList
+from pandemic.adp.tls import MultiDatasetTLSModelList, MultiDatasetTLSModel
 
 try:
     import matplotlib
@@ -161,7 +161,7 @@ fitting {
             a = 1e2
                 .type = float
                 .help = 'fixed penalty for positive penalty values'
-            b = 1e2
+            b = 0
                 .type = float
                 .help = 'multiplicative penalty for positive penalty values'
         }
@@ -3490,7 +3490,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 self.log('Optimising using {} datasets'.format(len(opt_dset_mask)))
                 self.log.bar(True, True)
                 self.log('Optimisation order for TLS matrix values: \n\t{}'.format('\n\t'.join(['{}) {}'.format(i+1, c) for i, c in enumerate(cpt_groups)])))
-                self.log('Optimisation order for TLS amplitude values: \n\t{}'.format('\n\t'.join(['{}) {}'.format(i+1, c) for i, c in enumerate(self.parameters().get(index=i_tls).component_sets())])))
+                self.log('Optimising all TLS amplitude values: \n\t{}'.format('\n\t'.join(['{}) {}'.format(i+1, c) for i, c in enumerate(self.parameters().get(index=i_tls).component_sets())])))
 
                 # Append to running list
                 if i_tls not in mdl_cuml: mdl_cuml.append(i_tls)
@@ -3659,13 +3659,15 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
 
         for i_tls, model in enumerate(self._parameters):
 
-            self.log('Checking physicality of model {}'.format(i_tls+1))
+            self.log('Checking physicality of TLS model {}'.format(i_tls+1))
             self.log.bar()
             # Check that the core model is valid
             if model.model.is_valid():
                 self.log('Core model is valid')
             else:
                 self.log('Core model is invalid -- attempting to re-optimise \n{}'.format(model.model.summary()))
+                # Create copy of the model first
+                model_cpy = model.copy()
                 # Run optimisations with the small model delta
                 self.optimise_models(models=[i_tls],
                                      components='TLS',
@@ -3674,10 +3676,8 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 # Check again if the core model is valid
                 model = self.parameters().get(index=i_tls)
                 if not model.model.is_valid():
-                    self.log('Core model is still invalid -- resetting both model and amplitudes')
-                    # XXX XXX XXX
-                    raise Failure('----')
-                    # XXX XXX XXX
+                    self.log('Core model is still invalid -- erroring')
+                    raise Failure('Failed to fix model: model_cpy.summary()')
                     model.reset('all')
                     continue
 
@@ -3818,6 +3818,12 @@ def run(params):
     log(' \\\n\t'.join(['pandemic.adp'] + sys.argv[1:]))
     log.heading('Processed parameters')
     log(master_phil.format(params).as_str())
+
+    # Process/report on input parameters
+    log.bar(True, False)
+    log('Selected TLS amplitude model: {}'.format(params.fitting.tls_amplitude_model))
+    log(MultiDatasetTLSModel.get_amplitude_model_class(params.fitting.tls_amplitude_model).description())
+    log.bar(False, True)
 
     # Load input pickle object
     if (params.input.pickle is None):
