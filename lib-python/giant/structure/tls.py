@@ -42,10 +42,10 @@ def tls_str_to_n_params(s, include_szz=True):
 
 ############
 
-def validate_tls_object(tls_object, eps=1.e-12):
+def validate_tls_object(tls_object, eps=1.e-6):
     return validate_tls_params(tls_vector=tls_object.t+tls_object.l+tls_object.s, eps=eps)
 
-def validate_tls_params(tls_vector, eps=1.e-12, silent=False):
+def validate_tls_params(tls_vector, eps=1.e-6, silent=False):
     """Validate a set of TLS matrices using the approach from phenix.tls_analysis. Returns True or False."""
     t, l, s = get_t_l_s_from_vector(tls_vector)
     try:
