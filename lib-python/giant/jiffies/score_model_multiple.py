@@ -43,6 +43,11 @@ input {
     labels = basename *folder_name
         .type = choice
         .multiple = False
+
+    f_label = None
+        .help = 'Column label for experimental amplitudes in input mtz files. If left blank will try to guess the labels.'
+        .type = str
+        .multiple = False
 }
 selection {
     res_names = LIG,UNL,DRG

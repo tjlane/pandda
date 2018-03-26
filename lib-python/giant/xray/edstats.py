@@ -3,19 +3,21 @@
 import os, sys, tempfile
 import pandas
 
+from libtbx.utils import Sorry, Failure
+
 from bamboo.common.command import CommandManager
 from bamboo.ccp4_utils import MtzSummary
 
 class Edstats(object):
 
 
-    def __init__(self, mtz_file, pdb_file):
-        scores, command = score_with_edstats_to_dict(mtz_file=mtz_file, pdb_file=pdb_file)
+    def __init__(self, mtz_file, pdb_file, f_label=None):
+        scores, command = score_with_edstats_to_dict(mtz_file=mtz_file, pdb_file=pdb_file, f_label=f_label)
         self.scores = pandas.DataFrame.from_dict(scores)
         self._command = command
 
         if self.scores.empty and self._command.error:
-            raise Exception('EDSTATS ERROR\n=========>\n{!s}\n=========>'.format(self._command.error))
+            raise Failure('EDSTATS has failed to run (error message below)\n=========>\n{!s}\n=========>'.format(self._command.error))
 
     def extract_residue_group_scores(self, residue_group, data_table=None, rg_label=None, column_suffix=''):
         """Extract density quality metrics for a residue group from precalculated edstats scores"""
@@ -25,7 +27,7 @@ class Edstats(object):
         if rg_label is None:    rg_label = (rg.unique_resnames()[0]+'-'+rg.parent().id+'-'+rg.resseq+rg.icode).replace(' ','')
         if data_table is None:  data_table = pandas.DataFrame(index=[rg_label], column=[])
         # Check validity
-        if len(rg.unique_resnames()) != 1: raise Exception(rg_label+': More than one residue name associated with residue group -- cannot process')
+        if len(rg.unique_resnames()) != 1: raise Failure(rg_label+': More than one residue name associated with residue group -- cannot process')
 
         # Extract residue scores
         ed_scores = self.scores[(rg.unique_resnames()[0], rg.parent().id, rg.resseq_as_int(), rg.icode)]
@@ -85,11 +87,11 @@ def score_file_with_edstats(mtz_file, pdb_file):
 
     return edstats, summary
 
-def score_with_edstats_to_dict(mtz_file, pdb_file):
+def score_with_edstats_to_dict(mtz_file, pdb_file, f_label=None):
     """Scores residues against density, then converts to dict"""
 
     # Generate the list of the EDSTATS scores for each residue
-    scores, header, command = score_with_edstats_to_list(mtz_file, pdb_file)
+    scores, header, command = score_with_edstats_to_list(mtz_file, pdb_file, f_label=f_label)
     # Create dict for the mapping between residue_id and scores
     mapping = {}
     for label, values in scores:
@@ -100,20 +102,28 @@ def score_with_edstats_to_dict(mtz_file, pdb_file):
 
     return mapping, command
 
-def score_with_edstats_to_list(mtz_file, pdb_file):
+def score_with_edstats_to_list(mtz_file, pdb_file, f_label=None):
     """Scores residues against density, then returns list"""
 
-    assert os.path.exists(mtz_file), 'MTZ FILE FOR EDSTATS DOES NOT EXIST! {!s}'.format(mtz_file)
-    assert os.path.exists(pdb_file), 'PDB FILE FOR EDSTATS DOES NOT EXIST! {!s}'.format(mtz_file)
+    assert os.path.exists(mtz_file), 'MTZ file for edstats does not exist! {!s}'.format(mtz_file)
+    assert os.path.exists(pdb_file), 'PDB file for edstats does not exist! {!s}'.format(mtz_file)
 
     # Create a file handle and path for the output
     temp_handle, temp_path = tempfile.mkstemp(suffix='.table', prefix='edstats_')
 
-    # Find the labels in the mtzfile
-    file_obj = MtzSummary(mtz_file)
-    f_label = file_obj.label.f
+    # Collate summary of MTZ file
+    m_summ = MtzSummary(mtz_file)
+
+    # Use column labels if given
+    if (f_label is not None) and (f_label not in m_summ.summary['colheadings']):
+        raise Sorry('Selected f_label ({}) not found in mtz file ({}) -- mtz contains columns {}'.format(f_label, mtz_file, m_summ.summary['colheadings']))
+    # else guess the labels in the mtzfile
+    else:
+        f_label = m_summ.label.f
+
+    # Check for f_label
     if not f_label:
-        raise ReflectionException('MTZ Summary ERROR: No F Label Found in MTZ File: {!s}'.format(mtz_file))
+        raise Sorry('No F label selected/found in mtz file: {!s} -- mtz contains columns {}'.format(mtz_file, m_summ.summary['colheadings']))
 
     # Run EDSTATS on the files
     try:
@@ -131,8 +141,9 @@ def score_with_edstats_to_list(mtz_file, pdb_file):
 
     # Process the output header
     if output:
+        # Check header and then remove the first three columns
         header = output.pop(0).split()
-        assert header[:3] == ['RT', 'CI', 'RN'], 'EDSTATS OUTPUT HEADERS ARE NOT AS EXPECTED! {!s}'.format(output)
+        assert header[:3] == ['RT', 'CI', 'RN'], 'edstats output headers are not as expected! {!s}'.format(output)
         num_fields = len(header)
         header = header[3:]
     else:
@@ -151,7 +162,7 @@ def score_with_edstats_to_list(mtz_file, pdb_file):
         if len(fields) != num_fields:
             raise ValueError("Error Parsing EDSTATS output: Header & Data rows have different numbers of fields")
 
-        # Get and process the residue information
+        # Get and process the residue information - TODO CI column can include alternate conformer?! TODO
         residue, chain, resnum = fields[:3]
         try:
             resnum = int(resnum)
@@ -171,7 +182,10 @@ def score_with_edstats_to_list(mtz_file, pdb_file):
                 try:
                     fields[i] = int(x)
                 except ValueError:
-                    fields[i] = float(x)
+                    try:
+                        fields[i] = float(x)
+                    except ValueError:
+                        pass
 
         outputdata.append([(residue, chain, resnum, inscode),fields])
 

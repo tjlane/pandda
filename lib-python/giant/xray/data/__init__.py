@@ -35,13 +35,13 @@ def estimate_wilson_b_factor(miller_array, low_res_cutoff=4.0):
     binner = miller_array.setup_binner(auto_binning=True)
     binned = miller_array.wilson_plot(use_binning=True)
     # Convert to scale
-    y_values = flex.log(flex.double(binned.data[1:-1]))
-    x_values = flex.pow2(binner.bin_centers(1))
-    # Check all values are valid
-    mask = flex.bool((True - numpy.isnan(list(y_values)) - numpy.isnan(list(x_values))).tolist())
+    x_values = numpy.square(numpy.array(binner.bin_centers(1), dtype=float))
+    y_values = numpy.log(numpy.array(binned.data[1:-1],     dtype=float))
+    # Select only those which are valid in both
+    mask = numpy.logical_not(numpy.logical_or(numpy.isnan(x_values), numpy.isnan(y_values)))
     # Perform scaling
-    scl = LinearScaling(x_values   = x_values.select(mask),
-                        ref_values = y_values.select(mask))
+    scl = LinearScaling(x_values   = flex.double(x_values[mask].tolist()),
+                        ref_values = flex.double(y_values[mask].tolist()))
 
     return -0.5*scl.optimised_values[1]
 

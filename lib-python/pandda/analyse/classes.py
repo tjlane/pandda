@@ -1366,15 +1366,39 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         n_offset = self.pickled_dataset_meta.number_of_datasets
         # ==============================>
-        # Load datasets in parallel
+        # Create dataset objects
         # ==============================>
+        loaded_datasets = []; errors = []
+        self.log.bar()
+        self.log('Loading Datasets...')
         start = time.time()
+        # ==============================>
+        for num, (pdb, mtz, dtag) in enumerate(self.new_files()):
+            try:
+                dataset = PanddaDataset.from_file(model_filename=pdb, data_filename=mtz).label(num=num+n_offset, tag=dtag)
+                loaded_datasets.append(dataset)
+            except Sorry as e:
+                if str(e) in ['There is no crystal symmetry for this structure',
+                              'There is no unit cell information for this structure',
+                              'There is no space group information for this structure']:
+                    err_msg = str(e) + ' -- does the input PDB file have a valid CRYST line?\n(path {})'.format(pdb)
+                else:
+                    err_msg = str(e)
+                errors.append('Dataset {}: {}'.format(dtag, err_msg))
+        # ==============================>
+        self.log('> Adding Datasets > Time Taken: {!s} seconds'.format(int(time.time()-start)), True)
         self.log.bar()
-        print('Loading Datasets...')
-        loaded_datasets = [PanddaDataset.from_file(model_filename=pdb, data_filename=mtz).label(num=num+n_offset, tag=dtag) for num, (pdb, mtz, dtag) in enumerate(self.new_files())]
-        finish = time.time()
-        self.log('> Adding Datasets > Time Taken: {!s} seconds'.format(int(finish-start)))
-        self.log.bar()
+        # ==============================>
+        # Report Errors
+        # ==============================>
+        if errors:
+            self.log.subheading('{} errors encountered while loading datasets'.format(len(errors)))
+            for err_msg in errors:
+                self.log.bar()
+                self.log(err_msg)
+            self.log.bar()
+            self.log('')
+            raise Failure('{} datasets had problems during loading. Error messages printed above.'.format(len(errors)))
         # ==============================>
         # Initialise loaded datasets
         # ==============================>
