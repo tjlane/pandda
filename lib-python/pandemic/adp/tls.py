@@ -3,7 +3,8 @@ import numpy
 
 from libtbx.utils import Sorry, Failure
 
-from giant.structure.tls import uij_from_tls_vector_and_origin, get_t_l_s_from_vector, validate_tls_params
+from giant.structure.tls import uij_from_tls_vector_and_origin, get_t_l_s_from_vector
+from mmtbx.tls.decompose import decompose_tls_matrices
 
 ############################################################################
 
@@ -70,12 +71,11 @@ class TLSModel(object):
     def is_valid(self, eps=None):
         """Check whether the TLS matrices are physically valid"""
         if eps is None: eps = self._tolerance
-        result = validate_tls_params(self.values, eps=eps)
-        if result is True:
-            return True
-        else:
-            #self.log('TLS matrices are invalid: {}'.format(str(result)))
-            return False
+        T,L,S = get_t_l_s_from_vector(vals=self.values)
+        result = decompose_tls_matrices(T=T, L=L, S=S,
+                                        l_and_s_in_degrees=True,
+                                        tol=eps)
+        return result.is_valid()
 
     def multiply(self, amplitudes):
         assert len(amplitudes) == self._n_prm

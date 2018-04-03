@@ -23,7 +23,7 @@ from bamboo.common.command import CommandManager
 
 from giant.manager import Program
 from giant.dataset import CrystallographicModel
-from giant.structure.tls import tls_str_to_n_params, validate_tls_params
+from giant.structure.tls import tls_str_to_n_params
 from giant.structure.uij import check_uij_positive_semi_definite
 from giant.structure.formatting import ShortLabeller, PhenixSelection, PymolSelection
 from giant.structure.select import protein, backbone, sidechains
@@ -377,13 +377,11 @@ class UijPenalties(object):
             self.values.__setattr__(k, args[k])
         return self.values.summary()
 
-    def tls_params(self, values):
+    def tls_params(self, model):
         """Return penalty for having unphysical TLS models"""
         assert len(values) == 21
-        # Returns True or <error string>
-        tls_penalty = validate_tls_params(tls_vector=values, eps=self._tls_tolerance)
         # Convert to float for penalty
-        tls_penalty = 0.0 if tls_penalty is True else 1.0
+        tls_penalty = 0.0 if model.is_valid(eps=self._tls_tolerance) else 1.0
         # Calculate and return total penalty
         return self._standard_penalty_function(penalty       = tls_penalty,
                                                fixed_penalty = self.values.mdl_fixed,
@@ -3376,13 +3374,13 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             # Calculate model penalties (if required -- not required if not optimising model...)
             if self._opt_dict['model']:
                 # Penalise physically-invalid TLS models
-                tls_penalties.append(self.penalty.tls_params(values=mode.model.values))
+                tls_penalties.append(self.penalty.tls_params(model=mode.model))
 
             # Calculate dataset penalties
             if self._opt_dict['amplitudes']:
                 # Penalties for combinations of amplitudes that lead to non-physical TLS models
                 datasets = self._opt_dict['i_dst']
-                amp_penalties.extend([self.penalty.tls_params(values=model.values) for model in mode.expand(datasets=datasets)])
+                amp_penalties.extend([self.penalty.tls_params(model=model) for model in mode.expand(datasets=datasets)])
                 # Penalties for negative amplitudes, etc
                 amp_penalties.append(self.penalty.amplitudes(values=mode.amplitudes.values))
 
