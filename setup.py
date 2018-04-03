@@ -2,6 +2,8 @@ import os, sys, glob
 from setuptools import setup, find_packages, findall
 from distutils.spawn import find_executable
 
+VERSION = '0.2.13-dev'
+
 #####################################################################################
 
 if '--for-ccp4' in sys.argv:
@@ -15,8 +17,6 @@ if '--for-ccp4' in sys.argv:
                         'bin/giant.merge_conformations',
                         'bin/giant.split_conformations',
                       ]
-    # And clean up
-    sys.argv.remove('--for-ccp4')
 else:
     # Standard install
     install_scripts = findall(dir='bin')
@@ -27,8 +27,14 @@ if '--python' in sys.argv:
     # And clean up
     sys.argv.remove('--python')
     sys.argv.remove(python)
-else:
+elif '--for-ccp4' in sys.argv:
     python = 'ccp4-python'
+else:
+    python = 'cctbx.python'
+
+# And clean up
+try: sys.argv.remove('--for-ccp4')
+except: pass
 
 print('PanDDA scripts will run using: {}'.format(python))
 assert find_executable(python), "Can't find executable - is this the correct python: {}".format(python)
@@ -42,7 +48,7 @@ for s in install_scripts:
 #####################################################################################
 
 setup(  name                = 'panddas',
-        version             = '0.2.12-dev',
+        version             = VERSION,
         description         = 'Multi-dataset crystallographic analyses',
         author              = 'Nicholas M Pearce',
         author_email        = 'nicholas.pearce.0@gmail.com',
@@ -57,9 +63,7 @@ setup(  name                = 'panddas',
         package_dir         = {'':'lib-python'},
         scripts             = install_scripts,
         packages            = find_packages(where   ='lib-python',
-                                            exclude = ( 'pandemic',     'pandemic.*',
-                                                        'phenix_pandda*',
-                                                        'prototypes*',
+                                            exclude = ( 'prototypes*',
                                                         '*egg*',
                                                         )
                                             ),
