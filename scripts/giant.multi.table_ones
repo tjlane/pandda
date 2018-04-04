@@ -1,2 +1,2 @@
 #!/bin/sh
-ccp4-python -Qnew -m giant.jiffies.multi_table_ones "$@"
+cctbx.python -Qnew -m giant.jiffies.multi_table_ones "$@"

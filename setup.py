@@ -42,7 +42,7 @@ assert find_executable(python), "Can't find executable - is this the correct pyt
 # Modify the scripts to use the correct python/coot
 for s in install_scripts:
     with open(s, 'r') as fh: s_conts = fh.read()
-    s_conts = s_conts.replace('ccp4-python', python)
+    s_conts = s_conts.replace('cctbx.python', python)
     with open(s, 'w') as fh: fh.write(s_conts)
 
 #####################################################################################

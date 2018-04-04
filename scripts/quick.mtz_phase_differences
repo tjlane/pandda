@@ -1,2 +1,2 @@
 #!/bin/sh
-ccp4-python -Qnew -m giant.jiffies.calculate_phase_differences "$@"
+cctbx.python -Qnew -m giant.jiffies.calculate_phase_differences "$@"
