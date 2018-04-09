@@ -9,7 +9,7 @@ from bamboo.common.logs import LogStream
 from scitbx import matrix, linalg
 from scitbx.array_family import flex
 from mmtbx.tls import tlso, uaniso_from_tls_one_group
-from mmtbx.decompose import decompose_tls_matrices
+from mmtbx.tls.decompose import decompose_tls_matrices
 
 deg_to_rad_scale = math.pi/180
 

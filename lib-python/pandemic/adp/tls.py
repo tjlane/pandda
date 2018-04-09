@@ -72,9 +72,13 @@ class TLSModel(object):
         """Check whether the TLS matrices are physically valid"""
         if eps is None: eps = self._tolerance
         T,L,S = get_t_l_s_from_vector(vals=self.values)
-        result = decompose_tls_matrices(T=T, L=L, S=S,
-                                        l_and_s_in_degrees=True,
-                                        tol=eps)
+        try:
+            result = decompose_tls_matrices(T=T, L=L, S=S,
+                                            l_and_s_in_degrees=True,
+                                            tol=eps)
+        except Exception as e:
+            self.log(e)
+            return False
         return result.is_valid()
 
     def multiply(self, amplitudes):

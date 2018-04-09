@@ -1,4 +1,4 @@
-import os, sys, copy, traceback, re
+import os, sys, copy, traceback
 import math, itertools, operator, collections
 
 import scipy.cluster
@@ -14,8 +14,6 @@ from libtbx.utils import Sorry, Failure
 from scitbx.array_family import flex
 from scitbx import simplex, linalg
 
-from mmtbx.secondary_structure import dssp
-
 from bamboo.common import Meta, Info, ListStream
 from bamboo.common.logs import Log, LogStream
 from bamboo.common.path import easy_directory, rel_symlink
@@ -26,7 +24,7 @@ from giant.dataset import CrystallographicModel
 from giant.structure.tls import tls_str_to_n_params
 from giant.structure.uij import check_uij_positive_semi_definite
 from giant.structure.formatting import ShortLabeller, PhenixSelection, PymolSelection
-from giant.structure.select import protein, backbone, sidechains
+from giant.structure.select import protein, backbone, sidechains, default_secondary_structure_selections_filled
 from giant.structure.pymol import auto_residue_images, auto_chain_images, selection_images
 from giant.xray.crystal import CrystalSummary
 from giant.xray.refine import refine_phenix
@@ -112,7 +110,7 @@ output {
         .type = bool
 }
 levels {
-    auto_levels = *chain *auto_group secondary_structure *residue *backbone *sidechain atom
+    auto_levels = *chain auto_group *secondary_structure *residue *backbone *sidechain atom
         .type = choice(multi=True)
     custom_level
         .multiple = True
@@ -245,61 +243,6 @@ def rms(vals, axis=None):
 def uij_to_b(uij):
     return EIGHT_PI_SQ*numpy.mean(uij[:,0:3],axis=1)
 
-def default_secondary_structure_selections(hierarchy):
-    return dssp.dssp(hierarchy).get_annotation().as_atom_selections()
-
-def default_secondary_structure_selections_filled(hierarchy):
-    """Return secondary structure selections and fill gaps with new selections"""
-
-    # Get automatic secondary structure elements
-    auto_sel = default_secondary_structure_selections(hierarchy=hierarchy)
-    # Extract chain and residue numbers
-    sel_regex = re.compile("chain '(.*?)' and resid (.*?). through (.*)")
-    auto_sel_proc = [sel_regex.findall(s)[0] for s in auto_sel]
-
-    # Output template and list
-    sel_template = "chain '{}' and resid {:d}  through {:d} "
-    output_sel = []
-
-    # Extract the chain IDs
-    chain_ids = numpy.unique(zip(*auto_sel_proc)[0])
-
-    # Iterate through chains
-    for c_id in chain_ids:
-        # Extract residue start and end numbers
-        c_sels = [map(int, s[1:]) for s in auto_sel_proc if s[0]==c_id]
-        # Extract chain
-        c_obj  = [c for c in hierarchy.chains() if (c.is_protein() and c.id==c_id)]
-        assert len(c_obj) == 1
-        c_obj = c_obj[0]
-        # Get the first and last residues of the chain
-        c_start = min([r.resseq_as_int() for r in c_obj.residue_groups()])
-        c_end   = max([r.resseq_as_int() for r in c_obj.residue_groups()])
-
-        # Beginning of the chain (unless one residue)
-        if (c_start < c_sels[0][0]) and (c_sels[0][0] - c_start > 2):
-            new_sel = sel_template.format(c_id, c_start, c_sels[0][0]-1)
-            output_sel.append(new_sel)
-
-        # Middle of the chain
-        for i in xrange(len(c_sels)):
-            # Recreate selection for this group
-            new_sel = sel_template.format(c_id, c_sels[i][0], c_sels[i][1])
-            output_sel.append(new_sel)
-            # Break if end of chain
-            if i+1 == len(c_sels): break
-            # Check if gap between this and next (and that more than one residue in gap)
-            if (c_sels[i+1][0] - c_sels[i][1]) > 2:
-                new_sel = sel_template.format(c_id, c_sels[i][1]+1, c_sels[i+1][0]-1)
-                output_sel.append(new_sel)
-
-        # End of the chain (unless one residue)
-        if (c_end > c_sels[-1][1]) and (c_end - c_sels[-1][1] > 2):
-            new_sel = sel_template.format(c_id, c_sels[-1][1]+1, c_end)
-            output_sel.append(new_sel)
-
-    return output_sel
-
 ############################################################################
 #                        Multi-processing functions                        #
 ############################################################################
@@ -311,11 +254,12 @@ def wrapper_run(arg):
     return arg.run()
 
 def wrapper_optimise(args):
-    fitter = args
+    fitter, tolerance = args
     try:
-        fitter._optimise(running_summary=False)
+        fitter._optimise(tolerance=tolerance,
+                         running_summary=False)
         return fitter
-    except:
+    except Exception as e:
         return traceback.format_exc()
 
 def wrapper_fit(args):
@@ -326,7 +270,7 @@ def wrapper_fit(args):
         fitter.optimise(**kw_args)
         msg = 'Finished'
         return fitter
-    except:
+    except Exception as e:
         tr = traceback.format_exc()
         fitter.log(tr)
         return tr
@@ -379,7 +323,6 @@ class UijPenalties(object):
 
     def tls_params(self, model):
         """Return penalty for having unphysical TLS models"""
-        assert len(values) == 21
         # Convert to float for penalty
         tls_penalty = 0.0 if model.is_valid(eps=self._tls_tolerance) else 1.0
         # Calculate and return total penalty
@@ -1000,7 +943,7 @@ class MultiDatasetUijParameterisation(Program):
                         [fh.write(l[i].strip()+'\n') for l in headers]
                 h.write_pdb_file(mdl_f, open_append=open_append, crystal_symmetry=mdl.crystal_symmetry)
                 pdbs.append(mdl_f)
-            except:
+            except Exception as e:
                 self.log.bar()
                 self.log('ERROR: Failed to write structure for dataset {}: ({})'.format(mdl.tag, mdl_f))
                 self.log(traceback.format_exc())
@@ -1056,7 +999,11 @@ class MultiDatasetUijParameterisation(Program):
         n_levels = len(levels)
 
         # Extract the centres of mass for each dataset
-        coms = self.fitter.observed_com if (datasets is None) else self.fitter.observed_com[datasets]
+        if (datasets is None):
+            tls_origins = self.fitter.tls_origins
+        else:
+            tls_origins = self.fitter.tls_origins[:,datasets,:]    # (n_partitions, n_datasets, 3)
+        tls_origins_hash = self.fitter.tls_origins_hash
 
         # Extract the selected level objects
         sel_level_objs = [self.fitter.levels[i] for i in levels]
@@ -1089,12 +1036,18 @@ class MultiDatasetUijParameterisation(Program):
             assert len(tls_models) == n_dst
             assert len(tls_models[0]) == len(fitters)-fitters.count(None)
 
+            # Get the origin for this dataset
+            group_origins = [f for f in fitters if (f is not None)][0].atomic_com
+
             # Iterate through the datasets and create TLSOs for each dataset
             for i_dst, tls_list in enumerate(tls_models):
                 # Add all the levels for each dataset
                 total_model = reduce(operator.add, tls_list)
                 # Extract TLS remark lines from the
-                tls_obj = mmtbx.tls.tools.tlso(t=total_model.get('T'), l=total_model.get('L'), s=total_model.get('S'), origin=coms[i_dst])
+                tls_obj = mmtbx.tls.tools.tlso(t = total_model.get('T'),
+                                               l = total_model.get('L'),
+                                               s = total_model.get('S'),
+                                               origin = group_origins[i_dst])
                 # Append to the tlso list
                 dataset_objs[i_dst].append((tls_obj, selection_string))
 
@@ -1250,8 +1203,6 @@ class MultiDatasetUijParameterisation(Program):
                                   legends       = ['TLS (Model {})'.format(i+1) for i in mdls],
                                   title         = 'Level {} - individual TLS model contributions'.format(i_level+1),
                                   v_line_hierarchy = boundaries if (sum(boundaries.atoms().extract_b()) < 0.5*len(list(boundaries.select(sel).residue_groups()))) else None)
-
-            #embed()
 
         return
 
@@ -1610,10 +1561,15 @@ class MultiDatasetUijParameterisation(Program):
         #    if os.path.islink(mdl.o_mtz):
         #        os.remove(mdl.o_mtz)
 
-        assert os.path.exists(table_one_csv_orig)
-        assert os.path.exists(table_one_csv_fitd)
-        if self.models[0].r_pdb is not None:
-            assert os.path.exists(table_one_csv_refd)
+        try:
+            assert os.path.exists(table_one_csv_orig)
+            assert os.path.exists(table_one_csv_fitd)
+            if self.models[0].r_pdb is not None:
+                assert os.path.exists(table_one_csv_refd)
+        except Exception as e:
+            raise Sorry('phenix.table_one did not generate output for one or more sets of structures.\n' + \
+                        'Please look at the log files in this folder for information:\n' + \
+                        os.path.dirname(os.path.realpath(table_one_csv_orig)))
 
     def write_combined_csv(self, uij_fit, uij_inp, out_dir='./'):
         """Add data to CSV and write"""
@@ -2492,7 +2448,6 @@ class MultiDatasetHierarchicalUijFitter(object):
         # Store observed values (needed for later)
         self.observed_uij = observed_uij
         self.observed_xyz = observed_xyz
-        self.observed_com = numpy.mean(observed_xyz, axis=1)
 
         # Masks to exclude datasets or atoms from optimisation
         self.dataset_mask = numpy.ones(observed_uij.shape[0], dtype=bool)
@@ -2502,13 +2457,23 @@ class MultiDatasetHierarchicalUijFitter(object):
         self.level_labels = level_labels if level_labels else ['Level {}'.format(i) for i in xrange(1, len(level_array)+1)]
         self.level_array = level_array
 
+        assert len(self.level_labels) == len(self.level_array)
+
+        # Calculate the tls origins based on the optimial segmentation
+        self.tls_origins_hash, self.tls_origins = self.get_non_segmenting_tls_origins_and_partitions()
+        assert self.tls_origins_hash.shape == (observed_xyz.shape[1],)                # n_atoms
+        assert self.tls_origins.shape[0] == len(numpy.unique(self.tls_origins_hash))  # n_partitions
+        assert self.tls_origins.shape[1] == observed_xyz.shape[0]                     # n_datasets
+        assert self.tls_origins.shape[2] == 3                                         # ... n_dim
+
         # Series of objects to fit the Uij TLS groups
         self.levels = []
         for idx, (lab, group_idxs) in enumerate(zip(self.level_labels, self.level_array)):
             # Create fitter for each level
             self.levels.append(MultiDatasetUijTLSGroupLevel(observed_uij = observed_uij,
                                                             observed_xyz = observed_xyz,
-                                                            observed_com = self.observed_com,
+                                                            tls_origins      = self.tls_origins,
+                                                            tls_origins_hash = self.tls_origins_hash,
                                                             group_idxs = group_idxs,
                                                             n_tls = self.params.tls_models_per_tls_group,
                                                             index = idx+1,
@@ -2524,7 +2489,6 @@ class MultiDatasetHierarchicalUijFitter(object):
                                                      penalties = self.params.penalties,
                                                      log = self.log)
 
-        assert len(self.level_labels) == len(self.level_array)
         assert len(self.level_labels) == len(self.levels)
 
         self.apply_masks()
@@ -2539,6 +2503,119 @@ class MultiDatasetHierarchicalUijFitter(object):
         arr_sum = numpy.sum(arr, axis=0)
         assert arr_sum.shape == self.observed_uij.shape
         return self.observed_uij - arr_sum
+
+    def get_non_segmenting_tls_origins_and_partitions(self):
+        """Calculate the largest groups that are possible without any partitioning on any level existing between two groups"""
+
+        self.log.subheading('Identifying partitioning of atoms that does not split any TLS groups')
+
+        array = self.level_array
+        labels = self.level_labels
+
+        atom_xyzs = self.observed_xyz
+        atom_hash = None
+        atom_coms = []
+
+        # Find the levels with the largest coverage (number of atoms in groups in this level)
+        self.log('Calculating the number of atoms that are in groups for each level:')
+        n_atoms = array.shape[1]
+        n_atoms_per_level = [(l>=0).sum() for l in array]
+        self.log('Atoms covered per level: \n\t{}'.format('\n\t'.join(['Level {} -> {} atoms'.format(i+1, n) for i,n in enumerate(n_atoms_per_level)])))
+        levels_with_max_coverage = [i_l for i_l, n in enumerate(n_atoms_per_level) if n==n_atoms]
+        self.log('Only considering partitionings that cover all atoms ({} atoms).'.format(n_atoms))
+        self.log('Considering partitionings from levels: \n\t{}'.format('\n\t'.join(['{} ({})'.format(l+1, labels[l]) for l in levels_with_max_coverage])))
+        # Find how many groups per level, and find level indices with fewest groups
+        self.log('Looking for which of these levels has the smallest number of groups')
+        n_groups_per_level = [len(numpy.unique(l[l>=0])) for l in array[levels_with_max_coverage]]
+        self.log('Groups per level: \n\t{}'.format('\n\t'.join(['Level {} -> {}'.format(levels_with_max_coverage[i]+1, n) for i,n in enumerate(n_groups_per_level)])))
+        levels_with_min_ngroups = [levels_with_max_coverage[i] for i, n in enumerate(n_groups_per_level) if n==min(n_groups_per_level)]
+        self.log('Only considering partitionings with the smallest number of groups ({} groups).'.format(min(n_groups_per_level)))
+        self.log('Considering partitionings from levels: \n\t{}'.format('\n\t'.join(['{} ({})'.format(i_l+1, labels[i_l]) for i_l in levels_with_min_ngroups])))
+        # Set to False just because (even though it is immediately overwritten)
+        found_valid_level = False
+        # Test each level to see if it splits tls groups in other levels
+        for i_l in levels_with_min_ngroups:
+            self.log.bar()
+            self.log('Checking to see if the partitioning on level {} ({}) cuts any TLS groups on other levels'.format(i_l+1, labels[i_l]))
+            # Assume level is valid until proven otherwise
+            found_valid_level = True
+            # Extract groups for this level
+            level_groups = array[i_l]
+            # Check to see if groups on other levels occupy the non_sel positions (the "null space" of this level)
+            level_sel = (level_groups >= 0)
+            have_no_group_this_level = array[:,numpy.bitwise_not(level_sel)]
+            have_group_other_levels = (have_no_group_this_level >= 0)
+            # group members outside selection
+            if have_group_other_levels.sum():
+                found_valid_level = False
+                self.log('> There are atoms in groups on other levels that do not have a group on this level.')
+                self.log('> This partitioning is not appropriate.')
+                continue
+            else:
+                self.log('> All atoms in other levels are contained by groups on this level.')
+            # Get the group idxs (labels/names) for this level
+            g_idxs = numpy.unique(level_groups)
+            # Iterate through groups and get selection for each
+            self.log('> Checking that every TLS group on other levels is contained within only one group on this level')
+            for g in g_idxs:
+                if g < 0: continue
+                self.log('  ...checking this condition for atoms in group {} of this level'.format(g))
+                # Get the selection for this group
+                g_sel = (level_groups==g)
+                # Get the chunk of values for other levels -- for this selection, and NOT this selection
+                g_this = array[:,g_sel]
+                g_other = array[:,numpy.bitwise_not(g_sel)]
+                # Check condition for all other levels
+                for i_l_test in range(len(array)):
+                    # Skip checking against itself
+                    if i_l==i_l_test: continue
+                    self.log('     ...checking this condition for the partitioning on level {}.'.format(i_l_test+1))
+                    # Check if groups in this selection in this level are present in the level outside this selection
+                    if set(g_this[i_l_test]).intersection(set(g_other[i_l_test])):
+                        self.log('      ...there is a group on level {} whose atoms are split between this group and another'.format(i_l_test+1))
+                        self.log('> This partitioning is not appropriate.')
+                        found_valid_level = False
+                        break
+                # If invalid it's not necessary to check the rest
+                if found_valid_level is False:
+                    break
+            # All checks passed - return this
+            if found_valid_level is True:
+                self.log.bar()
+                self.log('This level -- level {} ({}) -- has a partitioning that is compatible with all other levels.'.format(i_l+1,labels[i_l]))
+                self.log('Using this partitioning.')
+                atom_hash = copy.copy(array[i_l])
+                break
+        # No valid levels -- create over-arching partition
+        if found_valid_level is False:
+            self.log('No suitable level found -- using one partition containing all atoms.')
+            atom_hash = numpy.ones(array.shape[1])
+        # Renumber the array to start from 0
+        for i,v in enumerate(sorted(numpy.unique(atom_hash))):
+            if v < 0: continue
+            atom_hash[atom_hash==v] = i
+        # Iterate through and calculate origins for each dataset for each group
+        self.log.bar(True, False)
+        self.log('Calculating Centres-of-mass for each partition')
+        self.log.bar(False, True)
+        for i in sorted(numpy.unique(atom_hash)):
+            if i<0: continue
+            self.log('Centres-of-mass for atoms in Partition {}'.format(i+1))
+            # Get the selection for this group
+            i_sel = (atom_hash == i)
+            # Get the atoms in this group
+            xyzs = atom_xyzs[:,i_sel,:]
+            # Calculate centre of mass for each dataset
+            com = numpy.mean(xyzs, axis=1)
+            self.log('')
+            for j, c in enumerate(com):
+                self.log('> Dataset {:>3d}: {}'.format(j+1, c))
+            self.log('')
+            atom_coms.append(com)
+        # Convert to numpy array and transpose
+        atom_coms = numpy.array(atom_coms)
+
+        return atom_hash, atom_coms
 
     def n_levels(self):
         return len(self.levels)
@@ -2873,7 +2950,8 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
     def __init__(self,
                  observed_uij,
                  observed_xyz,
-                 observed_com,
+                 tls_origins,
+                 tls_origins_hash,
                  group_idxs,
                  n_tls=1,
                  index=0,
@@ -2886,11 +2964,12 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
         self.log = log
 
         assert observed_uij.shape[:2] == observed_xyz.shape[:2]
-        assert observed_uij.shape[2]  == 6
         assert observed_xyz.shape[2]  == 3
         assert observed_uij.shape[1]  == len(group_idxs)
-        assert observed_com.shape[0] == observed_uij.shape[0]
-        assert observed_com.shape[1] == 3
+        assert observed_uij.shape[2]  == 6
+        assert tls_origins.shape[1] == observed_uij.shape[0]
+        assert tls_origins.shape[2] == 3
+        assert tls_origins_hash.shape[0] == observed_xyz.shape[1]
 
         self.index = index
         self.label = label if label else 'Level {}'.format(index)
@@ -2910,6 +2989,11 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
                            verbose  = (self.log.verbose) or (self._n_groups==1),
                            #silent   = False)
                            silent   = not (self._n_groups==1))
+            # Decide which tls_origins to use fo this
+            i_origin = numpy.unique(tls_origins_hash[sel])
+            assert len(i_origin) == 1
+            observed_com = tls_origins[i_origin[0]]
+            assert observed_com.shape == (observed_xyz.shape[0], 3)
             # Create fitter object
             self.fitters[i] = MultiDatasetUijTLSOptimiser(target_uij = observed_uij[:,sel],
                                                           atomic_xyz = observed_xyz[:,sel],
@@ -3076,7 +3160,7 @@ class _UijOptimiser(object):
     def _blank_parameter_selection(self):
         return numpy.zeros(self._n_prm, dtype=bool)
 
-    def _optimise(self, running_summary=False):
+    def _optimise(self, tolerance=1e-3, running_summary=False):
         """Run the optimisation"""
 
         # Prep variables for target function
@@ -3096,7 +3180,7 @@ class _UijOptimiser(object):
         optimised = simplex.simplex_opt(dimension = len(opt_simplex[0]),
                                         matrix    = map(flex.double, opt_simplex),
                                         evaluator = self.evaluator,
-                                        tolerance = 1e-02)
+                                        tolerance = tolerance)
         # Extract and update current values
         self._inject(values=optimised.get_solution(), selection=sel_dict)
         if self._running_summary:
@@ -3652,7 +3736,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             self.summary(show=True)
             self.log('')
 
-    def optimise_models(self, models, components, datasets=None, atoms=None, silent=False):
+    def optimise_models(self, models, components, datasets=None, atoms=None, silent=False, tolerance=1e-3):
         """Optimise the matrices for combinations of models/componenets/datasets"""
 
         # Take all datasets/atoms if not provided
@@ -3668,9 +3752,10 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                      atoms      = atoms)
 
         # Run optimisation
-        self._optimise(running_summary=(not silent))
+        self._optimise(tolerance=tolerance,
+                       running_summary=(not silent))
 
-    def optimise_amplitudes(self, models, components, datasets=None, atoms=None, n_cpus=1, silent=False):
+    def optimise_amplitudes(self, models, components, datasets=None, atoms=None, n_cpus=1, silent=False, tolerance=1e-4):
         """Optimise the amplitudes for combinations of models/components/datasets"""
 
         # Take all datasets/atoms if not provided
@@ -3696,9 +3781,10 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             self._select(datasets=[i_dst])
             # Append to job list (create copy) or run optimisation
             if n_cpus > 1:
-                jobs.append(self.copy())
+                jobs.append((self.copy(), tolerance))
             else:
-                self._optimise(running_summary=(not silent))
+                self._optimise(tolerance=tolerance,
+                               running_summary=(not silent))
                 self.log('> dataset {} of {} (rmsd {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, self.optimisation_rmsd, self.optimisation_penalty))
         # Run parallel jobs and inject results
         if n_cpus > 1:
@@ -3987,6 +4073,8 @@ def run(params):
 
 if __name__=='__main__':
     from giant.jiffies import run_default
+    from pandemic import module_info
+    run_default._module_info = module_info
     run_default(
         run                 = run,
         master_phil         = master_phil,
@@ -3994,5 +4082,3 @@ if __name__=='__main__':
         blank_arg_prepend   = blank_arg_prepend,
         program             = PROGRAM,
         description         = DESCRIPTION)
-
-

@@ -1,4 +1,6 @@
+import re
 
+import numpy
 import scipy.spatial
 
 import iotbx.pdb
@@ -39,6 +41,64 @@ def non_water(hierarchy, cache=None, copy=True):
     if not cache: cache=hierarchy.atom_selection_cache()
     sel = cache.selection('(not resname HOH)')
     return hierarchy.select(sel, copy_atoms=copy)
+
+####################################################################################
+
+def default_secondary_structure_selections(hierarchy):
+    from mmtbx.secondary_structure import dssp
+    return dssp.dssp(hierarchy).get_annotation().as_atom_selections()
+
+def default_secondary_structure_selections_filled(hierarchy):
+    """Return secondary structure selections and fill gaps with new selections"""
+
+    # Get automatic secondary structure elements
+    auto_sel = default_secondary_structure_selections(hierarchy=hierarchy)
+    # Extract chain and residue numbers
+    sel_regex = re.compile("chain '(.*?)' and resid (.*?). through (.*)")
+    auto_sel_proc = [sel_regex.findall(s)[0] for s in auto_sel]
+
+    # Output template and list
+    sel_template = "chain '{}' and resid {:d}  through {:d} "
+    output_sel = []
+
+    # Extract the chain IDs
+    chain_ids = numpy.unique(zip(*auto_sel_proc)[0])
+
+    # Iterate through chains
+    for c_id in chain_ids:
+        # Extract residue start and end numbers
+        c_sels = [map(int, s[1:]) for s in auto_sel_proc if s[0]==c_id]
+        # Extract chain
+        c_obj  = [c for c in hierarchy.chains() if (c.is_protein() and c.id==c_id)]
+        assert len(c_obj) == 1
+        c_obj = c_obj[0]
+        # Get the first and last residues of the chain
+        c_start = min([r.resseq_as_int() for r in c_obj.residue_groups()])
+        c_end   = max([r.resseq_as_int() for r in c_obj.residue_groups()])
+
+        # Beginning of the chain (unless one residue)
+        if (c_start < c_sels[0][0]) and (c_sels[0][0] - c_start > 2):
+            new_sel = sel_template.format(c_id, c_start, c_sels[0][0]-1)
+            output_sel.append(new_sel)
+
+        # Middle of the chain
+        for i in xrange(len(c_sels)):
+            # Recreate selection for this group
+            new_sel = sel_template.format(c_id, c_sels[i][0], c_sels[i][1])
+            output_sel.append(new_sel)
+            # Break if end of chain
+            if i+1 == len(c_sels): break
+            # Check if gap between this and next (and that more than one residue in gap)
+            if (c_sels[i+1][0] - c_sels[i][1]) > 2:
+                new_sel = sel_template.format(c_id, c_sels[i][1]+1, c_sels[i+1][0]-1)
+                output_sel.append(new_sel)
+
+        # End of the chain (unless one residue)
+        if (c_end > c_sels[-1][1]) and (c_end - c_sels[-1][1] > 2):
+            new_sel = sel_template.format(c_id, c_sels[-1][1]+1, c_end)
+            output_sel.append(new_sel)
+
+    return output_sel
 
 ####################################################################################
 
