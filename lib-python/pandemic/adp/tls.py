@@ -22,6 +22,11 @@ class TLSModel(object):
         self.values = numpy.array(values, dtype=self._dtype) if (values is not None) else numpy.zeros(self._n_prm, dtype=self._dtype)
         assert len(self.values) == self._n_prm
 
+        # Store precision, etc as instance variables so that not changed if class updated
+        self._decimals = self._decimals
+        self.set_precision = None
+        self.set_tolerance = None
+
     def __add__(self, other):
         return self.add(other)
 
@@ -41,12 +46,12 @@ class TLSModel(object):
     def set_precision(cls, decimals):
         cls._decimals = decimals
 
-    def get_precision(self):
-        return self._decimals
-
     @classmethod
     def set_tolerance(cls, tolerance):
         cls._tolerance = tolerance
+
+    def get_precision(self):
+        return self._decimals
 
     def get_tolerance(self):
         return self._tolerance
@@ -68,14 +73,14 @@ class TLSModel(object):
         idx = self._str_to_idx(components=components, include_szz=include_szz)
         return self.values[idx]
 
-    def is_valid(self, eps=None):
+    def is_valid(self, tol=None):
         """Check whether the TLS matrices are physically valid"""
-        if eps is None: eps = self._tolerance
+        if tol is None: tol = self._tolerance
         T,L,S = get_t_l_s_from_vector(vals=self.values)
         try:
             result = decompose_tls_matrices(T=T, L=L, S=S,
                                             l_and_s_in_degrees=True,
-                                            tol=eps)
+                                            tol=tol)
         except Exception as e:
             self.log(e)
             return False
@@ -163,6 +168,7 @@ class TLS_AmplitudeSet(object):
 
         # Store precision, etc as instance variables so that not changed if class updated
         self._decimals = self._decimals
+        self.set_precision = None
 
     @classmethod
     def description(cls):
@@ -171,6 +177,9 @@ class TLS_AmplitudeSet(object):
     @classmethod
     def set_precision(cls, decimals):
         cls._decimals = decimals
+
+    def get_precision(self):
+        return self._decimals
 
     def __getitem__(self, key):
         if isinstance(key, list) or isinstance(key, tuple):
@@ -586,10 +595,23 @@ class MultiDatasetTLSModel(object):
         for cpt, mult in zip('TLS', multipliers):
             # Skip if multiplier is None
             if mult is None: continue
-            self.log('> Normalising {} matrix of model {} -- applying multiplier of {:5.3f}'.format(cpt, self.index+1, mult))
+            # Report
+            fmt_mult = '{{:5.{}f}}'.format(self.amplitudes.get_precision()).format(mult)
+            self.log('> Normalising {} matrix of model {} -- applying multiplier of {}'.format(cpt, self.index+1, fmt_mult))
+            # Extract model values
+            model_vals = self.model.get(components=cpt, include_szz=True)
+            # Find out which values are zero before normalisation to ensure they are zero after normalisation
+            approx_zero = numpy.abs(model_vals) < 10.**(-self.model.get_precision())
+            self.log(model_vals)
+            self.log(approx_zero)
             # Apply normalisation to TLS model
-            self.model.set(vals=self.model.get(components=cpt)*mult,
-                           components=cpt)
+            model_vals = (model_vals*mult)
+            # Make all of the zero values zero
+            model_vals[approx_zero] = 0.0
+            self.log(model_vals)
+            # Put the valuse back
+            self.model.set(vals=model_vals, components=cpt)
+            self.model.set_szz_value_from_sxx_and_syy()
 
     def reset(self, components='all'):
         """Reset model back to zero-value matrices and unitary amplitudes"""
