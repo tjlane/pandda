@@ -3,6 +3,7 @@ import numpy
 
 from libtbx.utils import Sorry, Failure
 
+from giant.structure.uij import uij_eigenvalues
 from giant.structure.tls import uij_from_tls_vector_and_origin, get_t_l_s_from_vector
 from mmtbx.tls.decompose import decompose_tls_matrices
 
@@ -73,8 +74,8 @@ class TLSModel(object):
         idx = self._str_to_idx(components=components, include_szz=include_szz)
         return self.values[idx]
 
-    def is_valid(self, tol=None):
-        """Check whether the TLS matrices are physically valid"""
+    def decompose(self, tol=None):
+        """Decompose TLS matrices into physical motions"""
         if tol is None: tol = self._tolerance
         T,L,S = get_t_l_s_from_vector(vals=self.values)
         try:
@@ -83,7 +84,14 @@ class TLSModel(object):
                                             tol=tol)
         except Exception as e:
             self.log(e)
-            return False
+            return None
+        return result
+
+    def is_valid(self, tol=None):
+        """Check whether the TLS matrices are physically valid"""
+        if tol is None: tol = self._tolerance
+        result = self.decompose(tol=tol)
+        if result is None: return False
         return result.is_valid()
 
     def multiply(self, amplitudes):
@@ -92,6 +100,30 @@ class TLSModel(object):
         self.values = amplitudes*self.values
         self.round()
         return self
+
+    def normalise(self, xyz, origin, target=1.0):
+        """Given a set of xyz, scale matrices to give Uijs with approx dimensions of <target>"""
+        # Extract Uijs for the supplied coordinates
+        uijs = numpy.array(self.uij(xyz=xyz, origin=origin))
+        # Extract the maximum axis length of each uij
+        eigs = numpy.apply_along_axis(uij_eigenvalues, axis=1, arr=uijs)
+        assert eigs.shape == xyz.shape
+        maxs = numpy.max(eigs, axis=1)
+        assert len(maxs) == len(xyz)
+        # Calculate average of the maxima
+        mean_max = numpy.mean(maxs)
+        # Abort normalisation if max eigenvalue is approximately zero
+        if mean_max < 1e-6:
+            return None
+        # Calculate the scaling that modifies the mean to correspond to target
+        mult = mean_max / target
+        # Report
+        self.log('> Normalise Uij values from TLS matrices to approx {}A -- dividing matrix values by {}'.format(target, mult))
+        # Apply scaling and set szz value
+        self.scale(multiplier=(1.0/mult))
+        self.set_szz_value_from_sxx_and_syy()
+        # Multipliers are all the same under this model
+        return mult
 
     def n_params(self, free=True, non_zero=False):
         if non_zero is False:
@@ -108,6 +140,19 @@ class TLSModel(object):
         """Round TLS values to a set number of decimal places"""
         if decimals is None: decimals = self._decimals
         self.values.round(decimals, out=self.values)
+
+    def scale(self, multiplier):
+        """Multiply the TLS matric values by a constant"""
+        # Extract model values
+        model_vals = self.get(components='TLS', include_szz=True)
+        # Find out which values are zero before normalisation to ensure they are zero after normalisation
+        approx_zero = numpy.abs(model_vals) < 10.**(-self.get_precision())
+        # Apply normalisation to TLS matrices
+        model_vals = model_vals*multiplier
+        # Make all of the zero values are zero
+        model_vals[approx_zero] = 0.0
+        # Put the values back
+        self.set(vals=model_vals, components='TLS')
 
     def set(self, vals, components, include_szz=True):
         idx = self._str_to_idx(components=components, include_szz=include_szz)
@@ -242,18 +287,20 @@ class TLS_AmplitudeSet(object):
             n_dst = len(self.values)
             return sum([(self.values[:,i]!=1.0).any()*(n_dst) for i in range(self._n_amp)])
 
-    def normalise(self):
+    def normalise(self, target=1.0):
         """Normalise the amplitudes and return multipliers to be applied to the TLS model object"""
         # Calculate the average of all the amplitudes
         amp_mean = numpy.round(numpy.mean(self.get(components='TLS')), self._decimals)
         # Abort normalisation if average amplitude is approx zero
         if amp_mean < 1e-6:
             return (None, None, None)
+        # Modify the ampltiude mean to correspond to target
+        mult = amp_mean / target
         # Normalise amplitudes and return multipliers
-        self.log('> Normalising all amplitudes -- dividing amplitudes by {}'.format(amp_mean))
-        self.set(vals=self.get(components='TLS')*(1.0/amp_mean), components='TLS')
+        self.log('> Normalising all amplitudes to average of {} -- dividing amplitudes by {}'.format(target, mult))
+        self.scale(multiplier=(1.0/mult))
         # Multipliers are all the same under this model
-        return amp_mean, amp_mean, amp_mean
+        return (mult, mult, mult)
 
     def reset(self, components, datasets=None):
         self.set(vals=1.0, components=components, datasets=datasets)
@@ -262,6 +309,13 @@ class TLS_AmplitudeSet(object):
         """Round TLS values to a set number of decimal places"""
         if decimals is None: decimals = self._decimals
         self.values.round(decimals, out=self.values)
+
+    def scale(self, multiplier):
+        """Scale the amplitudes by a fixed constant"""
+        self.log('> Scaling all amplitudes by constant -- multiplying amplitude values by {}'.format(multiplier, multiplier))
+        for cpt in self.component_sets():
+            old_vals = self.get(components=cpt)
+            self.set(vals=old_vals*multiplier, components=cpt)
 
     def set(self, vals, components, datasets=None):
         idx = self._str_to_idx(components)
@@ -313,18 +367,20 @@ class T_AmplitudeSet(TLS_AmplitudeSet):
         S -> 0
     """
 
-    def normalise(self):
+    def normalise(self, target=1.0):
         """Normalise the amplitudes and return multipliers to be applied to the TLS model object"""
         # Calculate the average of all the amplitudes
         amp_mean = numpy.round(numpy.mean(self.get(components='T')), self._decimals)
         # Abort normalisation if average amplitude is approx zero
         if amp_mean < 1e-6:
             return (None, None, None)
+        # Modify the ampltiude mean to correspond to target
+        mult = amp_mean / target
         # Normalise amplitudes and return multipliers
-        self.log('> Normalising T amplitudes -- dividing amplitudes by {}'.format(amp_mean))
-        self.set(vals=self.get(components='T')*(1.0/amp_mean), components='T')
+        self.log('> Normalising T amplitudes to average of {} -- dividing amplitudes by {}'.format(target, mult))
+        self.set(vals=self.get(components='T')*(1.0/mult), components='T')
         # Multipliers are all the same under this model
-        return (amp_mean, None, None)
+        return (mult, None, None)
 
     def t_l_s_multipliers(self, datasets):
         """Return T, L, and S matrix multipliers for each dataset"""
@@ -357,7 +413,7 @@ class T_L_AmplitudeSet(TLS_AmplitudeSet):
         S -> 0
     """
 
-    def normalise(self):
+    def normalise(self, target=1.0):
         """Normalise the amplitudes and return multipliers to be applied to the TLS model object"""
         # Calculate the average of all the amplitudes
         t_mean = numpy.round(numpy.mean(self.get(components='T')), self._decimals)
@@ -366,20 +422,20 @@ class T_L_AmplitudeSet(TLS_AmplitudeSet):
         t_mult = l_mult = None
         # Normalise T-S amplitude
         if t_mean > 1e-6:
-            # Normalise amplitudes and return multipliers
-            self.log('> Normalising T amplitudes -- dividing amplitudes by {}'.format(t_mean))
-            self.set(vals=self.get(components='T')*(1.0/t_mean), components='T')
             # Calculate normalisation for matrix values
-            t_mult = t_mean
+            t_mult = t_mean / target
+            # Normalise amplitudes and return multipliers
+            self.log('> Normalising T amplitudes to average of {} -- dividing amplitudes by {}'.format(target, t_mult))
+            self.set(vals=self.get(components='T')*(1.0/t_mult), components='T')
         # Normalise L-S amplitude
         if l_mean > 1e-6:
-            # Normalise amplitudes and return multipliers
-            self.log('> Normalising L amplitudes -- dividing amplitudes by {}'.format(l_mean))
-            self.set(vals=self.get(components='L')*(1.0/l_mean), components='L')
             # Calculate normalisation for matrix values
-            l_mult = l_mean
+            l_mult = l_mean / target
+            # Normalise amplitudes and return multipliers
+            self.log('> Normalising L amplitudes to average of {} -- dividing amplitudes by {}'.format(target, l_mult))
+            self.set(vals=self.get(components='L')*(1.0/l_mult), components='L')
         # Return the multipliers for the T-L-S matrices
-        return t_mult, l_mult, None
+        return (t_mult, l_mult, None)
 
     def t_l_s_multipliers(self, datasets):
         """Return T, L, and S matrix multipliers for each dataset"""
@@ -393,161 +449,13 @@ class T_L_AmplitudeSet(TLS_AmplitudeSet):
         s_mult = numpy.zeros(n_dst, dtype=self._dtype)
         return (t_mult, l_mult, s_mult)
 
-class TS_LS_AmplitudeSet(TLS_AmplitudeSet):
-    """Two-amplitude TLS-amplitude model"""
-
-    _model = 'individual translational and librational amplitudes per TLS group, with coupled screw matrix.'
-    _terms = ['TS', 'LS']
-    _n_amp = 2
-
-    _description = """
-    TS/LS amplitude model:
-        Two amplitudes (a,b) per TLS model.
-        The amplitude of translational (a) and librational (b) motion are varied independently.
-        The resulting T and L matrices are proportional to these amplitudes (a and b, respectively).
-        The correlation between translation and libration is fixed, so the S matrix is proportional to the square root of the product of the two amplitudes.
-
-        T -> a * T
-        L -> b * L
-        S -> sqrt(a*b) * S
-    """
-
-    def normalise(self):
-        """Normalise the amplitudes and return multipliers to be applied to the TLS model object"""
-        # Calculate the average of all the amplitudes
-        ts_mean = numpy.round(numpy.mean(self.get(components='TS')), self._decimals)
-        ls_mean = numpy.round(numpy.mean(self.get(components='LS')), self._decimals)
-        # Start with unitary multipliers
-        t_mult = l_mult = s_mult = 1.0
-        # Normalise T-S amplitude
-        if ts_mean > 1e-6:
-            # Normalise amplitudes and return multipliers
-            self.log('> Normalising TS amplitudes -- dividing amplitudes by {}'.format(ts_mean))
-            self.set(vals=self.get(components='TS')*(1.0/ts_mean), components='TS')
-            # Calculate normalisation for matrix values
-            t_mult *= ts_mean
-            s_mult *= ts_mean
-        else:
-            t_mult = None
-        # Normalise L-S amplitude
-        if ls_mean > 1e-6:
-            # Normalise amplitudes and return multipliers
-            self.log('> Normalising LS amplitudes -- dividing amplitudes by {}'.format(ls_mean))
-            self.set(vals=self.get(components='LS')*(1.0/ls_mean), components='LS')
-            # Calculate normalisation for matrix values
-            l_mult *= ls_mean
-            s_mult *= ls_mean
-        else:
-            l_mult = None
-        # Check if both are None
-        if (t_mult is None) and (l_mult is None):
-            s_mult = None
-        else:
-            # S-amplitude is proportional to the square root of the other amplitudes
-            s_mult = numpy.sqrt(s_mult)
-        # Return the multipliers for the T-L-S matrices
-        return t_mult, l_mult, s_mult
-
-    def t_l_s_multipliers(self, datasets):
-        """Return T, L, and S matrix multipliers for each dataset"""
-        amps = self.values
-        if datasets is not None:
-            amps = amps[datasets]
-        n_dst = len(amps)
-        assert amps.shape == (n_dst,self._n_amp)
-        t_mult = amps[:,0]
-        l_mult = amps[:,1]
-        s_mult = numpy.sqrt(amps[:,0] * amps[:,1])
-        return (t_mult, l_mult, s_mult)
-
-class TS_LS_S_AmplitudeSet(TLS_AmplitudeSet):
-    """Three-amplitude TLS-amplitude model"""
-
-    _model = 'individual translational and librational amplitudes per TLS group, with coupled screw matrix and additional S-matrix multiplier.'
-    _terms = ['TS', 'LS', 'S']
-    _n_amp = 3
-
-    _description = """
-    TS/LS/S amplitude model:
-        Three amplitudes (a,b,c) per TLS model.
-        The amplitude of translational (a) and librational (b) motion are varied independently.
-        The resulting T and L matrices are proportional to these amplitudes (a and b, respectively).
-        The amount of correlation between translational and librational motion is variable.
-        The S matrix is proportional to the square root of the product of the two translational (a) and librational (b) amplitudes and a factor which modifies the amount of correlation (c).
-
-        T -> a * T
-        L -> b * L
-        S -> c * sqrt(a*b) * S
-    """
-    def normalise(self):
-        """Normalise the amplitudes and return multipliers to be applied to the TLS model object"""
-        # Calculate the average of all the amplitudes
-        ts_mean = numpy.round(numpy.mean(self.get(components='TS')), self._decimals)
-        ls_mean = numpy.round(numpy.mean(self.get(components='LS')), self._decimals)
-        s_mean  = numpy.round(numpy.mean(self.get(components='S')), self._decimals)
-        # Start with unitary multipliers
-        t_mult = l_mult = s_mult = 1.0
-        # Normalise T-S amplitude
-        if ts_mean > 1e-6:
-            # Normalise amplitudes and return multipliers
-            self.log('> Normalising TS amplitudes -- dividing amplitudes by {}'.format(ts_mean))
-            self.set(vals=self.get(components='TS')*(1.0/ts_mean), components='TS')
-            # Calculate normalisation for matrix values
-            t_mult *= ts_mean
-            s_mult *= ts_mean
-        else:
-            self.log('> Average TS amplitude is approximately zero -- not normalising.')
-            t_mult = None
-        # Normalise L-S amplitude
-        if ls_mean > 1e-6:
-            # Normalise amplitudes and return multipliers
-            self.log('> Normalising LS amplitudes -- dividing amplitudes by {}'.format(ls_mean))
-            self.set(vals=self.get(components='LS')*(1.0/ls_mean), components='LS')
-            # Calculate normalisation for matrix values
-            l_mult *= ls_mean
-            s_mult *= ls_mean
-        else:
-            self.log('> Average LS amplitude is approximately zero -- not normalising.')
-            l_mult = None
-        # Apply square root to the screw multiplier
-        s_mult = numpy.sqrt(s_mult)
-        # Normalise S amplitude
-        if (t_mult is None) and (l_mult is None):
-            self.log('> Average TS and LS amplitudes are approximately zero -- not normalising S amplitude')
-            s_mult = None
-        elif s_mean > 1e-6:
-            # Normalise amplitudes and return multipliers
-            self.log('> Normalising S amplitudes -- dividing amplitudes by {}'.format(s_mean))
-            self.set(vals=self.get(components='S')*(1.0/s_mean), components='S')
-            # Calculate normalisation for matrix values
-            s_mult *= s_mean
-        else:
-            self.log('> Average S amplitude is approximately zero -- not normalising.')
-            pass
-
-        # Return the multipliers for the T-L-S matrices
-        return t_mult, l_mult, s_mult
-
-    def t_l_s_multipliers(self, datasets):
-        """Return T, L, and S matrix multipliers for each dataset"""
-        amps = self.values
-        if datasets is not None:
-            amps = amps[datasets]
-        n_dst = len(amps)
-        assert amps.shape == (n_dst,self._n_amp)
-        t_mult = amps[:,0]
-        l_mult = amps[:,1]
-        s_mult = amps[:,2] * numpy.sqrt(amps[:,0] * amps[:,1])
-        return (t_mult, l_mult, s_mult)
-
 class MultiDatasetTLSModel(object):
 
     _mdl_classes = {'TLS': TLSModel}
     _amp_classes = {'TLS':      TLS_AmplitudeSet,
                     'T':        T_AmplitudeSet,
                     'T/L':      T_L_AmplitudeSet,
-                    'TS/LS':    TS_LS_AmplitudeSet,
-                    'TS/LS/S':  TS_LS_S_AmplitudeSet}
+                   }
 
     def __init__(self, n_dst=1, index=0, model='TLS', amplitudes='TLS', log=None):
 #        if log is None: log = Log(verbose=False)
@@ -585,12 +493,10 @@ class MultiDatasetTLSModel(object):
     def n_params(self, non_zero=False):
         return self.model.n_params(non_zero=non_zero) + self.amplitudes.n_params(non_zero=non_zero)
 
-    def normalise(self):
+    def normalise_by_amplitudes(self, target=1.0):
         """Normalise the TLS amplitudes to an average of 1"""
-
         # Normalise amplitudes and extract multipliers for model
-        multipliers = self.amplitudes.normalise()
-
+        multipliers = self.amplitudes.normalise(target=target)
         # Iterate through each matrix
         for cpt, mult in zip('TLS', multipliers):
             # Skip if multiplier is None
@@ -602,16 +508,44 @@ class MultiDatasetTLSModel(object):
             model_vals = self.model.get(components=cpt, include_szz=True)
             # Find out which values are zero before normalisation to ensure they are zero after normalisation
             approx_zero = numpy.abs(model_vals) < 10.**(-self.model.get_precision())
-            self.log(model_vals)
-            self.log(approx_zero)
             # Apply normalisation to TLS model
             model_vals = (model_vals*mult)
             # Make all of the zero values zero
             model_vals[approx_zero] = 0.0
-            self.log(model_vals)
             # Put the valuse back
             self.model.set(vals=model_vals, components=cpt)
             self.model.set_szz_value_from_sxx_and_syy()
+        self.log.bar(True, True)
+        self.log(self.summary())
+        self.log.bar(True, False)
+
+    def normalise_by_matrices(self, xyzs, origins, target=1.0):
+        """Normalise the TLS model uijs to have an average maximum eigenvalue of <target>"""
+        # Validate input
+        assert xyzs.ndim == 3
+        assert origins.ndim == 2
+        assert xyzs.shape[0] == origins.shape[0]
+        assert xyzs.shape[2] == origins.shape[1] == 3
+        # Convert xyzs and origins to one list of xyzs to pass to model
+        n_dst, n_atm = xyzs.shape[:2]
+        origins = origins.reshape((n_dst, 1, 3)).repeat(n_atm, axis=1)
+        assert xyzs.shape == origins.shape
+        xyzs = (xyzs-origins).reshape((n_dst*n_atm, 3))
+        # Get the scaling for the model
+        mult = self.model.normalise(xyz=xyzs, origin=(0,0,0), target=target)
+        # Skip if multiplier is None
+        if mult is None:
+            self.log('Not able to normalise')
+            return
+        # Apply scaling to the amplitudes
+        self.amplitudes.scale(multiplier=mult)
+        if not self.model.is_valid():
+            print 'MODEL INVALID AFTER NORMALISATION -- BAD THINGS MAY BE HAPPENING'
+            print self.summary()
+            self.log('WARNING: TLS matrices are now invalid after normalisation.\nWARNING: These need to be fixed before optimisation can be continued')
+        self.log.bar(True, True)
+        self.log(self.summary())
+        self.log.bar(True, False)
 
     def reset(self, components='all'):
         """Reset model back to zero-value matrices and unitary amplitudes"""
@@ -657,7 +591,7 @@ class MultiDatasetTLSModel(object):
             if reset_sel.any():
                 reset_dst = numpy.where(reset_sel)[0]
                 self.log('Resetting negative amplitudes for {} datasets in model {}, component {} (values {})'.format(len(reset_dst), self.index+1, cpts, str(amp_vals[reset_dst])))
-                self.amplitudes.reset(components=cpts, datasets=reset_dst)
+                self.amplitudes.set(vals=0.0, components=cpts, datasets=reset_dst)
 
     def zero_null_modes(self, mdl_tol=1e-9, amp_tol=1e-6):
         """Identify if either model or amplitudes have zero-values, and reset accordingly"""
@@ -722,10 +656,24 @@ class MultiDatasetTLSModelList(object):
     def n_params(self, non_zero=False):
         return sum([m.n_params(non_zero=non_zero) for m in self])
 
-    def normalise_amplitudes(self):
-        """Normalise amplitudes model by model to average of 1"""
+    def normalise_by_amplitudes(self, target=1.0):
+        """
+        Normalise model by model so that the averages of
+        the model amplitudes is <target>
+        """
+        self.log.subheading('Normalising TLS amplitudes')
         for m in self:
-            m.normalise()
+            m.normalise_by_amplitude(target=target)
+
+    def normalise_by_matrices(self, xyzs, origins, target=1.0):
+        """
+        Normalise model by model so that the average of
+        the maximum eigenvalue of each uij of the
+        un-multiplied TLS matrices is <target>.
+        """
+        self.log.subheading('Normalising TLS matrices')
+        for m in self:
+            m.normalise_by_matrices(xyzs=xyzs, origins=origins, target=target)
 
     def reset(self, models=None, components=None):
         """Reset all matrices to 0 and amplitudes to 1"""
