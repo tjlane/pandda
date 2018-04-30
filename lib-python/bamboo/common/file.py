@@ -7,66 +7,85 @@ class FileManager(object):
     def __init__(self, rootdir):
         """Creates and stores output files to be neatly created and retrieved"""
 
-        self.topdir = rootdir
-        self.output_dirs = {'root':rootdir}
-        self.dir_parents = {'root':None}
-        self.output_files = {}
+        self._dir_parents = {'root':None}
+        self._dir_names = {'root':rootdir}
+        self._file_parents = {}
+        self._file_names = {}
 
     def add_dir(self, dir_name, dir_tag, top_dir_tag=None, create=True, exists=True):
         """Store a directory `dir_name` under `dir_tag` in directory under `top_dir_tag`"""
         # Check that it hasn't been created already
-        assert dir_tag not in self.output_dirs.keys(), 'Directory already added: {}'.format(dir_tag)
-        # If no directory given, put in roots
+        assert dir_tag not in self._dir_names.keys(), 'Directory already added: {}'.format(dir_tag)
+        assert dir_tag not in self._dir_parents.keys(), 'Directory already added: {}'.format(dir_tag)
+        # If no directory given, put in root
         if top_dir_tag is None: top_dir_tag = 'root'
-        # Record the directory's parent
-        self.dir_parents[dir_tag] = top_dir_tag
-        # Get the path of the parent directory
-        top_dir_path = self.output_dirs[top_dir_tag]
-        # Create dirname and store
-        self.output_dirs[dir_tag] = os.path.join(top_dir_path, dir_name)
+        # Record the directory's parent and name
+        self._dir_parents[dir_tag] = top_dir_tag
+        self._dir_names[dir_tag] = dir_name
         # Create if it doesn't exist
-        if create and (not os.path.exists(self.output_dirs[dir_tag])):
+        if create:
             self._make_directory_if_necessary(dir_tag)
+        dir_path = self.get_dir(dir_tag)
+        # Check it exists
         if exists:
-            assert os.path.exists(self.output_dirs[dir_tag])
-        return self.get_dir(dir_tag=dir_tag)
-
-    def get_dir(self, dir_tag):
-        """Retrieve a dirname by it's dir_tag"""
-        assert dir_tag in self.output_dirs.keys(), 'Directory has not been added: {}'.format(dir_tag)
-        return self.output_dirs[dir_tag]
+            assert os.path.exists(dir_path)
+        return dir_path
 
     def add_file(self, file_name, file_tag, dir_tag=None):
         """Store a filename `file_name` under `file_tag` in directory under `dir_tag`"""
         # Check that it hasn't been created already
-        assert file_tag not in self.output_files.keys(), 'File already added: {}'.format(file_tag)
-        # Check the directory that it's beeing added to exists
+        assert file_tag not in self._file_names.keys(), 'File already added: {}'.format(file_tag)
+        assert file_tag not in self._file_parents.keys(), 'File already added: {}'.format(file_tag)
+        # If no directory given, put in root
         if dir_tag is None: dir_tag = 'root'
-        dir_name = self.output_dirs[dir_tag]
-        # Create filename and store
-        self.output_files[file_tag] = FileObj(file=os.path.join(dir_name, file_name), tag=file_tag)
+        assert dir_tag in self._dir_names.keys(), 'Target directory does not exist: {}'.format(dir_tag)
+        # Record the directory's parent and name
+        self._file_parents[file_tag] = dir_tag
+        self._file_names[file_tag] = file_name
         # Return filename
         return self.get_file(file_tag=file_tag)
 
+    def get_dir(self, dir_tag):
+        """Retrieve a dirname by it's dir_tag"""
+        assert dir_tag in self._dir_names.keys(), 'Directory has not been added: {}'.format(dir_tag)
+        assert dir_tag in self._dir_parents.keys(), 'Directory has not been added: {}'.format(dir_tag)
+        # Extract the parents of the directory
+        current = dir_tag
+        path_segs = []
+        while current is not None:
+            path_segs.insert(0, self._dir_names[current])
+            current = self._dir_parents[current]
+        return os.path.join(*path_segs)
+
     def get_file(self, file_tag):
         """Retrieve a filename by it's file_tag"""
-        return self.get_file_object(file_tag=file_tag).path
+        assert file_tag in self._file_names.keys(), 'File has not been added: {}'.format(file_tag)
+        assert file_tag in self._file_parents.keys(), 'File has not been added: {}'.format(file_tag)
+        dir_tag = self._file_parents[file_tag]
+        dir_path = self.get_dir(dir_tag=dir_tag)
+        file_name = self._file_names[file_tag]
+        return os.path.join(dir_path, file_name)
 
     def get_file_object(self, file_tag):
         """Retrieve a file object by it's file_tag"""
-        assert file_tag in self.output_files.keys(), 'File has not been added: {}'.format(file_tag)
-        return self.output_files[file_tag]
+        assert file_tag in self._file_names.keys(), 'File has not been added: {}'.format(file_tag)
+        assert file_tag in self._file_parents.keys(), 'File has not been added: {}'.format(file_tag)
+        return FileObj(file=self.get_file(file_tag=file_tag), tag=file_tag)
 
     def check_and_create_directories(self):
         """Check that all directories exist and create them where necessary"""
-        for dir_tag in self.output_dirs.keys():
+        for dir_tag in self._dir_names.keys():
             self._make_directory_if_necessary(dir_tag=dir_tag)
 
     def _make_directory_if_necessary(self, dir_tag):
-        if (dir_tag != 'root') and (not os.path.exists(self.output_dirs[self.dir_parents[dir_tag]])):
-            self._make_directory_if_necessary(self.dir_parents[dir_tag])
-        if not os.path.exists(self.output_dirs[dir_tag]):
-            os.mkdir(self.output_dirs[dir_tag])
+        dir_path = self.get_dir(dir_tag=dir_tag)
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+
+    def change_root(self, new_root):
+        self = copy.copy(self)
+        self._dir_names['root'] = new_root
+        return self
 
 
 class FileObj(object):
