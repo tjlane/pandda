@@ -101,7 +101,7 @@ class TLSModel(object):
         self.round()
         return self
 
-    def normalise(self, xyz, origin, target=1.0):
+    def normalise(self, xyz, origin, target=1.0, tolerance=1e-16):
         """Given a set of xyz, scale matrices to give Uijs with approx dimensions of <target>"""
         # Extract Uijs for the supplied coordinates
         uijs = numpy.array(self.uij(xyz=xyz, origin=origin))
@@ -113,7 +113,7 @@ class TLSModel(object):
         # Calculate average of the maxima
         mean_max = numpy.mean(maxs)
         # Abort normalisation if max eigenvalue is approximately zero
-        if mean_max < 1e-6:
+        if mean_max < tolerance:
             return None
         # Calculate the scaling that modifies the mean to correspond to target
         mult = mean_max / target
@@ -540,8 +540,6 @@ class MultiDatasetTLSModel(object):
         # Apply scaling to the amplitudes
         self.amplitudes.scale(multiplier=mult)
         if not self.model.is_valid():
-            print 'MODEL INVALID AFTER NORMALISATION -- BAD THINGS MAY BE HAPPENING'
-            print self.summary()
             self.log('WARNING: TLS matrices are now invalid after normalisation.\nWARNING: These need to be fixed before optimisation can be continued')
         self.log.bar(True, True)
         self.log(self.summary())

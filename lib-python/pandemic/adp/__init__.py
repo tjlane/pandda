@@ -1,4 +1,4 @@
-import os, sys, copy, traceback
+import os, sys, glob, copy, traceback
 import math, itertools, operator, collections
 
 import scipy.cluster
@@ -22,7 +22,9 @@ from bamboo.common.command import CommandManager
 from giant.manager import Program
 from giant.dataset import CrystallographicModel
 from giant.structure.tls import tls_str_to_n_params, get_t_l_s_from_vector
-from giant.structure.uij import uij_positive_are_semi_definite, uij_eigenvalues
+from giant.structure.uij import uij_positive_are_semi_definite, \
+        uij_eigenvalues, uij_to_b, calculate_uij_anisotropy_ratio, \
+        scale_uij_to_target_by_selection
 from giant.structure.formatting import ShortLabeller, PhenixSelection, PymolSelection
 from giant.structure.select import protein, backbone, sidechains, default_secondary_structure_selections_filled
 from giant.structure.pymol import auto_residue_images, auto_chain_images, selection_images
@@ -46,7 +48,7 @@ try:
 except Exception as e:
     print e
 
-numpy.set_printoptions(threshold=numpy.nan)
+numpy.set_printoptions(linewidth=numpy.inf, threshold=numpy.nan)
 
 from IPython import embed
 
@@ -99,17 +101,30 @@ output {
     pickle = True
         .type = bool
         .multiple = False
+    html = True
+        .help = "Write all output data in an html file"
+        .type = bool
+    images {
+        all = False
+            .help = "Generate all graphical output - may significantly increase runtime"
+            .type = bool
+        pymol = none *chain all
+            .help = "Write residue-by-residue images of the output B-factors"
+            .type = choice(multi=False)
+        distributions = True
+            .help = "Write distribution graphs for each TLS group"
+            .type = bool
+    }
     diagnostics = False
         .help = "Write diagnostic graphs -- adds a significant amount of runtime"
         .type = bool
-    pymol_images = True
-        .help = "Write residue-by-residue images of the output B-factors"
-        .type = bool
-    group_graphs = True
-        .help = "Write distribution graphs for each TLS group"
-        .type = bool
+    clean_up_files = *compress_logs *delete_mtzs
+        .help = "Delete unnecessary output files (MTZs)"
+        .type = choice(multi=True)
 }
 levels {
+    overall_selection = None
+        .type = str
     auto_levels = *chain auto_group *secondary_structure *residue *backbone *sidechain atom
         .type = choice(multi=True)
     custom_level
@@ -139,7 +154,7 @@ fitting {
     number_of_macro_cycles = 2
         .help = 'how many fitting cycles to run (over all levels) -- should be more than 0'
         .type = int
-    number_of_micro_cycles = 3
+    number_of_micro_cycles = 2
         .help = 'how many fitting cycles to run (for each level) -- should be more than 1'
         .type = int
     optimisation {
@@ -233,10 +248,19 @@ fitting {
             .type = int
     }
 }
-refine {
+analysis {
     refine_output_structures = True
         .help = "Refine the structures after fitting (coordinates and occupancies)"
         .type = bool
+    calculate_r_factors = True
+        .help = "Recalculate r-factors for the fitted B-factors"
+        .type = bool
+}
+refinement {
+    cif = None
+        .help = "Cif files required for refinement"
+        .type = str
+        .multiple = True
 }
 table_ones_options {
     include scope giant.jiffies.multi_table_ones.options_phil
@@ -258,9 +282,6 @@ settings {
 
 def rms(vals, axis=None):
     return numpy.sqrt(numpy.mean(numpy.power(vals,2), axis=axis))
-
-def uij_to_b(uij):
-    return EIGHT_PI_SQ*numpy.mean(uij[:,0:3],axis=1)
 
 ############################################################################
 #                        Multi-processing functions                        #
@@ -730,12 +751,16 @@ class MultiDatasetUijParameterisation(Program):
         self.fitter = None
 
         # Misc files
-        self.cifs = None
+        if self.params.refinement.cif:
+            self.cifs = self.params.refinement.cif
+        else:
+            self.cifs = None
 
         # Create plot object
         self.plot = MultiDatasetUijPlots
 
         # Validate and add output paths, etc.
+        self._init_checks()
         self._init_file_system()
         self._init_input_models()
         self._init_level_groups()
@@ -744,16 +769,23 @@ class MultiDatasetUijParameterisation(Program):
 
         #self.write_running_parameters_to_log(params=params)
 
+    def _init_checks(self):
+        dependencies = ['phenix.refine', 'phenix.table_one']
+        if self.params.output.images.pymol != 'none':
+            dependencies.append('pymol')
+        self.check_programs_are_available(dependencies)
+
     def _init_file_system(self):
+        """Prepare the file manager object"""
 
         self.out_dir = easy_directory(self.params.output.out_dir)
-        fm = self.initialise_file_manager(rootdir=self.out_dir)
-        for d in ['logs','model','graphs','structures','table_ones']:
+        fm = self.initialise_file_manager(rootdir=self.params.output.out_dir)
+        # Top level folders
+        for d in ['logs','model','structures','results','analysis']:
             fm.add_dir(dir_name=d, dir_tag=d)
-
-        if self.params.output.diagnostics is True:
-            for d in ['diagnostics']:
-                fm.add_dir(dir_name=d, dir_tag=d)
+        # Analysis sub-folders
+        for d in ['table_ones']:
+            fm.add_dir(dir_name=d, dir_tag=d, top_dir_tag='results')
 
     def _init_input_models(self):
         """Prepare the input models"""
@@ -873,6 +905,17 @@ class MultiDatasetUijParameterisation(Program):
                 level_array[i_level, sel] = i_group+1
         if failures: raise Failure('One or more group selections do not select any atoms: \n\t{}'.format('\n\t'.join(failures)))
 
+        # Apply the overall filter if provided
+        if self.params.levels.overall_selection:
+            ivt_selection = numpy.logical_not(atom_cache.selection(self.params.levels.overall_selection))
+            level_array[:, ivt_selection] = -1
+            # Renumber the selections from 1
+            for i_level, level in enumerate(self.levels):
+                old_grp_nums = [v for v in numpy.unique(level_array[i_level]) if v>0]
+                for i_new_grp, old_grp in enumerate(old_grp_nums):
+                    group_sel = (level_array[i_level] == old_grp)
+                    level_array[i_level, group_sel] = i_new_grp+1
+
         # Find all atoms that are selected in at least one level of the mask
         self.atom_mask = (level_array!=-1).any(axis=0)
         # Filter and store array
@@ -923,12 +966,6 @@ class MultiDatasetUijParameterisation(Program):
             # Set model type to anisotropic
             self.disorder_model = 'anisotropic'
 
-        # TODO Create a for-loop here with one fitter for each CHAIN
-        # TODO This will mean that a different centre of mass is used for each chain
-        # TODO Necessary for very large models!
-        # TODO Could also create fitter for each group in highest level (normally chain...)
-        # TODO Need to consider the case where two chains may be put in one group!
-
         # Create the fitting object
         self.fitter = MultiDatasetHierarchicalUijFitter(observed_uij = observed_uij,
                                                         observed_xyz = observed_xyz,
@@ -943,12 +980,14 @@ class MultiDatasetUijParameterisation(Program):
         self.fitter.set_optimisation_datasets(self._opt_datasets_selection)
 
         # Table to be populated during optimisation
-        self.fitter.set_tracking(table=self.tables.tracking, out_dir=self.file_manager.get_dir('graphs'))
+        self.fitter.set_tracking(table    = self.tables.tracking,
+                                 csv_path = self.file_manager.add_file(file_name='tracking_data.csv', file_tag='tracking_csv', dir_tag='results'),
+                                 png_path = self.file_manager.add_file(file_name='tracking_data.png', file_tag='tracking_png', dir_tag='results'))
 
         # Write summary of the fitted model (groups & levels)
-        model_dir = self.file_manager.get_dir('model')
         self.log.heading('Writing summary of the hierarchical model')
-        self.hierarchy_summary(out_dir=model_dir)
+        self.file_manager.add_dir(dir_name='partitions', dir_tag='partitions', top_dir_tag='model')
+        self.hierarchy_summary(out_dir_tag='partitions')
 
         # Calculate Parameter-observed data ratio
         self.log.subheading('Data-Parameter Ratios')
@@ -1030,10 +1069,14 @@ class MultiDatasetUijParameterisation(Program):
 
         self.log.heading('Parameterisation complete')
 
-    def process_results(self):
-        """Extract output and generate summaries"""
+    def extract_results(self):
+        """Return the fitted uij for each level (+residual)"""
+        uij_lvl = self.fitter.extract_tls(sum_levels=False)
+        uij_res = self.fitter.residual.extract()
+        return uij_lvl, uij_res
 
-        self.log.heading('Processing results', spacer=True)
+    def write_output_structures(self):
+        """Extract output and generate summaries"""
 
         #------------------------------------------------------------------------------#
         #---#                            Extract uijs                              #---#
@@ -1042,9 +1085,9 @@ class MultiDatasetUijParameterisation(Program):
         self.log('Extracting output Uijs from parameterised model...')
 
         # Extract the different components of the fitted uij values
-        uij_lvl = self.fitter.extract_tls(sum_levels=False)
+        uij_lvl, uij_res = self.extract_results()
+        # Calculate cumulative combinations
         uij_tls = uij_lvl.sum(axis=0)
-        uij_res = self.fitter.residual.extract()
         uij_all = uij_tls + uij_res
         # Extract the input uij values
         uij_inp = self.fitter.observed_uij
@@ -1115,73 +1158,6 @@ class MultiDatasetUijParameterisation(Program):
                                out_dir = structure_dir,
                                model_suffix = '.tls_subtracted.pdb')
 
-        #------------------------------------------------------------------------------#
-        #---#                         Model summaries                              #---#
-        #------------------------------------------------------------------------------#
-
-        model_dir = self.file_manager.get_dir('model')
-
-        # Write average uijs for each level
-        self.log.heading('Summaries of the level-by-level TLS fittings')
-        self.tls_level_summary(out_dir=model_dir)
-
-        # Write residuals
-        self.log.heading('Summaries of the residual atomic components')
-        self.residuals_summary(out_dir=model_dir)
-
-        # Distributions of the uijs for groups
-        self.log.heading('Calculating distributions of uijs over the model')
-        self.uij_distribution_summary(uij_lvl=uij_lvl,
-                                      uij_res=uij_res,
-                                      uij_inp=uij_inp,
-                                      out_dir=model_dir)
-
-        #------------------------------------------------------------------------------#
-        #---#        Compare the fitted and input uijs for all structures          #---#
-        #------------------------------------------------------------------------------#
-
-        if self.params.output.diagnostics is True:
-
-            self.file_manager.add_dir(dir_name='diagnostics', dir_tag='diagnostics')
-            fit_dir = self.file_manager.get_dir('diagnostics')
-
-            # Dataset-by-dataset and atom-by-atom fit rmsds
-            self.log.heading('Calculating rmsd metrics between input and fitted Uijs')
-            self.fit_rms_distributions(uij_fit=uij_all,
-                                       uij_inp=uij_inp,
-                                       out_dir=fit_dir)
-
-            # Correlations between the residual atomic component and the
-            self.log.heading('Calculating correlations between atomic residuals and input-fitted Uijs')
-            self.fit_residual_correlations(uij_diff=(uij_inp-uij_all),
-                                           out_dir=fit_dir)
-
-        #------------------------------------------------------------------------------#
-        #---#              Refine the output models if requested                   #---#
-        #------------------------------------------------------------------------------#
-
-        if self.params.refine.refine_output_structures:
-            self.log.heading('Refining output structures')
-            self.refine_fitted_dataset_models()
-
-        #------------------------------------------------------------------------------#
-        #---#             Analyse the quality of the output models                 #---#
-        #------------------------------------------------------------------------------#
-
-        # Calculate new R-frees, etc.
-        self.log.heading('Generating Table Ones for all structures')
-        self.generate_fitted_table_ones()
-
-        # Write output CSV of... everything
-        self.log.heading('Writing output csvs')
-        self.write_combined_csv(uij_fit=uij_all,
-                                uij_inp=uij_inp,
-                                out_dir=self.file_manager.get_dir('root'))
-
-        #------------------------------------------------------------------------------#
-        #                                                                              #
-        #------------------------------------------------------------------------------#
-
     def output_structures(self,  uij, iso=None, headers=None, out_dir='./', model_suffix='.pdb'):
         """Write sets of uij to models."""
 
@@ -1241,21 +1217,22 @@ class MultiDatasetUijParameterisation(Program):
 
         return pdbs
 
-    def hierarchy_summary(self, out_dir='./'):
+    def hierarchy_summary(self, out_dir_tag):
         """Write out the composition of the hierarchical model"""
 
-        out_dir = easy_directory(out_dir)
-
         # Extract the global mask and convert to flex
-        global_sel = flex.bool(self.atom_mask.tolist())
+        atom_sel = flex.bool(self.atom_mask.tolist())
 
         # Generate hierarchy for each level with groups as b-factors
         self.log('Writing partition figures for each chain')
         level_hierarchies = []
+        f_template = self.file_manager.add_file(file_name = 'level-{:04d}_atoms.pdb',
+                                                file_tag  = 'level-atoms-template',
+                                                dir_tag   = out_dir_tag)
         for i_level, g_vals in enumerate(self.level_array):
-            h = self.custom_master_hierarchy(uij=None, iso=g_vals, mask=global_sel)
+            h = self.custom_master_hierarchy(uij=None, iso=g_vals, mask=atom_sel)
             # Write the structure
-            filename = os.path.join(out_dir, 'level-{:04d}_atoms.pdb'.format(i_level+1))
+            filename = f_template.format(i_level+1)
             self.log('\t> {}'.format(filename))
             h.write_pdb_file(filename)
             # Append to list for plotting
@@ -1263,13 +1240,16 @@ class MultiDatasetUijParameterisation(Program):
         # Write hierarchy plot for each chain
         b_h = self.blank_master_hierarchy()
         b_c = b_h.atom_selection_cache()
+        f_template = self.file_manager.add_file(file_name = 'level-partitions-chain-{}.png',
+                                                file_tag  = 'level-partitions-by-chain-template',
+                                                dir_tag   = out_dir_tag)
         for c in b_h.chains():
             chain_sel = b_c.selection('chain {}'.format(c.id))
             hierarchies = [h.select(chain_sel, copy_atoms=True) for h in level_hierarchies]
             # Skip if no partitions in this chain
             if not (numpy.array([h.atoms().extract_b() for h in hierarchies]).sum() > 1e-3):
                 continue
-            filename = os.path.join(out_dir, 'level-partitioning-chain-{}.png'.format(c.id))
+            filename = f_template.format(c.id)
             self.log('\t> {}'.format(filename))
             self.plot.level_plots(filename=filename, hierarchies=hierarchies, title='chain {}'.format(c.id))
 
@@ -1355,29 +1335,37 @@ class MultiDatasetUijParameterisation(Program):
 
         return dataset_headers
 
-    def tls_level_summary(self, out_dir='./'):
+    def write_tls_level_summary(self, out_dir_tag):
         """Write the various TLS uijs to the master hierarchy structure"""
 
-        out_dir = easy_directory(out_dir)
-        csv_dir = easy_directory(os.path.join(out_dir, 'csvs'))
-        png_dir = easy_directory(os.path.join(out_dir, 'graphs'))
-        pml_dir = easy_directory(os.path.join(out_dir, 'pymol'))
+        fm = self.file_manager
+        out_dir = fm.get_dir(out_dir_tag)
+        csv_dir = fm.add_dir(dir_name='csvs',   dir_tag='tls-csvs',   top_dir_tag=out_dir_tag)
+        pdb_dir = fm.add_dir(dir_name='pdbs',   dir_tag='tls-pdbs',   top_dir_tag=out_dir_tag)
+        png_dir = fm.add_dir(dir_name='graphs', dir_tag='tls-graphs', top_dir_tag=out_dir_tag)
+        pml_dir = fm.add_dir(dir_name='pymol',  dir_tag='tls-pymol',  top_dir_tag=out_dir_tag)
 
+        # ------------------------
         self.log.subheading('Writing TLS models and amplitudes for each level')
+        # ------------------------
+        # Output file names -- standard templates to be used for many things...
+        # ------------------------
+        mdl_template = fm.add_file(file_name='tls_models_level_{:04d}.csv',                file_tag='csv-tls-mdl-template', dir_tag='tls-csvs')
+        amp_template = fm.add_file(file_name='tls_amplitudes_level_{:04d}.csv',            file_tag='csv-tls-amp-template', dir_tag='tls-csvs')
+        dst_template = fm.add_file(file_name='tls-model-amplitudes-level-{}-group-{}.png', file_tag='png-tls-amp-dist-template', dir_tag='tls-graphs')
+        # ------------------------
         # Iterate through the levels
         for level in self.fitter.levels:
             self.log('Level {}'.format(level.index))
             # Table for TLS model components
-            mdl_filename = os.path.join(csv_dir, 'tls_models_level_{:04d}.csv'.format(level.index))
+            mdl_filename = mdl_template.format(level.index)
             mdl_table = pandas.DataFrame(columns=["group", "model",
                                                   "T11","T22","T33","T12","T13","T23",
                                                   "L11","L22","L33","L12","L13","L23",
                                                   "S11","S12","S13","S21","S22","S23","S31","S32","S33"])
             # Create amplitude table
-            amp_filename = os.path.join(csv_dir, 'tls_amplitudes_level_{:04d}.csv'.format(level.index))
+            amp_filename = amp_template.format(level.index)
             amp_table = pandas.DataFrame(columns=["group", "model", "cpt"]+[mdl.tag for mdl in self.models])
-            # Create list of plot arguments and generate all at end
-            #plot_args = []
             # Iterate through the groups in this level
             for i_group, sel, fitter in level:
                 tls_model, tls_amps = fitter.result()
@@ -1396,8 +1384,8 @@ class MultiDatasetUijParameterisation(Program):
                         amp_table.loc[len(amp_table.index)] = numpy.concatenate([[i_group, i_tls, cpt], tls_amps[i_tls,:,i_cpt]])
 
                 # Write histograms of amplitudes -- only for non-zero models
-                if (tls_model.sum() > 0.0) and self.params.output.group_graphs:
-                    filename = os.path.join(png_dir, 'tls-model-amplitudes-level-{}-group-{}.png'.format(level.index, i_group))
+                if (tls_model.sum() > 0.0) and self.params.output.images.distributions:
+                    filename = dst_template.format(level.index, i_group)
                     self.log('\t> {}'.format(filename))
                     titles = numpy.concatenate([['Model {}: {}'.format(i_t+1, c) for c in p.get(index=i_t).component_sets()] for i_t in xrange(tls_amps.shape[0])])
                     x_vals = numpy.concatenate([[tls_amps[i_t,:,i_c]             for i_c in xrange(tls_amps.shape[2])]       for i_t in xrange(tls_amps.shape[0])])
@@ -1409,31 +1397,52 @@ class MultiDatasetUijParameterisation(Program):
                                               shape     = (tls_amps.shape[0], tls_amps.shape[2]),
                                               n_bins    = 30, x_lim=[0, None])
             # Write tables
+            self.log('\t> {}'.format(mdl_filename))
             mdl_table.to_csv(mdl_filename)
+            self.log('\t> {}'.format(amp_filename))
             amp_table.to_csv(amp_filename)
-            # Generate plots
-            #self.log('Generating {} histogram plots of TLS mode amplitudes'.format(len(plot_args)))
-            #libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_plot_histograms, args=plot_args)
 
+        # ------------------------
         self.log.subheading('Writing contribution of each TLS model for each level')
+        # ------------------------
+        # Output file names
+        # ------------------------
+        sgl_pdb_template = fm.add_file(file_name='level_{}-mode_{}.pdb',
+                                       file_tag='pdb-tls-one-mode-template',
+                                       dir_tag='tls-pdbs')
+        lvl_pdb_template = fm.add_file(file_name='level_{}-all.pdb',
+                                       file_tag='pdb-tls-one-level-template',
+                                       dir_tag='tls-pdbs')
+        # Stacked images
+        lvl_plt_template = fm.add_file(file_name='uij-profile-level_{}-chain_{}.png',
+                                       file_tag='png-tls-profile-template',
+                                       dir_tag=out_dir_tag)
+        lvl_plt_prefix = lvl_plt_template.replace('-chain_{}.png','')
+        # Uij anisotropy
+        lvl_aniso_plt_template = fm.add_file(file_name='uij-anisotropy-level_{}-chain_{}.png',
+                                             file_tag='png-tls-anisotropy-template',
+                                             dir_tag=out_dir_tag)
+        lvl_aniso_plt_prefix = lvl_aniso_plt_template.replace('-chain_{}.png','')
+        # Pymol templates -- create even if not used so that html can populate with dummy files
+        lvl_pml_chn_template = fm.add_file(file_name='level_{}-chain_{}.png',  file_tag='pml-level-chain-template',  dir_tag='tls-pymol')
+        lvl_pml_grp_template = fm.add_file(file_name='level_{}-group_{}.png',  file_tag='pml-level-group-template',  dir_tag='tls-pymol')
+        lvl_pml_scl_template = fm.add_file(file_name='level_{}-scaled_{}.png', file_tag='pml-level-scaled-template', dir_tag='tls-pymol')
+        lvl_pml_chn_prefix = lvl_pml_chn_template.replace('-chain_{}.png','')
+        lvl_pml_grp_prefix = lvl_pml_grp_template.replace('{}.png','')
+        lvl_pml_scl_prefix = lvl_pml_scl_template.replace('{}.png','')
+        # ------------------------
         # Extract the atom mask to apply b-factors
-        sel = flex.bool(self.atom_mask.tolist())
+        atom_sel = flex.bool(self.atom_mask.tolist())
         # Iterate through the levels and plot TLS contributions for each mode for each model for each level
         for i_level, level in enumerate(self.fitter.levels):
             self.log('Level {}'.format(level.index))
-
             # Boundaries for this level
-            boundaries = self.partition_boundaries_for_level(i_level=i_level)
-            # Prefix for structures & graphs of uijs for this level and mode
-            prefix = os.path.join(out_dir, 'level_{}'.format(i_level+1))
-
+            boundaries = self.partition_boundaries_for_level(i_level=i_level).select(atom_sel)
             # Cumulative uijs
             uij_all = []
-
             # Extract Uijs for individual modes/models
             for i_tls in xrange(self.params.fitting.tls_models_per_tls_group):
-                self.log('\tExtracting TLS contributions of model {} of level {}'.format(i_tls+1, i_level+1))
-
+                self.log('- Extracting TLS contributions of model {} of level {}'.format(i_tls+1, i_level+1))
                 # Create copy of the level for resetting T-L-S components
                 l_copy = copy.deepcopy(level)
                 # Reset the TLS for all other models
@@ -1441,124 +1450,254 @@ class MultiDatasetUijParameterisation(Program):
                     other_models = range(self.params.fitting.tls_models_per_tls_group)
                     other_models.remove(i_tls)
                     l_copy.zero_amplitudes(models=other_models)
-
                 # Extract uijs
-                uij = l_copy.extract(average=True)
+                uij_this = l_copy.extract(average=True)
                 # Append to total list
-                uij_all.append((i_tls, uij))
-
-                # Output structure for MODEL
+                uij_all.append((i_tls, uij_this))
+                # Output structure for MODEL - XXX set to True for developing XXX
                 if True or (self.params.fitting.tls_models_per_tls_group > 1):
-                    uij_sel = numpy.sum([t[-1] for t in uij_all if (t[0]==i_tls)], axis=0)
-                    m_h = self.custom_master_hierarchy(uij=uij_sel, iso=uij_to_b(uij_sel), mask=sel)
-                    m_f = prefix+'-model_{}.pdb'.format(i_tls+1)
+                    uij = numpy.sum([t[-1] for t in uij_all if (t[0]==i_tls)], axis=0)
+                    m_h = self.custom_master_hierarchy(uij=uij, iso=uij_to_b(uij), mask=atom_sel)
+                    m_f = sgl_pdb_template.format(i_level+1, i_tls+1)
                     self.log('\t> {}'.format(m_f))
                     m_h.write_pdb_file(m_f)
 
+            # ------------------------
+            # Write stacked bar plot of TLS for this level
+            # ------------------------
+            self.log('- Writing stacked bar plot of TLS contributions for this level')
+            mdls, uijs = zip(*uij_all)
+            self.log('\t> {}'.format(lvl_plt_template.format(i_level+1,'*')))
+            self.plot.stacked_bar(prefix        = lvl_plt_prefix.format(i_level+1),
+                                  hierarchies   = [self.custom_master_hierarchy(uij=u, iso=uij_to_b(u), mask=atom_sel).select(atom_sel) for u in uijs],
+                                  legends       = ['TLS (Model {})'.format(i+1) for i in mdls],
+                                  title         = 'Level {} - individual TLS model contributions'.format(i_level+1),
+                                  v_line_hierarchy = boundaries if (sum(boundaries.atoms().extract_b()) < 0.5*len(list(boundaries.residue_groups()))) else None)
+            assert glob.glob(lvl_plt_template.format(i_level+1,'*')), 'no files have been generated!'
+
+            # ------------------------
+            # Write out structure & graph of combined uijs
+            # ------------------------
             # Output structure for LEVEL
-            uij_sel = numpy.sum([t[-1] for t in uij_all], axis=0)
-            m_h = self.custom_master_hierarchy(uij=uij_sel, iso=uij_to_b(uij_sel), mask=sel)
-            m_f = prefix+'-all-models.pdb'
+            self.log('- Combining contributions for all TLS modes of level {}'.format(i_level+1))
+            uij = numpy.sum([t[-1] for t in uij_all], axis=0)
+            m_h = self.custom_master_hierarchy(uij=uij, iso=uij_to_b(uij), mask=atom_sel)
+            m_f = lvl_pdb_template.format(i_level+1)
             self.log('\t> {}'.format(m_f))
             m_h.write_pdb_file(m_f)
-
-            # Write pymol images of each chain and residue
-            if self.params.output.pymol_images:
-                self.log('\tGenerating pymol images')
-                pml_prefix = os.path.join(pml_dir, os.path.basename(prefix)+'-all-models')
-                self.log('\t> {}xxx.png'.format(pml_prefix))
+            # Write pymol images of each chain
+            if self.params.output.images.pymol != 'none':
+                # Generate pymol images
+                self.log('- Generating pymol images')
                 # Images for each chain
+                self.log('\t> {}'.format(lvl_pml_chn_template.format(i_level+1,'*')))
                 auto_chain_images(structure_filename = m_f,
-                                  output_prefix = pml_prefix,
+                                  output_prefix = lvl_pml_chn_prefix.format(i_level+1),
                                   style = 'lines+ellipsoids',
                                   width=1000, height=750)
+                assert glob.glob(lvl_pml_chn_template.format(i_level+1,'*')), 'no files have been generated!'
+            # Write pymol images of each group
+            if self.params.output.images.pymol == 'all':
+                # Output structure for LEVEL (scaled!) - for html only
+                m_h_scl = scale_uij_to_target_by_selection(hierarchy=m_h,
+                                                           selections=self.levels[i_level],
+                                                           target=0.5)
+                m_f_scl = m_f.replace('.pdb', '-scaled.pdb')
+                self.log('\t> {}'.format(m_f_scl))
+                m_h_scl.write_pdb_file(m_f_scl)
                 # Images for each group
                 blank_h = self.blank_master_hierarchy()
                 cache_h = blank_h.atom_selection_cache()
+                self.log('\t> {}'.format(lvl_pml_grp_template.format(i_level+1,'*')))
+                selections = [PymolSelection.join_or([PymolSelection.format(a) for a in blank_h.atoms().select(cache_h.selection(s))]) for s in self.levels[i_level]]
                 selection_images(structure_filename = m_f,
-                                 output_prefix = pml_prefix+'-group_',
-                                 selections = [PymolSelection.join_or([PymolSelection.format(a) for a in blank_h.atoms().select(cache_h.selection(s))]) for s in self.levels[i_level]],
+                                 output_prefix = lvl_pml_grp_prefix.format(i_level+1),
+                                 selections = selections,
                                  style = 'lines+ellipsoids',
                                  width = 250 if level.n_groups()>50 else 1000,
                                  height= 250 if level.n_groups()>50 else 750)
+                assert glob.glob(lvl_pml_grp_template.format(i_level+1,'*')), 'no files have been generated!'
+                # Images for each group
+                blank_h = self.blank_master_hierarchy()
+                cache_h = blank_h.atom_selection_cache()
+                self.log('\t> {}'.format(lvl_pml_scl_template.format(i_level+1,'*')))
+                selections = [PymolSelection.join_or([PymolSelection.format(a) for a in blank_h.atoms().select(cache_h.selection(s))]) for s in self.levels[i_level]]
+                selection_images(structure_filename = m_f_scl,
+                                 output_prefix = lvl_pml_scl_prefix.format(i_level+1),
+                                 selections = selections,
+                                 style = 'lines+ellipsoids',
+                                 width = 250 if level.n_groups()>50 else 1000,
+                                 height= 250 if level.n_groups()>50 else 750)
+                assert glob.glob(lvl_pml_scl_template.format(i_level+1,'*')), 'no files have been generated!'
+            # ------------------------
+            # Write out structure & graph of anisotropy
+            # ------------------------
+            self.log('- Calculating anistropy of Uijs')
+            ani = 1.0 - calculate_uij_anisotropy_ratio(uij=uij)
+            m_h = self.custom_master_hierarchy(uij=None, iso=ani, mask=atom_sel)
+            # Make plot of the uij anisotropy over the chain
+            self.log('\t> {}'.format(lvl_aniso_plt_template.format(i_level+1,'*')))
+            self.plot.stacked_bar(prefix=lvl_aniso_plt_prefix.format(i_level+1),
+                                  hierarchies=[m_h.select(atom_sel)],
+                                  legends=['Anisotropy  '],
+                                  title='Anisotropy of Level {}\n[fully isotropic = 0; fully anisotropic = 1]'.format(i_level+1),
+                                  y_lim=(0.0,1.0),
+                                  y_lab='Anisotropy of Uij ($1 - \\frac{E_{min}}{E_{max}}$)')
+            assert glob.glob(lvl_aniso_plt_template.format(i_level+1,'*')), 'no files have been generated!'
 
-            # Write stacked bar plot of TLS for this level
-            self.log('\tWriting stacked bar plot of TLS contributions for this level')
-            mdls, uijs = zip(*uij_all)
-            plt_prefix = prefix+'-all-models'
-            self.log('\t> {}.png'.format(plt_prefix))
-            self.plot.stacked_bar(prefix        = plt_prefix,
-                                  hierarchies   = [self.custom_master_hierarchy(uij=u, iso=uij_to_b(u), mask=sel) for u in uijs],
-                                  legends       = ['TLS (Model {})'.format(i+1) for i in mdls],
-                                  title         = 'Level {} - individual TLS model contributions'.format(i_level+1),
-                                  v_line_hierarchy = boundaries if (sum(boundaries.atoms().extract_b()) < 0.5*len(list(boundaries.select(sel).residue_groups()))) else None)
 
         return
 
-    def residuals_summary(self, out_dir='./'):
+    def write_residuals_summary(self, out_dir_tag):
         """Write the residual uijs to the master hierarchy structure"""
 
-        out_dir = easy_directory(out_dir)
-        pml_dir = easy_directory(os.path.join(out_dir, 'pymol'))
+        fm = self.file_manager
+        out_dir = fm.get_dir(out_dir_tag)
+        pdb_dir = fm.add_dir(dir_name='pdbs',   dir_tag='res-pdbs',   top_dir_tag=out_dir_tag)
+        #png_dir = fm.add_dir(dir_name='graphs', dir_tag='res-graphs', top_dir_tag=out_dir_tag)
+        pml_dir = fm.add_dir(dir_name='pymol',  dir_tag='res-pymol',  top_dir_tag=out_dir_tag)
 
+        self.log('Writing structure and plots of residual ADPs')
+        # ------------------------
+        # Output file names
+        # ------------------------
+        res_pdb = fm.add_file(file_name='residual.pdb',
+                              file_tag='pdb-residual',
+                              dir_tag='tls-pdbs')
+        # Uij profiles
+        res_plt_template = fm.add_file(file_name='uij-profile-residual-chain_{}.png',
+                                       file_tag='png-residual-profile-template',
+                                       dir_tag=out_dir_tag)
+        res_plt_prefix = res_plt_template.replace('-chain_{}.png','')
+        # Uij anisotropy
+        res_aniso_plt_template = fm.add_file(file_name='uij-anisotropy-residual-chain_{}.png',
+                                             file_tag='png-residual-anisotropy-template',
+                                             dir_tag=out_dir_tag)
+        res_aniso_plt_prefix = res_aniso_plt_template.replace('-chain_{}.png','')
+        # Pymol templates -- create even if not used so that html can populate with dummy files
+        res_pml_chn_template = fm.add_file(file_name='residual-chain_{}.png',
+                                           file_tag='pml-residual-chain-template',
+                                           dir_tag='res-pymol')
+        res_pml_grp_template = fm.add_file(file_name='residual-residue_{}.png',
+                                           file_tag='pml-residual-group-template',
+                                           dir_tag='res-pymol')
+        res_pml_chn_prefix = res_pml_chn_template.replace('-chain_{}.png','')
+        res_pml_grp_prefix = res_pml_grp_template.replace('-residue_{}.png','')
+        # ------------------------
+        # Extract residual uijs
+        # ------------------------
         uij = self.fitter.residual.extract()
-
-        # Write out structure & graph of uijs (this level)
-        self.log('Writing structure and plot of residual ADPs')
-        prefix = os.path.join(out_dir, 'all-residual')
-        m_h = self.custom_master_hierarchy(uij=uij, iso=uij_to_b(uij), mask=flex.bool(self.atom_mask.tolist()))
-        m_f = prefix+'.pdb'
+        # Extract the global mask and convert to flex
+        atom_sel = flex.bool(self.atom_mask.tolist())
+        # ------------------------
+        # Write out structure & graph of uijs
+        # ------------------------
+        m_h = self.custom_master_hierarchy(uij=uij, iso=uij_to_b(uij), mask=atom_sel)
+        m_f = res_pdb
         self.log('\t> {}'.format(m_f))
         m_h.write_pdb_file(m_f)
-        self.log('\t> {}xxx.png'.format(prefix))
-        self.plot.stacked_bar(prefix=prefix,
-                              hierarchies=[m_h],
-                              legends=['Residual'],
-                              title='Residual Level - fixed contributions')
-        # Write pymol images of each chains and residue
-        if self.params.output.pymol_images:
-            self.log('\tGenerating pymol images')
-            pml_prefix = os.path.join(pml_dir, 'residual')
-            self.log('\t> {}xxx.png'.format(pml_prefix))
+        # Make plot of the uij profile over each chain
+        self.log('\t> {}'.format(res_plt_template.format('*')))
+        self.plot.stacked_bar(prefix=res_plt_prefix,
+                              hierarchies=[m_h.select(atom_sel)],
+                              legends=['Residual    '],
+                              title='Uij Profile of Residual Level')
+        assert glob.glob(res_plt_template.format('*')), 'no files have been generated!'
+        # Write pymol images for each chain
+        if self.params.output.images.pymol != 'none':
+            self.log('- Generating pymol images')
+            self.log('\t> {}'.format(res_pml_chn_template.format('*')))
             auto_chain_images(structure_filename = m_f,
-                              output_prefix = pml_prefix,
+                              output_prefix = res_pml_chn_prefix,
                               style = 'lines+ellipsoids',
                               width=1000, height=750)
+            assert glob.glob(res_pml_chn_template.format('*')), 'no files have been generated!'
+        # Write pymol images for each group
+        if self.params.output.images.pymol == 'all':
+            self.log('\t> {}'.format(res_pml_grp_template.format('*')))
             auto_residue_images(structure_filename = m_f,
-                                output_prefix = pml_prefix,
+                                output_prefix = res_pml_grp_prefix,
                                 style = 'lines+ellipsoids',
                                 width=250, height=250)
+            assert glob.glob(res_pml_grp_template.format('*')), 'no files have been generated!'
+        # ------------------------
+        # Write out structure & graph of anisotropy
+        # ------------------------
+        self.log('- Calculating anistropy of Uijs')
+        ani = 1.0 - calculate_uij_anisotropy_ratio(uij=uij)
+        m_h = self.custom_master_hierarchy(uij=None, iso=ani, mask=atom_sel)
+        # Make plot of the uij anisotropy over the chain
+        self.log('\t> {}'.format(res_aniso_plt_template.format('*')))
+        self.plot.stacked_bar(prefix=res_aniso_plt_prefix,
+                              hierarchies=[m_h.select(atom_sel)],
+                              legends=['Anisotropy  '],
+                              title='Anisotropy of Residual Level\n[fully isotropic = 0; fully anisotropic = 1]',
+                              y_lim=(0.0,1.0),
+                              y_lab='Anisotropy of Uij ($1 - \\frac{E_{min}}{E_{max}}$)')
+        assert glob.glob(res_aniso_plt_template.format('*')), 'no files have been generated!'
 
         # TODO Output CSV of all residual components
 
         return
 
-    def uij_distribution_summary(self, uij_lvl, uij_res, uij_inp, out_dir='./'):
+    def write_combined_summary_graphs(self, out_dir_tag):
         """Write the distributions of each level TLS contributions over the structure"""
 
-        out_dir = easy_directory(out_dir)
+        fm = self.file_manager
+        out_dir = fm.get_dir(out_dir_tag)
+        stacked_template = fm.add_file(file_name='uij-profile-stacked-chain_{}.png', file_tag='png-combined-profile-template', dir_tag=out_dir_tag)
+        stacked_prefix = stacked_template.replace('-chain_{}.png','')
 
-        self.log('Writing distribution of TLS Uijs over the model')
+        self.log('Writing profiles of TLS and residual Uijs over the model')
 
+        # Extract the different components of the fitted uij values
+        uij_lvl, uij_res = self.extract_results()
+        # Extract the global mask and convert to flex
+        atom_sel = flex.bool(self.atom_mask.tolist())
+        # List of hierarchies for each level
         uij_hierarchies = []
         # One hierarchy for each level
         for i_level in range(len(uij_lvl)):
             uij_lvl_av = numpy.mean(uij_lvl[i_level], axis=0)
-            h_lvl = self.custom_master_hierarchy(iso=uij_to_b(uij_lvl_av), mask=flex.bool(self.atom_mask.tolist()))
+            h_lvl = self.custom_master_hierarchy(iso=uij_to_b(uij_lvl_av), mask=atom_sel)
             uij_hierarchies.append(h_lvl)
         # One hierarchy for the residual
-        h_res = self.custom_master_hierarchy(iso=uij_to_b(uij_res), mask=flex.bool(self.atom_mask.tolist()))
+        h_res = self.custom_master_hierarchy(iso=uij_to_b(uij_res), mask=atom_sel)
         uij_hierarchies.append(h_res)
         # Create stacked plot
-        prefix = os.path.join(out_dir, 'all-stacked')
-        self.log('\t> {}xxx.png'.format(prefix))
-        self.plot.stacked_bar(prefix=prefix,
-                              hierarchies=uij_hierarchies,
-                              legends=['Level {}'.format(i+1) for i in range(len(uij_lvl))]+['Residual'],
+        self.log('\t> {}'.format(stacked_template.format('*')))
+        self.plot.stacked_bar(prefix=stacked_prefix,
+                              hierarchies=[h.select(atom_sel) for h in uij_hierarchies],
+                              legends=['Level {}     '.format(i+1) for i in range(len(uij_lvl))]+['Residual    '],
                               title='TLS and residual contributions',
                               reverse_legend_order=True)
+        assert glob.glob(stacked_template.format('*')), 'no files have been generated!'
 
-    def fit_rms_distributions(self, uij_fit, uij_inp, out_dir='./', max_x_width=25):
+    def run_diagnostics(self):
+        """Compare the fitted and input uijs for all structures"""
+
+        fit_dir = self.file_manager.add_dir(dir_name='diagnostics', dir_tag='diagnostics')
+
+        # Extract the different components of the fitted uij values
+        uij_lvl, uij_res = self.extract_results()
+        # Calculate cumulative combinations
+        uij_tls = uij_lvl.sum(axis=0)
+        uij_all = uij_tls + uij_res
+        # Extract the input uij values
+        uij_inp = self.fitter.observed_uij
+
+        # Dataset-by-dataset and atom-by-atom fit rmsds
+        self.log.heading('Calculating rmsd metrics between input and fitted Uijs')
+        self.analyse_fit_rms_distributions(uij_fit=uij_all,
+                                           uij_inp=uij_inp,
+                                           out_dir=fit_dir)
+
+        # Correlations between the residual atomic component and the
+        self.log.heading('Calculating correlations between atomic residuals and input-fitted Uijs')
+        self.analyse_fit_residual_correlations(uij_diff=(uij_inp-uij_all),
+                                               out_dir=fit_dir)
+
+    def analyse_rms_fit_distributions(self, uij_fit, uij_inp, out_dir='./', max_x_width=25):
         """Analyse the dataset-by-dataset and residue-by-residue and atom-by-atom fit qualities"""
 
         out_dir = easy_directory(out_dir)
@@ -1680,8 +1819,9 @@ class MultiDatasetUijParameterisation(Program):
         m_h.write_pdb_file(m_f)
         self.log('\t> {}...png'.format(prefix))
         # Output as b-factor plot
-        self.plot.residue_by_residue(prefix=prefix,
-                                     hierarchy=m_h)
+        self.plot.multi_hierarchy_bar(prefix=prefix,
+                                      hierarchies=[m_h],
+                                      y_labs=['RMSD Mean (fitted uij - input uij) ($\AA$)'])
 
         self.log('Writing IQR rmsd for each atom (variability of quality of fit over all datasets)')
         # calculate dataset-IQR'd rmsds
@@ -1694,10 +1834,11 @@ class MultiDatasetUijParameterisation(Program):
         m_h.write_pdb_file(m_f)
         self.log('\t> {}...png'.format(prefix))
         # Output as b-factor plot
-        self.plot.residue_by_residue(prefix=prefix,
-                                     hierarchy=m_h)
+        self.plot.multi_hierarchy_bar(prefix=prefix,
+                                      hierarchies=[m_h],
+                                      y_labs=['RMSD IQR (fitted uij - input uij) ($\AA$)'])
 
-    def fit_residual_correlations(self, uij_diff, out_dir='./', max_x_width=25):
+    def analyse_residual_correlations(self, uij_diff, out_dir='./', max_x_width=25):
         """Calculate correlations between the atomic residuals and the fitted-input differences"""
 
         cor_dir = easy_directory(os.path.join(out_dir, 'error_correlations'))
@@ -1760,6 +1901,25 @@ class MultiDatasetUijParameterisation(Program):
         self.log('\nWriting: {}'.format(filename))
         corr_table.to_csv(filename)
 
+    def process_output_structures(self):
+        """Refine the output models and calculate new R-free/R-work values"""
+
+        #------------------------------------------------------------------------------#
+        #---#              Refine the output models if requested                   #---#
+        #------------------------------------------------------------------------------#
+
+        if self.params.analysis.refine_output_structures:
+            self.log.heading('Refining output structures')
+            self.refine_fitted_dataset_models()
+
+        #------------------------------------------------------------------------------#
+        #---#             Analyse the quality of the output models                 #---#
+        #------------------------------------------------------------------------------#
+
+        if self.params.analysis.calculate_r_factors:
+            self.log.heading('Generating Table Ones for all structures')
+            self.generate_fitted_table_ones()
+
     def refine_fitted_dataset_models(self, suffix='-refined'):
         """Refine coordinates of the fitted structures"""
 
@@ -1772,6 +1932,8 @@ class MultiDatasetUijParameterisation(Program):
                                 out_prefix=os.path.splitext(mdl.o_pdb)[0]+suffix,
                                 strategy='individual_sites+occupancies', n_cycles=5)
             obj.tag = mdl.tag
+            if os.path.exists(obj.out_pdb_file):
+                raise Failure('Refined PDB already exists! (model {})'.format(mdl.tag))
             proc_args.append(obj)
 
         # Refine all of the models
@@ -1791,6 +1953,11 @@ class MultiDatasetUijParameterisation(Program):
         table_one_csv_orig = self.file_manager.add_file(file_name='table_one_input.csv',   file_tag='table_one_input',   dir_tag='table_ones')
         table_one_csv_fitd = self.file_manager.add_file(file_name='table_one_fitted.csv',  file_tag='table_one_fitted',  dir_tag='table_ones')
         table_one_csv_refd = self.file_manager.add_file(file_name='table_one_refined.csv', file_tag='table_one_refined', dir_tag='table_ones')
+
+        if os.path.exists(table_one_csv_orig) or \
+           os.path.exists(table_one_csv_fitd) or \
+           os.path.exists(table_one_csv_refd):
+            raise Failure('Output table ones already exist.')
 
         for mdl in self.models:
             if not os.path.exists(mdl.o_mtz): rel_symlink(mdl.i_mtz, mdl.o_mtz)
@@ -1860,10 +2027,17 @@ class MultiDatasetUijParameterisation(Program):
                         'Please look at the log files in this folder for information:\n' + \
                         os.path.dirname(os.path.realpath(table_one_csv_orig)))
 
-    def write_combined_csv(self, uij_fit, uij_inp, out_dir='./'):
+    def write_combined_csv(self, out_dir_tag):
         """Add data to CSV and write"""
 
-        out_dir = easy_directory(out_dir)
+        fm = self.file_manager
+        out_dir = fm.get_dir(out_dir_tag)
+        out_csv = fm.add_file(file_name='output_data.csv', file_tag='output-csv', dir_tag=out_dir_tag)
+
+        # Extract uij values
+        uij_lvl, uij_res = self.extract_results()
+        uij_fit = uij_lvl.sum(axis=0) + uij_res
+        uij_inp = self.fitter.observed_uij
 
         # Create output table
         main_table = pandas.DataFrame(index=[m.tag for m in self.models],
@@ -1886,9 +2060,9 @@ class MultiDatasetUijParameterisation(Program):
 
         # Extract data from the table one CSVs
         self.log.subheading('Looking for table one data')
-        for suff, csv in [(' (Input)',      self.file_manager.get_file('table_one_input')),
-                          (' (Fitted)',     self.file_manager.get_file('table_one_fitted')),
-                          (' (Refined)',    self.file_manager.get_file('table_one_refined'))]:
+        for suff, csv in [(' (Input)',   self.file_manager.get_file('table_one_input')),
+                          (' (Fitted)',  self.file_manager.get_file('table_one_fitted')),
+                          (' (Refined)', self.file_manager.get_file('table_one_refined'))]:
             if not os.path.exists(csv):
                 if 'refined' in suff.lower():
                     continue
@@ -1970,22 +2144,21 @@ class MultiDatasetUijParameterisation(Program):
         main_table = main_table.dropna(axis='columns', how='all')
 
         # Write output csv
-        filename = os.path.join(out_dir, 'dataset_scores.csv')
         self.log('')
-        self.log('Writing output csv: {}'.format(filename))
-        main_table.to_csv(filename)
+        self.log('Writing output csv: {}'.format(out_csv))
+        main_table.to_csv(out_csv)
 
         # Store table for HTML output
         self.tables.statistics = main_table
 
         # Make graphs for the table
-        self.table_one_summaries(table=main_table, out_dir=os.path.join(out_dir,'graphs'))
-        self.table_one_graphs(table=main_table,    out_dir=os.path.join(out_dir,'graphs'))
+        self.show_table_one_summary(table=main_table)
+        self.write_table_one_graphs(table=main_table,
+                                    results_dir_tag='results',
+                                    analysis_dir_tag='analysis')
 
-    def table_one_summaries(self, table, out_dir='./'):
+    def show_table_one_summary(self, table):
         """Look at pre- and post-fitting statistics"""
-
-        out_dir = easy_directory(out_dir)
 
         self.log.subheading('Model improvement summary')
 
@@ -2025,10 +2198,12 @@ class MultiDatasetUijParameterisation(Program):
 
         return
 
-    def table_one_graphs(self, table, out_dir='./'):
+    def write_table_one_graphs(self, table, results_dir_tag, analysis_dir_tag):
         """Look at pre- and post-fitting graphs"""
 
-        out_dir = easy_directory(out_dir)
+        fm = self.file_manager
+        result_dir = fm.get_dir(results_dir_tag)
+        analys_dir = fm.get_dir(analysis_dir_tag)
 
         self.log.subheading('Model improvement graphs')
 
@@ -2040,7 +2215,7 @@ class MultiDatasetUijParameterisation(Program):
         # Raw scores
         # ------------------------------------------------------------>
         # Histogram of the R-FREE for input+fitted+refined B-factors
-        filename = os.path.join(out_dir, 'r-free-by-resolution.png')
+        filename = fm.add_file(file_name='r-free-by-resolution.png', file_tag='rfree_v_resolution', dir_tag=results_dir_tag)
         self.log('> {}'.format(filename))
         self.plot.binned_boxplot(filename = filename,
                                  x = table['High Resolution Limit'],
@@ -2052,7 +2227,7 @@ class MultiDatasetUijParameterisation(Program):
                                  rotate_x_labels = True,
                                  min_bin_width = 0.1)
         # Histogram of the R-WORK for input+fitted+refined B-factors
-        filename = os.path.join(out_dir, 'r-work-by-resolution.png')
+        filename = fm.add_file(file_name='r-work-by-resolution.png', file_tag='rwork_v_resolution', dir_tag=results_dir_tag)
         self.log('> {}'.format(filename))
         self.plot.binned_boxplot(filename = filename,
                                  x = table['High Resolution Limit'],
@@ -2064,7 +2239,7 @@ class MultiDatasetUijParameterisation(Program):
                                  rotate_x_labels = True,
                                  min_bin_width = 0.1)
         # Histogram of the R-GAP for input+fitted+refined B-factors
-        filename = os.path.join(out_dir, 'r-gap-by-resolution.png')
+        filename = fm.add_file(file_name='r-gap-by-resolution.png', file_tag='rgap_v_resolution', dir_tag=results_dir_tag)
         self.log('> {}'.format(filename))
         self.plot.binned_boxplot(filename = filename,
                                  x = table['High Resolution Limit'],
@@ -2079,7 +2254,7 @@ class MultiDatasetUijParameterisation(Program):
         # Difference scores
         # ------------------------------------------------------------>
         # Histogram of the R-GAP for input and fitted B-factors
-        filename = os.path.join(out_dir, 'r-values-change-by-resolution.png')
+        filename = fm.add_file(file_name='r-values-change-by-resolution.png', file_tag='all_rvalues_v_resolution', dir_tag=results_dir_tag)
         self.log('> {}'.format(filename))
         self.plot.binned_boxplot(filename = filename,
                                  x = table['High Resolution Limit'],
@@ -2097,7 +2272,7 @@ class MultiDatasetUijParameterisation(Program):
         # Correlations between variables
         # ------------------------------------------------------------>
         # Scatter of resolution and fit RMSDs
-        filename = os.path.join(out_dir, 'resolution-vs-rmsds-and-bfactors.png')
+        filename = fm.add_file(file_name='resolution-vs-rmsds-and-bfactors.png', file_tag='resolution_v_rmsds_scatter', dir_tag=analysis_dir_tag)
         self.log('> {}'.format(filename))
         self.plot.multi_scatter(filename = filename,
                                 x = table['High Resolution Limit'],
@@ -2113,7 +2288,7 @@ class MultiDatasetUijParameterisation(Program):
                                 title = 'Resolution v. fitting metrics',
                                 shape = (2,2))
         # Scatter of R-works and fit RMSDs
-        filename = os.path.join(out_dir, 'r-values-vs-rmsds-and-bfactors.png')
+        filename = fm.add_file(file_name='r-values-vs-rmsds-and-bfactors.png', file_tag='rvalues_v_rmsds_scatter', dir_tag=analysis_dir_tag)
         self.log('> {}'.format(filename))
         self.plot.multi_scatter(filename = filename,
                                 x_vals = [table['Mean Fitting RMSD'],
@@ -2143,6 +2318,28 @@ class MultiDatasetUijParameterisation(Program):
                                            'R-gap Change'],
                                 shape = (2,2))
         return
+
+    def tidy_output_folder(self, actions):
+        """Remove MTZ files, etc"""
+        if not actions: return
+        self.log.heading('Tidying/Cleaning output folder')
+        if 'delete_mtzs' in actions:
+            self.log.subheading('Deleting unnecessary MTZ files')
+            for i_mod, m in enumerate(self.models):
+                for f in [m.o_mtz, m.r_mtz]:
+                    if os.path.exists(f):
+                        self.log('Removing file: {}'.format(f))
+                        os.remove(f)
+        if 'compress_logs' in actions:
+            self.log.subheading('Compressing log files')
+            from bamboo.common.file import compress_file
+            main_log = os.path.abspath(self.log.log_file)
+            for log in glob.glob(os.path.join(self.file_manager.get_dir('logs'),'*.log')):
+                # Do not compress main log file
+                if os.path.abspath(log) == main_log:
+                    continue
+                self.log('Compressing: {}'.format(log))
+                zip_file = compress_file(log, delete_original=True)
 
 class MultiDatasetUijPlots(object):
 
@@ -2230,6 +2427,7 @@ class MultiDatasetUijPlots(object):
             c = colors[i_y]
             for patch in plt['boxes']:
                 patch.set_facecolor(c)
+                patch.set_edgecolor('k')
             for line in plt['medians']:
                 line.set_color('k')
 
@@ -2363,18 +2561,8 @@ class MultiDatasetUijPlots(object):
         if shape is not None:
             nrow, ncol = shape
         else:
-            nrow, ncol = (1,len(x_vals))
-
-        if x_lim is not None:
-            assert len(x_lim) == 2
-            x_lim = [min(numpy.min(x_vals), x_lim[0]) if (x_lim[0] is not None) else numpy.min(x_vals),
-                     max(numpy.max(x_vals), x_lim[1]) if (x_lim[1] is not None) else numpy.max(x_vals)]
-        else:
-            x_lim = [numpy.min(x_vals), numpy.max(x_vals)]
-        # Make sure does not have zero width
-        if (x_lim[1] - x_lim[0]) < 0.1:
-            x_lim[0] -= 0.5
-            x_lim[1] += 0.5
+            nrow, ncol = (len(x_vals), 1)
+        assert nrow*ncol == len(x_vals)
 
         fig, axes = pyplot.subplots(nrows=nrow, ncols=ncol, sharey=False)
 
@@ -2382,11 +2570,24 @@ class MultiDatasetUijPlots(object):
         if nrow==ncol==1: axes = numpy.array([axes])
 
         for i, axis in enumerate(axes.flatten()):
+
+            # Select x-axis limits
+            if x_lim is not None:
+                assert len(x_lim) == 2
+                i_x_lim = [min(numpy.min(x_vals[i]), x_lim[0]) if (x_lim[0] is not None) else numpy.min(x_vals[i]),
+                           max(numpy.max(x_vals[i]), x_lim[1]) if (x_lim[1] is not None) else numpy.max(x_vals[i])]
+            else:
+                i_x_lim = [numpy.min(x_vals[i]), numpy.max(x_vals[i])]
+            # Make sure does not have zero width
+            if (i_x_lim[1] - i_x_lim[0]) < 1e-6:
+                i_x_lim[0] -= 0.01*abs(i_x_lim[0])
+                i_x_lim[1] += 0.01*abs(i_x_lim[1])
+
             axis.set_title(titles[i])
-            axis.hist(x=x_vals[i], bins=n_bins, range=x_lim)
+            axis.hist(x=x_vals[i], bins=n_bins, range=i_x_lim)
             axis.set_xlabel(x_labs[0])
             axis.set_ylabel('Count')
-            axis.set_xlim(x_lim)
+            axis.set_xlim(i_x_lim)
             if rotate_x_labels:
                 pyplot.setp(axis.get_xticklabels(), rotation=90)
         fig.tight_layout()
@@ -2405,7 +2606,10 @@ class MultiDatasetUijPlots(object):
 
         fig, axis = pyplot.subplots(nrows=1, ncols=1)
         axis.set_title(title)
-        axis.boxplot(y_vals, labels=x_labels, showmeans=True)
+        axis.boxplot(y_vals,
+                     labels=x_labels,
+                     edgecolor='black',
+                     showmeans=True)
         for v in hlines: axis.axhline(v)
         for v in vlines: axis.axvline(v)
         axis.set_xlabel(x_lab)
@@ -2452,37 +2656,6 @@ class MultiDatasetUijPlots(object):
         pyplot.close(fig)
 
         return
-
-    @staticmethod
-    def residue_by_residue(prefix, hierarchy, title=None, v_line_hierarchy=None):
-        """Write out residue-by-residue b-factor graphs"""
-
-        h = protein(hierarchy)
-        for chain_id in [c.id for c in h.chains()]:
-            sel = h.atom_selection_cache().selection('chain {}'.format(chain_id))
-            sel_h = h.select(sel)
-            y_vals = numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in sel_h.residue_groups()])
-            if not y_vals.any(): continue # Skip chains with no Bs
-            # Create x-values for each residue starting from 1
-            x_vals = numpy.array(range(len(list(sel_h.residue_groups()))))+1
-            x_labels = ['']+[ShortLabeller.format(rg) for rg in sel_h.residue_groups()]
-            filename = prefix + '-chain_{}.png'.format(chain_id)
-            fig, axis = pyplot.subplots(nrows=1, ncols=1, sharey=True)
-            if title is not None: axis.set_title(label=str(title))
-            axis.set_xlabel('Residue')
-            axis.set_ylabel('Isotropic B ($\AA^2$)')
-            #axis.plot(x_vals, y_vals, '-ko', markersize=2)
-            axis.bar(left=(x_vals-0.5), height=y_vals, width=1.0)
-            axis.set_xticklabels([x_labels[int(i)] if (i<len(x_labels)) and (float(int(i))==i) else '' for i in axis.get_xticks()])
-            pyplot.setp(axis.get_xticklabels(), rotation=90)
-            # Plot boundaries
-            if v_line_hierarchy:
-                v_lines = numpy.where(numpy.array([max(rg.atoms().extract_b()) for rg in v_line_hierarchy.select(sel).residue_groups()], dtype=bool))[0] + 1.5
-                for val in v_lines: axis.axvline(x=val, ls='dotted')
-            # Format and save
-            fig.tight_layout()
-            fig.savefig(filename)#, dpi=300)
-            pyplot.close(fig)
 
     @staticmethod
     def level_plots(filename, hierarchies, title, rotate_x_labels=True):
@@ -2542,7 +2715,9 @@ class MultiDatasetUijPlots(object):
                     v_line_hierarchy=None,
                     rotate_x_labels=True,
                     reverse_legend_order=False):
-        """Plot stacked bar plots for a series of hierarchies (plotted values are the B-factors of the hierarchies)"""
+        """Plot stacked bar plots for a series of hierarchies (plotted values are the average B-factors of each residue of the hierarchies)"""
+
+        # TODO MERGE stacked_bar and multi_bar with mode='stacked' mode='grid'
 
         legends = list(legends)
         assert len(hierarchies) == len(legends)
@@ -2579,15 +2754,14 @@ class MultiDatasetUijPlots(object):
             if title is not None: axis.set_title(label=str(title))
             axis.set_xlabel('Residue')
             axis.set_ylabel(y_lab)
+            if y_lim:
+                axis.set_ylim(y_lim)
 
             # Iterative though hierarchies
             handles = []
             for i_h, h in enumerate(sel_hs):
                 # Extract b-factors from this hierarchy
                 y_vals = numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in h.residue_groups()])
-                # Skip chains with no Bs
-                if not y_vals.any():
-                    continue
                 # Initialise cumulative object
                 if cuml_y is None:
                     cuml_y = numpy.zeros_like(y_vals)
@@ -2612,13 +2786,16 @@ class MultiDatasetUijPlots(object):
             # Legends (reverse the plot legends!)
             if reverse_legend_order is True: handles.reverse()
             lgd = axis.legend(handles=handles, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
-            # Axis labels
+            # Axis ticks & labels
+            x_ticks = numpy.arange(1, len(x_labels)+1, max(1.0, numpy.floor(len(x_labels)/20)))
+            #x_ticks = numpy.unique(numpy.floor(numpy.linspace(1,len(x_labels)+1,20)))
+            axis.set_xticks(x_ticks)
             axis.set_xticklabels([x_labels[int(i)] if (i<len(x_labels)) and (float(int(i))==i) else '' for i in axis.get_xticks()])
             # Rotate axis labels
             if rotate_x_labels: pyplot.setp(axis.get_xticklabels(), rotation=90)
 
             # Plot boundaries
-            if v_line_hierarchy:
+            if v_line_hierarchy is not None:
                 v_lines = numpy.where(numpy.array([max(rg.atoms().extract_b()) for rg in v_line_hierarchy.select(sel).residue_groups()], dtype=bool))[0] + 1.5
                 for val in v_lines: axis.axvline(x=val, ls='dotted')
 
@@ -2628,6 +2805,91 @@ class MultiDatasetUijPlots(object):
                         bbox_extra_artists=[lgd],
                         bbox_inches='tight',
                         dpi=300)
+            pyplot.close(fig)
+
+    @staticmethod
+    def multi_hierarchy_bar(prefix,
+                            hierarchies,
+                            titles,
+                            shape=None,
+                            y_labs='Isotropic B ($\AA^2$)',
+                            v_line_hierarchy=None,
+                            rotate_x_labels=True):
+        """Plot multiple bar plots for a series of hierarchies (plotted values are the average B-factors of each residue of the hierarchies)"""
+
+        # Check titles same lengths
+        titles = list(titles)
+        assert len(hierarchies) == len(titles)
+        # Check y-labs same lengths
+        if isinstance(y_labs, str):
+            y_labs = [y_labs]*len(hierarchies)
+        assert len(hierarchies) == len(y_labs)
+        # Get and check the shape of the subplots
+        if shape is not None:
+            nrow, ncol = shape
+        else:
+            nrow, ncol = (len(hierarchies), 1)
+        assert len(hierarchies) == nrow*ncol
+
+        # Extract one of the hierarchies as the "master"
+        m_h = hierarchies[0]
+        # Check all hierarchies are the same
+        for h in hierarchies:
+            assert m_h.is_similar_hierarchy(h)
+
+        # Create a plot for each chain
+        for chain_id in [c.id for c in m_h.chains()]:
+
+            # Create a selection for each chain and select it in each hierarchy
+            sel = m_h.atom_selection_cache().selection('chain {}'.format(chain_id))
+            sel_hs = [h.select(sel) for h in hierarchies]
+            sel_mh = sel_hs[0]
+
+            # Extract y-vals for each structure
+            y_vals = []
+            for i,h in enumerate(sel_hs):
+                y_vals.append([numpy.mean(rg.atoms().extract_b()) for rg in h.residue_groups()])
+            y_vals = numpy.array(y_vals)
+            # Skip chains with no Bs
+            if not y_vals.any():
+                continue
+
+            # Filename!
+            filename = prefix + '-chain_{}.png'.format(chain_id)
+
+            # Create x-values for each residue starting from 1
+            x_vals = numpy.array(range(len(list(sel_mh.residue_groups()))))+1
+            x_labels = ['']+[ShortLabeller.format(rg) for rg in sel_mh.residue_groups()]
+
+            # Create the output figure
+            fig, axes = pyplot.subplots(nrows=nrow, ncols=ncol)
+            # Fix for 1 subplot
+            if nrow==ncol==1: axes = numpy.array([axes])
+
+            # Iterative though axes and plot
+            handles = []
+            for i, axis in enumerate(axes):
+                # Set labels & title
+                axis.set_ylabel(y_labs[i])
+                axis.set_title(label=titles[i])
+                # Plot the bar
+                hdl = axis.bar(left=(x_vals-0.5),
+                               height=y_vals[i],
+                               width=1.0,
+                               edgecolor='black')
+                # Plot boundaries
+                if v_line_hierarchy is not None:
+                    v_lines = numpy.where(numpy.array([max(rg.atoms().extract_b()) for rg in v_line_hierarchy.select(sel).residue_groups()], dtype=bool))[0] + 1.5
+                    for val in v_lines: axis.axvline(x=val, ls='dotted')
+
+            # Make sure only the last axes have x-labels
+            for a in axes[-ncol:]:
+                a.set_xlabel('Residue')
+                a.set_xticklabels([x_labels[int(i)] if (i<len(x_labels)) and (float(int(i))==i) else '' for i in axis.get_xticks()])
+
+            # Format and save
+            fig.tight_layout()
+            fig.savefig(filename)#, dpi=300)
             pyplot.close(fig)
 
     @staticmethod
@@ -2884,7 +3146,7 @@ class MultiDatasetHierarchicalUijFitter(object):
         # No valid levels -- create over-arching partition
         if found_valid_level is False:
             self.log('No suitable level found -- using one partition containing all atoms.')
-            atom_hash = numpy.ones(array.shape[1])
+            atom_hash = numpy.ones(array.shape[1], dtype=int)
         # Renumber the array to start from 0
         for i,v in enumerate(sorted(numpy.unique(atom_hash))):
             if v < 0: continue
@@ -2943,9 +3205,10 @@ class MultiDatasetHierarchicalUijFitter(object):
         self.dataset_mask[:] = False
         self.dataset_mask[dataset_indices] = True
 
-    def set_tracking(self, table, out_dir):
+    def set_tracking(self, table, csv_path, png_path):
         self.tracking_data = table
-        self._tracking_dir = out_dir
+        self.tracking_csv = csv_path
+        self.tracking_png = png_path
 
     def update_tracking(self, uij_lvl, i_cycle, i_level=None):
         """Update the tracking table"""
@@ -3012,10 +3275,10 @@ class MultiDatasetHierarchicalUijFitter(object):
 
         self.log(self.tracking_data.loc[len(self.tracking_data.index)-1].to_string())
         # Dump to csv
-        self.tracking_data.to_csv(os.path.join(self._tracking_dir, 'tracking_data.csv'))
-
+        self.tracking_data.to_csv(self.tracking_csv)
         # Make plots
-        MultiDatasetUijPlots.tracking_plots(table=self.tracking_data, filename=os.path.join(self._tracking_dir, 'tracking_data.png'))
+        MultiDatasetUijPlots.tracking_plots(table    = self.tracking_data,
+                                            filename = self.tracking_png)
 
     def apply_masks(self):
         self.log.subheading('Setting atom and datasets masks')
@@ -3373,7 +3636,7 @@ class MultiDatasetUijResidualLevel(_MultiDatasetUijLevel):
         self._n_obj = self._n_atm
 
         # Create one log for all fitters
-        ls = LogStream(log_file = os.path.splitext(self.log.log_file)[0]+'-levelXXXX.log',
+        ls = LogStream(log_file = os.path.splitext(self.log.log_file)[0]+'-level-residual.log',
                        verbose  = False,
                        silent   = False)
         # Create a fitter for each atom
@@ -4013,8 +4276,6 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                     assert uij_eigs_min.shape == (len(opt_dset_mask),len(opt_atom_mask))
                     #uij_vols = numpy.array([matrix.sym(sym_mat3=u).determinant() for u in uij_vals])
                     min_eig = numpy.min(uij_eigs_min)
-                    med_eig = numpy.median(uij_eigs_min)
-                    max_eig = numpy.max(uij_eigs_min)
                     if min_eig > 0.0:
                         dst, atm = zip(*numpy.where(uij_eigs_min==min_eig))[0]
                         uij_start = tuple(uij_vals[dst,atm].tolist())
@@ -4031,13 +4292,17 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                     else:
                         self.log('There is an atom with negative eigenvalues (value {})'.format(min_eig))
                         self.log('Starting with a T-matrix with zero values')
-                        if med_eig > 0.0:
-                            self.log('Taking the median of the eigenvalues ({})'.format(med_eig))
-                            scale = med_eig
-                        else:
-                            self.log('Taking the largest of the eigenvalues ({})'.format(max_eig))
-                            scale = max_eig
-                        self.log('Scaling the amplitudes to this size')
+                        self.log('Looking for an appropriate scale for the amplitudes instead')
+                        for perc in range(10,110,10):
+                            scale = numpy.percentile(uij_eigs_min, q=perc)
+                            if scale > 0.0:
+                                self.log('Using the {}th percentile ({})'.format(perc,scale))
+                                break
+                        if scale <= 0.0:
+                            self.log('No minimal eigenvalues are positive.')
+                            scale = 1e-3
+                            self.log('Scaling amplitudes to minimal size ({})'.format(scale))
+                        self.log('Scaling the amplitudes...')
                         self.parameters().get(index=i_tls).amplitudes.scale(multiplier=scale)
                         self.log(self.parameters().get(index=i_tls).summary())
 
@@ -4045,7 +4310,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 if i_tls not in mdl_cuml: mdl_cuml.append(i_tls)
 
                 # ---------------------------------->
-                # Optimise each T, L, S component separately
+                # Optimise each set of selected components separately
                 # ---------------------------------->
                 for cpts in cpt_groups:
                     # Skip S optimisation if T and L are zeros
@@ -4227,7 +4492,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 continue
 
             # Determine the range that the model values exist over (precision -> maximum value)
-            log_min_model_delta     = int(numpy.ceil(-numpy.model.model.get_precision() / 2.0))
+            log_min_model_delta     = int(numpy.ceil(-model.model.get_precision() / 2.0))
             log_max_model_delta     = int(numpy.floor(numpy.log10(numpy.max(numpy.abs(model.model.values)))/2.0))
             self.log('Min model step size:  {:e}'.format(10.**log_min_model_delta))
             self.log('Max model step size:  {:e}'.format(10.**log_max_model_delta))
@@ -4330,6 +4595,12 @@ def build_levels(model, params, log=None):
     # FIXME Only run on the protein for the moment FIXME
     filter_h = protein(model.hierarchy)
 
+    # Filter the hierarchy by the overall selection
+    if params.levels.overall_selection:
+        cache = filter_h.atom_selection_cache()
+        choice = cache.selection(params.levels.overall_selection)
+        filter_h = filter_h.select(choice)
+
     if 'chain' in params.levels.auto_levels:
         log('Level {}: Creating level with groups for each chain'.format(len(levels)+1))
         levels.append([PhenixSelection.format(c) for c in filter_h.chains()])
@@ -4375,46 +4646,62 @@ def build_levels(model, params, log=None):
 
 def run(params):
 
-    easy_directory(params.output.out_dir)
-
-    assert params.table_ones_options.column_labels
-    assert params.table_ones_options.r_free_label
-
-    log_dir = easy_directory(os.path.join(params.output.out_dir, 'logs'))
-    log = Log(os.path.join(log_dir, 'fitting.log'), verbose=params.settings.verbose)
-
-    # Report parameters
-    log.heading('Input command')
-    log(' \\\n\t'.join(['pandemic.adp'] + sys.argv[1:]))
-    log.heading('Processed parameters')
-    log(master_phil.format(params).as_str())
-
-    # Process/report on input parameters
-    log.bar(True, False)
-    log('Selected TLS amplitude model: {}'.format(params.fitting.tls_amplitude_model))
-    log(MultiDatasetTLSModel.get_amplitude_model_class(params.fitting.tls_amplitude_model).description())
-    log.bar(False, True)
-
-    # Set precisions, etc
-    log.bar()
-    log('Setting TLS Model and Amplitude Precision')
-    # Model precision
-    log('TLS Model precision     -> {:10} / {} decimals'.format(10.**-params.fitting.precision.tls_model_decimals, params.fitting.precision.tls_model_decimals))
-    TLSModel.set_precision(params.fitting.precision.tls_model_decimals)
-    # Amplitude precision
-    log('TLS Amplitude precision -> {:10} / {} decimals'.format(10.**-params.fitting.precision.tls_amplitude_decimals, params.fitting.precision.tls_amplitude_decimals))
-    TLS_AmplitudeSet.set_precision(params.fitting.precision.tls_amplitude_decimals)
-    log.bar()
-    log('Setting TLS Model tolerance')
-    # Model validation tolerance
-    log('TLS Model tolerance     -> {:10}'.format(params.fitting.precision.tls_tolerance))
-    TLSModel.set_tolerance(params.fitting.precision.tls_tolerance)
-    # Model penalty tolerance
-    UijPenalties.set_tls_tolerance(params.fitting.precision.tls_tolerance)
-    log.bar()
-
     # Load input pickle object
     if (params.input.pickle is None):
+
+        if os.path.exists(params.output.out_dir):
+            raise Sorry('Output directory already exists: {}\nPlease delete the directory or provide a new output directory'.format(params.output.out_dir))
+
+        assert params.table_ones_options.column_labels
+        assert params.table_ones_options.r_free_label
+
+        easy_directory(params.output.out_dir)
+        log_dir = easy_directory(os.path.join(params.output.out_dir, 'logs'))
+        log = Log(os.path.join(log_dir, 'fitting.log'), verbose=params.settings.verbose)
+
+        # Report parameters
+        log.heading('Input command')
+        log(' \\\n\t'.join(['pandemic.adp'] + sys.argv[1:]))
+        log.heading('Input parameters')
+        log(master_phil.format(params).as_str())
+
+        log.heading('Processing input parameters')
+        # Process/report on input parameters
+        log.bar(True, False)
+        log('Selected TLS amplitude model: {}'.format(params.fitting.tls_amplitude_model))
+        log(MultiDatasetTLSModel.get_amplitude_model_class(params.fitting.tls_amplitude_model).description())
+        log.bar(False, True)
+        # Set precisions, etc
+        log.bar()
+        log('Setting TLS Model and Amplitude Precision')
+        # Model precision
+        log('TLS Model precision     -> {:10} / {} decimals'.format(10.**-params.fitting.precision.tls_model_decimals, params.fitting.precision.tls_model_decimals))
+        TLSModel.set_precision(params.fitting.precision.tls_model_decimals)
+        # Amplitude precision
+        log('TLS Amplitude precision -> {:10} / {} decimals'.format(10.**-params.fitting.precision.tls_amplitude_decimals, params.fitting.precision.tls_amplitude_decimals))
+        TLS_AmplitudeSet.set_precision(params.fitting.precision.tls_amplitude_decimals)
+        log.bar()
+        log('Setting TLS Model tolerance')
+        # Model validation tolerance
+        log('TLS Model tolerance     -> {:10}'.format(params.fitting.precision.tls_tolerance))
+        TLSModel.set_tolerance(params.fitting.precision.tls_tolerance)
+        # Model penalty tolerance
+        UijPenalties.set_tls_tolerance(params.fitting.precision.tls_tolerance)
+        log.bar()
+        # Output images
+        if params.output.images.all:
+            log('params.output.images.all = {}'.format(params.output.images.all))
+            # ----------------
+            new = 'all'
+            log('Setting params.output.images.pymol to {}'.format(new))
+            params.output.images.pymol = new
+            # ----------------
+            new = True
+            log('Setting params.output.images.distributions to {}'.format(new))
+            params.output.images.distributions = new
+            # ----------------
+            log.bar()
+
         log.heading('Running setup')
 
         # Load input structures
@@ -4442,11 +4729,49 @@ def run(params):
             log.heading('Exiting after initialisation: dry_run=True')
             sys.exit()
 
+        #------------------------------------------------------------------------------#
+        #---#                         Do the fitting                               #---#
+        #------------------------------------------------------------------------------#
+
         # Fit TLS models
         p.fit_hierarchical_uij_model()
 
-        # Process output
-        p.process_results()
+        # Write fitted structures
+        p.write_output_structures()
+
+        #------------------------------------------------------------------------------#
+        #---#                         Model summaries                              #---#
+        #------------------------------------------------------------------------------#
+
+        # Write average uijs for each level
+        p.log.heading('Summaries of the level-by-level TLS fittings')
+        p.write_tls_level_summary(out_dir_tag='model')
+
+        # Write residuals
+        p.log.heading('Summaries of the residual atomic components')
+        p.write_residuals_summary(out_dir_tag='model')
+
+        # Distributions of the uijs for groups
+        p.log.heading('Calculating distributions of uijs over the model')
+        p.write_combined_summary_graphs(out_dir_tag='results')
+
+        if p.params.output.diagnostics is True:
+            p.run_diagnostics()
+
+        #------------------------------------------------------------------------------#
+        #---#                Refine models & calculate R-values                    #---#
+        #------------------------------------------------------------------------------#
+
+        # Refine output structures and generate table ones
+        p.process_output_structures()
+
+        #------------------------------------------------------------------------------#
+        #---#                      Output CSVs and pickles                         #---#
+        #------------------------------------------------------------------------------#
+
+        # Write output CSV of... everything
+        p.log.heading('Writing output csvs')
+        p.write_combined_csv(out_dir_tag='root')
 
         # Pickle output object
         if p.params.output.pickle is True:
@@ -4455,7 +4780,11 @@ def run(params):
                      pickle_object  = p,
                      overwrite      = True)
 
+        # Reduce file space
+        p.tidy_output_folder(p.params.output.clean_up_files)
+
     else:
+        log = Log()
         # Load previously-pickled parameterisation
         assert os.path.exists(params.input.pickle), 'Input pickle file does not exist: {}'.format(params.input.pickle)
         log.heading('Loading previous ADP parameterisation')
@@ -4464,19 +4793,19 @@ def run(params):
 
         # Update unpickled object
         p.params = params
-        #p.out_dir = os.path.abspath(params.output.out_dir)
 
     # Print all errors
     p.show_errors()
 
     # Write HTML
     p.log.heading('Writing HTML output')
-    pandemic_html.write_adp_summary(parameterisation=p, out_dir=params.output.out_dir)
+    pandemic_html.write_adp_summary(parameterisation=p)
 
 
 ############################################################################
 
 if __name__=='__main__':
+
     from giant.jiffies import run_default
     from pandemic import module_info
     run_default._module_info = module_info
@@ -4487,3 +4816,4 @@ if __name__=='__main__':
         blank_arg_prepend   = blank_arg_prepend,
         program             = PROGRAM,
         description         = DESCRIPTION)
+
