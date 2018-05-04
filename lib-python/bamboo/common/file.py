@@ -114,3 +114,15 @@ class FileObj(object):
         if date=='accessed': return datetime.datetime.fromtimestamp(stats.st_atime)
         raise Exception("Invalid option: date='{}'".format(date))
 
+
+def compress_file(filename, delete_original=True):
+    """Compress a file with gzip"""
+    import gzip
+    zip_file = filename + '.gz'
+    with open(filename, 'r') as fh:
+        f = gzip.open(zip_file, 'wb')
+        f.write(fh.read())
+        f.close()
+    if delete_original:
+        os.remove(filename)
+    return zip_file
