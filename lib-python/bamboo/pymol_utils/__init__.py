@@ -89,7 +89,7 @@ class _PymolScript(object):
     # ----------------------------------------------------------------------- #
 
     def _format(self, template, *args, **kw_args):
-        assert kw_args.get('style') in [None]+self._styles
+        assert kw_args.get('style') in [None,'everything']+self._styles
         return template.format(*args, **kw_args)
 
     def _append(self, thing):
@@ -114,12 +114,29 @@ class _PymolScript(object):
     # ----------------------------------------------------------------------- #
 
     def set(self, setting, *args, **kwargs):
-        self._append(self._man_set.format(setting = setting,
-                                          args    = ', '.join([repr(a) for a in args]),
-                                          kwargs  = ', '.join(['{}={}'.format(k, repr(kwargs[k])) for k in kwargs.keys()])))
+        self._append(self._man_set \
+                     .format(setting = setting,
+                             args    = ','.join([repr(a) for a in args]),
+                             kwargs  = ','.join(['{}={}'.format(k, repr(kwargs[k])) for k in kwargs.keys()])) \
+                     .replace(' ','') \
+                     .replace(',,',',') \
+                     .replace('(,','(') \
+                     .replace(',)',')') \
+                    )
 
     def set_normalise_maps(self, value=True):
         self.set("normalize_ccp4_maps", int(value))
+
+    def custom(self, function, *args, **kwargs):
+        self._append(self._man_custom \
+                     .format(function = function,
+                             args    = ','.join([repr(a) for a in args]),
+                             kwargs  = ','.join(['{}={}'.format(k, repr(kwargs[k])) for k in kwargs.keys()])) \
+                     .replace(' ','') \
+                     .replace(',,',',') \
+                     .replace('(,','(') \
+                     .replace(',)',')') \
+                    )
 
     # ----------------------------------------------------------------------- #
     # Load and fetch structures and maps
@@ -202,8 +219,9 @@ class PythonScript(_PymolScript):
     _load_basic = 'cmd.load("{f_name}","{obj}")'
     _isomesh    = 'cmd.isomesh("{obj}", "{map}", {contour_level})'
 
-    _man_set        = 'cmd.set("{setting}", {args}, {kwargs})'
+    _man_set        = 'cmd.set("{setting}",{args},{kwargs})'
     _man_colour     = 'cmd.color("{colour}", "{obj}")'
+    _man_custom     = 'cmd.{function}({args},{kwargs})'
 
     _cmd_quit       = 'cmd.quit()'
     _cmd_ray        = 'cmd.ray({width},{height})'
