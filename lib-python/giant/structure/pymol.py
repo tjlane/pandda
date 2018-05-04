@@ -1,3 +1,4 @@
+import os
 
 from iotbx.pdb.hierarchy import input as ih
 
@@ -26,6 +27,7 @@ def selection_images(structure_filename,
                      selections,
                      labels = None,
                      style  = 'sticks',
+                     hide_rest = True,
                      ray_trace      = True,
                      run_script     = True,
                      delete_script  = True,
@@ -38,6 +40,7 @@ def selection_images(structure_filename,
 
     # Create script object
     s = PythonScript(pretty_models=False, pretty_maps=False)
+    s.custom('bg_color', 'white')
     s.set('opaque_background', 1)
     s.set('ray_opaque_background', 1)
     s.set('orthoscopic', 1)
@@ -55,8 +58,10 @@ def selection_images(structure_filename,
     for i, selection in enumerate(selections):
         s.select(obj='sele', selection=selection)
         s.orient(obj='sele')
-        s.zoom(obj='sele', buffer=1, complete=1)
+        s.zoom(obj='sele', buffer=2.0, complete=0)
         s.colour_by_element(obj='sele', carbon_colour='green')
+        if hide_rest:
+            s.hide(obj='not sele', style='everything')
         for sty in style:
             s.show(obj='sele', style=sty)
         if ray_trace:
@@ -67,8 +72,16 @@ def selection_images(structure_filename,
         s.show_as(obj='sele', style='lines')
 
     f_name = s.write_script(output_prefix+'.py')
+    l_name = f_name.replace('.py', '.log')
+    assert not os.path.exists(l_name)
 
     if run_script is True:
         s.run(f_name)
+
+    if delete_script is True:
+        if os.path.exists(f_name):
+            os.remove(f_name)
+        if os.path.exists(l_name):
+            os.remove(l_name)
 
     return png_filenames
