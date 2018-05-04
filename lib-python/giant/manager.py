@@ -1,9 +1,11 @@
 import os
 
 from libtbx import easy_pickle
+from libtbx.utils import Sorry, Failure
 
 from bamboo.common.logs import Log
 from bamboo.common.file import FileManager
+from bamboo.common.command import not_installed
 
 class Program(object):
     """Class meant to provide basic functionality for programs and pipelines"""
@@ -23,6 +25,11 @@ class Program(object):
         self.log(self.master_phil.format(python_object=params).as_str())
         self.log.heading('Parameters different to the defaults')
         self.log(self.master_phil.fetch_diff(source=self.master_phil.format(python_object=params)).as_str())
+
+    def check_programs_are_available(self, programs):
+        ni = not_installed(programs)
+        if ni:
+            raise Failure('The following programs are not available/installed:\n\t{}'.format('\n\t'.join(ni)))
 
     def check_for_matplotlib(self, backend=None, interactive=False):
         """Check to see whether we can load matplotlib"""
