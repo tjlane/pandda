@@ -143,3 +143,9 @@ class CommandManager(object):
         print('Log file for {} written to {}'.format(self.program[0], log_file))
 
 
+def not_installed(programs):
+    not_found = []
+    for p in programs:
+        if not find_executable(p):
+            not_found.append(p)
+    return not_found
