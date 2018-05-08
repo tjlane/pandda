@@ -11,7 +11,7 @@ class _refiner(object):
     program = None
     auto = True
 
-    def __init__(self, pdb_file, mtz_file=None, cif_file=None, out_prefix=None, **kw_args):
+    def __init__(self, pdb_file, mtz_file=None, cif_files=None, out_prefix=None, **kw_args):
 
         # Set defaults if not given
         if mtz_file is None:
@@ -22,7 +22,7 @@ class _refiner(object):
         # Main files
         self.pdb_file = pdb_file
         self.mtz_file = mtz_file
-        self.cif_file = cif_file
+        self.cif_files = cif_files
 
         # Eventual output prefix
         self.out_prefix = out_prefix
@@ -103,8 +103,8 @@ class refine_phenix(_refiner):
         """Prepare command object"""
         kw = self.kw_args
         self.cmd.add_command_line_arguments(self.pdb_file, self.mtz_file)
-        if self.cif_file is not None:
-            self.cmd.add_command_line_arguments(self.cif_file)
+        if self.cif_files is not None:
+            self.cmd.add_command_line_arguments(self.cif_files)
         self.cmd.add_command_line_arguments('output.prefix={}'.format(self.tmp_pre))
         if 'strategy' in kw:
             self.cmd.add_command_line_arguments('refine.strategy={}'.format(kw['strategy']))

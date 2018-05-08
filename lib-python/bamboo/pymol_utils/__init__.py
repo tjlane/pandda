@@ -118,7 +118,6 @@ class _PymolScript(object):
                      .format(setting = setting,
                              args    = ','.join([repr(a) for a in args]),
                              kwargs  = ','.join(['{}={}'.format(k, repr(kwargs[k])) for k in kwargs.keys()])) \
-                     .replace(' ','') \
                      .replace(',,',',') \
                      .replace('(,','(') \
                      .replace(',)',')') \
@@ -132,7 +131,6 @@ class _PymolScript(object):
                      .format(function = function,
                              args    = ','.join([repr(a) for a in args]),
                              kwargs  = ','.join(['{}={}'.format(k, repr(kwargs[k])) for k in kwargs.keys()])) \
-                     .replace(' ','') \
                      .replace(',,',',') \
                      .replace('(,','(') \
                      .replace(',)',')') \

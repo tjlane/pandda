@@ -27,9 +27,11 @@ def selection_images(structure_filename,
                      selections,
                      labels = None,
                      style  = 'sticks',
+                     colour_by = None,
                      hide_rest = True,
-                     ray_trace      = True,
-                     run_script     = True,
+                     ray_trace = True,
+                     settings = [],
+                     run_script = True,
                      delete_script  = True,
                      width  = 800,
                      height = 600,
@@ -41,35 +43,39 @@ def selection_images(structure_filename,
     # Create script object
     s = PythonScript(pretty_models=False, pretty_maps=False)
     s.custom('bg_color', 'white')
-    s.set('opaque_background', 1)
-    s.set('ray_opaque_background', 1)
+    s.set('opaque_background', 0)
+    s.set('ray_opaque_background', 0)
     s.set('orthoscopic', 1)
+    # Apply custom global commands
+    for cmd in settings:
+        s.set(*cmd)
     # Read in structure and hide all atoms
     s.load_pdb(f_name=structure_filename, obj='input_structure')
-
-    # Set the styles
+    # Set styles
     style = style.split('+')
-    # Set colors
-    s.colour(obj='all', colour="grey50")
-    s.show_as(obj='all', style='lines')
 
     png_filenames = []
 
     for i, selection in enumerate(selections):
+        # Reset the structure to all look the same
+        s.show_as(obj='all', style=style[0])
+        s.colour(obj='all', colour="grey90")
+        # Apply custom views to the selection
         s.select(obj='sele', selection=selection)
-        s.orient(obj='sele')
-        s.zoom(obj='sele', buffer=2.0, complete=0)
-        s.colour_by_element(obj='sele', carbon_colour='green')
-        if hide_rest:
-            s.hide(obj='not sele', style='everything')
         for sty in style:
             s.show(obj='sele', style=sty)
+        s.orient(obj='sele')
+        s.zoom(obj='sele', buffer=0.0, complete=1)
+        if colour_by == 'bfactor':
+            s.custom('spectrum', expression='b', selection='sele and (b>0)')
+        else:
+            s.colour_by_element(obj='sele', carbon_colour='green')
+        if hide_rest:
+            s.hide(obj='not sele', style='everything')
         if ray_trace:
             s.ray(height=height, width=width)
         png_name = s.png(f_name=output_prefix+labels[i]+'.png')
         png_filenames.append(png_name)
-        s.colour(obj='sele', colour="grey50")
-        s.show_as(obj='sele', style='lines')
 
     f_name = s.write_script(output_prefix+'.py')
     l_name = f_name.replace('.py', '.log')

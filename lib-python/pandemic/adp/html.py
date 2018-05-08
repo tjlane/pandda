@@ -8,6 +8,9 @@ from giant.structure.formatting import Labeller, ShortLabeller
 from bamboo.html import png2base64src_maybe
 from pandemic.html import PANDEMIC_HTML_ENV
 
+# debugging flags
+DEBUG = False
+
 def format_summary(text, width=12, cls_tuple=['alert','info']):
     paragraphs = text.split('\n\n')
     output = []
@@ -40,13 +43,13 @@ def create_overview_tab(parameterisation):
            'short_name'     : 'Overview',
            'long_name'      : 'Hierarchical ADP Parameterisation Overview',
            'description'    : '',
-           'contents'       : [{'width':8, 'text': '', 'image':png2base64src_maybe(fm.get_file('tracking_png'), print_on_missing=True)}] + \
+           'contents'       : [{'width':8, 'text': '', 'image':png2base64src_maybe(fm.get_file('tracking_png'), print_on_missing=DEBUG)}] + \
                               [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'class':['text-center']}] + \
                               format_summary(f.summary(), width=6) + \
                               [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'class':['text-center']}] + \
-                              numpy.concatenate(zip(*[[{'width':4, 'text': 'Partition Schematic',  'image':png2base64src_maybe(part_f.format(c), print_on_missing=True)} for c in chain_ids],
-                                                      [{'width':4, 'text': 'TLS-level components', 'image':png2base64src_maybe(prof_f.format(c), print_on_missing=True)} for c in chain_ids],
-                                                      [{'width':4, 'text': 'Residual component',   'image':png2base64src_maybe(resd_f.format(c), print_on_missing=True)} for c in chain_ids]
+                              numpy.concatenate(zip(*[[{'width':4, 'text': 'Partition Schematic',  'image':png2base64src_maybe(part_f.format(c), print_on_missing=DEBUG)} for c in chain_ids],
+                                                      [{'width':4, 'text': 'TLS-level components', 'image':png2base64src_maybe(prof_f.format(c), print_on_missing=DEBUG)} for c in chain_ids],
+                                                      [{'width':4, 'text': 'Residual component',   'image':png2base64src_maybe(resd_f.format(c), print_on_missing=DEBUG)} for c in chain_ids]
                                                      ])).tolist() + \
                               [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'class':['text-center']}] + \
                               numpy.concatenate([format_summary(l.summary(show=False), width=6) for l in f.levels+[f.residual]]).tolist()
@@ -68,10 +71,10 @@ def create_analysis_tab(parameterisation):
            'short_name'     : 'Results/Analysis',
            'long_name'      : 'Model Improvement Statistics from hierarchical TLS parameterisation',
            'description'    : '',
-           'images'         : [{'width':6, 'path':png2base64src_maybe(rall_f, print_on_missing=True)},
-                               {'width':6, 'path':png2base64src_maybe(rgap_f, print_on_missing=True)},
-                               {'width':6, 'path':png2base64src_maybe(rfre_f, print_on_missing=True)},
-                               {'width':6, 'path':png2base64src_maybe(rwor_f, print_on_missing=True)}],
+           'images'         : [{'width':6, 'path':png2base64src_maybe(rall_f, print_on_missing=DEBUG)},
+                               {'width':6, 'path':png2base64src_maybe(rgap_f, print_on_missing=DEBUG)},
+                               {'width':6, 'path':png2base64src_maybe(rfre_f, print_on_missing=DEBUG)},
+                               {'width':6, 'path':png2base64src_maybe(rwor_f, print_on_missing=DEBUG)}],
            'plots'          : [{'div': 'variable-plots',
                                 'json': p.tables.statistics.T.to_json(orient='split'),
                                 'default_x' : 'High Resolution Limit',
@@ -116,8 +119,8 @@ def create_levels_tab(parameterisation):
                  'width'          : 12,
                  'show'           : True,
                  'table'          : None,
-                 'objects'        : [{'width':6, 'text': 'TLS-level components', 'path':png2base64src_maybe(prof_f, print_on_missing=True)},
-                                     {'width':6, 'text': 'Residual component',   'path':png2base64src_maybe(resd_f, print_on_missing=True)}],
+                 'objects'        : [{'width':6, 'text': 'TLS-level components', 'path':png2base64src_maybe(prof_f, print_on_missing=DEBUG)},
+                                     {'width':6, 'text': 'Residual component',   'path':png2base64src_maybe(resd_f, print_on_missing=DEBUG)}],
                 }
         overview_tab['panels'].append(panel)
         # Add images to the overview tab for each TLS level
@@ -130,9 +133,9 @@ def create_levels_tab(parameterisation):
                      'show'           : True,
                      'table'          : None,
                      'objects'        : [{'width':12, 'text':'{} atoms.'.format('X')},
-                                         {'width':12, 'path':png2base64src_maybe(chain_image, print_on_missing=True)},
-                                         {'width':12, 'path':png2base64src_maybe(stack_image, print_on_missing=True)},
-                                         {'width':12, 'path':png2base64src_maybe(aniso_image, print_on_missing=True)}],
+                                         {'width':12, 'path':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
+                                         {'width':12, 'path':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
+                                         {'width':12, 'path':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)}],
                     }
             overview_tab['panels'].append(panel)
         # Format residual level
@@ -144,9 +147,9 @@ def create_levels_tab(parameterisation):
                  'show'           : True,
                  'table'          : None,
                  'objects'        : [{'width':12, 'text':'{} atoms.'.format('X')},
-                                     {'width':12, 'path':png2base64src_maybe(chain_image, print_on_missing=True)},
-                                     {'width':12, 'path':png2base64src_maybe(stack_image, print_on_missing=True)},
-                                     {'width':12, 'path':png2base64src_maybe(aniso_image, print_on_missing=True)}],
+                                     {'width':12, 'path':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
+                                     {'width':12, 'path':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
+                                     {'width':12, 'path':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)}],
                   }
         overview_tab['panels'].append(panel)
     # -------------------------------->
@@ -164,6 +167,7 @@ def create_levels_tab(parameterisation):
         tab['tabs'].append(level_tab)
         # Add overview at the top of the tab
         for c_id in chain_ids:
+            partn_image = fm.get_file('pml-level-partition-template').format(level_num, c_id)
             chain_image = fm.get_file('pml-level-chain-template').format(level_num, c_id)
             stack_image = fm.get_file('png-tls-profile-template').format(level_num, c_id)
             aniso_image = fm.get_file('png-tls-anisotropy-template').format(level_num, c_id)
@@ -172,9 +176,10 @@ def create_levels_tab(parameterisation):
                      'show'           : True,
                      'table'          : None,
                      'objects'        : [{'width':12, 'text':'{} atoms.'.format('X')},
-                                         {'width':4, 'path':png2base64src_maybe(chain_image, print_on_missing=True)},
-                                         {'width':4, 'path':png2base64src_maybe(stack_image, print_on_missing=True)},
-                                         {'width':4, 'path':png2base64src_maybe(aniso_image, print_on_missing=True)}],
+                                         {'width':6, 'path':png2base64src_maybe(partn_image, print_on_missing=DEBUG)},
+                                         {'width':6, 'path':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
+                                         {'width':6, 'path':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
+                                         {'width':6, 'path':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)}],
                     }
             level_tab['panels'].append(panel)
         # Read in the TLS models and amplitudes for this level
@@ -203,9 +208,9 @@ def create_levels_tab(parameterisation):
                      'width' : 12, #max(4,12//level.n_groups()),
                      'table' : None,
                      'objects': [{'width':12, 'text':'<br>'.join(['Number of atoms: {}'.format(sum(sel))])},
-                                 {'width':4,  'text':'Shape of disorder (arbitrary scale)',     'path': png2base64src_maybe(scl_image, print_on_missing=True)},
-                                 {'width':4,  'text':'Average size over all datasets',          'path': png2base64src_maybe(adp_image, print_on_missing=True)},
-                                 {'width':4,  'text':'Amplitude Distribution',                  'path': png2base64src_maybe(amp_image, print_on_missing=True)}] + \
+                                 {'width':4,  'text':'Shape of disorder (arbitrary scale)',     'path': png2base64src_maybe(scl_image, print_on_missing=DEBUG)},
+                                 {'width':4,  'text':'Average size over all datasets',          'path': png2base64src_maybe(adp_image, print_on_missing=DEBUG)},
+                                 {'width':4,  'text':'Amplitude Distribution',                  'path': png2base64src_maybe(amp_image, print_on_missing=DEBUG)}] + \
                                 [{'width':12,'text':s} for s in tls_mdl_strs],
                     }
             level_tab['panels'].append(panel)
@@ -236,7 +241,7 @@ def create_levels_tab(parameterisation):
             short_label = ShortLabeller.format(rg)
             long_label  = Labeller.format(rg)
             adp_image = fm.get_file('pml-residual-group-template').format(short_label)
-            panel['objects'].append({'width':4, 'text':long_label, 'path': png2base64src_maybe(adp_image, print_on_missing=True)})
+            panel['objects'].append({'width':4, 'text':long_label, 'path': png2base64src_maybe(adp_image, print_on_missing=DEBUG)})
         # Make  the first panel open
         residual_tab['panels'][0]['show'] = True
 

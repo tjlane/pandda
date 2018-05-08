@@ -74,7 +74,7 @@ class NonDaemonicPool(multiprocessing.pool.Pool):
 PROGRAM = 'pandemic.adp'
 
 DESCRIPTION = """
-    Fit a consensus B-factor model to a series of datasets
+    Fit a consensus anisotropic B-factor model to a (series of) molecular structure(s)
 """
 
 ############################################################################
@@ -111,7 +111,7 @@ output {
         pymol = none *chain all
             .help = "Write residue-by-residue images of the output B-factors"
             .type = choice(multi=False)
-        distributions = True
+        distributions = False
             .help = "Write distribution graphs for each TLS group"
             .type = bool
     }
@@ -131,17 +131,13 @@ levels {
         .multiple = True
     {
         depth = None
-            .help = "where to insert this level into the hierarchy? (after auto_levels have been determined)"
+            .help = "Where to insert this level into the hierarchy? (after auto_levels have been determined). Inserting as '1' will make this the first level and '2' will add as the second level, etc. Any auto-generated levels will be shifted down appropriately."
             .type = int
             .multiple = False
         selection = None
             .help = "list of selections that define groups for this level"
             .type = str
             .multiple = True
-        mask_atoms = False
-            .help = "remove atoms with high residual Uijs from this level?"
-            .type = bool
-            .multiple = False
     }
 }
 fitting {
@@ -732,7 +728,7 @@ class MultiDatasetUijParameterisation(Program):
         self.log = log
 
         # List of non-fatal errors from the program (to be reported at the end)
-        self.errors = []
+        self.warnings = []
 
         self.params = params
 
@@ -868,6 +864,9 @@ class MultiDatasetUijParameterisation(Program):
             raise Failure("Some structures are invalid or missing information.")
         # Check for errors - No high resolution structures?
         if len(self._opt_datasets_selection) == 0:
+            self.log('Dataset resolutions:')
+            for m in self.models:
+                self.log('> {}: {}'.format(m.tag, m.input.get_r_rfree_sigma().high))
             raise Sorry('No datasets above resolution cutoff: {}'.format(self._opt_datasets_res_limit))
 
         # Limit the number of datasets for optimisation
@@ -893,17 +892,26 @@ class MultiDatasetUijParameterisation(Program):
         # Array of which atoms are in which group at which level
         level_array = -1 * numpy.ones((len(self.levels), self.master_h.atoms().size()), dtype=int)
         # List of any selections that result in no atoms
-        failures = []
+        warnings = []
         # Each column is one level
         for i_level, selections in enumerate(self.levels):
+            no_atoms = 0
             self.log('\n> Level {} ({})\n'.format(i_level+1, self.level_labels[i_level]))
             for i_group, sel_group in enumerate(selections):
                 sel = numpy.array(atom_cache.selection(sel_group))
                 self.log('\tgroup {:<5d} - {:50}: {:>5d} atoms'.format(i_group+1, sel_group, sum(sel)))
                 if sum(sel) == 0:
-                    failures.append('Group "{}": {} atoms'.format(sel_group, sum(sel)))
+                    warnings.append('Level {}, Group "{}": {} atoms'.format(i_level+1, sel_group, sum(sel)))
+                    no_atoms += 1
+                    continue
                 level_array[i_level, sel] = i_group+1
-        if failures: raise Failure('One or more group selections do not select any atoms: \n\t{}'.format('\n\t'.join(failures)))
+            # Sanity check that the expected number of groups have been produced
+            n_groups = len([v for v in numpy.unique(level_array[i_level]) if v>0])
+            assert n_groups+no_atoms == len(selections)
+        if warnings:
+            msg = 'WARNING: One or more group selections do not select any atoms: \n\t{}'.format('\n\t'.join(warnings))
+            self.log(msg)
+            self.warnings.append(msg)
 
         # Apply the overall filter if provided
         if self.params.levels.overall_selection:
@@ -997,19 +1005,19 @@ class MultiDatasetUijParameterisation(Program):
         self.log('Number of input uij values: {}'.format(n_o))
         self.log('Parameter ratio Gain (should be <1): {}'.format(float(n_p)/float(n_o)))
 
-    def show_errors(self):
+    def show_warnings(self):
         """Print non-fatal errors accumulated during running"""
-        if len(self.errors) == 0:
+        if len(self.warnings) == 0:
             self.log('Program completed with 0 errors')
             return
-        self.log.subheading('{} non-fatal errors occurred during the program'.format(len(self.errors)))
-        for i, e in enumerate(self.errors):
+        self.log.subheading('{} non-fatal errors occurred during the program (see below)'.format(len(self.warnings)))
+        for i, e in enumerate(self.warnings):
             self.log.bar()
-            self.log('Error {} of {}'.format(i+1, len(self.errors)))
+            self.log('Error {} of {}'.format(i+1, len(self.warnings)))
             self.log.bar()
             self.log(e)
         self.log.bar()
-        self.log.subheading('{} non-fatal errors occurred during the program'.format(len(self.errors)))
+        self.log.subheading('{} non-fatal errors occurred during the program (see above)'.format(len(self.warnings)))
 
     def blank_master_hierarchy(self):
         h = self.master_h.deep_copy()
@@ -1227,7 +1235,7 @@ class MultiDatasetUijParameterisation(Program):
         self.log('Writing partition figures for each chain')
         level_hierarchies = []
         f_template = self.file_manager.add_file(file_name = 'level-{:04d}_atoms.pdb',
-                                                file_tag  = 'level-atoms-template',
+                                                file_tag  = 'level-partition-template',
                                                 dir_tag   = out_dir_tag)
         for i_level, g_vals in enumerate(self.level_array):
             h = self.custom_master_hierarchy(uij=None, iso=g_vals, mask=atom_sel)
@@ -1243,6 +1251,7 @@ class MultiDatasetUijParameterisation(Program):
         f_template = self.file_manager.add_file(file_name = 'level-partitions-chain-{}.png',
                                                 file_tag  = 'level-partitions-by-chain-template',
                                                 dir_tag   = out_dir_tag)
+        # Generate png of partitioning
         for c in b_h.chains():
             chain_sel = b_c.selection('chain {}'.format(c.id))
             hierarchies = [h.select(chain_sel, copy_atoms=True) for h in level_hierarchies]
@@ -1252,6 +1261,27 @@ class MultiDatasetUijParameterisation(Program):
             filename = f_template.format(c.id)
             self.log('\t> {}'.format(filename))
             self.plot.level_plots(filename=filename, hierarchies=hierarchies, title='chain {}'.format(c.id))
+        # Generate images of each chain of each level coloured by group
+        lvl_pml_prt_template = self.file_manager.add_file(file_name='partition-level_{}-chain_{}.png',
+                                                          file_tag='pml-level-partition-template',
+                                                          dir_tag=out_dir_tag)
+        lvl_pml_prt_prefix = lvl_pml_prt_template.replace('-chain_{}.png','')
+        if self.params.output.images.pymol != 'none':
+            for i_level in xrange(len(self.level_array)):
+                # Images for each chain (of the partitions) - coloured by group
+                self.log('\t> {}'.format(lvl_pml_prt_template.format(i_level+1,'*')))
+                s_f = self.file_manager.get_file('level-partition-template').format(i_level+1)
+                # Choose the style based on whether interested in atoms or larger regions
+                styles = 'cartoon' if self.level_labels[i_level] in ['chain','groups','secondary structure','residue'] else 'lines+spheres'
+                auto_chain_images(structure_filename = s_f,
+                                  output_prefix = lvl_pml_prt_prefix.format(i_level+1),
+                                  style = styles,
+                                  colour_by = 'bfactor',
+                                  settings = [('cartoon_oval_length', 0.5),
+                                              ('cartoon_discrete_colors', 'on'),
+                                              ('sphere_scale', 0.25)],
+                                  width=1000, height=750)
+                assert glob.glob(lvl_pml_prt_template.format(i_level+1,'*')), 'no files have been generated!'
 
     def make_tls_headers(self, levels=None, datasets=None):
         """Create header lines for each pdb file containing the TLS matrices"""
@@ -1601,7 +1631,8 @@ class MultiDatasetUijParameterisation(Program):
         self.plot.stacked_bar(prefix=res_plt_prefix,
                               hierarchies=[m_h.select(atom_sel)],
                               legends=['Residual    '],
-                              title='Uij Profile of Residual Level')
+                              title='Uij Profile of Residual Level',
+                              colour_space=(1,1))
         assert glob.glob(res_plt_template.format('*')), 'no files have been generated!'
         # Write pymol images for each chain
         if self.params.output.images.pymol != 'none':
@@ -2327,7 +2358,7 @@ class MultiDatasetUijParameterisation(Program):
             self.log.subheading('Deleting unnecessary MTZ files')
             for i_mod, m in enumerate(self.models):
                 for f in [m.o_mtz, m.r_mtz]:
-                    if os.path.exists(f):
+                    if (f is not None) and os.path.exists(f):
                         self.log('Removing file: {}'.format(f))
                         os.remove(f)
         if 'compress_logs' in actions:
@@ -2714,7 +2745,8 @@ class MultiDatasetUijPlots(object):
                     y_lim=None,
                     v_line_hierarchy=None,
                     rotate_x_labels=True,
-                    reverse_legend_order=False):
+                    reverse_legend_order=False,
+                    colour_space=(0,1)):
         """Plot stacked bar plots for a series of hierarchies (plotted values are the average B-factors of each residue of the hierarchies)"""
 
         # TODO MERGE stacked_bar and multi_bar with mode='stacked' mode='grid'
@@ -2746,7 +2778,7 @@ class MultiDatasetUijPlots(object):
             cuml_y = None
 
             # Create colors + hatches
-            colors = pyplot.cm.rainbow(numpy.linspace(0,1,len(sel_hs)))
+            colors = pyplot.cm.rainbow(numpy.linspace(colour_space[0],colour_space[1],len(sel_hs)))
             hatchs = itertools.cycle(['//', 'x', '\\'])
 
             # Create the output figure
@@ -4795,7 +4827,7 @@ def run(params):
         p.params = params
 
     # Print all errors
-    p.show_errors()
+    p.show_warnings()
 
     # Write HTML
     p.log.heading('Writing HTML output')
