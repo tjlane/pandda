@@ -1,0 +1,77 @@
+#!/usr/bin/env cctbx.python
+
+import os, sys
+import pandas
+
+import libtbx.phil
+import iotbx.pdb
+
+from bamboo.common.command import CommandManager
+from giant.xray.crystal import CrystalSummary
+
+############################################################################
+
+PROGRAM = 'giant.datasets.extract_r_values'
+
+DESCRIPTION = """
+    A tool to extract the R-free and R-work values from a series of PDB files.
+"""
+############################################################################
+
+blank_arg_prepend = {'.pdb':'pdb=', '.csv':'csv='}
+
+master_phil = libtbx.phil.parse("""
+input {
+    pdb = None
+        .type = path
+        .multiple = True
+    labelling = filename *foldername
+        .type = choice
+}
+output {
+    csv = dataset_r_values.csv
+        .type = str
+}
+""")
+
+############################################################################
+
+def run(params):
+
+    assert not os.path.exists(params.output.csv)
+  
+    if params.input.labelling == 'filename': 
+        lab_func = lambda f: os.path.basename(os.path.splitext(f)[0])
+    else: 
+        lab_func = lambda f: os.path.basename(os.path.dirname(f))
+
+    out_table = pandas.DataFrame(columns=['resolution','R-free','R-work','R-gap'])
+
+    for p in params.input.pdb:
+
+        lab = lab_func(p)
+
+        print '----------------->'
+        print '>',lab
+
+        i = iotbx.pdb.input(p)
+        r = i.get_r_rfree_sigma()
+        
+        out_table.loc[lab] = [r.high, r.r_free, r.r_work, r.r_free-r.r_work]
+
+        print out_table.loc[lab]
+
+    print 'writing to', params.output.csv
+    out_table.to_csv(params.output.csv)
+
+############################################################################
+
+if __name__=='__main__':
+    from giant.jiffies import run_default
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION)

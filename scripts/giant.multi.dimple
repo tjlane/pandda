@@ -1,4 +1,4 @@
-#!/usr/bin/env ccp4-python
+#!/usr/bin/env cctbx.python
 
 import os, sys, copy, re, shutil
 

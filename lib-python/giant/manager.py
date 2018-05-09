@@ -1,9 +1,11 @@
 import os
 
 from libtbx import easy_pickle
+from libtbx.utils import Sorry, Failure
 
 from bamboo.common.logs import Log
 from bamboo.common.file import FileManager
+from bamboo.common.command import not_installed
 
 class Program(object):
     """Class meant to provide basic functionality for programs and pipelines"""
@@ -20,9 +22,14 @@ class Program(object):
 
     def write_running_parameters_to_log(self, params):
         self.log.heading('Processed parameters')
-        self.log(self.master_phil.format(python_object=params).as_str(), True)
+        self.log(self.master_phil.format(python_object=params).as_str())
         self.log.heading('Parameters different to the defaults')
-        self.log(self.master_phil.fetch_diff(source=self.master_phil.format(python_object=params)).as_str(), True)
+        self.log(self.master_phil.fetch_diff(source=self.master_phil.format(python_object=params)).as_str())
+
+    def check_programs_are_available(self, programs):
+        ni = not_installed(programs)
+        if ni:
+            raise Failure('The following programs are not available/installed:\n\t{}'.format('\n\t'.join(ni)))
 
     def check_for_matplotlib(self, backend=None, interactive=False):
         """Check to see whether we can load matplotlib"""
@@ -40,9 +47,9 @@ class Program(object):
             self.log('pyplot loaded successfully. Using backend "{!s}"'.format(current_backend))
             return True
         except:
-            self.log('===================================>>>', True)
-            self.log('>> COULD NOT IMPORT MATPLOTLIB. WILL NOT BE ABLE TO GENERATE GRAPHS.', True)
-            self.log('===================================>>>', True)
+            self.log('===================================>>>')
+            self.log('>> COULD NOT IMPORT MATPLOTLIB. WILL NOT BE ABLE TO GENERATE GRAPHS.')
+            self.log('===================================>>>')
             return False
 
     def initialise_file_manager(self, rootdir):

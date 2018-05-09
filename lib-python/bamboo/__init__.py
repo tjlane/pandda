@@ -5,3 +5,7 @@ import os, sys
 
 from bamboo.common.errors import *
 
+try:
+    VERSION = pkg_resources.get_distribution("panddas").version
+except:
+    VERSION = '(developer -- see setup.py file)'

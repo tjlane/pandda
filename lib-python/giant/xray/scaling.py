@@ -1,5 +1,7 @@
 import numpy
 
+from bamboo.common import Report
+
 from scitbx.math import scale_curves, approx_equal_relatively
 from scitbx.array_family import flex
 from scitbx.python_utils.robust_statistics import percentile
@@ -74,8 +76,11 @@ class IsotropicBfactorScalingFactory(object):
         curr_b = 1e-6
         # Percent change between iterations - convergence when delta <convergence_criterion
         n_iter = 0
+        # Report in case of error
+        report = Report('Scaling log:', verbose=False)
         while n_iter < max_iter:
-            print 'ITER: '+str(n_iter)
+            report('---')
+            report('ITER: '+str(n_iter))
             # Run optimisation on the linear scaling
             lsc = ExponentialScaling(x_values = interpolator.target_x,
                                      ref_values = ref_itpl_mean_I,
@@ -85,23 +90,26 @@ class IsotropicBfactorScalingFactory(object):
             lsc.scaling_b_factor = -0.5 * list(lsc.optimised_values)[0]
             # Break if fitted to 0
             if approx_equal_relatively(0.0, lsc.scaling_b_factor, 1e-6):
+                report('Scaling is approximately 0.0 - stopping')
                 break
             # Calculate percentage change
-            print 'Curr/New: '+str(curr_b)+'\t'+str(lsc.scaling_b_factor)
+            report('Curr/New: '+str(curr_b)+'\t'+str(lsc.scaling_b_factor))
             delta = abs((curr_b-lsc.scaling_b_factor)/curr_b)
-            print 'Delta: '+str(delta)
-            if delta < convergence_crit_perc: break
+            report('Delta: '+str(delta))
+            if delta < convergence_crit_perc:
+                report('Scaling has converged to within tolerance - stopping')
+                break
             # Update selection
-            print 'Curr Selection Size: '+str(sum(selection))
+            report('Curr Selection Size: '+str(sum(selection)))
             ref_diffs = flex.log(lsc.ref_values)-flex.log(lsc.out_values)
             #abs_diffs = flex.abs(ref_diffs)
             sel_diffs = ref_diffs.select(selection)
             rej_val_high = numpy.percentile(sel_diffs, convergence_reject_perc)
             rej_val_low  = numpy.percentile(sel_diffs, 100.0-convergence_reject_perc)
-            print 'Percentile: '+str(convergence_reject_perc)+'\t<'+str(rej_val_low)+'\t>'+str(rej_val_high)
+            report('Percentile: '+str(convergence_reject_perc)+'\t<'+str(rej_val_low)+'\t>'+str(rej_val_high))
             selection.set_selected(ref_diffs>rej_val_high, False)
             selection.set_selected(ref_diffs<rej_val_low,  False)
-            print 'New Selection Size: '+str(sum(selection))
+            report('New Selection Size: '+str(sum(selection)))
             # Update loop params
             curr_b = lsc.scaling_b_factor
             n_iter += 1

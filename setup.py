@@ -2,6 +2,8 @@ import os, sys, glob
 from setuptools import setup, find_packages, findall
 from distutils.spawn import find_executable
 
+VERSION = '0.2.13-dev'
+
 #####################################################################################
 
 if '--for-ccp4' in sys.argv:
@@ -15,8 +17,6 @@ if '--for-ccp4' in sys.argv:
                         'bin/giant.merge_conformations',
                         'bin/giant.split_conformations',
                       ]
-    # And clean up
-    sys.argv.remove('--for-ccp4')
 else:
     # Standard install
     install_scripts = findall(dir='bin')
@@ -27,8 +27,14 @@ if '--python' in sys.argv:
     # And clean up
     sys.argv.remove('--python')
     sys.argv.remove(python)
-else:
+elif '--for-ccp4' in sys.argv:
     python = 'ccp4-python'
+else:
+    python = 'cctbx.python'
+
+# And clean up
+try: sys.argv.remove('--for-ccp4')
+except: pass
 
 print('PanDDA scripts will run using: {}'.format(python))
 assert find_executable(python), "Can't find executable - is this the correct python: {}".format(python)
@@ -36,30 +42,29 @@ assert find_executable(python), "Can't find executable - is this the correct pyt
 # Modify the scripts to use the correct python/coot
 for s in install_scripts:
     with open(s, 'r') as fh: s_conts = fh.read()
-    s_conts = s_conts.replace('ccp4-python', python)
+    s_conts = s_conts.replace('cctbx.python', python)
     with open(s, 'w') as fh: fh.write(s_conts)
 
 #####################################################################################
 
 setup(  name                = 'panddas',
-        version             = '0.2.12-dev',
+        version             = VERSION,
         description         = 'Multi-dataset crystallographic analyses',
         author              = 'Nicholas M Pearce',
         author_email        = 'nicholas.pearce.0@gmail.com',
         url                 = 'http://pandda.bitbucket.org',
         license             = 'CC BY-SA 4.0',
-        install_requires    = ( 'pandas',
+        install_requires    = ( 'numpy>=1.10.4',
+                                'matplotlib',
+                                'pandas',
                                 'jinja2',
                                 'markupsafe',
                                 'ascii_graph',
-                                'numpy>=1.10.4'
                                 ),
         package_dir         = {'':'lib-python'},
         scripts             = install_scripts,
         packages            = find_packages(where   ='lib-python',
-                                            exclude = ( 'pandemic',     'pandemic.*',
-                                                        'phenix_pandda*',
-                                                        'prototypes*',
+                                            exclude = ( 'prototypes*',
                                                         '*egg*',
                                                         )
                                             ),

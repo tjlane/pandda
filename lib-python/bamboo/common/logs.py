@@ -1,5 +1,6 @@
 import os, sys, datetime
 
+from bamboo.common import ListStream
 
 class Bar(object):
 
@@ -68,7 +69,7 @@ class Heading(object):
 class Log(object):
 
 
-    def __init__(self, log_file=None, stdout=sys.stdout, verbose=False, silent=False):
+    def __init__(self, log_file=None, verbose=False, silent=False):
         """Log Object for writing to logs...?"""
         # File that the log will be written to
         self.log_file = log_file
@@ -78,16 +79,14 @@ class Log(object):
         # Set default heading
         self.set_bar_and_heading(bar        = Bar(),
                                  heading    = Heading(spacer='#', decorator=' <~~~> '),
-                                 subheading = Heading(spacer='-', decorator=' *** ')
-                                )
+                                 subheading = Heading(spacer='-', decorator=' *** '))
 
-    # TODO remove "hide" as now unnecessary
-    def __call__(self, message, show=True, hide=False):
-        """Log message to file, and mirror to stdout if verbose or force_print (hide overrules show)"""
+    def __call__(self, message, show=True):
+        """Log message to file, and mirror to stdout if not silent and verbose or show is True"""
         message = str(message)+'\n'
-        if (not self.silent) and (self.verbose or (not hide and show)):
+        if (not self.silent) and (self.verbose or show):
             self.show(message)
-        self.write(message=message, mode='a')
+        self.write(message=message)
 
     def delete(self):
         """Delete the current log file"""
@@ -126,10 +125,45 @@ class Log(object):
         sys.stdout.write(message)
 
     def write(self, message, mode='a'):
-        if not self.log_file: return
+        if self.log_file is None: return
         message = message.replace('\r','')
         with open(self.log_file, mode) as fh: fh.write(message)
 
     def read_all(self):
         return open(self.log_file, 'r').read()
+
+
+class LogStream(Log):
+
+    def __init__(self, log_file=None, verbose=False, silent=False):
+        """Log Object for writing to logs...?"""
+        # File that the log will be written to
+        self.log_file = log_file
+        self.verbose = verbose
+        self.silent = silent
+
+        self.stream = ListStream()
+
+        # Set default heading
+        self.set_bar_and_heading(bar        = Bar(),
+                                 heading    = Heading(spacer='#', decorator=' <~~~> '),
+                                 subheading = Heading(spacer='-', decorator=' *** '))
+
+    def write(self, message):
+        if self.stream is None: return
+        message = message.replace('\r','')
+        self.stream(message)
+
+    def write_to_log(self, mode='a', clear_data=True):
+        """Write out the stored contents (and delete contents if clear_data is True)"""
+        with open(self.log_file, mode) as fh:
+            fh.write(str(self.stream))
+        if clear_data is True:
+            self.stream.data = []
+
+    @classmethod
+    def from_log(cls, log):
+        return cls(log_file = log.log_file,
+                   verbose  = log.verbose,
+                   silent   = log.silent)
 

@@ -1,8 +1,11 @@
+import re
 
+import numpy
 import scipy.spatial
 
 import iotbx.pdb
 from scitbx.array_family import flex
+from libtbx.utils import null_out
 
 from giant.structure.sequence import align_sequences_default
 
@@ -39,6 +42,155 @@ def non_water(hierarchy, cache=None, copy=True):
     if not cache: cache=hierarchy.atom_selection_cache()
     sel = cache.selection('(not resname HOH)')
     return hierarchy.select(sel, copy_atoms=copy)
+
+####################################################################################
+
+def default_secondary_structure_selections(hierarchy):
+    from mmtbx.secondary_structure import dssp
+    return dssp.dssp(hierarchy, log=null_out(), out=null_out()).get_annotation().as_atom_selections()
+
+def default_secondary_structure_selections_filled(hierarchy):
+    """Return secondary structure selections and fill gaps with new selections"""
+
+    # Get automatic secondary structure elements
+    auto_sel = default_secondary_structure_selections(hierarchy=hierarchy)
+    # Extract chain and residue numbers
+    sel_regex = re.compile("chain '(.*?)' and resid (.*?). through (.*)")
+    auto_sel_proc = [sel_regex.findall(s)[0] for s in auto_sel]
+
+    # Output template and list
+    sel_template = "chain '{}' and resid {:d}  through {:d} "
+    output_sel_all = []
+
+    # Extract the chain IDs
+    chain_ids = numpy.unique(zip(*auto_sel_proc)[0])
+
+    # Iterate through chains
+    for c_id in chain_ids:
+        # Output list for this chain
+        output_sel = []
+        # Extract residue start and end numbers
+        c_sels = sorted([map(int, s[1:]) for s in auto_sel_proc if s[0]==c_id])
+        # Extract chain
+        c_obj  = [c for c in hierarchy.chains() if (c.is_protein() and c.id==c_id)]
+        assert len(c_obj) == 1
+        c_obj = c_obj[0]
+        # Get the first and last residues of the chain
+        c_start = min([r.resseq_as_int() for r in c_obj.residue_groups()])
+        c_end   = max([r.resseq_as_int() for r in c_obj.residue_groups()])
+        # Get first residue in a ss group
+        first_start, first_end = c_sels[0]
+        # Find number of unused residues at the beginning of the chain
+        unused_front = first_start - c_start
+        # If one residue, add to first group
+        if unused_front == 1:
+            c_sels[0][0] -= 1
+        # Else add own selection for these residues
+        elif unused_front > 1:
+            output_sel.append((c_id, c_start, first_start-1))
+        # Process groups for middle of the chain
+        for i in xrange(len(c_sels)):
+            # Get the start and end of this group
+            this_start, this_end = c_sels[i]
+            # Perform sanity checks
+            assert this_start <= this_end, 'group with negative size?! {} - {}'.format(this_start, this_end)
+            # Get boolean for whether this is the final group of the chain
+            final_group = (i+1 == len(c_sels))
+            # More sanity checks
+            if not final_group:
+                # Check it is compatible with the next group
+                next_start, next_end = c_sels[i+1]
+                assert next_start <= next_end,   'group with negative size?! {} - {}'.format(next_start, next_end)
+                assert this_end   <  next_end,   'end of next group before end of this group?! {} - {}'.format(this_end, next_end)
+                assert this_start <= next_start, 'start of next group before start of this group?! {} - {}'.format(this_start, next_start)
+            # Special case: group of one residue -- do not allow
+            if (this_start == this_end):
+                # delete this group from the input list
+                c_sels[i] = None
+                # If the last group, just ignore it and break
+                if final_group:
+                    break
+                # Shuffle the group back one to simulate being still in the group before this one
+                this_start -= 1
+                this_end -= 1
+                if output_sel:
+                    assert output_sel[-1][2] == this_start, 'Last residue of last group is incorrect: {} != {}'.format(output_sel[-1][2], this_start)
+            # Check for gap/overlap to next group
+            if not final_group:
+                # Get the start of the next group
+                next_start, next_end = c_sels[i+1]
+                # Check for overlap with next group
+                if this_end >= next_start:
+                    overlap = (this_end + 1 - next_start)
+                    remove_this = int(numpy.ceil(overlap/2.0))
+                    remove_next = overlap - remove_this
+                    # Check that truncation of this group will leave at least two residues
+                    this_remain = (this_end + 2 - this_start) - remove_this
+                    # If one or no residues remain for this group
+                    if this_remain <= 1:
+                        # make this group not exist
+                        c_sels[i] = None
+                        # merge the two groups (set next start to this start)
+                        c_sels[i+1][0] = this_start
+                        break
+                    # Check that at least two residues will remain in this group
+                    assert this_remain >= 2
+                    # Truncate this group
+                    this_end -= remove_this
+                    # Move the start of the next group (and end if necessary)
+                    c_sels[i+1] = (next_start+remove_next, max(next_start+remove_next, next_end))
+                    # Need to refresh these variables
+                    next_start, next_end = c_sels[i+1]
+                    assert this_end + 1 == next_start, 'error: this end {}; next start: {}'.format(this_end, next_start)
+                # Check to see if the gap between this and the next group is one residue
+                elif (next_start - this_end) == 2:
+                    # Gap is one residue -- Move the beginning of the next residue
+                    c_sels[i+1][0] -= 1
+            # Create selection for this group if it has more than two residues
+            assert this_end - this_start >= 0, 'error width of group less than one residue: {} - {}'.format(this_start, this_end)
+            if (this_end - this_start) >= 1:
+                # Recreate selection for this group
+                output_sel.append((c_id, this_start, this_end))
+            # Add selection for gap to next selection if it exists (and that more than one residue in gap)
+            if (not final_group) and ((next_start - this_end) > 2):
+                output_sel.append((c_id, this_end+1, next_start-1))
+
+        # Deal with residues at the end of the chain
+        last_chain, last_start, last_end = output_sel[-1]
+        remain_residues = (c_end - last_end)
+        # One residue -- add to last group
+        if remain_residues == 1:
+            output_sel[-1] = (c_id, last_start, last_end+1)
+        # Mroe -- add new group
+        elif remain_residues > 1:
+            output_sel.append((c_id, last_end+1, c_end))
+
+        # VALIDATE the output for this chain
+        assert output_sel[0][1]  == c_start
+        assert output_sel[-1][2] == c_end
+        for i in xrange(len(output_sel)-1):
+            this_chain, this_start, this_end = output_sel[i]
+            next_chain, next_start, next_end = output_sel[i+1]
+            assert this_chain   == next_chain   # Right chain!
+            assert (this_end+1) == next_start   # Groups are contiguous
+            assert (this_end - this_start) > 0  # At least two residues
+
+        # Append to overall list
+        output_sel_all.extend(output_sel)
+
+    # Sort output for fun
+    output_sel_all = sorted(output_sel_all)
+
+    return [sel_template.format(*v) for v in output_sel_all]
+
+####################################################################################
+
+def get_select_function(selection):
+    if selection is None: return lambda x: x
+    functions = ['non_h','protein','calphas','backbone','sidechains','non_water']
+    assert selection in functions, 'Function not found. Choices: {}'.format(','.join(functions))
+    func = eval(selection)
+    return func
 
 ####################################################################################
 

@@ -1,0 +1,382 @@
+{% set dn=divnamer(1) %}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.16/css/jquery.dataTables.min.css"/>
+    <script type="text/javascript" src="https://cdn.datatables.net/1.10.16/js/jquery.dataTables.min.js"></script>
+
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+    <style>
+      .row-centered {
+          text-align:center;
+      }
+      .col-centered {
+          display:inline-block;
+          float:none;
+          vertical-align:top;
+          /* reset the text-align */
+          text-align:left;
+          /* inline-block space fix */
+          margin-right:-4px;
+      }
+    </style>
+
+    <style>
+      .matrix {
+          position: relative;
+      }
+      .matrix:before, .matrix:after {
+          content: "";
+          position: absolute;
+          top: 0;
+          border: 1px solid #000;
+          width: 6px;
+          height: 100%;
+      }
+      .matrix:before {
+          left: -6px;
+          border-right: 0;
+      }
+      .matrix:after {
+          right: -6px;
+          border-left: 0;
+      }
+    </style>
+
+    <style>
+      #lightbox .modal-content {
+          display: inline-block;
+          text-align: center;
+      }
+
+      #lightbox .close {
+          opacity: 1;
+          color: rgb(255, 255, 255);
+          background-color: rgb(25, 25, 25);
+          padding: 5px 8px;
+          border-radius: 30px;
+          border: 2px solid rgb(255, 255, 255);
+          position: absolute;
+          top: -15px;
+          right: -55px;
+
+          z-index:1032;
+      }
+    </style>
+
+    <script type="text/javascript" class="init">
+      $(document).ready(function() {
+        var $lightbox = $('#lightbox');
+        $('[data-target="#lightbox"]').on('click', function(event) {
+          var $img = $(this).find('img'),
+          src = $img.attr('src'),
+          alt = $img.attr('alt'),
+          css = {
+            'maxWidth': $(window).width() - 100,
+            'maxHeight': $(window).height() - 100
+          };
+          $lightbox.find('.close').addClass('hidden');
+          $lightbox.find('img').attr('src', src);
+          $lightbox.find('img').attr('alt', alt);
+          $lightbox.find('img').css(css);
+        });
+        $lightbox.on('shown.bs.modal', function (e) {
+          var $img = $lightbox.find('img');    
+          $lightbox.find('.modal-dialog').css({'width': $img.width()});
+          $lightbox.find('.close').removeClass('hidden');
+        });
+      });
+    </script>
+
+    <script type="text/javascript" class="init">
+      $(document).ready(function() {
+        $(".dataframe").DataTable();
+      } );
+    </script>  
+
+    {% for tab in tabs %}
+    {% for plot in tab.plots %} 
+    <script type="text/javascript" class="init">
+      $(document).ready(function() {
+        plot_data = {{ plot.json }}
+
+        function rescaleToInterval(data, tmin=1, tmax=20) {
+          var dmin = Math.min.apply(null, data),
+              dmax = Math.max.apply(null, data);
+          var normed = data.map(function(x) { return ((x-dmin)*(tmax-tmin)/(dmax-dmin))+tmin; });
+          return normed
+        }
+
+        function makeTrace(ix,iy) {
+          return {
+            x: plot_data['data'][ix],
+            y: plot_data['data'][iy],
+            mode: 'markers',
+            type: 'scatter',
+            line: {
+              shape: 'marker' ,
+              color: 'blue'
+            },
+            text: plot_data['columns'],
+          };
+        }
+        
+        function makeSelectAxisButtons(ax) {
+          var buttons = [];
+          buttons.push({
+            method: '',
+            args: [],
+            label: 'Select '+ax.toUpperCase()+' Axis'
+          });
+          for (i=0; i < plot_data['index'].length; i++) {
+            buttons.push({
+              method: 'update',
+              args: [{[ax]: [plot_data['data'][i]]},
+                     {[ax+'axis']: {'title': plot_data['index'][i]}}],
+              label: plot_data['index'][i]
+            });
+          }
+          return buttons;
+        }
+        
+        function makeSelectColourButtons() {
+          var buttons = [];
+          buttons.push({
+            method: '',
+            args: [],
+            label: 'Select Marker Size'
+          }); 
+          buttons.push({
+            method: 'restyle',
+            args: ['marker.size', 5],
+            label: 'Fixed (Default)'
+          }); 
+          for (i=0; i < plot_data['index'].length; i++) {
+            buttons.push({
+              method: 'restyle',
+              args: ['marker.size', [rescaleToInterval(plot_data['data'][i])]],
+              label: plot_data['index'][i]
+            });
+          }
+          return buttons; 
+        }
+      
+        function makeLayout(ix,iy) {
+          return {
+            xaxis: {title: plot_data['index'][ix]},
+            yaxis: {title: plot_data['index'][iy]},
+            autosize: false,
+            width: 1100,
+            height: 500,
+            margin: {t: 20, r:300},
+            hovermode: 'closest',
+            annotations: [
+              {text:'', x:1.1, y:0.9, xanchor:'left', yanchor:'bottom', xref:'paper', yref:'paper', showarrow:false},
+              {text:'', x:1.1, y:0.7, xanchor:'left', yanchor:'bottom', xref:'paper', yref:'paper', showarrow:false},
+              {text:'', x:1.1, y:0.5, xanchor:'left', yanchor:'bottom', xref:'paper', yref:'paper', showarrow:false}
+            ],
+            updatemenus: [
+              {x: 1.1, y: 0.90, xanchor: 'left', yanchor: 'top', buttons: makeSelectAxisButtons('x')}, 
+              {x: 1.1, y: 0.75, xanchor: 'left', yanchor: 'top', buttons: makeSelectAxisButtons('y')},
+              {x: 1.1, y: 0.60, xanchor: 'left', yanchor: 'top', buttons: makeSelectColourButtons()}
+            ]
+          }
+        } 
+
+        function makePlot(ix, iy) {
+            trace = makeTrace(ix=ix, iy=iy);
+            layout = makeLayout(ix=ix, iy=iy);
+            Plotly.plot('{{ plot.div }}', [trace], layout);
+        }
+
+        var default_ix = {% if plot.default_x is defined %} plot_data['index'].indexOf("{{ plot.default_x }}") {% else %} 0 {% endif %};
+        var default_iy = {% if plot.default_y is defined %} plot_data['index'].indexOf("{{ plot.default_y }}") {% else %} 1 {% endif %};
+        makePlot(ix=default_ix, iy=default_iy);
+ 
+      });
+    </script> 
+    {% endfor %}
+    {% endfor %}
+
+    <title>{{ header }}</title>
+
+  </head>
+  <body>
+
+    <div id="lightbox-holder">
+      <div id="lightbox" class="modal fade" tabindex="-1" role="dialog" aria-labelledby="modalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+          <button type="button" class="close hidden" data-dismiss="modal" aria-hidden="true">-</button>
+          <div class="modal-content">
+            <div class="modal-body">
+              <img src="" alt="" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+      <h1>{{ title }}</h1>
+      <h2>{{ introduction }}</h2>
+      <ul class="nav nav-tabs">
+        {% for tab in tabs %}
+        <li {% if tab.active -%}class="active"{% endif -%}><a data-toggle="tab" href="#{{ tab.id }}">{{ tab.short_name }}</a></li>
+        {%- endfor %}
+      </ul>
+      <div class="tab-content">
+        {% for tab in tabs %}
+        <div id="{{ tab.id }}" class="tab-pane fade {% if tab.active -%}in active{% endif -%}">
+          <h3>{{ tab.long_name }}</h3>
+          <p>{{ tab.description }}</p>
+
+          {% if tab.id == 'overview' %}
+
+          <div id ="overview-tav">
+
+            <div class="panel panel-primary">
+              <div class="panel-heading">
+                <h3 class="panel-title">Partitioning Summary</h3>
+              </div>
+              <div class="panel-body">
+                <div class="row row-centered">
+                  {% for thing in tab.contents -%}
+                  <div class="col col-centered col-xs-12 col-md-{{ thing.width }}">
+                    <div {% if thing.class is defined %}class="{{thing.class[0]}} {{thing.class[0]}}-{{thing.class[1]}}"{% endif %}>
+                      {% if thing.title is defined %}
+                      <h4>{{ thing.title }}</h4>
+                      {% endif %}
+                      {% if thing.text is defined %}
+                      <p>{{ thing.text }}</p>
+                      {% endif %}
+                      {% if thing.image is defined %}
+                      <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
+                        <img class="img-responsive" src="{{ thing.image }}" alt="No Image">
+                      </a>
+                      {% endif %}
+                    </div>
+                  </div>
+                  {% endfor -%} 
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {% elif tab.id == 'statistics' %}
+
+          <div id="statistics-tab">
+
+            <div class="panel panel-primary">
+              <div class="panel-heading">
+                <h3 class="panel-title">R-factor graphs</h3>
+              </div>
+              <div class="panel-body">
+                <div class="row">
+                  {% for image in tab.images -%}
+                  <div class="col col-centered col-xs-12 col-md-{{ image.width|default(12) }}">
+                    <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
+                      <img class="img-responsive" src="{{ image.path }}" alt="No Image">
+                    </a>
+                  </div>
+                  {% endfor -%} 
+                </div>
+              </div>
+            </div>
+
+            <div class="panel panel-primary">
+              <div class="panel-heading">
+                <h3 class="panel-title">Interactive summary graphs</h3>
+              </div>
+              <div class="panel-body">
+                {% for plot in tab.plots %}
+                <div id="{{ plot.div }}">
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="panel panel-primary">
+              <div class="panel-heading">
+                <h3 class="panel-title">Summary table from pandemic.adp</h3>
+              </div>
+              <div class="panel-body">
+                <p>Output CSV from pandemic.adp: dataset_scores.csv</p>
+                <div class="table-responsive">
+                  {{ tab.table }}
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {% elif tab.id == 'levels' %}
+
+          <div id="levels-tab" class="container-fluid">
+
+            <ul class="nav nav-tabs">
+              {% for sub_tab in tab.tabs %}
+              <li {% if sub_tab.active -%}class="active"{% endif -%}><a data-toggle="tab" href="#{{ sub_tab.id }}">{{ sub_tab.short_name }}</a></li>
+              {%- endfor %}
+            </ul>
+            <div class="tab-content">
+              {% for sub_tab in tab.tabs %}
+              <div id="{{ sub_tab.id }}" class="tab-pane fade {% if sub_tab.active -%}in active{% endif -%}">
+                <h3>{{ sub_tab.long_name }}</h3>
+                <p>{{ sub_tab.description }}</p>
+                <div class="row">
+                  {% for panel in sub_tab.panels %}
+                  {% set this_div = dn.next() -%}
+                  <div class="col col-centered col-xs-12 col-md-{{ panel.width|default(12) }}">
+                    <div class="panel panel-primary">
+                      <div class="panel-heading">
+                        <h3 class="panel-title"><a data-toggle="collapse" href="#{{ this_div }}">{{ panel.id }}</a></h3>
+                      </div>
+                      <div id="{{ this_div }}" class="panel-collapse collapse {% if panel.show %}in{% endif %}">
+                        <div class="panel-body">
+                          <div class="row">
+                            {% for object in panel.objects %}
+                            <div class="col col-centered col-xs-12 col-md-{{ object.width|default(12) }} ">
+                              {% if object.text %}
+                              <p>{{ object.text }}</p>
+                              {%- endif %}
+                              {% if object.path %}
+                              <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
+                                <img class="img-responsive" src="{{ object.path }}" alt="No Image">
+                              </a>
+                              {%- endif %}
+                            </div>
+                            {% endfor %}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+
+          </div>
+
+          {% endif %}
+
+        </div> 
+        {% endfor %}
+      </div>
+    </div>
+  </body>
+</html>
+

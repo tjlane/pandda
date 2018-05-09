@@ -98,10 +98,10 @@ def write_datasets_htmls(pandda, resolution, datasets):
                                           '<strong>Z-map Q-Q plot</strong>. ',
                                           'Tooltip. '\
                                           ''),
-                                         ('z_map_naive_normalised_png',
-                                          '<strong>(Naive) Z-map distribution</strong>. ',
-                                          'Tooltip. '\
-                                          ''),
+#                                         ('z_map_naive_normalised_png',
+#                                          '<strong>(Naive) Z-map distribution</strong>. ',
+#                                          'Tooltip. '\
+#                                          ''),
                                          ('z_map_corrected_normalised_png',
                                           '<strong>(Corrected) Z-map distribution</strong>. ',
                                           'Tooltip. '\

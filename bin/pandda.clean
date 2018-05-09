@@ -1,2 +1,2 @@
 #!/bin/sh
-ccp4-python -Qnew -m pandda.jiffies.pandda_clean "$@"
+cctbx.python -Qnew -m pandda.jiffies.pandda_clean "$@"

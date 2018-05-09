@@ -1,11 +1,7 @@
 import os, sys
-import pkg_resources
 import pandda.resources
 
-try:
-    VERSION = pkg_resources.get_distribution("panddas").version
-except:
-    VERSION = 'developer -- see setup.py file'
+VERSION = '0.2.12'
 
 HEADER_TEXT = """
 ------------------------------------------------------------------>
