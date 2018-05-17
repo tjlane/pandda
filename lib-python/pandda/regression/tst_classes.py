@@ -7,7 +7,7 @@ from cctbx import uctbx, sgtbx
 from scitbx.array_family import flex
 
 from bamboo.common import Meta, Info
-from giant.dataset import ElectronDensityMap
+from giant.xray.maps import ElectronDensityMap
 from pandda.analyse.classes import PanddaMapAnalyser, MapHolderList
 from pandda.analyse import graphs
 
