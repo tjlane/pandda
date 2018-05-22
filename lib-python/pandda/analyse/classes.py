@@ -26,7 +26,7 @@ from bamboo.plot import bar
 from bamboo.maths import round_no_fail
 from bamboo.stats import modified_z_scores
 
-from giant.dataset import ModelAndData, ElectronDensityMap
+from giant.dataset import ModelAndData
 from giant.manager import Program
 from giant.grid import Grid
 from giant.grid.masks import AtomicMask, GridMask
@@ -34,6 +34,7 @@ from giant.structure.align import GlobalAlignment
 from giant.structure.select import calphas, protein, sel_altloc, non_water
 from giant.structure.formatting import Labeller, ShortLabeller
 from giant.xray.data import estimate_wilson_b_factor
+from giant.xray.maps import ElectronDensityMap
 from giant.xray.scaling import IsotropicBfactorScalingFactory
 
 from pandda.phil import pandda_phil
@@ -2179,7 +2180,7 @@ class PanddaMultiDatasetAnalyser(Program):
         # Extract the points for the map (in the grid frame)
         masked_cart = self.grid.grid2cart(self.grid.global_mask().outer_mask(), origin_shift=True)
         # Create map handler in the native frame and extract the map values
-        ref_map_true = ElectronDensityMap.from_fft_map(fft_map).as_map()
+        ref_map_true = ElectronDensityMap.from_fft_map(fft_map)
         masked_vals = ref_map_true.get_cart_values(masked_cart)
         # ==============================>
         # Create a new electron density map object for the "grid map"
@@ -2942,7 +2943,8 @@ class PanddaMultiDatasetAnalyser(Program):
         # Check event has not been added previously
         assert event.id not in self.tables.event_info.index.values.tolist(), 'Event Already Added!: {!s}'.format(event.id)
         # Add values to a new row in the table
-        self.tables.event_info.loc[event.id,:] = None
+        #self.tables.event_info.loc[event.id,:] = None # Causes problems?!
+        self.tables.event_info = self.tables.event_info.append(pandas.DataFrame(index=[event.id]))
         # Default to site_idx of 0 if no site given
         if event.parent:    site_idx = event.parent.id
         else:               site_idx = 0

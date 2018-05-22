@@ -17,9 +17,9 @@ from bamboo.common.path import rel_symlink
 from bamboo.pymol_utils import PythonScript
 from bamboo.stats.ospina import estimate_true_underlying_sd
 
-from giant.dataset import ElectronDensityMap
 from giant.grid.masks import GridMask
 from giant.structure.select import protein, non_water, find_nearest_atoms
+from giant.xray.maps import ElectronDensityMap
 from giant.xray.maps.scale import scale_map_to_reference
 from giant.xray.maps.bdc import calculate_varying_bdc_correlations, calculate_maximum_series_discrepancy, calculate_bdc_subtracted_map
 from giant.xray.maps.local_align import create_native_map
@@ -131,6 +131,8 @@ class MapLoader(object):
         point_mappings_dataset = numpy.array([mappings_grid2dataset[i] for i in point_mappings_grid])
         assert sum(point_mappings_dataset == -1) == 0
         sites_cart_map_d = dataset.model.alignment.ref2nat(coordinates=sites_cart_map, mappings=point_mappings_dataset)
+        # Create and sample from map object
+        native_map_true = ElectronDensityMap.from_fft_map(fft_map)
         morphed_map_data = native_map_true.get_cart_values(sites_cart_map_d)
 
         # Scale map to reference
@@ -737,7 +739,7 @@ class NativeMapMaker(object):
                             native_crystal_symmetry = dataset.model.crystal_symmetry,
                             native_sites            = dataset.model.alignment.ref2nat(sites_mask),
                             alignment               = dataset.model.alignment,
-                            reference_map           = map_obj.as_map(),
+                            reference_map           = map_obj.make_dense(),
                             site_mask_radius        = args.params.masks.outer_mask,
                             step                    = args.params.maps.grid_spacing,
                             filename                = filename

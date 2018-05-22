@@ -7,8 +7,6 @@ import iotbx.pdb
 from scitbx.array_family import flex
 from libtbx.utils import null_out
 
-from giant.structure.sequence import align_sequences_default
-
 ####################################################################################
 ###                             HIERARCHY FUNCTIONS                              ###
 ####################################################################################
@@ -223,12 +221,15 @@ def common_residues(chn_1, chn_2):
     Truncates input chains to the common set of residues in chn_1 and chn_2 after sequence alignment.
     Returns both truncated chains.
     """
+
     # Apply default quick alignment
+    from giant.structure.sequence import align_sequences_default
     alignment = align_sequences_default(seq_a=chn_1.as_sequence(), seq_b=chn_2.as_sequence())
     # Flags for which residues to use
     m_seq_1, m_seq_2 = alignment.exact_match_selections()
-    assert len(m_seq_1) == len(m_seq_2), 'Something has gone wrong: these should be the same length!'
-    assert (max(m_seq_1)<len(alignment.a)) and (max(m_seq_2)<len(alignment.b)), 'Something has gone wrong: selecting residue index greater than chain length'
+    assert len(m_seq_1) == len(m_seq_2) == len(alignment.a) == len(alignment.b), 'Something has gone wrong: these should be the same length!'
+    assert max(m_seq_1)<len(chn_1.as_sequence()), 'Something has gone wrong: selecting residue index greater than chain length'
+    assert max(m_seq_2)<len(chn_2.as_sequence()), 'Something has gone wrong: selecting residue index greater than chain length'
     # Truncate down to the identical selections
     out_c_1 = _truncate_by_idx(chn_1, m_seq_1)
     out_c_2 = _truncate_by_idx(chn_2, m_seq_2)

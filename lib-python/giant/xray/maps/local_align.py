@@ -38,7 +38,7 @@ def create_native_map(native_crystal_symmetry, native_sites, alignment, referenc
     Transform the reference-aligned map back to the native crystallographic frame
     native_sites            - defines region that map will be masked around
     native_crystal_symmetry - crystal symmetry
-    reference_map           - basic_map object of the map in the reference frame
+    reference_map           - DensityMap object of the map in the reference frame
     alignment               - Alignment object used to map between the reference frame and the native frame
     site_mask_radius        - Define mask radius around native_sites
     step                    - grid sampling step

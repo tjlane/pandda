@@ -12,7 +12,7 @@ def align_sequences_default(seq_a, seq_b):
                     gap_opening_penalty = 20,
                     gap_extension_penalty = 2,
                     similarity_function = 'blosum50',
-                    style = 'local').extract_alignment()
+                    style = 'global').extract_alignment()
 
 def pairwise_sequence_identity(seqs_1, seqs_2, min_alignment=0.90, seq_identity_threshold=None):
     """
