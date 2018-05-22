@@ -114,8 +114,6 @@ class MapLoader(object):
         if   args.params.maps.density_scaling == 'none':   pass
         elif args.params.maps.density_scaling == 'sigma':  fft_map.apply_sigma_scaling()
         elif args.params.maps.density_scaling == 'volume': fft_map.apply_volume_scaling()
-        # Create map object
-        native_map_true = ElectronDensityMap.from_fft_map(fft_map).as_map()
 
         # ============================================================================>
         # Morph the map to the reference frame
