@@ -59,10 +59,11 @@ class TestSequence(unittest.TestCase):
         arr = pairwise_sequence_identity(
                     seqs_1=self.set_1, seqs_2=self.set_2,
                     min_alignment=0.60, seq_identity_threshold=None)
+        print arr
         self.assertTrue(numpy.array_equal(
                             arr.round(5),
                             numpy.array([[ 110/115.   , 112/115.   , 0.        ],
-                                         [ 107/115    , 1.         , 0.        ],
+                                         [ 107/115.   , 1.         , 0.        ],
                                          [ 0.         , 0.         , 1.        ],
                                          [ 0.         , 0.         , 77/145.   ]]).round(5)))
 
@@ -70,10 +71,11 @@ class TestSequence(unittest.TestCase):
         arr = pairwise_sequence_identity(
                     seqs_1=self.set_1, seqs_2=self.set_2,
                     min_alignment=60, seq_identity_threshold=None)
+        print arr
         self.assertTrue(numpy.array_equal(
                             arr.round(5),
                             numpy.array([[ 110/115.   , 112/115.   , 0.        ],
-                                         [ 107/115    , 1.         , 0.        ],
+                                         [ 107/115.   , 1.         , 0.        ],
                                          [ 0.         , 0.         , 1.        ],
                                          [ 0.         , 0.         , 77/145.   ]]).round(5)))
 
