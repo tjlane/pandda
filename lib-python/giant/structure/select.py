@@ -227,7 +227,8 @@ def common_residues(chn_1, chn_2):
     alignment = align_sequences_default(seq_a=chn_1.as_sequence(), seq_b=chn_2.as_sequence())
     # Flags for which residues to use
     m_seq_1, m_seq_2 = alignment.exact_match_selections()
-    assert len(m_seq_1) == len(m_seq_2) == len(alignment.a) == len(alignment.b), 'Something has gone wrong: these should be the same length!'
+    assert len(m_seq_1) == len(m_seq_2),          'Something has gone wrong: these should be the same length!'
+    assert len(alignment.a) == len(alignment.b),  'Something has gone wrong: these should be the same length!'
     assert max(m_seq_1)<len(chn_1.as_sequence()), 'Something has gone wrong: selecting residue index greater than chain length'
     assert max(m_seq_2)<len(chn_2.as_sequence()), 'Something has gone wrong: selecting residue index greater than chain length'
     # Truncate down to the identical selections
