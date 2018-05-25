@@ -327,7 +327,7 @@ def pandda_main_loop(pandda):
         # Combine the masks as we will need to load maps for all datasets
         # ============================================================================>
         map_load_mask = pandda.datasets.all_masks().combine_masks(names=[analysis_mask_name, building_mask_name], invert=False, operation='or', invert_output=False)
-        map_load_mask_name = 'Loading @ {!s}A'.format(cut_resolution)
+        map_load_mask_name = 'loading @ {!s}A'.format(cut_resolution)
         pandda.datasets.all_masks().add_mask(name=map_load_mask_name, values=map_load_mask.values)
 
         pandda.log.bar()
@@ -1006,13 +1006,10 @@ def pandda_end(pandda):
 #
 # ============================================================================>
 
-def pandda_analyse_main(args):
+def pandda_analyse_main(pandda):
     """Run the PANDDA algorithm, using supplied args"""
 
-    working_phil = extract_params_default(master_phil=pandda_phil, args=args, module_info=module_info)
     welcome()
-
-    p=working_phil.extract()
 
     try:
         # ============================================================================>
@@ -1020,7 +1017,6 @@ def pandda_analyse_main(args):
         # Initialise
         #####
         # ============================================================================
-        pandda = PanddaMultiDatasetAnalyser(params=working_phil.extract())
         pandda.run_analysis_init()
         # ============================================================================>
         #####
@@ -1067,14 +1063,30 @@ def pandda_analyse_main(args):
     except Failure as s:
         # Recognised error - print type and message
         pandda.exit(error_msg=''.join(traceback.format_exception(type(s), str(s), tb=False)))
-    except:
+
+    return pandda
+
+def run(args=None, params=None):
+
+    if params is None:
+        if args is None:
+            args = sys.argv[1:]
+        working_phil = extract_params_default(master_phil=pandda_phil, args=args, module_info=module_info)
+        params = working_phil.extract()
+    else:
+        assert args is None, 'cannot provide args and params'
+
+    try:
+        pandda = PanddaMultiDatasetAnalyser(params=params)
+        pandda_analyse_main(pandda=pandda)
+    except KeyboardInterrupt:
+        raise
+    except Exception as e:
         # Unknown error - print full traceback
         if ("pandda" in locals()) and hasattr(pandda, 'log'):
             pandda.exit(error_msg=traceback.format_exc())
         else:
             raise
-    else:
-        pandda.exit(error_msg=None)
 
     return pandda
 
@@ -1086,7 +1098,6 @@ def pandda_analyse_main(args):
 
 if __name__ == '__main__':
 
-    pandda = pandda_analyse_main(args=sys.argv[1:])
-
-
+    pandda = run(args=sys.argv[1:])
+    pandda.exit(error_msg=None)
 

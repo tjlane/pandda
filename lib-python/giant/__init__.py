@@ -1,13 +1,14 @@
 import os, sys
 import pkg_resources
 
-try:
-    VERSION = pkg_resources.get_distribution("panddas").version
-except:
-    VERSION = '(developer -- see setup.py file)'
+import bamboo
+__version__ = bamboo.__version__
 
 HEADER_TEXT = """
 ------------------------------------------------------------------>
+-
+-  Package Version {!s}""".format(__version__)+"""
+-
 -         .__               __
 -    ____ |__|____    _____/  |_
 -   / ___\\|  \\__  \\  /    \\   __\\
@@ -24,5 +25,5 @@ HEADER_TEXT = """
 
 class module_info:
     name        = 'giant'
-    version     = VERSION
+    version     = __version__
     header_text = HEADER_TEXT

@@ -213,7 +213,7 @@ class GridPartition(object):
     def query_by_grid_points(self, gps):
         """Return the atom label for a grid point"""
         assert self.nn_groups is not None, 'Grid not yet partitioned'
-        indxr = self.grid.indexer()
+        indxr = self.parent.indexer()
         return numpy.array([self.nn_groups[indxr(g)] for g in gps])
 
     def query_by_cart_points(self, sites_cart):

@@ -38,7 +38,8 @@ def pairwise_sequence_identity(seqs_1, seqs_2, min_alignment=0.90, seq_identity_
         for i2, s2 in enumerate(seqs_2):
             if not s2: continue
             ali = align_sequences_default(s1,s2)
-            align_num = len(ali.match_codes)
+            matches = ali.blosum50_matches()
+            align_num = len(matches) - matches.count(' ')
             if align_num >= (min_ali_num + min_ali_frac*min(len(s1),len(s2))):
                 arr[i1,i2] = ali.calculate_sequence_identity()
     if seq_identity_threshold is not None:

@@ -1,12 +1,13 @@
 import os, sys
 import pandda.resources
 
-VERSION = '0.2.12'
+import bamboo
+__version__ = bamboo.__version__
 
 HEADER_TEXT = """
 ------------------------------------------------------------------>
 -
--  Pandda Version {!s}""".format(VERSION)+"""
+-  Package Version {!s}""".format(__version__)+"""
 -
 -  __________                    .___  .___
 -  \\______   \\_____    ____    __| _/__| _/____    ______
@@ -39,7 +40,7 @@ LOGO_PATH = os.path.join(os.path.realpath(pandda.resources.__path__[0]), 'pandda
 
 class module_info:
     name        = 'pandda'
-    version     = VERSION
+    version     = __version__
     header_text = HEADER_TEXT
 
 def welcome(user=None):

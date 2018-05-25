@@ -7,12 +7,14 @@ from bamboo.common.logs import Log
 from bamboo.common.file import FileManager
 from bamboo.common.command import not_installed
 
+from giant import module_info
+
 class Program(object):
     """Class meant to provide basic functionality for programs and pipelines"""
 
-    _NAME = None
-    _TEXT = None
-    _VERSION = None
+    _NAME    = None
+    _VERSION = module_info.version
+    _TEXT    = module_info.header_text
 
     _allowed_statuses = ['running','done','errored']
 

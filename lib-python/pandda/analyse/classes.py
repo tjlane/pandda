@@ -41,7 +41,7 @@ from pandda.phil import pandda_phil
 from pandda.analyse.events import cluster_events
 from pandda.analyse.functions import DatasetAligner, MapLoader, DensityStatistics, UncertaintyCalculator, wrapper_run
 from pandda.constants import *
-from pandda import HEADER_TEXT, VERSION
+from pandda import module_info
 
 
 class PanddaDataset(ModelAndData):
@@ -169,8 +169,8 @@ class PanddaMultiDatasetAnalyser(Program):
 
     _NAME    = 'pandda.analyse'
     _DESC    = ''
-    _VERSION = VERSION
-    _TEXT    = HEADER_TEXT
+    _VERSION = module_info.version
+    _TEXT    = module_info.header_text
 
     def __init__(self, params):
         """Main PanDDA Class"""
@@ -2250,6 +2250,13 @@ class PanddaMultiDatasetAnalyser(Program):
         print(' '*len(arg_list)+'|\r', end=''); sys.stdout.flush()
         dataset_maps = easy_mp.pool_map(func=wrapper_run, args=arg_list, processes=self.settings.cpus, chunksize=1)
         print('|')
+        error = False
+        for m in dataset_maps:
+            if isinstance(m, str):
+                self.log(m)
+                error=True
+        if error == True:
+            raise Failure('Errors occurred while loading maps')
         map_list.add(dataset_maps)
         # ==============================>
         # Clear fft map data to save memory
@@ -2306,6 +2313,7 @@ class PanddaMultiDatasetAnalyser(Program):
         self.log.bar()
         self.log('Performing checks on the loaded datasets')
         self.log.bar()
+        check_params = self.params.diffraction_data.checks
         # ==============================>
         # Extract structure factor column names
         # ==============================>
@@ -2364,7 +2372,7 @@ class PanddaMultiDatasetAnalyser(Program):
                 # ==============================>
                 # Check that all data are valid values
                 # ==============================>
-                if self.params.checks.all_data_are_valid_values is True:
+                if check_params.all_data_are_valid_values is True:
                     if sum(zero_sel) > 0:
                         zero_refl = '\n\t'.join(['Reflection: ({:3d}, {:3d}, {:3d}) - resolution: {:6.3f}A - value: {}'.format(i[0], i[1], i[2], d, v)
                                                     for (i,d), v in zip(ms_d.select(zero_sel).d_spacings(), values.select(zero_sel))])
@@ -2378,13 +2386,13 @@ class PanddaMultiDatasetAnalyser(Program):
                 # ==============================>
                 # Check that the data is complete up until a certain resolution
                 # ==============================>
-                if self.params.diffraction_data.checks.low_resolution_completeness is not None:
+                if check_params.low_resolution_completeness is not None:
                     # Find selection for the low resolution reflections
-                    sel_low = ms_d.resolution_filter_selection(d_min=self.params.checks.low_resolution_completeness, d_max=999)
+                    sel_low = ms_d.resolution_filter_selection(d_min=check_params.low_resolution_completeness, d_max=999)
                     # Select these reflections in the dataset miller set
                     ms_d_low = ms_d.select(sel_low)
                     # Extract a complete set of miller indices up to cutoff resolution
-                    ms_c_low = ms_d.complete_set(d_min_tolerance=0.0, d_min=self.params.checks.low_resolution_completeness, d_max=999)
+                    ms_c_low = ms_d.complete_set(d_min_tolerance=0.0, d_min=check_params.low_resolution_completeness, d_max=999)
                     # Calculate the lone set of the two sets
                     lone_set = ms_c_low.lone_set(ms_d_low)
                     # Check that there are the same number of reflections in this set as the other set
@@ -2392,7 +2400,7 @@ class PanddaMultiDatasetAnalyser(Program):
                         miss_refl = '\n\t'.join(['Reflection: ({:3d}, {:3d}, {:3d}) - resolution: {:6.3f}A'.format(i[0], i[1], i[2], d)
                                                     for (i,d) in lone_set.d_spacings()])
                         # Record informative error message!
-                        errors.append('Structure factor column "{}" in dataset {} has missing reflections below {}A. \n'.format(c, dataset.tag, self.params.checks.low_resolution_completeness) + \
+                        errors.append('Structure factor column "{}" in dataset {} has missing reflections below {}A. \n'.format(c, dataset.tag, check_params.low_resolution_completeness) + \
                                       '{} reflection(s) are missing from the miller set in the reflection file. \n'.format(lone_set.size()) + \
                                       'You should add these missing reflections to the miller set and populate the structure factors for these reflections with their estimated values. \n' + \
                                       'The generation of missing miller indices can be done using uniqueify from CCP4; missing reflection values will then (by default) be automatically estimated during refinement with phenix or refmac. \n' + \
@@ -2406,7 +2414,7 @@ class PanddaMultiDatasetAnalyser(Program):
                     if sum(zero_sel_low) > 0:
                         zero_refl = '\n\t'.join(['Reflection: ({:3d}, {:3d}, {:3d}) - resolution: {:6.3f}A - value: {}'.format(i[0], i[1], i[2], d, v)
                                                     for (i,d), v in zip(ms_d_low.select(zero_sel_low).d_spacings(), values.select(sel_low).select(zero_sel_low))])
-                        errors.append('Structure factor column "{}" in dataset {} has invalid reflections below {}A. \n'.format(c, dataset.tag, self.params.checks.low_resolution_completeness)+\
+                        errors.append('Structure factor column "{}" in dataset {} has invalid reflections below {}A. \n'.format(c, dataset.tag, check_params.low_resolution_completeness)+\
                                       '{} reflection(s) are set to N/A or zero. \n'.format(sum(zero_sel_low)) + \
                                       'You should populate the structure factors for these reflections with their estimated values -- this is normally performed automatically in refinement with phenix or refmac. \n' + \
                                       'Analysing maps with missing reflections (especially low resolution reflections!) will degrade the quality of the analysis. \n' + \

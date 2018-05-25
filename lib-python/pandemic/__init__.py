@@ -1,12 +1,13 @@
 import os, sys
 import pandemic.resources
 
-VERSION = '0.1.1'
+import bamboo
+__version__ = bamboo.__version__
 
 HEADER_TEXT = """
 ------------------------------------------------------------------>
 -
--  Pandemic Version {!s}""".format(VERSION)+"""
+-  Package Version {!s}""".format(__version__)+"""
 -
 -  __________                    .___             .__
 -  \\______   \\_____    ____    __| _/____   _____ |__| ____
@@ -39,6 +40,6 @@ LOGO_PATH = os.path.join(os.path.realpath(pandemic.resources.__path__[0]), 'pand
 
 class module_info:
     name        = 'pandemic'
-    version     = VERSION
+    version     = __version__
     header_text = HEADER_TEXT
 

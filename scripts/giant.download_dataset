@@ -1,0 +1,97 @@
+#!/usr/bin/env cctbx.python
+
+import os, sys
+
+import libtbx.phil
+from libtbx.utils import Sorry, Failure
+
+from bamboo.common.logs import Log
+from bamboo.common.path import easy_directory
+
+from giant.resources.download_test_data import all_datasets
+
+############################################################################
+
+PROGRAM = 'giant.download_dataset'
+
+DESCRIPTION = """
+    A tool to download available test datasets of crystallographic data.
+"""
+############################################################################
+
+blank_arg_prepend = {None:'dataset_id='}
+
+master_phil = libtbx.phil.parse("""
+input {
+    dataset_id = None
+        .type = path
+        .multiple = True
+}
+output {
+    directory = downloaded_datasets
+        .type = str
+}
+""")
+
+############################################################################
+
+def run(params):
+
+    log = Log()
+
+    if not params.input.dataset_id: 
+        log('No datasets selected.')
+        all_datasets.show_summary(log=log)
+        return
+   
+    assert params.output.directory is not None, 'must provide output.directory'
+ 
+    o_dir = easy_directory(params.output.directory)
+
+    # Check that dataset IDs exist before downloading
+    invalid_datasets = []
+    for d_id in params.input.dataset_id:
+        try: 
+            all_datasets.get(d_id)
+        except: 
+            invalid_datasets.append(d_id)
+            log('Dataset does not exist: {}'.format(d_id))
+    if invalid_datasets:
+        all_datasets.show_summary(log=log)
+        log('')
+        log.subheading('Invalid datasets')
+        log('\n'.join(invalid_datasets))
+        log.bar(True, True)
+        raise Sorry('Invalid datasets selected. Can only provide only IDs for available datasets (listed above)')
+
+    # Download datasets
+    log.subheading('Datasets for download')
+    log('\n'.join(params.input.dataset_id))
+    count = 0
+    for d_id in params.input.dataset_id:
+        log.subheading('Downloading dataset: {} ({} of {})'.format(d_id, params.input.dataset_id.index(d_id)+1, len(params.input.dataset_id)))
+        d = all_datasets.get(d_id)
+        d_dir = easy_directory(os.path.join(o_dir, '-'.join([d.id, d.type]).replace(' ','-')))
+        d.download(output_directory=d_dir)
+        count += 1
+
+    log.subheading('Finished')
+    log('{} datasets downloaded successfully'.format(count))
+    log('')
+    for d_id in params.input.dataset_id:
+        log.bar()
+        d = all_datasets.get(d_id)
+        d.show_summary(log=log)
+    log.bar(False, True)
+
+############################################################################
+
+if __name__=='__main__':
+    from giant.jiffies import run_default
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION)

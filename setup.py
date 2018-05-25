@@ -2,7 +2,9 @@ import os, sys, glob
 from setuptools import setup, find_packages, findall
 from distutils.spawn import find_executable
 
-VERSION = '0.2.13-dev'
+import imp
+bamboo = imp.load_source('bamboo', os.path.join(os.path.dirname(__file__), 'lib-python/bamboo/__init__.py'))
+VERSION = bamboo.__version__
 
 #####################################################################################
 
@@ -36,7 +38,6 @@ else:
 try: sys.argv.remove('--for-ccp4')
 except: pass
 
-print('PanDDA scripts will run using: {}'.format(python))
 assert find_executable(python), "Can't find executable - is this the correct python: {}".format(python)
 
 # Modify the scripts to use the correct python/coot
@@ -60,6 +61,7 @@ setup(  name                = 'panddas',
                                 'jinja2',
                                 'markupsafe',
                                 'ascii_graph',
+                                'pytest',
                                 ),
         package_dir         = {'':'lib-python'},
         scripts             = install_scripts,

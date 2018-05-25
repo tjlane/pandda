@@ -126,3 +126,30 @@ def compress_file(filename, delete_original=True):
     if delete_original:
         os.remove(filename)
     return zip_file
+
+def decompress_all_files_in_directory(path, recursive=True, extension='.gz', delete_original=True):
+    """Decompress in-place all files in a directory with a particular extension"""
+    assert extension=='.gz', 'other extensions not yet implemented'
+    assert os.path.exists(path), 'path does not exist: {}'.format(path)
+    for cur_dir, _, cur_files in os.walk(path):
+        for item in cur_files:
+            if not item.endswith(extension): continue
+            f_zip = os.path.join(cur_dir, item)
+            f_out = os.path.splitext(f_zip)[0]
+            assert not os.path.exists(f_out), 'output file already exists: {}'.format(f_out)
+            if extension == '.gz':
+                import gzip
+                with gzip.open(f_zip) as fh_zip:
+                    with open(f_out, 'w') as fh_out:
+                        fh_out.write(fh_zip.read())
+            else:
+                pass
+            assert os.path.exists(f_out), 'output file does not exist: {}'.format(f_out)
+            if delete_original is True:
+                os.remove(f_zip)
+            #zip_obj = zipfile.ZipFile(item_path, 'r')
+            #zip_obj.extractall(output_path)
+            #zip_obj.close()
+        # Breaking in top directory == non-recursive
+        if recursive is False:
+            break

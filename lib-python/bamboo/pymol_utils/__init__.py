@@ -190,7 +190,8 @@ class _PymolScript(object):
     def repr_show(self,*args, **kw_args):
         return self.show(*args, **kw_args)
 
-    def repr_hide(self, *args, **kw_args):
+    def repr_hide(self, style='everything', *args, **kw_args):
+        kw_args['style'] = style
         return self.hide(*args, **kw_args)
 
     def colour(self, obj, colour=None):
