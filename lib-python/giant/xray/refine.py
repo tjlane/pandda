@@ -208,7 +208,7 @@ class BFactorRefinementFactory(object):
             params = [r'refinement.refine.adp.individual.anisotropic="{}"'.format(' or '.join(['('+t+')' for t in self.tls_selections]))]
 
         self.log.subheading('Refining B-factor model with {}'.format(self._refine.program))
-        obj = self._refine(pdb_file=self.pdb_file, mtz_file=self.mtz_file, cif_file=self.cif_files,
+        obj = self._refine(pdb_file=self.pdb_file, mtz_file=self.mtz_file, cif_files=self.cif_files,
                            out_prefix=self.out_template+'-'+suffix,
                            strategy=strategy, n_cycles=3, manual_args=params)
 

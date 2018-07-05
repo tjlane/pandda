@@ -50,8 +50,6 @@ except Exception as e:
 
 numpy.set_printoptions(linewidth=numpy.inf, threshold=numpy.nan)
 
-from IPython import embed
-
 EIGHT_PI_SQ = 8*math.pi*math.pi
 
 ############################################################################

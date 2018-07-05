@@ -1,0 +1,97 @@
+#!/usr/bin/env cctbx.python
+
+import os, sys, copy, re
+import time
+
+import libtbx.phil
+
+import iotbx.pdb
+
+from scitbx.array_family import flex
+from mmtbx.tls import uaniso_from_tls_one_group, tlso, tools
+
+from bamboo.common.logs import Log
+from giant.structure.uij import uij_to_b
+
+#######################################
+
+blank_arg_prepend = 'pdb='
+
+master_phil = libtbx.phil.parse("""
+input {
+    pdb = None
+        .type = path
+        .multiple = True
+}
+options {
+    mode = *subtract_tls write_tls
+        .type = choice(multi=False)
+}
+output {
+    prefix = ''
+        .type = str
+    suffix = None
+        .type = str
+}
+verbose = True
+""")
+
+#######################################
+
+def run(params):
+
+    if params.output.suffix is None:
+        if params.options.mode == 'write_tls':
+            params.output.suffix = 'tls'
+        elif params.options.mode == 'subtract_tls':
+            params.output.suffix = 'tls_subtracted'
+        else:
+            raise Sorry('Invalid option for params.options.mode: {}'.format(params.options.mode))
+
+    log = Log()
+
+    for pdb in params.input.pdb:
+        log('Processing {}'.format(pdb))
+        # Read structure
+        ih = iotbx.pdb.hierarchy.input(pdb)
+        # Atom selection cache
+        ac = ih.hierarchy.atom_selection_cache()
+        # Extract TLS params from header
+        tls_params = ih.input.extract_tls_params(ih.hierarchy)
+        # Iterate through TLS groups and perform function
+        for tls_g in tls_params.tls_params:
+            log('...calculating tls-uij for {}'.format(tls_g.selection_string))
+            # Create TLSO object
+            tls_o = tlso(tls_g.t, tls_g.l,tls_g.s,tls_g.origin)
+            # Extract atom selection
+            sel = ac.selection(tls_g.selection_string)
+            # Extract atoms
+            ats = ih.hierarchy.atoms().select(sel)
+            # Calculate Uij from TLS
+            tls_uij = uaniso_from_tls_one_group(tls_o, ats.extract_xyz(), False)
+            # Set or subtract Uij
+            if params.options.mode == 'write_tls':
+                log('...setting uij to tls-uij')
+                ats.set_uij(tls_uij)
+            elif params.options.mode == 'subtract_tls':
+                log('...subtracting tls-uij from input uij')
+                uij_orig = ats.extract_uij()
+                ats.set_uij(uij_orig - tls_uij)
+            # Update the B-iso column
+            ats.set_b(flex.double(uij_to_b(ats.extract_uij()).tolist()))
+
+        # Create filename and write strcuture
+        fn = pdb.replace('.pdb', '.'+params.output.suffix+'.pdb')
+        with open(fn, 'w') as fh:
+            tools.remark_3_tls(tlsos = [tlso(tls_g.t, tls_g.l,tls_g.s,tls_g.origin) for tls_g in tls_params.tls_params], 
+                               selection_strings = [tls_g.selection_string for tls_g in tls_params.tls_params], 
+                               out=fh)
+        ih.hierarchy.write_pdb_file(fn, open_append=True)
+        log('...writing new structure as {}'.format(fn))
+         
+
+#######################################
+
+if __name__ == '__main__':
+    from giant.jiffies import run_default
+    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
