@@ -152,7 +152,7 @@ fitting {
         .help = 'how many fitting cycles to run (for each level) -- should be more than 1'
         .type = int
     optimisation {
-        dataset_weights = none inverse_resolution inverse_resolution_squared *inverse_resolution_cubed
+        dataset_weights = one inverse_resolution inverse_resolution_squared *inverse_resolution_cubed
             .help = 'control how datasets are weighted during optimisation?'
             .type = choice(multi=False)
         max_datasets = None
@@ -796,7 +796,7 @@ class MultiDatasetUijParameterisation(Program):
         table_one_cols = set(self.params.table_ones_options.column_labels.split(',')+[self.params.table_ones_options.r_free_label])
 
         # Create dataset weight function
-        if self.params.fitting.optimisation.dataset_weights == 'none':
+        if self.params.fitting.optimisation.dataset_weights == 'one':
             dataset_weight = lambda r: 1.0
         elif self.params.fitting.optimisation.dataset_weights == 'inverse_resolution':
             dataset_weight = lambda r: r**(-1.0)
@@ -845,7 +845,7 @@ class MultiDatasetUijParameterisation(Program):
 
             # Calculate dataset weight
             high_res = m.input.get_r_rfree_sigma().high
-            if (self.params.fitting.optimisation.dataset_weights != 'none') and (high_res is None):
+            if (self.params.fitting.optimisation.dataset_weights != 'one') and (high_res is None):
                 errors.append(Failure("PDB does not contain resolution information in the REMARK 3 records.\n" + \
                                       "This is normally present in structures that have come from refinement.\n" + \
                                       "Are these structures from refinement?"))
