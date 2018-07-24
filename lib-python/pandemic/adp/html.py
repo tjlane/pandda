@@ -43,7 +43,7 @@ def create_overview_tab(parameterisation):
            'short_name'     : 'Overview',
            'long_name'      : 'Hierarchical ADP Parameterisation Overview',
            'description'    : '',
-           'contents'       : [{'width':8, 'text': '', 'image':png2base64src_maybe(fm.get_file('tracking_png'), print_on_missing=DEBUG)}] + \
+           'panels'         : [{'width':8,  'text': '', 'image':png2base64src_maybe(fm.get_file('tracking_png'), print_on_missing=DEBUG)}] + \
                               [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'class':['text-center']}] + \
                               format_summary(f.summary(), width=6) + \
                               [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'class':['text-center']}] + \
@@ -62,19 +62,21 @@ def create_analysis_tab(parameterisation):
     f = parameterisation.fitter
     fm = p.file_manager
 
-    rall_f = fm.get_file('all_rvalues_v_resolution')
-    rgap_f = fm.get_file('rgap_v_resolution')
-    rfre_f = fm.get_file('rfree_v_resolution')
-    rwor_f = fm.get_file('rwork_v_resolution')
+    images = []
+
+    if p.params.analysis.calculate_r_factors:
+        for f in [
+                fm.get_file('all_rvalues_v_resolution'),
+                fm.get_file('rgap_v_resolution'),
+                fm.get_file('rfree_v_resolution'),
+                fm.get_file('rwork_v_resolution'),
+                ]:
+            images.append({'width':6, 'image':png2base64src_maybe(f, print_on_missing=DEBUG)})
 
     tab = {'id'             : 'statistics',
-           'short_name'     : 'Results/Analysis',
+           'short_name'     : 'Multi-dataset Results/Analysis',
            'long_name'      : 'Model Improvement Statistics from hierarchical TLS parameterisation',
            'description'    : '',
-           'images'         : [{'width':6, 'path':png2base64src_maybe(rall_f, print_on_missing=DEBUG)},
-                               {'width':6, 'path':png2base64src_maybe(rgap_f, print_on_missing=DEBUG)},
-                               {'width':6, 'path':png2base64src_maybe(rfre_f, print_on_missing=DEBUG)},
-                               {'width':6, 'path':png2base64src_maybe(rwor_f, print_on_missing=DEBUG)}],
            'plots'          : [{'div': 'variable-plots',
                                 'json': p.tables.statistics.T.to_json(orient='split'),
                                 'default_x' : 'High Resolution Limit',
@@ -83,6 +85,8 @@ def create_analysis_tab(parameterisation):
                                         .replace('<th></th>','<th>Dataset</th>')\
                                         .replace('border="1" ', ''),
           }
+    if images:
+        tab['top_panel'] = {'heading':'R-factor Changes', 'images':images}
 
     return tab
 
@@ -94,7 +98,7 @@ def create_levels_tab(parameterisation):
     chain_ids = [c.id for c in p.blank_master_hierarchy().select(flex.bool(p.atom_mask.tolist()),copy_atoms=True).chains()]
 
     tab = {'id'         : 'levels',
-           'short_name' : 'ADP Summary',
+           'short_name' : 'Hierarchical Model Summary',
            'long_name'  : 'Level-by-level TLS parameterisation',
            'description': 'Parameteristaion composed of {} levels.'.format(len(f.levels)),
            'tabs'       : [],
@@ -119,8 +123,8 @@ def create_levels_tab(parameterisation):
                  'width'          : 12,
                  'show'           : True,
                  'table'          : None,
-                 'objects'        : [{'width':6, 'text': 'TLS-level components', 'path':png2base64src_maybe(prof_f, print_on_missing=DEBUG)},
-                                     {'width':6, 'text': 'Residual component',   'path':png2base64src_maybe(resd_f, print_on_missing=DEBUG)}],
+                 'contents'       : [{'width':6, 'title': 'TLS-level components', 'image':png2base64src_maybe(prof_f, print_on_missing=DEBUG)},
+                                     {'width':6, 'title': 'Residual component',   'image':png2base64src_maybe(resd_f, print_on_missing=DEBUG)}],
                 }
         overview_tab['panels'].append(panel)
         # Add images to the overview tab for each TLS level
@@ -129,13 +133,12 @@ def create_levels_tab(parameterisation):
             stack_image = fm.get_file('png-tls-profile-template').format(level_num, c_id)
             aniso_image = fm.get_file('png-tls-anisotropy-template').format(level_num, c_id)
             panel = {'id'             : 'Level {} of {} ({})'.format(level_num, len(f.levels),level_lab),
-                     'width'          : 4,
+                     'width'          : 4 if (len(f.levels)>3) or (len(f.levels)%2==0) else 6,
                      'show'           : True,
                      'table'          : None,
-                     'objects'        : [{'width':12, 'text':'{} atoms.'.format('X')},
-                                         {'width':12, 'path':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
-                                         {'width':12, 'path':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
-                                         {'width':12, 'path':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)}],
+                     'contents'       : [{'width':12, 'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
+                                         {'width':12, 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
+                                         {'width':12, 'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)}],
                     }
             overview_tab['panels'].append(panel)
         # Format residual level
@@ -143,13 +146,12 @@ def create_levels_tab(parameterisation):
         stack_image = fm.get_file('png-residual-profile-template').format(c_id)
         aniso_image = fm.get_file('png-residual-anisotropy-template').format(c_id)
         panel = {'id'             : 'Final Level (residual)',
-                 'width'          : 4,
+                 'width'          : 4 if (len(f.levels)>3) or (len(f.levels)%2==0) else 6,
                  'show'           : True,
                  'table'          : None,
-                 'objects'        : [{'width':12, 'text':'{} atoms.'.format('X')},
-                                     {'width':12, 'path':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
-                                     {'width':12, 'path':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
-                                     {'width':12, 'path':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)}],
+                 'contents'       : [{'width':12, 'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
+                                     {'width':12, 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
+                                     {'width':12, 'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)}],
                   }
         overview_tab['panels'].append(panel)
     # -------------------------------->
@@ -175,11 +177,10 @@ def create_levels_tab(parameterisation):
                      'width'          : 12,
                      'show'           : True,
                      'table'          : None,
-                     'objects'        : [{'width':12, 'text':'{} atoms.'.format('X')},
-                                         {'width':6, 'path':png2base64src_maybe(partn_image, print_on_missing=DEBUG)},
-                                         {'width':6, 'path':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
-                                         {'width':6, 'path':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
-                                         {'width':6, 'path':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)}],
+                     'contents'       : [{'width':6, 'title':'Coloured by Group',   'image':png2base64src_maybe(partn_image, print_on_missing=DEBUG)},
+                                         {'width':6, 'title':'Fitted ADPs',         'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
+                                         {'width':6, 'title':'Fitted ADPs by mode', 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
+                                         {'width':6, 'title':'Anisotropy by atom',   'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)}],
                     }
             level_tab['panels'].append(panel)
         # Read in the TLS models and amplitudes for this level
@@ -204,14 +205,15 @@ def create_levels_tab(parameterisation):
                              '\n</samp>'
                             ).format(i_mode+1, **mode_vals.round(3)).replace(' ','&nbsp') if mode_vals.any() else 'Zero-value TLS values for mode {}'.format(i_mode+1) for i_mode, mode_vals in enumerate(tls_vals)]
             # Create panel dictionary
-            panel = {'id'    : 'Group {} - {}'.format(group_num, p.levels[i_level][i_group]),
-                     'width' : 12, #max(4,12//level.n_groups()),
-                     'table' : None,
-                     'objects': [{'width':12, 'text':'<br>'.join(['Number of atoms: {}'.format(sum(sel))])},
-                                 {'width':4,  'text':'Shape of disorder (arbitrary scale)',     'path': png2base64src_maybe(scl_image, print_on_missing=DEBUG)},
-                                 {'width':4,  'text':'Average size over all datasets',          'path': png2base64src_maybe(adp_image, print_on_missing=DEBUG)},
-                                 {'width':4,  'text':'Amplitude Distribution',                  'path': png2base64src_maybe(amp_image, print_on_missing=DEBUG)}] + \
-                                [{'width':12,'text':s} for s in tls_mdl_strs],
+            panel = {'id'       : 'Group {} - {}'.format(group_num, p.levels[i_level][i_group]),
+                     'width'    : 12, #max(4,12//level.n_groups()),
+                     'table'    : None,
+                     'contents' : [
+                         {'width':12, 'text':'<br>'.join(['Number of atoms: {}'.format(sum(sel))])},
+                         {'width':4,  'text':'Average size over all datasets',          'image': png2base64src_maybe(adp_image, print_on_missing=DEBUG)},
+                         {'width':4,  'text':'Amplitude Distribution',                  'image': png2base64src_maybe(amp_image, print_on_missing=DEBUG)},
+                         {'width':4,  'text':'Shape of disorder (arbitrary scale)',     'image': png2base64src_maybe(scl_image, print_on_missing=DEBUG)},
+                                   ] + [{'width':12, 'text':s} for s in tls_mdl_strs],
                     }
             level_tab['panels'].append(panel)
         # Make  the first panel open
@@ -231,19 +233,31 @@ def create_levels_tab(parameterisation):
     atom_sel = flex.bool(p.atom_mask.tolist())
     # Create row for each residue
     for i_chain, c in enumerate(p.blank_master_hierarchy().select(atom_sel,copy_atoms=True).chains()):
-        panel = {'id'    : 'Residual components for chain {}'.format(c.id),
-                 'width' : 12,
-                 'table' : None,
-                 'objects': [],
+        # Panel for chain overview
+        chain_image = fm.get_file('pml-residual-chain-template').format(c_id)
+        stack_image = fm.get_file('png-residual-profile-template').format(c_id)
+        aniso_image = fm.get_file('png-residual-anisotropy-template').format(c_id)
+        panel = {'id'             : 'Residual overview for chain {}'.format(c_id),
+                 'width'          : 12,
+                 'show'           : True,
+                 'table'          : None,
+                 'contents'       : [{'width':8, 'title':'Fitted ADPs',         'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
+                                     {'width':6, 'title':'Fitted ADPs profile', 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
+                                     {'width':6, 'title':'Anisotropy by atom',   'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)}],
+                }
+        residual_tab['panels'].append(panel)
+        # Panel for each residue
+        panel = {'id'       : 'Residual components for chain {}'.format(c.id),
+                 'width'    : 12,
+                 'table'    : None,
+                 'contents' : [],
                 }
         residual_tab['panels'].append(panel)
         for i_rg, rg in enumerate(c.residue_groups()):
             short_label = ShortLabeller.format(rg)
             long_label  = Labeller.format(rg)
             adp_image = fm.get_file('pml-residual-group-template').format(short_label)
-            panel['objects'].append({'width':4, 'text':long_label, 'path': png2base64src_maybe(adp_image, print_on_missing=DEBUG)})
-        # Make  the first panel open
-        residual_tab['panels'][0]['show'] = True
+            panel['contents'].append({'width':4, 'text':long_label, 'image': png2base64src_maybe(adp_image, print_on_missing=DEBUG)})
 
     return tab
 
@@ -271,13 +285,14 @@ def write_adp_summary(parameterisation, out_dir_tag='root'):
     output_data['tabs'].append(create_overview_tab(parameterisation=parameterisation))
     output_data['tabs'][-1]['active'] = True
     ##########################################################################################
-    # Create statistics tab
-    ##########################################################################################
-    output_data['tabs'].append(create_analysis_tab(parameterisation=parameterisation))
-    ##########################################################################################
     # Create adp-levels tab
     ##########################################################################################
     output_data['tabs'].append(create_levels_tab(parameterisation=parameterisation))
+    ##########################################################################################
+    # Create statistics tab
+    ##########################################################################################
+    if len(parameterisation.models) > 1:
+        output_data['tabs'].append(create_analysis_tab(parameterisation=parameterisation))
     ##########################################################################################
     # Write out and format
     ##########################################################################################

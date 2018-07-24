@@ -6,6 +6,8 @@ import pandas
 import libtbx.phil
 import iotbx.pdb
 
+from libtbx.utils import Sorry, Failure
+
 from bamboo.common.command import CommandManager
 from giant.xray.crystal import CrystalSummary
 
@@ -38,7 +40,8 @@ output {
 
 def run(params):
 
-    assert not os.path.exists(params.output.csv)
+    if os.path.exists(params.output.csv):
+        raise Sorry('Output file already exists, please delete or change output filename: {}'.format(params.output.csv))
   
     if params.input.labelling == 'filename': 
         lab_func = lambda f: os.path.basename(os.path.splitext(f)[0])

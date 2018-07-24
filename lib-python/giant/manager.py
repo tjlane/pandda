@@ -31,7 +31,7 @@ class Program(object):
     def check_programs_are_available(self, programs):
         ni = not_installed(programs)
         if ni:
-            raise Failure('The following programs are not available/installed:\n\t{}'.format('\n\t'.join(ni)))
+            raise Sorry('The following programs are not available/installed:\n\t{}'.format('\n\t'.join(ni)))
 
     def check_for_matplotlib(self, backend=None, interactive=False):
         """Check to see whether we can load matplotlib"""

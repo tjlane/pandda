@@ -1,9 +1,32 @@
+from __future__ import print_function
+
 import os, sys, copy
 
 import libtbx.phil
-from libtbx.utils import Sorry
+from libtbx.utils import Sorry, Failure
 
 from giant import module_info
+
+def process_exception_default(exception):
+    """Append default informative messages to exception messages"""
+
+    try:
+        raise
+    except Sorry as e:
+        e.args = (e.args[0]+'\n\n(This type of error normally indicates that something is wrong with the input provided to the program that is fixable.)\n',) + \
+                e.args[1:]
+        raise
+        #print(e)
+        #sys.exit(1)
+    except Failure as e:
+        e.args = (e.args[0]+'\n\n(This type of error normally indicates that something has gone wrong within the program that is not fixable by the user.'\
+                            '\nYou may need to contact the developer -- for contact info please visit https://pandda.bitbucket.io .)\n',) + \
+                e.args[1:]
+        raise
+        #print(e)
+        #sys.exit(1)
+    else:
+        raise
 
 class run_default(object):
 
@@ -13,8 +36,10 @@ class run_default(object):
         """Run a program via a standard setup of functions and objects"""
         print(self._module_info.header_text.format(program=program, description=description))
         working_phil = extract_params_default(master_phil=master_phil, args=args, blank_arg_prepend=blank_arg_prepend, module_info=self._module_info)
-        out = run(params=working_phil.extract())
-
+        try:
+            out = run(params=working_phil.extract())
+        except Exception as e:
+            process_exception_default(exception=e)
 
 def extract_params_default(master_phil, args, blank_arg_prepend=None, home_scope=None, module_info=None):
     """Extract the parameters by a default script"""
@@ -26,9 +51,9 @@ def extract_params_default(master_phil, args, blank_arg_prepend=None, home_scope
 def show_version_and_exit_maybe(module_info, args):
     if '--version' not in args: return
     if module_info is None:
-        print 'no version information available'
+        print('no version information available')
     else:
-        print '{} version: {}'.format(module_info.name, module_info.version)
+        print('{} version: {}'.format(module_info.name, module_info.version))
     sys.exit()
 
 def show_defaults_and_exit_maybe(master_phil, args):

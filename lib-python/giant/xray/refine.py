@@ -11,13 +11,16 @@ class _refiner(object):
     program = None
     auto = True
 
-    def __init__(self, pdb_file, mtz_file=None, cif_files=None, out_prefix=None, **kw_args):
+    def __init__(self, pdb_file, mtz_file=None, cif_files=None, out_prefix=None, log=None, **kw_args):
 
         # Set defaults if not given
         if mtz_file is None:
             mtz_file = pdb_file.replace('.pdb','.mtz')
         if out_prefix is None:
             out_prefix = os.path.splitext(pdb_file)[0] + '-refined'
+
+        if log is None: log=Log()
+        self.log = log
 
         # Main files
         self.pdb_file = pdb_file
@@ -41,16 +44,26 @@ class _refiner(object):
         self.tmp_pre = os.path.join(self.tmp_dir, 'refine')
 
         # Command object for refinement
-        self.cmd = CommandManager(self.program)
+        self.cmd = CommandManager(self.program, log=self.log)
         self.kw_args = kw_args
+
+        self.setup()
 
         # Setup, refine and post_process
         if self.auto is True:
             self.run()
 
+    def print_settings(self):
+        self.log.bar()
+        self.log("Refinement Command:")
+        self.log.bar()
+        self.cmd.print_settings()
+        self.log.bar()
+        self.log('Writing output to:\n\t{}\n\t{}'.format(self.out_pdb_file,self.out_mtz_file))
+        self.log.bar()
+
     def run(self):
         """...run refinement amd export files"""
-        self.setup()
         ret = self.refine()
         self.export()
         return ret
@@ -60,7 +73,6 @@ class _refiner(object):
 
     def refine(self):
         """...run the refinement"""
-        self.cmd.print_settings()
         return self.cmd.run()
 
     def export(self):
@@ -140,7 +152,7 @@ class BFactorRefinementFactory(object):
 
         shutil.copy(self.pdb_file, self.initial_pdb)
 
-        self.log = Log(verbose=True)
+        self.log = Log()
 
         if not tls_selections:
             tls_selections = self.determine_tls_groups(pdb_file=pdb_file)

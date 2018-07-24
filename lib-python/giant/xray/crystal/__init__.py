@@ -43,13 +43,13 @@ class CrystalSummary(object):
         new_cls._mtz_object = mtz_object
         # Create mtz object of reflection data
         refl_data = new_cls.mtz_object()
-        # Extract the resolution limits
-        new_cls.low_res, new_cls.high_res = refl_data.max_min_resolution()
-        new_cls.space_group = refl_data.space_group()
         # Crystal Properties
         crystal = refl_data.crystals()[0]
-        new_cls.unit_cell = crystal.unit_cell()
         new_cls.symmetry = crystal.crystal_symmetry()
+        new_cls.space_group = new_cls.symmetry.space_group()
+        new_cls.unit_cell = new_cls.symmetry.unit_cell()
+        # Extract the resolution limits
+        new_cls.low_res, new_cls.high_res = refl_data.max_min_resolution()
         # Column information
         new_cls.column_labels = refl_data.column_labels()
         return new_cls
@@ -68,5 +68,9 @@ class CrystalSummary(object):
         new_cls.symmetry = pdb_input.crystal_symmetry()
         new_cls.space_group = new_cls.symmetry.space_group()
         new_cls.unit_cell = new_cls.symmetry.unit_cell()
+        # High/low resolution limits
+        inf = pdb_input.get_r_rfree_sigma()
+        new_cls.high_res = inf.high
+        new_cls.low_res = inf.low
         return new_cls
 

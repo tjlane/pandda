@@ -251,7 +251,7 @@
               </div>
               <div class="panel-body">
                 <div class="row row-centered">
-                  {% for thing in tab.contents -%}
+                  {% for thing in tab.panels -%}
                   <div class="col col-centered col-xs-12 col-md-{{ thing.width }}">
                     <div {% if thing.class is defined %}class="{{thing.class[0]}} {{thing.class[0]}}-{{thing.class[1]}}"{% endif %}>
                       {% if thing.title is defined %}
@@ -278,23 +278,26 @@
 
           <div id="statistics-tab">
 
+            {% if tab.top_panel is defined %}
             <div class="panel panel-primary">
               <div class="panel-heading">
-                <h3 class="panel-title">R-factor graphs</h3>
+                <h3 class="panel-title">{{ tab.top_panel.heading }}</h3>
               </div>
               <div class="panel-body">
                 <div class="row">
-                  {% for image in tab.images -%}
+                  {% for image in tab.top_panel.images -%}
                   <div class="col col-centered col-xs-12 col-md-{{ image.width|default(12) }}">
                     <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
-                      <img class="img-responsive" src="{{ image.path }}" alt="No Image">
+                      <img class="img-responsive" src="{{ image.image }}" alt="No Image">
                     </a>
                   </div>
                   {% endfor -%} 
                 </div>
               </div>
             </div>
+            {% endif %}
 
+            {% if tab.plots is defined %}
             <div class="panel panel-primary">
               <div class="panel-heading">
                 <h3 class="panel-title">Interactive summary graphs</h3>
@@ -306,7 +309,9 @@
                 {% endfor %}
               </div>
             </div>
+            {% endif %}
 
+            {% if tab.table is defined %}
             <div class="panel panel-primary">
               <div class="panel-heading">
                 <h3 class="panel-title">Summary table from pandemic.adp</h3>
@@ -318,6 +323,7 @@
                 </div>
               </div>
             </div>
+            {% endif %}
 
           </div>
 
@@ -345,19 +351,24 @@
                       </div>
                       <div id="{{ this_div }}" class="panel-collapse collapse {% if panel.show %}in{% endif %}">
                         <div class="panel-body">
-                          <div class="row">
-                            {% for object in panel.objects %}
-                            <div class="col col-centered col-xs-12 col-md-{{ object.width|default(12) }} ">
-                              {% if object.text %}
-                              <p>{{ object.text }}</p>
-                              {%- endif %}
-                              {% if object.path %}
-                              <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
-                                <img class="img-responsive" src="{{ object.path }}" alt="No Image">
-                              </a>
-                              {%- endif %}
+                          <div class="row row-centered">
+                            {% for thing in panel.contents -%}
+                            <div class="col col-centered col-xs-12 col-md-{{ thing.width|default(12) }}">
+                              <div {% if thing.class is defined %}class="{{thing.class[0]}} {{thing.class[0]}}-{{thing.class[1]}}"{% endif %}>
+                                {% if thing.title is defined %}
+                                <h4>{{ thing.title }}</h4>
+                                {% endif %}
+                                {% if thing.text is defined %}
+                                <p>{{ thing.text }}</p>
+                                {% endif %}
+                                {% if thing.image is defined %}
+                                <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
+                                  <img class="img-responsive" src="{{ thing.image }}" alt="No Image">
+                                </a>
+                                {% endif %}
+                              </div>
                             </div>
-                            {% endfor %}
+                            {% endfor -%} 
                           </div>
                         </div>
                       </div>

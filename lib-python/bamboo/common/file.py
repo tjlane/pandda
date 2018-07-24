@@ -66,6 +66,10 @@ class FileManager(object):
         file_name = self._file_names[file_tag]
         return os.path.join(dir_path, file_name)
 
+    def has_file(self, file_tag):
+        """Find whether a file has been added to the object"""
+        return file_tag in self._file_names.keys()
+
     def get_file_object(self, file_tag):
         """Retrieve a file object by it's file_tag"""
         assert file_tag in self._file_names.keys(), 'File has not been added: {}'.format(file_tag)

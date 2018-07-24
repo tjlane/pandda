@@ -1,4 +1,4 @@
-import os, sys, glob, copy, traceback
+import os, sys, glob, copy, shutil, traceback
 import math, itertools, operator, collections
 
 import scipy.cluster
@@ -15,7 +15,7 @@ from scitbx.array_family import flex
 from scitbx import simplex, linalg, matrix
 
 from bamboo.common import Meta, Info, ListStream
-from bamboo.common.logs import Log, LogStream
+from bamboo.common.logs import Log, LogStream, ScreenLogger
 from bamboo.common.path import easy_directory, rel_symlink
 from bamboo.common.command import CommandManager
 
@@ -72,7 +72,7 @@ class NonDaemonicPool(multiprocessing.pool.Pool):
 PROGRAM = 'pandemic.adp'
 
 DESCRIPTION = """
-    Fit a consensus anisotropic B-factor model to a (series of) molecular structure(s)
+    Fit a hierarchical Atomic Displacement Parameter (B-factor) model to a (series of) molecular structure(s)
 """
 
 ############################################################################
@@ -88,6 +88,14 @@ input {
     labelling = filename *foldername
         .type = choice(multi=False)
         .multiple = False
+    allow_isotropic = True
+        .type = bool
+        .help = "Control whether an error is raised if structures with isotropic B are provided."
+    look_for_reflection_data = True
+        .type = bool
+    reference_r_values = None
+        .type = path
+        .help = "Reference R-values against which to compare the fitted and refined models. Labelling the CSV must be the same as the dataset labelling. If not provided will use the R-values of the input structures."
     pickle = None
         .type = path
         .multiple = False
@@ -113,18 +121,20 @@ output {
             .help = "Write distribution graphs for each TLS group"
             .type = bool
     }
-    diagnostics = False
-        .help = "Write diagnostic graphs -- adds a significant amount of runtime"
+    copy_reflection_data_to_output_folder = True
         .type = bool
     clean_up_files = *compress_logs *delete_mtzs
         .help = "Delete unnecessary output files (MTZs)"
         .type = choice(multi=True)
 }
 levels {
-    overall_selection = None
+    overall_selection = "pepnames and (not water) and (not hetero) and (not element H)"
         .type = str
     auto_levels = *chain auto_group *secondary_structure *residue *backbone *sidechain atom
         .type = choice(multi=True)
+    cbeta_in_backbone = True
+        .help = "Flag to control whether the c-beta atom is considered part of the backbone or the sidechain"
+        .type = bool
     custom_level
         .multiple = True
     {
@@ -152,6 +162,9 @@ fitting {
         .help = 'how many fitting cycles to run (for each level) -- should be more than 1'
         .type = int
     optimisation {
+        buffer = 0.01
+            .help = 'A fixed quantity that it subtracted from the Uijs of each level except for the residual. Prevents 0-value ADPs in the residual level.'
+            .type = float
         dataset_weights = one inverse_resolution inverse_resolution_squared *inverse_resolution_cubed
             .help = 'control how datasets are weighted during optimisation?'
             .type = choice(multi=False)
@@ -219,7 +232,7 @@ fitting {
                 a = 0.0
                     .type = float
                     .help = 'fixed penalty for positive penalty values'
-                b = 1e3
+                b = 1e2
                     .type = float
                     .help = 'multiplicative penalty for positive penalty values'
             }
@@ -228,16 +241,16 @@ fitting {
     precision
         .help = 'set various levels of precision for calculations'
     {
-        tls_tolerance = 1e-12
+        tls_tolerance = 1e-8
             .help = "tolerance for validating TLS matrices (cutoff for defining zero when calculating negative eigenvalues, etc)"
             .type = float
-        uij_tolerance = 1e-1
+        uij_tolerance = 1e-6
             .help = "tolerance for validating Uij values (maximum allowed negative eigenvalues of Uijs)"
             .type = float
-        tls_model_decimals = 6
+        tls_model_decimals = 9
             .help = "how many decimals of precision to be used for TLS matrices (PDB maximum is three, but more needed here due to small Uij-values)"
             .type = int
-        tls_amplitude_decimals = 9
+        tls_amplitude_decimals = 6
             .help = "how many decimals of precision to be used for TLS amplitudes"
             .type = int
     }
@@ -249,6 +262,14 @@ analysis {
     calculate_r_factors = True
         .help = "Recalculate r-factors for the fitted B-factors"
         .type = bool
+    calculate_electron_density_metrics = False
+        .type = bool
+    table_ones_options {
+        include scope giant.jiffies.multi_table_ones.options_phil
+    }
+    diagnostics = False
+        .help = "Write diagnostic graphs -- adds a significant amount of runtime"
+        .type = bool
 }
 refinement {
     cif = None
@@ -256,16 +277,15 @@ refinement {
         .type = str
         .multiple = True
 }
-table_ones_options {
-    include scope giant.jiffies.multi_table_ones.options_phil
-}
 settings {
     cpus = 1
         .type = int
+    dry_run = False
+        .type = bool
         .multiple = False
     verbose = False
         .type = bool
-    dry_run = False
+    debug = False
         .type = bool
 }
 """, process_includes=True)
@@ -276,6 +296,72 @@ settings {
 
 def rms(vals, axis=None):
     return numpy.sqrt(numpy.mean(numpy.power(vals,2), axis=axis))
+
+def translate_phenix_selections_to_pymol_selections_simple(selections, verbose=False):
+    """Convert simplex phenix selections into simplex pymol selections"""
+
+    easy_regexes = [
+            ("chain '?[A-Za-z]{1,2}'?",
+                lambda x: x
+                ),
+            ("chain '?[A-Za-z]{1,2}'? and resid '?[0-9]*?'? through '?[0-9]*'?",
+                lambda x: x.replace("resid", "resi").replace(" through ",":")
+                ),
+                    ]
+
+    log = ScreenLogger(stdout=verbose)
+
+    import re
+    output_selections = []
+    for s in selections:
+        # Start
+        o = None
+        # Remove double spaces and padding
+        while '  ' in s:
+            s = s.replace('  ',' ')
+        s = s.strip(' ')
+        log('Phenix Selection String: {}'.format(s))
+        for rgx_s, trans_func in easy_regexes:
+            rgx = re.compile(rgx_s)
+            mat = rgx.findall(s)
+            # No matches or too many matches
+            if len(mat) != 1:
+                log('> No matches or multiple matches to {}'.format(rgx_s))
+                continue
+            # If the match is the same as input string, then process
+            if mat[0] == s:
+                log('Exact match for {}'.format(rgx_s))
+                o = trans_func(s)
+                log('Translating to pymol: \n\t{} -> {}'.format(s, o))
+                break
+        # Append processed selection or none
+        output_selections.append(o)
+
+    assert len(output_selections) == len(selections)
+    return output_selections
+
+def dendrogram(fname, link_mat, labels=None, ylab=None, xlab=None, ylim=None, annotate_y_min=0.25, num_nodes=20):
+    from matplotlib import pyplot
+    fig = pyplot.figure()
+    ax1 = pyplot.subplot(1,1,1)
+    dend = scipy.cluster.hierarchy.dendrogram(link_mat, p=num_nodes, truncate_mode='lastp', labels=labels)
+    # Change labels if requested
+#    if labels: ax1.set_xticklabels([labels[i] for i in dend['leaves']])
+    if xlab:   ax1.set_xlabel(xlab)
+    if ylab:   ax1.set_ylabel(ylab)
+    if ylim:   ax1.set_ylim(ylim)
+    # Make sure the labels are rotated
+    xlocs, xlabels = pyplot.xticks()
+    pyplot.setp(xlabels, rotation=90)
+    for i, d in zip(dend['icoord'], dend['dcoord']):
+        x = 0.5 * sum(i[1:3])
+        y = d[1]
+        if y < annotate_y_min: continue
+        pyplot.plot(x, y, 'ro')
+        pyplot.annotate("%.3g" % y, (x, y), xytext=(0, -8), textcoords='offset points', va='top', ha='center')
+    pyplot.tight_layout()
+    fig.savefig(fname)
+    return fig
 
 ############################################################################
 #                        Multi-processing functions                        #
@@ -288,17 +374,18 @@ def wrapper_run(arg):
     return arg.run()
 
 def wrapper_optimise(args):
-    fitter, tolerance = args
+    fitter, options = args
+    tolerance = options.pop('tolerance')
+    stdout = options.pop('stdout', False)
     try:
-        fitter._optimise(tolerance=tolerance,
-                         running_summary=False)
+        fitter.log.toggle(stdout)
+        fitter._optimise(tolerance=tolerance)
         return fitter
     except Exception as e:
         return traceback.format_exc()
 
 def wrapper_fit(args):
     fitter, kw_args = args
-    s = kw_args.pop('silent', True)
     try:
         msg = 'Error'
         fitter.optimise(**kw_args)
@@ -309,8 +396,8 @@ def wrapper_fit(args):
         fitter.log(tr)
         return tr
     finally:
-        print '{} ({}). Log written to {}'.format(msg, fitter.label, fitter.log.log_file)
-        fitter.log.write_to_log(clear_data=True)
+        fitter.log.log_file().write_to_log(clear_data=True)
+        print '{} ({}). Log written to {}'.format(msg, fitter.label, str(fitter.log.log_file()))
 
 ############################################################################
 
@@ -722,7 +809,7 @@ class MultiDatasetUijParameterisation(Program):
                  log=None):
         """Object for fitting a series of TLS models to a set of structures"""
 
-#        if log is None: log = Log(verbose=False)
+#        if log is None: log = Log()
         self.log = log
 
         # List of non-fatal errors from the program (to be reported at the end)
@@ -733,9 +820,12 @@ class MultiDatasetUijParameterisation(Program):
         self._n_cpu = params.settings.cpus
         self._n_opt = params.fitting.optimisation.max_datasets
 
-        self._allow_isotropic = True
+        # Flag to control whether input/reference is compared
+        self.compare = "Input"
 
-        self._opt_datasets_res_limit = params.fitting.optimisation.max_resolution
+        self.disorder_model = None
+        self.has_reflection_data = False
+
         self._opt_datasets_selection = []
         self.dataset_weights = []
 
@@ -764,10 +854,22 @@ class MultiDatasetUijParameterisation(Program):
         #self.write_running_parameters_to_log(params=params)
 
     def _init_checks(self):
-        dependencies = ['phenix.refine', 'phenix.table_one']
-        if self.params.output.images.pymol != 'none':
-            dependencies.append('pymol')
-        self.check_programs_are_available(dependencies)
+        try:
+            if self.params.analysis.refine_output_structures is True:
+                message = 'phenix.refine is required when analysis.refine_output_structures is True'
+                self.check_programs_are_available(['phenix.refine'])
+            if self.params.analysis.calculate_r_factors is True:
+                message = 'phenix.table_one is required when analysis.calculate_r_factors is True'
+                self.check_programs_are_available(['phenix.table_one'])
+            if self.params.analysis.calculate_electron_density_metrics:
+                message = 'edstats (script name "edstats.pl") is required when analysis.calculate_electron_density_metrics is True'
+                self.check_programs_are_available(['edstats.pl'])
+            if self.params.output.images.pymol != 'none':
+                message = 'pymol is required when output.images.pymol is not set to "none"'
+                self.check_programs_are_available(['pymol'])
+        except Exception as e:
+            self.log(message)
+            raise
 
     def _init_file_system(self):
         """Prepare the file manager object"""
@@ -793,7 +895,10 @@ class MultiDatasetUijParameterisation(Program):
         errors = []
 
         # Extract the TableOne columns as a set to compare with the columns in the MTZs
-        table_one_cols = set(self.params.table_ones_options.column_labels.split(',')+[self.params.table_ones_options.r_free_label])
+        table_one_cols = set(
+                self.params.analysis.table_ones_options.column_labels.split(',') + \
+                [self.params.analysis.table_ones_options.r_free_label]
+            )
 
         # Create dataset weight function
         if self.params.fitting.optimisation.dataset_weights == 'one':
@@ -806,6 +911,9 @@ class MultiDatasetUijParameterisation(Program):
             dataset_weight = lambda r: r**(-3.0)
         else:
             raise Sorry('Invalid parameter provided for fitting.optimisation.dataset_weights: {}'.format(self.params.fitting.optimisation.dataset_weights))
+
+        # Flag for whether we need resolution information
+        need_res_info = (self.params.fitting.optimisation.max_resolution is not None) or (self.params.fitting.optimisation.dataset_weights != 'one')
 
         for i_m, m in enumerate(self.models):
             # Check that all of the structures are the same
@@ -826,46 +934,74 @@ class MultiDatasetUijParameterisation(Program):
 
             # Write the input pdb to the output folder (without the header as this can affect R-factors calculations)
             m.hierarchy.write_pdb_file(m.i_pdb, crystal_symmetry=m.crystal_symmetry)
-            # Link the input mtz to the output folder
-            rel_symlink(m.filename.replace('.pdb','.mtz'), m.i_mtz)
-
             assert os.path.exists(m.i_pdb), 'PDB does not exist: {}'.format(m.i_pdb)
-            assert os.path.exists(m.i_mtz), 'MTZ does not exist: {}'.format(m.i_mtz)
 
-            cs = CrystalSummary.from_mtz(m.i_mtz)
-            if (self._opt_datasets_res_limit is None) or (cs.high_res < self._opt_datasets_res_limit):
-                self._opt_datasets_selection.append(i_m)
+            # Check MTZ exists if requested
+            if self.params.input.look_for_reflection_data:
+                # Look for same filename as the pdb
+                mtz_file = m.filename.replace('.pdb','.mtz')
+                # Check all or none of the datasets have data
+                if (os.path.exists(mtz_file)):
+                    # Update flag
+                    self.has_reflection_data = True
+                    # Link the input mtz to the output folder
+                    if self.params.output.copy_reflection_data_to_output_folder:
+                        shutil.copy(mtz_file, m.i_mtz)
+                    else:
+                        rel_symlink(mtz_file, m.i_mtz)
+                    assert os.path.exists(m.i_mtz), 'MTZ does not exist: {}'.format(m.i_mtz)
+                elif (self.has_reflection_data is True):
+                    errors.append(Sorry('MTZ files have been found for some datasets but not others.\n'\
+                                        'To disable searching for MTZs, set input.look_for_reflection_data=False.\n'\
+                                        'Missing File: {}'.format(mtz_file)))
+                    continue
 
-            if table_one_cols.difference(cs.column_labels):
-                errors.append(Failure("MTZ {} does not contain the correct columns.".format(m.filename) + \
-                                      "\n\tLooking for: {}".format(','.join(table_one_cols)) + \
-                                      "\n\tMTZ contains: {}".format(','.join(cs.column_labels)) + \
-                                      "\n\tCan't find: {}".format(','.join(table_one_cols.difference(cs.column_labels))) + \
-                                      "\nChange required columns with {}".format("table_ones_options.column_labels or table_ones_options.r_free_label")))
+            if self.has_reflection_data:
+                # Extract crystal information from the MTZ
+                cs = CrystalSummary.from_mtz(m.i_mtz)
+                # Check for columns
+                if self.params.analysis.calculate_r_factors and table_one_cols.difference(cs.column_labels):
+                    errors.append(Failure("MTZ {} does not contain the correct columns.".format(m.filename) + \
+                                          "\n\tLooking for: {}".format(','.join(table_one_cols)) + \
+                                          "\n\tMTZ contains: {}".format(','.join(cs.column_labels)) + \
+                                          "\n\tCan't find: {}".format(','.join(table_one_cols.difference(cs.column_labels))) + \
+                                          "\nChange required columns with {}".format("table_ones_options.column_labels or table_ones_options.r_free_label")))
 
-            # Calculate dataset weight
-            high_res = m.input.get_r_rfree_sigma().high
-            if (self.params.fitting.optimisation.dataset_weights != 'one') and (high_res is None):
-                errors.append(Failure("PDB does not contain resolution information in the REMARK 3 records.\n" + \
-                                      "This is normally present in structures that have come from refinement.\n" + \
-                                      "Are these structures from refinement?"))
+                # Check for high res information
+                if (cs.high_res is None) and need_res_info:
+                    errors.append(Failure("MTZ does not contain resolution information: {}\n".format(m.i_mtz)))
+                    continue
             else:
-                self.dataset_weights.append(dataset_weight(high_res))
+                # Extract crystal information from the PDB
+                cs = CrystalSummary.from_pdb(pdb_input=m.input)
+                # Check for high res information
+                if (cs.high_res is None) and need_res_info:
+                    errors.append(Failure("PDB does not contain resolution information in the REMARK 3 records: {}\n".format(m.i_pdb) + \
+                                          "This is normally present in structures that have come from refinement.\n" + \
+                                          "You can also remove the high-resolution cutoff for dataset masking (optimisation.max_resolution=None),\n" + \
+                                          "or use equal weighting for each dataset (optimisation.dataset_weights=one)"))
+                    continue
+            high_res = cs.high_res
+            # Check high resolution limit for masking
+            if (self.params.fitting.optimisation.max_resolution is None) or (high_res < self.params.fitting.optimisation.max_resolution):
+                self._opt_datasets_selection.append(i_m)
+            # Calculate dataset weight
+            self.dataset_weights.append(dataset_weight(high_res))
 
-        # Check for errors - Structures not all the same?
+        # Check for errors
         if errors:
             self.log.heading('Errors found while processing input files')
             for e in errors:
                 self.log(str(e))
                 self.log('')
             self.log.bar(False, True)
-            raise Failure("Some structures are invalid or missing information.")
+            raise Sorry("Some structures are invalid or missing information.")
         # Check for errors - No high resolution structures?
         if len(self._opt_datasets_selection) == 0:
             self.log('Dataset resolutions:')
             for m in self.models:
                 self.log('> {}: {}'.format(m.tag, m.input.get_r_rfree_sigma().high))
-            raise Sorry('No datasets above resolution cutoff: {}'.format(self._opt_datasets_res_limit))
+            raise Sorry('No datasets above resolution cutoff: {}'.format(self.params.fitting.optimisation.max_resolution))
 
         # Limit the number of datasets for optimisation
         if self._n_opt is not None:
@@ -879,6 +1015,21 @@ class MultiDatasetUijParameterisation(Program):
         self.log('Optimisation weights for TLS and residual parameterisation')
         for i_m, m in enumerate(self.models):
             self.log('\t{} (model {}) -> {:+10.6f} (resolution {})'.format(m.tag, i_m, self.dataset_weights[i_m], m.input.get_r_rfree_sigma().high))
+
+        # Update parameter flags
+        if not self.has_reflection_data:
+            self.log.bar(True, False)
+            self.log('Reflection data has not been found in the input folder(s) -- updating settings.')
+            self.log('(Added reflection data must have the same filename as input structures')
+            self.log('but with different extension, e.g. <filename>.pdb & <filename>.mtz')
+            self.log('Without reflection data, it is not possible to refine the fitted model or recalculate R-factors.')
+            self.log('Setting analysis.refine_output_structures = False')
+            self.params.analysis.refine_output_structures = False
+            self.log('Setting analysis.calculate_r_factors = False')
+            self.params.analysis.calculate_r_factors = False
+            self.log('Setting analysis.calculate_electron_density_metrics = False')
+            self.params.analysis.calculate_electron_density_metrics = False
+            self.log.bar()
 
     def _init_level_groups(self):
         """Create the selection array that builds up the hierarchy of the fitting"""
@@ -936,6 +1087,8 @@ class MultiDatasetUijParameterisation(Program):
         """Create tables"""
 
         self.tables = Meta(['statistics', 'tracking'])
+
+        # Create table for tracking progress over cycles
         self.tables.tracking = pandas.DataFrame(columns=['cycle', 'level', #'group',
                                                          'rmsd',
                                                          'u_iso (level)',
@@ -944,6 +1097,82 @@ class MultiDatasetUijParameterisation(Program):
                                                          'b_max (level)',
                                                          'u_iso (total)',
                                                          'b_iso (total)'])
+
+        # Create output table for all model statistics
+        self.tables.statistics = pandas.DataFrame(
+                index   = [m.tag for m in self.models],
+                columns = [
+                    'High Resolution Limit',
+                    'Low Resolution Limit',
+                    'R-free Change (Fitted-Reference)',
+                    'R-work Change (Fitted-Reference)',
+                    'R-gap Change (Fitted-Reference)',
+                    'R-free Change (Refined-Reference)',
+                    'R-work Change (Refined-Reference)',
+                    'R-gap Change (Refined-Reference)',
+                    'R-free Change (Fitted-Input)',
+                    'R-work Change (Fitted-Input)',
+                    'R-gap Change (Fitted-Input)',
+                    'R-free Change (Refined-Input)',
+                    'R-work Change (Refined-Input)',
+                    'R-gap Change (Refined-Input)',
+                    'Average B-factor Change (Fitted-Input)',
+                    'Average B-factor (fitted atoms) Change (Fitted-Input)',
+                          ]
+                )
+
+        if self.params.input.reference_r_values is not None:
+
+            self.log.subheading('Reading Reference R-values from {}'.format(self.params.input.reference_r_values))
+
+            # Flag to control whether input/reference is compared
+            self.compare = "Reference"
+
+            # Prepare an error string
+            err_str = 'A table of reference R-values has been provided (input.reference_r_values={}) '.format(self.params.input.reference_r_values)
+
+            if not self.params.input.reference_r_values.endswith('.csv'):
+                raise Sorry(err_str + 'but it must have a .csv extension.')
+
+            # Read reference table
+            ref_table = pandas.read_csv(self.params.input.reference_r_values, index_col=0)
+
+            # Validate row names
+            missing_ids = set(self.tables.statistics.index).difference(ref_table.index)
+            if len(missing_ids) == len(self.tables.statistics.index):
+                raise Sorry(err_str + 'but all of the dataset labels are missing. \nThe dataset labels must be present as the first column of the csv file.' + \
+                        '\nCurrent datasets labels (should be present in first column in {}): \n\t{}'.format(self.params.input.reference_r_values, '\n\t'.join(self.tables.statistics.index)) + \
+                        '\nCurrent first column of {}: \n\t{}'.format(self.params.input.reference_r_values, '\n\t'.join(ref_table.index)))
+            elif missing_ids:
+                raise Sorry(err_str + 'but some of the dataset labels are missing from the index column.' + \
+                        '\nMissing labels: \n\t{}'.format('\n\t'.join(missing_ids)))
+
+            # Validate columns
+            ref_cols = ['R-free', 'R-work']
+            missing_cols = set(ref_cols).difference(ref_table.columns)
+            if missing_cols:
+                raise Sorry(err_str + ' but columns are missing. \nMissing Columns: {}'.format(', '.join(missing_cols)))
+
+            # Transfer R-values
+            if 'R-gap' not in ref_table.columns:
+                self.log('Calculating "R-gap" column for reference R-free & R-work values')
+                ref_table['R-gap'] = table_one['R-free'] - table_one['R-work']
+            else:
+                self.log('"R-gap" column already present in reference table -- using this column.')
+
+            for col in ['R-free', 'R-work', 'R-gap']:
+                new_col = col+' (Reference)'
+                if new_col in self.tables.statistics.index:
+                    raise Failure('Column should not exist: {} in self.tables.statistics.index'.format(new_col))
+                new_vals = ref_table[col][self.tables.statistics.index]
+
+                assert list(new_vals) == [ref_table[col][i] for i in self.tables.statistics.index]
+                self.tables.statistics[new_col] = new_vals
+
+            self.log('\n> Processed Reference Values\n')
+            for i, v in self.tables.statistics[['R-free (Reference)', 'R-work (Reference)', 'R-gap (Reference)']].iterrows():
+                self.log(i)
+                self.log('\t'+v.to_string().replace('\n','\n\t'))
 
     def _init_fitter(self):
         """Create fitting object"""
@@ -958,19 +1187,25 @@ class MultiDatasetUijParameterisation(Program):
         observed_xyz = numpy.array([a.extract_xyz() for a in atoms])[:,self.atom_mask]
 
         # Check all uijs are present
-        if (observed_uij==-1).all() and (self._allow_isotropic is True):
+        if (observed_uij==-1).all() and (self.params.input.allow_isotropic is True):
             # Set model type to isotropic
-            self.disorder_model = 'isotropic'
+            disorder_model = 'isotropic'
             # Extract isotropic component from atoms (again only for the atoms we're interested in)
             self.log('All atoms are missing anisotropic displacement parameters -- using the isotropic parameters instead')
             observed_uij = numpy.zeros_like(observed_uij)
             observed_uij[:,:,0] = numpy.array([a.extract_b()/EIGHT_PI_SQ for a in atoms])[:,self.atom_mask]
             observed_uij[:,:,2] = observed_uij[:,:,1] = observed_uij[:,:,0]
+        elif (observed_uij==-1).all() and (self.params.input.allow_isotropic is False):
+            raise Sorry('All atoms selected for fitting only have isotropic ADPs and input.allow_isotropic is currently False.\nOptions:' + \
+                    '\n   1) Re-refine structures with anisotropic ADPs.' + \
+                    '\n   2) Set input.allow_isotropic=True to allow use of isotropic ADPs.')
         elif (observed_uij==-1).any():
-            raise Failure('Some atoms for fitting (but not all) do not have anisotropically-refined B-factors -- either all atoms for fitting must have anistropic atoms or none')
+            raise Sorry('Some atoms for fitting (but not all) have anisotropically-refined ADPs -- all atoms for fitting must have anisotropic ADPs, or all must be isotropic ADPs.\nOptions:' + \
+                    '\n   1) Re-refine structures so that all atoms selected have anisotropic ADPs. Current selection: levels.overall_selection{}'.format(self.params.levels.overall_selection) + \
+                    '\n   2) Change levels.overall_selection so that atoms with isotropic ADPs are not selected. Current selection: levels.overall_selection{}'.format(self.params.levels.overall_selection))
         else:
             # Set model type to anisotropic
-            self.disorder_model = 'anisotropic'
+            disorder_model = 'anisotropic'
 
         # Create the fitting object
         self.fitter = MultiDatasetHierarchicalUijFitter(observed_uij = observed_uij,
@@ -979,9 +1214,10 @@ class MultiDatasetUijParameterisation(Program):
                                                         level_labels = self.level_labels,
                                                         dataset_weights = numpy.array(self.dataset_weights),
                                                         params = self.params.fitting,
+                                                        verbose = self.params.settings.verbose,
                                                         log = self.log)
         # Set whether input is anisotropic or isotropic
-        self.fitter.set_input_info(disorder_model=self.disorder_model)
+        self.fitter.set_input_info(disorder_model=disorder_model)
         # Select the datasets for be used for TLS optimisation
         self.fitter.set_optimisation_datasets(self._opt_datasets_selection)
 
@@ -1123,7 +1359,7 @@ class MultiDatasetUijParameterisation(Program):
         for i, mdl in enumerate(self.models):
             mdl.o_pdb = pdbs[i]
             mdl.o_mtz = pdbs[i].replace('.pdb','.mtz')
-            if not os.path.exists(mdl.o_mtz):
+            if os.path.exists(mdl.i_mtz) and (not os.path.exists(mdl.o_mtz)):
                 rel_symlink(mdl.i_mtz, mdl.o_mtz)
         # TLS-parameterised structures (total TLS)
         self.log.bar()
@@ -1145,16 +1381,17 @@ class MultiDatasetUijParameterisation(Program):
                                    out_dir = structure_dir,
                                    model_suffix = '.tls-level-{:04}.pdb'.format(i_level+1))
         # Level by level TLS-parameterised structures (cumulative level contributions)
-        for i_level in xrange(1, len(self.levels)):
+        for i_level, j_level in flex.nested_loop((len(self.levels), len(self.levels))):
+            if i_level >= j_level: continue
             self.log.bar()
-            self.log('Writing fitted structures (cumulative TLS components - level {})'.format(i_level+1))
+            self.log('Writing fitted structures (cumulative TLS components: level {:4} -> level {:4})'.format(i_level+1,j_level+1))
             self.log.bar()
-            cuml_uij = uij_lvl[0:i_level+1].sum(axis=0)
+            cuml_uij = uij_lvl[i_level:j_level+1].sum(axis=0)
             self.output_structures(uij = cuml_uij,
                                    iso = map(uij_to_b, cuml_uij),
-                                   headers = self.make_tls_headers(datasets=None, levels=range(i_level+1)),
+                                   headers = self.make_tls_headers(datasets=None, levels=range(i_level, j_level+1)),
                                    out_dir = structure_dir,
-                                   model_suffix = '.tls-level-0001-to-{:04}.pdb'.format(i_level+1))
+                                   model_suffix = '.tls-level-{:04}-to-{:04}.pdb'.format(i_level+1,j_level+1))
         # TLS-subtracted structures ("residual structures")
         self.log.bar()
         self.log('Writing fitted structures (total TLS subtracted from input Uijs)')
@@ -1271,14 +1508,23 @@ class MultiDatasetUijParameterisation(Program):
                 s_f = self.file_manager.get_file('level-partition-template').format(i_level+1)
                 # Choose the style based on whether interested in atoms or larger regions
                 styles = 'cartoon' if self.level_labels[i_level] in ['chain','groups','secondary structure','residue'] else 'lines+spheres'
+                # Create selections for each group in each level
+                pymol_selections = translate_phenix_selections_to_pymol_selections_simple(self.levels[i_level])
+                # If returned selection is none, create atom-by-atom pymol selection
+                blank_h = self.blank_master_hierarchy()
+                cache_h = blank_h.atom_selection_cache()
+                selections = [s1 if (s1 is not None) else PymolSelection.join_or([PymolSelection.format(a) for a in blank_h.atoms().select(cache_h.selection(s2))]) for s1,s2 in zip(pymol_selections, self.levels[i_level])]
+                # Create image of different selections
                 auto_chain_images(structure_filename = s_f,
                                   output_prefix = lvl_pml_prt_prefix.format(i_level+1),
                                   style = styles,
-                                  colour_by = 'bfactor',
+                                  colours = ['red','green','blue'],
+                                  colour_selections = selections,
                                   settings = [('cartoon_oval_length', 0.5),
                                               ('cartoon_discrete_colors', 'on'),
                                               ('sphere_scale', 0.25)],
-                                  width=1000, height=750)
+                                  width=1000, height=750,
+                                  delete_script = (not self.params.settings.debug))
                 assert glob.glob(lvl_pml_prt_template.format(i_level+1,'*')), 'no files have been generated!'
 
     def make_tls_headers(self, levels=None, datasets=None):
@@ -1393,7 +1639,7 @@ class MultiDatasetUijParameterisation(Program):
                                                   "S11","S12","S13","S21","S22","S23","S31","S32","S33"])
             # Create amplitude table
             amp_filename = amp_template.format(level.index)
-            amp_table = pandas.DataFrame(columns=["group", "model", "cpt"]+[mdl.tag for mdl in self.models])
+            amp_table = pandas.DataFrame(columns=["group", "model", "cpt"]+[mdl.tag for mdl in self.models], dtype=object)
             # Iterate through the groups in this level
             for i_group, sel, fitter in level:
                 tls_model, tls_amps = fitter.result()
@@ -1415,8 +1661,8 @@ class MultiDatasetUijParameterisation(Program):
                 if (tls_model.sum() > 0.0) and self.params.output.images.distributions:
                     filename = dst_template.format(level.index, i_group)
                     self.log('\t> {}'.format(filename))
-                    titles = numpy.concatenate([['Model {}: {}'.format(i_t+1, c) for c in p.get(index=i_t).component_sets()] for i_t in xrange(tls_amps.shape[0])])
-                    x_vals = numpy.concatenate([[tls_amps[i_t,:,i_c]             for i_c in xrange(tls_amps.shape[2])]       for i_t in xrange(tls_amps.shape[0])])
+                    titles = numpy.concatenate([['Mode {}: {}'.format(i_t+1, c) for c in p.get(index=i_t).component_sets()] for i_t in xrange(tls_amps.shape[0])])
+                    x_vals = numpy.concatenate([[tls_amps[i_t,:,i_c]            for i_c in xrange(tls_amps.shape[2])]       for i_t in xrange(tls_amps.shape[0])])
                     self.plot.multi_histogram(filename  = filename,
                                               x_vals    = x_vals,
                                               titles    = titles,
@@ -1429,6 +1675,34 @@ class MultiDatasetUijParameterisation(Program):
             mdl_table.to_csv(mdl_filename)
             self.log('\t> {}'.format(amp_filename))
             amp_table.to_csv(amp_filename)
+
+            self.log.subheading('Amplitude statistics: Level {}'.format(level.index))
+            # Plot histogram of amplitudes for each dataset for this level
+            for mdl in self.models:
+                self.log('> Model {}'.format(mdl.tag))
+                amps = amp_table[mdl.tag].values.astype(float)
+                try:
+                    mn = amps.mean()
+                    sd = amps.std()
+                except:
+                    from IPython import embed; embed()
+                self.log('\tMean: {}'.format(mn))
+                self.log('\tStd:  {}'.format(sd))
+                self.log.bar()
+                if len(amps) > 5:
+                    try:
+                        from ascii_graph import Pyasciigraph
+                        g=Pyasciigraph(float_format='{0:.3f}')
+                        counts, bounds = numpy.histogram(a=amps, bins=10)
+                        graph_data = [('{:.3f}-{:.3f}'.format(bounds[i],bounds[i+1]), v) for i,v in enumerate(counts)]
+                        for l in g.graph(label='Histogram of amplitudes for dataset {}'.format(mdl.tag), data=graph_data):
+                            if l.startswith('#######'): continue
+                            self.log(l.replace(u"\u2588", '=').replace('= ','> '))
+                        self.log.bar()
+                    except ImportError:
+                        pass
+                    except:
+                        raise
 
         # ------------------------
         self.log.subheading('Writing contribution of each TLS model for each level')
@@ -1529,7 +1803,7 @@ class MultiDatasetUijParameterisation(Program):
                 # Output structure for LEVEL (scaled!) - for html only
                 m_h_scl = scale_uij_to_target_by_selection(hierarchy=m_h,
                                                            selections=self.levels[i_level],
-                                                           target=0.5)
+                                                           target=0.1)
                 m_f_scl = m_f.replace('.pdb', '-scaled.pdb')
                 self.log('\t> {}'.format(m_f_scl))
                 m_h_scl.write_pdb_file(m_f_scl)
@@ -1701,6 +1975,76 @@ class MultiDatasetUijParameterisation(Program):
                               title='TLS and residual contributions',
                               reverse_legend_order=True)
         assert glob.glob(stacked_template.format('*')), 'no files have been generated!'
+
+    def calculate_electron_density_metrics(self, out_dir_tag):
+        pass
+
+    def calculate_amplitudes_dendrogram(self, out_dir_tag):
+        """Cluster the amplitudes across the datasets"""
+
+        fm = self.file_manager
+        out_dir = fm.get_dir(out_dir_tag)
+        dendro_template = fm.add_file(file_name='amplitude_dendrogram-level_{}.png', file_tag='png-amplitude-dendrogram-template', dir_tag=out_dir_tag)
+
+        self.log.heading('Generating dendrograms of TLS amplitudes between datasets')
+
+        # List of linkage-distances for each level
+        level_distance_matrices = []
+
+        labels = [m.tag for m in self.models]
+
+        for level in self.fitter.levels:
+            # List of amplitudes for each group in this level
+            group_amplitudes = []
+            for i_group, sel, fitter in level:
+                tls_model, tls_amps = fitter.result()
+                group_amplitudes.append(tls_amps)
+            group_amplitudes = numpy.array(group_amplitudes)
+
+            n_grp, n_tls, n_dst, n_amp = group_amplitudes.shape
+            self.log('For level {}:'.format(level.index))
+            self.log('\tNumber of groups: {}'.format(n_grp))
+            self.log('\tNumber of TLS: {}'.format(n_tls))
+            self.log('\tNumber of datasets: {}'.format(n_dst))
+            self.log('\tNumber of amplitudes: {}'.format(n_amp))
+
+            dist_mat = numpy.zeros((n_dst,n_dst))
+            for i1, i2 in flex.nested_loop((n_dst, n_dst)):
+                # Only need to do half
+                if i1 > i2: continue
+                # Store the rms amplitude difference of the two datasets
+                dist_mat[i1,i2] = rms(
+                        group_amplitudes[:, :, i1, :] -
+                        group_amplitudes[:, :, i2, :]
+                        )
+            # Make symmetric
+            dist_mat += dist_mat.T
+            # Append to level-by-level list
+            level_distance_matrices.append(dist_mat)
+
+            # Calculate linkages
+            link_mat = scipy.cluster.hierarchy.linkage(dist_mat, method='average', metric='euclidean')
+            # Plot dendrogram
+            fname = dendro_template.format(level.index)
+            self.log('> {}'.format(fname))
+            dendrogram(
+                    fname=fname,
+                    link_mat=link_mat,
+                    labels=labels,
+                    )
+
+        # Overall dendrogram
+        dist_mat = rms(level_distance_matrices, axis=0)
+        assert dist_mat.shape == (n_dst, n_dst)
+        link_mat = scipy.cluster.hierarchy.linkage(dist_mat, method='average', metric='euclidean')
+        # Plot dendrogram
+        fname=dendro_template.format('all')
+        self.log('> {}'.format(fname))
+        dendrogram(
+                fname=fname,
+                link_mat=link_mat,
+                labels=labels,
+                )
 
     def run_diagnostics(self):
         """Compare the fitted and input uijs for all structures"""
@@ -1954,19 +2298,31 @@ class MultiDatasetUijParameterisation(Program):
 
         refine_phenix.auto = False
 
+        self.log('Preparing refinements')
+
         proc_args = []
         for mdl in self.models:
-            if not os.path.exists(mdl.o_mtz): rel_symlink(mdl.i_mtz, mdl.o_mtz)
-            obj = refine_phenix(pdb_file=mdl.o_pdb, mtz_file=mdl.o_mtz, cif_files=self.cifs,
-                                out_prefix=os.path.splitext(mdl.o_pdb)[0]+suffix,
-                                strategy='individual_sites+occupancies', n_cycles=5)
+            if not os.path.exists(mdl.i_mtz):
+                raise Failure('Something has gone wrong -- Trying to refine output structures but mtz has not been provided/has been lost.')
+            if not os.path.exists(mdl.o_mtz):
+                rel_symlink(mdl.i_mtz, mdl.o_mtz)
+            obj = refine_phenix(
+                    pdb_file=mdl.o_pdb,
+                    mtz_file=mdl.o_mtz,
+                    cif_files=self.cifs,
+                    out_prefix=os.path.splitext(mdl.o_pdb)[0]+suffix,
+                    strategy='individual_sites+occupancies',
+                    n_cycles=5,
+                    log=self.log)
+            obj.log('')
+            obj.print_settings()
             obj.tag = mdl.tag
             if os.path.exists(obj.out_pdb_file):
                 raise Failure('Refined PDB already exists! (model {})'.format(mdl.tag))
             proc_args.append(obj)
 
         # Refine all of the models
-        self.log('Running refinements')
+        self.log.subheading('Running refinements')
         refined = libtbx.easy_mp.pool_map(processes=self._n_cpu, func=wrapper_run, args=proc_args, chunksize=1)
 
         for mdl, ref in zip(self.models, proc_args):
@@ -1989,7 +2345,10 @@ class MultiDatasetUijParameterisation(Program):
             raise Failure('Output table ones already exist.')
 
         for mdl in self.models:
-            if not os.path.exists(mdl.o_mtz): rel_symlink(mdl.i_mtz, mdl.o_mtz)
+            if not os.path.exists(mdl.i_mtz):
+                raise Failure('Something has gone wrong -- Trying to generate table ones but mtz has not been provided/has been lost.')
+            if not os.path.exists(mdl.o_mtz):
+                rel_symlink(mdl.i_mtz, mdl.o_mtz)
 
             assert  os.path.exists(mdl.i_pdb) and \
                     os.path.exists(mdl.i_mtz) and \
@@ -2003,7 +2362,7 @@ class MultiDatasetUijParameterisation(Program):
         # Populate table one phil
         phil = multi_table_ones.master_phil.extract()
         phil.input.dir        = []
-        phil.options          = self.params.table_ones_options
+        phil.options          = self.params.analysis.table_ones_options
         phil.settings.cpus    = self.params.settings.cpus
         phil.settings.verbose = False
 
@@ -2068,19 +2427,8 @@ class MultiDatasetUijParameterisation(Program):
         uij_fit = uij_lvl.sum(axis=0) + uij_res
         uij_inp = self.fitter.observed_uij
 
-        # Create output table
-        main_table = pandas.DataFrame(index=[m.tag for m in self.models],
-                                      columns=['High Resolution Limit',
-                                               'Low Resolution Limit',
-                                               'R-free Change (Fitted-Input)',
-                                               'R-work Change (Fitted-Input)',
-                                               'R-gap Change (Fitted-Input)',
-                                               'R-free Change (Refined-Input)',
-                                               'R-work Change (Refined-Input)',
-                                               'R-gap Change (Refined-Input)',
-                                               'Average B-factor Change (Fitted-Input)',
-                                               'Average B-factor (fitted atoms) Change (Fitted-Input)',
-                                     ])
+        # Extract output table
+        main_table = self.tables.statistics
 
         # columns to be extracted from each file
         input_cols = ['High Resolution Limit', 'Low Resolution Limit', 'Unique reflections','Completeness (%)','Wilson B-factor']
@@ -2089,9 +2437,13 @@ class MultiDatasetUijParameterisation(Program):
 
         # Extract data from the table one CSVs
         self.log.subheading('Looking for table one data')
-        for suff, csv in [(' (Input)',   self.file_manager.get_file('table_one_input')),
-                          (' (Fitted)',  self.file_manager.get_file('table_one_fitted')),
-                          (' (Refined)', self.file_manager.get_file('table_one_refined'))]:
+        for suff, csv_lab in [(' (Input)',   'table_one_input'),
+                              (' (Fitted)',  'table_one_fitted'),
+                              (' (Refined)', 'table_one_refined')]:
+            if not self.file_manager.has_file(csv_lab):
+                self.log('CSV not generated: {} -- skipping'.format(csv_lab))
+                continue
+            csv = self.file_manager.get_file(csv_lab)
             if not os.path.exists(csv):
                 if 'refined' in suff.lower():
                     continue
@@ -2133,8 +2485,12 @@ class MultiDatasetUijParameterisation(Program):
                                ('R-free Change', 'R-free'),
                                ('R-gap Change', 'R-gap'),
                                ('Average B-factor Change', 'Average B-factor')]:
-            for suff1, suff2 in [(' (Input)', ' (Fitted)'),
-                                 (' (Input)', ' (Refined)')]:
+            for suff1, suff2 in [
+                    (' (Input)', ' (Fitted)'),
+                    (' (Input)', ' (Refined)'),
+                    (' (Reference)', ' (Fitted)'),
+                    (' (Reference)', ' (Refined)'),
+                                ]:
                 if (col+suff1 not in main_table.columns) or (col+suff2 not in main_table.columns):
                     continue
                 suff = ' ({}-{})'.format(suff2.strip(' ()'), suff1.strip(' ()'))
@@ -2169,22 +2525,20 @@ class MultiDatasetUijParameterisation(Program):
         for i in xrange(0, min(10, len(self.models))):
             self.log('Model {:10}: {:6.3f} (input) -> {:6.3f} (fitted)'.format(self.models[i].tag, dset_mean_inp_iso[i], dset_mean_fit_iso[i]))
 
-        # Remove unpopulated columns
-        main_table = main_table.dropna(axis='columns', how='all')
-
-        # Write output csv
-        self.log('')
-        self.log('Writing output csv: {}'.format(out_csv))
-        main_table.to_csv(out_csv)
-
-        # Store table for HTML output
+        # Store output table (object is changed in the join steps)
         self.tables.statistics = main_table
 
-        # Make graphs for the table
-        self.show_table_one_summary(table=main_table)
-        self.write_table_one_graphs(table=main_table,
-                                    results_dir_tag='results',
-                                    analysis_dir_tag='analysis')
+        # Remove unpopulated columns and write
+        self.log('')
+        self.log('Writing output csv: {}'.format(out_csv))
+        main_table.dropna(axis='columns', how='all').to_csv(out_csv)
+
+        if self.params.analysis.calculate_r_factors:
+            # Make graphs for the table
+            self.show_table_one_summary(table=main_table)
+            self.write_table_one_graphs(table=main_table,
+                                        results_dir_tag='results',
+                                        analysis_dir_tag='analysis')
 
     def show_table_one_summary(self, table):
         """Look at pre- and post-fitting statistics"""
@@ -2202,27 +2556,44 @@ class MultiDatasetUijParameterisation(Program):
         # Columns without old/new prefix
         for lab in table_means.index:
             if lab.lower().endswith('-input)'): continue
+            if lab.lower().endswith('-reference)'): continue
             if lab.lower().endswith('(input)'): continue
             if lab.lower().endswith('(fitted)'): continue
             if lab.lower().endswith('(refined)'): continue
+            if lab.lower().endswith('(reference)'): continue
             self.log(shrt_str.format(lab, table_means[lab]))
         self.log.bar()
         # Columns with old/new prefix
-        for comp_lab in ['Fitted','Refined']:
-            comp_suff = ' ({})'.format(comp_lab)
+        for lab1, lab2 in itertools.product(
+                                    ['Input', 'Reference'],
+                                    ['Fitted','Refined']
+                                            ):
+            lab1_suff = ' ({})'.format(lab1)
+            lab2_suff = ' ({})'.format(lab2)
             # Check whether the columns are here - check the R-free as always should be present
-            if 'R-free ({})'.format(comp_lab) not in table.columns:
+            if ('R-free ({})'.format(lab1) not in table.columns) or \
+                    ('R-free ({})'.format(lab2) not in table.columns):
                 continue
-            self.log('Comparing Input and {} Uijs'.format(comp_lab))
-            self.log(long_str.format('', 'Input', comp_lab, 'Difference'))
+            self.log('Comparing {} and {} Uijs'.format(lab1, lab2))
+            self.log(long_str.format('', lab1, lab2, 'Difference'))
             for lab in table_means.index:
-                if not lab.endswith(comp_suff):
-                    continue
-                lab_base = lab[:lab.index(comp_suff)]
+                # Only select labs for the first label
+                if not lab.endswith(lab1_suff): continue
+                # Extract common base component of label
+                lab_base = lab[:lab.index(lab1_suff)]
+                f_lab1 = lab_base+lab1_suff
+                f_lab2 = lab_base+lab2_suff
+                c_lab = lab_base+' Change ({}-{})'.format(lab2, lab1)
+                # Check other label is also in table
+                if f_lab1 not in table_means.index: continue
+                if f_lab2 not in table_means.index: continue
+                # If this is the case then this should be true
+                assert c_lab in table_means.index
+                # Print
                 self.log(long_str.format(lab_base,
-                                         '{:.3f}'.format(table_means[lab_base+' ({})'.format('Input')]),
-                                         '{:.3f}'.format(table_means[lab_base+' ({})'.format(comp_lab)]),
-                                         '{:.3f}'.format(table_means[lab_base+' Change ({}-{})'.format(comp_lab, 'Input')])))
+                                         '{:.3f}'.format(table_means[f_lab1]),
+                                         '{:.3f}'.format(table_means[f_lab2]),
+                                         '{:.3f}'.format(table_means[c_lab])))
             self.log.bar()
 
         return
@@ -2236,9 +2607,10 @@ class MultiDatasetUijParameterisation(Program):
 
         self.log.subheading('Model improvement graphs')
 
-        labs = ['Input']   * ('R-free (Input)'   in table.columns) + \
-               ['Fitted']  * ('R-free (Fitted)'  in table.columns) + \
-               ['Refined'] * ('R-free (Refined)' in table.columns)
+        labs = ['Input']     * ('R-free (Input)'     in table.columns) + \
+               ['Fitted']    * ('R-free (Fitted)'    in table.columns) + \
+               ['Refined']   * ('R-free (Refined)'   in table.columns) + \
+               ['Reference'] * ('R-free (Reference)' in table.columns)
 
         # ------------------------------------------------------------>
         # Raw scores
@@ -2250,7 +2622,7 @@ class MultiDatasetUijParameterisation(Program):
                                  x = table['High Resolution Limit'],
                                  y_vals = [100*table['R-free ({})'.format(l)] for l in labs],
                                  legends = labs,
-                                 title = 'R-free for {} and {} fitted B-factors'.format(', '.join(labs[:-1]), labs[-1]),
+                                 title = 'R-free for {} and {} B-factors'.format(', '.join(labs[:-1]), labs[-1]),
                                  x_lab = 'Resolution (A)',
                                  y_lab = 'R-free (%)',
                                  rotate_x_labels = True,
@@ -2362,7 +2734,7 @@ class MultiDatasetUijParameterisation(Program):
         if 'compress_logs' in actions:
             self.log.subheading('Compressing log files')
             from bamboo.common.file import compress_file
-            main_log = os.path.abspath(self.log.log_file)
+            main_log = os.path.abspath(self.log.log_file().path)
             for log in glob.glob(os.path.join(self.file_manager.get_dir('logs'),'*.log')):
                 # Do not compress main log file
                 if os.path.abspath(log) == main_log:
@@ -2472,7 +2844,7 @@ class MultiDatasetUijPlots(object):
         # Plot v_lines
         if n_y > 1:
             for i in xrange(n_bins+1):
-                axis.axvline(i+0.5, ls="dotted")
+                axis.axvline(i+0.5, c='grey', ls="solid", lw=0.5)
         # X-axis rotations
         if rotate_x_labels:
             pyplot.setp(axis.get_xticklabels(), rotation=45)
@@ -2796,14 +3168,18 @@ class MultiDatasetUijPlots(object):
                 if cuml_y is None:
                     cuml_y = numpy.zeros_like(y_vals)
                 # Plot the bar
-                hdl = axis.bar(left=(x_vals-0.5),
-                               height=y_vals,
-                               bottom=cuml_y,
-                               width=1.0,
-                               color=colors[i_h],
-                               label=legends[i_h],
-                               hatch=hatchs.next(),
-                               edgecolor='black')
+                hdl = axis.bar(
+                        left=x_vals,
+                        height=y_vals,
+                        bottom=cuml_y,
+                        width=1.0,
+                        align='center',
+                        color=colors[i_h],
+                        label=legends[i_h],
+                        hatch=hatchs.next(),
+                        linewidth=0.5,
+                        edgecolor='black',
+                        )
                 handles.append(hdl)
 
                 # Append to cumulative y
@@ -2817,7 +3193,7 @@ class MultiDatasetUijPlots(object):
             if reverse_legend_order is True: handles.reverse()
             lgd = axis.legend(handles=handles, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
             # Axis ticks & labels
-            x_ticks = numpy.arange(1, len(x_labels)+1, max(1.0, numpy.floor(len(x_labels)/20)))
+            x_ticks = numpy.arange(1, len(x_labels)+1, int(max(1.0, numpy.floor(len(x_labels)/20))))
             #x_ticks = numpy.unique(numpy.floor(numpy.linspace(1,len(x_labels)+1,20)))
             axis.set_xticks(x_ticks)
             axis.set_xticklabels([x_labels[int(i)] if (i<len(x_labels)) and (float(int(i))==i) else '' for i in axis.get_xticks()])
@@ -2827,7 +3203,7 @@ class MultiDatasetUijPlots(object):
             # Plot boundaries
             if v_line_hierarchy is not None:
                 v_lines = numpy.where(numpy.array([max(rg.atoms().extract_b()) for rg in v_line_hierarchy.select(sel).residue_groups()], dtype=bool))[0] + 1.5
-                for val in v_lines: axis.axvline(x=val, ls='dotted')
+                for val in v_lines: axis.axvline(x=val, c='grey', ls='solid', lw=0.5)
 
             # Format and save
             fig.tight_layout()
@@ -2903,9 +3279,10 @@ class MultiDatasetUijPlots(object):
                 axis.set_ylabel(y_labs[i])
                 axis.set_title(label=titles[i])
                 # Plot the bar
-                hdl = axis.bar(left=(x_vals-0.5),
+                hdl = axis.bar(left=x_vals,
                                height=y_vals[i],
                                width=1.0,
+                               align='center',
                                edgecolor='black')
                 # Plot boundaries
                 if v_line_hierarchy is not None:
@@ -3016,11 +3393,14 @@ class MultiDatasetHierarchicalUijFitter(object):
                  level_labels=None,
                  dataset_weights=None,
                  params=None,
+                 verbose=False,
                  log=None):
 
-#        if log is None: log = Log(verbose=False)
+#        if log is None: log = Log()
         self.log = log
         self.params = params
+
+        self.warnings = []
 
         assert observed_uij.shape[1]  == level_array.shape[1]
         assert observed_uij.shape[:2] == observed_xyz.shape[:2]
@@ -3066,6 +3446,7 @@ class MultiDatasetHierarchicalUijFitter(object):
                                                             weights = dataset_weights,
                                                             amplitudes = self.params.tls_amplitude_model,
                                                             params = self.params.optimisation,
+                                                            verbose = verbose,
                                                             log = self.log))
 
         # One object to fit all the Uij residuals
@@ -3074,6 +3455,7 @@ class MultiDatasetHierarchicalUijFitter(object):
                                                      label = 'residual',
                                                      weights = dataset_weights,
                                                      params = self.params.optimisation,
+                                                     verbose = verbose,
                                                      log = self.log)
 
         assert len(self.level_labels) == len(self.levels)
@@ -3084,11 +3466,24 @@ class MultiDatasetHierarchicalUijFitter(object):
         for i_level, level in enumerate(self.levels):
             yield (i_level+1, self.level_labels[i_level], level)
 
-    def _target_uij(self, fitted_uij_by_level, i_level):
+    def _target_uij(self, fitted_uij_by_level, i_level, buffer=None):
         arr = fitted_uij_by_level.copy()
+        # Zero the current level (as should not be included in target function!)
         arr[i_level] = 0.0
+        # Sum over all other levels to find total currently modelled0
         arr_sum = numpy.sum(arr, axis=0)
+        # If input data is isotropic, make output isotropic for target function
+        if self.disorder_model == "isotropic":
+            iso_arr_sum = arr_sum[:,:,0:3].mean(axis=2)
+            arr_sum = numpy.zeros_like(arr_sum)
+            for i in range(3):
+                arr_sum[:,:,i] = iso_arr_sum
         assert arr_sum.shape == self.observed_uij.shape
+        # Subtract a fixed amount from each input Uij
+        if buffer is not None:
+            for i in range(3):
+                arr_sum[:,:,i] -= buffer
+        # Subtract currently modelled from input data
         return self.observed_uij - arr_sum
 
     def get_non_segmenting_tls_origins_and_partitions(self):
@@ -3218,12 +3613,35 @@ class MultiDatasetHierarchicalUijFitter(object):
     def n_input_values(self):
         return self.observed_uij.shape[0] * self.observed_uij.shape[1] * self.n_input_params_per_atom()
 
+    def optimise_level_amplitudes(self, n_cycles=1, n_cpus=1):
+        """Optimise amplitudes for pairs of adjacent levels"""
+
+        n_levels = len(self.levels)
+        for j_level in range(1,n_levels):
+            level2 = self.levels[j_level]
+            mask2 = (self.level_array[j_level] != -1)
+
+            # Default to using the previous level unless otherwise
+            i_level = j_level - 1
+            while i_level > 0:
+                mask1 = (self.level_array[i_level] != -1)
+                level_overlap = float(sum(mask1*mask2)) / float(sum(mask2))
+                if level_overlap == 1.0:
+                    break
+                i_level -= 1
+            assert i_level >= 0
+            assert j_level >= 0
+            self.log.heading('Optimising amplitudes for levels {} and {}'.format(i_level+1, j_level+1))
+
+            opt = InterLevelAmplitudeOptimiser(levels=(self.levels[i_level], self.levels[j_level]))
+            opt.run(n_cycles=n_cycles, n_cpus=n_cpus)
+
     def parameter_ratio_gain(self, non_zero=False):
         """Total number of input values divided by number of model parameters (used or total)"""
         return self.n_params(non_zero=non_zero) / self.n_input_values()
 
     def set_input_info(self, disorder_model):
-        self.input_disorder_model = disorder_model
+        self.disorder_model = disorder_model
         if disorder_model == 'anisotropic':
             self._input_params_per_atom = 6
         elif disorder_model == 'isotropic':
@@ -3387,7 +3805,7 @@ class MultiDatasetHierarchicalUijFitter(object):
                 self.log.subheading('Macrocycle {} of {}: '.format(i_macro+1, n_macro_cycles)+'Fitting TLS Groups (level {} - {})'.format(fitter.index, fitter.label))
                 # Update the target uij by subtracting contributions from other levels
                 self.log('Updating target Uijs for optimisation')
-                fitter.set_target_uij(target_uij=self._target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=i_level))
+                fitter.set_target_uij(target_uij=self._target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=i_level, buffer=self.params.optimisation.buffer))
                 # Optimise
                 fitted_uij = fitter.run(n_cpus=n_cpus, n_cycles=n_micro_cycles)
                 # Validate and store
@@ -3395,7 +3813,7 @@ class MultiDatasetHierarchicalUijFitter(object):
                     uij_valid = uij_positive_are_semi_definite(uij=dataset_uij, tol=self.params.precision.uij_tolerance)
                     if uij_valid.sum() > 0.0:
                         err_msg = '\n\t'.join(['Atom {:>5d} (group {}): {}'.format(i+1, fitter.get_atom_group(index=i).label, dataset_uij[i]) for i in numpy.where(uij_valid)[0]])
-                        raise Failure('Uijs for dataset {} are not positive-semi-definite ({} atoms)\n\t{}'.format(i_dst, uij_valid.sum(), err_msg))
+                        self.warnings.append('Uijs for dataset {} are not positive-semi-definite ({} atoms)\n\t{}'.format(i_dst, uij_valid.sum(), err_msg))
                 # Store in output array
                 fitted_uij_by_level[i_level] = fitted_uij
                 # Update tracking
@@ -3404,7 +3822,7 @@ class MultiDatasetHierarchicalUijFitter(object):
             # Fit the residuals
             self.log.subheading('Macrocycle {} of {}: '.format(i_macro+1, n_macro_cycles)+'Fitting residual atomic Uijs')
             # Update the target uij by subtracting contributions from other levels
-            self.residual.set_target_uij(target_uij=self._target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=-1))
+            self.residual.set_target_uij(target_uij=self._target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=-1, buffer=0))
             # Update fitters and optimise -- always run two cycles of this
             fitted_uij_by_level[-1] = self.residual.run(n_cpus=n_cpus, n_cycles=3)
             # Update tracking
@@ -3428,11 +3846,11 @@ class MultiDatasetHierarchicalUijFitter(object):
         s += '\nNumber of datasets: {}'.format(len(self.dataset_mask))
         s += '\nNumber of atoms:    {}'.format(len(self.atomic_mask))
         s += '\nNumber of input values: {}'.format(self.n_input_values())
-        s += '\nInput Uij Type: {}'.format(self.input_disorder_model)
+        s += '\nInput Uij Type: {}'.format(self.disorder_model)
         s += '\n'
         s += '\n> Hierarchical Model:'
         s += '\nNumber of levels (incl. residual): {}'.format(self.n_levels()+1)
-        s += '\nNumber of TLS models TLS per group: {}'.format(self.params.tls_models_per_tls_group)
+        s += '\nNumber of TLS modes per group: {}'.format(self.params.tls_models_per_tls_group)
         s += '\nNumber of model parameters: {}'.format(self.n_params())
         s += '\n'
         s += '\n> Optimisation:'
@@ -3464,11 +3882,13 @@ class _MultiDatasetUijLevel(object):
         # Check to see if multiple cpus are available per job
         n_cpus_per_job = max(1, n_cpus//self._n_obj)
         # Create job objects
-        jobs = [(fitter, {'n_cycles':n_cycles, 'n_cpus':n_cpus_per_job, 'silent':(n_cpus>1)}) for (i, sel, fitter) in self]
+        jobs = [(fitter, {'n_cycles':n_cycles, 'n_cpus':n_cpus_per_job}) for (i, sel, fitter) in self]
         # Drop CPUs if not required
         n_cpus = min(len(jobs), n_cpus)
         # Only do multiprocessing if actually needed
         if n_cpus > 1:
+            # Make jobs silent
+            for (f, d) in jobs: f.log.toggle(0)
             # Run jobs in parallel
             self.log('Running {} job(s) in {} process(es) [and {} cpu(s) per process]'.format(len(jobs), n_cpus, n_cpus_per_job))
             self.log('')
@@ -3476,6 +3896,9 @@ class _MultiDatasetUijLevel(object):
             finished_jobs = workers.map(func=wrapper_fit, iterable=jobs, chunksize=self._chunksize)
             workers.close()
         else:
+            # Make jobs noisy
+            for (f, d) in jobs: f.log.toggle(1)
+            # Run jobs in serial
             self.log('Running {} job(s) [with {} cpu(s)]'.format(len(jobs), n_cpus_per_job))
             self.log('')
             finished_jobs = [wrapper_fit(j) for j in jobs]
@@ -3505,7 +3928,7 @@ class _MultiDatasetUijLevel(object):
                 self.log.bar()
                 self.log(e)
                 self.log.bar()
-                self.log('Log file written to {}'.format(fitter.log.log_file))
+                self.log('Log file written to {}'.format(str(fitter.log.log_file())))
             self.log.bar()
             raise Failure('Errors raised during optimisation. Messages printed above')
         # Return the fitted B-factors
@@ -3546,9 +3969,10 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
                  weights=None,
                  amplitudes=None,
                  params=None,
+                 verbose=False,
                  log=None):
 
-#        if log is None: log = Log(verbose=False)
+#        if log is None: log = Log()
         self.log = log
 
         assert observed_uij.shape[:2] == observed_xyz.shape[:2]
@@ -3575,11 +3999,9 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
         self.fitters = {}
         for i, sel, f in self:
             assert f is None
-            # Create a separate log for each fitter
-            ls = LogStream(log_file = os.path.splitext(self.log.log_file)[0] + '-level{:04d}-group{:06d}.log'.format(self.index, i),
-                           verbose  = (self.log.verbose) or (self._n_groups==1),
-                           #silent   = False)
-                           silent   = not (self._n_groups==1))
+            # Create a separate log for each fitter, that gets stored in memory rather than being written immediately
+            ls = LogStream(path=os.path.splitext(self.log.log_file().path)[0]+'-level{:04d}-group{:06d}.log'.format(self.index, i))
+            log = Log(stdout=True).add_output(ls).toggle(status=(self._n_groups==1))
             # Decide which tls_origins to use fo this
             i_origin = numpy.unique(tls_origins_hash[sel])
             assert len(i_origin) == 1
@@ -3594,7 +4016,8 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
                                                           weights = weights,
                                                           amplitudes = amplitudes,
                                                           params = params,
-                                                          log = ls)
+                                                          verbose = verbose,
+                                                          log = log)
 
     def __iter__(self):
         for i in numpy.unique(self.group_idxs):
@@ -3623,10 +4046,10 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
         n_dst, n_atm, _ = self._uij_shape
         s = '> Level {} - {}'.format(self.index, self.label)
         s += '\n\tNumber of Groups: {}'.format(self.n_groups())
-        s += '\n\tNumber of model parameters (total): {}'.format(num_model_params)
-        s += '\n\tNumber of model parameters (used): {}'.format(num_used_params)
-        s += '\n\tNumber of model parameters per atom (total): {:5.3f}'.format(num_model_params/(n_dst*n_atm))
-        s += '\n\tNumber of model parameters per atom (used):  {:5.3f}'.format(num_used_params/(n_dst*n_atm))
+        s += '\n\tModel parameters (total): {}'.format(num_model_params)
+        s += '\n\tModel parameters (used): {}'.format(num_used_params)
+        s += '\n\tModel parameters per atom (total): {:5.3f}'.format(num_model_params/(n_dst*n_atm))
+        s += '\n\tModel parameters per atom (used):  {:5.3f}'.format(num_used_params/(n_dst*n_atm))
         s += '\n'
         if show: self.log(s)
         return s
@@ -3649,9 +4072,10 @@ class MultiDatasetUijResidualLevel(_MultiDatasetUijLevel):
                  label=None,
                  weights=None,
                  params=None,
+                 verbose=False,
                  log=None):
 
-#        if log is None: log = Log(verbose=True)
+#        if log is None: log = Log()
         self.log = log
 
         if weights is not None:
@@ -3666,9 +4090,8 @@ class MultiDatasetUijResidualLevel(_MultiDatasetUijLevel):
         self._n_obj = self._n_atm
 
         # Create one log for all fitters
-        ls = LogStream(log_file = os.path.splitext(self.log.log_file)[0]+'-level-residual.log',
-                       verbose  = False,
-                       silent   = False)
+        ls = LogStream(path=os.path.splitext(self.log.log_file().path)[0]+'-level-residual.log')
+        log = Log(stdout=True).add_output(ls).toggle(0)
         # Create a fitter for each atom
         self.fitters = {}
         for i, sel, f in self:
@@ -3678,7 +4101,8 @@ class MultiDatasetUijResidualLevel(_MultiDatasetUijLevel):
                                                            label = 'atom {:5d} of {:5d}'.format(i,self._n_atm),
                                                            weights = weights,
                                                            params = params,
-                                                           log = ls)
+                                                           verbose = verbose,
+                                                           log = log)
 
     def __iter__(self):
         for i in xrange(self._n_atm):
@@ -3713,16 +4137,15 @@ class _UijOptimiser(object):
                  label='',
                  weights=None,
                  params=None,
+                 verbose=False,
                  log=None):
 
         assert params.penalties is not None
 
-#        if log is None: log = Log(verbose=False)
+#        if log is None: log = Log()
         self.log = log
 
-        # Store verboseness and silence as overridden in some functions
-        self.verbose = self.log.verbose
-        self.silent  = self.log.silent
+        self.verbose = verbose
 
         self._n_prm = 0
         self._n_dst = 0
@@ -3767,12 +4190,11 @@ class _UijOptimiser(object):
     def _blank_parameter_selection(self):
         return numpy.zeros(self._n_prm, dtype=bool)
 
-    def _optimise(self, tolerance=1e-3, running_summary=False):
+    def _optimise(self, tolerance=1e-3):
         """Run the optimisation"""
 
         # Prep variables for target function
         self._n_call = 0
-        self._running_summary = running_summary
         # Apply the masks to the target uij
         self._update_target()
         # Initialise the RMSD measure
@@ -3787,15 +4209,14 @@ class _UijOptimiser(object):
         # Create simplex for these parameters
         opt_simplex = self.simplex.get_simplex(start=sel_vals, **simplex_kw)
         #
-        if self._running_summary:
-            fmt = '{:>+10.5f}'
-            self.log.subheading('Starting simplex')
-            self.log('Starting Point:')
-            self.log(','.join([fmt.format(v) for v in sel_vals]))
-            self.log('Points on Simplex (relative to starting point):')
-            for point in opt_simplex:
-                self.log(','.join([fmt.format(v) for v in (point-sel_vals)]))
-            self.log.subheading('Running optimisation')
+        fmt = '{:>+10.5f}'
+        self.log.subheading('Starting simplex')
+        self.log('Starting Point:')
+        self.log(','.join([fmt.format(v) for v in sel_vals]))
+        self.log('Points on Simplex (relative to starting point):')
+        for point in opt_simplex:
+            self.log(','.join([fmt.format(v) for v in (point-sel_vals)]))
+        self.log.subheading('Running optimisation')
         # Optimise these parameters
         assert self._mask_wgts.shape == (self._target_uij.shape[0],)
         optimised = simplex.simplex_opt(dimension = len(sel_vals),
@@ -3804,8 +4225,8 @@ class _UijOptimiser(object):
                                         tolerance = tolerance)
         # Extract and update current values
         self._inject(values=optimised.get_solution(), selection=sel_dict)
-        if self._running_summary:
-            self.log.bar()
+        self.log.bar()
+        self.log('\n...optimisation complete\n')
 
     def _simplex_input(self):
         """Default function -- no additional variables"""
@@ -3858,17 +4279,17 @@ class _UijOptimiser(object):
         # Calculate physical penalties - reject this set if model is not physical
         ppen = self._parameter_penalties()
         # Print info line if necessary
-        if self._running_summary:
+        if self.verbose:
             if self._n_call%20==1:
                 header = '[{}] -> ({:^12}, {:^10})'.format(', '.join(['{:>7}'.format('param') for r in parameters]), 'fit/rmsd', 'penalty')
                 line = '-'*len(header)
-                self.log(line, show=False)
-                self.log(header, show=False)
-                self.log(line, show=False)
+                self.log(line)
+                self.log(header)
+                self.log(line)
         # Return now if physical penalty if non-zero to save time
         if ppen > 0.0:
-            if self._running_summary:
-                self.log('[{}] -> ({:>12}, {:10.3f})'.format(', '.join(['{:+7.4f}'.format(r) for r in parameters]), 'UNPHYSICAL', ppen), show=False)
+            if self.verbose:
+                self.log('[{}] -> ({:>12}, {:10.3f})'.format(', '.join(['{:+7.4f}'.format(r) for r in parameters]), 'UNPHYSICAL', ppen))
             return ppen
         # Get the fitted uijs (including masked atoms)
         self._update_fitted()
@@ -3884,8 +4305,8 @@ class _UijOptimiser(object):
         if tot_val < self.optimisation_rmsd+self.optimisation_penalty:
             self.optimisation_rmsd    = rmsd
             self.optimisation_penalty = fpen
-        if self._running_summary:
-            self.log('[{}] -> ({:12.8f}, {:10.6f})'.format(', '.join(['{:+7.4f}'.format(r) for r in parameters]), rmsd, fpen), show=False)
+        if self.verbose:
+            self.log('[{}] -> ({:12.8f}, {:10.6f})'.format(', '.join(['{:+7.4f}'.format(r) for r in parameters]), rmsd, fpen))
         return tot_val
 
 class MultiDatasetUijAtomOptimiser(_UijOptimiser):
@@ -3895,11 +4316,13 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
                  label='',
                  weights=None,
                  params=None,
+                 verbose=False,
                  log=None):
         super(MultiDatasetUijAtomOptimiser, self).__init__(target_uij=target_uij,
                                                            label=label,
                                                            weights=weights,
                                                            params=params,
+                                                           verbose=verbose,
                                                            log=log)
 
         # Should be n_dataset observations of 6 parameters
@@ -3967,7 +4390,7 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
     def optimise(self, n_cycles=1, n_cpus=1):
         """Optimise the residual for a set of atoms"""
         # If only 1 dataset provided, set current values to target values and return
-        if self.target_uij.shape[0] == 1:
+        if (self.target_uij.shape[0] == 1) and (not self.penalty.uij_valid(values=self.target_uij[0])):
             self._inject(values=self.target_uij[0])
             return
         # Otherwise optimise
@@ -4001,11 +4424,13 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                  weights=None,
                  amplitudes=None,
                  params=None,
+                 verbose=False,
                  log=None):
         super(MultiDatasetUijTLSOptimiser, self).__init__(target_uij=target_uij,
                                                           label=label,
                                                           weights=weights,
                                                           params=params,
+                                                          verbose=verbose,
                                                           log=log)
 
         # Store the centre of mass of the atoms (for the rotation/screw components)
@@ -4082,9 +4507,11 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
     #===========================================+>
 
     def _fitting_penalties(self, uij_fit, uij_obs):
-        ovr_penalties = []; [ovr_penalties.extend([self.penalty.uij_size(*vv) for vv in zip(*v)]) for v in zip(uij_fit,uij_obs)]
-        # Normalise penalties by the number of datasets!
-        return numpy.sum(ovr_penalties)*1.0/self._opt_dict['n_dst']
+        ovr_penalties = []; [ovr_penalties.append(sum([self.penalty.uij_size(*vv) for vv in zip(*v)])) for v in zip(uij_fit,uij_obs)]
+        assert len(ovr_penalties) == len(self._mask_wgts)
+        # Normalise penalties by weights of each dataset
+        ovr_penalty = numpy.average(ovr_penalties, weights=self._mask_wgts)
+        return ovr_penalty
 
     def _parameter_penalties(self):
 
@@ -4262,6 +4689,67 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
     def n_params(self, non_zero=False):
         return self._parameters.n_params(non_zero=non_zero)
 
+    def initialise_models_and_amplitudes(self, i_tls, dataset_mask, atomic_mask):
+        """Set the TLS matrices & amplitudes to sensible starting values"""
+
+        n_dst, n_atm = len(dataset_mask), len(atomic_mask)
+
+        self.log.bar(True,True)
+        self.log('Resetting mode {}'.format(i_tls+1))
+        self.parameters().get(index=i_tls).reset()
+        self.log('Identifing a starting value for the T-matrix')
+        # Get the unfitted Uij (target uij minus uij already fitted from other models)
+        uij_vals = self.target_uij[dataset_mask][:,atomic_mask] - self._extract(mask_datasets=dataset_mask, mask_atoms=atomic_mask)
+        assert uij_vals.shape == (n_dst, n_atm, 6)
+        uij_eigs = numpy.apply_along_axis(uij_eigenvalues, axis=2, arr=uij_vals)
+        assert uij_eigs.shape == (n_dst, n_atm, 3)
+        # Calculate the minimum eigenvalues for each dataset
+        uij_eigs_min = uij_eigs.min(axis=(1,2))
+        assert uij_eigs_min.shape == (len(dataset_mask),)
+        min_eig = numpy.min(uij_eigs_min)
+        if min_eig > 0.0:
+            #dst, atm = zip(*numpy.where(uij_eigs_min==min_eig))[0]
+            #uij_start = tuple(uij_vals[dst,atm].tolist())
+            #self.log('Minimum uij eigenvalue: {}'.format(round(min_eig,6)))
+            #self.log('Atom with minimal uij eigenvalue: Dataset {}, Atom {}'.format(dst, atm))
+            #self.log('Atomic uij: {}'.format(tuple([round(v,6) for v in uij_start])))
+            self.log('Initialising the T-matrix with an isotropic uij')
+            uij_start = (0.95,)*3 + (0.0,)*3
+            self.log('Setting initial T-matrix values to {}'.format(uij_start))
+            self.parameters().get(index=i_tls).model.set(vals=uij_start, components='T')
+        else:
+            self.log('There is an atom with negative eigenvalues (value {})'.format(min_eig))
+            self.log('Starting with a T-matrix with zero values')
+
+        self.log.bar()
+        self.log('Starting TLS-matrix values:')
+        self.log(self.parameters().get(index=i_tls).model.summary())
+
+        # Determine sensible starting values for the amplitudes
+        self.log('Looking for an appropriate scale for the amplitudes')
+        amp_scales = numpy.zeros(self._n_dst)
+        amp_scales[dataset_mask] = uij_eigs_min
+        amp_scales[amp_scales<0.0] = 0.0
+        if amp_scales.any():
+            self.log('Scaling amplitudes by minimum eigenvalues of input Uijs')
+            self.log('Amplitude range: {} - {}'.format(amp_scales.min(), amp_scales.max()))
+        else:
+            self.log('No minimal eigenvalues of input Uijs are positive.')
+            scale = 1e-3
+            self.log('Scaling amplitudes to a fixed minimal size ({})'.format(scale))
+            amp_scales[:] = scale
+
+        mode = self.parameters().get(index=i_tls)
+        for cpts in mode.component_sets():
+            self.log('Setting {} amplitudes'.format(cpts))
+            mode.amplitudes.set(vals=amp_scales.reshape(amp_scales.shape+(1,)), components=cpts)
+
+        self.log.bar()
+        self.log('Starting amplitude values:')
+        self.log(mode.amplitudes.summary())
+
+        return self.parameters().get(index=i_tls)
+
     def optimise(self, n_cycles=1, n_cpus=1):
         """Optimise a (series of) TLS model(s) against the target data"""
 
@@ -4295,46 +4783,8 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
 
                 # If starting from zero values, set translation matrix to sensible starting values
                 if (null_model is True):
-                    self.log.bar(True,True)
-                    self.log('Identifing a starting value for the T-matrix')
-                    # Get the unfitted Uij (target uij minus uij already fitted from other models)
-                    uij_vals = self.target_uij[opt_dset_mask][:,opt_atom_mask] - self._extract(mask_datasets=opt_dset_mask, mask_atoms=opt_atom_mask)
-                    assert uij_vals.shape == (len(opt_dset_mask), len(opt_atom_mask),6)
-                    uij_eigs = numpy.apply_along_axis(uij_eigenvalues, axis=2, arr=uij_vals)
-                    assert uij_eigs.shape == (len(opt_dset_mask),len(opt_atom_mask),3)
-                    uij_eigs_min = numpy.min(uij_eigs, axis=2)
-                    assert uij_eigs_min.shape == (len(opt_dset_mask),len(opt_atom_mask))
-                    #uij_vols = numpy.array([matrix.sym(sym_mat3=u).determinant() for u in uij_vals])
-                    min_eig = numpy.min(uij_eigs_min)
-                    if min_eig > 0.0:
-                        dst, atm = zip(*numpy.where(uij_eigs_min==min_eig))[0]
-                        uij_start = tuple(uij_vals[dst,atm].tolist())
-                        self.log('Minimum uij eigenvalue: {}'.format(round(min_eig,6)))
-                        self.log('Atom with minimal uij eigenvalue: Dataset {}, Atom {}'.format(dst, atm))
-                        self.log('Atomic uij: {}'.format(tuple([round(v,6) for v in uij_start])))
-                        self.log('Initialising the T-matrix with an isotropic uij of this size')
-                        uij_start = (round(min_eig,6),)*3 + (0.0,)*3
-                        self.log('Setting initial T-matrix values to {}'.format(uij_start))
-                        self.parameters().get(index=i_tls).model.set(vals=uij_start, components='T')
-                        self.log(self.parameters().get(index=i_tls).model.summary())
-                        # Normalise matrices to give Uijs of approximately xA
-                        self.parameters().normalise_by_matrices(xyzs=self.atomic_xyz, origins=self.atomic_com, target=1.0)
-                    else:
-                        self.log('There is an atom with negative eigenvalues (value {})'.format(min_eig))
-                        self.log('Starting with a T-matrix with zero values')
-                        self.log('Looking for an appropriate scale for the amplitudes instead')
-                        for perc in range(10,110,10):
-                            scale = numpy.percentile(uij_eigs_min, q=perc)
-                            if scale > 0.0:
-                                self.log('Using the {}th percentile ({})'.format(perc,scale))
-                                break
-                        if scale <= 0.0:
-                            self.log('No minimal eigenvalues are positive.')
-                            scale = 1e-3
-                            self.log('Scaling amplitudes to minimal size ({})'.format(scale))
-                        self.log('Scaling the amplitudes...')
-                        self.parameters().get(index=i_tls).amplitudes.scale(multiplier=scale)
-                        self.log(self.parameters().get(index=i_tls).summary())
+                    self.initialise_models_and_amplitudes(i_tls=i_tls, dataset_mask=opt_dset_mask, atomic_mask=opt_atom_mask)
+                    self.log(self.parameters().get(index=i_tls).summary())
 
                 # Append to running list
                 if i_tls not in mdl_cuml: mdl_cuml.append(i_tls)
@@ -4361,8 +4811,13 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                         components  = cpts,
                         datasets    = opt_dset_mask,
                         atoms       = opt_atom_mask)
+                    # Apply multiplier to amplitudes of less than unity if null model to allow for "wiggling"
+                    if null_model and (cpts in list('TL')):
+                        multiplier = 0.95
+                        self.log('Applying scaling to amplitudes of {}'.format(multiplier))
+                        self.parameters().get(index=i_tls).amplitudes.scale(multiplier=multiplier)
                     # Log model summary
-                    self.log(self.parameters().get(index=i_tls).model.summary())
+                    self.log(self.parameters().get(index=i_tls).model.summary()+'\n')
                     # Log current RMSD and penalty
                     self.optimisation_summary()
 
@@ -4374,7 +4829,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 # ---------------------------------->
                 # Optimise TLS amplitude parameters (all amplitudes!)
                 # ---------------------------------->
-                # Only optimise ampltidues if model values are non-zero
+                # Only optimise amplitudes if model values are non-zero
                 if not self.parameters().get(index=i_tls).model.any(all_cpts):
                     self.log('{} matrices are all zero -- not optimising amplitudes'.format(all_cpts))
                     self.parameters().get(index=i_tls).reset()
@@ -4400,13 +4855,13 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             self.set_atomic_mask(opt_atom_mask)
 
             # End of cycle house-keeping
-            self.log.bar()
+            self.log.bar(True, False)
             # Break optimisation if all matrices are zero -- not worth running following optimisation cycles
             if not self.parameters().any():
                 self.log('All matrices have refined to zero -- optimisation finished.')
-                self.log.bar()
                 # Reset parameters just to be sure
                 self.parameters().reset()
+                self.log.bar()
                 break
             # Check to see if any amplitudes are negative
             self.log('Looking for negative TLS amplitudes')
@@ -4422,7 +4877,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             self.summary(show=True)
             self.log('')
 
-    def optimise_models(self, models, components, datasets=None, atoms=None, silent=False, tolerance=1e-3):
+    def optimise_models(self, models, components, datasets=None, atoms=None, tolerance=1e-3):
         """Optimise the matrices for combinations of models/componenets/datasets"""
 
         # Take all datasets/atoms if not provided
@@ -4438,10 +4893,9 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                      atoms      = atoms)
 
         # Run optimisation
-        self._optimise(tolerance=tolerance,
-                       running_summary=(not silent))
+        self._optimise(tolerance=tolerance)
 
-    def optimise_amplitudes(self, models, components, datasets=None, atoms=None, n_cpus=1, silent=False, tolerance=1e-3):
+    def optimise_amplitudes(self, models, components, datasets=None, atoms=None, n_cpus=1, tolerance=1e-3):
         """Optimise the amplitudes for combinations of models/components/datasets"""
 
         # Take all datasets/atoms if not provided
@@ -4465,10 +4919,9 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             self._select(datasets=[i_dst])
             # Append to job list (create copy) or run optimisation
             if n_cpus > 1:
-                jobs.append((self.copy(), tolerance))
+                jobs.append((self.copy(), {'tolerance':tolerance, 'stdout':False}))
             else:
-                self._optimise(tolerance=tolerance,
-                               running_summary=(not silent))
+                self._optimise(tolerance=tolerance)
                 self.log('> dataset {} of {} (rmsd {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, self.optimisation_rmsd, self.optimisation_penalty))
         # Run parallel jobs and inject results
         if n_cpus > 1:
@@ -4477,6 +4930,8 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             # Report and map to workers
             self.log.subheading('Running {} jobs using {} cpus'.format(len(jobs), min(n_cpus,len(jobs))))
             finished_jobs = workers.map(func=wrapper_optimise, iterable=jobs)
+            # Inject results from jobs
+            self.log('Optimisation Results:')
             for i_dst in datasets:
                 job = finished_jobs[i_dst]
                 if isinstance(job, str):
@@ -4538,8 +4993,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 self.optimise_models(models     = [i_tls],
                                      components = 'TLS',
                                      datasets   = self.get_dataset_mask(),
-                                     atoms      = self.get_atomic_mask(),
-                                     silent     = False)
+                                     atoms      = self.get_atomic_mask())
                 # Check again if the core model is valid
                 model = self.parameters().get(index=i_tls)
                 if model.model.is_valid():
@@ -4562,8 +5016,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 self.optimise_models(models     = [i_tls],
                                      components = cpts,
                                      datasets   = self.get_dataset_mask(),
-                                     atoms      = self.get_atomic_mask(),
-                                     silent     = False)
+                                     atoms      = self.get_atomic_mask())
             model = self.parameters().get(index=i_tls)
             if model.model.is_valid():
                 self.log('...core model now valid (after resetting and reoptimising)')
@@ -4622,14 +5075,22 @@ def build_levels(model, params, log=None):
     log.subheading('Building hierarchy selections')
     levels = []; labels=[];
 
-    # FIXME Only run on the protein for the moment FIXME
-    filter_h = protein(model.hierarchy)
+    filter_h = model.hierarchy
+    log('Input hierarchy contains {} atoms'.format(filter_h.atoms().size()))
 
     # Filter the hierarchy by the overall selection
     if params.levels.overall_selection:
         cache = filter_h.atom_selection_cache()
         choice = cache.selection(params.levels.overall_selection)
-        filter_h = filter_h.select(choice)
+        filter_h = filter_h.select(choice, copy_atoms=True)
+        log('Overall selection selects {} atoms'.format(filter_h.atoms().size()))
+
+    # Whether cbeta is in backbone
+    cbeta_flag = params.levels.cbeta_in_backbone
+    backbone_atoms = ['C','CA','N','O']+(['CB']*cbeta_flag)
+    backbone_atoms_sel = '({})'.format(' or '.join(['name {}'.format(a) for a in backbone_atoms]))
+    back_sel = ' and '+backbone_atoms_sel
+    side_sel = ' and not '+backbone_atoms_sel
 
     if 'chain' in params.levels.auto_levels:
         log('Level {}: Creating level with groups for each chain'.format(len(levels)+1))
@@ -4637,11 +5098,13 @@ def build_levels(model, params, log=None):
         labels.append('chain')
     if 'auto_group' in params.levels.auto_levels:
         log('Level {}: Creating level with groups determined by phenix.find_tls_groups'.format(len(levels)+1))
-        levels.append([s.strip('"') for s in phenix_find_tls_groups(model.filename)])
+        groups = [s.strip('"') for s in phenix_find_tls_groups(model.filename)]
+        levels.append([g for g in groups if sum(cache.selection(g)>0)])
         labels.append('groups')
     if 'secondary_structure' in params.levels.auto_levels:
         log('Level {}: Creating level with groups based on secondary structure'.format(len(levels)+1))
-        levels.append([s.strip('"') for s in default_secondary_structure_selections_filled(model.hierarchy)])
+        groups = [s.strip('"') for s in default_secondary_structure_selections_filled(hierarchy=filter_h, verbose=params.settings.verbose)]#model.hierarchy)]
+        levels.append([g for g in groups if sum(cache.selection(g))>0])
         labels.append('secondary structure')
     if 'residue' in params.levels.auto_levels:
         log('Level {}: Creating level with groups for each residue'.format(len(levels)+1))
@@ -4649,11 +5112,13 @@ def build_levels(model, params, log=None):
         labels.append('residue')
     if 'backbone' in params.levels.auto_levels:
         log('Level {}: Creating level with groups for each residue backbone'.format(len(levels)+1))
-        levels.append([PhenixSelection.format(r)+' and (name C or name CA or name N or name O)'     for r in backbone(filter_h).atom_groups() if (r.resname not in ['ALA','GLY','PRO'])])
+        gps = backbone(filter_h, cbeta=cbeta_flag).atom_groups()
+        levels.append([PhenixSelection.format(r)+back_sel for r in gps if (r.resname not in ['ALA','GLY','PRO'])])
         labels.append('backbone')
     if 'sidechain' in params.levels.auto_levels:
         log('Level {}: Creating level with groups for each residue sidechain'.format(len(levels)+1))
-        levels.append([PhenixSelection.format(r)+' and not (name C or name CA or name N or name O)' for r in sidechains(filter_h).atom_groups() if (r.resname not in ['ALA','GLY','PRO'])])
+        gps = sidechains(filter_h, cbeta=(not cbeta_flag)).atom_groups()
+        levels.append([PhenixSelection.format(r)+side_sel for r in gps if (r.resname not in ['ALA','GLY','PRO'])])
         labels.append('sidechain')
     if 'atom' in params.levels.auto_levels:
         log('Level {}: Creating level with groups for each atom'.format(len(levels)+1))
@@ -4682,12 +5147,12 @@ def run(params):
         if os.path.exists(params.output.out_dir):
             raise Sorry('Output directory already exists: {}\nPlease delete the directory or provide a new output directory'.format(params.output.out_dir))
 
-        assert params.table_ones_options.column_labels
-        assert params.table_ones_options.r_free_label
+        assert params.analysis.table_ones_options.column_labels
+        assert params.analysis.table_ones_options.r_free_label
 
         easy_directory(params.output.out_dir)
         log_dir = easy_directory(os.path.join(params.output.out_dir, 'logs'))
-        log = Log(os.path.join(log_dir, 'fitting.log'), verbose=params.settings.verbose)
+        log = Log(log_file=os.path.join(log_dir, 'fitting.log'))
 
         # Report parameters
         log.heading('Input command')
@@ -4731,11 +5196,25 @@ def run(params):
             params.output.images.distributions = new
             # ----------------
             log.bar()
+        # Special settings if only one model is loaded
+        if len(params.input.pdb) == 1:
+            log.bar(True, False)
+            log('One file provided for analysis -- updating settings')
+            log('For one model, it is not neccessary to refine the fitted model or recalculate R-factors (or even look for reflection data)')
+            log('Setting analysis.refine_output_structures = False')
+            params.analysis.refine_output_structures = False
+            log('Setting analysis.calculate_r_factors = False')
+            params.analysis.calculate_r_factors = False
+            log('Setting analysis.calculate_electron_density_metrics = False')
+            params.analysis.calculate_electron_density_metrics = False
+            log('Setting input.look_for_reflection_data = False')
+            params.input.look_for_reflection_data = False
+            log.bar()
 
         log.heading('Running setup')
 
         # Load input structures
-        log.subheading('Building model list'.format(len(params.input.pdb)))
+        log.subheading('Building model list -- {} files'.format(len(params.input.pdb)))
         if params.input.labelling == 'foldername':
             label_func = lambda f: os.path.basename(os.path.dirname(f))
         else:
@@ -4783,9 +5262,15 @@ def run(params):
 
         # Distributions of the uijs for groups
         p.log.heading('Calculating distributions of uijs over the model')
-        p.write_combined_summary_graphs(out_dir_tag='results')
+        p.write_combined_summary_graphs(out_dir_tag='model')
 
-        if p.params.output.diagnostics is True:
+        if p.params.analysis.calculate_electron_density_metrics:
+            p.calculate_electron_density_metrics(out_dir_tag='analysis')
+
+        if len(models) >=1: # TODO Change to >1
+            p.calculate_amplitudes_dendrogram(out_dir_tag='analysis')
+
+        if p.params.analysis.diagnostics is True:
             p.run_diagnostics()
 
         #------------------------------------------------------------------------------#
@@ -4825,12 +5310,13 @@ def run(params):
         p.params = params
 
     # Print all errors
+    p.log.heading('Errors/Warnings')
+    p.warnings.extend(p.fitter.warnings)
     p.show_warnings()
 
     # Write HTML
     p.log.heading('Writing HTML output')
     pandemic_html.write_adp_summary(parameterisation=p)
-
 
 ############################################################################
 

@@ -16,7 +16,7 @@ class Report(object):
         return self.bar + '\n' + self.s + '\n' + self.bar
 
 
-class ListStream:
+class ListStream(object):
     """Replaces a file object for functions that print to screen - writes to list of lines instead"""
 
 
@@ -27,13 +27,16 @@ class ListStream:
         self.write(s)
 
     def __str__(self):
-        return ''.join(self.data)
+        return self.format()
 
     def __repr__(self):
-        return self.__str__()
+        return self.format()
 
     def __iter__(self):
         return iter(self.data)
+
+    def format(self):
+        return ''.join(self.data)
 
     def write(self, s):
         self.data.append(s)

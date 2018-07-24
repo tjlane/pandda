@@ -1,4 +1,5 @@
 import os
+import itertools
 
 from iotbx.pdb.hierarchy import input as ih
 
@@ -27,7 +28,7 @@ def selection_images(structure_filename,
                      selections,
                      labels = None,
                      style  = 'sticks',
-                     colour_by = None,
+                     colours = None,
                      hide_rest = True,
                      ray_trace = True,
                      settings = [],
@@ -35,10 +36,20 @@ def selection_images(structure_filename,
                      delete_script  = True,
                      width  = 800,
                      height = 600,
+                     colour_selections = None,
                     ):
 
     if labels is None:
         labels = map(str,range(1, len(selections)+1))
+
+    assert (colours is None) or (colours in ['bfactor']) or isinstance(colours, list)
+    if (colours is None):
+        colours = ['green']
+    if isinstance(colours, list):
+        colours = itertools.cycle(colours)
+
+    if colour_selections is not None:
+        assert colours != 'bfactor'
 
     # Create script object
     s = PythonScript(pretty_models=False, pretty_maps=False)
@@ -66,12 +77,18 @@ def selection_images(structure_filename,
             s.show(obj='sele', style=sty)
         s.orient(obj='sele')
         s.zoom(obj='sele', buffer=0.0, complete=1)
-        if colour_by == 'bfactor':
+        # Custom colouring
+        if colour_selections:
+            for sel in colour_selections:
+                s.colour(obj="sele and ({})".format(sel), colour=colours.next())
+        elif colours == 'bfactor':
             s.custom('spectrum', expression='b', selection='sele and (b>0)')
         else:
-            s.colour_by_element(obj='sele', carbon_colour='green')
+            s.colour_by_element(obj='sele', carbon_colour=colours.next())
+        # Hide
         if hide_rest:
             s.hide(obj='not sele', style='everything')
+        # Ray trace
         if ray_trace:
             s.ray(height=height, width=width)
         png_name = s.png(f_name=output_prefix+labels[i]+'.png')

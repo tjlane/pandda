@@ -1,5 +1,7 @@
 import re
 
+from bamboo.common.logs import ScreenLogger
+
 import numpy
 import scipy.spatial
 
@@ -26,14 +28,16 @@ def calphas(hierarchy, cache=None, copy=True):
     sel = cache.selection('(not element H) and pepnames and (name CA)')
     return hierarchy.select(sel, copy_atoms=copy)
 
-def backbone(hierarchy, cache=None, copy=True):
+def backbone(hierarchy, cache=None, copy=True, cbeta=False):
     if not cache: cache=hierarchy.atom_selection_cache()
-    sel = cache.selection('(not element H) and pepnames and (name C or name CA or name N or name O)')
+    if cbeta:   sel = cache.selection('(not element H) and pepnames and (name C or name CA or name N or name O or name CB)')
+    else:       sel = cache.selection('(not element H) and pepnames and (name C or name CA or name N or name O)')
     return hierarchy.select(sel, copy_atoms=copy)
 
-def sidechains(hierarchy, cache=None, copy=True):
+def sidechains(hierarchy, cache=None, copy=True, cbeta=True):
     if not cache: cache=hierarchy.atom_selection_cache()
-    sel = cache.selection('(not element H) and pepnames and not (name C or name CA or name N or name O)')
+    if cbeta:   sel = cache.selection('(not element H) and pepnames and not (name C or name CA or name N or name O)')
+    else:       sel = cache.selection('(not element H) and pepnames and not (name C or name CA or name N or name O or name CB)')
     return hierarchy.select(sel, copy_atoms=copy)
 
 def non_water(hierarchy, cache=None, copy=True):
@@ -44,14 +48,22 @@ def non_water(hierarchy, cache=None, copy=True):
 ####################################################################################
 
 def default_secondary_structure_selections(hierarchy):
+    hierarchy = protein(hierarchy, copy=True)
+    hierarchy.reset_atom_i_seqs()
     from mmtbx.secondary_structure import dssp
     return dssp.dssp(hierarchy, log=null_out(), out=null_out()).get_annotation().as_atom_selections()
 
-def default_secondary_structure_selections_filled(hierarchy):
+def default_secondary_structure_selections_filled(hierarchy, verbose=False):
     """Return secondary structure selections and fill gaps with new selections"""
+
+    log = ScreenLogger(stdout=verbose)
+
+    log('>>> Creating secondary structure selections for input hierarchy <<<')
 
     # Get automatic secondary structure elements
     auto_sel = default_secondary_structure_selections(hierarchy=hierarchy)
+    log('>> Default Selections (from dssp):\n\t{}'.format('\n\t'.join(auto_sel)))
+
     # Extract chain and residue numbers
     sel_regex = re.compile("chain '(.*?)' and resid (.*?). through (.*)")
     auto_sel_proc = [sel_regex.findall(s)[0] for s in auto_sel]
@@ -65,10 +77,12 @@ def default_secondary_structure_selections_filled(hierarchy):
 
     # Iterate through chains
     for c_id in chain_ids:
-        # Output list for this chain
-        output_sel = []
+        log('>> Processing chain {}'.format(c_id))
+
         # Extract residue start and end numbers
         c_sels = sorted([map(int, s[1:]) for s in auto_sel_proc if s[0]==c_id])
+        log('>> Sorted selections for chain {}:\n\t{}'.format(c_id, '\n\t'.join(['{:>4d} -> {:>4d}'.format(*s) for s in c_sels])))
+        log.bar()
         # Extract chain
         c_obj  = [c for c in hierarchy.chains() if (c.is_protein() and c.id==c_id)]
         assert len(c_obj) == 1
@@ -76,110 +90,101 @@ def default_secondary_structure_selections_filled(hierarchy):
         # Get the first and last residues of the chain
         c_start = min([r.resseq_as_int() for r in c_obj.residue_groups()])
         c_end   = max([r.resseq_as_int() for r in c_obj.residue_groups()])
-        # Get first residue in a ss group
-        first_start, first_end = c_sels[0]
-        # Find number of unused residues at the beginning of the chain
-        unused_front = first_start - c_start
-        # If one residue, add to first group
-        if unused_front == 1:
-            c_sels[0][0] -= 1
-        # Else add own selection for these residues
-        elif unused_front > 1:
-            output_sel.append((c_id, c_start, first_start-1))
-        # Process groups for middle of the chain
-        for i in xrange(len(c_sels)):
-            # Get the start and end of this group
-            this_start, this_end = c_sels[i]
-            # Perform sanity checks
-            assert this_start <= this_end, 'group with negative size?! {} - {}'.format(this_start, this_end)
-            # Get boolean for whether this is the final group of the chain
-            final_group = (i+1 == len(c_sels))
-            # More sanity checks
-            if not final_group:
-                # Check it is compatible with the next group
-                next_start, next_end = c_sels[i+1]
-                assert next_start <= next_end,   'group with negative size?! {} - {}'.format(next_start, next_end)
-                assert this_end   <  next_end,   'end of next group before end of this group?! {} - {}'.format(this_end, next_end)
-                assert this_start <= next_start, 'start of next group before start of this group?! {} - {}'.format(this_start, next_start)
-            # Special case: group of one residue -- do not allow
-            if (this_start == this_end):
-                # delete this group from the input list
-                c_sels[i] = None
-                # If the last group, just ignore it and break
-                if final_group:
-                    break
-                # Shuffle the group back one to simulate being still in the group before this one
-                this_start -= 1
-                this_end -= 1
-                if output_sel:
-                    assert output_sel[-1][2] == this_start, 'Last residue of last group is incorrect: {} != {}'.format(output_sel[-1][2], this_start)
-            # Check for gap/overlap to next group
-            if not final_group:
-                # Get the start of the next group
-                next_start, next_end = c_sels[i+1]
-                # Check for overlap with next group
-                if this_end >= next_start:
-                    overlap = (this_end + 1 - next_start)
-                    remove_this = int(numpy.ceil(overlap/2.0))
-                    remove_next = overlap - remove_this
-                    # Check that truncation of this group will leave at least two residues
-                    this_remain = (this_end + 2 - this_start) - remove_this
-                    # If one or no residues remain for this group
-                    if this_remain <= 1:
-                        # make this group not exist
-                        c_sels[i] = None
-                        # merge the two groups (set next start to this start)
-                        c_sels[i+1][0] = this_start
-                        break
-                    # Check that at least two residues will remain in this group
-                    assert this_remain >= 2
-                    # Truncate this group
-                    this_end -= remove_this
-                    # Move the start of the next group (and end if necessary)
-                    c_sels[i+1] = (next_start+remove_next, max(next_start+remove_next, next_end))
-                    # Need to refresh these variables
-                    next_start, next_end = c_sels[i+1]
-                    assert this_end + 1 == next_start, 'error: this end {}; next start: {}'.format(this_end, next_start)
-                # Check to see if the gap between this and the next group is one residue
-                elif (next_start - this_end) == 2:
-                    # Gap is one residue -- Move the beginning of the next residue
-                    c_sels[i+1][0] -= 1
-            # Create selection for this group if it has more than two residues
-            assert this_end - this_start >= 0, 'error width of group less than one residue: {} - {}'.format(this_start, this_end)
-            if (this_end - this_start) >= 1:
-                # Recreate selection for this group
-                output_sel.append((c_id, this_start, this_end))
-            # Add selection for gap to next selection if it exists (and that more than one residue in gap)
-            if (not final_group) and ((next_start - this_end) > 2):
-                output_sel.append((c_id, this_end+1, next_start-1))
+        log('> Chain start: {}\n> Chain end: {}'.format(c_start, c_end))
+        # Create boolean selection for residues in the chain
+        n_res = c_end-c_start+1
+        # Create residue mask with group numbers; mark missing residues with -1
+        t_sel = -1*numpy.ones(n_res, dtype=int)
+        t_sel[[r.resseq_as_int()-c_start for r in c_obj.residue_groups()]] = 0
+        log('> {} missing residues in chain {}'.format(sum(t_sel==-1), c_id))
+        log.bar()
+        log('>> Removing overlapping groups:')
 
-        # Deal with residues at the end of the chain
-        last_chain, last_start, last_end = output_sel[-1]
-        remain_residues = (c_end - last_end)
-        # One residue -- add to last group
-        if remain_residues == 1:
-            output_sel[-1] = (c_id, last_start, last_end+1)
-        # Mroe -- add new group
-        elif remain_residues > 1:
-            output_sel.append((c_id, last_end+1, c_end))
+        # First pass: Iterate through and place group numbers into mask
+        for i,g in enumerate(c_sels):
+            n = i+1
+            g_sel = numpy.zeros_like(t_sel, dtype=bool)
+            g_sel[range(g[0]-c_start,g[1]-c_start+1)] = True
+            log.bar()
+            log('Group: {}'.format(str(g)))
+            log('Group selection: {} residues'.format(sum(g_sel)))
+            # Multiply the unassigned atoms with this group mask
+            new_g_sel = (t_sel==0)*g_sel
+            log('Filtered Group selection: {} residues'.format(sum(new_g_sel)))
+            log('(after removing residues that are already in other groups)')
+            if sum(new_g_sel) == 0:
+                log('No residues for this group that are not already in another group')
+                continue
+            # Store as this group
+            t_sel[new_g_sel] = n
+        log.bar()
 
-        # VALIDATE the output for this chain
-        assert output_sel[0][1]  == c_start
-        assert output_sel[-1][2] == c_end
-        for i in xrange(len(output_sel)-1):
-            this_chain, this_start, this_end = output_sel[i]
-            next_chain, next_start, next_end = output_sel[i+1]
-            assert this_chain   == next_chain   # Right chain!
-            assert (this_end+1) == next_start   # Groups are contiguous
-            assert (this_end - this_start) > 0  # At least two residues
+        # Second pass: Process groups & create new groups for gaps
+        g_start = 0
+        f_sels = []
+        log('>> Creating new non-overlapping groups:')
+        for i_this, v_this in enumerate(t_sel):
+            # Skip missing residues
+            if v_this == -1:
+                continue
+            # If not in a group, start a group
+            if g_start is None:
+                g_start = i_this
+            # When in a group, check if next is still in group
+            v_next = t_sel[i_this+1] if (i_this+1)<len(t_sel) else None
+            if v_this != v_next:
+                f_sels.append([g_start+c_start, i_this+c_start])
+                g_start = None
+        log('Filtered & Filled selections for chain {}:\n\t{}'.format(c_id, '\n\t'.join(['{:>4d} -> {:>4d}'.format(*s) for s in f_sels])))
+        log.bar()
+
+        # Third pass: Merge small groups
+        o_sels = []
+        log('>> Merging small groups with neighbours where possible:')
+        for i, (start, end) in enumerate(f_sels):
+            g_size = end - start + 1
+            if g_size < 3:
+                log.bar()
+                log('Group ({},{}) is less than three residues ({} residues)'.format(start,end,g_size))
+                g_before = int((not i==0) and (f_sels[i-1][1]==(start-1)))
+                g_after = int((not i+1==len(f_sels)) and (f_sels[i+1][0]==(end+1)))
+                # Decide how/if to split group between neighbours
+                if (g_before or g_after):
+                    log('Splitting group between neighbouring groups')
+                    n_after = g_after * int(float(g_size)/float(g_before+g_after))
+                    n_before = g_size - n_after
+                    assert n_before + n_after == g_size
+                    if n_before:
+                        log('Adding {} residues to previous group'.format(n_before))
+                        f_sels[i-1][1] += n_before
+                    if n_after:
+                        log('Adding {} residues to next group'.format(n_after))
+                        f_sels[i+1][0] -= n_after
+                    # Remove the group
+                    f_sels[i] = None
+                elif g_size == 1:
+                    log('Group of one residue with no neighbours -- removing group')
+                    # Remove the group
+                    f_sels[i] = None
+                else:
+                    log('No neighbouring groups -- leaving as group of two residues')
+        log.bar()
+
+        # Remove the none groups
+        o_sels = [(c_id, v[0], v[1]) for v in f_sels if v is not None]
+        log('Merged selections for chain {}:\n\t{}'.format(c_id, '\n\t'.join(['{:>4d} -> {:>4d}'.format(*s[1:]) for s in o_sels])))
+        log.bar()
 
         # Append to overall list
-        output_sel_all.extend(output_sel)
+        output_sel_all.extend(o_sels)
 
     # Sort output for fun
     output_sel_all = sorted(output_sel_all)
+    output_sel = [sel_template.format(*v) for v in output_sel_all]
+    log('Processed Selections:\n\t{}'.format('\n\t'.join(output_sel)))
+    log.bar()
 
-    return [sel_template.format(*v) for v in output_sel_all]
+    return output_sel
 
 ####################################################################################
 

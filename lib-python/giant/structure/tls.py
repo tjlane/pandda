@@ -4,8 +4,6 @@ import numpy
 
 import iotbx.pdb
 
-from bamboo.common.logs import LogStream
-
 from scitbx import matrix, linalg
 from scitbx.array_family import flex
 from mmtbx.tls import tlso, uaniso_from_tls_one_group
