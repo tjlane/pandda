@@ -21,7 +21,8 @@ class _DatasetObj(object):
 
     def label(self, num=-1, tag=None):
         self.num = num
-        if tag: self.tag = str(tag)
+        if tag is not None:
+            self.tag = str(tag)
         return self
 
 

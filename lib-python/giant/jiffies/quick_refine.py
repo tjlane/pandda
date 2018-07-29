@@ -90,8 +90,7 @@ def run(params):
     os.mkdir(out_dir)
 
     # Create log object
-    log = Log(log_file = os.path.join(out_dir, params.output.out_prefix+'.quick-refine.log'),
-              verbose  = params.settings.verbose)
+    log = Log(log_file = os.path.join(out_dir, params.output.out_prefix+'.quick-refine.log'))
 
     # Report
     if current_dirs:
@@ -163,10 +162,7 @@ def run(params):
     out = cm.run()
 
     log.subheading('Refinement output')
-    if not log.verbose:
-        log('output written to log file ({} lines)'.format(cm.output.count('\n')))
-
-    log('\n'+cm.output, show=False)
+    log('\n'+cm.output)
 
     if out != 0:
         log.subheading('Refinement Errors')

@@ -165,7 +165,7 @@ fitting {
         buffer = 0.01
             .help = 'A fixed quantity that it subtracted from the Uijs of each level except for the residual. Prevents 0-value ADPs in the residual level.'
             .type = float
-        dataset_weights = one inverse_resolution inverse_resolution_squared *inverse_resolution_cubed
+        dataset_weights = *one inverse_resolution inverse_resolution_squared inverse_resolution_cubed
             .help = 'control how datasets are weighted during optimisation?'
             .type = choice(multi=False)
         max_datasets = None
@@ -3150,6 +3150,7 @@ class MultiDatasetUijPlots(object):
             # Create colors + hatches
             colors = pyplot.cm.rainbow(numpy.linspace(colour_space[0],colour_space[1],len(sel_hs)))
             hatchs = itertools.cycle(['//', 'x', '\\'])
+            hatchs = itertools.cycle([None])
 
             # Create the output figure
             fig, axis = pyplot.subplots(nrows=1, ncols=1)
@@ -3177,7 +3178,7 @@ class MultiDatasetUijPlots(object):
                         color=colors[i_h],
                         label=legends[i_h],
                         hatch=hatchs.next(),
-                        linewidth=0.5,
+                        linewidth=0,
                         edgecolor='black',
                         )
                 handles.append(hdl)
@@ -3470,7 +3471,7 @@ class MultiDatasetHierarchicalUijFitter(object):
         arr = fitted_uij_by_level.copy()
         # Zero the current level (as should not be included in target function!)
         arr[i_level] = 0.0
-        # Sum over all other levels to find total currently modelled0
+        # Sum over all other levels to find total currently modelled
         arr_sum = numpy.sum(arr, axis=0)
         # If input data is isotropic, make output isotropic for target function
         if self.disorder_model == "isotropic":
@@ -4760,6 +4761,9 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         # Cumulative i_tls indices
         mdl_cuml = []
 
+        # Did this optimisation start from zero-valued model?
+        global_null_model = False #(not self.parameters().any())
+
         # Optimise!
         for i_cycle in xrange(n_cycles):
             self.log.subheading('Group {} - Optimisation cycle {} of {}'.format(self.label, i_cycle+1, n_cycles))
@@ -4811,15 +4815,16 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                         components  = cpts,
                         datasets    = opt_dset_mask,
                         atoms       = opt_atom_mask)
-                    # Apply multiplier to amplitudes of less than unity if null model to allow for "wiggling"
-                    if null_model and (cpts in list('TL')):
-                        multiplier = 0.95
-                        self.log('Applying scaling to amplitudes of {}'.format(multiplier))
-                        self.parameters().get(index=i_tls).amplitudes.scale(multiplier=multiplier)
                     # Log model summary
                     self.log(self.parameters().get(index=i_tls).model.summary()+'\n')
                     # Log current RMSD and penalty
                     self.optimisation_summary()
+                    # Apply multiplier to amplitudes of less than unity if null model to allow for "wiggling"
+                    if null_model and (cpts in list('TLS')):
+                        multiplier = 0.95
+                        self.log.subheading('Scaling amplitudes after individual component optimisation')
+                        self.log('Applying scaling to amplitudes of {} to reduce restrictions on subsequent simplex optimisations'.format(multiplier))
+                        self.parameters().get(index=i_tls).amplitudes.scale(multiplier=multiplier)
 
                 # Normalise matrices to give Uijs of approximately xA
                 self.parameters().normalise_by_matrices(xyzs=self.atomic_xyz, origins=self.atomic_com, target=1.0)
@@ -4876,6 +4881,21 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             self.log.subheading('End-of-cycle summary')
             self.summary(show=True)
             self.log('')
+
+        # If this parameter set started out as zero-values, and optimises to non-zero values,
+        # scale down so that there is still some disorder left for other levels to model.
+        if global_null_model and self.parameters().get(index=i_tls).model.any():
+            multiplier = 0.95
+            self.log.subheading('Scaling amplitudes for zero-value starting model')
+            self.log('This optimisation started from a zero-value parameter set and optimised to non-zero values.')
+            self.log('Applying scaling to amplitudes of {} to reduce restrictions on subsequent simplex optimisations'.format(multiplier))
+            for i_tls in xrange(self._n_tls):
+                self.parameters().get(index=i_tls).amplitudes.scale(multiplier=multiplier)
+
+        self.log.subheading('End of optimisation summary')
+        self.summary(show=True)
+
+        return
 
     def optimise_models(self, models, components, datasets=None, atoms=None, tolerance=1e-3):
         """Optimise the matrices for combinations of models/componenets/datasets"""
@@ -5267,7 +5287,7 @@ def run(params):
         if p.params.analysis.calculate_electron_density_metrics:
             p.calculate_electron_density_metrics(out_dir_tag='analysis')
 
-        if len(models) >=1: # TODO Change to >1
+        if len(models) > 1:
             p.calculate_amplitudes_dendrogram(out_dir_tag='analysis')
 
         if p.params.analysis.diagnostics is True:

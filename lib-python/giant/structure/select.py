@@ -146,8 +146,12 @@ def default_secondary_structure_selections_filled(hierarchy, verbose=False):
             if g_size < 3:
                 log.bar()
                 log('Group ({},{}) is less than three residues ({} residues)'.format(start,end,g_size))
-                g_before = int((not i==0) and (f_sels[i-1][1]==(start-1)))
-                g_after = int((not i+1==len(f_sels)) and (f_sels[i+1][0]==(end+1)))
+                g_before = int((not i==0)
+                        and (f_sels[i-1] is not None)
+                        and (f_sels[i-1][1]==(start-1)))
+                g_after = int((not i+1==len(f_sels))
+                        and (f_sels[i+1] is not None)
+                        and (f_sels[i+1][0]==(end+1)))
                 # Decide how/if to split group between neighbours
                 if (g_before or g_after):
                     log('Splitting group between neighbouring groups')
