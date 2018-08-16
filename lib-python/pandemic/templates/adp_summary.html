@@ -243,7 +243,7 @@
 
           {% if tab.id == 'overview' %}
 
-          <div id ="overview-tav">
+          <div id ="overview-tab">
 
             <div class="panel panel-primary">
               <div class="panel-heading">
@@ -375,6 +375,48 @@
                     </div>
                   </div>
                   {% endfor %}
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+
+          </div>
+
+          {% elif tab.id == 'settings' %}
+
+          <div id ="settings-tab">
+
+            <div class="row">
+              {% for panel in tab.panels %}
+              {% set this_div = dn.next() -%}
+              <div class="col col-centered col-xs-12 col-md-{{ panel.width|default(12) }}">
+                <div class="panel panel-primary">
+                  <div class="panel-heading">
+                    <h3 class="panel-title"><a data-toggle="collapse" href="#{{ this_div }}">{{ panel.id }}</a></h3>
+                  </div>
+                  <div id="{{ this_div }}" class="panel-collapse collapse {% if panel.show %}in{% endif %}">
+                    <div class="panel-body">
+                      <div class="row row-centered">
+                        {% for thing in panel.contents -%}
+                        <div class="col col-centered col-xs-12 col-md-{{ thing.width|default(12) }}">
+                          <div {% if thing.class is defined %}class="{{thing.class[0]}} {{thing.class[0]}}-{{thing.class[1]}}"{% endif %}>
+                            {% if thing.title is defined %}
+                            <h4>{{ thing.title }}</h4>
+                            {% endif %}
+                            {% if thing.text is defined %}
+                            <p>{{ thing.text }}</p>
+                            {% endif %}
+                            {% if thing.image is defined %}
+                            <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
+                              <img class="img-responsive" src="{{ thing.image }}" alt="No Image">
+                            </a>
+                            {% endif %}
+                          </div>
+                        </div>
+                        {% endfor -%} 
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
               {% endfor %}

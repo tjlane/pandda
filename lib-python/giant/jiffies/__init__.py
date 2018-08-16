@@ -12,15 +12,15 @@ def process_exception_default(exception):
 
     try:
         raise
-    except Sorry as e:
-        e.args = (e.args[0]+'\n\n(This type of error normally indicates that something is wrong with the input provided to the program that is fixable.)\n',) + \
+    except Failure as e:
+        e.args = (e.args[0]+'\n\n(This type of error normally indicates that something has gone wrong within the program that is not fixable by the user.'\
+                            '\nYou may need to contact the developer -- for contact info please visit https://pandda.bitbucket.io .)\n',) + \
                 e.args[1:]
         raise
         #print(e)
         #sys.exit(1)
-    except Failure as e:
-        e.args = (e.args[0]+'\n\n(This type of error normally indicates that something has gone wrong within the program that is not fixable by the user.'\
-                            '\nYou may need to contact the developer -- for contact info please visit https://pandda.bitbucket.io .)\n',) + \
+    except Sorry as e:
+        e.args = (e.args[0]+'\n\n(This type of error normally indicates that something is wrong with the input provided to the program that is fixable.)\n',) + \
                 e.args[1:]
         raise
         #print(e)

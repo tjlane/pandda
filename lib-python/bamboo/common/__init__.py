@@ -76,4 +76,6 @@ class Info(Meta):
         object.__setattr__(self, name, value)
 
 
+def dict_from_class(c):
+    return dict([(k,v) for k,v in c.__dict__.items() if not (isinstance(k, str) and k.startswith('_'))])
 

@@ -14,10 +14,11 @@ from libtbx.utils import Sorry, Failure
 from scitbx.array_family import flex
 from scitbx import simplex, linalg, matrix
 
-from bamboo.common import Meta, Info, ListStream
+from bamboo.common import Meta, Info, ListStream, dict_from_class
 from bamboo.common.logs import Log, LogStream, ScreenLogger
 from bamboo.common.path import easy_directory, rel_symlink
 from bamboo.common.command import CommandManager
+from bamboo.maths.functions import get_function
 
 from giant.manager import Program
 from giant.dataset import CrystallographicModel
@@ -162,9 +163,6 @@ fitting {
         .help = 'how many fitting cycles to run (for each level) -- should be more than 1'
         .type = int
     optimisation {
-        buffer = 0.01
-            .help = 'A fixed quantity that it subtracted from the Uijs of each level except for the residual. Prevents 0-value ADPs in the residual level.'
-            .type = float
         dataset_weights = *one inverse_resolution inverse_resolution_squared inverse_resolution_cubed
             .help = 'control how datasets are weighted during optimisation?'
             .type = choice(multi=False)
@@ -193,50 +191,90 @@ fitting {
         penalties
             .help = 'penalties during optimisation. penalty function is 0 if p is 0, else (a + b*p), i.e. (p>0)*(a+b*p).'
         {
+            fitting_penalty_weights
+                .help = "Penalty function that controls how the fitting penalties are weighted as a function of distance to the target"
+            {
+                form = none *sigmoid logarithm
+                    .type = choice(multi=False)
+                    .help = "Function to use to calculate how the fitting penalty changes as a function of delta-U"
+                y_scale = 2.0
+                    .type = float
+                    .help = "Multiplier for the form function (e.g. height of sigmoid function)"
+                x_width = 0.1
+                    .type = float
+                    .help = "Width of the form function (e.g. width of sigmoid function)"
+                x_offset = 0.0
+                    .type = float
+                    .help = "X-Offset of the form function (e.g. inversion point of the sigmoid function)"
+                y_offset = -1.0
+                    .type = float
+                    .help = "Y-Offset of the form function (i.e. fixed amount added to function)"
+            }
+            over_target_values
+                .help = 'penalties when the fitted Uij is greater than the target Uij. penalty p is number of atoms with a Uij(fitted) > Uij(target). calculated as number of negative eigenvalues of tensor Uij(fitted)-Uij(target).'
+            {
+                form = *sigmoid
+                    .type = choice(multi=False)
+                    .help = "Function to use to calculate how the penalty changes for a model that is greater than the target model"
+                y_scale = 1.0
+                    .type = float
+                    .help = 'manual multiplier for the sigmoid penalty function'
+                x_width = 0.0025
+                    .type = float
+                    .help = 'width of the buffer zone (width of buffer approx 0.2 time this value; default 0.0025 -> 1A B-factor)'
+                x_offset = 0.0
+                    .type = float
+                    .help = "Offset of the form function (e.g. inversion point of the sigmoid function)"
+            }
             invalid_tls_values
                 .help = 'penalties for invalid TLS models. penalty p is number of T L or S matrices that is unphysical.'
                 .expert_level = 3
             {
-                a = 1e2
+                form = *piecewise_linear
+                    .type = choice(multi=False)
+                    .help = "Function to use to calculate how the penalty changes for a model that is greater than the target model"
+                y_discontinuity = 100
                     .type = float
                     .help = 'fixed penalty for positive penalty values'
-                b = 0
+                x_discontinuity_location = 0.5
                     .type = float
-                    .help = 'multiplicative penalty for positive penalty values'
+                    .help = 'penalty value where function departs from zero value'
             }
             invalid_amplitudes
                 .help = 'penalties for negative TLS amplitudes. penalty p is sum of amplitudes less than zero.'
                 .expert_level = 3
             {
-                a = 1e2
-                    .type = float
-                    .help = 'fixed penalty for positive penalty values'
-                b = 1e2
+                form = *piecewise_linear
+                    .type = choice(multi=False)
+                    .help = "Function to use to calculate how the penalty changes for a model that is greater than the target model"
+                y_scale = 100
                     .type = float
                     .help = 'multiplicative penalty for positive penalty values'
+                y_discontinuity = 100
+                    .type = float
+                    .help = 'fixed penalty for positive penalty values'
             }
             invalid_uij_values
                 .help = 'penalties for invalid Uij values. penalty p is total number of negative eigenvalues for each Uij.'
                 .expert_level = 3
             {
-                a = 1e2
+                form = *piecewise_linear
+                    .type = choice(multi=False)
+                    .help = "Function to use to calculate how the penalty changes for a model that is greater than the target model"
+                y_scale = 1000
                     .type = float
-                    .help = 'fixed penalty for positive penalty values'
-                b = 1e3
+                    .help = 'multiplicative penalty for penalty values above crossover'
+                y_discontinuity = 100
                     .type = float
-                    .help = 'multiplicative penalty for positive penalty values'
-            }
-            over_target_values
-                .help = 'penalties when the fitted Uij is greater than the target Uij. penalty p is number of atoms with a Uij(fitted) > Uij(target). calculated as number of negative eigenvalues of tensor Uij(fitted)-Uij(target).'
-            {
-                a = 0.0
+                    .help = 'fixed penalty for penalty values above crossover'
+                x_discontinuity_location = 0.0
                     .type = float
-                    .help = 'fixed penalty for positive penalty values'
-                b = 1e2
-                    .type = float
-                    .help = 'multiplicative penalty for positive penalty values'
+                    .help = 'point at which the penalty becomes non-zero'
             }
         }
+        simplex_convergence = 1e-5
+            .help = "cutoff for which the least-squares is considered converged"
+            .type = float
     }
     precision
         .help = 'set various levels of precision for calculations'
@@ -263,11 +301,13 @@ analysis {
         .help = "Recalculate r-factors for the fitted B-factors"
         .type = bool
     calculate_electron_density_metrics = False
+        .expert_level = 3
         .type = bool
     table_ones_options {
         include scope giant.jiffies.multi_table_ones.options_phil
     }
     diagnostics = False
+        .expert_level = 3
         .help = "Write diagnostic graphs -- adds a significant amount of runtime"
         .type = bool
 }
@@ -375,11 +415,10 @@ def wrapper_run(arg):
 
 def wrapper_optimise(args):
     fitter, options = args
-    tolerance = options.pop('tolerance')
     stdout = options.pop('stdout', False)
     try:
         fitter.log.toggle(stdout)
-        fitter._optimise(tolerance=tolerance)
+        fitter._optimise()
         return fitter
     except Exception as e:
         return traceback.format_exc()
@@ -406,25 +445,43 @@ class UijPenalties(object):
     _uij_tolerance = _base_tol
     _tls_tolerance = _base_tol
     _amp_tolerance = _base_tol
-    _defaults = {'mdl_fixed' : 1e2,
-                 'mdl_slope' : 1e2,
-                 'amp_fixed' : 1e1,
-                 'amp_slope' : 1e1,
-                 'uij_fixed' : 1e2,
-                 'uij_slope' : 1e3,
-                 'ovr_fixed' : 1e0,
-                 'ovr_slope' : 1e3}
 
-    def __init__(self, **args):
-        self.values = Info(self._defaults)
-        self.set_weights(**args)
+    def __init__(self, params):
+
+        self.functions = {}
+
+        for f_name, p in [
+                ('tls_values', params.invalid_tls_values),
+                ('amplitudes', params.invalid_amplitudes),
+                ('uij_values', params.invalid_uij_values),
+                ('uij_target', params.over_target_values),
+                        ]:
+            self.functions[f_name] = get_function(**dict_from_class(p))
+
+    def tls_values(self, model):
+        """Return penalty for having unphysical TLS models"""
+        penalty = 0.0 if model.is_valid(tol=self._tls_tolerance) else 1.0
+        return self.functions['tls_values'](penalty)
+
+    def amplitudes(self, values):
+        """Return penalty for having amplitudes with negative values"""
+        penalty = abs(numpy.sum(values[values<-1.0*self._amp_tolerance]))
+        return self.functions['amplitudes'](penalty)
+
+    def uij_values(self, values):
+        assert len(values) == 6
+        eigenvalues = uij_eigenvalues(values)
+        penalty = -1.0*flex.sum(eigenvalues.select(eigenvalues<(-1.0*self._uij_tolerance)))
+        return self.functions['uij_values'](penalty)
+
+    def uij_model_target_difference(self, model_target_difference):
+        """Add penalty for having fitted ADPs greater than observed"""
+        penalties = numpy.array(map(uij_eigenvalues, model_target_difference))
+        return self.functions['uij_target'](penalties)
 
     @classmethod
     def set_tls_tolerance(cls, tolerance):
         cls._tls_tolerance = tolerance
-
-    def tls_tolerance(self):
-        return self._tls_tolerance
 
     @classmethod
     def set_uij_tolerance(cls, tolerance):
@@ -433,67 +490,6 @@ class UijPenalties(object):
     @classmethod
     def set_amp_tolerance(cls, tolerance):
         cls._amp_tolerance = tolerance
-
-    def set_test_xyz(self, xyz, com):
-        self._tst_xyz = flex.vec3_double(xyz)
-        self._tst_com = com
-
-    def set_weights(self, **args):
-        """Set penalties for parameters to be invalid"""
-        for k in args:
-            assert k in self.values.__dict__.keys()
-            self.values.__setattr__(k, args[k])
-        return self.values.summary()
-
-    def tls_params(self, model):
-        """Return penalty for having unphysical TLS models"""
-        # Convert to float for penalty
-        penalty = 0.0 if model.is_valid(tol=self.tls_tolerance()) else 1.0
-        # Calculate and return total penalty
-        return self._standard_penalty_function(penalty       = penalty,
-                                               fixed_penalty = self.values.mdl_fixed,
-                                               slope_penalty = self.values.mdl_slope)
-
-    def amplitudes(self, values):
-        """Return penalty for having amplitudes with negative values"""
-        penalty = abs(numpy.sum(values[values<-1.0*self._amp_tolerance]))
-        return self._standard_penalty_function(penalty       = penalty,
-                                               fixed_penalty = self.values.amp_fixed,
-                                               slope_penalty = self.values.amp_slope)
-
-    def uij_valid(self, values):
-        assert len(values) == 6
-        penalty = self._standard_negative_eigenvalue_penalty(sym_mat3_vals=values, tolerance=self._uij_tolerance)
-        return self._standard_penalty_function(penalty       = penalty,
-                                               fixed_penalty = self.values.uij_fixed,
-                                               slope_penalty = self.values.uij_slope)
-
-    def uij_size(self, fitted, target):
-        """Add penalty for having fitted B-factors greater than observed"""
-        if (self.values.ovr_fixed == 0.0) and (self.values.ovr_slope == 0.0):
-            return 0.0
-        values = [a-b for a,b in zip(target,fitted)]
-        penalty = self._standard_negative_eigenvalue_penalty(sym_mat3_vals=values, tolerance=self._base_tol)
-        return self._standard_penalty_function(penalty       = penalty,
-                                               fixed_penalty = self.values.ovr_fixed,
-                                               slope_penalty = self.values.ovr_slope)
-
-    def _standard_penalty_function(self, penalty, fixed_penalty, slope_penalty):
-        """Simple step function for non-zero penalty + slope to provide minimisation gradient"""
-        assert penalty > -1.0*self._base_tol, 'penalties cannot be negative!'
-        return (penalty>self._base_tol)*(fixed_penalty + slope_penalty*penalty)
-
-    def _standard_negative_eigenvalue_penalty(self, sym_mat3_vals, tolerance):
-        eigenvalues = self._sym_mat3_eigenvalues(vals=sym_mat3_vals)
-        return self._sym_mat3_penalty(eigenvalues=eigenvalues, tolerance=tolerance)
-
-    def _sym_mat3_eigenvalues(self, vals):
-        assert len(vals) == 6
-        return linalg.eigensystem_real_symmetric(vals).values()
-
-    def _sym_mat3_penalty(self, eigenvalues, tolerance=None):
-        """Calculate penalty for eigenvalues"""
-        return -1.0*flex.sum(eigenvalues.select(eigenvalues<(-1.0*tolerance)))
 
 class _Simplex(object):
     _steps = {}
@@ -538,9 +534,9 @@ class TLSSimplex(_Simplex):
               0.,0.,1.)
     _I_diag = (1.,1.,1.)
 
-    _eigenvalue_change_basis = ((+1.,+1.,+1.,0.,0.,0.),
-                                (+1.,-1.,+0.,0.,0.,0.),
-                                (+0.,+1.,-1.,0.,0.,0.))
+    _eigenvalue_change_basis = ((+1., 0., 0.,0.,0.,0.),
+                                ( 0.,+1., 0.,0.,0.,0.),
+                                ( 0., 0.,+1.,0.,0.,0.))
     _eigenvector_change_basis = (( 0., 1., 0.,
                                   -1., 0., 0.,
                                    0., 0., 0.),
@@ -551,12 +547,12 @@ class TLSSimplex(_Simplex):
                                    0., 0., 1.,
                                    0.,-1., 0.))
     # 8 basis matrices with zero trace
-    _s_change_basis = ((1., 0., 0.,
-                        0.,-1., 0.,
-                        0., 0., 0.),
-                       (0., 0., 0.,
-                        0., 1., 0.,
-                        0., 0.,-1.),
+    _s_change_basis = ((1.,0.,0.,
+                        0.,0.,0.,
+                        0.,0.,0.),
+                       (0.,0.,0.,
+                        0.,1.,0.,
+                        0.,0.,0.),
                        (0.,1.,0.,
                         0.,0.,0.,
                         0.,0.,0.),
@@ -1227,9 +1223,14 @@ class MultiDatasetUijParameterisation(Program):
                                  png_path = self.file_manager.add_file(file_name='tracking_data.png', file_tag='tracking_png', dir_tag='results'))
 
         # Write summary of the fitted model (groups & levels)
-        self.log.heading('Writing summary of the hierarchical model')
+        self.log.subheading('Writing summary of the hierarchical model')
         self.file_manager.add_dir(dir_name='partitions', dir_tag='partitions', top_dir_tag='model')
         self.hierarchy_summary(out_dir_tag='partitions')
+
+        # Write summary of the current settings
+        self.log.subheading('Writing graphs of the different penalty functions used in optimisation')
+        self.file_manager.add_dir(dir_name='penalties', dir_tag='penalties', top_dir_tag='model')
+        self.penalty_summary(out_dir_tag='penalties')
 
         # Calculate Parameter-observed data ratio
         self.log.subheading('Data-Parameter Ratios')
@@ -1244,14 +1245,15 @@ class MultiDatasetUijParameterisation(Program):
         if len(self.warnings) == 0:
             self.log('Program completed with 0 errors')
             return
-        self.log.subheading('{} non-fatal errors occurred during the program (see below)'.format(len(self.warnings)))
+        banner = '{} non-fatal errors/warnings occurred during the program (see below)'.format(len(self.warnings))
+        self.log.subheading(banner)
         for i, e in enumerate(self.warnings):
             self.log.bar()
             self.log('Error {} of {}'.format(i+1, len(self.warnings)))
             self.log.bar()
             self.log(e)
         self.log.bar()
-        self.log.subheading('{} non-fatal errors occurred during the program (see above)'.format(len(self.warnings)))
+        self.log.subheading(banner)
 
     def blank_master_hierarchy(self):
         h = self.master_h.deep_copy()
@@ -1527,6 +1529,67 @@ class MultiDatasetUijParameterisation(Program):
                                   delete_script = (not self.params.settings.debug))
                 assert glob.glob(lvl_pml_prt_template.format(i_level+1,'*')), 'no files have been generated!'
 
+    def penalty_summary(self, out_dir_tag):
+        """Write out the composition of the penalty functions"""
+
+        # Create a UijPenalty object
+        penalties_dict = dict_from_class(self.params.fitting.optimisation.penalties)
+
+        penalties_meta = [
+                ('fitting_penalty_weights',
+                    'Weights on fitting penalties\nas a function of ($\Delta$U/$\Delta$U$_{max}$)$^2$',
+                    '($\Delta$U/$\Delta$U$_{max}$)$^2$',
+                    'Weighting',
+                    (0.,1.),
+                    ),
+                ('invalid_amplitudes',
+                    'Penalty functions for negative amplitudes',
+                    'Sum of negative amplitudes',
+                    'Penalty Value',
+                    (-0.1,0.1),
+                    ),
+                ('invalid_tls_values',
+                    'Penalty functions for invalid TLS matrices',
+                    'Validity of TLS matrix (0 or 1)',
+                    'Penalty Value',
+                    (-0.1, 1.1),
+                    ),
+                ('invalid_uij_values',
+                    'Penalty functions for Uijs\nwith negative eigenvalues',
+                    'Uij Eigenvalue',
+                    'Penalty Value',
+                    (-0.1, 0.1),
+                    ),
+                ('over_target_values',
+                    'Penalty functions for eigenvalues\nof $\Delta$U=U$_{model}$-U$_{target}$',
+                    'Eigenvalue of $\Delta$U',
+                    'Penalty Value',
+                    None,
+                    ),
+                ]
+
+        for penalty_key, title, x_lab, y_lab, x_lim in penalties_meta:
+            self.log('Plotting penalty function for {}'.format(penalty_key))
+            d = penalties_dict[penalty_key]
+            func = get_function(**dict_from_class(d))
+            if x_lim is None:
+                if d.form == 'piecewise_linear':
+                    x_lim = (func.x_discontinuity_location-1.0, func.x_discontinuity_location+1.0)
+                elif d.form == 'sigmoid':
+                    x_lim = (func.x_offset-10.0*func.x_width, func.x_offset+10.0*func.x_width)
+                else:
+                    x_lim = (-1.0, 1.0)
+            x_vals = numpy.linspace(x_lim[0], x_lim[1], 101)
+            y_vals = func(x_vals)
+            f_name = self.file_manager.add_file(file_name=penalty_key+'.png',
+                                                file_tag=penalty_key+'_png',
+                                                dir_tag=out_dir_tag)
+            self.plot.lineplot(
+                    filename=f_name,
+                    x=x_vals, y=y_vals,
+                    title=title, x_lab=x_lab, y_lab=y_lab,
+                    )
+
     def make_tls_headers(self, levels=None, datasets=None):
         """Create header lines for each pdb file containing the TLS matrices"""
 
@@ -1681,11 +1744,8 @@ class MultiDatasetUijParameterisation(Program):
             for mdl in self.models:
                 self.log('> Model {}'.format(mdl.tag))
                 amps = amp_table[mdl.tag].values.astype(float)
-                try:
-                    mn = amps.mean()
-                    sd = amps.std()
-                except:
-                    from IPython import embed; embed()
+                mn = amps.mean()
+                sd = amps.std()
                 self.log('\tMean: {}'.format(mn))
                 self.log('\tStd:  {}'.format(sd))
                 self.log.bar()
@@ -2768,6 +2828,22 @@ class MultiDatasetUijPlots(object):
         return bins, indices, bin_labels
 
     @classmethod
+    def lineplot(cls, filename,
+                 x, y,
+                 title='', x_lab='x', y_lab='y'):
+
+        fig, axis = pyplot.subplots(nrows=1, ncols=1)
+        axis.set_title(title)
+        axis.plot(x, y, 'b-')
+        axis.set_xlabel(x_lab)
+        axis.set_ylabel(y_lab)
+        fig.tight_layout()
+        fig.savefig(filename)
+        pyplot.close(fig)
+
+        return
+
+    @classmethod
     def binned_boxplot(cls, filename,
                        x, y=None, y_vals=None, legends=None,
                        title='', x_lab='x', y_lab='y',
@@ -3467,7 +3543,7 @@ class MultiDatasetHierarchicalUijFitter(object):
         for i_level, level in enumerate(self.levels):
             yield (i_level+1, self.level_labels[i_level], level)
 
-    def _target_uij(self, fitted_uij_by_level, i_level, buffer=None):
+    def _target_uij(self, fitted_uij_by_level, i_level):
         arr = fitted_uij_by_level.copy()
         # Zero the current level (as should not be included in target function!)
         arr[i_level] = 0.0
@@ -3480,10 +3556,6 @@ class MultiDatasetHierarchicalUijFitter(object):
             for i in range(3):
                 arr_sum[:,:,i] = iso_arr_sum
         assert arr_sum.shape == self.observed_uij.shape
-        # Subtract a fixed amount from each input Uij
-        if buffer is not None:
-            for i in range(3):
-                arr_sum[:,:,i] -= buffer
         # Subtract currently modelled from input data
         return self.observed_uij - arr_sum
 
@@ -3614,28 +3686,28 @@ class MultiDatasetHierarchicalUijFitter(object):
     def n_input_values(self):
         return self.observed_uij.shape[0] * self.observed_uij.shape[1] * self.n_input_params_per_atom()
 
-    def optimise_level_amplitudes(self, n_cycles=1, n_cpus=1):
-        """Optimise amplitudes for pairs of adjacent levels"""
-
-        n_levels = len(self.levels)
-        for j_level in range(1,n_levels):
-            level2 = self.levels[j_level]
-            mask2 = (self.level_array[j_level] != -1)
-
-            # Default to using the previous level unless otherwise
-            i_level = j_level - 1
-            while i_level > 0:
-                mask1 = (self.level_array[i_level] != -1)
-                level_overlap = float(sum(mask1*mask2)) / float(sum(mask2))
-                if level_overlap == 1.0:
-                    break
-                i_level -= 1
-            assert i_level >= 0
-            assert j_level >= 0
-            self.log.heading('Optimising amplitudes for levels {} and {}'.format(i_level+1, j_level+1))
-
-            opt = InterLevelAmplitudeOptimiser(levels=(self.levels[i_level], self.levels[j_level]))
-            opt.run(n_cycles=n_cycles, n_cpus=n_cpus)
+#    def optimise_level_amplitudes(self, n_cycles=1, n_cpus=1):
+#        """Optimise amplitudes for pairs of adjacent levels"""
+#
+#        n_levels = len(self.levels)
+#        for j_level in range(1,n_levels):
+#            level2 = self.levels[j_level]
+#            mask2 = (self.level_array[j_level] != -1)
+#
+#            # Default to using the previous level unless otherwise
+#            i_level = j_level - 1
+#            while i_level > 0:
+#                mask1 = (self.level_array[i_level] != -1)
+#                level_overlap = float(sum(mask1*mask2)) / float(sum(mask2))
+#                if level_overlap == 1.0:
+#                    break
+#                i_level -= 1
+#            assert i_level >= 0
+#            assert j_level >= 0
+#            self.log.heading('Optimising amplitudes for levels {} and {}'.format(i_level+1, j_level+1))
+#
+#            opt = InterLevelAmplitudeOptimiser(levels=(self.levels[i_level], self.levels[j_level]))
+#            opt.run(n_cycles=n_cycles, n_cpus=n_cpus)
 
     def parameter_ratio_gain(self, non_zero=False):
         """Total number of input values divided by number of model parameters (used or total)"""
@@ -3806,14 +3878,14 @@ class MultiDatasetHierarchicalUijFitter(object):
                 self.log.subheading('Macrocycle {} of {}: '.format(i_macro+1, n_macro_cycles)+'Fitting TLS Groups (level {} - {})'.format(fitter.index, fitter.label))
                 # Update the target uij by subtracting contributions from other levels
                 self.log('Updating target Uijs for optimisation')
-                fitter.set_target_uij(target_uij=self._target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=i_level, buffer=self.params.optimisation.buffer))
+                fitter.set_target_uij(target_uij=self._target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=i_level))
                 # Optimise
                 fitted_uij = fitter.run(n_cpus=n_cpus, n_cycles=n_micro_cycles)
                 # Validate and store
                 for i_dst, dataset_uij in enumerate(fitted_uij):
                     uij_valid = uij_positive_are_semi_definite(uij=dataset_uij, tol=self.params.precision.uij_tolerance)
                     if uij_valid.sum() > 0.0:
-                        err_msg = '\n\t'.join(['Atom {:>5d} (group {}): {}'.format(i+1, fitter.get_atom_group(index=i).label, dataset_uij[i]) for i in numpy.where(uij_valid)[0]])
+                        err_msg = '\n\t'.join(['Atom {:>5d} (group {}, level {}): \n\t\tUij -> {}\n\t\tEigenvalues -> {})'.format(i+1, fitter.get_atom_group(index=i).label, i_level+1, tuple(dataset_uij[i]), tuple(uij_eigenvalues(dataset_uij[i]))) for i in numpy.where(uij_valid)[0]])
                         self.warnings.append('Uijs for dataset {} are not positive-semi-definite ({} atoms)\n\t{}'.format(i_dst, uij_valid.sum(), err_msg))
                 # Store in output array
                 fitted_uij_by_level[i_level] = fitted_uij
@@ -3823,7 +3895,7 @@ class MultiDatasetHierarchicalUijFitter(object):
             # Fit the residuals
             self.log.subheading('Macrocycle {} of {}: '.format(i_macro+1, n_macro_cycles)+'Fitting residual atomic Uijs')
             # Update the target uij by subtracting contributions from other levels
-            self.residual.set_target_uij(target_uij=self._target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=-1, buffer=0))
+            self.residual.set_target_uij(target_uij=self._target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=-1))
             # Update fitters and optimise -- always run two cycles of this
             fitted_uij_by_level[-1] = self.residual.run(n_cpus=n_cpus, n_cycles=3)
             # Update tracking
@@ -4135,13 +4207,12 @@ class _UijOptimiser(object):
 
     def __init__(self,
                  target_uij,
+                 convergence_tolerance=1e-3,
                  label='',
                  weights=None,
                  params=None,
                  verbose=False,
                  log=None):
-
-        assert params.penalties is not None
 
 #        if log is None: log = Log()
         self.log = log
@@ -4162,21 +4233,16 @@ class _UijOptimiser(object):
             self.weights = numpy.array(weights)
         assert self.weights.shape == (target_uij.shape[0],)
 
-        self.penalties = params.penalties
-        self.penalty = UijPenalties(mdl_fixed=params.penalties.invalid_tls_values.a,
-                                    mdl_slope=params.penalties.invalid_tls_values.b,
-                                    amp_fixed=params.penalties.invalid_amplitudes.a,
-                                    amp_slope=params.penalties.invalid_amplitudes.b,
-                                    uij_fixed=params.penalties.invalid_uij_values.a,
-                                    uij_slope=params.penalties.invalid_uij_values.b,
-                                    ovr_fixed=params.penalties.over_target_values.a,
-                                    ovr_slope=params.penalties.over_target_values.b)
+        self.initial_penalties = params.penalties
+        self.penalty = UijPenalties(params.penalties)
 
-        self.optimisation_rmsd = numpy.inf
+        self.optimisation_target = numpy.inf
         self.optimisation_penalty = numpy.inf
 
         # The object to be used for evaluating the target function
         self.evaluator = self
+
+        self.convergence_tolerance = convergence_tolerance
 
     #===========================================+>
     # Private Functions
@@ -4191,15 +4257,15 @@ class _UijOptimiser(object):
     def _blank_parameter_selection(self):
         return numpy.zeros(self._n_prm, dtype=bool)
 
-    def _optimise(self, tolerance=1e-3):
+    def _optimise(self):
         """Run the optimisation"""
 
         # Prep variables for target function
         self._n_call = 0
         # Apply the masks to the target uij
         self._update_target()
-        # Initialise the RMSD measure
-        self.optimisation_rmsd = 1e6
+        # Initialise the target metrics
+        self.optimisation_target = 1e6
         self.optimisation_penalty = 0.0
         # Get the variables selected for optimisatiom, and their values
         sel_dict = self._select()
@@ -4223,7 +4289,7 @@ class _UijOptimiser(object):
         optimised = simplex.simplex_opt(dimension = len(sel_vals),
                                         matrix    = map(flex.double, opt_simplex),
                                         evaluator = self.evaluator,
-                                        tolerance = tolerance)
+                                        tolerance = self.convergence_tolerance)
         # Extract and update current values
         self._inject(values=optimised.get_solution(), selection=sel_dict)
         self.log.bar()
@@ -4278,11 +4344,11 @@ class _UijOptimiser(object):
         # Combine the optimising parameters in the complete parameter set
         self._inject(values=parameters, selection=None)
         # Calculate physical penalties - reject this set if model is not physical
-        ppen = self._parameter_penalties()
+        ppen = self.parameter_penalties()
         # Print info line if necessary
         if self.verbose:
             if self._n_call%20==1:
-                header = '[{}] -> ({:^12}, {:^10})'.format(', '.join(['{:>7}'.format('param') for r in parameters]), 'fit/rmsd', 'penalty')
+                header = '[{}] -> ({:^12}, {:^10})'.format(', '.join(['{:>7}'.format('param') for r in parameters]), 'target', 'penalty')
                 line = '-'*len(header)
                 self.log(line)
                 self.log(header)
@@ -4294,20 +4360,20 @@ class _UijOptimiser(object):
             return ppen
         # Get the fitted uijs (including masked atoms)
         self._update_fitted()
-        # Calculate RMSD
-        sd = numpy.power(self._target_uij-self._fitted_uij, 2)
-        msd = numpy.average(sd, axis=0, weights=self._mask_wgts).mean()
-        rmsd = numpy.sqrt(msd)
-        # Calculate fitting penalties (add to rmsd)
-        fpen = self._fitting_penalties(uij_fit=self._fitted_uij, uij_obs=self._target_uij)
+        # Calculate weighted sum of squares
+        delta_u = self._fitted_uij-self._target_uij
+        delta_u_sq = numpy.power(delta_u, 2).mean(axis=tuple(range(1,delta_u.ndim)))
+        delta_u_sq_av = numpy.average(delta_u_sq, axis=0, weights=self._mask_wgts)
+        # Calculate fitting penalties (add to target)
+        fpen = self.fitting_penalties(delta_u=delta_u, delta_u_sq=delta_u_sq)
         # Total target function value
-        tot_val = rmsd + fpen
+        tot_val = delta_u_sq_av + fpen
         # Update minima
-        if tot_val < self.optimisation_rmsd+self.optimisation_penalty:
-            self.optimisation_rmsd    = rmsd
+        if tot_val < self.optimisation_target+self.optimisation_penalty:
+            self.optimisation_target  = delta_u_sq_av
             self.optimisation_penalty = fpen
         if self.verbose:
-            self.log('[{}] -> ({:12.8f}, {:10.6f})'.format(', '.join(['{:+7.4f}'.format(r) for r in parameters]), rmsd, fpen))
+            self.log('[{}] -> ({:12.8f}, {:10.6f})'.format(', '.join(['{:+7.4f}'.format(r) for r in parameters]), delta_u_sq_av, fpen))
         return tot_val
 
 class MultiDatasetUijAtomOptimiser(_UijOptimiser):
@@ -4319,12 +4385,14 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
                  params=None,
                  verbose=False,
                  log=None):
-        super(MultiDatasetUijAtomOptimiser, self).__init__(target_uij=target_uij,
-                                                           label=label,
-                                                           weights=weights,
-                                                           params=params,
-                                                           verbose=verbose,
-                                                           log=log)
+        super(MultiDatasetUijAtomOptimiser, self).__init__(
+                target_uij=target_uij,
+                convergence_tolerance=params.simplex_convergence,
+                label=label,
+                weights=weights,
+                params=params,
+                verbose=verbose,
+                log=log)
 
         # Should be n_dataset observations of 6 parameters
         assert len(self.target_uij.shape) == 2
@@ -4340,8 +4408,6 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
 
         # Initialise simplex generator
         self.simplex = UijSimplex()
-        # Initialse penalty weights
-        self.penalty.set_weights(ovr_fixed=0.0, ovr_slope=0.0)
 
         # Initialise the mask to all datasets
         self.set_dataset_mask(range(self._n_dst))
@@ -4350,11 +4416,11 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
     # Private Functions - common to parent class
     #===========================================+>
 
-    def _fitting_penalties(self, uij_fit, uij_obs):
+    def fitting_penalties(self, delta_u, delta_u_sq):
         return 0.0
 
-    def _parameter_penalties(self):
-        return self.penalty.uij_valid(values=self.result())
+    def parameter_penalties(self):
+        return self.penalty.uij_values(values=self.result())
 
     #=======================+>
 
@@ -4391,7 +4457,7 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
     def optimise(self, n_cycles=1, n_cpus=1):
         """Optimise the residual for a set of atoms"""
         # If only 1 dataset provided, set current values to target values and return
-        if (self.target_uij.shape[0] == 1) and (not self.penalty.uij_valid(values=self.target_uij[0])):
+        if (self.target_uij.shape[0] == 1) and (not self.penalty.uij_values(values=self.target_uij[0])):
             self._inject(values=self.target_uij[0])
             return
         # Otherwise optimise
@@ -4413,6 +4479,7 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
         if show: self.log(s)
         return s
 
+
 class MultiDatasetUijTLSOptimiser(_UijOptimiser):
 
     def __init__(self,
@@ -4427,12 +4494,14 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                  params=None,
                  verbose=False,
                  log=None):
-        super(MultiDatasetUijTLSOptimiser, self).__init__(target_uij=target_uij,
-                                                          label=label,
-                                                          weights=weights,
-                                                          params=params,
-                                                          verbose=verbose,
-                                                          log=log)
+        super(MultiDatasetUijTLSOptimiser, self).__init__(
+                target_uij=target_uij,
+                convergence_tolerance=params.simplex_convergence,
+                label=label,
+                weights=weights,
+                params=params,
+                verbose=verbose,
+                log=log)
 
         # Store the centre of mass of the atoms (for the rotation/screw components)
         self.atomic_xyz = atomic_xyz
@@ -4493,50 +4562,59 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                                   angle     = params.step_size.angle,
                                   amplitude = params.step_size.amplitude)
 
-        # Initialse penalty set of test points (for identifying physically-valid TLS matrices)
-        box_size = (numpy.min(self.atomic_xyz, axis=(0,1)),
-                    numpy.max(self.atomic_xyz, axis=(0,1)))
-        box_edge = numpy.array([(box_size[i][0],box_size[j][1],box_size[k][2]) for i,j,k in flex.nested_loop((2,2,2))])
-        self.penalty.set_test_xyz(xyz=box_edge, com=self.atomic_com.mean(axis=0))
+        # Store params
+        self.params = params
 
         # Initialise the masks
         self.set_atomic_mask(range(self._n_atm))
         self.set_dataset_mask(range(self._n_dst))
 
+        # Weights
+        self.delta_u_0_sq = numpy.power(target_uij, 2).mean(axis=(1,2))
+
+        if params.penalties.fitting_penalty_weights.form == "none":
+            func = lambda value: numpy.ones_like(value, dtype=float)
+        else:
+            func = get_function(**dict_from_class(params.penalties.fitting_penalty_weights))
+        self.fitting_penalty_weight_function = func
+
     #===========================================+>
     # Private Functions - common to parent class
     #===========================================+>
 
-    def _fitting_penalties(self, uij_fit, uij_obs):
-        ovr_penalties = []; [ovr_penalties.append(sum([self.penalty.uij_size(*vv) for vv in zip(*v)])) for v in zip(uij_fit,uij_obs)]
-        assert len(ovr_penalties) == len(self._mask_wgts)
-        # Normalise penalties by weights of each dataset
-        ovr_penalty = numpy.average(ovr_penalties, weights=self._mask_wgts)
-        return ovr_penalty
+    def fitting_penalties(self, delta_u, delta_u_sq):
+        """Calculate penalties to enforce priors about fitting (e.g. model should not be greater than input)"""
+        # Get penalty for each dataset
+        penalties = [numpy.sum(self.penalty.uij_model_target_difference(vals)) for vals in delta_u]
+        assert len(penalties) == len(self._mask_wgts)
+        # Weight the penalty function by a sigmoid of 0 -> du_sq/du_sq_0 -> 1
+        penalty_weights = self.fitting_penalty_weight_function(value=delta_u_sq/self.delta_u_0_sq[self.get_dataset_mask()])
+        assert len(penalty_weights) == len(self._mask_wgts)
+        # Scale this penalty by weight, and by the target values
+        weighted_penalties = delta_u_sq * penalty_weights * penalties
+        # Average penalties, with weights for each dataset
+        total_penalty = numpy.average(weighted_penalties, weights=self._mask_wgts)
+        return total_penalty
 
-    def _parameter_penalties(self):
-
-        tls_penalties = []
-        amp_penalties = []
-
+    def parameter_penalties(self):
+        """Calculate penalties to enforce that the parameters are physical (e.g. positive amplitudes)"""
+        penalties = []
         for mode in self._parameters:
-
             # Calculate model penalties (if required -- not required if not optimising model...)
             if self._opt_dict['model']:
                 # Penalise physically-invalid TLS models
-                tls_penalties.append(self.penalty.tls_params(model=mode.model))
-
+                penalties.append(self.penalty.tls_values(model=mode.model))
             # Calculate dataset penalties
             if self._opt_dict['amplitudes']:
                 # Penalties for combinations of amplitudes that lead to non-physical TLS models
                 datasets = self._opt_dict['i_dst']
                 # Penalties for negative amplitudes, etc
-                amp_penalties.append(self.penalty.amplitudes(values=mode.amplitudes.values))
+                penalties.append(self.penalty.amplitudes(values=mode.amplitudes.values))
                 # XXX remark: next line commented out because floating point/rounding errors
                 # XXX remark: prevent amplitude optimisation for small TLS values
-                #amp_penalties.extend([self.penalty.tls_params(model=model) for model in mode.expand(datasets=datasets)])
-
-        return numpy.sum(tls_penalties+amp_penalties)
+                #penalties.extend([self.penalty.tls_params(model=model) for model in mode.expand(datasets=datasets)])
+        total_penalty = numpy.sum(penalties)
+        return total_penalty
 
     #=======================+>
 
@@ -4715,7 +4793,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             #self.log('Atom with minimal uij eigenvalue: Dataset {}, Atom {}'.format(dst, atm))
             #self.log('Atomic uij: {}'.format(tuple([round(v,6) for v in uij_start])))
             self.log('Initialising the T-matrix with an isotropic uij')
-            uij_start = (0.95,)*3 + (0.0,)*3
+            uij_start = (0.90,)*3 + (0.0,)*3
             self.log('Setting initial T-matrix values to {}'.format(uij_start))
             self.parameters().get(index=i_tls).model.set(vals=uij_start, components='T')
         else:
@@ -4803,11 +4881,6 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                         self.log('T and L matrices are zero -- not optimising S-matrix')
                         continue
                     self.log.subheading('Optimising {} parameters for TLS mode {}'.format(cpts, i_tls+1))
-                    # Set penalty weights
-                    self.log.bar()
-                    self.log('Penalty weights:')
-                    self.log.bar()
-                    self.log(self.penalty.set_weights(ovr_fixed=self.penalties.over_target_values.a))
                     self.log.bar(False, True)
                     # Run optimisation
                     self.optimise_models(
@@ -4817,7 +4890,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                         atoms       = opt_atom_mask)
                     # Log model summary
                     self.log(self.parameters().get(index=i_tls).model.summary()+'\n')
-                    # Log current RMSD and penalty
+                    # Log current target and penalty
                     self.optimisation_summary()
                     # Apply multiplier to amplitudes of less than unity if null model to allow for "wiggling"
                     if null_model and (cpts in list('TLS')):
@@ -4897,7 +4970,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
 
         return
 
-    def optimise_models(self, models, components, datasets=None, atoms=None, tolerance=1e-3):
+    def optimise_models(self, models, components, datasets=None, atoms=None):
         """Optimise the matrices for combinations of models/componenets/datasets"""
 
         # Take all datasets/atoms if not provided
@@ -4911,11 +4984,10 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                      components = components,
                      datasets   = datasets,
                      atoms      = atoms)
-
         # Run optimisation
-        self._optimise(tolerance=tolerance)
+        self._optimise()
 
-    def optimise_amplitudes(self, models, components, datasets=None, atoms=None, n_cpus=1, tolerance=1e-3):
+    def optimise_amplitudes(self, models, components, datasets=None, atoms=None, n_cpus=1):
         """Optimise the amplitudes for combinations of models/components/datasets"""
 
         # Take all datasets/atoms if not provided
@@ -4939,10 +5011,10 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             self._select(datasets=[i_dst])
             # Append to job list (create copy) or run optimisation
             if n_cpus > 1:
-                jobs.append((self.copy(), {'tolerance':tolerance, 'stdout':False}))
+                jobs.append((self.copy(), {'stdout':False}))
             else:
-                self._optimise(tolerance=tolerance)
-                self.log('> dataset {} of {} (rmsd {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, self.optimisation_rmsd, self.optimisation_penalty))
+                self._optimise()
+                self.log('> dataset {} of {} (target {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, self.optimisation_target, self.optimisation_penalty))
         # Run parallel jobs and inject results
         if n_cpus > 1:
             # Workers for multiprocessing
@@ -4958,7 +5030,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                     self.log(job)
                     raise Failure('error returned')
                 self._inject(values=job._values(), selection=job._select())
-                self.log('> dataset {} of {} (rmsd {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, job.optimisation_rmsd,  job.optimisation_penalty))
+                self.log('> dataset {} of {} (target {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, job.optimisation_target,  job.optimisation_penalty))
             # Let's be good
             workers.close()
 
@@ -5066,8 +5138,9 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
     def optimisation_summary(self, show=True):
         """Print the optimisation values and weights"""
         s = self.log._bar()+'\nOptimisation Summary: {}\n'.format(self.label)+self.log._bar()
-        s += '\nOptimisation RMSD:    {:5.3f}'.format(self.optimisation_rmsd)
+        s += '\nOptimisation Target: {:5.3f}'.format(self.optimisation_target)
         s += '\nOptimisation Penalty: {:5.3f}'.format(self.optimisation_penalty)
+        s += '\nOptimisation Total: {:5.3f}'.format(self.optimisation_target+self.optimisation_penalty)
         s += '\n'+self.log._bar()
         s += '\nModels used for optimisation (and weights):'
         for i,w in zip(self.get_dataset_mask(), self.get_dataset_weights()):
@@ -5181,11 +5254,13 @@ def run(params):
         log(master_phil.format(params).as_str())
 
         log.heading('Processing input parameters')
+
         # Process/report on input parameters
         log.bar(True, False)
         log('Selected TLS amplitude model: {}'.format(params.fitting.tls_amplitude_model))
         log(MultiDatasetTLSModel.get_amplitude_model_class(params.fitting.tls_amplitude_model).description())
         log.bar(False, True)
+
         # Set precisions, etc
         log.bar()
         log('Setting TLS Model and Amplitude Precision')
@@ -5196,13 +5271,18 @@ def run(params):
         log('TLS Amplitude precision -> {:10} / {} decimals'.format(10.**-params.fitting.precision.tls_amplitude_decimals, params.fitting.precision.tls_amplitude_decimals))
         TLS_AmplitudeSet.set_precision(params.fitting.precision.tls_amplitude_decimals)
         log.bar()
-        log('Setting TLS Model tolerance')
-        # Model validation tolerance
+
+        # Set tolerances, etc
+        log('Setting model tolerances')
+        # TLS Model tolerance
         log('TLS Model tolerance     -> {:10}'.format(params.fitting.precision.tls_tolerance))
         TLSModel.set_tolerance(params.fitting.precision.tls_tolerance)
-        # Model penalty tolerance
         UijPenalties.set_tls_tolerance(params.fitting.precision.tls_tolerance)
+        # Uij Positive-semi-definiteness tolerance
+        log('Uij tolerance           -> {:10}'.format(params.fitting.precision.uij_tolerance))
+        UijPenalties.set_uij_tolerance(params.fitting.precision.uij_tolerance)
         log.bar()
+
         # Output images
         if params.output.images.all:
             log('params.output.images.all = {}'.format(params.output.images.all))
