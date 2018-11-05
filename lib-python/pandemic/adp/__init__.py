@@ -219,9 +219,9 @@ fitting {
                 y_scale = 1.0
                     .type = float
                     .help = 'manual multiplier for the sigmoid penalty function'
-                x_width = 0.0025
+                x_width = 0.0018355
                     .type = float
-                    .help = 'width of the buffer zone (width of buffer approx 0.2 time this value; default 0.0025 -> 1A B-factor)'
+                    .help = 'width of the buffer zone (width of buffer approx 6.9 time this value; default 0.0018355 -> 0.0018355*6.9*8*pi*pi = 1A B-factor)'
                 x_offset = 0.0
                     .type = float
                     .help = "Offset of the form function (e.g. inversion point of the sigmoid function)"

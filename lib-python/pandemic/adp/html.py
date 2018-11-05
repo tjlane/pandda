@@ -11,7 +11,7 @@ from pandemic.html import PANDEMIC_HTML_ENV
 # debugging flags
 DEBUG = False
 
-def format_summary(text, width=12, cls_tuple=['alert','info']):
+def format_summary(text, width=12, type='alert', colour='info'):
     paragraphs = text.split('\n\n')
     output = []
     for p in paragraphs:
@@ -20,9 +20,10 @@ def format_summary(text, width=12, cls_tuple=['alert','info']):
             title = lines.pop(0).strip('>\n ')
         else:
             title = None
-        p_dict = {'width' : width,
-                  'text'  : '<br>'.join(lines).replace('\t','&emsp;'),
-                  'class' : cls_tuple}
+        p_dict = {'width'  : width,
+                  'text'   : '<br>'.join(lines).replace('\t','&emsp;'),
+                  'type'   : type,
+                  'colour' : colour}
         if title is not None:
             p_dict['title'] = title
         output.append(p_dict)
@@ -30,6 +31,66 @@ def format_summary(text, width=12, cls_tuple=['alert','info']):
 
 def wrap(string, tag='p'):
     return '<'+tag+'>'+str(string)+'</'+tag+'>'
+
+def create_tls_matrix_summary(tls_matrices):
+    if tls_matrices.any():
+        tls_mdl_str = ('<samp>' + \
+                       'T: {T11:>9.3f}, {T22:>9.3f}, {T33:>9.3f}, {T12:>9.3f}, {T13:>9.3f}, {T23:>9.3f},<br>' + \
+                       'L: {L11:>9.3f}, {L22:>9.3f}, {L33:>9.3f}, {L12:>9.3f}, {L13:>9.3f}, {L23:>9.3f},<br>' + \
+                       'S: {S11:>9.3f}, {S12:>9.3f}, {S13:>9.3f}, {S21:>9.3f}, {S22:>9.3f}, {S23:>9.3f}, {S31:>9.3f}, {S32:>9.3f}, {S33:>9.3f}' + \
+                       '</samp>').format(**tls_matrices.round(3)).replace(' ','&nbsp;')
+    else:
+        tls_mdl_str = "Zero-value TLS matrices"
+    # Format output dictionary
+    out_dict = {'text':tls_mdl_str, 'width':12, 'type':'alert', 'colour':'info'}
+    return out_dict
+
+def create_tls_decomposition_summary(tls_matrices, tolerance=1e-6):
+    T = tuple(tls_matrices[['T11','T22','T33','T12','T13','T23']])
+    L = tuple(tls_matrices[['L11','L22','L33','L12','L13','L23']])
+    S = tuple(tls_matrices[['S11','S12','S13','S21','S22','S23','S31','S32','S33']])
+    from mmtbx.tls.decompose import decompose_tls_matrices
+    dcm = decompose_tls_matrices(T=T, L=L, S=S,
+                                 l_and_s_in_degrees=True,
+                                 tol=tolerance)
+    #from IPython import embed; embed(); raise Exception()
+    if dcm.is_valid():
+        dcm_lines = [
+                'Vibration Amplitudes: {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'.format(*dcm.v_amplitudes),
+                'Libration Amplitudes: {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'.format(*dcm.l_amplitudes),
+                'Screw Amplitudes:     {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'.format(*dcm.s_amplitudes),
+                '--------------------<br>',
+                ('Vibration Axes:  {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'+\
+                 '                 {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'+\
+                 '                 {:>9.3f}, {:>9.3f}, {:>9.3f}<br>').format(*numpy.concatenate(dcm.v_axis_directions)),
+                '--------------------<br>',
+                ('Libration Axes:  {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'+\
+                 '                 {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'+\
+                 '                 {:>9.3f}, {:>9.3f}, {:>9.3f}<br>').format(*numpy.concatenate(dcm.l_axis_directions)),
+                '--------------------<br>',
+                ('Libration Axes   {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'+\
+                 'Intersections:   {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'+\
+                 '                 {:>9.3f}, {:>9.3f}, {:>9.3f}<br>').format(*numpy.concatenate(dcm.l_axis_intersections)),
+                ]
+        dcm_string = ('<samp>'+''.join(dcm_lines)+'</samp>').replace(' ','&nbsp;')
+        colour = 'success'
+    else:
+        dcm_string = 'Unable to decompose TLS matrices: <br>&nbsp;&nbsp;&nbsp;&nbsp;{}'.format(dcm.error())
+        colour = 'warning'
+    # Format output dictionary
+    out_dict = {'text':dcm_string, 'width':12, 'type':'alert', 'colour':colour}
+    return out_dict
+
+def create_tls_amplitude_summary(tls_amplitudes):
+    tls_amp_table = tls_amplitudes.T
+    # Change the names of the "Mode" columns
+    new_columns = ['Mode {} - {}'.format(mode+1, cpt) for (mode, cpt) in tls_amp_table.columns]
+    tls_amp_table.columns = new_columns
+    # Remove columns names and add index name
+    tls_amp_table.columns.name = 'Dataset'
+    tls_amp_table = tls_amp_table.to_html(bold_rows=False, classes=['table table-condensed table-hover datatable nowrap text-center'], border=0)
+    tls_amp_table = tls_amp_table.replace('<th>', '<th class="text-center">')
+    return {'table': tls_amp_table}
 
 def create_overview_tab(parameterisation):
     p = parameterisation
@@ -46,53 +107,28 @@ def create_overview_tab(parameterisation):
            'short_name'     : 'Overview',
            'long_name'      : 'Hierarchical ADP Parameterisation Overview',
            'description'    : '',
-           'panels'         : [{'width':8,  'text': '', 'image':png2base64src_maybe(fm.get_file('tracking_png'), print_on_missing=DEBUG)}] + \
-                              [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'class':['text-center']}] + \
-                              format_summary(f.summary(), width=6) + \
-                              [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'class':['text-center']}] + \
-                              numpy.concatenate(zip(*[
-                                  [{'width':4, 'text': 'Partition Schematic',  'image':png2base64src_maybe(part_f.format(c), print_on_missing=DEBUG)} for c in chain_ids],
-                                  [{'width':4, 'text': 'TLS-level components', 'image':png2base64src_maybe(prof_f.format(c), print_on_missing=DEBUG)} for c in chain_ids],
-                                  [{'width':4, 'text': 'Residual component',   'image':png2base64src_maybe(resd_f.format(c), print_on_missing=DEBUG)} for c in chain_ids],
-                                                     ])).tolist() + \
-                              [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'class':['text-center']}] + \
-                              numpy.concatenate([format_summary(l.summary(show=False), width=6) for l in f.levels+[f.residual]]).tolist()
+           'panels'         : [
+               {
+                   'title'  : 'Parameterisation Summary',
+                   'body'   : [{'width':8,  'text': '', 'image':png2base64src_maybe(fm.get_file('tracking_png'), print_on_missing=DEBUG)}] + \
+                              [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'classes':['text-center']}] + \
+                              format_summary(f.summary(), width=6),
+                   },
+               {
+                   'title':'Chain-by-Chain Disorder Summaries',
+                   'body': numpy.concatenate(zip(*[
+                                   [{'width':12,'title': 'Chain {}'.format(c)} for c in chain_ids],
+                                   [{'width':4, 'text': 'Partition Schematic',  'image':png2base64src_maybe(part_f.format(c), print_on_missing=DEBUG)} for c in chain_ids],
+                                   [{'width':4, 'text': 'TLS-level components', 'image':png2base64src_maybe(prof_f.format(c), print_on_missing=DEBUG)} for c in chain_ids],
+                                   [{'width':4, 'text': 'Residual component',   'image':png2base64src_maybe(resd_f.format(c), print_on_missing=DEBUG)} for c in chain_ids],
+                                            ])).tolist(),
+                   },
+               {
+                   'title' : 'Level-by-Level Model Parameters Summary',
+                   'body'  : numpy.concatenate([format_summary(l.summary(show=False), width=6) for l in f.levels+[f.residual]]).tolist(),
+                   },
+               ],
           }
-
-    return tab
-
-def create_analysis_tab(parameterisation):
-    p = parameterisation
-    f = parameterisation.fitter
-    fm = p.file_manager
-
-    images = []
-
-    if p.params.analysis.calculate_r_factors:
-        for f in [
-                fm.get_file('all_rvalues_v_resolution'),
-                fm.get_file('rgap_v_resolution'),
-                fm.get_file('rfree_v_resolution'),
-                fm.get_file('rwork_v_resolution'),
-                ]:
-            images.append({'width':6, 'image':png2base64src_maybe(f, print_on_missing=DEBUG)})
-
-    data_table = p.tables.statistics.dropna(axis='columns', how='all')
-
-    tab = {'id'             : 'statistics',
-           'short_name'     : 'Multi-dataset Results/Analysis',
-           'long_name'      : 'Model Improvement Statistics from hierarchical TLS parameterisation',
-           'description'    : '',
-           'plots'          : [{'div': 'variable-plots',
-                                'json': data_table.T.to_json(orient='split'),
-                                'default_x' : 'High Resolution Limit',
-                                'default_y' : 'R-free Change (Fitted-Input)'}],
-           'table'          : data_table.to_html(bold_rows=False, classes=['display nowrap'])\
-                                        .replace('<th></th>','<th>Dataset</th>')\
-                                        .replace('border="1" ', ''),
-          }
-    if images:
-        tab['top_panel'] = {'heading':'R-factor Changes', 'images':images}
 
     return tab
 
@@ -100,6 +136,8 @@ def create_levels_tab(parameterisation):
     p = parameterisation
     f = parameterisation.fitter
     fm = parameterisation.file_manager
+
+    tls_tolerance = p.params.fitting.precision.tls_tolerance
 
     chain_ids = [c.id for c in p.blank_master_hierarchy().select(flex.bool(p.atom_mask.tolist()),copy_atoms=True).chains()]
 
@@ -125,11 +163,8 @@ def create_levels_tab(parameterisation):
         # Split up the chains with divider panels
         prof_f = fm.get_file('png-combined-profile-template').format(c_id)
         resd_f = fm.get_file('png-residual-profile-template').format(c_id)
-        panel = {'id'             : '<h4>Levels for Chain {}</h4>'.format(c_id),
-                 'width'          : 12,
-                 'show'           : True,
-                 'table'          : None,
-                 'contents'       : [
+        panel = {'title' : '<h4>Levels for Chain {}</h4>'.format(c_id),
+                 'body'  : [
                      {'width':6, 'title': 'TLS-level components', 'image':png2base64src_maybe(prof_f, print_on_missing=DEBUG)},
                      {'width':6, 'title': 'Residual component',   'image':png2base64src_maybe(resd_f, print_on_missing=DEBUG)},
                                     ],
@@ -140,11 +175,9 @@ def create_levels_tab(parameterisation):
             chain_image = fm.get_file('pml-level-chain-template').format(level_num, c_id)
             stack_image = fm.get_file('png-tls-profile-template').format(level_num, c_id)
             aniso_image = fm.get_file('png-tls-anisotropy-template').format(level_num, c_id)
-            panel = {'id'             : 'Level {} of {} ({})'.format(level_num, len(f.levels),level_lab),
-                     'width'          : 4 if (len(f.levels)>3) or (len(f.levels)%2==0) else 6,
-                     'show'           : True,
-                     'table'          : None,
-                     'contents'       : [
+            panel = {'title' : 'Level {} of {} ({})'.format(level_num, len(f.levels),level_lab),
+                     'width' : 4 if (len(f.levels)>3) or (len(f.levels)%2==0) else 6,
+                     'body'  : [
                          {'width':12, 'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
                          {'width':12, 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
                          {'width':12, 'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)},
@@ -155,11 +188,9 @@ def create_levels_tab(parameterisation):
         chain_image = fm.get_file('pml-residual-chain-template').format(c_id)
         stack_image = fm.get_file('png-residual-profile-template').format(c_id)
         aniso_image = fm.get_file('png-residual-anisotropy-template').format(c_id)
-        panel = {'id'             : 'Final Level (residual)',
-                 'width'          : 4 if (len(f.levels)>3) or (len(f.levels)%2==0) else 6,
-                 'show'           : True,
-                 'table'          : None,
-                 'contents'       : [
+        panel = {'title' : 'Final Level (residual)',
+                 'width' : 4 if (len(f.levels)>3) or (len(f.levels)%2==0) else 6,
+                 'body'  : [
                      {'width':12, 'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
                      {'width':12, 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
                      {'width':12, 'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)},
@@ -185,15 +216,12 @@ def create_levels_tab(parameterisation):
             chain_image = fm.get_file('pml-level-chain-template').format(level_num, c_id)
             stack_image = fm.get_file('png-tls-profile-template').format(level_num, c_id)
             aniso_image = fm.get_file('png-tls-anisotropy-template').format(level_num, c_id)
-            panel = {'id'             : 'Chain {}'.format(c_id),
-                     'width'          : 12,
-                     'show'           : True,
-                     'table'          : None,
-                     'contents'       : [
+            panel = {'title' : 'Chain {}'.format(c_id),
+                     'body'  : [
                          {'width':6, 'title':'Coloured by Group',   'image':png2base64src_maybe(partn_image, print_on_missing=DEBUG)},
                          {'width':6, 'title':'Fitted ADPs',         'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
                          {'width':6, 'title':'Fitted ADPs by mode', 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
-                         {'width':6, 'title':'Anisotropy by atom',   'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)},
+                         {'width':6, 'title':'Anisotropy by atom',  'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)},
                                         ],
                     }
             level_tab['panels'].append(panel)
@@ -203,31 +231,38 @@ def create_levels_tab(parameterisation):
         # Extract groups for each level
         for i_group, (group_num, sel, group_fitter) in enumerate(level):
             # Extract TLS values for this group
-            tls_vals = [tls_models.loc[(group_num, i_mode)] for i_mode in xrange(p.params.fitting.tls_models_per_tls_group)]
-            # Skip if no TLS values
-            if numpy.abs(tls_vals).sum() == 0.0:
-                continue
+            tls_mats = tls_models.loc[group_num]
+            tls_amps = tls_amplitudes.loc[group_num]
+            # Get TLS matrix summaries
+            tls_mat_dicts = [create_tls_matrix_summary(tls_matrices=mats) for idx, mats in tls_mats.iterrows()]
+            for i, d in enumerate(tls_mat_dicts):
+                d.update({'title':'Mode {}:'.format(i+1)})
+            tls_dcm_dicts = [create_tls_decomposition_summary(tls_matrices=mats, tolerance=tls_tolerance) for idx, mats in tls_mats.iterrows()]
+            dcm_width = 12 if (p.params.fitting.tls_models_per_tls_group==1) else 6
+            for i, d in enumerate(tls_dcm_dicts):
+                d.update({'title':'TLS Decomposition of Mode {}:'.format(i+1), 'width':dcm_width})
+            # Get TLS amplitude summaries
+            tls_amp_dict = create_tls_amplitude_summary(tls_amplitudes=tls_amps)
+            tls_amp_dict.update({'width':12, 'type':'alert', 'colour':'info', 'title':'All Amplitudes'})
             # Get images and format values
             scl_image = fm.get_file('pml-level-scaled-template').format(level_num, group_num)
             adp_image = fm.get_file('pml-level-group-template').format(level_num, group_num)
             amp_image = fm.get_file('png-tls-amp-dist-template').format(level_num, group_num)
-            tls_mdl_strs = [('Mode {}:<br>' + \
-                             '<samp>\n' + \
-                             'T: {T11:>9.3f}, {T22:>9.3f}, {T33:>9.3f}, {T12:>9.3f}, {T13:>9.3f}, {T23:>9.3f},<br>' + \
-                             'L: {L11:>9.3f}, {L22:>9.3f}, {L33:>9.3f}, {L12:>9.3f}, {L13:>9.3f}, {L23:>9.3f},<br>' + \
-                             'S: {S11:>9.3f}, {S12:>9.3f}, {S13:>9.3f}, {S21:>9.3f}, {S22:>9.3f}, {S23:>9.3f}, {S31:>9.3f}, {S32:>9.3f}, {S33:>9.3f}' + \
-                             '\n</samp>'
-                            ).format(i_mode+1, **mode_vals.round(3)).replace(' ','&nbsp') if mode_vals.any() else 'Zero-value TLS values for mode {}'.format(i_mode+1) for i_mode, mode_vals in enumerate(tls_vals)]
+            image_dicts = []
+            for text, image in [
+                    ('Average size over all datasets',      adp_image),
+                    ('Amplitude Distribution',              amp_image),
+                    ('Shape of disorder (arbitrary scale)', scl_image),
+                                ]:
+                if os.path.exists(image):
+                    image_dicts.append({'width':4, 'text':text, 'image':png2base64src_maybe(image, print_on_missing=DEBUG)})
             # Create panel dictionary
-            panel = {'id'       : 'Group {} - {}'.format(group_num, p.levels[i_level][i_group]),
-                     'width'    : 12, #max(4,12//level.n_groups()),
-                     'table'    : None,
-                     'contents' : [
-                         {'width':12, 'text':'<br>'.join(['Number of atoms: {}'.format(sum(sel))])},
-                         {'width':4,  'text':'Average size over all datasets',          'image': png2base64src_maybe(adp_image, print_on_missing=DEBUG)},
-                         {'width':4,  'text':'Amplitude Distribution',                  'image': png2base64src_maybe(amp_image, print_on_missing=DEBUG)},
-                         {'width':4,  'text':'Shape of disorder (arbitrary scale)',     'image': png2base64src_maybe(scl_image, print_on_missing=DEBUG)},
-                                   ] + [{'width':12, 'text':s} for s in tls_mdl_strs],
+            panel = {'title' : 'Group {} - {}'.format(group_num, p.levels[i_level][i_group]),
+                     'width' : 12, #max(4,12//level.n_groups()),
+                     'show'  : (i_group==0),
+                     'body'  : [
+                         {'width':12, 'text':'<br>'.join(['Number of atoms: {}'.format(sum(sel))])}
+                         ] + tls_mat_dicts + image_dicts + tls_dcm_dicts + [tls_amp_dict]
                     }
             level_tab['panels'].append(panel)
         # Make  the first panel open
@@ -251,11 +286,8 @@ def create_levels_tab(parameterisation):
         chain_image = fm.get_file('pml-residual-chain-template').format(c_id)
         stack_image = fm.get_file('png-residual-profile-template').format(c_id)
         aniso_image = fm.get_file('png-residual-anisotropy-template').format(c_id)
-        panel = {'id'             : 'Residual overview for chain {}'.format(c_id),
-                 'width'          : 12,
-                 'show'           : True,
-                 'table'          : None,
-                 'contents'       : [
+        panel = {'title' : 'Residual overview for chain {}'.format(c_id),
+                 'body'  : [
                      {'width':8, 'title':'Fitted ADPs',         'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
                      {'width':6, 'title':'Fitted ADPs profile', 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
                      {'width':6, 'title':'Anisotropy by atom',   'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)},
@@ -263,22 +295,72 @@ def create_levels_tab(parameterisation):
                 }
         residual_tab['panels'].append(panel)
         # Panel for each residue
-        panel = {'id'       : 'Residual components for chain {}'.format(c.id),
-                 'width'    : 12,
-                 'table'    : None,
-                 'contents' : [],
+        panel = {'title' : 'Residual components for chain {}'.format(c.id),
+                 'show'  : False,
+                 'body'  : [],
                 }
         residual_tab['panels'].append(panel)
         for i_rg, rg in enumerate(c.residue_groups()):
             short_label = ShortLabeller.format(rg)
             long_label  = Labeller.format(rg)
+            panel['body'].append({'width':4, 'text':long_label})
             adp_image = fm.get_file('pml-residual-group-template').format(short_label)
-            panel['contents'].append({'width':4, 'text':long_label, 'image': png2base64src_maybe(adp_image, print_on_missing=DEBUG)})
+            if os.path.exists(adp_image):
+                panel['body'][-1]['image'] = png2base64src_maybe(adp_image, print_on_missing=DEBUG)
 
     return tab
 
-def create_settings_tab(parameterisation):
+def create_analysis_tab(parameterisation):
+    p = parameterisation
+    f = parameterisation.fitter
+    fm = p.file_manager
 
+    tab = {'id'             : 'statistics',
+           'short_name'     : 'Multi-dataset Results/Analysis',
+           'long_name'      : 'Model Improvement Statistics from hierarchical TLS parameterisation',
+           'description'    : '',
+           'panels'         : [],
+           }
+
+    # Add panel containing R-factor plots images
+    if p.params.analysis.calculate_r_factors:
+        images = []
+        for f in [fm.get_file('all_rvalues_v_resolution'),
+                  fm.get_file('rgap_v_resolution'),
+                  fm.get_file('rfree_v_resolution'),
+                  fm.get_file('rwork_v_resolution'),
+                  ]:
+            images.append({'width':6, 'image':png2base64src_maybe(f, print_on_missing=DEBUG)})
+        # Append to panels
+        tab['panels'].append({
+            'title' :'R-factor Changes',
+            'body'  : images
+            })
+
+    # Extract data table for plot and table
+    data_table = p.tables.statistics.dropna(axis='columns', how='all')
+    # Panel for the interactive plots
+    json_plot = {'id'        : 'variable-plots',
+                 'json'      : data_table.T.to_json(orient='split'),
+                 'default_x' : 'High Resolution Limit',
+                 'default_y' : 'R-free Change (Fitted-Input)'}
+    tab['panels'].append({
+        'title' : 'Interactive Summary Graphs',
+        'body'  : [{'divs': [json_plot]}],
+        })
+    # Panel for the table of data
+    tab['panels'].append({
+        'title' : 'Inidividual Dataset Statistics',
+        'body'  : [{'text': 'Data from output CSV (dataset_scores.csv)'},
+                   {'table': data_table.to_html(bold_rows=False, classes=['table table-striped table-hover datatable nowrap'])\
+                           .replace('<th></th>','<th>Dataset</th>')\
+                           .replace('border="1" ', '')},
+                   ],
+        })
+
+    return tab, [json_plot]
+
+def create_settings_tab(parameterisation):
     master_phil = parameterisation.master_phil
     params = parameterisation.params
     fm = parameterisation.file_manager
@@ -292,20 +374,18 @@ def create_settings_tab(parameterisation):
            'description'    : '',
            'panels': [],
           }
-    tab['panels'].append({'id'             : 'Parameters different from defaults',
+    tab['panels'].append({'title'          : 'Parameters different from defaults',
                           'width'          : 12,
-                          'show'           : True,
-                          'contents'       : [{'width':12, 'title':'', 'text':wrap(string=diff_str, tag='pre')}],
+                          'body'           : [{'width':12, 'title':'', 'text':wrap(string=diff_str, tag='pre')}],
             })
-    tab['panels'].append({'id'             : 'All Parameters',
+    tab['panels'].append({'title'          : 'All Parameters',
                           'width'          : 12,
                           'show'           : False,
-                          'contents'       : [{'width':12, 'title':'', 'text':wrap(string=phil_str, tag='pre')}],
+                          'body'           : [{'width':12, 'title':'', 'text':wrap(string=phil_str, tag='pre')}],
             })
-    tab['panels'].append({'id'             : 'Parameterised penalty functions',
+    tab['panels'].append({'title'          : 'Parameterised penalty functions',
                           'width'          : 12,
-                          'show'           : True,
-                          'contents'       : [
+                          'body'           : [
                               {
                                   'title':'Weight of Fitting Penalty',
                                   'text' :'A function that reduces the strength of the fitting penalties as the model Uij approaches the target Uij',
@@ -374,7 +454,9 @@ def write_adp_summary(parameterisation, out_dir_tag='root'):
     # Create statistics tab
     ##########################################################################################
     if len(parameterisation.models) > 1:
-        output_data['tabs'].append(create_analysis_tab(parameterisation=parameterisation))
+        tab, json_plots = create_analysis_tab(parameterisation=parameterisation)
+        output_data['tabs'].append(tab)
+        output_data.setdefault('json_plots',[]).extend(json_plots)
 
     ##########################################################################################
     # Create statistics tab

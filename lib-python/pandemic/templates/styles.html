@@ -1,0 +1,16 @@
+{% macro centred_columns_and_rows() -%}
+    <style>
+      .row-centered {
+          text-align:center;
+      }
+      .col-centered {
+          display:inline-block;
+          float:none;
+          vertical-align:top;
+          /* reset the text-align */
+          text-align:left;
+          /* inline-block space fix */
+          margin-right:-4px;
+      }
+    </style>
+{% endmacro %}
