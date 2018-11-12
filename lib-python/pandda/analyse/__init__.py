@@ -730,7 +730,7 @@ def pandda_main_loop(pandda):
                     map_maker = NativeMapMaker(dataset  = dataset,
                                                map_obj  = ref_event_map,
                                                sites_mask = pandda.grid.global_mask().sites_cart,
-                                               filename = dataset.file_manager.get_file('native_event_map').format(e.id[1], 1-e.info.estimated_bdc),
+                                               filename = dataset.file_manager.get_file('native_event_map').format(e.id[1], 1-round(e.info.estimated_bdc,2)),
                                                args     = pandda.args,
                                                verbose  = pandda.settings.verbose)
                     native_map_maker_list.append(map_maker)
