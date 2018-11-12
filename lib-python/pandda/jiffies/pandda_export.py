@@ -74,7 +74,7 @@ def get_file_list(dir):
     file_list.extend(glob.glob(os.path.join(dir,PanddaDatasetFilenames.native_obs_map.format('*'))))
     file_list.extend(glob.glob(os.path.join(dir,PanddaDatasetFilenames.native_z_map.format('*'))))
     file_list.extend(glob.glob(os.path.join(dir,PanddaDatasetFilenames.native_event_map.format('*','*','*'))))
-    file_list.extend(glob.glob(os.path.join(dir,PanddaDatasetFilenames.native_mean_map.format('*'))))
+    file_list.extend(glob.glob(os.path.join(dir,PanddaDatasetFilenames.native_average_map.format('*'))))
     file_list.extend(glob.glob(os.path.join(dir,'ligand_files','*.pdb')))
     file_list.extend(glob.glob(os.path.join(dir,'ligand_files','*.cif')))
     file_list.extend(glob.glob(os.path.join(dir,'modelled_structures',PanddaDatasetFilenames.modelled_structure.format('*'))))
