@@ -3295,13 +3295,13 @@ class MultiDatasetHierarchicalUijFitter(object):
         # Add to tracking table
         self.tracking_data.loc[len(self.tracking_data.index)] = {'cycle' : cycle_lab,
                                                                  'level' : level_lab,
-                                                                 'rmsd'  : numpy.round(rmsd,3),
-                                                                 'u_iso (level)' : numpy.round(u_iso_sel,3),
-                                                                 'b_iso (level)' : numpy.round(b_iso_sel,3),
-                                                                 'b_min (level)' : numpy.round(b_min_sel,3),
-                                                                 'b_max (level)' : numpy.round(b_max_sel,3),
-                                                                 'u_iso (total)' : numpy.round(u_iso_tot,3),
-                                                                 'b_iso (total)' : numpy.round(b_iso_tot,3)}
+                                                                 'rmsd'  : round(rmsd,3),
+                                                                 'u_iso (level)' : round(u_iso_sel,3),
+                                                                 'b_iso (level)' : round(b_iso_sel,3),
+                                                                 'b_min (level)' : round(b_min_sel,3),
+                                                                 'b_max (level)' : round(b_max_sel,3),
+                                                                 'u_iso (total)' : round(u_iso_tot,3),
+                                                                 'b_iso (total)' : round(b_iso_tot,3)}
 
         self.log(self.tracking_data.loc[len(self.tracking_data.index)-1].to_string())
         # Dump to csv

@@ -60,7 +60,7 @@ def get_peptide_bond_type(prev_Ca, prev_C, curr_N, curr_Ca):
     assert curr_Ca.name.strip() == 'CA'
 
     ang = dihedral_angle(sites=[a.xyz for a in (prev_Ca, prev_C, curr_N, curr_Ca)], deg=True)
-    ang = numpy.round(ang, 2)
+    ang = round(ang, 2)
 
     if curr_N.parent().resname == 'PRO':
         cis, trans = ('PCIS','PTRANS')

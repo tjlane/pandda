@@ -6,5 +6,5 @@ def finite(x):
     return numpy.array(x)[numpy.isfinite(x)]
 
 def round_no_fail(a, decimals=0):
-    try:    return numpy.round(a, decimals)
+    try:    return round(a, decimals)
     except: return None

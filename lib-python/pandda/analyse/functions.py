@@ -152,8 +152,8 @@ class MapLoader(object):
         morphed_map.meta.scl_map_rms  = scaled_map_data.standard_deviation_of_the_sample()
 
         #with open('{}-map-load.log'.format(dataset.tag), 'w') as fh:
-        #    fh.write('Dx:'+str(numpy.round(numpy.array(dataset.model.alignment.reference_sites),2))+'\n')
-        #    fh.write('Gx:'+str(numpy.round(numpy.array(grid.partition.sites_cart),2))+'\n')
+        #    fh.write('Dx:'+str(round(numpy.array(dataset.model.alignment.reference_sites),2))+'\n')
+        #    fh.write('Gx:'+str(round(numpy.array(grid.partition.sites_cart),2))+'\n')
         #    fh.write('G2D'+str(mappings_grid2dataset)+'\n')
         #    fh.write('D2G'+str(mappings_dataset2grid)+'\n')
 

@@ -173,7 +173,7 @@ def write_individual_dataset_plots(pandda, datasets):
         x, y = get_wilson_plot_vals(miller_array=d.data.miller_arrays['scaled'].as_amplitude_array())
         pyplot.plot(x, y, 'b-', linewidth=2, label=d.tag+' (scaled)')
         # Plot settings
-        pyplot.axes().set_xticklabels([numpy.round(t**-0.5,2) if (t>0.0) else '' for t in pyplot.axes().get_xticks()])
+        pyplot.axes().set_xticklabels([round(t**-0.5,2) if (t>0.0) else '' for t in pyplot.axes().get_xticks()])
         pyplot.xlabel('resolution ($\AA$)')
         pyplot.ylabel('ln(mean amplitude)')
         #pyplot.tight_layout()
@@ -394,7 +394,7 @@ def write_dataset_summary_graphs(pandda):
     for d in non_rejected_dsets:
         x, y = get_wilson_plot_vals(miller_array=d.data.miller_arrays[d.meta.column_labels].as_amplitude_array())
         pyplot.plot(x, y, '-', linewidth=1)
-    pyplot.axes().set_xticklabels([numpy.round(t**-0.5,2) if (t>0.0) else '' for t in pyplot.axes().get_xticks()])
+    pyplot.axes().set_xticklabels([round(t**-0.5,2) if (t>0.0) else '' for t in pyplot.axes().get_xticks()])
     pyplot.xlabel('resolution ($\AA$)')
     pyplot.ylabel('ln(mean amplitude)')
     #pyplot.tight_layout()
@@ -414,7 +414,7 @@ def write_dataset_summary_graphs(pandda):
         ax.plot(x, y, '-', linewidth=1)
     axis_1.set_title('Datasets to be used for characterisation')
     axis_2.set_title('Datasets excluded from characterisation')
-    axis_2.set_xticklabels([numpy.round(t**-0.5,2) if (t>0.0) else '' for t in axis_2.get_xticks()])
+    axis_2.set_xticklabels([round(t**-0.5,2) if (t>0.0) else '' for t in axis_2.get_xticks()])
     axis_2.set_xlabel('resolution ($\AA$)')
     axis_1.set_ylabel('ln(mean amplitude)')
     axis_2.set_ylabel('ln(mean amplitude)')
@@ -458,7 +458,7 @@ def write_truncated_data_plots(pandda, resolution, datasets):
     for d in datasets:
         x, y = get_wilson_plot_vals(miller_array=d.data.miller_arrays['truncated'].as_amplitude_array())
         pyplot.plot(x, y, '-', linewidth=1)
-    pyplot.axes().set_xticklabels([numpy.round(t**-0.5,2) if (t>0.0) else '' for t in pyplot.axes().get_xticks()])
+    pyplot.axes().set_xticklabels([round(t**-0.5,2) if (t>0.0) else '' for t in pyplot.axes().get_xticks()])
     pyplot.xlabel('resolution ($\AA$)')
     pyplot.ylabel('ln(mean amplitude)')
     #pyplot.tight_layout()
