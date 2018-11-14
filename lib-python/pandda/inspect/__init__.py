@@ -690,7 +690,7 @@ class PanddaInspector(object):
         dataset_list = list(self.site_list.events.index.values)
         dsl = [dataset for (dataset, id) in dataset_list]
         locations = [i for i, x in enumerate(dsl) if x == dataset_id]
-        print(locations)
+
         if locations:
             first = locations[0]
             event = self.site_list.event_from_index(first)
