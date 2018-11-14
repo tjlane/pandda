@@ -434,6 +434,11 @@ class PanddaSiteTracker(object):
 #        print '\n\nCurrent Event:\n\n{!s}\n\n'.format(curr_event)
         return PanddaEvent(rank=self.rank_val, info=curr_event, top_dir=self.top_dir)
 
+    def event_from_index(self, index):
+        curr_event = self.events.iloc[index]
+
+        return curr_event
+
     #-------------------------------------------------------------------------
 
     def at_first_event(self):
