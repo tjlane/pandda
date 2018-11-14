@@ -158,7 +158,7 @@ def run(params):
         log.subheading('Space Group {}: {} dataset(s)'.format(cg.space_groups[0], len(cg.crystals)))
 
         log('Unit Cell Variation:')
-        log(round(float(cg.uc_stats.as_pandas_table().T), 2))
+        log(numpy.round(cg.uc_stats.as_pandas_table().T, 2))
 
         log('')
         log('Making unit cell dendrogram for all crystals with this spacegroup')
@@ -182,7 +182,7 @@ def run(params):
             log.bar(False, True)
 
             log('Unit Cell Variation:')
-            log(round(float(cg.uc_stats.as_pandas_table().T), 2))
+            log(numpy.round(cg.uc_stats.as_pandas_table().T, 2))
 
             log('')
             log('Making unit cell dendrogram for this cluster of crystals')

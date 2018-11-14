@@ -56,7 +56,7 @@ def write_html_summary(fname, atom_group_summaries):
 
         columns = []
         # Num Atoms
-        columns.append({'colour':'default', 'message':round(float(bfs.size()),1)})
+        columns.append({'colour':'default', 'message':numpy.round(bfs.size(),1)})
         # B-Factors
         columns.append({'colour':'default', 'message':round(float(bfs_stat.min),1)})
         columns.append({'colour':'default', 'message':round(float(bfs_stat.max),1)})
@@ -70,7 +70,7 @@ def write_html_summary(fname, atom_group_summaries):
         if (flex.sum_sq(bfz)/bfz.size())**0.5 < 2.5:
             columns.append({'colour':'default', 'message':round(float(flex.sum_sq(bfz)/bfz.size())**0.5,1)})
         else:
-            columns.append({'colour':'danger', 'icon':'remove', 'message':round(float(flex.sum_sq(bfz)/bfz.size())**0.5,1)})
+            columns.append({'colour':'danger', 'icon':'remove', 'message':round((flex.sum_sq(bfz)/bfz.size())**0.5,1)})
 
         row_message = '' if (flex.sum_sq(bfz)/bfz.size())**0.5 < 2.5 else \
                       'Check'

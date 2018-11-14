@@ -1770,8 +1770,8 @@ class PanddaMultiDatasetAnalyser(Program):
             self.tables.dataset_info.set_value(d.tag, 'high_resolution', round(float(d.data.summary.high_res), 3))
             self.tables.dataset_info.set_value(d.tag, 'low_resolution',  round(float(d.data.summary.low_res) ,3))
             # Unit cell info
-            self.tables.dataset_info.set_value(d.tag, ['uc_a','uc_b','uc_c','uc_alpha','uc_beta','uc_gamma'],   round(float(d.data.summary.unit_cell.parameters()), 3))
-            self.tables.dataset_info.set_value(d.tag, 'uc_vol',                                                 round(float(d.data.summary.unit_cell.volume())), 3)
+            self.tables.dataset_info.set_value(d.tag, ['uc_a','uc_b','uc_c','uc_alpha','uc_beta','uc_gamma'],   numpy.round(d.data.summary.unit_cell.parameters(), 3))
+            self.tables.dataset_info.set_value(d.tag, 'uc_vol',                                                 numpy.round(d.data.summary.unit_cell.volume()), 3)
             # Spacegroup info
             self.tables.dataset_info.set_value(d.tag, 'space_group', d.data.summary.space_group.info().type().lookup_symbol())
             # Quality info
@@ -1779,7 +1779,7 @@ class PanddaMultiDatasetAnalyser(Program):
             self.tables.dataset_info.set_value(d.tag, 'r_free', round_no_fail(d.model.input.get_r_rfree_sigma().r_free,3))
             # Alignment info
             if d.model.alignment:
-                self.tables.dataset_info.set_value(d.tag, 'rmsd_to_reference', round(float(d.model.alignment.alignment_rmsd()), 3))
+                self.tables.dataset_info.set_value(d.tag, 'rmsd_to_reference', numpy.round(d.model.alignment.alignment_rmsd(), 3))
 
     def filter_datasets_1(self, filter_dataset=None):
         """Filter out the datasets which contain different protein models (i.e. protein length, sequence, etc)"""
