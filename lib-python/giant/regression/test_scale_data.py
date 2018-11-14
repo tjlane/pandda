@@ -21,8 +21,8 @@ class TestLinearFitting(unittest.TestCase):
                            ref_values = t1_ref_values,
                            scl_values = t1_mov_values)
 
-        self.assertAlmostEqual(round(ls.optimised_values[0],3), self.v0)
-        self.assertAlmostEqual(round(ls.optimised_values[1],3), self.v1)
+        self.assertAlmostEqual(round(float(ls.optimised_values[0]),3), self.v0)
+        self.assertAlmostEqual(round(float(ls.optimised_values[1]),3), self.v1)
 
         # Check scaling is working correctly
         scaled = ls.transform(t1_mov_values)

@@ -127,6 +127,6 @@ for dir in glob.glob(os.path.join(top_dir,'pandda-export','*')):
 
             lig_sum = lig_sums[i_lig]
             pandda_table.set_value(index=e_index, col='Actual Occupancy', value=lig_sum.occies_stats.mean)
-            pandda_table.set_value(index=e_index, col='Refined B-Factor', value=round(lig_sum.b_facs_stats.mean,2))
+            pandda_table.set_value(index=e_index, col='Refined B-Factor', value=round(float(lig_sum.b_facs_stats.mean),2))
 
 pandda_table.to_csv(new_csv)

@@ -105,12 +105,12 @@ class Grid(object):
     def summary(self):
         return '\n'.join([  '----------------------------------->>>',
                             'Reference Grid Summary:',
-                            'Grid Spacing:        {!s}'.format(round(self.grid_spacing(), 3)),
-                            'Grid Point Volume:   {!s}'.format(round(self.grid_point_volume(),3)),
+                            'Grid Spacing:        {!s}'.format(round(float(self.grid_spacing()), 3)),
+                            'Grid Point Volume:   {!s}'.format(round(float(self.grid_point_volume()),3)),
                             'Size of Grid (3D):   {!s}'.format(self.grid_size()),
                             'Size of Grid (1D):   {!s}'.format(self.grid_size_1d()),
-                            'Grid Origin  (Cart): {!s}'.format(tuple([round(x,3) for x in self.cart_origin()])),
-                            'Size of Grid (Cart): {!s}'.format(tuple([round(x,3) for x in self.cart_size()]))
+                            'Grid Origin  (Cart): {!s}'.format(tuple([round(float(x),3) for x in self.cart_origin()])),
+                            'Size of Grid (Cart): {!s}'.format(tuple([round(float(x),3) for x in self.cart_size()]))
                         ])
 
     def write_array_as_map(self, array, f_name, origin_shift=True):

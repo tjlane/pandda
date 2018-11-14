@@ -157,7 +157,7 @@ def get_grid_points_within_index_cutoff_of_grid_sites_2(grid_sites, max_grid_dis
     max_grid = (max_x+2, max_y+2, max_z+2)
 
     # Round the grid sites to the nearest grid point
-    int_grid_sites = [tuple([int(round(x,0)) for x in site]) for site in grid_sites]
+    int_grid_sites = [tuple([int(round(float(x),0)) for x in site]) for site in grid_sites]
 
     # Grid objects
     grid_indexer = flex.grid(max_grid)

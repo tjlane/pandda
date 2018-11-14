@@ -22,5 +22,5 @@ def write_numpy_array_to_file(np_array, output_file, status=True):
     with open(output_file, 'w') as fh:
         for row in xrange(long_num):
             if status: status_bar(n=row, n_max=long_num)
-            output_line = [str(round(x,3)) for x in np_array[row]]
+            output_line = [str(round(float(x),3)) for x in np_array[row]]
             fh.write(', '.join(output_line)+'\n')

@@ -69,7 +69,7 @@ class GlobalAlignment(Alignment):
     def summary(self):
         o  = 'Global Alignment - {}\n'.format(self.id)
         o += '  {} residues used for alignment\n'.format(len(self.reference_sites))
-        o += '  Post-alignment c-alpha RMSD: {}\n'.format(round(self.alignment_rmsd(),2))
+        o += '  Post-alignment c-alpha RMSD: {}\n'.format(round(float(self.alignment_rmsd()),2))
         return o.strip('\n')
 
 
@@ -121,7 +121,7 @@ class LocalAlignment(Alignment):
         o  = 'Local alignment: {}\n'.format(self.id)
         o += '  Labels: {}-{} (Mov-Ref)\n'.format(self.mov_id, self.ref_id)
         o += '  Residues used for alignment: {}\n'.format(len(self.reference_sites))
-        o += '  Post-alignment c-alpha RMSD: {}\n'.format(round(self.alignment_rmsd(),2))
+        o += '  Post-alignment c-alpha RMSD: {}\n'.format(round(float(self.alignment_rmsd()),2))
         if self.seq_ali:
             o += '    '+str(self.seq_ali.pretty_print(out=ListStream(), top_name='ref', bottom_name='mov', show_ruler=False, block_size=80)).strip('\n ').replace('\n', '\n    ')
         return o.strip('\n')

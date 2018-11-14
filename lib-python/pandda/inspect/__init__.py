@@ -292,9 +292,9 @@ class PanddaEvent(object):
         # Dataset tag
         self.dtag = info.name[0]
         # Dataset Information
-        self.map_resolution  = round(info['analysed_resolution'],2)
-        self.map_uncertainty = round(info['map_uncertainty'],2)
-        self.rwork_rfree     = (round(info['r_work'],3),round(info['r_free'],3))
+        self.map_resolution  = round(float(info['analysed_resolution']),2)
+        self.map_uncertainty = round(float(info['map_uncertainty']),2)
+        self.rwork_rfree     = (round(float(info['r_work']),3),round(float(info['r_free']),3))
         # Event number for the dataset
         self.event_idx = int(info.name[1])
         # Position in the ranked list (1 -> n)
@@ -302,9 +302,9 @@ class PanddaEvent(object):
         # Site Number (1 -> m)
         self.site_idx  = int(info['site_idx'])
         # Event Info
-        self.est_1_bdc = round(info['1-BDC'], 2)
+        self.est_1_bdc = round(float(info['1-BDC']), 2)
         # Z statistics
-        self.z_peak = round(info['z_peak'], 1)
+        self.z_peak = round(float(info['z_peak']), 1)
         self.z_mean = info['z_mean']
         self.cluster_size = int(info['cluster_size'])
         # Coordinate information
@@ -561,7 +561,7 @@ class PanddaInspector(object):
         self.gui.labels['dtag'].set_label('<b>'+str(self.current_event.dtag)+'</b>')
         self.gui.labels['e_idx'].set_label(str(self.current_event.event_idx))
         self.gui.labels['e_1_bdc'].set_label(str(self.current_event.est_1_bdc))
-        self.gui.labels['zpeak'].set_label(str(round(self.current_event.z_peak,3)))
+        self.gui.labels['zpeak'].set_label(str(round(float(self.current_event.z_peak),3)))
         self.gui.labels['csize'].set_label(str(self.current_event.cluster_size))
         self.gui.labels['map_res'].set_label(str(self.current_event.map_resolution))
         self.gui.labels['map_unc'].set_label(str(self.current_event.map_uncertainty))

@@ -3295,13 +3295,13 @@ class MultiDatasetHierarchicalUijFitter(object):
         # Add to tracking table
         self.tracking_data.loc[len(self.tracking_data.index)] = {'cycle' : cycle_lab,
                                                                  'level' : level_lab,
-                                                                 'rmsd'  : round(rmsd,3),
-                                                                 'u_iso (level)' : round(u_iso_sel,3),
-                                                                 'b_iso (level)' : round(b_iso_sel,3),
-                                                                 'b_min (level)' : round(b_min_sel,3),
-                                                                 'b_max (level)' : round(b_max_sel,3),
-                                                                 'u_iso (total)' : round(u_iso_tot,3),
-                                                                 'b_iso (total)' : round(b_iso_tot,3)}
+                                                                 'rmsd'  : round(float(rmsd),3),
+                                                                 'u_iso (level)' : round(float(u_iso_sel),3),
+                                                                 'b_iso (level)' : round(float(b_iso_sel),3),
+                                                                 'b_min (level)' : round(float(b_min_sel),3),
+                                                                 'b_max (level)' : round(float(b_max_sel),3),
+                                                                 'u_iso (total)' : round(float(u_iso_tot),3),
+                                                                 'b_iso (total)' : round(float(b_iso_tot),3)}
 
         self.log(self.tracking_data.loc[len(self.tracking_data.index)-1].to_string())
         # Dump to csv
@@ -4309,11 +4309,11 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                     if min_eig > 0.0:
                         dst, atm = zip(*numpy.where(uij_eigs_min==min_eig))[0]
                         uij_start = tuple(uij_vals[dst,atm].tolist())
-                        self.log('Minimum uij eigenvalue: {}'.format(round(min_eig,6)))
+                        self.log('Minimum uij eigenvalue: {}'.format(round(float(min_eig),6)))
                         self.log('Atom with minimal uij eigenvalue: Dataset {}, Atom {}'.format(dst, atm))
-                        self.log('Atomic uij: {}'.format(tuple([round(v,6) for v in uij_start])))
+                        self.log('Atomic uij: {}'.format(tuple([round(float(v),6) for v in uij_start])))
                         self.log('Initialising the T-matrix with an isotropic uij of this size')
-                        uij_start = (round(min_eig,6),)*3 + (0.0,)*3
+                        uij_start = (round(float(min_eig),6),)*3 + (0.0,)*3
                         self.log('Setting initial T-matrix values to {}'.format(uij_start))
                         self.parameters().get(index=i_tls).model.set(vals=uij_start, components='T')
                         self.log(self.parameters().get(index=i_tls).model.summary())
