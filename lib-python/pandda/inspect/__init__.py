@@ -686,21 +686,26 @@ class PanddaInspector(object):
     def load_prev_site(self):
         self.load_new_event(new_event=self.site_list.get_prev_site())
 
+    def test_load_dataset(self, dataset_id):
+        dataset_list = list(self.site_list.events.index.values)
+        dsl = [dataset for (dataset, id) in dataset_list]
+        locations = [i for i, x in enumerate(dsl) if x == dataset_id]
+        print(locations)
+        if locations:
+            first = locations[0]
+            event = self.site_list.event_from_index(first)
+            self.site_list.rank_idx = first
+            self.site_list.rank_val = first + 1
+            self.site_list.site_val = event['site_idx']
+            self.site_list.get_next()
+            new_event = self.site_list.get_prev()
+            self.load_new_event(new_event=new_event)
+        else:
+            modal_msg(msg='No dataset found for this id')
+
     def load_dataset(self, dataset_id):
         """Find the next dataset with the given id"""
-        new_event = self.site_list.get_next()
-        # Check if this is the right dataset
-        if (new_event is not None) and (new_event.dtag != dataset_id):
-            if self.current_event.index == new_event.index:
-                # Check if we've looped around
-                modal_msg(msg='No dataset found for this id')
-            else:
-                # Load the next dataset if this doesn't match
-                print 'Event does not match dataset id: {} - {}'.format(dataset_id, new_event.dtag)
-                self.load_dataset(dataset_id=dataset_id)
-            return
-        # Actually load the event
-        self.load_new_event(new_event=new_event)
+        self.test_load_dataset(dataset_id)
 
     #-------------------------------------------------------------------------
 
