@@ -691,26 +691,25 @@ class PanddaInspector(object):
     def load_prev_site(self):
         self.load_new_event(new_event=self.site_list.get_prev_site())
 
-    def test_load_dataset(self, dataset_id):
-        dataset_list = list(self.site_list.events.index.values)
-        dsl = [dataset for (dataset, id) in dataset_list]
-        locations = [i for i, x in enumerate(dsl) if x == dataset_id]
-
-        if locations:
-            first = locations[0]
-            event = self.site_list.event_from_index(first)
-            self.site_list.rank_idx = first
-            self.site_list.rank_val = first + 1
-            self.site_list.site_val = event['site_idx']
-            self.site_list.get_next()
-            new_event = self.site_list.get_prev()
+    def load_dataset(self, dataset_id):
+        # Extract event indices for this dataset
+        dataset_idxs = [i for i, (d_id, e_id) in enumerate(self.site_list.events.index.values) if d_id == dataset_id]
+        # Load next event if found
+        if dataset_idxs:
+            curr_rank_idx = self.site_list.rank_idx
+            next_events = [i for i in locations if i > curr_rank_idx] # "short" list so doesn't matter iterating all the way through
+            if next_events:
+                new_rank_idx = next_events[0]
+            else:
+                # Go to first event if no following events
+                new_rank_idx = locations[0]
+            # Update the rank (only variable that needs setting)
+            self.site_list.rank_idx = new_rank_idx
+            # Update and get new event
+            new_event = self.site_list.get_new_current_event()
             self.load_new_event(new_event=new_event)
         else:
             modal_msg(msg='No dataset found for this id')
-
-    def load_dataset(self, dataset_id):
-        """Find the next dataset with the given id"""
-        self.test_load_dataset(dataset_id)
 
     #-------------------------------------------------------------------------
 
