@@ -113,7 +113,7 @@ def randomise_occupancies(hierarchy, params, verbose=False):
             ag.atoms().set_occ(flex.double(ag.atoms_size(), ag.atoms().extract_occ()[0]/total_occ))
         
         if verbose:
-            print 'Final Occupancies:   ', [numpy.round(ag.atoms().extract_occ()[0],2) for ag in ags]
+            print 'Final Occupancies:   ', [round(ag.atoms().extract_occ()[0],2) for ag in ags]
 
     return hierarchy 
 

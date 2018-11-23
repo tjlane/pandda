@@ -56,7 +56,7 @@ def write_html_summary(fname, atom_group_summaries):
 
         columns = []
         # Num Atoms
-        columns.append({'colour':'default', 'message':numpy.round(bfs.size(),1)})
+        columns.append({'colour':'default', 'message':round(bfs.size(),1)})
         # B-Factors
         columns.append({'colour':'default', 'message':round(float(bfs_stat.min),1)})
         columns.append({'colour':'default', 'message':round(float(bfs_stat.max),1)})
