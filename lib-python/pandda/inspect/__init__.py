@@ -697,12 +697,12 @@ class PanddaInspector(object):
         # Load next event if found
         if dataset_idxs:
             curr_rank_idx = self.site_list.rank_idx
-            next_events = [i for i in locations if i > curr_rank_idx] # "short" list so doesn't matter iterating all the way through
+            next_events = [i for i in dataset_idxs if i > curr_rank_idx] # "short" list so doesn't matter iterating all the way through
             if next_events:
                 new_rank_idx = next_events[0]
             else:
                 # Go to first event if no following events
-                new_rank_idx = locations[0]
+                new_rank_idx = dataset_idxs[0]
             # Update the rank (only variable that needs setting)
             self.site_list.rank_idx = new_rank_idx
             # Update and get new event
