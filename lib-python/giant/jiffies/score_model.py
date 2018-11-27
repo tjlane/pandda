@@ -363,7 +363,7 @@ def make_residue_radar_plot(path, data, columns, linetype=None, remove_blank_ent
     for col in column_names:
         tvs=[]; tls=[]
         for i, v in enumerate(plot_data[col]):
-            try: l = round(v, 2)
+            try: l = round(float(v), 2)
             except:
                 l = 'Error'; v = None;
             # Add point marker

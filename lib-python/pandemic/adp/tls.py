@@ -290,7 +290,7 @@ class TLS_AmplitudeSet(object):
     def normalise(self, target=1.0):
         """Normalise the amplitudes and return multipliers to be applied to the TLS model object"""
         # Calculate the average of all the amplitudes
-        amp_mean = numpy.round(numpy.mean(self.get(components='TLS')), self._decimals)
+        amp_mean = round(float(numpy.mean(self.get(components='TLS'))), self._decimals)
         # Abort normalisation if average amplitude is approx zero
         if amp_mean < 1e-6:
             return (None, None, None)
@@ -370,7 +370,7 @@ class T_AmplitudeSet(TLS_AmplitudeSet):
     def normalise(self, target=1.0):
         """Normalise the amplitudes and return multipliers to be applied to the TLS model object"""
         # Calculate the average of all the amplitudes
-        amp_mean = numpy.round(numpy.mean(self.get(components='T')), self._decimals)
+        amp_mean = round(float(numpy.mean(self.get(components='T'))), self._decimals)
         # Abort normalisation if average amplitude is approx zero
         if amp_mean < 1e-6:
             return (None, None, None)
@@ -416,8 +416,8 @@ class T_L_AmplitudeSet(TLS_AmplitudeSet):
     def normalise(self, target=1.0):
         """Normalise the amplitudes and return multipliers to be applied to the TLS model object"""
         # Calculate the average of all the amplitudes
-        t_mean = numpy.round(numpy.mean(self.get(components='T')), self._decimals)
-        l_mean = numpy.round(numpy.mean(self.get(components='L')), self._decimals)
+        t_mean = round(float(numpy.mean(self.get(components='T'))), self._decimals)
+        l_mean = round(float(numpy.mean(self.get(components='L'))), self._decimals)
         # Start with unitary multipliers
         t_mult = l_mult = None
         # Normalise T-S amplitude

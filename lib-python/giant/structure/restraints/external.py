@@ -46,6 +46,6 @@ def find_atoms_around_alternate_conformers(hierarchy, altlocs=None, dist_cutoff=
             at_dists_sel = (at_dists_sq < dist_cut_sq).iselection()
             # Iterate through nearby atoms and append
             for atom_2 in comb_ats.select(at_dists_sel):
-                atom_pairs.append((atom.fetch_labels(), atom_2.fetch_labels(), round(atom.distance(atom_2),3)))
+                atom_pairs.append((atom.fetch_labels(), atom_2.fetch_labels(), round(float(atom.distance(atom_2)),3)))
 
     return atom_pairs

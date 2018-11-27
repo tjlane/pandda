@@ -90,7 +90,7 @@ def run(params):
         aligned_coords = combined_alignment.nat2ref(coordinates=h_mov.atoms().extract_xyz())
         if params.verbose:
             rmsd = (h_mov.atoms().extract_xyz() - aligned_coords).rms_length()
-            print 'All-atom RMSD (before v after alignment): {}'.format(round(rmsd,3))
+            print 'All-atom RMSD (before v after alignment): {}'.format(round(float(rmsd),3))
 
         # =================================================>
         # Output structure

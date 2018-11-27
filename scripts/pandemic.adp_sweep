@@ -301,9 +301,9 @@ def create_sweeps(params, log=None):
 
                             # Create names for the sweep directory name
                             r_loop_lab = 'range_{}-{}'.format(r_loop_min,r_loop_max)
-                            d_loop_lab = 'avg_{}_std_{}_rng_{}'.format(round(numpy.mean(input_rsns),2), 
-                                                                       round(numpy.std(input_rsns),3),
-                                                                       round(numpy.max(input_rsns)-numpy.min(input_rsns),3))
+                            d_loop_lab = 'avg_{}_std_{}_rng_{}'.format(round(float(numpy.mean(input_rsns)),2),
+                                                                       round(float(numpy.std(input_rsns)),3),
+                                                                       round(float(numpy.max(input_rsns)-numpy.min(input_rsns)),3))
                             n_used_lab = 'ndatasets_{}'.format(n_use)
                             n_boot_lab = 'run_{}'.format(i_sample+1)
 

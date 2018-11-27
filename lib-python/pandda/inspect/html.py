@@ -141,10 +141,10 @@ def write_inspect_html(top_dir, inspector):
 
         columns.append({'message':d_event})
         columns.append({'message':d_data['site_idx']})
-        columns.append({'message':round(d_data['1-BDC'],3)})
-        columns.append({'message':round(d_data['z_peak'],3)})
+        columns.append({'message':round(float(d_data['1-BDC']),3)})
+        columns.append({'message':round(float(d_data['z_peak']),3)})
         columns.append({'message':d_data['analysed_resolution']})
-        columns.append({'message':round(d_data['map_uncertainty'],3)})
+        columns.append({'message':round(float(d_data['map_uncertainty']),3)})
 
         columns.append({'message':d_data['Ligand Confidence']})
         columns.append({'message':d_data['Comment']})

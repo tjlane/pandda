@@ -438,7 +438,7 @@ def pandda_main_loop(pandda):
             try:
                 from ascii_graph import Pyasciigraph
                 g=Pyasciigraph(float_format='{0:.3f}')
-                graph_data = [(m.meta.tag, round(m.meta.map_uncertainty,3)) for m in map_analyser.dataset_maps.all()]
+                graph_data = [(m.meta.tag, round(float(m.meta.map_uncertainty),3)) for m in map_analyser.dataset_maps.all()]
                 pandda.log.bar()
                 for l in g.graph(label='Uncertainties of maps used for density characterisation', data=graph_data):
                     if l.startswith('#######'): continue
@@ -659,10 +659,10 @@ def pandda_main_loop(pandda):
                 # Store analysis data in dataset map table
                 # ============================================================================>
                 pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'analysed_resolution', dataset_meta.resolution)
-                pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'z_map_mean',          round(dataset_meta.z_mean,3))
-                pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'z_map_std',           round(dataset_meta.z_stdv,3))
-                pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'z_map_skew',          round(dataset_meta.z_skew,3))
-                pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'z_map_kurt',          round(dataset_meta.z_kurt,3))
+                pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'z_map_mean',          round(float(dataset_meta.z_mean),3))
+                pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'z_map_std',           round(float(dataset_meta.z_stdv),3))
+                pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'z_map_skew',          round(float(dataset_meta.z_skew),3))
+                pandda.tables.dataset_map_info.set_value(tmp_dataset.tag, 'z_map_kurt',          round(float(dataset_meta.z_kurt),3))
                 # ============================================================================>
                 # Write out dataset information to csv file
                 # ============================================================================>
@@ -730,7 +730,7 @@ def pandda_main_loop(pandda):
                     map_maker = NativeMapMaker(dataset  = dataset,
                                                map_obj  = ref_event_map,
                                                sites_mask = pandda.grid.global_mask().sites_cart,
-                                               filename = dataset.file_manager.get_file('native_event_map').format(e.id[1], 1-e.info.estimated_bdc),
+                                               filename = dataset.file_manager.get_file('native_event_map').format(e.id[1], str(round(1.0-float(e.info.estimated_bdc),2))),
                                                args     = pandda.args,
                                                verbose  = pandda.settings.verbose)
                     native_map_maker_list.append(map_maker)

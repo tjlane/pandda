@@ -58,17 +58,17 @@ def write_html_summary(fname, atom_group_summaries):
         # Num Atoms
         columns.append({'colour':'default', 'message':round(bfs.size(),1)})
         # B-Factors
-        columns.append({'colour':'default', 'message':round(bfs_stat.min,1)})
-        columns.append({'colour':'default', 'message':round(bfs_stat.max,1)})
-        columns.append({'colour':'default', 'message':round(bfs_stat.mean,1)})
-        columns.append({'colour':'default', 'message':round((flex.sum_sq(bfs)/bfs.size())**0.5,1)})
+        columns.append({'colour':'default', 'message':round(float(bfs_stat.min),1)})
+        columns.append({'colour':'default', 'message':round(float(bfs_stat.max),1)})
+        columns.append({'colour':'default', 'message':round(float(bfs_stat.mean),1)})
+        columns.append({'colour':'default', 'message':round(float(flex.sum_sq(bfs)/bfs.size())**0.5,1)})
 
         # B-Factors Z-Scores
-        columns.append({'colour':'default', 'message':round(bfz_stat.min,2)})
-        columns.append({'colour':'default', 'message':round(bfz_stat.max,2)})
-        columns.append({'colour':'default', 'message':round(bfz_stat.mean,2)})
+        columns.append({'colour':'default', 'message':round(float(bfz_stat.min),2)})
+        columns.append({'colour':'default', 'message':round(float(bfz_stat.max),2)})
+        columns.append({'colour':'default', 'message':round(float(bfz_stat.mean),2)})
         if (flex.sum_sq(bfz)/bfz.size())**0.5 < 2.5:
-            columns.append({'colour':'default', 'message':round((flex.sum_sq(bfz)/bfz.size())**0.5,1)})
+            columns.append({'colour':'default', 'message':round(float(flex.sum_sq(bfz)/bfz.size())**0.5,1)})
         else:
             columns.append({'colour':'danger', 'icon':'remove', 'message':round((flex.sum_sq(bfz)/bfz.size())**0.5,1)})
 

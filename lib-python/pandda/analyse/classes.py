@@ -989,8 +989,8 @@ class PanddaMultiDatasetAnalyser(Program):
         buffer = self.params.masks.outer_mask + self.params.maps.padding
         grid_min = flex.double([s-buffer for s in sites_cart.min()])
         grid_max = flex.double([s+buffer for s in sites_cart.max()])
-        self.log('Grid minimum: {}'.format(tuple([round(x,3) for x in grid_min])))
-        self.log('Grid maximum: {}'.format(tuple([round(x,3) for x in grid_max])))
+        self.log('Grid minimum: {}'.format(tuple([round(float(x),3) for x in grid_min])))
+        self.log('Grid maximum: {}'.format(tuple([round(float(x),3) for x in grid_max])))
         # ============================================================================>
         # Create main grid object
         # ============================================================================>
@@ -1767,11 +1767,11 @@ class PanddaMultiDatasetAnalyser(Program):
         # ==============================>
         for d in self.datasets.all():
             # Resolution info
-            self.tables.dataset_info.set_value(d.tag, 'high_resolution', numpy.round(d.data.summary.high_res,3))
-            self.tables.dataset_info.set_value(d.tag, 'low_resolution',  numpy.round(d.data.summary.low_res,3))
+            self.tables.dataset_info.set_value(d.tag, 'high_resolution', round(float(d.data.summary.high_res), 3))
+            self.tables.dataset_info.set_value(d.tag, 'low_resolution',  round(float(d.data.summary.low_res) ,3))
             # Unit cell info
-            self.tables.dataset_info.set_value(d.tag, ['uc_a','uc_b','uc_c','uc_alpha','uc_beta','uc_gamma'],   numpy.round(d.data.summary.unit_cell.parameters(),3))
-            self.tables.dataset_info.set_value(d.tag, 'uc_vol',                                                 numpy.round(d.data.summary.unit_cell.volume()),3)
+            self.tables.dataset_info.set_value(d.tag, ['uc_a','uc_b','uc_c','uc_alpha','uc_beta','uc_gamma'],   numpy.round(d.data.summary.unit_cell.parameters(), 3))
+            self.tables.dataset_info.set_value(d.tag, 'uc_vol',                                                 numpy.round(d.data.summary.unit_cell.volume()), 3)
             # Spacegroup info
             self.tables.dataset_info.set_value(d.tag, 'space_group', d.data.summary.space_group.info().type().lookup_symbol())
             # Quality info
@@ -1779,7 +1779,7 @@ class PanddaMultiDatasetAnalyser(Program):
             self.tables.dataset_info.set_value(d.tag, 'r_free', round_no_fail(d.model.input.get_r_rfree_sigma().r_free,3))
             # Alignment info
             if d.model.alignment:
-                self.tables.dataset_info.set_value(d.tag, 'rmsd_to_reference', numpy.round(d.model.alignment.alignment_rmsd(),3))
+                self.tables.dataset_info.set_value(d.tag, 'rmsd_to_reference', numpy.round(d.model.alignment.alignment_rmsd(), 3))
 
     def filter_datasets_1(self, filter_dataset=None):
         """Filter out the datasets which contain different protein models (i.e. protein length, sequence, etc)"""
@@ -2020,9 +2020,9 @@ class PanddaMultiDatasetAnalyser(Program):
             # ==============================>
             # Report
             # ==============================>
-            self.log('Optimised B-factor Scaling Factor: {} ({})'.format(numpy.round(scaling.scaling_b_factor,3), 'sharpened' if scaling.scaling_b_factor<0 else 'blurred'))
-            self.log('RMSD to reference dataset: (unscaled) {}'.format(numpy.round(scaling.unscaled_rmsd,3)))
-            self.log('RMSD to reference dataset: (scaled)   {}'.format(numpy.round(scaling.scaled_rmsd,3)))
+            self.log('Optimised B-factor Scaling Factor: {} ({})'.format(round(float(scaling.scaling_b_factor),3), 'sharpened' if scaling.scaling_b_factor<0 else 'blurred'))
+            self.log('RMSD to reference dataset: (unscaled) {}'.format(round(float(scaling.unscaled_rmsd),3)))
+            self.log('RMSD to reference dataset: (scaled)   {}'.format(round(float(scaling.scaled_rmsd),3)))
 
             # ==============================>
             # Record metrics for unscaled data
@@ -2031,24 +2031,24 @@ class PanddaMultiDatasetAnalyser(Program):
             high_res_sel = scaling.x_values > 1/(4.0**2)
             low_res_sel  = scaling.x_values <= 1/(4.0**2)
             # Log unscaled rmsds values
-            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_rmsd_all', numpy.round(scaling.unscaled_rmsd,3))
-            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_rmsd_<4A', numpy.round(scaling.rmsd_to_ref(values=scaling.scl_values, sel=high_res_sel),3))
-            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_rmsd_>4A', numpy.round(scaling.rmsd_to_ref(values=scaling.scl_values, sel=low_res_sel),3))
+            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_rmsd_all', round(float(scaling.unscaled_rmsd),3))
+            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_rmsd_<4A', round(float(scaling.rmsd_to_ref(values=scaling.scl_values, sel=high_res_sel)),3))
+            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_rmsd_>4A', round(float(scaling.rmsd_to_ref(values=scaling.scl_values, sel=low_res_sel)),3))
             # Log the scaled log-rmsd values
-            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_ln_rmsd', numpy.round(scaling.unscaled_ln_rmsd,3))
-            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_ln_dev',  numpy.round(scaling.unscaled_ln_dev,3))
+            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_ln_rmsd', round(float(scaling.unscaled_ln_rmsd),3))
+            self.tables.dataset_info.set_value(dataset.tag, 'unscaled_wilson_ln_dev',  round(float(scaling.unscaled_ln_dev),3))
             # ==============================>
             # Report metrics for scaled data
             # ==============================>
             # Log the scaling
-            self.tables.dataset_info.set_value(dataset.tag, 'applied_b_factor_scaling', numpy.round(scaling.scaling_b_factor,3))
+            self.tables.dataset_info.set_value(dataset.tag, 'applied_b_factor_scaling', round(float(scaling.scaling_b_factor),3))
             # Log the scaled rmsd values
-            self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_all', numpy.round(scaling.scaled_rmsd,3))
-            self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_<4A', numpy.round(scaling.rmsd_to_ref(values=scaling.out_values, sel=high_res_sel),3))
-            self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_>4A', numpy.round(scaling.rmsd_to_ref(values=scaling.out_values, sel=low_res_sel),3))
+            self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_all', round(float(scaling.scaled_rmsd),3))
+            self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_<4A', round(float(scaling.rmsd_to_ref(values=scaling.out_values, sel=high_res_sel)),3))
+            self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_rmsd_>4A', round(float(scaling.rmsd_to_ref(values=scaling.out_values, sel=low_res_sel)),3))
             # Log the scaled log-rmsd values
-            self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_ln_rmsd', numpy.round(scaling.scaled_ln_rmsd,3))
-            self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_ln_dev',  numpy.round(scaling.scaled_ln_dev,3))
+            self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_ln_rmsd', round(float(scaling.scaled_ln_rmsd),3))
+            self.tables.dataset_info.set_value(dataset.tag, 'scaled_wilson_ln_dev',  round(float(scaling.scaled_ln_dev),3))
 
             # ==============================>
             # Select which data to use for analysis
@@ -2076,8 +2076,8 @@ class PanddaMultiDatasetAnalyser(Program):
             dataset.meta.scaled_wilson_b   = estimate_wilson_b_factor(miller_array=ma_scaled_com)
             self.tables.dataset_info.set_value(index=dataset.tag, col='unscaled_wilson_B', value=dataset.meta.unscaled_wilson_b)
             self.tables.dataset_info.set_value(index=dataset.tag, col='scaled_wilson_B',   value=dataset.meta.scaled_wilson_b)
-            self.log('Unscaled:   {}'.format(round(dataset.meta.unscaled_wilson_b,3)))
-            self.log('Scaled:     {}'.format(round(dataset.meta.scaled_wilson_b,3)))
+            self.log('Unscaled:   {}'.format(round(float(dataset.meta.unscaled_wilson_b),3)))
+            self.log('Scaled:     {}'.format(round(float(dataset.meta.scaled_wilson_b),3)))
 
             dataset.data.miller_arrays['scaled'] = ma_scaled_com
 
@@ -2602,8 +2602,8 @@ class PanddaMultiDatasetAnalyser(Program):
             large_limit = min(self.params.analysis.high_res_lower_limit,
                               max(self.tables.dataset_info['high_resolution']))
             # Round the limits up and down to create sensible limits
-            small_limit = round(small_limit - 0.005, 2)    # i.e. 1.344 -> 1.34
-            large_limit = round(large_limit + 0.005, 2)    # i.e. 3.423 -> 3.43
+            small_limit = round(float(small_limit) - 0.005, 2)    # i.e. 1.344 -> 1.34
+            large_limit = round(float(large_limit) + 0.005, 2)    # i.e. 3.423 -> 3.43
             self.log('Input limits: ({}-{})'.format(self.params.analysis.high_res_upper_limit,self.params.analysis.high_res_lower_limit))
             self.log('Updated limits:  ({}-{})'.format(small_limit, large_limit))
         else:
@@ -2631,8 +2631,8 @@ class PanddaMultiDatasetAnalyser(Program):
             # No variable cutoff - select all
             res_limits = curr_res_limits + [large_limit]  # i.e. [2]
         else:
-            small_res_limits = [round(x, 4) for x in numpy.arange(small_limit, curr_small_limit, self.params.analysis.high_res_increment).tolist()]
-            large_res_limits = [round(x, 4) for x in numpy.arange(curr_large_limit, large_limit, self.params.analysis.high_res_increment).tolist()]
+            small_res_limits = [round(float(x), 4) for x in numpy.arange(small_limit, curr_small_limit, self.params.analysis.high_res_increment).tolist()]
+            large_res_limits = [round(float(x), 4) for x in numpy.arange(curr_large_limit, large_limit, self.params.analysis.high_res_increment).tolist()]
             res_limits = small_res_limits + curr_res_limits + large_res_limits + [large_limit]
 
         return sorted(set(res_limits))
@@ -2939,11 +2939,11 @@ class PanddaMultiDatasetAnalyser(Program):
         """Add map information to central table"""
 
         for m in dataset_maps:
-            self.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'map_uncertainty' +suffix, round(m.meta.map_uncertainty,3))
-            self.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'obs_map_mean'    +suffix, round(m.meta.obs_map_mean,3))
-            self.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'obs_map_rms'     +suffix, round(m.meta.obs_map_rms,3))
-            self.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'scl_map_mean'    +suffix, round(m.meta.scl_map_mean,3))
-            self.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'scl_map_rms'     +suffix, round(m.meta.scl_map_rms,3))
+            self.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'map_uncertainty' +suffix, round(float(m.meta.map_uncertainty),3))
+            self.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'obs_map_mean'    +suffix, round(float(m.meta.obs_map_mean),3))
+            self.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'obs_map_rms'     +suffix, round(float(m.meta.obs_map_rms),3))
+            self.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'scl_map_mean'    +suffix, round(float(m.meta.scl_map_mean),3))
+            self.tables.dataset_map_info.set_value(m.meta.tag, prefix+ 'scl_map_rms'     +suffix, round(float(m.meta.scl_map_rms),3))
 
     def add_event_to_event_table(self, dataset, event):
         """Add event entries to the event table"""
@@ -2958,9 +2958,9 @@ class PanddaMultiDatasetAnalyser(Program):
         else:               site_idx = 0
         self.tables.event_info.set_value(event.id, 'site_idx', site_idx)
         # Event and cluster information
-        self.tables.event_info.set_value(event.id, '1-BDC',  round(1.0-event.info.estimated_bdc,2))
-        self.tables.event_info.set_value(event.id, 'z_peak', round(event.cluster.max,2))
-        self.tables.event_info.set_value(event.id, 'z_mean', round(event.cluster.mean,2))
+        self.tables.event_info.set_value(event.id, '1-BDC',  round(float(1.0-event.info.estimated_bdc),2))
+        self.tables.event_info.set_value(event.id, 'z_peak', round(float(event.cluster.max),2))
+        self.tables.event_info.set_value(event.id, 'z_mean', round(float(event.cluster.mean),2))
         self.tables.event_info.set_value(event.id, 'cluster_size', event.cluster.size)
 #        self.tables.event_info.set_value(event.id, ['refx','refy','refz'], list(self.grid.grid2cart([event.cluster.peak],origin_shift=False)[0]))
         self.tables.event_info.set_value(event.id, ['x','y','z'], list(dataset.model.alignment.ref2nat(coordinates=self.grid.grid2cart([event.cluster.peak],origin_shift=True))[0]))
