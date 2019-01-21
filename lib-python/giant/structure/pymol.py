@@ -7,21 +7,27 @@ from bamboo.pymol_utils import PythonScript
 from giant.structure.select import get_select_function
 from giant.structure.formatting import PymolSelection, ShortLabeller
 
-def auto_chain_images(structure_filename, output_prefix, selection='protein', style='cartoon', **kw_args):
-    filter_func = get_select_function(selection)
+def _load_and_filter(structure_filename, selection):
+    s_h = ih(structure_filename).hierarchy
+    c = s_h.atom_selection_cache()
+    s = c.selection(selection)
+    return s_h.select(s)
+
+def auto_chain_images(structure_filename, output_prefix, selection='not water', style='cartoon', het_style=None, **kw_args):
+    h = _load_and_filter(structure_filename, selection)
     return selection_images(structure_filename  = structure_filename,
                             output_prefix       = output_prefix+'-chain_',
-                            selections  = [PymolSelection.format(c) for c in filter_func(ih(structure_filename).hierarchy).chains()],
-                            labels      = [ShortLabeller.format(c)  for c in filter_func(ih(structure_filename).hierarchy).chains()],
-                            style = style, **kw_args)
+                            selections  = [PymolSelection.format(c) for c in h.chains()],
+                            labels      = [ShortLabeller.format(c)  for c in h.chains()],
+                            style = style, het_style=het_style, **kw_args)
 
-def auto_residue_images(structure_filename, output_prefix, selection='protein', style='sticks', **kw_args):
-    filter_func = get_select_function(selection)
+def auto_residue_images(structure_filename, output_prefix, selection='not water', style='sticks', het_style=None, **kw_args):
+    h = _load_and_filter(structure_filename, selection)
     return selection_images(structure_filename  = structure_filename,
                             output_prefix       = output_prefix+'-residue_',
-                            selections  = [PymolSelection.format(r) for r in filter_func(ih(structure_filename).hierarchy).residue_groups()],
-                            labels      = [ShortLabeller.format(r)  for r in filter_func(ih(structure_filename).hierarchy).residue_groups()],
-                            style = style, **kw_args)
+                            selections  = [PymolSelection.format(r) for r in h.residue_groups()],
+                            labels      = [ShortLabeller.format(r)  for r in h.residue_groups()],
+                            style = style, het_style=het_style, **kw_args)
 
 def selection_images(structure_filename,
                      output_prefix,
@@ -37,6 +43,7 @@ def selection_images(structure_filename,
                      width  = 800,
                      height = 600,
                      colour_selections = None,
+                     het_style = None,
                     ):
 
     if labels is None:
@@ -64,6 +71,10 @@ def selection_images(structure_filename,
     s.load_pdb(f_name=structure_filename, obj='input_structure')
     # Set styles
     style = style.split('+')
+    if het_style:
+        het_style = het_style.split('+')
+    else:
+        het_style = []
 
     png_filenames = []
 
@@ -71,6 +82,8 @@ def selection_images(structure_filename,
         # Reset the structure to all look the same
         s.show_as(obj='all', style=style[0])
         s.colour(obj='all', colour="grey90")
+        for sty in het_style:
+            s.show(obj='het', style=sty)
         # Apply custom views to the selection
         s.select(obj='sele', selection=selection)
         for sty in style:

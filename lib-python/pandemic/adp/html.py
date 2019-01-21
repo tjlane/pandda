@@ -1,4 +1,5 @@
 import os, glob
+import math
 import numpy, pandas
 
 from scitbx.array_family import flex
@@ -10,6 +11,18 @@ from pandemic.html import PANDEMIC_HTML_ENV
 
 # debugging flags
 DEBUG = False
+
+DEG2RAD = math.pi/180.0
+DEG2RADSQ = DEG2RAD*DEG2RAD
+RAD2DEG = 1.0 / DEG2RAD
+RAD2DEGSQ = 1.0 / DEG2RADSQ
+
+class Counter(object):
+    def __init__(self, start=0):
+        self.i = start
+    def next(self):
+        self.i += 1
+        return self.i
 
 def format_summary(text, width=12, type='alert', colour='info'):
     paragraphs = text.split('\n\n')
@@ -55,24 +68,41 @@ def create_tls_decomposition_summary(tls_matrices, tolerance=1e-6):
                                  tol=tolerance)
     #from IPython import embed; embed(); raise Exception()
     if dcm.is_valid():
+        fmt_str_1 = '{:>8.3f}, {:>8.3f}, {:>8.3f}'
         dcm_lines = [
-                'Vibration Amplitudes: {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'.format(*dcm.v_amplitudes),
-                'Libration Amplitudes: {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'.format(*dcm.l_amplitudes),
-                'Screw Amplitudes:     {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'.format(*dcm.s_amplitudes),
-                '--------------------<br>',
-                ('Vibration Axes:  {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'+\
-                 '                 {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'+\
-                 '                 {:>9.3f}, {:>9.3f}, {:>9.3f}<br>').format(*numpy.concatenate(dcm.v_axis_directions)),
-                '--------------------<br>',
-                ('Libration Axes:  {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'+\
-                 '                 {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'+\
-                 '                 {:>9.3f}, {:>9.3f}, {:>9.3f}<br>').format(*numpy.concatenate(dcm.l_axis_directions)),
-                '--------------------<br>',
-                ('Libration Axes   {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'+\
-                 'Intersections:   {:>9.3f}, {:>9.3f}, {:>9.3f}<br>'+\
-                 '                 {:>9.3f}, {:>9.3f}, {:>9.3f}<br>').format(*numpy.concatenate(dcm.l_axis_intersections)),
-                ]
-        dcm_string = ('<samp>'+''.join(dcm_lines)+'</samp>').replace(' ','&nbsp;')
+                (
+                    '<h5>Amplitudes of TLS Motions:</h5>'+\
+                    '<samp>'+\
+                    ('Vibration (&#8491;):  '    +fmt_str_1+'<br>').format(*dcm.v_amplitudes)+\
+                    ('Libration (&#176;):  '     +fmt_str_1+'<br>').format(*[RAD2DEG*v for v in dcm.l_amplitudes])+\
+                    ('Screw   (&#8491;/&#176;):  ' +fmt_str_1+'<br>').format(*[v/RAD2DEG for v in dcm.s_amplitudes])+\
+                    '<br>'+\
+                    ('Libration (Rad):  '          +fmt_str_1+'<br>').format(*dcm.l_amplitudes)+\
+                    ('Screw   (&#8491;/Rad):  '    +fmt_str_1+'<br>').format(*dcm.s_amplitudes)+\
+                    '</samp>'
+                ),
+                (
+                    '<h5>Directions/Axes of TLS Motions:</h5>'+\
+                    '<samp>'+\
+                    (
+                        'Vibration Axes:  ({:>9.3f}, {:>9.3f}, {:>9.3f})<br>'+\
+                        '                 ({:>9.3f}, {:>9.3f}, {:>9.3f})<br>'+\
+                        '                 ({:>9.3f}, {:>9.3f}, {:>9.3f})<br>'
+                    ).format(*numpy.concatenate(dcm.v_axis_directions))+'<br>'+\
+                    (
+                        'Libration Axes:  ({:>9.3f}, {:>9.3f}, {:>9.3f})<br>'+\
+                        '                 ({:>9.3f}, {:>9.3f}, {:>9.3f})<br>'+\
+                        '                 ({:>9.3f}, {:>9.3f}, {:>9.3f})<br>'
+                    ).format(*numpy.concatenate(dcm.l_axis_directions))+'<br>'+\
+                    (
+                        'Libration Axis   ({:>9.3f}, {:>9.3f}, {:>9.3f})<br>'+\
+                        'Intersections:   ({:>9.3f}, {:>9.3f}, {:>9.3f})<br>'+\
+                        '                 ({:>9.3f}, {:>9.3f}, {:>9.3f})<br>'
+                    ).format(*numpy.concatenate(dcm.l_axis_intersections)) +\
+                    '</samp>'
+                ),
+                    ]
+        dcm_string = ('<hr>'.join(dcm_lines)).replace(' ','&nbsp;')
         colour = 'success'
     else:
         dcm_string = 'Unable to decompose TLS matrices: <br>&nbsp;&nbsp;&nbsp;&nbsp;{}'.format(dcm.error())
@@ -84,13 +114,30 @@ def create_tls_decomposition_summary(tls_matrices, tolerance=1e-6):
 def create_tls_amplitude_summary(tls_amplitudes):
     tls_amp_table = tls_amplitudes.T
     # Change the names of the "Mode" columns
-    new_columns = ['Mode {} - {}'.format(mode+1, cpt) for (mode, cpt) in tls_amp_table.columns]
+    new_columns = ['Mode {}'.format(int(mode+1)) for mode in tls_amp_table.columns]
     tls_amp_table.columns = new_columns
     # Remove columns names and add index name
     tls_amp_table.columns.name = 'Dataset'
-    tls_amp_table = tls_amp_table.to_html(bold_rows=False, classes=['table table-condensed table-hover datatable nowrap text-center'], border=0)
-    tls_amp_table = tls_amp_table.replace('<th>', '<th class="text-center">')
-    return {'table': tls_amp_table}
+    html_table = tls_amp_table.to_html(
+            float_format=lambda v: '{:.6f}'.format(v),
+            bold_rows=False,
+            classes=['table table-condensed table-hover datatable nowrap text-center'],
+            border=0)
+    html_table = html_table.replace('<th>', '<th class="text-center">')
+    return {'table': html_table}
+
+def create_tls_origins_summary(tls_origins):
+    # Change the names of the columns
+    tls_origins.columns = ['x','y','z']
+    # Remove columns names and add index name
+    tls_origins.columns.name = 'Dataset'
+    html_table = tls_origins.to_html(
+            float_format=lambda v: '{:.3f}'.format(v),
+            bold_rows=False,
+            classes=['table table-condensed table-hover datatable nowrap text-center'],
+            border=0)
+    html_table = html_table.replace('<th>', '<th class="text-center">')
+    return {'table': html_table}
 
 def create_overview_tab(parameterisation):
     p = parameterisation
@@ -136,6 +183,8 @@ def create_levels_tab(parameterisation):
     p = parameterisation
     f = parameterisation.fitter
     fm = parameterisation.file_manager
+
+    counter = Counter()
 
     tls_tolerance = p.params.fitting.precision.tls_tolerance
 
@@ -207,43 +256,52 @@ def create_levels_tab(parameterisation):
                      'long_name'  : 'Level {} ({})'.format(level_num, level_lab),
                      'description': 'Level {} of {}. '.format(level_num, len(f.levels))+\
                                     'Composed of {} groups'.format(level.n_groups()),
-                     'panels'       : [],
+                     'chain_tabs' : [],
+                     'group_tabs' : [],
               }
         tab['tabs'].append(level_tab)
         # Add overview at the top of the tab
-        for c_id in chain_ids:
+        for i_c, c_id in enumerate(chain_ids):
             partn_image = fm.get_file('pml-level-partition-template').format(level_num, c_id)
             chain_image = fm.get_file('pml-level-chain-template').format(level_num, c_id)
             stack_image = fm.get_file('png-tls-profile-template').format(level_num, c_id)
             aniso_image = fm.get_file('png-tls-anisotropy-template').format(level_num, c_id)
-            panel = {'title' : 'Chain {}'.format(c_id),
-                     'body'  : [
-                         {'width':6, 'title':'Coloured by Group',   'image':png2base64src_maybe(partn_image, print_on_missing=DEBUG)},
-                         {'width':6, 'title':'Fitted ADPs',         'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
-                         {'width':6, 'title':'Fitted ADPs by mode', 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
-                         {'width':6, 'title':'Anisotropy by atom',  'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)},
-                                        ],
-                    }
-            level_tab['panels'].append(panel)
-        # Read in the TLS models and amplitudes for this level
-        tls_models     = pandas.read_csv(fm.get_file('csv-tls-mdl-template').format(level_num)).set_index(['group','model']).drop('Unnamed: 0', axis=1, errors='ignore')
-        tls_amplitudes = pandas.read_csv(fm.get_file('csv-tls-amp-template').format(level_num)).set_index(['group','model','cpt']).drop('Unnamed: 0', axis=1, errors='ignore')
+            chain_tab = {'id'    : tab['id']+'chain{}'.format(counter.next()),
+                         'short_name' : 'Chain {}'.format(c_id),
+                         'long_name'  : 'Summary for Chain {}'.format(c_id),
+                         'description': '',
+                         'active'     : (i_c==0),
+                         'body'  : [
+                             {'width':6, 'title':'Coloured by Group',   'image':png2base64src_maybe(partn_image, print_on_missing=DEBUG)},
+                             {'width':6, 'title':'Fitted ADPs',         'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
+                             {'width':6, 'title':'Fitted ADPs by mode', 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
+                             {'width':6, 'title':'Anisotropy by atom',  'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)},
+                                      ],
+                         }
+            level_tab['chain_tabs'].append(chain_tab)
+        # Read in the TLS modes and amplitudes for this level
+        tls_matrices   = pandas.read_csv(fm.get_file('csv-tls-mat-template').format(level_num)).set_index(['group','mode']).drop('Unnamed: 0', axis=1, errors='ignore')
+        tls_amplitudes = pandas.read_csv(fm.get_file('csv-tls-amp-template').format(level_num)).set_index(['group','mode']).drop('Unnamed: 0', axis=1, errors='ignore')
         # Extract groups for each level
         for i_group, (group_num, sel, group_fitter) in enumerate(level):
             # Extract TLS values for this group
-            tls_mats = tls_models.loc[group_num]
+            tls_mats = tls_matrices.loc[group_num]
             tls_amps = tls_amplitudes.loc[group_num]
+            tls_coms = pandas.DataFrame(index=tls_amps.T.index, data=group_fitter.atomic_com)
             # Get TLS matrix summaries
             tls_mat_dicts = [create_tls_matrix_summary(tls_matrices=mats) for idx, mats in tls_mats.iterrows()]
             for i, d in enumerate(tls_mat_dicts):
                 d.update({'title':'Mode {}:'.format(i+1)})
             tls_dcm_dicts = [create_tls_decomposition_summary(tls_matrices=mats, tolerance=tls_tolerance) for idx, mats in tls_mats.iterrows()]
-            dcm_width = 12 if (p.params.fitting.tls_models_per_tls_group==1) else 6
+            dcm_width = 12 if (p.params.fitting.n_tls_modes_per_tls_group==1) else 6
             for i, d in enumerate(tls_dcm_dicts):
                 d.update({'title':'TLS Decomposition of Mode {}:'.format(i+1), 'width':dcm_width})
             # Get TLS amplitude summaries
             tls_amp_dict = create_tls_amplitude_summary(tls_amplitudes=tls_amps)
             tls_amp_dict.update({'width':12, 'type':'alert', 'colour':'info', 'title':'All Amplitudes'})
+            # Get TLS amplitude summaries
+            tls_ori_dict = create_tls_origins_summary(tls_origins=tls_coms)
+            tls_ori_dict.update({'width':12, 'type':'alert', 'colour':'info', 'title':'All TLS Origins'})
             # Get images and format values
             scl_image = fm.get_file('pml-level-scaled-template').format(level_num, group_num)
             adp_image = fm.get_file('pml-level-group-template').format(level_num, group_num)
@@ -257,17 +315,16 @@ def create_levels_tab(parameterisation):
                 if os.path.exists(image):
                     image_dicts.append({'width':4, 'text':text, 'image':png2base64src_maybe(image, print_on_missing=DEBUG)})
             # Create panel dictionary
-            panel = {'title' : 'Group {} - {}'.format(group_num, p.levels[i_level][i_group]),
-                     'width' : 12, #max(4,12//level.n_groups()),
-                     'show'  : (i_group==0),
-                     'body'  : [
-                         {'width':12, 'text':'<br>'.join(['Number of atoms: {}'.format(sum(sel))])}
-                         ] + tls_mat_dicts + image_dicts + tls_dcm_dicts + [tls_amp_dict]
-                    }
-            level_tab['panels'].append(panel)
-        # Make  the first panel open
-        if len(level_tab['panels']) > 0:
-            level_tab['panels'][0]['show'] = True
+            group_tab = {'id'    : tab['id']+'group{}'.format(counter.next()),
+                         'short_name' : 'Group {}'.format(group_num),
+                         'long_name'  : 'Group {} - {}'.format(group_num, p.levels[i_level][i_group]),
+                         'description': '',
+                         'active'  : (i_group==0),
+                         'body'  : [
+                             {'width':12, 'text':'<br>'.join(['Number of atoms: {}'.format(sum(sel))])}
+                             ] + tls_mat_dicts + image_dicts + tls_dcm_dicts + [tls_amp_dict, tls_ori_dict]
+                        }
+            level_tab['group_tabs'].append(group_tab)
     # -------------------------------->
     # Create tab for residual level
     # -------------------------------->
@@ -281,12 +338,12 @@ def create_levels_tab(parameterisation):
     # Get selection for fitted atoms
     atom_sel = flex.bool(p.atom_mask.tolist())
     # Create row for each residue
-    for i_chain, c in enumerate(p.blank_master_hierarchy().select(atom_sel,copy_atoms=True).chains()):
+    for i_c, c in enumerate(p.blank_master_hierarchy().select(atom_sel,copy_atoms=True).chains()):
         # Panel for chain overview
-        chain_image = fm.get_file('pml-residual-chain-template').format(c_id)
-        stack_image = fm.get_file('png-residual-profile-template').format(c_id)
-        aniso_image = fm.get_file('png-residual-anisotropy-template').format(c_id)
-        panel = {'title' : 'Residual overview for chain {}'.format(c_id),
+        chain_image = fm.get_file('pml-residual-chain-template').format(c.id)
+        stack_image = fm.get_file('png-residual-profile-template').format(c.id)
+        aniso_image = fm.get_file('png-residual-anisotropy-template').format(c.id)
+        panel = {'title' : 'Residual overview for chain {}'.format(c.id),
                  'body'  : [
                      {'width':8, 'title':'Fitted ADPs',         'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
                      {'width':6, 'title':'Fitted ADPs profile', 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},

@@ -22,7 +22,7 @@ def _revert_output(vals, single):
         return vals[0]
     return vals
 
-def uij_eigenvalues(uij):
+def sym_mat3_eigenvalues(uij):
     assert len(uij) == 6
     return linalg.eigensystem_real_symmetric(uij).values()
 
@@ -33,7 +33,7 @@ def uij_positive_are_semi_definite(uij, tol=1e-6):
     # Check tolerance negative
     tol = -1.0 * abs(tol)
     # Extract eigenvalues for each atom
-    eigenvalues = numpy.apply_along_axis(uij_eigenvalues, 1, uij)
+    eigenvalues = numpy.apply_along_axis(sym_mat3_eigenvalues, 1, uij)
     # Check all greater than zero
     neg = (eigenvalues < tol)
     out = neg.sum(axis=1).astype(bool)
@@ -60,7 +60,7 @@ def anistropic_uij_to_isotropic_uij(uij):
 def calculate_uij_anisotropy_ratio(uij, tolerance=1e-6):
     """Calculate the ratio of the maximal and the minimal eigenvalues of uij"""
     uij, single = _reshape_uij(vals=uij)
-    eigenvalues = numpy.apply_along_axis(uij_eigenvalues, 1, uij)
+    eigenvalues = numpy.apply_along_axis(sym_mat3_eigenvalues, 1, uij)
     maxe = numpy.max(eigenvalues, axis=1)
     mine = numpy.min(eigenvalues, axis=1)
     # Find the atoms with zero eigenvalues
@@ -88,7 +88,7 @@ def scale_uij_to_target_by_selection(hierarchy, selections, target=1.0, toleranc
         uijs = numpy.array(all_uij.select(sel))
         assert uijs.shape[1] == 6
         # Extract the maximum axis length of each uij
-        eigs = numpy.apply_along_axis(uij_eigenvalues, axis=1, arr=uijs)
+        eigs = numpy.apply_along_axis(sym_mat3_eigenvalues, axis=1, arr=uijs)
         maxs = numpy.max(eigs, axis=1)
         # Calculate average of the maxima
         mean_max = numpy.mean(maxs)

@@ -1,6 +1,9 @@
 import os, sys, glob, copy, shutil, traceback
 import math, itertools, operator, collections
 
+from IPython import embed
+import time
+
 import scipy.cluster
 import numpy, pandas
 
@@ -16,7 +19,7 @@ from scitbx import simplex, linalg, matrix
 
 from bamboo.common import Meta, Info, ListStream, dict_from_class
 from bamboo.common.logs import Log, LogStream, ScreenLogger
-from bamboo.common.path import easy_directory, rel_symlink
+from bamboo.common.path import easy_directory, rel_symlink, foldername, filename
 from bamboo.common.command import CommandManager
 from bamboo.maths.functions import get_function
 
@@ -24,7 +27,7 @@ from giant.manager import Program
 from giant.dataset import CrystallographicModel
 from giant.structure.tls import tls_str_to_n_params, get_t_l_s_from_vector
 from giant.structure.uij import uij_positive_are_semi_definite, \
-        uij_eigenvalues, uij_to_b, calculate_uij_anisotropy_ratio, \
+        sym_mat3_eigenvalues, uij_to_b, calculate_uij_anisotropy_ratio, \
         scale_uij_to_target_by_selection
 from giant.structure.formatting import ShortLabeller, PhenixSelection, PymolSelection
 from giant.structure.select import protein, backbone, sidechains, default_secondary_structure_selections_filled
@@ -36,7 +39,7 @@ from giant.xray.tls import phenix_find_tls_groups
 from giant.jiffies import multi_table_ones
 
 from pandemic.adp import html as pandemic_html
-from pandemic.adp.tls import TLSModel, TLS_AmplitudeSet, MultiDatasetTLSModelList, MultiDatasetTLSModel
+from mmtbx.tls.utils import uij_eigenvalues, TLSMatrices, TLSAmplitudes, TLSMatricesAndAmplitudesList
 
 try:
     import matplotlib
@@ -52,6 +55,10 @@ except Exception as e:
 numpy.set_printoptions(linewidth=numpy.inf, threshold=numpy.nan)
 
 EIGHT_PI_SQ = 8*math.pi*math.pi
+
+tls_amplitudes_hash = {
+        'simple_multiplier': TLSAmplitudes,
+        }
 
 ############################################################################
 
@@ -89,9 +96,10 @@ input {
     labelling = filename *foldername
         .type = choice(multi=False)
         .multiple = False
-    allow_isotropic = True
-        .type = bool
-        .help = "Control whether an error is raised if structures with isotropic B are provided."
+    input_uij_model = isotropic anisotropic *mixed
+        .type = choice(multi=False)
+        .multiple = False
+        .help = "Control whether an error is raised if selected atoms in structures have anisotropic/isotropic/mixed Bs."
     look_for_reflection_data = True
         .type = bool
     reference_r_values = None
@@ -129,7 +137,7 @@ output {
         .type = choice(multi=True)
 }
 levels {
-    overall_selection = "pepnames and (not water) and (not hetero) and (not element H)"
+    overall_selection = "(not water) and (not element H)"
         .type = str
     auto_levels = *chain auto_group *secondary_structure *residue *backbone *sidechain atom
         .type = choice(multi=True)
@@ -143,6 +151,10 @@ levels {
             .help = "Where to insert this level into the hierarchy? (after auto_levels have been determined). Inserting as '1' will make this the first level and '2' will add as the second level, etc. Any auto-generated levels will be shifted down appropriately."
             .type = int
             .multiple = False
+        label = None
+            .help = "What do I call the level?"
+            .type = str
+            .multiple = False
         selection = None
             .help = "list of selections that define groups for this level"
             .type = str
@@ -150,11 +162,11 @@ levels {
     }
 }
 fitting {
-    tls_models_per_tls_group = 1
+    n_tls_modes_per_tls_group = 1
         .help = 'how many TLS models to fit per group of atoms?'
         .type = int
-    tls_amplitude_model = *TLS
-        .help = 'which amplitudes should be used for multiplying each TLS group in each dataset? \n\tTLS = one amplitude for each TLS group.'
+    tls_amplitude_model = *simple_multiplier
+        .help = 'how do amplitudes transform each TLS group in each dataset? \n\tsimple_multiplier = T->aT, L->aL, S->aS.'
         .type = choice(multi=False)
     number_of_macro_cycles = 2
         .help = 'how many fitting cycles to run (over all levels) -- should be more than 0'
@@ -163,9 +175,15 @@ fitting {
         .help = 'how many fitting cycles to run (for each level) -- should be more than 1'
         .type = int
     optimisation {
-        dataset_weights = *one inverse_resolution inverse_resolution_squared inverse_resolution_cubed
+        dataset_weights = one inverse_resolution inverse_resolution_squared *inverse_resolution_cubed
             .help = 'control how datasets are weighted during optimisation?'
             .type = choice(multi=False)
+        atom_weights = one inverse_mod_U inverse_mod_U_squared *inverse_mod_U_cubed
+            .help = 'control how atoms are weighted during optimisation?'
+            .type = choice(multi=False)
+        renormalise_atom_weights_by_dataset = True
+            .help = "Should atom weights be normalised to an average of 1 for each dataset?"
+            .type = bool
         max_datasets = None
             .help = 'takes up to this number of datasets for TLS parameter optimisation'
             .type = int
@@ -189,18 +207,21 @@ fitting {
                 .type = float
         }
         penalties
-            .help = 'penalties during optimisation. penalty function is 0 if p is 0, else (a + b*p), i.e. (p>0)*(a+b*p).'
+            .help = 'penalties during optimisation.'
         {
             fitting_penalty_weights
                 .help = "Penalty function that controls how the fitting penalties are weighted as a function of distance to the target"
             {
-                form = none *sigmoid logarithm
+                form = none linear *sigmoid logarithm
                     .type = choice(multi=False)
                     .help = "Function to use to calculate how the fitting penalty changes as a function of delta-U"
                 y_scale = 2.0
                     .type = float
                     .help = "Multiplier for the form function (e.g. height of sigmoid function)"
-                x_width = 0.1
+                y_intercept = 0.0
+                    .type = float
+                    .help = "Intercept for the LINEAR form function"
+                x_width = 0.03671
                     .type = float
                     .help = "Width of the form function (e.g. width of sigmoid function)"
                 x_offset = 0.0
@@ -272,23 +293,23 @@ fitting {
                     .help = 'point at which the penalty becomes non-zero'
             }
         }
-        simplex_convergence = 1e-5
+        simplex_convergence = 1e-3
             .help = "cutoff for which the least-squares is considered converged"
             .type = float
     }
     precision
         .help = 'set various levels of precision for calculations'
     {
-        tls_tolerance = 1e-8
+        tls_tolerance = 1e-6
             .help = "tolerance for validating TLS matrices (cutoff for defining zero when calculating negative eigenvalues, etc)"
             .type = float
-        uij_tolerance = 1e-6
+        uij_tolerance = 1e-2
             .help = "tolerance for validating Uij values (maximum allowed negative eigenvalues of Uijs)"
             .type = float
-        tls_model_decimals = 9
-            .help = "how many decimals of precision to be used for TLS matrices (PDB maximum is three, but more needed here due to small Uij-values)"
+        tls_matrices_decimals = 12
+            .help = "how many decimals of precision to be used for TLS matrices (PDB maximum is three, but more needed here due to amplitudes less than one)"
             .type = int
-        tls_amplitude_decimals = 6
+        tls_amplitude_decimals = 12
             .help = "how many decimals of precision to be used for TLS amplitudes"
             .type = int
     }
@@ -334,8 +355,25 @@ settings {
 #                             Utility Functions                            #
 ############################################################################
 
+def format_no_fail(f_str, val):
+    try:
+        s = ('{'+f_str+'}').format(val)
+    except:
+        s = str(val)
+    return s
+
 def rms(vals, axis=None):
     return numpy.sqrt(numpy.mean(numpy.power(vals,2), axis=axis))
+
+def uij_modulus(uij_array):
+    sh = uij_array.shape
+    assert sh[-1] == 6
+    sh_ = sh[:-1]
+    uijs_flex = flex.sym_mat3_double(uij_array.reshape((numpy.product(sh_),6)))
+    uijs_eigs = numpy.array(uij_eigenvalues(uijs_flex)).reshape(sh_+(3,))
+    uijs_mods = numpy.mean(uijs_eigs, axis=len(sh_))
+    assert uijs_mods.shape == sh_
+    return uijs_mods
 
 def translate_phenix_selections_to_pymol_selections_simple(selections, verbose=False):
     """Convert simplex phenix selections into simplex pymol selections"""
@@ -440,57 +478,6 @@ def wrapper_fit(args):
 
 ############################################################################
 
-class UijPenalties(object):
-    _base_tol = 1e-6
-    _uij_tolerance = _base_tol
-    _tls_tolerance = _base_tol
-    _amp_tolerance = _base_tol
-
-    def __init__(self, params):
-
-        self.functions = {}
-
-        for f_name, p in [
-                ('tls_values', params.invalid_tls_values),
-                ('amplitudes', params.invalid_amplitudes),
-                ('uij_values', params.invalid_uij_values),
-                ('uij_target', params.over_target_values),
-                        ]:
-            self.functions[f_name] = get_function(**dict_from_class(p))
-
-    def tls_values(self, model):
-        """Return penalty for having unphysical TLS models"""
-        penalty = 0.0 if model.is_valid(tol=self._tls_tolerance) else 1.0
-        return self.functions['tls_values'](penalty)
-
-    def amplitudes(self, values):
-        """Return penalty for having amplitudes with negative values"""
-        penalty = abs(numpy.sum(values[values<-1.0*self._amp_tolerance]))
-        return self.functions['amplitudes'](penalty)
-
-    def uij_values(self, values):
-        assert len(values) == 6
-        eigenvalues = uij_eigenvalues(values)
-        penalty = -1.0*flex.sum(eigenvalues.select(eigenvalues<(-1.0*self._uij_tolerance)))
-        return self.functions['uij_values'](penalty)
-
-    def uij_model_target_difference(self, model_target_difference):
-        """Add penalty for having fitted ADPs greater than observed"""
-        penalties = numpy.array(map(uij_eigenvalues, model_target_difference))
-        return self.functions['uij_target'](penalties)
-
-    @classmethod
-    def set_tls_tolerance(cls, tolerance):
-        cls._tls_tolerance = tolerance
-
-    @classmethod
-    def set_uij_tolerance(cls, tolerance):
-        cls._uij_tolerance = tolerance
-
-    @classmethod
-    def set_amp_tolerance(cls, tolerance):
-        cls._amp_tolerance = tolerance
-
 class _Simplex(object):
     _steps = {}
 
@@ -510,8 +497,8 @@ class _Simplex(object):
             assert self._steps.has_key(k), 'Key {} not one of {}'.format(k,self._steps.keys())
             self._steps[k] = float(v)
 
-    def get_simplex(self, start, **kw_args):
-        delta = self.get_deltas(**kw_args)
+    def get_simplex(self, start, parameters, **kw_args):
+        delta = self.get_deltas(parameters, **kw_args)
         assert len(start)+1==len(delta) # e.g. 3d space (start) - 4 simplex points (delta)
         start_simplex = numpy.repeat([start], len(start)+1, axis=0)
         assert start_simplex.shape == delta.shape
@@ -572,13 +559,17 @@ class TLSSimplex(_Simplex):
                         0.,0.,0.,
                         0.,1.,0.))
 
-    def get_deltas(self, model, amplitudes, components, n_cpt, n_mdl, n_dst, tls_models, i_dst, i_mdl): #, **kw_args
+    def get_deltas(self, parameters, tls_matrices=None, tls_amplitudes=None): #, **kw_args
+
+        p = parameters
+        # matrices, amplitudes, components, n_mdl, n_dst, tls_matrices, i_dst, i_mdl
+
         p_mdl = 0
         p_amp = 0
-        if model is True:
-            p_mdl += tls_str_to_n_params(components, include_szz=False)*n_mdl
-        if amplitudes is True:
-            p_amp += n_mdl*n_cpt*n_dst
+        if p.optimise_matrices is True:
+            p_mdl += tls_str_to_n_params(p.components, include_szz=False)*p.n_mdl
+        if p.optimise_amplitudes is True:
+            p_amp += p.n_mdl*p.n_dst
 
         # Populate the delta array
         # Total number of parameters
@@ -587,19 +578,20 @@ class TLSSimplex(_Simplex):
         n_this = 0
         deltas = numpy.zeros((n_all, n_all))
         # Deal with models
-        if model is True:
-            assert components is not None, 'must provide components when model is True'
-            assert set('TLS').intersection(components), 'components must contain T, L or S'
-            for i_mdl in xrange(n_mdl):
+        if p.optimise_matrices is True:
+            assert tls_matrices is not None, 'must provide tls_matrices when params.optimise_matrices is True'
+            assert p.components is not None, 'must provide components when optimise_matrices is True'
+            assert set('TLS').intersection(p.components), 'components must contain T, L or S'
+            for i_mdl in xrange(p.n_mdl):
                 # Extract decomposition
-                d = tls_models[i_mdl].decompose()
+                d = tls_matrices[i_mdl].decompose()
                 # If decomposition is invalid (fixing mode), obviously can't use the decomposition
                 if not d.is_valid():
                     d = None
                 # Generate base for each component
                 for c in 'TLS':
                     # Skip if not selected
-                    if c not in components:
+                    if c not in p.components:
                         continue
                     c_deltas = None
                     if (c=='T'):
@@ -621,7 +613,8 @@ class TLSSimplex(_Simplex):
                         deltas[n_this+i, n_this:n_this+n_c] = dels
                     n_this += n_c
         # Deal with amplitudes
-        if amplitudes is True:
+        if p.optimise_amplitudes is True:
+            #TODO assert tls_ampltidues is not None, 'must provide amplitudes when params.optimise_amplitudes is True'
             amp_step = self.step_size('amplitude')
             for i in range(n_this, n_this+p_amp):
                 deltas[i,i] = amp_step
@@ -778,7 +771,7 @@ class TLSSimplex(_Simplex):
 class UijSimplex(_Simplex):
     _steps = {'uij': 0.001}
 
-    def get_deltas(self):
+    def get_deltas(self, parameters):
         n_uij = 6
         deltas = numpy.zeros((n_uij+1,n_uij))
         step = self.step_size('uij')
@@ -792,6 +785,11 @@ class UijSimplex(_Simplex):
         return s
 
 ############################################################################
+
+def res_from_model_pdb_input(m):
+    return CrystalSummary.from_pdb(pdb_input=m.input).high_res
+def res_from_model_mtz(m):
+    return CrystalSummary.from_mtz(m.i_mtz).high_res
 
 class MultiDatasetUijParameterisation(Program):
 
@@ -814,16 +812,17 @@ class MultiDatasetUijParameterisation(Program):
         self.params = params
 
         self._n_cpu = params.settings.cpus
-        self._n_opt = params.fitting.optimisation.max_datasets
 
         # Flag to control whether input/reference is compared
         self.compare = "Input"
 
         self.disorder_model = None
         self.has_reflection_data = False
+        self._resolution_from_model = res_from_model_pdb_input
 
-        self._opt_datasets_selection = []
-        self.dataset_weights = []
+        self.optimisation_datasets = None
+        self.dataset_weights = None
+        self.atom_weights = None
 
         self.models = models
         self.levels = levels
@@ -896,18 +895,6 @@ class MultiDatasetUijParameterisation(Program):
                 [self.params.analysis.table_ones_options.r_free_label]
             )
 
-        # Create dataset weight function
-        if self.params.fitting.optimisation.dataset_weights == 'one':
-            dataset_weight = lambda r: 1.0
-        elif self.params.fitting.optimisation.dataset_weights == 'inverse_resolution':
-            dataset_weight = lambda r: r**(-1.0)
-        elif self.params.fitting.optimisation.dataset_weights == 'inverse_resolution_squared':
-            dataset_weight = lambda r: r**(-2.0)
-        elif self.params.fitting.optimisation.dataset_weights == 'inverse_resolution_cubed':
-            dataset_weight = lambda r: r**(-3.0)
-        else:
-            raise Sorry('Invalid parameter provided for fitting.optimisation.dataset_weights: {}'.format(self.params.fitting.optimisation.dataset_weights))
-
         # Flag for whether we need resolution information
         need_res_info = (self.params.fitting.optimisation.max_resolution is not None) or (self.params.fitting.optimisation.dataset_weights != 'one')
 
@@ -938,8 +925,12 @@ class MultiDatasetUijParameterisation(Program):
                 mtz_file = m.filename.replace('.pdb','.mtz')
                 # Check all or none of the datasets have data
                 if (os.path.exists(mtz_file)):
-                    # Update flag
-                    self.has_reflection_data = True
+                    # We have found reflection data -- update flags
+                    if self.has_reflection_data is False:
+                        # Update flag
+                        self.has_reflection_data = True
+                        # Update function to extract resolution from model
+                        self._resolution_from_model = res_from_model_mtz
                     # Link the input mtz to the output folder
                     if self.params.output.copy_reflection_data_to_output_folder:
                         shutil.copy(mtz_file, m.i_mtz)
@@ -952,6 +943,7 @@ class MultiDatasetUijParameterisation(Program):
                                         'Missing File: {}'.format(mtz_file)))
                     continue
 
+            # Check we have resolution information, and/or that correct columns are present in the MTZ file
             if self.has_reflection_data:
                 # Extract crystal information from the MTZ
                 cs = CrystalSummary.from_mtz(m.i_mtz)
@@ -964,25 +956,17 @@ class MultiDatasetUijParameterisation(Program):
                                           "\nChange required columns with {}".format("table_ones_options.column_labels or table_ones_options.r_free_label")))
 
                 # Check for high res information
-                if (cs.high_res is None) and need_res_info:
+                if (self._resolution_from_model(m) is None) and need_res_info:
                     errors.append(Failure("MTZ does not contain resolution information: {}\n".format(m.i_mtz)))
                     continue
             else:
-                # Extract crystal information from the PDB
-                cs = CrystalSummary.from_pdb(pdb_input=m.input)
                 # Check for high res information
-                if (cs.high_res is None) and need_res_info:
+                if (self._resolution_from_model(m) is None) and need_res_info:
                     errors.append(Failure("PDB does not contain resolution information in the REMARK 3 records: {}\n".format(m.i_pdb) + \
                                           "This is normally present in structures that have come from refinement.\n" + \
                                           "You can also remove the high-resolution cutoff for dataset masking (optimisation.max_resolution=None),\n" + \
                                           "or use equal weighting for each dataset (optimisation.dataset_weights=one)"))
                     continue
-            high_res = cs.high_res
-            # Check high resolution limit for masking
-            if (self.params.fitting.optimisation.max_resolution is None) or (high_res < self.params.fitting.optimisation.max_resolution):
-                self._opt_datasets_selection.append(i_m)
-            # Calculate dataset weight
-            self.dataset_weights.append(dataset_weight(high_res))
 
         # Check for errors
         if errors:
@@ -992,23 +976,29 @@ class MultiDatasetUijParameterisation(Program):
                 self.log('')
             self.log.bar(False, True)
             raise Sorry("Some structures are invalid or missing information.")
-        # Check for errors - No high resolution structures?
-        if len(self._opt_datasets_selection) == 0:
-            self.log('Dataset resolutions:')
-            for m in self.models:
-                self.log('> {}: {}'.format(m.tag, m.input.get_r_rfree_sigma().high))
+
+        # Report dataset resolutions
+        self.log('\nDataset resolutions (extracted from {} files):'.format('MTZ' if self.has_reflection_data else 'PDB'))
+        for m in self.models:
+            self.log('> {}: {}'.format(m.tag, self._resolution_from_model(m)))
+        # Select optimisation datasets and run checks
+        self.optimisation_datasets = self.select_optimisation_datasets(self.models)
+        if len(self.optimisation_datasets) == 0:
             raise Sorry('No datasets above resolution cutoff: {}'.format(self.params.fitting.optimisation.max_resolution))
 
         # Limit the number of datasets for optimisation
-        if self._n_opt is not None:
-            self.log('Limiting list of datasets for TLS optimisation to {} datasets'.format(self._n_opt))
-            self._opt_datasets_selection = self._opt_datasets_selection[:self._n_opt]
+        n_opt = self.params.fitting.optimisation.max_datasets
+        if (n_opt is not None) and (len(self.optimisation_datasets) > n_opt):
+            self.log('\nLimiting list of datasets for TLS optimisation to {} datasets'.format(n_opt))
+            self.optimisation_datasets = self.optimisation_datasets[:n_opt]
         # Print optimisation datasets
-        self.log('Using {} datasets for TLS and residual parameterisation'.format(len(self._opt_datasets_selection)))
-        for i_m in self._opt_datasets_selection:
+        self.log('\nUsing {} datasets for TLS and residual parameterisation'.format(len(self.optimisation_datasets)))
+        for i_m in self.optimisation_datasets:
             self.log('\t'+self.models[i_m].tag)
-        # Print optimisation weights
-        self.log('Optimisation weights for TLS and residual parameterisation')
+
+        # Get and print optimisation weights
+        self.dataset_weights = self.calculate_dataset_weights(self.models)
+        self.log('\nOptimisation weights for TLS and residual parameterisation')
         for i_m, m in enumerate(self.models):
             self.log('\t{} (model {}) -> {:+10.6f} (resolution {})'.format(m.tag, i_m, self.dataset_weights[i_m], m.input.get_r_rfree_sigma().high))
 
@@ -1182,40 +1172,103 @@ class MultiDatasetUijParameterisation(Program):
         observed_uij = numpy.array([a.extract_uij() for a in atoms])[:,self.atom_mask]
         observed_xyz = numpy.array([a.extract_xyz() for a in atoms])[:,self.atom_mask]
 
+        # Variables to store details about anisotropic/isotropic atoms
+        disorder_model = self.params.input.input_uij_model
+        isotropic_mask = None
+
+        self.log.subheading('Validating input uijs')
+
         # Check all uijs are present
-        if (observed_uij==-1).all() and (self.params.input.allow_isotropic is True):
-            # Set model type to isotropic
-            disorder_model = 'isotropic'
-            # Extract isotropic component from atoms (again only for the atoms we're interested in)
-            self.log('All atoms are missing anisotropic displacement parameters -- using the isotropic parameters instead')
-            observed_uij = numpy.zeros_like(observed_uij)
-            observed_uij[:,:,0] = numpy.array([a.extract_b()/EIGHT_PI_SQ for a in atoms])[:,self.atom_mask]
-            observed_uij[:,:,2] = observed_uij[:,:,1] = observed_uij[:,:,0]
-        elif (observed_uij==-1).all() and (self.params.input.allow_isotropic is False):
-            raise Sorry('All atoms selected for fitting only have isotropic ADPs and input.allow_isotropic is currently False.\nOptions:' + \
-                    '\n   1) Re-refine structures with anisotropic ADPs.' + \
-                    '\n   2) Set input.allow_isotropic=True to allow use of isotropic ADPs.')
+        if (observed_uij==-1).all():
+            # meaning: ALL uij are isotropic
+            if (self.params.input.input_uij_model == 'isotropic'):
+                # Extract isotropic component from atoms (again only for the atoms we're interested in)
+                self.log('All atoms are missing anisotropic displacement parameters -- using the isotropic parameters instead')
+                iso_b_vals_all = numpy.array([a.extract_b()/EIGHT_PI_SQ for a in atoms])[:,self.atom_mask]
+                # Set Uij values of isotropic atoms
+                observed_uij = numpy.zeros_like(observed_uij)
+                observed_uij[:,:,0] = iso_b_vals_all
+                observed_uij[:,:,2] = observed_uij[:,:,1] = observed_uij[:,:,0]
+            else:
+                raise Sorry('All atoms selected for fitting have isotropic ADPs and input.input_uij_model is currently set to "{}".\nOptions:'.format(disorder_model) + \
+                        '\n   1) Re-refine structures with anisotropic ADPs.' + \
+                        '\n   2) Set input.input_uij_model=isotropic to allow use of isotropic ADPs.')
         elif (observed_uij==-1).any():
-            raise Sorry('Some atoms for fitting (but not all) have anisotropically-refined ADPs -- all atoms for fitting must have anisotropic ADPs, or all must be isotropic ADPs.\nOptions:' + \
-                    '\n   1) Re-refine structures so that all atoms selected have anisotropic ADPs. Current selection: levels.overall_selection{}'.format(self.params.levels.overall_selection) + \
-                    '\n   2) Change levels.overall_selection so that atoms with isotropic ADPs are not selected. Current selection: levels.overall_selection{}'.format(self.params.levels.overall_selection))
+            # meaning: SOME uij are isotropic
+            if (self.params.input.input_uij_model == 'mixed'):
+                # Find atoms that are isotropic
+                isotropic_mask = (observed_uij == -1).any(axis=(0,2)) # Could also make 2d-mask
+                # Set -1 values to 0.0
+                assert (observed_uij[:,isotropic_mask,:] == -1).all()
+                observed_uij[:,isotropic_mask,:] = 0.0
+                # Extract B-values and convert to Uijs
+                iso_b_vals_all = numpy.array([a.extract_b()/EIGHT_PI_SQ for a in atoms])[:,self.atom_mask]
+                iso_b_vals_sel = iso_b_vals_all[:,isotropic_mask]
+                # Set Uij values of isotropic atoms
+                observed_uij[:,isotropic_mask,0] = iso_b_vals_sel
+                observed_uij[:,isotropic_mask,2] = observed_uij[:,isotropic_mask,1] = observed_uij[:,isotropic_mask,0]
+            else:
+                raise Sorry('Some atoms for fitting (but not all) have anisotropically-refined ADPs and input.input_uij_model is currently set to "{}".\nOptions:'.format(disorder_model) + \
+                        '\n   1) Re-refine structures so that all atoms selected have {} ADPs and set input.input_uij_model={}.'.format(disorder_model, disorder_model) + \
+                        '\n   2) Change levels.overall_selection so that atoms with anisotropic/isotropic ADPs are not selected.' + \
+                        '\n   3) Change input.input_uij_model to "mixed". This may have result in misleading results that are difficult to interpret.'
+                        '\n   (Current overall selection: levels.overall_selection="{}")'.format(self.params.levels.overall_selection))
+        elif self.params.input.input_uij_model not in ['anisotropic','mixed']:
+            raise Sorry('input.input_uij_model is set to "{}" but all atoms selected have anisotropic uij.'.format(disorder_model))
         else:
-            # Set model type to anisotropic
-            disorder_model = 'anisotropic'
+            # meaning: All atoms are anisotropic
+            assert not (observed_uij==-1).any()
+            assert self.params.input.input_uij_model in ['anisotropic','mixed']
+            if self.params.input.input_uij_model == 'mixed':
+                self.log('Input disorder model is set to "{}", but all input atoms have anisotropic Uij.'.format(self.params.input.input_uij_model))
+                disorder_model = 'anisotropic'
+                self.log('Updated disorder_model to "{}"'.format(disorder_model))
+
+        # All -1 values should now have been removeed from input array
+        assert not (observed_uij==-1).any()
+
+        self.log('Disorder model is {}'.format(disorder_model))
+        self.log('')
+        if isotropic_mask is None:
+            self.log('Anisotropic atoms: {}'.format(observed_uij.shape[1]))
+        else:
+            self.log('Anisotropic atoms: {}'.format(isotropic_mask.size-isotropic_mask.sum()))
+            self.log('Isotropic atoms:   {}'.format(isotropic_mask.sum()))
+
+        # Calculate Uij weights
+        self.atom_weights = self.calculate_atom_weights(uij_values=observed_uij)
+
+        # Renormalise the atom weights if required
+        if self.params.fitting.optimisation.renormalise_atom_weights_by_dataset:
+            for i,c in enumerate(self.atom_weights):
+                self.atom_weights[i] = c / c.mean()
+
+        assert abs(self.dataset_weights.mean()-1.0) < 1e-3, 'average weight should be approximately 1!'
+        assert abs(self.atom_weights.mean()-1.0) < 1e-3,    'average weight should be approximately 1!'
+
+        # Calculate combined weighting
+        total_weights = self.dataset_weights.reshape((len(self.dataset_weights),1)) * self.atom_weights
+
+        # If atom weights are pre-normalised by dataset, total weight should already be normalised
+        if self.params.fitting.optimisation.renormalise_atom_weights_by_dataset:
+            assert abs(total_weights.mean()-1.0) < 1e-3, 'average weight should be approximately 1!'
+
+        # Normalise the total weights
+        total_weights /= total_weights.mean()
 
         # Create the fitting object
         self.fitter = MultiDatasetHierarchicalUijFitter(observed_uij = observed_uij,
                                                         observed_xyz = observed_xyz,
                                                         level_array  = self.level_array,
                                                         level_labels = self.level_labels,
-                                                        dataset_weights = numpy.array(self.dataset_weights),
+                                                        uij_weights = total_weights,
                                                         params = self.params.fitting,
                                                         verbose = self.params.settings.verbose,
                                                         log = self.log)
         # Set whether input is anisotropic or isotropic
-        self.fitter.set_input_info(disorder_model=disorder_model)
+        self.fitter.set_input_info(disorder_model=disorder_model, isotropic_mask=isotropic_mask)
         # Select the datasets for be used for TLS optimisation
-        self.fitter.set_optimisation_datasets(self._opt_datasets_selection)
+        self.fitter.set_optimisation_datasets(self.optimisation_datasets)
 
         # Table to be populated during optimisation
         self.fitter.set_tracking(table    = self.tables.tracking,
@@ -1234,11 +1287,60 @@ class MultiDatasetUijParameterisation(Program):
 
         # Calculate Parameter-observed data ratio
         self.log.subheading('Data-Parameter Ratios')
-        n_o = numpy.product(self.fitter.observed_uij.shape)
+        n_o = self.fitter.n_input_values()
         n_p = self.fitter.n_params(non_zero=False)
         self.log('Number of model parameters: {}'.format(n_p))
         self.log('Number of input uij values: {}'.format(n_o))
         self.log('Parameter ratio Gain (should be <1): {}'.format(float(n_p)/float(n_o)))
+
+    def calculate_dataset_weights(self, models):
+        """Calculate weightings for each model"""
+
+        # Dataset resolution weighting function
+        if self.params.fitting.optimisation.dataset_weights == 'one':
+            return numpy.ones_like(models)
+        elif self.params.fitting.optimisation.dataset_weights == 'inverse_resolution':
+            dataset_weight = lambda r: r**(-1.0)
+        elif self.params.fitting.optimisation.dataset_weights == 'inverse_resolution_squared':
+            dataset_weight = lambda r: r**(-2.0)
+        elif self.params.fitting.optimisation.dataset_weights == 'inverse_resolution_cubed':
+            dataset_weight = lambda r: r**(-3.0)
+        else:
+            raise Sorry('Invalid parameter provided for fitting.optimisation.dataset_weights: {}'.format(self.params.fitting.optimisation.dataset_weights))
+
+        # Create weights
+        weights = numpy.array([dataset_weight(self._resolution_from_model(m)) for m in models])
+        return weights / weights.mean()
+
+    def calculate_atom_weights(self, uij_values):
+
+        # Dataset resolution weighting function
+        if self.params.fitting.optimisation.atom_weights == 'one':
+            return numpy.ones_like(uij_values)
+        elif self.params.fitting.optimisation.atom_weights == 'inverse_mod_U':
+            atom_weight = lambda r: r**(-1.0)
+        elif self.params.fitting.optimisation.atom_weights == 'inverse_mod_U_squared':
+            atom_weight = lambda r: r**(-2.0)
+        elif self.params.fitting.optimisation.atom_weights == 'inverse_mod_U_cubed':
+            atom_weight = lambda r: r**(-3.0)
+        else:
+            raise Sorry('Invalid parameter provided for fitting.optimisation.atom_weights: {}'.format(self.params.fitting.optimisation.atom_weights))
+
+        # Calculate the average eigenvalue for each atom
+        uij_mod = uij_modulus(uij_values)
+        # Apply the transformation to get the weighting
+        weights = atom_weight(uij_mod)
+        return weights / weights.mean()
+
+    def select_optimisation_datasets(self, models):
+        if (self.params.fitting.optimisation.max_resolution is None):
+            return range(len(models))
+        selection = []
+        for i_m, m in enumerate(models):
+            if (self._resolution_from_model(m) < self.params.fitting.optimisation.max_resolution):
+                selection.append(i_m)
+        assert len(selection) > 0, 'no datasets selected for optimisation with resolution cutoff: {}'.format(self.params.fitting.optimisation.max_resolution)
+        return selection
 
     def show_warnings(self):
         """Print non-fatal errors accumulated during running"""
@@ -1253,7 +1355,7 @@ class MultiDatasetUijParameterisation(Program):
             self.log.bar()
             self.log(e)
         self.log.bar()
-        self.log.subheading(banner)
+        self.log.subheading(banner.replace('below','above'))
 
     def blank_master_hierarchy(self):
         h = self.master_h.deep_copy()
@@ -1520,13 +1622,14 @@ class MultiDatasetUijParameterisation(Program):
                 auto_chain_images(structure_filename = s_f,
                                   output_prefix = lvl_pml_prt_prefix.format(i_level+1),
                                   style = styles,
+                                  het_style = 'lines+spheres',
                                   colours = ['red','green','blue'],
                                   colour_selections = selections,
                                   settings = [('cartoon_oval_length', 0.5),
                                               ('cartoon_discrete_colors', 'on'),
                                               ('sphere_scale', 0.25)],
                                   width=1000, height=750,
-                                  delete_script = (not self.params.settings.debug))
+                                  delete_script = False and (not self.params.settings.debug))
                 assert glob.glob(lvl_pml_prt_template.format(i_level+1,'*')), 'no files have been generated!'
 
     def penalty_summary(self, out_dir_tag):
@@ -1537,56 +1640,65 @@ class MultiDatasetUijParameterisation(Program):
 
         penalties_meta = [
                 ('fitting_penalty_weights',
-                    'Weights on fitting penalties\nas a function of ($\Delta$U/$\Delta$U$_{max}$)$^2$',
-                    '($\Delta$U/$\Delta$U$_{max}$)$^2$',
+                    'Weights on fitting penalties\nas a function of rms($\Delta$U)',
+                    '8*$\pi^{2}$*rms($\Delta$U) ($\AA^2$)',
                     'Weighting',
                     (0.,1.),
+                    8.*math.pi*math.pi,
                     ),
                 ('invalid_amplitudes',
                     'Penalty functions for negative amplitudes',
                     'Sum of negative amplitudes',
                     'Penalty Value',
                     (-0.1,0.1),
+                    1.0,
                     ),
                 ('invalid_tls_values',
                     'Penalty functions for invalid TLS matrices',
                     'Validity of TLS matrix (0 or 1)',
                     'Penalty Value',
                     (-0.1, 1.1),
+                    1.0,
                     ),
                 ('invalid_uij_values',
                     'Penalty functions for Uijs\nwith negative eigenvalues',
                     'Uij Eigenvalue',
                     'Penalty Value',
                     (-0.1, 0.1),
+                    1.0,
                     ),
                 ('over_target_values',
                     'Penalty functions for eigenvalues\nof $\Delta$U=U$_{model}$-U$_{target}$',
-                    'Eigenvalue of $\Delta$U',
+                    'Eigenvalue of 8*$\pi^{2}$*$\Delta$U',
                     'Penalty Value',
                     None,
+                    8.*math.pi*math.pi,
                     ),
                 ]
 
-        for penalty_key, title, x_lab, y_lab, x_lim in penalties_meta:
+        for penalty_key, title, x_lab, y_lab, x_lim, x_scale in penalties_meta:
             self.log('Plotting penalty function for {}'.format(penalty_key))
             d = penalties_dict[penalty_key]
-            func = get_function(**dict_from_class(d))
-            if x_lim is None:
-                if d.form == 'piecewise_linear':
-                    x_lim = (func.x_discontinuity_location-1.0, func.x_discontinuity_location+1.0)
-                elif d.form == 'sigmoid':
-                    x_lim = (func.x_offset-10.0*func.x_width, func.x_offset+10.0*func.x_width)
-                else:
-                    x_lim = (-1.0, 1.0)
-            x_vals = numpy.linspace(x_lim[0], x_lim[1], 101)
-            y_vals = func(x_vals)
+            if d.form == 'none':
+                x_vals = numpy.array([-1,1])
+                y_vals = numpy.array([ 1,1])
+            else:
+                func = get_function(**dict_from_class(d))
+                if x_lim is None:
+                    if d.form == 'piecewise_linear':
+                        x_lim = (func.x_discontinuity_location-1.0, func.x_discontinuity_location+1.0)
+                    elif d.form == 'sigmoid':
+                        x_lim = (func.x_offset-10.0*func.x_width, func.x_offset+10.0*func.x_width)
+                    else:
+                        x_lim = (-1.0, 1.0)
+                x_vals = numpy.linspace(x_lim[0], x_lim[1], 101)
+                y_vals = func(x_vals)
             f_name = self.file_manager.add_file(file_name=penalty_key+'.png',
                                                 file_tag=penalty_key+'_png',
                                                 dir_tag=out_dir_tag)
             self.plot.lineplot(
                     filename=f_name,
-                    x=x_vals, y=y_vals,
+                    x=x_scale*x_vals, y=y_vals,
                     title=title, x_lab=x_lab, y_lab=y_lab,
                     )
 
@@ -1638,22 +1750,26 @@ class MultiDatasetUijParameterisation(Program):
             # Extract the fitters for each level
             fitters = [sel_level_objs[i_l].fitters.get(g, None) for i_l, g in enumerate(sel_groups)]
             # Extract the expanded TLS models for each dataset for each level
-            tls_models = zip(*[f.parameters().expand(datasets=datasets) for f in fitters if (f is not None)])
-            assert len(tls_models) == n_dst
-            assert len(tls_models[0]) == len(fitters)-fitters.count(None)
+            tls_matrices = zip(*[[reduce(operator.add, ms) for ms in zip(*[maa.expand() for maa in f.parameters()])] for f in fitters if (f is not None)])
+            #tls_matrices_1d = [reduce(operator.add, ms) for ms in zip(*tls_matrices_2d)]
+            # Filter to the selection
+            if datasets is not None:
+                tls_matrices = [mat for i, mat in enumerate(tls_matrices) if i in datasets]
+            assert len(tls_matrices) == n_dst
+            assert len(tls_matrices[0]) == len(fitters)-fitters.count(None)
 
-            # Get the origin for this dataset
+            # Get the origin for the datasets
             group_origins = [f for f in fitters if (f is not None)][0].atomic_com
 
             # Iterate through the datasets and create TLSOs for each dataset
-            for i_dst, tls_list in enumerate(tls_models):
+            for i_dst, tls_list in enumerate(tls_matrices):
                 # Add all the levels for each dataset
-                total_model = reduce(operator.add, tls_list)
+                total_mat = reduce(operator.add, tls_list)
                 # Extract TLS remark lines from the
-                tls_obj = mmtbx.tls.tools.tlso(t = total_model.get('T'),
-                                               l = total_model.get('L'),
-                                               s = total_model.get('S'),
-                                               origin = group_origins[i_dst])
+                tls_obj = mmtbx.tls.tools.tlso(t = tuple(total_mat.get('T')),
+                                               l = tuple(total_mat.get('L')),
+                                               s = tuple(total_mat.get('S')),
+                                               origin = tuple(group_origins[i_dst]))
                 # Append to the tlso list
                 dataset_objs[i_dst].append((tls_obj, selection_string))
 
@@ -1687,7 +1803,7 @@ class MultiDatasetUijParameterisation(Program):
         # ------------------------
         # Output file names -- standard templates to be used for many things...
         # ------------------------
-        mdl_template = fm.add_file(file_name='tls_models_level_{:04d}.csv',                file_tag='csv-tls-mdl-template', dir_tag='tls-csvs')
+        mdl_template = fm.add_file(file_name='tls_matrices_level_{:04d}.csv',              file_tag='csv-tls-mat-template', dir_tag='tls-csvs')
         amp_template = fm.add_file(file_name='tls_amplitudes_level_{:04d}.csv',            file_tag='csv-tls-amp-template', dir_tag='tls-csvs')
         dst_template = fm.add_file(file_name='tls-model-amplitudes-level-{}-group-{}.png', file_tag='png-tls-amp-dist-template', dir_tag='tls-graphs')
         # ------------------------
@@ -1696,42 +1812,38 @@ class MultiDatasetUijParameterisation(Program):
             self.log('Level {}'.format(level.index))
             # Table for TLS model components
             mdl_filename = mdl_template.format(level.index)
-            mdl_table = pandas.DataFrame(columns=["group", "model",
+            mdl_table = pandas.DataFrame(columns=["group", "mode",
                                                   "T11","T22","T33","T12","T13","T23",
                                                   "L11","L22","L33","L12","L13","L23",
                                                   "S11","S12","S13","S21","S22","S23","S31","S32","S33"])
             # Create amplitude table
             amp_filename = amp_template.format(level.index)
-            amp_table = pandas.DataFrame(columns=["group", "model", "cpt"]+[mdl.tag for mdl in self.models], dtype=object)
+            amp_table = pandas.DataFrame(columns=["group", "mode"]+[mdl.tag for mdl in self.models], dtype=object)
             # Iterate through the groups in this level
             for i_group, sel, fitter in level:
-                tls_model, tls_amps = fitter.result()
-                assert tls_model.shape == (self.params.fitting.tls_models_per_tls_group, 21)
-                assert tls_amps.shape  == (self.params.fitting.tls_models_per_tls_group, len(self.models), self.params.fitting.tls_amplitude_model.count('/')+1)
-
-                # Extract parameters
-                p = fitter.parameters()
+                tls_mats, tls_amps = fitter.result()
+                assert tls_mats.shape == (self.params.fitting.n_tls_modes_per_tls_group, 21)
+                assert tls_amps.shape == (self.params.fitting.n_tls_modes_per_tls_group, len(self.models))
 
                 # Add to model and amplitudes tables
-                for i_tls in xrange(tls_model.shape[0]):
+                for i_tls in xrange(self.params.fitting.n_tls_modes_per_tls_group):
                     # Add model values to last row of table
-                    mdl_table.loc[len(mdl_table.index)] = numpy.concatenate([[i_group, i_tls], tls_model[i_tls]])
+                    mdl_table.loc[len(mdl_table.index)] = numpy.concatenate([[i_group, i_tls], tls_mats[i_tls]])
                     # Add amplitudes to last row of table
-                    for i_cpt, cpt in enumerate(p.get(index=i_tls).component_sets()):
-                        amp_table.loc[len(amp_table.index)] = numpy.concatenate([[i_group, i_tls, cpt], tls_amps[i_tls,:,i_cpt]])
+                    amp_table.loc[len(amp_table.index)] = numpy.concatenate([[i_group, i_tls], tls_amps[i_tls,:]])
 
                 # Write histograms of amplitudes -- only for non-zero models
-                if (tls_model.sum() > 0.0) and self.params.output.images.distributions:
+                if (tls_mats.sum() > 0.0) and self.params.output.images.distributions:
                     filename = dst_template.format(level.index, i_group)
                     self.log('\t> {}'.format(filename))
-                    titles = numpy.concatenate([['Mode {}: {}'.format(i_t+1, c) for c in p.get(index=i_t).component_sets()] for i_t in xrange(tls_amps.shape[0])])
-                    x_vals = numpy.concatenate([[tls_amps[i_t,:,i_c]            for i_c in xrange(tls_amps.shape[2])]       for i_t in xrange(tls_amps.shape[0])])
+                    titles = ['Mode {}:'.format(i_t+1) for i_t in xrange(self.params.fitting.n_tls_modes_per_tls_group)]
+                    x_vals = [tls_amps[i_t,:]          for i_t in xrange(self.params.fitting.n_tls_modes_per_tls_group)]
                     self.plot.multi_histogram(filename  = filename,
                                               x_vals    = x_vals,
                                               titles    = titles,
-                                              x_labs    = ['']*tls_amps.shape[0]*tls_amps.shape[2],
+                                              x_labs    = ['']*self.params.fitting.n_tls_modes_per_tls_group,
                                               rotate_x_labels = True,
-                                              shape     = (tls_amps.shape[0], tls_amps.shape[2]),
+                                              shape     = (tls_amps.shape[0], 1),
                                               n_bins    = 30, x_lim=[0, None])
             # Write tables
             self.log('\t> {}'.format(mdl_filename))
@@ -1752,7 +1864,7 @@ class MultiDatasetUijParameterisation(Program):
                 if len(amps) > 5:
                     try:
                         from ascii_graph import Pyasciigraph
-                        g=Pyasciigraph(float_format='{0:.3f}')
+                        g=Pyasciigraph(float_format='{0:d}')
                         counts, bounds = numpy.histogram(a=amps, bins=10)
                         graph_data = [('{:.3f}-{:.3f}'.format(bounds[i],bounds[i+1]), v) for i,v in enumerate(counts)]
                         for l in g.graph(label='Histogram of amplitudes for dataset {}'.format(mdl.tag), data=graph_data):
@@ -1803,13 +1915,13 @@ class MultiDatasetUijParameterisation(Program):
             # Cumulative uijs
             uij_all = []
             # Extract Uijs for individual modes/models
-            for i_tls in xrange(self.params.fitting.tls_models_per_tls_group):
+            for i_tls in xrange(self.params.fitting.n_tls_modes_per_tls_group):
                 self.log('- Extracting TLS contributions of model {} of level {}'.format(i_tls+1, i_level+1))
                 # Create copy of the level for resetting T-L-S components
                 l_copy = copy.deepcopy(level)
                 # Reset the TLS for all other models
-                if self.params.fitting.tls_models_per_tls_group > 1:
-                    other_models = range(self.params.fitting.tls_models_per_tls_group)
+                if self.params.fitting.n_tls_modes_per_tls_group > 1:
+                    other_models = range(self.params.fitting.n_tls_modes_per_tls_group)
                     other_models.remove(i_tls)
                     l_copy.zero_amplitudes(models=other_models)
                 # Extract uijs
@@ -1817,7 +1929,7 @@ class MultiDatasetUijParameterisation(Program):
                 # Append to total list
                 uij_all.append((i_tls, uij_this))
                 # Output structure for MODEL - XXX set to True for developing XXX
-                if True or (self.params.fitting.tls_models_per_tls_group > 1):
+                if True or (self.params.fitting.n_tls_modes_per_tls_group > 1):
                     uij = numpy.sum([t[-1] for t in uij_all if (t[0]==i_tls)], axis=0)
                     m_h = self.custom_master_hierarchy(uij=uij, iso=uij_to_b(uij), mask=atom_sel)
                     m_f = sgl_pdb_template.format(i_level+1, i_tls+1)
@@ -1832,7 +1944,7 @@ class MultiDatasetUijParameterisation(Program):
             self.log('\t> {}'.format(lvl_plt_template.format(i_level+1,'*')))
             self.plot.stacked_bar(prefix        = lvl_plt_prefix.format(i_level+1),
                                   hierarchies   = [self.custom_master_hierarchy(uij=u, iso=uij_to_b(u), mask=atom_sel).select(atom_sel) for u in uijs],
-                                  legends       = ['TLS (Model {})'.format(i+1) for i in mdls],
+                                  legends       = ['TLS (Mode {})'.format(i+1) for i in mdls],
                                   title         = 'Level {} - individual TLS model contributions'.format(i_level+1),
                                   v_line_hierarchy = boundaries if (sum(boundaries.atoms().extract_b()) < 0.5*len(list(boundaries.residue_groups()))) else None)
             assert glob.glob(lvl_plt_template.format(i_level+1,'*')), 'no files have been generated!'
@@ -1894,7 +2006,7 @@ class MultiDatasetUijParameterisation(Program):
             # ------------------------
             # Write out structure & graph of anisotropy
             # ------------------------
-            self.log('- Calculating anistropy of Uijs')
+            self.log('- Calculating anisotropy of Uijs')
             ani = 1.0 - calculate_uij_anisotropy_ratio(uij=uij)
             m_h = self.custom_master_hierarchy(uij=None, iso=ani, mask=atom_sel)
             # Make plot of the uij anisotropy over the chain
@@ -1986,7 +2098,7 @@ class MultiDatasetUijParameterisation(Program):
         # ------------------------
         # Write out structure & graph of anisotropy
         # ------------------------
-        self.log('- Calculating anistropy of Uijs')
+        self.log('- Calculating anisotropy of Uijs')
         ani = 1.0 - calculate_uij_anisotropy_ratio(uij=uij)
         m_h = self.custom_master_hierarchy(uij=None, iso=ani, mask=atom_sel)
         # Make plot of the uij anisotropy over the chain
@@ -2057,16 +2169,15 @@ class MultiDatasetUijParameterisation(Program):
             # List of amplitudes for each group in this level
             group_amplitudes = []
             for i_group, sel, fitter in level:
-                tls_model, tls_amps = fitter.result()
+                tls_mats, tls_amps = fitter.result()
                 group_amplitudes.append(tls_amps)
             group_amplitudes = numpy.array(group_amplitudes)
 
-            n_grp, n_tls, n_dst, n_amp = group_amplitudes.shape
+            n_grp, n_tls, n_dst = group_amplitudes.shape
             self.log('For level {}:'.format(level.index))
             self.log('\tNumber of groups: {}'.format(n_grp))
             self.log('\tNumber of TLS: {}'.format(n_tls))
             self.log('\tNumber of datasets: {}'.format(n_dst))
-            self.log('\tNumber of amplitudes: {}'.format(n_amp))
 
             dist_mat = numpy.zeros((n_dst,n_dst))
             for i1, i2 in flex.nested_loop((n_dst, n_dst)):
@@ -2074,8 +2185,8 @@ class MultiDatasetUijParameterisation(Program):
                 if i1 > i2: continue
                 # Store the rms amplitude difference of the two datasets
                 dist_mat[i1,i2] = rms(
-                        group_amplitudes[:, :, i1, :] -
-                        group_amplitudes[:, :, i2, :]
+                        group_amplitudes[:, :, i1] -
+                        group_amplitudes[:, :, i2]
                         )
             # Make symmetric
             dist_mat += dist_mat.T
@@ -3468,7 +3579,7 @@ class MultiDatasetHierarchicalUijFitter(object):
                  observed_xyz,
                  level_array,
                  level_labels=None,
-                 dataset_weights=None,
+                 uij_weights=None,
                  params=None,
                  verbose=False,
                  log=None):
@@ -3476,6 +3587,7 @@ class MultiDatasetHierarchicalUijFitter(object):
 #        if log is None: log = Log()
         self.log = log
         self.params = params
+        self.verbose = verbose
 
         self.warnings = []
 
@@ -3492,8 +3604,8 @@ class MultiDatasetHierarchicalUijFitter(object):
         self.dataset_mask = numpy.ones(observed_uij.shape[0], dtype=bool)
         self.atomic_mask  = numpy.ones(observed_uij.shape[1], dtype=bool)
 
-        # Weights for each dataset
-        self.dataset_weights = dataset_weights
+        # Weights for each uij
+        self.uij_weights = uij_weights
 
         # Level labels, and grouping for each level
         self.level_labels = level_labels if level_labels else ['Level {}'.format(i) for i in xrange(1, len(level_array)+1)]
@@ -3517,11 +3629,10 @@ class MultiDatasetHierarchicalUijFitter(object):
                                                             tls_origins      = self.tls_origins,
                                                             tls_origins_hash = self.tls_origins_hash,
                                                             group_idxs = group_idxs,
-                                                            n_tls = self.params.tls_models_per_tls_group,
+                                                            n_tls = self.params.n_tls_modes_per_tls_group,
                                                             index = idx+1,
                                                             label = lab,
-                                                            weights = dataset_weights,
-                                                            amplitudes = self.params.tls_amplitude_model,
+                                                            weights = self.uij_weights,
                                                             params = self.params.optimisation,
                                                             verbose = verbose,
                                                             log = self.log))
@@ -3530,7 +3641,7 @@ class MultiDatasetHierarchicalUijFitter(object):
         self.residual = MultiDatasetUijResidualLevel(observed_uij = observed_uij,
                                                      index = len(self.levels)+1,
                                                      label = 'residual',
-                                                     weights = dataset_weights,
+                                                     weights = self.uij_weights,
                                                      params = self.params.optimisation,
                                                      verbose = verbose,
                                                      log = self.log)
@@ -3684,6 +3795,8 @@ class MultiDatasetHierarchicalUijFitter(object):
         return self._input_params_per_atom
 
     def n_input_values(self):
+        if self.n_input_params_per_atom() is None:
+            return 'unknown'
         return self.observed_uij.shape[0] * self.observed_uij.shape[1] * self.n_input_params_per_atom()
 
 #    def optimise_level_amplitudes(self, n_cycles=1, n_cpus=1):
@@ -3711,14 +3824,19 @@ class MultiDatasetHierarchicalUijFitter(object):
 
     def parameter_ratio_gain(self, non_zero=False):
         """Total number of input values divided by number of model parameters (used or total)"""
+        if self.n_input_params_per_atom() is None:
+            return 'unknown'
         return self.n_params(non_zero=non_zero) / self.n_input_values()
 
-    def set_input_info(self, disorder_model):
+    def set_input_info(self, disorder_model, isotropic_mask=None):
         self.disorder_model = disorder_model
+        self.isotropic_mask = isotropic_mask
         if disorder_model == 'anisotropic':
             self._input_params_per_atom = 6
         elif disorder_model == 'isotropic':
-            self._input_params_per_atom = 3
+            self._input_params_per_atom = 1
+        elif disorder_model == 'mixed':
+            self._input_params_per_atom = 6.0 - 5.0*float(isotropic_mask.sum())/float(isotropic_mask.size)
         else:
             raise Exception('Invalid disorder model?!')
 
@@ -3786,13 +3904,13 @@ class MultiDatasetHierarchicalUijFitter(object):
         # Add to tracking table
         self.tracking_data.loc[len(self.tracking_data.index)] = {'cycle' : cycle_lab,
                                                                  'level' : level_lab,
-                                                                 'rmsd'  : numpy.round(rmsd,3),
-                                                                 'u_iso (level)' : numpy.round(u_iso_sel,3),
-                                                                 'b_iso (level)' : numpy.round(b_iso_sel,3),
-                                                                 'b_min (level)' : numpy.round(b_min_sel,3),
-                                                                 'b_max (level)' : numpy.round(b_max_sel,3),
-                                                                 'u_iso (total)' : numpy.round(u_iso_tot,3),
-                                                                 'b_iso (total)' : numpy.round(b_iso_tot,3)}
+                                                                 'rmsd'  : round(rmsd,3),
+                                                                 'u_iso (level)' : round(u_iso_sel,3),
+                                                                 'b_iso (level)' : round(b_iso_sel,3),
+                                                                 'b_min (level)' : round(b_min_sel,3),
+                                                                 'b_max (level)' : round(b_max_sel,3),
+                                                                 'u_iso (total)' : round(u_iso_tot,3),
+                                                                 'b_iso (total)' : round(b_iso_tot,3)}
 
         self.log(self.tracking_data.loc[len(self.tracking_data.index)-1].to_string())
         # Dump to csv
@@ -3882,11 +4000,19 @@ class MultiDatasetHierarchicalUijFitter(object):
                 # Optimise
                 fitted_uij = fitter.run(n_cpus=n_cpus, n_cycles=n_micro_cycles)
                 # Validate and store
+                num_to_print = 3
+                uij_fmt_str = ', '.join(6*['{{:.{:d}f}}'.format(int(-1*numpy.log10(self.params.precision.uij_tolerance)+1.0))])
+                eig_fmt_str = ', '.join(3*['{{:.{:d}f}}'.format(int(-1*numpy.log10(self.params.precision.uij_tolerance)+1.0))])
                 for i_dst, dataset_uij in enumerate(fitted_uij):
                     uij_valid = uij_positive_are_semi_definite(uij=dataset_uij, tol=self.params.precision.uij_tolerance)
                     if uij_valid.sum() > 0.0:
-                        err_msg = '\n\t'.join(['Atom {:>5d} (group {}, level {}): \n\t\tUij -> {}\n\t\tEigenvalues -> {})'.format(i+1, fitter.get_atom_group(index=i).label, i_level+1, tuple(dataset_uij[i]), tuple(uij_eigenvalues(dataset_uij[i]))) for i in numpy.where(uij_valid)[0]])
-                        self.warnings.append('Uijs for dataset {} are not positive-semi-definite ({} atoms)\n\t{}'.format(i_dst, uij_valid.sum(), err_msg))
+                        fmt_list = [(i+1, fitter.get_atom_group(index=i).label, i_level+1, uij_fmt_str.format(*tuple(dataset_uij[i])), eig_fmt_str.format(*tuple(sym_mat3_eigenvalues(dataset_uij[i])))) for i in numpy.where(uij_valid)[0]]
+                        err_msgs = ['Atom {:>5d} (group {}, level {}): \n\t\tUij -> ({})\n\t\tEigenvalues -> ({})'.format(*d) for d in fmt_list]
+                        if (len(err_msgs) > num_to_print) and (not self.verbose):
+                            n_hidden = len(err_msgs) - num_to_print
+                            err_msgs = err_msgs[:num_to_print]
+                            err_msgs.append('[...] ({} more similar warning{} not shown)'.format(n_hidden, 's' if n_hidden>1 else ''))
+                        self.warnings.append('Level {}: Uijs for dataset {} are not positive-semi-definite ({} atoms)\n\t{}'.format(i_level+1, i_dst, uij_valid.sum(), '\n\t'.join(err_msgs)))
                 # Store in output array
                 fitted_uij_by_level[i_level] = fitted_uij
                 # Update tracking
@@ -3919,12 +4045,18 @@ class MultiDatasetHierarchicalUijFitter(object):
         s += '\nNumber of datasets: {}'.format(len(self.dataset_mask))
         s += '\nNumber of atoms:    {}'.format(len(self.atomic_mask))
         s += '\nNumber of input values: {}'.format(self.n_input_values())
-        s += '\nInput Uij Type: {}'.format(self.disorder_model)
+        s += '\nInput Disorder Type: {}'.format(self.disorder_model)
+        if self.disorder_model == 'mixed':
+            n_iso = self.isotropic_mask.sum()
+            n_ani = self.isotropic_mask.size - n_iso
+            s += '\n\t{:d} anisotropic atoms ({:5.2%})'.format(n_ani, n_ani/float(self.isotropic_mask.size))
+            s += '\n\t{:d} isotropic atoms   ({:5.2%})'.format(n_iso, n_iso/float(self.isotropic_mask.size))
         s += '\n'
         s += '\n> Hierarchical Model:'
         s += '\nNumber of levels (incl. residual): {}'.format(self.n_levels()+1)
-        s += '\nNumber of TLS modes per group: {}'.format(self.params.tls_models_per_tls_group)
-        s += '\nNumber of model parameters: {}'.format(self.n_params())
+        s += '\nNumber of TLS modes per group: {}'.format(self.params.n_tls_modes_per_tls_group)
+        s += '\nNumber of model parameters: {}'.format(self.n_params(non_zero=False))
+        s += '\nNumber of model parameters per level: {}'.format(', '.join([str(l.n_params(non_zero=False)) for l in self.levels+[self.residual]]))
         s += '\n'
         s += '\n> Optimisation:'
         s += '\nDatasets used for TLS optimisation: {} of {}'.format(sum(self.dataset_mask), len(self.dataset_mask))
@@ -3932,10 +4064,10 @@ class MultiDatasetHierarchicalUijFitter(object):
         s += '\n'
         s += '\n> Parameterisation:'
         s += '\nNumber of parameters per atom:'
-        s += '\n... in input data: {:2.0f}'.format(self.n_input_params_per_atom())
+        s += '\n... in input data: {}'.format(format_no_fail(':2.0f', self.n_input_params_per_atom()))
         s += '\n... in fitted model (possible): {:5.2f}'.format(self.n_params_per_atom(non_zero=False))
         s += '\n... in fitted model (non-zero): {:5.2f}'.format(self.n_params_per_atom(non_zero=True))
-        s += '\nNon-zero model parameters / number of input data: {:5.2%}'.format(self.parameter_ratio_gain(non_zero=True))
+        s += '\nNon-zero model parameters / number of input data: {}'.format(format_no_fail(':5.2%', self.parameter_ratio_gain(non_zero=True)))
         s += '\n'
         if show: self.log(s)
         return s
@@ -4028,7 +4160,7 @@ class _MultiDatasetUijLevel(object):
 
 class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
 
-    _chunksize = 1
+    _chunksize = None
 
     def __init__(self,
                  observed_uij,
@@ -4040,7 +4172,6 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
                  index=0,
                  label=None,
                  weights=None,
-                 amplitudes=None,
                  params=None,
                  verbose=False,
                  log=None):
@@ -4057,7 +4188,7 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
         assert tls_origins_hash.shape[0] == observed_xyz.shape[1]
 
         if weights is not None:
-            assert weights.shape == (observed_uij.shape[0],)
+            assert weights.shape == observed_uij.shape[:-1]
 
         self.index = index
         self.label = label if label else 'Level {}'.format(index)
@@ -4086,8 +4217,7 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
                                                           atomic_com = observed_com,
                                                           n_tls = n_tls,
                                                           label = '{:4d} of {:4d}'.format(i, self._n_groups),
-                                                          weights = weights,
-                                                          amplitudes = amplitudes,
+                                                          weights = weights[:,sel],
                                                           params = params,
                                                           verbose = verbose,
                                                           log = log)
@@ -4127,15 +4257,15 @@ class MultiDatasetUijTLSGroupLevel(_MultiDatasetUijLevel):
         if show: self.log(s)
         return s
 
-    def zero_amplitudes(self, models, components=None):
+    def zero_amplitudes(self, models):
         # Iterate through each group/partition
         for i, sel, fitter in self:
-            fitter.parameters().zero_amplitudes(models=models, components=components)
+            fitter.parameters().zero_amplitudes(selection=models)
 
-    def zero_matrices(self, models, components=None):
-        # Iterate through each group/partition
-        for i, sel, fitter in self:
-            fitter.parameters().zero_matrices(models=models, components=components)
+    #def zero_matrices(self, models, components=None):
+    #    # Iterate through each group/partition
+    #    for i, sel, fitter in self:
+    #        fitter.parameters().zero_matrices(models=models, components=components)
 
 class MultiDatasetUijResidualLevel(_MultiDatasetUijLevel):
 
@@ -4150,9 +4280,6 @@ class MultiDatasetUijResidualLevel(_MultiDatasetUijLevel):
 
 #        if log is None: log = Log()
         self.log = log
-
-        if weights is not None:
-            assert weights.shape == (observed_uij.shape[0],)
 
         self.index = index
         self.label = label if label else 'Level {} (residual)'.format(index)
@@ -4172,7 +4299,7 @@ class MultiDatasetUijResidualLevel(_MultiDatasetUijLevel):
             # Create fitter object
             self.fitters[i] = MultiDatasetUijAtomOptimiser(target_uij = observed_uij[:,sel],
                                                            label = 'atom {:5d} of {:5d}'.format(i,self._n_atm),
-                                                           weights = weights,
+                                                           weights = weights[:,sel],
                                                            params = params,
                                                            verbose = verbose,
                                                            log = log)
@@ -4223,18 +4350,20 @@ class _UijOptimiser(object):
         self._n_dst = 0
         self._n_atm = 0
 
+        self._op = None
+
+        self._mask_dset = None
+        self._mask_atom = None
+
         self.target_uij = target_uij
 
         self.label = label
 
+        # Uij weights
         if weights is None:
-            self.weights = numpy.ones(target_uij.shape[0])
-        else:
-            self.weights = numpy.array(weights)
-        assert self.weights.shape == (target_uij.shape[0],)
-
-        self.initial_penalties = params.penalties
-        self.penalty = UijPenalties(params.penalties)
+            weights = numpy.ones(target_uij.shape[:-1])
+        self.weights = weights
+        assert self.weights.shape == target_uij.shape[:-1]
 
         self.optimisation_target = numpy.inf
         self.optimisation_penalty = numpy.inf
@@ -4258,23 +4387,21 @@ class _UijOptimiser(object):
         return numpy.zeros(self._n_prm, dtype=bool)
 
     def _optimise(self):
-        """Run the optimisation"""
+        """Run the optimisation for the current set of parameters"""
 
         # Prep variables for target function
         self._n_call = 0
+        # Initialise the target metrics
+        self.optimisation_target = 1e6      # arbitrarily high number
+        self.optimisation_penalty = 0.0
         # Apply the masks to the target uij
         self._update_target()
-        # Initialise the target metrics
-        self.optimisation_target = 1e6
-        self.optimisation_penalty = 0.0
         # Get the variables selected for optimisatiom, and their values
-        sel_dict = self._select()
-        sel_vals = self._values(selection=sel_dict)
+        sel_vals = self._extract_values(parameters=self.get_parameters())
         # Get additional input required for the simplex generation
         simplex_kw = self._simplex_input()
-        simplex_kw.update(sel_dict)
         # Create simplex for these parameters
-        opt_simplex = self.simplex.get_simplex(start=sel_vals, **simplex_kw)
+        opt_simplex = self.simplex.get_simplex(start=sel_vals, parameters=self.get_parameters(), **simplex_kw)
         #
         fmt = '{:>+10.5f}'
         self.log.subheading('Starting simplex')
@@ -4285,15 +4412,14 @@ class _UijOptimiser(object):
             self.log(','.join([fmt.format(v) for v in (point-sel_vals)]))
         self.log.subheading('Running optimisation')
         # Optimise these parameters
-        assert self._mask_wgts.shape == (self._target_uij.shape[0],)
         optimised = simplex.simplex_opt(dimension = len(sel_vals),
                                         matrix    = map(flex.double, opt_simplex),
                                         evaluator = self.evaluator,
                                         tolerance = self.convergence_tolerance)
         # Extract and update current values
-        self._inject(values=optimised.get_solution(), selection=sel_dict)
+        self._inject_values(values=optimised.get_solution(), parameters=self.get_parameters())
         self.log.bar()
-        self.log('\n...optimisation complete\n')
+        self.log('\n...optimisation complete ({} iterations)\n'.format(self._n_call))
 
     def _simplex_input(self):
         """Default function -- no additional variables"""
@@ -4312,9 +4438,6 @@ class _UijOptimiser(object):
     def get_dataset_mask(self):
         return self._mask_dset
 
-    def get_dataset_weights(self):
-        return self._mask_wgts
-
     def set_target_uij(self, target_uij):
         assert target_uij.shape == self.target_uij.shape
         self.target_uij = target_uij
@@ -4323,32 +4446,51 @@ class _UijOptimiser(object):
         if not isinstance(mask, list):
             mask = list(numpy.where(mask)[0])
         assert len(mask) > 0, 'No atoms in this mask!'
+        assert min(mask) >= 0
+        assert max(mask) < self._n_atm
         self._mask_atom = mask
 
     def set_dataset_mask(self, mask):
         if not isinstance(mask, list):
             mask = list(numpy.where(mask)[0])
+        assert len(mask) > 0, 'No atoms in this mask!'
+        assert min(mask) >= 0
+        assert max(mask) < self._n_dst
+        # Store mask
         self._mask_dset = mask
-        self._mask_wgts = self.weights[mask]
 
     #=======================+>
 
     def parameters(self):
         return self._parameters
 
-    def target(self, parameters):
+    def _msqr_delta_u(self, delta_u):
+        delta_u_1d = delta_u.as_1d().as_double()
+        assert delta_u_1d.size() == self._op.wgts_6.size()
+        # Normalise by the NUMBER OF DATASETS * NUMBER OF ATOMS
+        msqr_delta_u = flex.sum(delta_u_1d*delta_u_1d*self._op.wgts_6)/(self._op.n_dst*self._op.n_atm*3.0)
+        return msqr_delta_u
+
+    def _mabs_delta_u(self, delta_u):
+        delta_u_1d = delta_u.as_1d().as_double()
+        assert delta_u_1d.size() == self._op.wgts_6.size()
+        # Normalise by the NUMBER OF DATASETS * NUMBER OF ATOMS
+        mabs_delta_u = flex.sum(flex.abs(delta_u_1d)*self._op.wgts_6)/(self._op.n_dst*self._op.n_atm*3.0)
+        return mabs_delta_u
+
+    def target(self, values):
         """Target function for the simplex optimisation"""
 
         # Increment counter
         self._n_call += 1
-        # Combine the optimising parameters in the complete parameter set
-        self._inject(values=parameters, selection=None)
+        # Combine the optimising values in the complete parameter set
+        self._inject_values(values=values)
         # Calculate physical penalties - reject this set if model is not physical
         ppen = self.parameter_penalties()
         # Print info line if necessary
         if self.verbose:
             if self._n_call%20==1:
-                header = '[{}] -> ({:^12}, {:^10})'.format(', '.join(['{:>7}'.format('param') for r in parameters]), 'target', 'penalty')
+                header = '[{}] -> ({:^12}, {:^10})'.format(', '.join(['{:>7}'.format('param') for r in values]), 'target', 'penalty')
                 line = '-'*len(header)
                 self.log(line)
                 self.log(header)
@@ -4356,27 +4498,39 @@ class _UijOptimiser(object):
         # Return now if physical penalty if non-zero to save time
         if ppen > 0.0:
             if self.verbose:
-                self.log('[{}] -> ({:>12}, {:10.3f})'.format(', '.join(['{:+7.4f}'.format(r) for r in parameters]), 'UNPHYSICAL', ppen))
-            return ppen
+                self.log('[{}] -> ({:>12}, {:10.3f})'.format(', '.join(['{:+7.4f}'.format(r) for r in values]), 'UNPHYSICAL', ppen))
+            # Ensure that these parameters always have a higher values than the current best solution
+            return self.optimisation_target+self.optimisation_penalty+ppen
         # Get the fitted uijs (including masked atoms)
         self._update_fitted()
+
         # Calculate weighted sum of squares
-        delta_u = self._fitted_uij-self._target_uij
-        delta_u_sq = numpy.power(delta_u, 2).mean(axis=tuple(range(1,delta_u.ndim)))
-        delta_u_sq_av = numpy.average(delta_u_sq, axis=0, weights=self._mask_wgts)
+        # !!!IMPORTANT!!!
+        # MUST be (fitted-target) so that eigenvalues of delta_u are positive when fitted greater than target!
+        # !!!IMPORTANT!!!
+        delta_u = self._fitted_uij - self._target_uij
+        msqr_delta_u = self._msqr_delta_u(delta_u=delta_u)
+        target = msqr_delta_u
+
         # Calculate fitting penalties (add to target)
-        fpen = self.fitting_penalties(delta_u=delta_u, delta_u_sq=delta_u_sq)
+        fpen = self.fitting_penalties(delta_u=delta_u, msqr_delta_u=msqr_delta_u)
+        # Normalise by the NUMBER OF DATASETS
+        penalty = fpen/(self._op.n_dst)
+
         # Total target function value
-        tot_val = delta_u_sq_av + fpen
+        tot_val = target + penalty
         # Update minima
         if tot_val < self.optimisation_target+self.optimisation_penalty:
-            self.optimisation_target  = delta_u_sq_av
-            self.optimisation_penalty = fpen
+            self.optimisation_target  = target
+            self.optimisation_penalty = penalty
         if self.verbose:
-            self.log('[{}] -> ({:12.8f}, {:10.6f})'.format(', '.join(['{:+7.4f}'.format(r) for r in parameters]), delta_u_sq_av, fpen))
+            self.log('[{}] -> ({:12.8f}, {:10.6f})'.format(', '.join(['{:+7.4f}'.format(r) for r in values]), target, penalty))
         return tot_val
 
 class MultiDatasetUijAtomOptimiser(_UijOptimiser):
+
+
+    _uij_tolerance = 1e-6
 
     def __init__(self,
                  target_uij,
@@ -4412,34 +4566,63 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
         # Initialise the mask to all datasets
         self.set_dataset_mask(range(self._n_dst))
 
+        # Initialise penalty functions
+        self._uij_penalty_function = get_function(**dict_from_class(params.penalties.invalid_uij_values))
+
     #===========================================+>
     # Private Functions - common to parent class
     #===========================================+>
 
-    def fitting_penalties(self, delta_u, delta_u_sq):
+    def fitting_penalties(self, delta_u, msqr_delta_u):
         return 0.0
 
     def parameter_penalties(self):
-        return self.penalty.uij_values(values=self.result())
+        return self._uij_penalty(values=self.result())
 
     #=======================+>
 
     def _update_fitted(self):
-        self._fitted_uij = self.extract()
+        self._fitted_uij = flex.sym_mat3_double([self.extract()]*self._op.n_dst)
 
     def _update_target(self):
-        self._target_uij = self.target_uij[self.get_dataset_mask()]
+        self._target_uij = flex.sym_mat3_double(self.target_uij[self._op.i_dst])
 
     #=======================+>
 
-    def _select(self, **kw_args):
-        """Define which variables are to be optimised and return selection dictionary"""
-        return {}
+    def get_parameters(self):
+        return self._op
 
-    def _values(self, **kw_args):
+    def set_parameters(self, **kw_args):
+        """Define which variables are to be optimised and return selection dictionary"""
+        # Extract mask and mask length
+        dst_mask = self.get_dataset_mask()
+        n_dst = len(dst_mask)
+        # Extract weights
+        wgts = self.weights[dst_mask]
+        # Renormalise the extrated weights
+        wgts = wgts / wgts.mean()
+        # Do with wgts as n_dst*6
+        wgts_6 = numpy.repeat(wgts.reshape(wgts.shape+(1,)), repeats=6, axis=1)
+        wgts_6 = flex.double(wgts_6.reshape((n_dst*6,)).tolist())
+        # Make sure all weights are normalised!
+        assert abs(flex.mean(wgts_6)-1.0) < 1e-3, 'weights should be normalised!'
+
+        self._op = Info({
+            # Lists of indices
+            'i_dst' : flex.size_t(dst_mask),
+            # Lengths of above lists
+            'n_dst' : n_dst,
+            'n_atm' : 1,
+            # Masked coordinates
+            'wgts'   : wgts,
+            'wgts_6' : wgts_6,
+            })
+        return self._op
+
+    def _extract_values(self, **kw_args):
         return self._parameters
 
-    def _inject(self, values, **kw_args):
+    def _inject_values(self, values, **kw_args):
         """Insert a set of parameters into the complete parameter set"""
         assert len(values) == self._n_prm
         self._parameters[:] = values
@@ -4454,15 +4637,17 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
         else:
             return (self.parameters()!=0.0).any()*(self.n_params(non_zero=False))
 
-    def optimise(self, n_cycles=1, n_cpus=1):
+    def optimise(self, n_cycles=None, n_cpus=None): # Options not used in optimisation
         """Optimise the residual for a set of atoms"""
         # If only 1 dataset provided, set current values to target values and return
-        if (self.target_uij.shape[0] == 1) and (not self.penalty.uij_values(values=self.target_uij[0])):
+        if (self.target_uij.shape[0] == 1) and (not self._uij_penalty(values=self.target_uij[0])):
             self._inject(values=self.target_uij[0])
             return
+        # Initialise/update optimisation info
+        self.set_parameters()
         # Otherwise optimise
-        for i_cycle in xrange(n_cycles):
-            self._optimise()
+        #for i_cycle in xrange(n_cycles):
+        self._optimise()
 
     def result(self):
         """Return the fitted parameters (same as extract for this class)"""
@@ -4479,8 +4664,25 @@ class MultiDatasetUijAtomOptimiser(_UijOptimiser):
         if show: self.log(s)
         return s
 
+    #===========================================+>
+    # Penalty functions - unique to this class
+    #===========================================+>
+
+    @classmethod
+    def set_uij_tolerance(cls, tolerance):
+        cls._uij_tolerance = tolerance
+
+    def _uij_penalty(self, values):
+        assert len(values) == 6
+        eigenvalues = sym_mat3_eigenvalues(values)
+        penalty = -1.0*flex.sum(eigenvalues.select(eigenvalues<(-1.0*self._uij_tolerance)))
+        return self._uij_penalty_function(penalty)
+
 
 class MultiDatasetUijTLSOptimiser(_UijOptimiser):
+
+
+    _amp_tolerance = 1e-12
 
     def __init__(self,
                  target_uij,
@@ -4490,7 +4692,6 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                  tls_params=None,
                  label='',
                  weights=None,
-                 amplitudes=None,
                  params=None,
                  verbose=False,
                  log=None):
@@ -4536,25 +4737,23 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
 
         # Number of models and parameters
         self._n_tls = num_tls
-        self._n_prm_mdl = 21 * self._n_tls
-        self._n_prm_amp = 03 * self._n_tls * self._n_dst
 
         # Model-Amplitude parameter sets
-        self._parameters = MultiDatasetTLSModelList(n_mdl = self._n_tls,
-                                                    n_dst = self._n_dst,
-                                                    amplitudes = amplitudes,
-                                                    log = self.log)
+        self._parameters = TLSMatricesAndAmplitudesList(length = self._n_tls,
+                                                        n_amplitudes = self._n_dst)
 
         # Extract number of parameters
         self._n_prm = self._parameters.n_params()
 
+        # Initialise the masks
+        self.set_atomic_mask(range(self._n_atm))
+        self.set_dataset_mask(range(self._n_dst))
+
         # Optimisation ranges
-        self._select(optimise_model = True,
-                     optimise_amplitudes = True,
-                     components = 'TLS',
-                     models   = range(0, self._n_tls),
-                     datasets = range(0, self._n_dst),
-                     atoms    = range(0, self._n_atm))
+        self.set_parameters(optimise_matrices = True,
+                            optimise_amplitudes = True,
+                            components = 'TLS',
+                            modes    = range(0, self._n_tls))
 
         # Initialise simplex generator
         self.simplex = TLSSimplex(vibration = params.step_size.vibration,
@@ -4565,51 +4764,55 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         # Store params
         self.params = params
 
-        # Initialise the masks
-        self.set_atomic_mask(range(self._n_atm))
-        self.set_dataset_mask(range(self._n_dst))
+        # Parameter penalty functions
+        self._tls_matrix_penalty_function  = get_function(**dict_from_class(params.penalties.invalid_tls_values))
+        self._amplitudes_penalty_function  = get_function(**dict_from_class(params.penalties.invalid_amplitudes))
+        # Fitting penalty functions
+        self._model_input_penalty_function = get_function(**dict_from_class(params.penalties.over_target_values))
 
-        # Weights
-        self.delta_u_0_sq = numpy.power(target_uij, 2).mean(axis=(1,2))
-
+        # Fitting penalty weighting function
         if params.penalties.fitting_penalty_weights.form == "none":
-            func = lambda value: numpy.ones_like(value, dtype=float)
+            func = numpy.ones_like
         else:
             func = get_function(**dict_from_class(params.penalties.fitting_penalty_weights))
-        self.fitting_penalty_weight_function = func
+        self._fitting_penalty_weight_function = func
 
     #===========================================+>
     # Private Functions - common to parent class
     #===========================================+>
 
-    def fitting_penalties(self, delta_u, delta_u_sq):
+    def fitting_penalties(self, delta_u, msqr_delta_u):
         """Calculate penalties to enforce priors about fitting (e.g. model should not be greater than input)"""
+
+        # Calculate the average delta_u
+        mabs_delta_u = self._mabs_delta_u(delta_u)
+        #mean_delta_u = abs(flex.mean_weighted(delta_u.as_1d().as_double(), self._op.wgts_6))
         # Get penalty for each dataset
-        penalties = [numpy.sum(self.penalty.uij_model_target_difference(vals)) for vals in delta_u]
-        assert len(penalties) == len(self._mask_wgts)
+        penalties = self._model_input_penalties(delta_u)
+        assert penalties.size == self._op.wgts_3.size()
+
         # Weight the penalty function by a sigmoid of 0 -> du_sq/du_sq_0 -> 1
-        penalty_weights = self.fitting_penalty_weight_function(value=delta_u_sq/self.delta_u_0_sq[self.get_dataset_mask()])
-        assert len(penalty_weights) == len(self._mask_wgts)
-        # Scale this penalty by weight, and by the target values
-        weighted_penalties = delta_u_sq * penalty_weights * penalties
+        penalty_weight = self._fitting_penalty_weight_function(numpy.sqrt(msqr_delta_u))
+
         # Average penalties, with weights for each dataset
-        total_penalty = numpy.average(weighted_penalties, weights=self._mask_wgts)
+        total_penalty =  mabs_delta_u * penalty_weight * numpy.sum(penalties) #/ 3.0 # Divide by the number of dimensions
+
         return total_penalty
 
     def parameter_penalties(self):
         """Calculate penalties to enforce that the parameters are physical (e.g. positive amplitudes)"""
         penalties = []
         for mode in self._parameters:
-            # Calculate model penalties (if required -- not required if not optimising model...)
-            if self._opt_dict['model']:
-                # Penalise physically-invalid TLS models
-                penalties.append(self.penalty.tls_values(model=mode.model))
+            # Calculate matrices penalties (if required -- not required if not optimising matrices...)
+            if self._op.optimise_matrices:
+                # Penalise physically-invalid TLS matrices
+                penalties.append(self._tls_matrix_penalties(matrices=mode.matrices))
             # Calculate dataset penalties
-            if self._opt_dict['amplitudes']:
-                # Penalties for combinations of amplitudes that lead to non-physical TLS models
-                datasets = self._opt_dict['i_dst']
+            if self._op.optimise_amplitudes:
+                # Penalties for combinations of amplitudes that lead to non-physical TLS matrices
+                datasets = self._op.i_dst
                 # Penalties for negative amplitudes, etc
-                penalties.append(self.penalty.amplitudes(values=mode.amplitudes.values))
+                penalties.append(self._amplitude_penalties(values=mode.amplitudes.get()))
                 # XXX remark: next line commented out because floating point/rounding errors
                 # XXX remark: prevent amplitude optimisation for small TLS values
                 #penalties.extend([self.penalty.tls_params(model=model) for model in mode.expand(datasets=datasets)])
@@ -4619,156 +4822,209 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
     #=======================+>
 
     def _update_fitted(self):
-        self._fitted_uij = self._extract(mask_datasets=self.get_dataset_mask(), mask_atoms=self.get_atomic_mask())
+        self._fitted_uij = self._extract_fitted_for_optimise()
 
     def _update_target(self):
-        self._target_uij = self.target_uij[self.get_dataset_mask()][:,self.get_atomic_mask()]
+        self._target_uij = self._extract_target_for_optimise()
 
     #=======================+>
 
-    def _select(self, optimise_model=None, optimise_amplitudes=None, components=None, models=None, datasets=None, atoms=None):
+    def get_parameters(self):
+        return self._op
+
+    def set_parameters(self, optimise_matrices=False, optimise_amplitudes=False, components=None, modes=None):
         """Set optimisation parameters:
-            optimise_model: True or False
-                should TLS model components be optimised?
+            optimise_matrices: True or False
+                should TLS matrix components be optimised?
             optimise_amplitudes: True or False
                 should TLS amplitudes be optimised?
             components: string
-                which model/amplitudes elements should be optimised.
+                which matrices/amplitudes elements should be optimised.
                 can only contain letters T or L or S
-            models: list of integers
-                which TLS models should be optmised?
-            datasets: list of integers
-                for/using which datasets should parameters be optimised?
-            atoms: list of integers
-                for/using which atoms should parameters be optimised?
+            modes: list of integers
+                which TLS modes should be optmised?
         """
 
-        if optimise_model is not None:
-            assert isinstance(optimise_model, bool)
-            self._optimise_model = optimise_model
-        if optimise_amplitudes is not None:
-            assert isinstance(optimise_amplitudes, bool)
-            self._optimise_amplitudes = optimise_amplitudes
+        assert isinstance(optimise_matrices, bool)
+        assert isinstance(optimise_amplitudes, bool)
+
         if components is not None:
             assert not set(''.join(components) if isinstance(components, list) else components).difference('TLS')
-            self._opt_cpts = components
-        if models is not None:
-            assert min(models) >= 0
-            assert max(models) < self._n_tls
-            self._opt_mdls = models
-        if datasets is not None:
-            assert min(datasets) >= 0
-            assert max(datasets) < self._n_dst
-            self.set_dataset_mask(datasets)
-        if atoms is not None:
-            assert min(atoms) >= 0
-            assert max(atoms) < self._n_atm
-            self.set_atomic_mask(atoms)
+
+        if modes is not None:
+            assert min(modes) >= 0
+            assert max(modes) < self._n_tls
+
+        # Logic checks
+        if optimise_matrices is True:
+            assert components is not None
+        if optimise_amplitudes is True:
+            assert modes is not None
+
+        # Extract masks
+        dst_mask = self.get_dataset_mask()
+        atm_mask = self.get_atomic_mask()
+
+        # Extract masked coordinates
+        xyzs = self.atomic_xyz[dst_mask][:,atm_mask]
+        coms = self.atomic_com[dst_mask]
+        wgts = self.weights[dst_mask][:,atm_mask]
+        # Renormalise weights
+        wgts = wgts / wgts.mean()
+        # Extract sizes
+        n_dst = len(dst_mask)
+        n_atm = len(atm_mask)
+        # Check shapes
+        assert xyzs.shape == (n_dst, n_atm, 3)
+        assert coms.shape == (n_dst, 3)
+        assert wgts.shape == (n_dst, n_atm)
+
+        # Convert to flex
+        xyzs = flex.vec3_double(xyzs.reshape(n_dst*n_atm,3))
+        xyzs.reshape(flex.grid(n_dst,n_atm))
+        coms = flex.vec3_double(coms)
+
+        # Do with wgts as n_dst*n_atm (but as 1d array for speed!)
+        wgts_1 = flex.double(wgts.reshape((n_dst*n_atm,)).tolist())
+
+        # Do with wgts as n_dst*n_atm*3 (but as 1d array for speed!)
+        wgts_3 = numpy.repeat(wgts.reshape(wgts.shape+(1,)), repeats=3, axis=2)
+        wgts_3 = flex.double(wgts_3.reshape((n_dst*n_atm*3,)).tolist())
+
+        # Do with wgts as n_dst*n_atm*6 (but as 1d array for speed!)
+        wgts_6 = numpy.repeat(wgts.reshape(wgts.shape+(1,)), repeats=6, axis=2)
+        wgts_6 = flex.double(wgts_6.reshape((n_dst*n_atm*6,)).tolist())
+
+        # Make sure all weights are normalised!
+        #wgts_1 = wgts_1 / flex.mean(wgts_1)
+        #wgts_3 = wgts_3 / flex.mean(wgts_3)
+        #wgts_6 = wgts_6 / flex.mean(wgts_6)
+        assert abs(flex.mean(wgts_1)-1.0) < 1e-3, 'weights should be normalised!'
+        assert abs(flex.mean(wgts_3)-1.0) < 1e-3, 'weights should be normalised!'
+        assert abs(flex.mean(wgts_6)-1.0) < 1e-3, 'weights should be normalised!'
 
         # Create a dictionary that FULLY defines the optimisation cycle
-        self._opt_dict = {'model'      : self._optimise_model,
-                          'amplitudes' : self._optimise_amplitudes,
-                          'components' : self._opt_cpts,
-                          'n_cpt' : len(self._opt_cpts),
-                          'n_mdl' : len(self._opt_mdls),
-                          'n_dst' : len(self.get_dataset_mask()),
-                          'i_mdl' : self._opt_mdls,
-                          'i_dst' : self.get_dataset_mask()}
-#                          'i_atm' : self._opt_atms
+        self._op = Info({
+            'optimise_matrices'   : optimise_matrices,
+            'optimise_amplitudes' : optimise_amplitudes,
+            'components'          : components,
+            # Lists of indices
+            'i_mdl' : modes,
+            'i_dst' : flex.size_t(dst_mask),
+            'i_atm' : flex.size_t(atm_mask),
+            # Lengths of above lists
+            'n_mdl' : len(modes),
+            'n_dst' : n_dst,
+            'n_atm' : n_atm,
+            # Masked coordinates
+            'xyzs' : xyzs,
+            'coms' : coms,
+            # Masked Uij weights
+            'wgts'   : wgts,
+            'wgts_1' : wgts_1,
+            'wgts_3' : wgts_3,
+            'wgts_6' : wgts_6,
+            })
 
-        return self._opt_dict
+        # Calculate initial value of target function (for zero model)
+        self._msqr_delta_u_0 = self._msqr_delta_u(delta_u=self._extract_target_for_optimise())
 
-    def _values(self, selection=None):
+        return self._op
+
+    def _extract_values(self, parameters=None):
         """Extract a set of values for a set of variables"""
 
         # Use default selection if not provided
-        if selection is None:
-            selection = self._opt_dict
+        if parameters is None:
+            parameters = self._op
         # Create object from dict
-        s = Info(selection)
+        s = parameters
         # Iterate through objects and extract requested parameter values
         values = []
-        if s.model is True:
+        if s.optimise_matrices:
             for i in s.i_mdl:
                 mdl = self._parameters.get(index=i)
-                values.append(mdl.model.get(components=s.components, include_szz=False))
-        if s.amplitudes is True:
+                values.append(mdl.matrices.get(component_string=s.components, include_szz=False))
+        if s.optimise_amplitudes:
             for i in s.i_mdl:
                 mdl = self._parameters.get(index=i)
-                values.append(mdl.amplitudes.get(components=s.components, datasets=s.i_dst).flatten())
+                values.append(mdl.amplitudes.get(selection=s.i_dst))
         return numpy.concatenate(values)
 
-    def _inject(self, values, selection=None):
+    def _inject_values(self, values, parameters=None):
         """Change a set of values for a set of variables"""
 
         # Use default selection if not provided
-        if selection is None:
-            selection = self._opt_dict
+        if parameters is None:
+            parameters = self._op
         # Create object from dict
-        s = Info(selection)
+        s = parameters
         # Iterate through objects and extract requested parameter values
         values = collections.deque(values)
-        if s.model is True:
+        if s.optimise_matrices:
             n_tls_params = tls_str_to_n_params(s.components, include_szz=False)
             for i in s.i_mdl:
                 mdl = self._parameters.get(index=i)
-                mdl.model.set(vals = [values.popleft() for _ in xrange(n_tls_params)],
-                              components = s.components,
-                              include_szz = False)
-        if s.amplitudes is True:
+                mdl.matrices.set(values = [values.popleft() for _ in xrange(n_tls_params)],
+                                 component_string = s.components,
+                                 include_szz = False)
+        if s.optimise_amplitudes:
             for i in s.i_mdl:
                 mdl = self._parameters.get(index=i)
-                mdl.amplitudes.set(vals = numpy.array([values.popleft() for _ in xrange(s.n_dst*s.n_cpt)]).reshape((s.n_dst, s.n_cpt)),
-                                   components = s.components,
-                                   datasets = s.i_dst)
+                mdl.amplitudes.set(values = [values.popleft() for _ in xrange(s.n_dst)],
+                                   selection = s.i_dst)
         assert len(values) == 0, 'not all values have been popped'
 
     #===========================================+>
 
     def _simplex_input(self):
         """Return the current values of the TLS matrices"""
-        tls_models = [m.model for m in self.parameters()]
-        return {'tls_models':tls_models}
+        tls_matrices = [m.matrices for m in self.parameters()]
+        return {'tls_matrices':tls_matrices}
 
     #===========================================+>
     # Private Functions - custom for this class
     #===========================================+>
 
-    def _extract(self, mask_datasets=None, mask_atoms=None):
+    def _extract_fitted_for_optimise(self):
         """Calculate the TLS components for a selection of atoms and datasets"""
-        # Get the atomic coordinates
-        xyzs = self.atomic_xyz
-        coms = self.atomic_com
-        # Apply masks - datasets
-        if mask_datasets is not None:
-            assert isinstance(mask_datasets, list)
-            n_dst = len(mask_datasets)
-            xyzs = xyzs[mask_datasets]
-            coms = coms[mask_datasets]
-        else:
-            n_dst = self._n_dst
-        # Apply masks - atoms
-        if mask_atoms is not None:
-            assert isinstance(mask_atoms, list)
-            n_atm = len(mask_atoms)
-            xyzs = xyzs[:,mask_atoms]
-        else:
-            n_atm = self._n_atm
-        # Validate
-        assert xyzs.shape == (n_dst, n_atm, 3)
-        # Calculate the TLS components
-        uij = self._parameters.uij(xyzs=xyzs, origins=coms, datasets=mask_datasets)
-        assert uij.shape == (n_dst, n_atm, 6)
+        op = self._op
+        uij = self._parameters.uijs(sites_carts=op.xyzs, origins=op.coms, selection=op.i_dst)
+        assert uij.all() == (op.n_dst, op.n_atm,)
         return uij
+
+    def _extract_target_for_optimise(self):
+        op = self.get_parameters()
+        uij = self.target_uij[op.i_dst][:,op.i_atm]
+        uij = flex.sym_mat3_double(uij.reshape((op.n_dst*op.n_atm,6)))
+        uij.reshape(flex.grid((op.n_dst,op.n_atm)))
+        return uij
+
+    #=======================+>
+
+    def _tls_matrix_penalties(self, matrices):
+        """Return penalty for having unphysical TLS models"""
+        penalty = 0.0 if matrices.is_valid() else 1.0
+        return self._tls_matrix_penalty_function(penalty)
+
+    def _amplitude_penalties(self, values):
+        """Return penalty for having amplitudes with negative values"""
+        penalty = abs(numpy.sum(values.select(values<-1.0*self._amp_tolerance)))
+        return self._amplitudes_penalty_function(penalty)
+
+    def _model_input_penalties(self, model_target_difference):
+        """Add penalty for having fitted ADPs greater than observed"""
+        penalties = uij_eigenvalues(model_target_difference).as_1d().as_double()
+        return self._model_input_penalty_function(penalties)
 
     #===========================================+>
     # Public Functions
     #===========================================+>
 
     def n_params(self, non_zero=False):
-        return self._parameters.n_params(non_zero=non_zero)
+        return self._parameters.n_params(free=True, non_zero=non_zero)
 
-    def initialise_models_and_amplitudes(self, i_tls, dataset_mask, atomic_mask):
+    def initialise_matrices_and_amplitudes(self, i_tls, dataset_mask, atomic_mask):
         """Set the TLS matrices & amplitudes to sensible starting values"""
 
         n_dst, n_atm = len(dataset_mask), len(atomic_mask)
@@ -4777,10 +5033,12 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         self.log('Resetting mode {}'.format(i_tls+1))
         self.parameters().get(index=i_tls).reset()
         self.log('Identifing a starting value for the T-matrix')
-        # Get the unfitted Uij (target uij minus uij already fitted from other models)
-        uij_vals = self.target_uij[dataset_mask][:,atomic_mask] - self._extract(mask_datasets=dataset_mask, mask_atoms=atomic_mask)
+        # Get the unfitted Uij (target uij minus uij already fitted from other modes)
+        uij_vals = (self.target_uij-self.extract())[dataset_mask][:,atomic_mask]
         assert uij_vals.shape == (n_dst, n_atm, 6)
-        uij_eigs = numpy.apply_along_axis(uij_eigenvalues, axis=2, arr=uij_vals)
+        uij_vals_flex = flex.sym_mat3_double(uij_vals.reshape((n_dst*n_atm,6)))
+        uij_eigs_flex = uij_eigenvalues(uij_vals_flex)
+        uij_eigs = numpy.array(uij_eigs_flex).reshape((n_dst,n_atm,3))
         assert uij_eigs.shape == (n_dst, n_atm, 3)
         # Calculate the minimum eigenvalues for each dataset
         uij_eigs_min = uij_eigs.min(axis=(1,2))
@@ -4795,14 +5053,14 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             self.log('Initialising the T-matrix with an isotropic uij')
             uij_start = (0.90,)*3 + (0.0,)*3
             self.log('Setting initial T-matrix values to {}'.format(uij_start))
-            self.parameters().get(index=i_tls).model.set(vals=uij_start, components='T')
+            self.parameters().get(index=i_tls).matrices.set(values=uij_start, component_string='T')
         else:
             self.log('There is an atom with negative eigenvalues (value {})'.format(min_eig))
             self.log('Starting with a T-matrix with zero values')
 
         self.log.bar()
         self.log('Starting TLS-matrix values:')
-        self.log(self.parameters().get(index=i_tls).model.summary())
+        self.log(self.parameters().get(index=i_tls).matrices.summary())
 
         # Determine sensible starting values for the amplitudes
         self.log('Looking for an appropriate scale for the amplitudes')
@@ -4816,12 +5074,11 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             self.log('No minimal eigenvalues of input Uijs are positive.')
             scale = 1e-3
             self.log('Scaling amplitudes to a fixed minimal size ({})'.format(scale))
-            amp_scales[:] = scale
+            amp_scales[dataset_mask] = scale
 
+        self.log('Setting amplitudes')
         mode = self.parameters().get(index=i_tls)
-        for cpts in mode.component_sets():
-            self.log('Setting {} amplitudes'.format(cpts))
-            mode.amplitudes.set(vals=amp_scales.reshape(amp_scales.shape+(1,)), components=cpts)
+        mode.amplitudes.set(values=amp_scales.tolist())
 
         self.log.bar()
         self.log('Starting amplitude values:')
@@ -4840,7 +5097,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         mdl_cuml = []
 
         # Did this optimisation start from zero-valued model?
-        global_null_model = False #(not self.parameters().any())
+        global_null = False #(not self.parameters().any())
 
         # Optimise!
         for i_cycle in xrange(n_cycles):
@@ -4850,22 +5107,22 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             for i_tls in xrange(self._n_tls):
 
                 # How should T-L-S be optimised - if all values are zero, optimise all separately then as those for each amplitude/component set
-                all_cpts = self.parameters().get(index=i_tls).all_components()
+                all_cpts = "TLS"
                 # Are all matrix values zero?
-                null_model = not self.parameters().get(index=i_tls).model.any(components=all_cpts)
-                # If null model then optimise each matrix individually (for speed) and then optimise all together
-                cpt_groups = list(all_cpts)*null_model + [all_cpts]*((not null_model) or (len(all_cpts) > 1))
+                null_mode = not self.parameters().get(index=i_tls).matrices.any(component_string=all_cpts)
+                # If null mode then optimise each matrix individually (for speed) and then optimise all together
+                cpt_groups = list(all_cpts)*null_mode + [all_cpts]*((not null_mode) or (len(all_cpts) > 1))
 
-                self.log.subheading('Optimising TLS model {} of {}'.format(i_tls+1, self._n_tls))
+                self.log.subheading('Optimising TLS mode {} of {}'.format(i_tls+1, self._n_tls))
                 self.log('Optimising using {} atoms'.format(len(opt_atom_mask)))
                 self.log('Optimising using {} datasets'.format(len(opt_dset_mask)))
                 self.log.bar(True, True)
-                self.log('Optimisation order for TLS matrix values: \n\t{}'.format('\n\t'.join(['{}) {}'.format(i+1, c) for i, c in enumerate(cpt_groups)])))
-                self.log('Optimising all TLS amplitude values: \n\t{}'.format('\n\t'.join(['{}) {}'.format(i+1, c) for i, c in enumerate(self.parameters().get(index=i_tls).component_sets())])))
+                self.log('Optimisation order for TLS matrix values: \n\t{}'.format('\n\t'.join(['({}) {}'.format(i+1, c) for i, c in enumerate(cpt_groups)])))
+                self.log('Optimising all TLS amplitude values: \n\t{}'.format('\n\t'.join(['({}) {}'.format(i+1, c) for i, c in enumerate(["TLS"])])))
 
                 # If starting from zero values, set translation matrix to sensible starting values
-                if (null_model is True):
-                    self.initialise_models_and_amplitudes(i_tls=i_tls, dataset_mask=opt_dset_mask, atomic_mask=opt_atom_mask)
+                if (null_mode is True):
+                    self.initialise_matrices_and_amplitudes(i_tls=i_tls, dataset_mask=opt_dset_mask, atomic_mask=opt_atom_mask)
                     self.log(self.parameters().get(index=i_tls).summary())
 
                 # Append to running list
@@ -4876,39 +5133,40 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                 # ---------------------------------->
                 for cpts in cpt_groups:
                     # Skip S optimisation if T and L are zeros
-                    if (cpts == 'S') and not (self.parameters().get(index=i_tls).model.any('T') and \
-                                              self.parameters().get(index=i_tls).model.any('L')):
+                    if (cpts == 'S') and not (self.parameters().get(index=i_tls).matrices.any('T') and \
+                                              self.parameters().get(index=i_tls).matrices.any('L')):
                         self.log('T and L matrices are zero -- not optimising S-matrix')
                         continue
                     self.log.subheading('Optimising {} parameters for TLS mode {}'.format(cpts, i_tls+1))
                     self.log.bar(False, True)
                     # Run optimisation
-                    self.optimise_models(
-                        models      = [i_tls],
-                        components  = cpts,
-                        datasets    = opt_dset_mask,
-                        atoms       = opt_atom_mask)
+                    self.optimise_matrices(
+                        modes       = [i_tls],
+                        components  = cpts)
                     # Log model summary
-                    self.log(self.parameters().get(index=i_tls).model.summary()+'\n')
+                    self.log(self.parameters().get(index=i_tls).matrices.summary()+'\n')
                     # Log current target and penalty
                     self.optimisation_summary()
-                    # Apply multiplier to amplitudes of less than unity if null model to allow for "wiggling"
-                    if null_model and (cpts in list('TLS')):
+                    # Apply multiplier to amplitudes of less than unity if null mode to allow for "wiggling"
+                    if null_mode and (cpts in list('TLS')):
                         multiplier = 0.95
                         self.log.subheading('Scaling amplitudes after individual component optimisation')
                         self.log('Applying scaling to amplitudes of {} to reduce restrictions on subsequent simplex optimisations'.format(multiplier))
-                        self.parameters().get(index=i_tls).amplitudes.scale(multiplier=multiplier)
+                        self.parameters().get(index=i_tls).amplitudes.multiply(scalar=multiplier)
 
                 # Normalise matrices to give Uijs of approximately xA
-                self.parameters().normalise_by_matrices(xyzs=self.atomic_xyz, origins=self.atomic_com, target=1.0)
-                # Check that normalisation has not made any of the models invalid and correct if possible
-                self.optimise_invalid_models()
+                xyzs = flex.vec3_double(self.atomic_xyz.reshape(self._n_dst*self._n_atm,3))
+                xyzs.reshape(flex.grid(self._n_dst,self._n_atm))
+                coms = flex.vec3_double(self.atomic_com)
+                self.parameters().normalise_by_matrices(sites_carts=xyzs, origins=coms, target=1.0)
+                # Check that normalisation has not made any of the matrices invalid and correct if possible
+                self.optimise_invalid_modes()
 
                 # ---------------------------------->
                 # Optimise TLS amplitude parameters (all amplitudes!)
                 # ---------------------------------->
-                # Only optimise amplitudes if model values are non-zero
-                if not self.parameters().get(index=i_tls).model.any(all_cpts):
+                # Only optimise amplitudes if matrices values are non-zero
+                if not self.parameters().get(index=i_tls).matrices.any(all_cpts):
                     self.log('{} matrices are all zero -- not optimising amplitudes'.format(all_cpts))
                     self.parameters().get(index=i_tls).reset()
                 else:
@@ -4919,10 +5177,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
                     #self.parameters().zero_amplitudes(models=[i_tls])
                     # Run optimisation
                     self.optimise_amplitudes(
-                        models      = mdl_cuml,
-                        components  = self.parameters().get(index=i_tls).component_sets(),
-                        datasets    = None,
-                        atoms       = range(self._n_atm),   # Optimise with all atoms to prevent over-sizing
+                        modes       = mdl_cuml,
                         n_cpus = n_cpus)
                     # Log amplitudes summary
                     self.log.bar(blank_before=True, blank_after=True)
@@ -4935,7 +5190,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             # End of cycle house-keeping
             self.log.bar(True, False)
             # Break optimisation if all matrices are zero -- not worth running following optimisation cycles
-            if not self.parameters().any():
+            if self.parameters().is_null():
                 self.log('All matrices have refined to zero -- optimisation finished.')
                 # Reset parameters just to be sure
                 self.parameters().reset()
@@ -4946,8 +5201,8 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             self.parameters().zero_negative_amplitudes()
             self.log.bar()
             # Identify modes that are zero and reset these
-            self.log('Looking for zero-value modes')
-            self.parameters().zero_null_modes()
+            self.log('Resetting zero-value modes')
+            self.parameters().reset_null_modes()
             self.log.bar()
 
             # Show summary at end of cycle...
@@ -4957,58 +5212,49 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
 
         # If this parameter set started out as zero-values, and optimises to non-zero values,
         # scale down so that there is still some disorder left for other levels to model.
-        if global_null_model and self.parameters().get(index=i_tls).model.any():
+        if global_null and self.parameters().get(index=i_tls).matrices.any():
             multiplier = 0.95
             self.log.subheading('Scaling amplitudes for zero-value starting model')
             self.log('This optimisation started from a zero-value parameter set and optimised to non-zero values.')
             self.log('Applying scaling to amplitudes of {} to reduce restrictions on subsequent simplex optimisations'.format(multiplier))
             for i_tls in xrange(self._n_tls):
-                self.parameters().get(index=i_tls).amplitudes.scale(multiplier=multiplier)
+                self.parameters().get(index=i_tls).amplitudes.multiply(scalar=multiplier)
 
         self.log.subheading('End of optimisation summary')
         self.summary(show=True)
 
         return
 
-    def optimise_models(self, models, components, datasets=None, atoms=None):
-        """Optimise the matrices for combinations of models/componenets/datasets"""
+    def optimise_matrices(self, modes, components):
+        """Optimise the matrices for combinations of modes/componenets/datasets"""
 
-        # Take all datasets/atoms if not provided
-        if datasets is None: datasets = range(self._n_dst)
-        if atoms is None:    atoms = range(self._n_atm)
-
-        # Select variables for optimisation -- model only
-        self._select(optimise_model      = True,
-                     optimise_amplitudes = False,
-                     models     = models,
-                     components = components,
-                     datasets   = datasets,
-                     atoms      = atoms)
+        # Select variables for optimisation -- matrices only
+        self.set_parameters(optimise_matrices   = True,
+                            optimise_amplitudes = False,
+                            modes      = modes,
+                            components = components)
         # Run optimisation
         self._optimise()
 
-    def optimise_amplitudes(self, models, components, datasets=None, atoms=None, n_cpus=1):
-        """Optimise the amplitudes for combinations of models/components/datasets"""
+    def optimise_amplitudes(self, modes, n_cpus=1):
+        """Optimise the amplitudes for combinations of modes"""
 
-        # Take all datasets/atoms if not provided
-        if datasets is None: datasets = range(self._n_dst)
-        if atoms is None:    atoms = range(self._n_atm)
+        # Extract masks
+        original_d_mask = self.get_dataset_mask()
+        original_a_mask = self.get_atomic_mask()
 
-        self.log('Setting up TLS amplitude optimisation')
-        # Select variables for optimisation -- amplitudes only
-        self._select(optimise_model      = False,
-                     optimise_amplitudes = True,
-                     models     = models,
-                     components = components,
-                     datasets   = None,         # This will be set individually
-                     atoms      = atoms)
-        # ---------------------------------->
+        # Select all atoms
+        self.set_atomic_mask(range(self._n_atm))
+
         self.log('Running amplitude optimisations: --->')
         # Optimise all amplitudes dataset-by-dataset
         jobs = []
-        for i_dst in datasets:
+        for i_dst in xrange(self._n_dst):
             # Select this dataset
-            self._select(datasets=[i_dst])
+            self.set_dataset_mask([i_dst])
+            self.set_parameters(optimise_matrices   = False,
+                                optimise_amplitudes = True,
+                                modes      = modes)
             # Append to job list (create copy) or run optimisation
             if n_cpus > 1:
                 jobs.append((self.copy(), {'stdout':False}))
@@ -5024,102 +5270,101 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
             finished_jobs = workers.map(func=wrapper_optimise, iterable=jobs)
             # Inject results from jobs
             self.log('Optimisation Results:')
-            for i_dst in datasets:
+            for i_dst in xrange(self._n_dst):
                 job = finished_jobs[i_dst]
                 if isinstance(job, str):
                     self.log(job)
                     raise Failure('error returned')
-                self._inject(values=job._values(), selection=job._select())
+                self._inject_values(values=job._extract_values(), parameters=job.get_parameters())
                 self.log('> dataset {} of {} (target {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, job.optimisation_target,  job.optimisation_penalty))
             # Let's be good
             workers.close()
 
-    def optimise_invalid_models(self, n_cpus=1):
+        self.set_dataset_mask(original_d_mask)
+        self.set_atomic_mask(original_a_mask)
+
+    def optimise_invalid_modes(self, n_cpus=1):
         """Check if models are invalid and attempt to correct them"""
 
         self.log.subheading('Checking for invalid TLS matrices')
 
-        # Extract the current model delta
+        # Extract the current mode delta
         orig_step_values = self.simplex.current_values()
 
-        for i_tls, model in enumerate(self.parameters()):
+        for i_tls, mode in enumerate(self.parameters()):
 
             self.log.bar()
-            self.log('Checking physicality of TLS model {}'.format(i_tls+1))
+            self.log('Checking physicality of TLS mode {}'.format(i_tls+1))
             self.log.bar()
 
-            # Check that the core model is valid
-            if model.model.is_valid():
-                self.log('Core model is valid')
+            # Check that the core matrices are valid
+            if mode.matrices.is_valid():
+                self.log('Core TLS matrices are valid')
                 continue
 
-            # Model invalid -- try to fix
-            self.log('Core model is invalid\n...attempting to re-optimise:')
-            # Create copy of the model first
-            model_cpy = model.copy()
-            self.log('Before re-optimisation: \n{}'.format(model_cpy.model.summary()))
+            # Mode invalid -- try to fix
+            self.log('Core matrices are invalid\n...attempting to re-optimise:')
+            # Create copy of the matrices first
+            mode_cpy = mode.copy()
+            self.log('Before re-optimisation: \n{}'.format(mode_cpy.matrices.summary()))
 
             # Try resetting S if T or L is zero
-            if (numpy.abs(model.model.get('T')) < model.model.get_precision()).all() or \
-               (numpy.abs(model.model.get('L')) < model.model.get_precision()).all():
+            if not (mode.matrices.any("T") and mode.matrices.any("L")):
                 self.log('...T or L matrix are zero -- resetting S-matrix')
-                model.model.set(vals=0.0, components='S')
-            if model.model.is_valid():
-                self.log('...core model is now valid')
+                mode.matrices.set(values=[0.0]*9, component_string='S')
+            if mode.matrices.is_valid():
+                self.log('...core TLS matrices are now valid')
                 continue
 
-            # Determine the range that the model values exist over (precision -> maximum value)
-            log_min_model_delta     = int(numpy.ceil(-model.model.get_precision() / 2.0))
-            log_max_model_delta     = int(numpy.floor(numpy.log10(numpy.max(numpy.abs(model.model.values)))/2.0))
-            self.log('Min model step size:  {:e}'.format(10.**log_min_model_delta))
-            self.log('Max model step size:  {:e}'.format(10.**log_max_model_delta))
-            # Iteratively increase the model step until model becomes valid
-            for step in 10.**(numpy.arange(log_min_model_delta, log_max_model_delta+1)):
-                self.log('...re-optimising with model steps of {}'.format(step))
-                step = float(step)
-                # Set simplex step
-                self.simplex.set_step_sizes(vibration=step,
-                                            libration=step,
-                                            angle=step)
-                # Run optimisations with the small model step
-                self.optimise_models(models     = [i_tls],
-                                     components = 'TLS',
-                                     datasets   = self.get_dataset_mask(),
-                                     atoms      = self.get_atomic_mask())
-                # Check again if the core model is valid
-                model = self.parameters().get(index=i_tls)
-                if model.model.is_valid():
-                    break
-            if model.model.is_valid():
-                self.log('...core model is now valid (after model step: {})'.format(step))
-                self.log('Before re-optimisation: \n{}'.format(model_cpy.model.summary()))
-                self.log('After re-optimisation: \n{}'.format(model.model.summary()))
-                continue
+            # Determine the range that the mode values exist over (precision -> maximum value)
+            #log_min_model_delta     = int(numpy.ceil(-mode.matrices.get_precision() / 2.0))
+            #log_max_model_delta     = int(numpy.floor(numpy.log10(numpy.max(numpy.abs(mode.matrices.get())))/2.0))
+            #self.log('Min matrix step size:  {:e}'.format(10.**log_min_model_delta))
+            #self.log('Max matrix step size:  {:e}'.format(10.**log_max_model_delta))
+            ## Iteratively increase the matrix step until matrix becomes valid
+            #for step in 10.**(numpy.arange(log_min_model_delta, log_max_model_delta+1)):
+            #    self.log('...re-optimising with matrix value step-sizes of {}'.format(step))
+            #    step = float(step)
+            #    # Set simplex step
+            #    self.simplex.set_step_sizes(vibration=step,
+            #                                libration=step,
+            #                                angle=step)
+            #    # Run optimisations with the step size
+            #    self.optimise_matrices(modes      = [i_tls],
+            #                           components = 'TLS')
+            #    # Check again if the core matrices are valid
+            #    mode = self.parameters().get(index=i_tls)
+            #    if mode.matrices.is_valid():
+            #        break
+            #if mode.matrices.is_valid():
+            #    self.log('...core matrices are now valid (after step-size: {})'.format(step))
+            #    self.log('Before re-optimisation: \n{}'.format(mode_cpy.matrices.summary()))
+            #    self.log('After re-optimisation: \n{}'.format(mode.matrices.summary()))
+            #    continue
 
+            # Try resetting and optimising the TLS Matrices
             # Reset to zero and re-optimise
-            self.log('...core model is still invalid: \n{}'.format(model.model.summary()))
+            self.log('...core matrices are still invalid: \n{}'.format(mode.matrices.summary()))
             self.log('...resetting and redetermining TLS values')
             # Reset TLS matrices to zero
-            model.model.reset(components='TLS')
-            # Set model step to original value
-            self.simplex.set_step_sizes(**orig_step_values)
+            mode.matrices.reset()
+            ## Set step to original value
+            #self.simplex.set_step_sizes(**orig_step_values)
             # Iterate through and optimise as originally
             for cpts in ['T','L','S','TLS']:
-                self.optimise_models(models     = [i_tls],
-                                     components = cpts,
-                                     datasets   = self.get_dataset_mask(),
-                                     atoms      = self.get_atomic_mask())
-            model = self.parameters().get(index=i_tls)
-            if model.model.is_valid():
-                self.log('...core model now valid (after resetting and reoptimising)')
-                self.log('Before re-optimisation: \n{}'.format(model_cpy.model.summary()))
-                self.log('After re-optimisation: \n{}'.format(model.model.summary()))
-                rms_values = rms(model.model.values-model_cpy.model.values)
-                self.log('...rms between initial model and "fixed" model: {}'.format(rms_values))
+                self.optimise_matrices(modes      = [i_tls],
+                                       components = cpts)
+            mode = self.parameters().get(index=i_tls)
+            if mode.matrices.is_valid():
+                self.log('...core matrices now valid (after resetting and reoptimising)')
+                self.log('Before re-optimisation: \n{}'.format(mode_cpy.matrices.summary()))
+                self.log('After re-optimisation: \n{}'.format(mode.matrices.summary()))
+                rms_values = rms(mode.matrices.get()-mode_cpy.matrices.get())
+                self.log('...rms between initial matrices and "fixed" matrices: {}'.format(rms_values))
                 continue
 
             # XXX XXX XXX
-            raise Failure('Failed to fix core model. \n{}'.format(model_cpy.summary()))
+            raise Failure('Failed to fix core model. \n{}'.format(mode_cpy.summary()))
             # XXX XXX XXX
 
         # Reset the old model delta
@@ -5127,12 +5372,29 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
 
     def extract(self):
         """Extract the fitted uij"""
-        return self._extract(mask_datasets=None, mask_atoms=None)
+        # Get the atomic coordinates
+        xyzs = self.atomic_xyz
+        coms = self.atomic_com
+        # Apply masks - datasets
+        n_dst = self._n_dst
+        n_atm = self._n_atm
+        # Validate
+        assert xyzs.shape == (n_dst, n_atm, 3)
+        # Convert arrays to flex
+        xyzs = flex.vec3_double(xyzs.reshape(n_dst*n_atm,3))
+        xyzs.reshape(flex.grid(n_dst,n_atm))
+        coms = flex.vec3_double(coms)
+        # Calculate the TLS components
+        uij = self._parameters.uijs(sites_carts=xyzs, origins=coms)
+        assert uij.all() == (n_dst, n_atm,)
+        # Cast to numpy array and return
+        uij = uij.as_1d().as_double().as_numpy_array().reshape((n_dst,n_atm,6))
+        return uij
 
     def result(self):
         """Extract the fitted parameters"""
-        tls_mdls = numpy.array([p.model.values      for p in self._parameters])
-        tls_amps = numpy.array([p.amplitudes.values for p in self._parameters])
+        tls_mdls = numpy.array([p.matrices.get()   for p in self._parameters])
+        tls_amps = numpy.array([p.amplitudes.get() for p in self._parameters])
         return (tls_mdls,tls_amps)
 
     def optimisation_summary(self, show=True):
@@ -5142,9 +5404,11 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         s += '\nOptimisation Penalty: {:5.3f}'.format(self.optimisation_penalty)
         s += '\nOptimisation Total: {:5.3f}'.format(self.optimisation_target+self.optimisation_penalty)
         s += '\n'+self.log._bar()
-        s += '\nModels used for optimisation (and weights):'
-        for i,w in zip(self.get_dataset_mask(), self.get_dataset_weights()):
-            s += '\n\t{:>3d} -> {:.3f}'.format(i,w)
+        s += '\nModels used for optimisation (and total weights):'
+        wts = self._op.wgts.mean(axis=1)
+        assert len(wts) == len(self.get_dataset_mask())
+        for i_rel, i_abs in enumerate(self.get_dataset_mask()):
+            s += '\n\t{:>3d} -> {:.3f}'.format(i_abs,wts[i_rel])
         s += '\n'+self.log._bar()
         if show: self.log(s)
         return s
@@ -5155,7 +5419,7 @@ class MultiDatasetUijTLSOptimiser(_UijOptimiser):
         for i_tls in xrange(self._n_tls):
             s += '\n> TLS model {}'.format(i_tls+1)
             mode = self._parameters.get(index=i_tls)
-            s += '\n\t' + mode.model.summary().replace('\n','\n\t')
+            s += '\n\t' + mode.matrices.summary().replace('\n','\n\t')
             s += '\n\t' + mode.amplitudes.summary().replace('\n','\n\t')
         if show: self.log(s)
         return s
@@ -5184,6 +5448,9 @@ def build_levels(model, params, log=None):
     backbone_atoms_sel = '({})'.format(' or '.join(['name {}'.format(a) for a in backbone_atoms]))
     back_sel = ' and '+backbone_atoms_sel
     side_sel = ' and not '+backbone_atoms_sel
+
+    log.bar(True, False)
+    log('Creating automatic levels:')
 
     if 'chain' in params.levels.auto_levels:
         log('Level {}: Creating level with groups for each chain'.format(len(levels)+1))
@@ -5217,16 +5484,35 @@ def build_levels(model, params, log=None):
         log('Level {}: Creating level with groups for each atom'.format(len(levels)+1))
         levels.append([PhenixSelection.format(a) for a in filter_h.atoms()])
         labels.append('atom')
+    log.bar()
 
-    # TODO IF statement for if custom levels are defined TODO
-    # TODO allow ability to insert
-    # TODO Take any custom groups and insert them here TODO (levels.insert)
+    # Insert custom levels
+    if params.levels.custom_level:
+        # Print auto levels
+        log('> {} automatic levels created:'.format(len(levels)))
+        for i_l, level in enumerate(levels):
+            log('\tLevel {} ({})'.format(i_l+1, labels[i_l]))
+        log.bar()
+        # Insert custom levels
+        log.bar(True, False)
+        log('Inserting custom levels:')
+        for l_params in params.levels.custom_level:
+            # Skip blank levels that might be inserted
+            if (l_params.depth is None) and (l_params.label is None) and (l_params.selection == []):
+                continue
+            # List index to insert level
+            idx = l_params.depth - 1
+            log('Inserting level: \n\tLabel: {}\n\tPosition: {}\n\tGroups: {}'.format(l_params.label, l_params.depth, len(l_params.selection)))
+            assert len(l_params.selection) > 0, 'No selections provided for this group!'
+            levels.insert(idx, l_params.selection)
+            labels.insert(idx, l_params.label)
+        log.bar()
 
     # Report
-    log('\n> {} levels created\n'.format(len(levels)))
+    log.subheading('Hierarchy summary: {} levels created'.format(len(levels)))
     for i_l, level in enumerate(levels):
         log.bar()
-        log('Level {}'.format(i_l+1))
+        log('Level {} ({})'.format(i_l+1, labels[i_l]))
         log.bar()
         for l in level: log('\t'+l)
 
@@ -5255,32 +5541,35 @@ def run(params):
 
         log.heading('Processing input parameters')
 
+        if params.settings.debug:
+            log('DEBUG is turned on -- setting verbose=True')
+            params.settings.verbose = True
+
         # Process/report on input parameters
         log.bar(True, False)
         log('Selected TLS amplitude model: {}'.format(params.fitting.tls_amplitude_model))
-        log(MultiDatasetTLSModel.get_amplitude_model_class(params.fitting.tls_amplitude_model).description())
+        log(tls_amplitudes_hash[params.fitting.tls_amplitude_model](10).description)
         log.bar(False, True)
 
         # Set precisions, etc
         log.bar()
-        log('Setting TLS Model and Amplitude Precision')
+        log('Setting TLS Matrices and Amplitude Precision')
         # Model precision
-        log('TLS Model precision     -> {:10} / {} decimals'.format(10.**-params.fitting.precision.tls_model_decimals, params.fitting.precision.tls_model_decimals))
-        TLSModel.set_precision(params.fitting.precision.tls_model_decimals)
+        log('TLS Matrices precision  -> {:10} / {} decimals'.format(10.**-params.fitting.precision.tls_matrices_decimals, params.fitting.precision.tls_matrices_decimals))
+        TLSMatrices.set_precision(params.fitting.precision.tls_matrices_decimals)
         # Amplitude precision
         log('TLS Amplitude precision -> {:10} / {} decimals'.format(10.**-params.fitting.precision.tls_amplitude_decimals, params.fitting.precision.tls_amplitude_decimals))
-        TLS_AmplitudeSet.set_precision(params.fitting.precision.tls_amplitude_decimals)
+        TLSAmplitudes.set_precision(params.fitting.precision.tls_amplitude_decimals)
         log.bar()
 
         # Set tolerances, etc
         log('Setting model tolerances')
         # TLS Model tolerance
-        log('TLS Model tolerance     -> {:10}'.format(params.fitting.precision.tls_tolerance))
-        TLSModel.set_tolerance(params.fitting.precision.tls_tolerance)
-        UijPenalties.set_tls_tolerance(params.fitting.precision.tls_tolerance)
+        log('TLS Matrices tolerance  -> {:10}'.format(params.fitting.precision.tls_tolerance))
+        TLSMatrices.set_tolerance(params.fitting.precision.tls_tolerance)
         # Uij Positive-semi-definiteness tolerance
         log('Uij tolerance           -> {:10}'.format(params.fitting.precision.uij_tolerance))
-        UijPenalties.set_uij_tolerance(params.fitting.precision.uij_tolerance)
+        MultiDatasetUijAtomOptimiser.set_uij_tolerance(params.fitting.precision.uij_tolerance)
         log.bar()
 
         # Output images
@@ -5316,9 +5605,11 @@ def run(params):
         # Load input structures
         log.subheading('Building model list -- {} files'.format(len(params.input.pdb)))
         if params.input.labelling == 'foldername':
-            label_func = lambda f: os.path.basename(os.path.dirname(f))
+            label_func = foldername
+        elif params.input.labelling == 'filename':
+            label_func = filename
         else:
-            label_func = lambda f: os.path.basename(os.path.splitext(f)[0])
+            raise Exception('Invalid labelling function: {}'.format(params.input.labelling))
         models = [CrystallographicModel.from_file(f).label(tag=label_func(f)) for f in params.input.pdb]#[:10]
         models = sorted(models, key=lambda m: m.tag)
         log('{} models loaded'.format(len(models)))
@@ -5425,6 +5716,8 @@ if __name__=='__main__':
     from giant.jiffies import run_default
     from pandemic import module_info
     run_default._module_info = module_info
+    from bamboo.common.profile import profile_code
+    #a = profile_code()
     run_default(
         run                 = run,
         master_phil         = master_phil,
@@ -5432,4 +5725,4 @@ if __name__=='__main__':
         blank_arg_prepend   = blank_arg_prepend,
         program             = PROGRAM,
         description         = DESCRIPTION)
-
+    #a.stop()

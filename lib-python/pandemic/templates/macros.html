@@ -14,9 +14,18 @@
   <div {% if div_name %}id="{{ div_name }}" class="panel-collapse collapse {% if panel_data.show|default(true) %}in{% endif %}"{% endif %}>
     <div class="panel-body">
       <div class="row row-centered">
-      {% for obj in panel_data.body -%}
-        <div class="col col-centered col-xs-12 col-md-{{ obj.width | default(12) }}">
-            <div {% if (obj.type or obj.classes) %}class="{% for c in obj.classes %}{{c}} {% endfor %} {% if obj.type %}{{obj.type}} {{obj.type}}-{{obj.colour | default('primary')}}{% endif %}"{% endif %}>
+        {% for obj in panel_data.body -%}
+        {{ basic_format(obj) }}
+        {% endfor -%} 
+      </div>
+    </div>
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro basic_format(obj) -%}
+        <div class="col-centered col-xs-12 col-md-{{ obj.width | default(12) }}" style="overflow-x: scroll">
+            <div {% if (obj.type or obj.classes) %}class="{% for c in obj.classes %}{{c}} {% endfor %} {% if obj.type %}{{obj.type}} {{obj.type}}-{{obj.colour | default('primary')}}{% endif %}"{% endif %} style="overflow-x: scroll">
           {% if obj.title is defined %}
             <h4>{{ obj.title }}</h4>
           {% endif %}
@@ -39,13 +48,31 @@
           {% endfor %}
           </div>
         </div>
-        {% endfor -%} 
-      </div>
-    </div>
-  </div>
-</div>
 {%- endmacro %}
-    
+
+{% macro basic_tab_set(tabs, nav_classes=[]) -%}
+               <div role="navigation">
+                 <ul class="nav nav-tabs{% for c in nav_classes %} {{c}}{% endfor %}">
+                   {% for t in tabs %}
+                   <li {% if t.active -%}class="active"{% endif -%} role="presentation"><a data-toggle="tab" href="#{{ t.id }}">{{ t.short_name }}</a></li>
+                   {%- endfor %}
+                 </ul>
+                 <div class="tab-content tab-borders">
+                   {% for t in tabs %}
+                   <div id="{{ t.id }}" class="tab-pane fade {% if t.active -%}in active{% endif -%}">
+                     <h3>{{ t.long_name }}</h3>
+                     <p>{{ t.description }}</p>
+                     <div class="row">
+                       {% for o in t.body -%}
+                       {{ basic_format(o) }}
+                       {% endfor %}
+                     </div>
+                   </div>
+                   {% endfor %}
+                 </div>
+               </div>
+{%- endmacro %}
+
 {% macro lightbox_setup(id='lightbox') %}
     <style>
       #{{ id }} .modal-content {
