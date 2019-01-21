@@ -4,7 +4,7 @@ class profile_code(object):
     def __init__(self):
         self.start()
 
-    def start():
+    def start(self):
         self.profiler = cProfile.Profile()
         self.profiler.enable()
 
@@ -12,7 +12,7 @@ class profile_code(object):
         self.profiler.disable()
         s = StringIO.StringIO()
         sortby = 'cumulative'
-        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps = pstats.Stats(self.profiler, stream=s).sort_stats(sortby)
         if print_stats:
             ps.print_stats()
             print s.getvalue()
