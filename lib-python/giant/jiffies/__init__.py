@@ -98,8 +98,8 @@ def parse_phil_args(master_phil, args, blank_arg_prepend=None, home_scope=None):
     # Remove them from the original lists
     [args.remove(f) for f in eff_files]
     # Parse the 'eff' files - these should contain phils
-    #eff_sources = [libtbx.phil.parse(open(f, 'r').read()) for f in eff_files]
-    eff_sources = [cmd_interpr.process(open(f, 'r').read()) for f in eff_files]
+    eff_sources = [libtbx.phil.parse(open(f, 'r').read()) for f in eff_files]
+    #eff_sources = [cmd_interpr.process(open(f, 'r').read()) for f in eff_files]
 
     # Process input arguments
     arg_sources = []
