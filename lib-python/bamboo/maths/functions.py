@@ -18,6 +18,16 @@ class _ScalingFunction(object):
             self.__setattr__(k, kw_args[k])
 
 
+class Linear(_ScalingFunction):
+    name = 'Linear'
+
+    def __init__(self, y_scale=1.0, y_intercept=0.0):
+        adopt_init_args(self, locals())
+
+    def map(self, x):
+        return self.y_scale * x + self.y_intercept
+
+
 class Sigmoid(_ScalingFunction):
     name = 'Sigmoid'
 
@@ -64,7 +74,10 @@ class PiecewiseLinear(_ScalingFunction):
 def get_function(form, **kw_args):
     """Get and initialise one of several mathematical functions"""
 
-    if form == 'piecewise_linear':
+    if form == 'linear':
+        keys = ['y_scale','y_intercept']
+        func = Linear
+    elif form == 'piecewise_linear':
         keys = ['y_scale','y_discontinuity','x_discontinuity_location']
         func = PiecewiseLinear
     elif form == 'sigmoid':
