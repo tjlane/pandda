@@ -204,19 +204,18 @@
         xaxis: {title: plot_data['index'][ix]},
         yaxis: {title: plot_data['index'][iy]},
         autosize: false,
-        width: 1100,
+        width: 0.95*$('.container').innerWidth(),
         height: 500,
-        margin: {t: 20, r:300},
+        automargin: true,
         hovermode: 'closest',
         annotations: [
-          {text:'', x:1.1, y:0.9, xanchor:'left', yanchor:'bottom', xref:'paper', yref:'paper', showarrow:false},
-          {text:'', x:1.1, y:0.7, xanchor:'left', yanchor:'bottom', xref:'paper', yref:'paper', showarrow:false},
-          {text:'', x:1.1, y:0.5, xanchor:'left', yanchor:'bottom', xref:'paper', yref:'paper', showarrow:false}
+          {text:'', x:1.0, y:-0.0, xanchor:'right', yanchor:'top', xref:'paper', yref:'paper', showarrow:false},
+          {text:'', x:1.0, y:-0.2, xanchor:'right', yanchor:'top', xref:'paper', yref:'paper', showarrow:false},
+          {text:'', x:1.0, y:-0.4, xanchor:'right', yanchor:'top', xref:'paper', yref:'paper', showarrow:false}
         ],
         updatemenus: [
-          {x: 1.1, y: 0.90, xanchor: 'left', yanchor: 'top', buttons: makeSelectAxisButtons('x')}, 
-          {x: 1.1, y: 0.75, xanchor: 'left', yanchor: 'top', buttons: makeSelectAxisButtons('y')},
-          {x: 1.1, y: 0.60, xanchor: 'left', yanchor: 'top', buttons: makeSelectColourButtons()}
+          {x: 0.0, y: 1.1, xanchor: 'left', yanchor: 'bottom', buttons: makeSelectAxisButtons('x')}, 
+          {x: 0.5, y: 1.1, xanchor: 'left', yanchor: 'bottom', buttons: makeSelectAxisButtons('y')}
         ]
       }
     } 

@@ -3,6 +3,10 @@ from libtbx import adopt_init_args
 import numpy
 
 
+def rms(vals, axis=None):
+    return numpy.sqrt(numpy.mean(numpy.power(vals,2), axis=axis))
+
+
 class _ScalingFunction(object):
 
     def __call__(self, value):
