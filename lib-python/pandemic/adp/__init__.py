@@ -3606,7 +3606,11 @@ class MultiDatasetHierarchicalUijFitter(object):
     def optimise_level_amplitudes(self, n_cycles=1, n_cpus=1, recursions=1):
         """Optimise amplitudes for pairs of adjacent levels"""
 
-        levels = range(len(self.levels)+1)
+        self.log.heading('Running inter-level amplitude optimisation')
+
+        self.log('Cycles: {}'.format(n_cycles))
+        self.log('CPUs: {}'.format(n_cpus))
+        self.log('Recursions (number of levels to be co-optimised): {}'.format(recursions))
 
         # Create optimisation object -- edits levels in-place so shouldn't need to do anything to unpack results
         ao = InterLevelAmplitudeOptimiser(
@@ -3617,7 +3621,7 @@ class MultiDatasetHierarchicalUijFitter(object):
                 params     = self.params,
                 verbose    = self.verbose,
                 log        = self.log)
-        ao.optimise(n_cycles=1, n_cpus=n_cpus, recursions=recursions)
+        ao.optimise(n_cycles=n_cycles, n_cpus=n_cpus, recursions=recursions)
         ao.apply_multipliers(self.levels, self.residual)
         self.log(ao.summary(show=True))
         return ao
@@ -3831,7 +3835,7 @@ class MultiDatasetHierarchicalUijFitter(object):
             self.update_tracking(uij_lvl=fitted_uij_by_level, i_cycle=i_macro, i_level='residual')
 
             # Optimise the InterLevel Amplitudes
-            self.optimise_level_amplitudes(n_cycles=n_micro_cycles, n_cpus=n_cpus, recursions=2)
+            self.optimise_level_amplitudes(n_cycles=1, n_cpus=1, recursions=max(1,len(self.levels)-2)) # don't optimise all at once -- suicide # TODO CHANGE ME
             # Update output
             for i, l in enumerate(self.levels):
                 fitted_uij_by_level[i] = l.extract()
@@ -4434,6 +4438,8 @@ def run(params):
         # Update unpickled object
         # TODO only transfer the non-default params!
         #p.params = params
+
+        p.fitter.optimise_level_amplitudes(n_cycles=1, n_cpus=1, recursions=1)
 
     # Print all errors
     p.log.heading('Errors/Warnings')
