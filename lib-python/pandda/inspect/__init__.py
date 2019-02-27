@@ -932,6 +932,7 @@ class PanddaMolHandler(object):
         set_molecule_bonds_colour_map_rotation(l, LIG_COLOUR)
         set_mol_displayed(l, 1)
         set_b_factor_molecule(l, 20)
+        delete_hydrogens(l)
         # Set the occupancy of the ligand to 2*(1-bdc)
         if set_occupancy:
             all_residue_ids = all_residues(l)
