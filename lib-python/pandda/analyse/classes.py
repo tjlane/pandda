@@ -703,7 +703,7 @@ class PanddaMultiDatasetAnalyser(Program):
             self.log.bar()
             self.log('Not enough datasets are available for statistical map characterisation.')
             self.log('The minimum number required is controlled by changing min_build_datasets')
-            self.log('Number available for characterisation ({!s}) is less than the {!s} current minimum.'.format(self.datasets.size(mask_name='characterisation', invert=True), self.params.statistical_maps.min_build_datasets))
+            self.log('Number available for characterisation ({!s}) is less than the {!s} current minimum.'.format(self.datasets.size(mask_name='characterisation'), self.params.statistical_maps.min_build_datasets))
             raise Sorry('Not enough datasets are available for statistical map characterisation')
         # ================================================>
         # Check that ANY datasets are marked for analysis!
