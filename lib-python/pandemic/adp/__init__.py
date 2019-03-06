@@ -2661,8 +2661,8 @@ class MultiDatasetUijPlots(object):
         fig, axis = pyplot.subplots(nrows=1, ncols=1)
         axis.set_title(title)
         # Draw horizontal/vertical lines (do first so they're at the bottom)
-        for v in hlines: axis.axhline(y=v, linewidth=2, zorder=1)
-        for v in vlines: axis.axvline(x=v, linewidth=2, zorder=1)
+        for v in hlines: axis.axhline(y=v, linewidth=1, zorder=1)
+        for v in vlines: axis.axvline(x=v, linewidth=1, zorder=1)
         # Store plot objects
         plot_dicts = []
         for i_y, y in enumerate(binned_y):
@@ -2745,7 +2745,7 @@ class MultiDatasetUijPlots(object):
                 y_pos = (0.5*y_min+0.5*y_max) #(0.05*(y_max-y_min) if (y_max>0.0>y_min) else (0.5*y_min+0.5*y_max))
                 t = axis.text(
                         x=(n_bins+0.5)+(0.5+i_y)*t_width, y=y_pos, s=l.center(max_l_length),
-                        bbox=dict(boxstyle='round', facecolor=colours[i_y], edgecolor='k', linewidth=0.5, alpha=0.5, pad=0.3),
+                        bbox=dict(boxstyle='round', facecolor=colours[i_y], edgecolor='k', linewidth=0.5, alpha=0.75, pad=0.3),
                         fontsize=fontsize, rotation=90, ha='center', va='center', zorder=1)
                 text_artists.append(t)
             axis.set_xlim(right=n_bins+0.5+x_width)
@@ -3096,6 +3096,7 @@ class MultiDatasetUijPlots(object):
                         hatch=hatchs.next(),
                         linewidth=0,
                         edgecolor='black',
+                        zorder=5,
                         )
                 handles.append(hdl)
 
@@ -3116,7 +3117,7 @@ class MultiDatasetUijPlots(object):
                 # Add another point at the beginning and end so starts and ends on the baseline
                 x_vals_dup = numpy.concatenate([[x_vals_dup[0]], x_vals_dup, [x_vals_dup[-1]]])
                 y_vals_dup = numpy.concatenate([[0.0], y_vals_dup, [0.0]])
-                hdl = axis.plot(x_vals_dup, y_vals_dup, 'k-', label=reference_legend, lw=0.5)
+                hdl = axis.plot(x_vals_dup, y_vals_dup, 'k-', label=reference_legend, lw=0.5, zorder=5)
                 if reference_hierarchy is not None:
                     handles.extend(hdl)
 
@@ -3132,9 +3133,9 @@ class MultiDatasetUijPlots(object):
             if v_line_hierarchy is not None:
                 v_lines = numpy.where(numpy.array([max(rg.atoms().extract_b()) for rg in v_line_hierarchy.select(sel).residue_groups()], dtype=bool))[0] + 1.5
                 for val in v_lines:
-                    axis.axvline(x=val, c='grey', ls='solid', label='boundaries', lw=0.5, zorder=0)
+                    axis.axvline(x=val, c='grey', ls='solid', label='boundaries', lw=0.5, zorder=1)
                 # Add a line at zero
-                h = axis.axvline(x=0.5, c='grey', ls='solid', label='boundaries', lw=0.5, zorder=0)
+                h = axis.axvline(x=0.5, c='grey', ls='solid', label='boundaries', lw=0.5, zorder=1)
                 handles.append(h)
 
             # Plot legend
@@ -3352,7 +3353,7 @@ class MultiDatasetUijPlots(object):
                 delta = v - last_v
                 axes[0].text(x=last_v+delta/2.0,
                              y=0.05*axes[0].get_ylim()[0] + 0.95*axes[0].get_ylim()[1],
-                             s='cycle '*(n_cycles<6) +str(i), # This is plotting the previous point so do not need +1
+                             s='cycle '*(n_cycles<6) +str(i-1), # This is plotting the previous point so need -1
                              horizontalalignment='center',
                              verticalalignment='top',
                             )
@@ -3361,7 +3362,7 @@ class MultiDatasetUijPlots(object):
         if delta is not None:
             axes[0].text(x=min(v+delta/2.0, axes[0].get_xlim()[1]),
                          y=0.05*axes[0].get_ylim()[0] + 0.95*axes[0].get_ylim()[1],
-                         s='cycle '*(n_cycles<6) +str(i+1), # This needs a +1
+                         s='cycle '*(n_cycles<6) +str(i), # This does not need a -1
                          horizontalalignment='center',
                          verticalalignment='top',
                         )
