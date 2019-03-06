@@ -205,6 +205,11 @@ class _PymolScript(object):
         self._append(cmd)
         return obj
 
+    def chainbow(self, obj):
+        cmd = self._format(template=self._util_chainbow, obj=obj)
+        self._append(cmd)
+        return obj
+
     # ----------------------------------------------------------------------- #
 
 class PythonScript(_PymolScript):
@@ -242,6 +247,8 @@ class PythonScript(_PymolScript):
                        'orange'   : 'util.cbao("{obj}")',
                        'salmon'   : 'util.cbas("{obj}")',
                        'yellow'   : 'util.cbay("{obj}")'}
+
+    _util_chainbow = 'util.chainbow("{obj}")'
 
     @classmethod
     def run(cls, script):

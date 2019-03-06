@@ -7,7 +7,7 @@ import scipy.spatial
 
 import iotbx.pdb
 from scitbx.array_family import flex
-from libtbx.utils import null_out
+from libtbx.utils import null_out, Sorry, Failure
 
 ####################################################################################
 ###                             HIERARCHY FUNCTIONS                              ###
@@ -51,7 +51,10 @@ def default_secondary_structure_selections(hierarchy):
     hierarchy = protein(hierarchy, copy=True)
     hierarchy.reset_atom_i_seqs()
     from mmtbx.secondary_structure import dssp
-    return dssp.dssp(hierarchy, log=null_out(), out=null_out()).get_annotation().as_atom_selections()
+    result = dssp.dssp(hierarchy, log=null_out(), out=null_out()).get_annotation().as_atom_selections()
+    if len(result)==0:
+        raise Sorry('No secondary structure elements were identified by dssp')
+    return result
 
 def default_secondary_structure_selections_filled(hierarchy, verbose=False):
     """Return secondary structure selections and fill gaps with new selections"""

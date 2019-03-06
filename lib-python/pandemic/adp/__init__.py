@@ -30,7 +30,7 @@ from giant.structure.formatting import ShortLabeller, PhenixSelection, PymolSele
 from giant.structure.select import protein, backbone, sidechains, default_secondary_structure_selections_filled
 from giant.structure.pymol import auto_residue_images, auto_chain_images, selection_images
 from giant.xray.crystal import CrystalSummary
-from giant.xray.refine import refine_phenix
+from giant.xray.refine import refine_phenix, refine_refmac
 from giant.xray.tls import phenix_find_tls_groups
 
 from giant.jiffies import multi_table_ones
@@ -124,7 +124,7 @@ output {
         pymol = none *chain all
             .help = "Write residue-by-residue images of the output B-factors"
             .type = choice(multi=False)
-        distributions = True
+        distributions = False
             .help = "Write distribution graphs for each TLS group"
             .type = bool
     }
@@ -166,7 +166,7 @@ fitting {
     tls_amplitude_model = *simple_multiplier
         .help = 'how do amplitudes transform each TLS group in each dataset? \n\tsimple_multiplier = T->aT, L->aL, S->aS.'
         .type = choice(multi=False)
-    number_of_macro_cycles = 2
+    number_of_macro_cycles = 20
         .help = 'how many fitting cycles to run (over all levels) -- should be more than 0'
         .type = int
     number_of_micro_cycles = 2
@@ -185,113 +185,60 @@ fitting {
         max_datasets = None
             .help = 'takes up to this number of datasets for TLS parameter optimisation'
             .type = int
+        sort_datasets_by = *resolution random name
+            .help = 'how should datasets be ordered when selecting a subset of datasets for optimisation?'
+            .type = choice(multi=False)
+        random_seed = 0
+            .type = int
         max_resolution = None
             .help = 'resolution limit for dataset to be used for TLS optimisation'
             .type = float
-        step_size
+        simplex
             .help = 'set the various step sizes taken during simplex optimisation'
         {
-            vibration = 0.1
-                .help = 'RMS Vibration magnitude step size (angstroms)'
+            amplitude_delta_frac = 0.01
+                .help = 'Amplitude step size (fractional)'
                 .type = float
-            libration = 0.1
-                .help = 'RMS Libration magnitude step size (degrees)'
+            vibration_delta_frac = 0.01
+                .help = 'Vibration step size (fractional)'
                 .type = float
-            angle = 1.0
-                .help = 'Vector orientation change step size (degrees)'
+            libration_delta_frac = 0.01
+                .help = 'Libration step size (fractional)'
                 .type = float
-            amplitude = 0.1
-                .help = 'Amplitude magnitude change step size (dimensionless)'
+            amplitude_delta_min = 1e-6
+                .help = 'Minimum amplitude step size (absolute)'
+                .type = float
+            vibration_delta_min = 1e-3
+                .help = 'Minimum libration step size (absolute)'
+                .type = float
+            libration_delta_min = 1e-3
+                .help = 'Libration step size (absolute)'
+                .type = float
+            uij_delta = 1e-3
+                .help = 'Uij step size (absolute)'
                 .type = float
         }
         penalties
             .help = 'penalties during optimisation.'
         {
-            fitting_penalty_weights
-                .help = "Penalty function that controls how the fitting penalties are weighted as a function of distance to the target"
-            {
-                form = *none linear sigmoid logarithm
-                    .type = choice(multi=False)
-                    .help = "Function to use to calculate how the fitting penalty changes as a function of delta-U"
-                y_scale = 2.0
-                    .type = float
-                    .help = "Multiplier for the form function (e.g. height of sigmoid function)"
-                y_intercept = 0.0
-                    .type = float
-                    .help = "Intercept for the LINEAR form function"
-                x_width = 0.03671
-                    .type = float
-                    .help = "Width of the form function (e.g. width of sigmoid function)"
-                x_offset = 0.0
-                    .type = float
-                    .help = "X-Offset of the form function (e.g. inversion point of the sigmoid function)"
-                y_offset = -1.0
-                    .type = float
-                    .help = "Y-Offset of the form function (i.e. fixed amount added to function)"
-            }
             over_target_values
                 .help = 'penalties when the fitted Uij is greater than the target Uij. penalty p is number of atoms with a Uij(fitted) > Uij(target). calculated as number of negative eigenvalues of tensor Uij(fitted)-Uij(target).'
             {
                 form = *sigmoid
                     .type = choice(multi=False)
                     .help = "Function to use to calculate how the penalty changes for a model that is greater than the target model"
-                y_scale = 0.1
+                y_scale = 10.0
                     .type = float
                     .help = 'manual multiplier for the sigmoid penalty function'
-                x_width = 0.0018355
+                x_width = 0.00018355
                     .type = float
                     .help = 'width of the buffer zone (width of buffer approx 6.9 time this value; default 0.0018355 -> 0.0018355*6.9*8*pi*pi = 1A B-factor)'
                 x_offset = 0.0
                     .type = float
                     .help = "Offset of the form function (e.g. inversion point of the sigmoid function)"
             }
-            invalid_tls_values
-                .help = 'penalties for invalid TLS models. penalty p is number of T L or S matrices that is unphysical.'
-                .expert_level = 3
-            {
-                form = *piecewise_linear
-                    .type = choice(multi=False)
-                    .help = "Function to use to calculate how the penalty changes for a model that is greater than the target model"
-                y_discontinuity = 100
-                    .type = float
-                    .help = 'fixed penalty for positive penalty values'
-                x_discontinuity_location = 0.5
-                    .type = float
-                    .help = 'penalty value where function departs from zero value'
-            }
-            invalid_amplitudes
-                .help = 'penalties for negative TLS amplitudes. penalty p is sum of amplitudes less than zero.'
-                .expert_level = 3
-            {
-                form = *piecewise_linear
-                    .type = choice(multi=False)
-                    .help = "Function to use to calculate how the penalty changes for a model that is greater than the target model"
-                y_scale = 100
-                    .type = float
-                    .help = 'multiplicative penalty for positive penalty values'
-                y_discontinuity = 100
-                    .type = float
-                    .help = 'fixed penalty for positive penalty values'
-            }
-            invalid_uij_values
-                .help = 'penalties for invalid Uij values. penalty p is total number of negative eigenvalues for each Uij.'
-                .expert_level = 3
-            {
-                form = *piecewise_linear
-                    .type = choice(multi=False)
-                    .help = "Function to use to calculate how the penalty changes for a model that is greater than the target model"
-                y_scale = 1000
-                    .type = float
-                    .help = 'multiplicative penalty for penalty values above crossover'
-                y_discontinuity = 100
-                    .type = float
-                    .help = 'fixed penalty for penalty values above crossover'
-                x_discontinuity_location = 0.0
-                    .type = float
-                    .help = 'point at which the penalty becomes non-zero'
-            }
         }
-        simplex_convergence = 1e-3
+        simplex_convergence = 1e-12
             .help = "cutoff for which the least-squares is considered converged"
             .type = float
     }
@@ -313,11 +260,11 @@ fitting {
     }
 }
 analysis {
-    refine_output_structures = False
+    refine_output_structures = True
         .help = "Refine the structures after fitting (coordinates and occupancies)"
         .type = bool
     calculate_r_factors = True
-        .help = "Recalculate r-factors for the fitted B-factors"
+        .help = "Recalculate r-factors for the input, output (and refined) models"
         .type = bool
     calculate_electron_density_metrics = False
         .expert_level = 3
@@ -331,6 +278,10 @@ analysis {
         .type = bool
 }
 refinement {
+    program = refmac *phenix
+        .help = "Should refinement be performed on the output models (coordinates and occupancies)"
+        .type = choice(multi=False)
+        .optional = True
     cif = None
         .help = "Cif files required for refinement"
         .type = str
@@ -440,14 +391,17 @@ def dendrogram(fname, link_mat, labels=None, ylab=None, xlab=None, ylim=None, an
 #                        Multi-processing functions                        #
 ############################################################################
 
-#def wrapper_plot_histograms(args):
-#    MultiDatasetUijPlots.multi_histogram(**args)
-
 def _wrapper_run(arg):
-    return arg.run()
+    try:
+        ret = arg.run()
+    except:
+        tr = traceback.format_exc()
+        return tr
+    return arg
 
 def _wrapper_fit(args):
     fitter, kw_args = args
+    fitter.log.toggle(0)
     try:
         msg = 'Error'
         fitter.optimise(**kw_args)
@@ -506,14 +460,8 @@ class MultiDatasetUijParameterisation(Program):
         self.level_labels = level_labels if level_labels else ['Level {}'.format(i) for i in range(1,len(levels)+1)]
         self.fitter = None
 
-        # Misc files
-        if self.params.refinement.cif:
-            self.cifs = self.params.refinement.cif
-        else:
-            self.cifs = None
-
         # Create plot object
-        self.plot = MultiDatasetUijPlots
+        self.plot = MultiDatasetUijPlots(n_levels=len(self.levels)+1)
 
         # Validate and add output paths, etc.
         self._init_checks()
@@ -528,8 +476,14 @@ class MultiDatasetUijParameterisation(Program):
     def _init_checks(self):
         try:
             if self.params.analysis.refine_output_structures is True:
-                message = 'phenix.refine is required when analysis.refine_output_structures is True'
-                self.check_programs_are_available(['phenix.refine'])
+                if self.params.refinement.program == 'phenix':
+                    message = 'phenix.refine is required when analysis.refine_output_structures=True and refinement.program=phenix'
+                    self.check_programs_are_available(['phenix.refine'])
+                elif self.params.refinement.program == 'refmac':
+                    message = 'refmac5 is required when analysis.refine_output_structures=True and refinement.program=refmac'
+                    self.check_programs_are_available(['refmac5'])
+                else:
+                    raise Sorry('Must select refinement.program when analysis.refine_output_structures=True')
             if self.params.analysis.calculate_r_factors is True:
                 message = 'phenix.table_one is required when analysis.calculate_r_factors is True'
                 self.check_programs_are_available(['phenix.table_one'])
@@ -658,16 +612,35 @@ class MultiDatasetUijParameterisation(Program):
         self.log('\nDataset resolutions (extracted from {} files):'.format('MTZ' if self.has_reflection_data else 'PDB'))
         for m in self.models:
             self.log('> {}: {}'.format(m.tag, self._resolution_from_model(m)))
+
         # Select optimisation datasets and run checks
-        self.optimisation_datasets = self.select_optimisation_datasets(self.models)
-        if len(self.optimisation_datasets) == 0:
-            raise Sorry('No datasets above resolution cutoff: {}'.format(self.params.fitting.optimisation.max_resolution))
+        self.log('Selecting datasets to be used for TLS and residual optimisation')
+        opt_datasets = self.select_optimisation_datasets(self.models)
+        if len(opt_datasets) == 0:
+            raise Sorry('No datasets selected for optimisation (e.g. above resolution cutoff: {})'.format(self.params.fitting.optimisation.max_resolution))
+
+        # Order the datasets
+        self.log('Ordering optimisation datasets by {}'.format(self.params.fitting.optimisation.sort_datasets_by))
+        if self.params.fitting.optimisation.sort_datasets_by == 'resolution':
+            opt_datasets = sorted(opt_datasets, key=lambda i: self._resolution_from_model(self.models[i]))
+        elif self.params.fitting.optimisation.sort_datasets_by == 'name':
+            opt_datasets = sorted(opt_datasets, key=lambda i: self.models[i].tag)
+        elif self.params.fitting.optimisation.sort_datasets_by == 'random':
+            self.log('Setting random seed: {}'.format(self.params.fitting.optimisation.random_seed))
+            numpy.random.seed(self.params.fitting.optimisation.random_seed)
+            opt_datasets = numpy.random.permutation(opt_datasets).tolist()
+        self.log('After reordering:')
+        for i_m in opt_datasets:
+            self.log('\t{}: {}'.format(i_m, self.models[i_m].tag))
 
         # Limit the number of datasets for optimisation
         n_opt = self.params.fitting.optimisation.max_datasets
-        if (n_opt is not None) and (len(self.optimisation_datasets) > n_opt):
+        if (n_opt is not None) and (len(opt_datasets) > n_opt):
             self.log('\nLimiting list of datasets for TLS optimisation to {} datasets'.format(n_opt))
-            self.optimisation_datasets = self.optimisation_datasets[:n_opt]
+            opt_datasets = opt_datasets[:n_opt]
+
+        # Store & report
+        self.optimisation_datasets = opt_datasets
         # Print optimisation datasets
         self.log('\nUsing {} datasets for TLS and residual parameterisation'.format(len(self.optimisation_datasets)))
         for i_m in self.optimisation_datasets:
@@ -752,7 +725,7 @@ class MultiDatasetUijParameterisation(Program):
         self.tables = Meta(['statistics', 'tracking'])
 
         # Create table for tracking progress over cycles
-        self.tables.tracking = pandas.DataFrame(columns=['cycle', 'level', #'group',
+        self.tables.tracking = pandas.DataFrame(columns=['cycle', 'step', 'level',
                                                          'rmsd',
                                                          'u_iso (level)',
                                                          'b_iso (level)',
@@ -950,7 +923,9 @@ class MultiDatasetUijParameterisation(Program):
         # Table to be populated during optimisation
         self.fitter.set_tracking(table    = self.tables.tracking,
                                  csv_path = self.file_manager.add_file(file_name='tracking_data.csv', file_tag='tracking_csv', dir_tag='results'),
-                                 png_path = self.file_manager.add_file(file_name='tracking_data.png', file_tag='tracking_png', dir_tag='results'))
+                                 trk_path = self.file_manager.add_file(file_name='tracking_data.png', file_tag='tracking_png', dir_tag='results'),
+                                 cvg_path = self.file_manager.add_file(file_name='convergence.png',   file_tag='convergence_png', dir_tag='results'),
+                                 )
 
         # Write summary of the fitted model (groups & levels)
         self.log.subheading('Writing summary of the hierarchical model')
@@ -961,6 +936,9 @@ class MultiDatasetUijParameterisation(Program):
         self.log.subheading('Writing graphs of the different penalty functions used in optimisation')
         self.file_manager.add_dir(dir_name='penalties', dir_tag='penalties', top_dir_tag='model')
         self.penalty_summary(out_dir_tag='penalties')
+
+        self.log.subheading('Fitter summary')
+        self.log(self.fitter.summary(show=False))
 
         # Calculate Parameter-observed data ratio
         self.log.subheading('Data-Parameter Ratios')
@@ -1318,34 +1296,6 @@ class MultiDatasetUijParameterisation(Program):
         penalties_dict = dict_from_class(self.params.fitting.optimisation.penalties)
 
         penalties_meta = [
-                ('fitting_penalty_weights',
-                    'Weights on fitting penalties\nas a function of rms($\Delta$U)',
-                    '8*$\pi^{2}$*rms($\Delta$U) ($\AA^2$)',
-                    'Weighting',
-                    (0.,1.),
-                    8.*math.pi*math.pi,
-                    ),
-                ('invalid_amplitudes',
-                    'Penalty functions for negative amplitudes',
-                    'Sum of negative amplitudes',
-                    'Penalty Value',
-                    (-0.1,0.1),
-                    1.0,
-                    ),
-                ('invalid_tls_values',
-                    'Penalty functions for invalid TLS matrices',
-                    'Validity of TLS matrix (0 or 1)',
-                    'Penalty Value',
-                    (-0.1, 1.1),
-                    1.0,
-                    ),
-                ('invalid_uij_values',
-                    'Penalty functions for Uijs\nwith negative eigenvalues',
-                    'Uij Eigenvalue',
-                    'Penalty Value',
-                    (-0.1, 0.1),
-                    1.0,
-                    ),
                 ('over_target_values',
                     'Penalty functions for eigenvalues\nof $\Delta$U=U$_{model}$-U$_{target}$',
                     'Eigenvalue of 8*$\pi^{2}$*$\Delta$U',
@@ -1477,6 +1427,8 @@ class MultiDatasetUijParameterisation(Program):
         png_dir = fm.add_dir(dir_name='graphs', dir_tag='tls-graphs', top_dir_tag=out_dir_tag)
         pml_dir = fm.add_dir(dir_name='pymol',  dir_tag='tls-pymol',  top_dir_tag=out_dir_tag)
 
+        n_tls = self.params.fitting.n_tls_modes_per_tls_group
+
         # ------------------------
         self.log.subheading('Writing TLS models and amplitudes for each level')
         # ------------------------
@@ -1487,40 +1439,40 @@ class MultiDatasetUijParameterisation(Program):
         dst_template = fm.add_file(file_name='tls-model-amplitudes-level-{}-group-{}.png', file_tag='png-tls-amp-dist-template', dir_tag='tls-graphs')
         # ------------------------
         # Iterate through the levels
-        for level in self.fitter.levels:
+        for i_level, level in enumerate(self.fitter.levels):
             self.log('Level {}'.format(level.index))
             # Table for TLS model components
             mdl_filename = mdl_template.format(level.index)
-            mdl_table = pandas.DataFrame(columns=["group", "mode",
+            mdl_table = pandas.DataFrame(columns=["group", "mode", "label",
                                                   "T11","T22","T33","T12","T13","T23",
                                                   "L11","L22","L33","L12","L13","L23",
                                                   "S11","S12","S13","S21","S22","S23","S31","S32","S33"])
             # Create amplitude table
             amp_filename = amp_template.format(level.index)
-            amp_table = pandas.DataFrame(columns=["group", "mode"]+[mdl.tag for mdl in self.models], dtype=object)
+            amp_table = pandas.DataFrame(columns=["group", "mode", "label"]+[mdl.tag for mdl in self.models], dtype=object)
             # Iterate through the groups in this level
-            for i_group, sel, fitter in level:
+            for i_group, (n_group, sel, fitter) in enumerate(level):
                 tls_mats, tls_amps = fitter.result()
-                assert tls_mats.shape == (self.params.fitting.n_tls_modes_per_tls_group, 21)
-                assert tls_amps.shape == (self.params.fitting.n_tls_modes_per_tls_group, len(self.models))
+                assert tls_mats.shape == (n_tls, 21)
+                assert tls_amps.shape == (n_tls, len(self.models))
 
                 # Add to model and amplitudes tables
-                for i_tls in xrange(self.params.fitting.n_tls_modes_per_tls_group):
+                for i_tls in xrange(n_tls):
                     # Add model values to last row of table
-                    mdl_table.loc[len(mdl_table.index)] = numpy.concatenate([[i_group, i_tls], tls_mats[i_tls]])
+                    mdl_table.loc[len(mdl_table.index)] = numpy.concatenate([numpy.array([n_group, i_tls+1, self.levels[i_level][i_group]], dtype=object), tls_mats[i_tls]])
                     # Add amplitudes to last row of table
-                    amp_table.loc[len(amp_table.index)] = numpy.concatenate([[i_group, i_tls], tls_amps[i_tls,:]])
+                    amp_table.loc[len(amp_table.index)] = numpy.concatenate([numpy.array([n_group, i_tls+1, self.levels[i_level][i_group]], dtype=object), tls_amps[i_tls,:]])
 
                 # Write histograms of amplitudes -- only for non-zero models
                 if (tls_mats.sum() > 0.0) and self.params.output.images.distributions:
                     filename = dst_template.format(level.index, i_group)
                     self.log('\t> {}'.format(filename))
-                    titles = ['Mode {}:'.format(i_t+1) for i_t in xrange(self.params.fitting.n_tls_modes_per_tls_group)]
-                    x_vals = [tls_amps[i_t,:]          for i_t in xrange(self.params.fitting.n_tls_modes_per_tls_group)]
+                    titles = ['Mode {}:'.format(i_t+1) for i_t in xrange(n_tls)]
+                    x_vals = [tls_amps[i_t,:]          for i_t in xrange(n_tls)]
                     self.plot.multi_histogram(filename  = filename,
                                               x_vals    = x_vals,
                                               titles    = titles,
-                                              x_labs    = ['']*self.params.fitting.n_tls_modes_per_tls_group,
+                                              x_labs    = ['']*n_tls,
                                               rotate_x_labels = True,
                                               shape     = (tls_amps.shape[0], 1),
                                               n_bins    = 30, x_lim=[0, None])
@@ -1594,13 +1546,13 @@ class MultiDatasetUijParameterisation(Program):
             # Cumulative uijs
             uij_all = []
             # Extract Uijs for individual modes/models
-            for i_tls in xrange(self.params.fitting.n_tls_modes_per_tls_group):
+            for i_tls in xrange(n_tls):
                 self.log('- Extracting TLS contributions of model {} of level {}'.format(i_tls+1, i_level+1))
                 # Create copy of the level for resetting T-L-S components
                 l_copy = copy.deepcopy(level)
                 # Reset the TLS for all other models
-                if self.params.fitting.n_tls_modes_per_tls_group > 1:
-                    other_models = range(self.params.fitting.n_tls_modes_per_tls_group)
+                if n_tls > 1:
+                    other_models = range(n_tls)
                     other_models.remove(i_tls)
                     l_copy.zero_amplitudes(models=other_models)
                 # Extract uijs
@@ -1608,7 +1560,7 @@ class MultiDatasetUijParameterisation(Program):
                 # Append to total list
                 uij_all.append((i_tls, uij_this))
                 # Output structure for MODEL - XXX set to True for developing XXX
-                if True or (self.params.fitting.n_tls_modes_per_tls_group > 1):
+                if True or (n_tls > 1):
                     uij = numpy.sum([t[-1] for t in uij_all if (t[0]==i_tls)], axis=0)
                     m_h = self.custom_master_hierarchy(uij=uij, iso=uij_to_b(uij), mask=atom_sel)
                     m_f = sgl_pdb_template.format(i_level+1, i_tls+1)
@@ -1624,8 +1576,9 @@ class MultiDatasetUijParameterisation(Program):
             self.plot.stacked_bar(prefix        = lvl_plt_prefix.format(i_level+1),
                                   hierarchies   = [self.custom_master_hierarchy(uij=u, iso=uij_to_b(u), mask=atom_sel).select(atom_sel) for u in uijs],
                                   legends       = ['TLS (Mode {})'.format(i+1) for i in mdls],
-                                  title         = 'Level {} - individual TLS model contributions'.format(i_level+1),
-                                  v_line_hierarchy = boundaries if (sum(boundaries.atoms().extract_b()) < 0.5*len(list(boundaries.residue_groups()))) else None)
+                                  title         = 'TLS contributions - Level {} ({})'.format(i_level+1, level.label),
+                                  v_line_hierarchy = boundaries if (sum(boundaries.atoms().extract_b()) < 0.5*len(list(boundaries.residue_groups()))) else None,
+                                  colour_indices = [float(i_level)+(float(i_mode)/float(n_tls)) for i_mode in range(n_tls)])
             assert glob.glob(lvl_plt_template.format(i_level+1,'*')), 'no files have been generated!'
 
             # ------------------------
@@ -1647,6 +1600,7 @@ class MultiDatasetUijParameterisation(Program):
                 auto_chain_images(structure_filename = m_f,
                                   output_prefix = lvl_pml_chn_prefix.format(i_level+1),
                                   style = 'lines+ellipsoids',
+                                  colours = 'chainbow',
                                   width=1000, height=750)
                 assert glob.glob(lvl_pml_chn_template.format(i_level+1,'*')), 'no files have been generated!'
             # Write pymol images of each group
@@ -1693,11 +1647,11 @@ class MultiDatasetUijParameterisation(Program):
             self.plot.stacked_bar(prefix=lvl_aniso_plt_prefix.format(i_level+1),
                                   hierarchies=[m_h.select(atom_sel)],
                                   legends=['Anisotropy  '],
-                                  title='Anisotropy of Level {}\n[fully isotropic = 0; fully anisotropic = 1]'.format(i_level+1),
-                                  y_lim=(0.0,1.0),
-                                  y_lab='Anisotropy of Uij ($1 - \\frac{E_{min}}{E_{max}}$)')
+                                  title='Anisotropy of Level {} ({})\nfully isotropic -> 0 (spheres)\nfully anisotropic -> 1 (lines/disks)'.format(i_level+1, level.label),
+                                  y_lim=(0.0,1.05),
+                                  y_lab='Anisotropy of Uij ($1 - \\frac{E_{min}}{E_{max}}$)',
+                                  colours=['grey'])
             assert glob.glob(lvl_aniso_plt_template.format(i_level+1,'*')), 'no files have been generated!'
-
 
         return
 
@@ -1755,7 +1709,7 @@ class MultiDatasetUijParameterisation(Program):
                               hierarchies=[m_h.select(atom_sel)],
                               legends=['Residual    '],
                               title='Uij Profile of Residual Level',
-                              colour_space=(1,1))
+                              colour_indices=[len(self.levels)])
         assert glob.glob(res_plt_template.format('*')), 'no files have been generated!'
         # Write pymol images for each chain
         if self.params.output.images.pymol != 'none':
@@ -1764,6 +1718,7 @@ class MultiDatasetUijParameterisation(Program):
             auto_chain_images(structure_filename = m_f,
                               output_prefix = res_pml_chn_prefix,
                               style = 'lines+ellipsoids',
+                              colours = 'chainbow',
                               width=1000, height=750)
             assert glob.glob(res_pml_chn_template.format('*')), 'no files have been generated!'
         # Write pymol images for each group
@@ -1785,9 +1740,10 @@ class MultiDatasetUijParameterisation(Program):
         self.plot.stacked_bar(prefix=res_aniso_plt_prefix,
                               hierarchies=[m_h.select(atom_sel)],
                               legends=['Anisotropy  '],
-                              title='Anisotropy of Residual Level\n[fully isotropic = 0; fully anisotropic = 1]',
-                              y_lim=(0.0,1.0),
-                              y_lab='Anisotropy of Uij ($1 - \\frac{E_{min}}{E_{max}}$)')
+                              title='Anisotropy of Residual Level\nfully isotropic -> 0 (spheres)\nfully anisotropic -> 1 (lines/disks)',
+                              y_lim=(0.0,1.05),
+                              y_lab='Anisotropy of Uij ($1 - \\frac{E_{min}}{E_{max}}$)',
+                              colours=['grey'])
         assert glob.glob(res_aniso_plt_template.format('*')), 'no files have been generated!'
 
         # TODO Output CSV of all residual components
@@ -1828,7 +1784,8 @@ class MultiDatasetUijParameterisation(Program):
                               reference_hierarchy=h_inp.select(atom_sel),
                               reference_legend='Input',
                               title='TLS and residual contributions',
-                              reverse_legend_order=True)
+                              reverse_legend_order=True,
+                              colour_indices=range(len(self.levels)+1))
         assert glob.glob(stacked_template.format('*')), 'no files have been generated!'
 
     def calculate_electron_density_metrics(self, out_dir_tag):
@@ -2149,9 +2106,14 @@ class MultiDatasetUijParameterisation(Program):
     def refine_fitted_dataset_models(self, suffix='-refined'):
         """Refine coordinates of the fitted structures"""
 
-        refine_phenix.auto = False
+        if self.params.refinement.program == 'refmac':
+            refine_ = refine_refmac
+        elif self.params.refinement.program == 'phenix':
+            refine_ = refine_phenix
+        else:
+            raise Failure('Invalid refinement program selected: {}'.format(self.params.refinement.program))
 
-        self.log('Preparing refinements')
+        self.log('Preparing refinements -- will use {} for refinement'.format(refine_.program))
 
         proc_args = []
         for mdl in self.models:
@@ -2159,14 +2121,15 @@ class MultiDatasetUijParameterisation(Program):
                 raise Failure('Something has gone wrong -- Trying to refine output structures but mtz has not been provided/has been lost.')
             if not os.path.exists(mdl.o_mtz):
                 rel_symlink(mdl.i_mtz, mdl.o_mtz)
-            obj = refine_phenix(
+            # Create refinement object
+            obj = refine_(
                     pdb_file=mdl.o_pdb,
                     mtz_file=mdl.o_mtz,
-                    cif_files=self.cifs,
+                    cif_files=(self.params.refinement.cif if self.params.refinement.cif else None),
                     out_prefix=os.path.splitext(mdl.o_pdb)[0]+suffix,
                     strategy='individual_sites+occupancies',
                     n_cycles=5,
-                    log=self.log)
+                    log=self.log).setup()
             obj.log('')
             obj.print_settings()
             obj.tag = mdl.tag
@@ -2178,7 +2141,10 @@ class MultiDatasetUijParameterisation(Program):
         self.log.subheading('Running refinements')
         refined = libtbx.easy_mp.pool_map(processes=self._n_cpu, func=_wrapper_run, args=proc_args, chunksize=1)
 
-        for mdl, ref in zip(self.models, proc_args):
+        for mdl, ref in zip(self.models, refined):
+            if isinstance(ref, str):
+                self.log('Failed in refinement -- continuing')
+                continue
             assert mdl.tag == ref.tag
             mdl.r_pdb = ref.out_pdb_file
             mdl.r_mtz = ref.out_mtz_file
@@ -2234,8 +2200,8 @@ class MultiDatasetUijParameterisation(Program):
         multi_table_ones.run(params=phil)
 
         # Run 3
-        if self.models[0].r_pdb is not None:
-            phil.input.pdb = [mdl.r_pdb for mdl in self.models]
+        if self.params.analysis.refine_output_structures:
+            phil.input.pdb = [mdl.r_pdb for mdl in self.models if mdl.r_pdb is not None]
             phil.input.labelling = 'foldername'
             phil.output.parameter_file = output_eff_refd
             phil.output.output_basename = os.path.splitext(output_eff_refd)[0]
@@ -2253,15 +2219,10 @@ class MultiDatasetUijParameterisation(Program):
             cmd.write_output(f.replace('.eff','.log'))
         self.log.bar()
 
-        # Clear all of the symlinks
-        #for mdl in self.models:
-        #    if os.path.islink(mdl.o_mtz):
-        #        os.remove(mdl.o_mtz)
-
         try:
             assert os.path.exists(table_one_csv_orig)
             assert os.path.exists(table_one_csv_fitd)
-            if self.models[0].r_pdb is not None:
+            if self.params.analysis.refine_output_structures:
                 assert os.path.exists(table_one_csv_refd)
         except Exception as e:
             raise Sorry('phenix.table_one did not generate output for one or more sets of structures.\n' + \
@@ -2318,6 +2279,7 @@ class MultiDatasetUijParameterisation(Program):
             table_one = table_one.apply(lambda x: pandas.to_numeric(x, errors='coerce'))
             # If first file, transfer constant statistics
             if 'input' in suff.lower():
+                assert (main_table.index == table_one.index).all()
                 # Transfer selected columns directly to main table
                 for col in input_cols:
                     main_table[col] = table_one[col]
@@ -2475,8 +2437,8 @@ class MultiDatasetUijParameterisation(Program):
                                  x = table['High Resolution Limit'],
                                  y_vals = [100*table['R-free ({})'.format(l)] for l in labs],
                                  legends = labs,
-                                 title = 'R-free for {} and {} B-factors'.format(', '.join(labs[:-1]), labs[-1]),
-                                 x_lab = 'Resolution (A)',
+                                 title = 'Structure R-free values',
+                                 x_lab = 'Resolution ($\AA$)',
                                  y_lab = 'R-free (%)',
                                  rotate_x_labels = True,
                                  min_bin_width = 0.1)
@@ -2487,8 +2449,8 @@ class MultiDatasetUijParameterisation(Program):
                                  x = table['High Resolution Limit'],
                                  y_vals = [100*table['R-work ({})'.format(l)] for l in labs],
                                  legends = labs,
-                                 title = 'R-work for {} and {} B-factors'.format(', '.join(labs[:-1]), labs[-1]),
-                                 x_lab = 'Resolution (A)',
+                                 title = 'Structure R-work values',
+                                 x_lab = 'Resolution ($\AA$)',
                                  y_lab = 'R-work (%)',
                                  rotate_x_labels = True,
                                  min_bin_width = 0.1)
@@ -2499,8 +2461,8 @@ class MultiDatasetUijParameterisation(Program):
                                  x = table['High Resolution Limit'],
                                  y_vals = [100*table['R-gap ({})'.format(l)] for l in labs],
                                  legends = labs,
-                                 title = 'R-gap for {} and {} B-factors'.format(', '.join(labs[:-1]), labs[-1]),
-                                 x_lab = 'Resolution (A)',
+                                 title = 'Structure R-gap values',
+                                 x_lab = 'Resolution ($\AA$)',
                                  y_lab = 'R-gap (%)',
                                  rotate_x_labels = True,
                                  min_bin_width = 0.1)
@@ -2516,8 +2478,8 @@ class MultiDatasetUijParameterisation(Program):
                                            100*table['R-work Change (Fitted-Input)'],
                                            100*table['R-gap Change (Fitted-Input)']],
                                  legends = ['R-free change','R-work change','R-gap change'],
-                                 title = 'R-value changes between input and fitted B-factors',
-                                 x_lab = 'Resolution (A)',
+                                 title = 'R-value change from input to fitted models',
+                                 x_lab = 'Resolution ($\AA$)',
                                  y_lab = 'R-value change (%)',
                                  rotate_x_labels = True,
                                  min_bin_width = 0.1,
@@ -2598,6 +2560,21 @@ class MultiDatasetUijParameterisation(Program):
 
 class MultiDatasetUijPlots(object):
 
+    def __init__(self, n_levels, cmap_name='rainbow'):
+        self.n_levels = n_levels
+        self.cmap_name = cmap_name
+
+    def get_colour_map(self):
+        return matplotlib.cm.get_cmap(self.cmap_name)
+
+    def get_level_colours_arbitrary(self, indices):
+        cm = self.get_colour_map()
+        return cm(numpy.array(indices)/float(self.n_levels-1))
+
+    def get_level_colours(self):
+        cm = self.get_colour_map()
+        return cm(numpy.linspace(0., 1., self.n_levels))
+
     @staticmethod
     def failure_graph(filename, exception=None, title=None, **args):
         fig = pyplot.figure()
@@ -2642,8 +2619,11 @@ class MultiDatasetUijPlots(object):
                        x, y=None, y_vals=None, legends=None,
                        title='', x_lab='x', y_lab='y',
                        rotate_x_labels=True,
+                       plot_scatter=True,
                        max_bins=10, min_bin_width=None,
-                       hlines=[], vlines=[]):
+                       hlines=[], vlines=[],
+                       plot_type='violinplot',
+                       ):
         """Generate a binned boxplot from data (or array of data)"""
 
         assert [(y is None),(y_vals is None)].count(False) == 1, 'must provide y OR y_vals'
@@ -2673,9 +2653,9 @@ class MultiDatasetUijPlots(object):
         # Sort the y_vals into the bins
         binned_y = [[y[indices==i] for i in xrange(1, n_bins+1)] for y in y_vals]
         # Width of the boxplot bars
-        bar_width = 0.5/n_y
-        # Colors of each of y_vals
-        colors = pyplot.cm.rainbow(numpy.linspace(0,1,n_y))
+        bar_width = 2./float(1+3*n_y) # half-bar padding between bars
+        # Colours of each of y_vals
+        colours = pyplot.cm.rainbow(numpy.linspace(0,1,n_y))
 
         # Create figures
         fig, axis = pyplot.subplots(nrows=1, ncols=1)
@@ -2687,20 +2667,48 @@ class MultiDatasetUijPlots(object):
         plot_dicts = []
         for i_y, y in enumerate(binned_y):
             # Offset for this bar set relative to (n-1)
-            x_offset = 0.5 + (1+2*i_y)*bar_width
+            x_offset = 0.5 + (1+1.5*i_y)*bar_width
             positions = numpy.arange(n_bins) + x_offset
-            plt = axis.boxplot(y, positions=positions,
-                               widths=bar_width,
-                               showmeans=False,
-                               patch_artist=True)
+            # Filter on values that are actually present
+            y_idx = [i for i in xrange(len(y)) if len(y[i])>0]
+            # Plot
+            if plot_type == 'boxplot':
+                plt = axis.boxplot(
+                        y,
+                        positions=positions,
+                        widths=bar_width,
+                        showmeans=False,
+                        patch_artist=True)
+            else:
+                plt = axis.violinplot(
+                        [y[i] for i in y_idx],
+                        positions=[positions[i] for i in y_idx],
+                        widths=bar_width,
+                        showmeans=True,
+                        showextrema=True)
             plot_dicts.append(plt)
             # Color the boxplots
-            c = colors[i_y]
-            for patch in plt['boxes']:
-                patch.set_facecolor(c)
-                patch.set_edgecolor('k')
-            for line in plt['medians']:
-                line.set_color('k')
+            c = colours[i_y]
+            for obj in ['boxes','bodies']:
+                for patch in plt.get(obj, []):
+                    patch.set_facecolor(c)
+                    patch.set_edgecolor('k')
+            for obj in ['means','medians']:
+                for line in plt.get(obj, []):
+                    line.set_facecolor(c)
+                    line.set_edgecolor('k')
+            for obj in ['cbars','cmeans','cmedians','cmins','cmaxes']:
+                lc = plt.get(obj, None)
+                if lc is not None:
+                    lc.set_facecolor(c)
+                    lc.set_edgecolor('k')
+            # Plot a superposed scatter plot
+            if plot_scatter is True:
+                for x, ys in zip(positions, y):
+                    xs = [x]*len(ys)
+                    jitter = numpy.random.randn(len(ys)) * 0.5 * bar_width / 3.0 # Normalise to be approx width of bar
+                    jitter = jitter - jitter.mean()
+                    axis.scatter(x=xs+jitter, y=ys, s=10, facecolor=c, edgecolor='k', zorder=10)
 
         # Make labels
         bin_centres = numpy.arange(n_bins)+1
@@ -2710,25 +2718,41 @@ class MultiDatasetUijPlots(object):
         axis.set_xlabel(x_lab)
         axis.set_ylabel(y_lab)
         # Axis limits
-        axis.set_xlim((0, n_bins+1))
+        axis.set_xlim((0.25, n_bins+0.75))
         # Plot v_lines
         if n_y > 1:
             for i in xrange(n_bins+1):
-                axis.axvline(i+0.5, c='grey', ls="solid", lw=0.5)
+                axis.axvline(i+0.5, c='grey', ls="dashed", lw=1.0)#ls="solid", lw=0.5)
         # X-axis rotations
         if rotate_x_labels:
             pyplot.setp(axis.get_xticklabels(), rotation=45)
         # Make legend
         if legends is not None:
-            handles = [patches.Patch(color=colors[i_y], label=legends[i_y]) for i_y in xrange(n_y)]
-            lgd = axis.legend(handles=handles,
-                              bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
-                              #bbox_to_anchor=(0.0, 1.02, 1.0, 0.102),
-                              #loc=3, ncol=n_y, mode="expand", borderaxespad=0.0)
-            extra_artists.append(lgd)
+            #handles = [patches.Patch(edgecolor='k', facecolor=colours[i_y], label=legends[i_y]) for i_y in xrange(n_y)]
+            #lgd = axis.legend(handles=handles,
+            #                  bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+            #extra_artists.append(lgd)
+            # Plot additional text on the graph
+            y_min, y_max = axis.get_ylim()
+            fig_scale = (axis.transData.transform((1.0,0.)) - axis.transData.transform((0.0,0.)))[0]
+            fig_width = 30.0 * n_y # final width of the fonts in the scale of the image
+            x_width = fig_width / fig_scale # Width on the x-axis scale
+            t_width = x_width / float(n_y)
+            fontsize = 10
+            text_artists = []
+            max_l_length = max(map(len,legends))
+            for i_y, l in enumerate(legends):
+                y_pos = (0.5*y_min+0.5*y_max) #(0.05*(y_max-y_min) if (y_max>0.0>y_min) else (0.5*y_min+0.5*y_max))
+                t = axis.text(
+                        x=(n_bins+0.5)+(0.5+i_y)*t_width, y=y_pos, s=l.center(max_l_length),
+                        bbox=dict(boxstyle='round', facecolor=colours[i_y], edgecolor='k', linewidth=0.5, alpha=0.5, pad=0.3),
+                        fontsize=fontsize, rotation=90, ha='center', va='center', zorder=1)
+                text_artists.append(t)
+            axis.set_xlim(right=n_bins+0.5+x_width)
+
         fig.tight_layout()
         fig.savefig(filename,
-                    bbox_extra_artists=extra_artists,
+                    bbox_extra_artists=extra_artists+text_artists,
                     bbox_inches='tight',
                     dpi=300)
         pyplot.close(fig)
@@ -2774,14 +2798,14 @@ class MultiDatasetUijPlots(object):
         if legends is not None:
             assert len(legends) == n_line
 
-        # Colors of each of y_vals
+        # Colours of each of y_vals
         if n_plot == n_line:
-            colors = ['b']*n_line
+            colours = ['b']*n_line
         elif (n_line % n_plot) == 0:
-            colors = sorted(numpy.concatenate([pyplot.cm.rainbow(numpy.linspace(0,1,n_line//n_plot))]*n_plot).tolist())
+            colours = sorted(numpy.concatenate([pyplot.cm.rainbow(numpy.linspace(0,1,n_line//n_plot))]*n_plot).tolist())
         else:
-            colors = pyplot.cm.rainbow(numpy.linspace(0,1,n_line))
-        assert len(colors)==n_line
+            colours = pyplot.cm.rainbow(numpy.linspace(0,1,n_line))
+        assert len(colours)==n_line
 
         # Create figures
         fig, axes = pyplot.subplots(nrows=shape[0], ncols=shape[1],
@@ -2802,7 +2826,7 @@ class MultiDatasetUijPlots(object):
             axis = axes_cycle.next()
             plt = axis.scatter(x=x_vals.next(),
                                y=y_vals.next(),
-                               c=colors[i])
+                               c=colours[i])
             if legends: plt.set_label(legends[i])
             plot_dicts.append(plt)
         # Format axes
@@ -2928,15 +2952,23 @@ class MultiDatasetUijPlots(object):
 
         return
 
-    @staticmethod
-    def level_plots(filename, hierarchies, title, rotate_x_labels=True):
+    def level_plots(self, filename, hierarchies, title, rotate_x_labels=True):
         """Plot a schematic representation of the hierarchical partitioning"""
 
+        colours = self.get_level_colours()
+
         fig, axis = pyplot.subplots()
+        axis.set_facecolor('w')
+
+        assert len(hierarchies) == (self.n_levels-1)
 
         for i_h, h in enumerate(hierarchies):
             # Extract B-factors and atom labels
             b_vals = numpy.array(h.atoms().extract_b())
+            # Extract colour for this level
+            col = colours[i_h]
+            # Plot a bar around the atoms (below other bars)
+            axis.broken_barh([(-0.25, len(b_vals)-1.0+0.50)], (i_h+0.5, 1.0), edgecolor='k', facecolor='w')
             # Iterate through b values and draw boxes for each
             for b in numpy.unique(b_vals):
                 # Skip zero or negative values
@@ -2953,9 +2985,9 @@ class MultiDatasetUijPlots(object):
                 for g in numpy.unique(cluster):
                     min_i = numpy.min(idx[g==cluster])
                     max_i = numpy.max(idx[g==cluster])
-                    plot_vals.append((min_i-0.25, max_i-min_i+0.5))
+                    plot_vals.append((min_i-0.25, max_i-min_i+0.50))
                 # Plot
-                axis.broken_barh(plot_vals, (i_h+0.5, 1.0))
+                axis.broken_barh(plot_vals, (i_h+0.5, 1.0), edgecolor='k', facecolor=col)
 
         # Set axes, etc.
         if title is not None: axis.set_title(label=str(title))
@@ -2967,17 +2999,17 @@ class MultiDatasetUijPlots(object):
         axis.set_xticklabels([a_labels[i] for i in axis.get_xticks()])
         axis.set_yticks(range(1, len(hierarchies)+1))
         axis.set_yticklabels(['Level {}'.format(i) for i in xrange(1, len(hierarchies)+1)])
-        axis.set_xlim((0, len(a_labels)+1))
+        axis.set_xlim((-0.5, len(a_labels)-0.5))
         pyplot.setp(axis.get_xticklabels(), rotation=90)
         # Invert y-axis
-        axis.invert_yaxis()
+        #axis.invert_yaxis()
         # Format and save
         fig.tight_layout()
-        fig.savefig(filename)#, dpi=300)
+        fig.savefig(filename, dpi=500)
         pyplot.close(fig)
 
-    @staticmethod
-    def stacked_bar(prefix,
+    def stacked_bar(self,
+                    prefix,
                     hierarchies,
                     legends,
                     reference_hierarchy=None,
@@ -2988,7 +3020,9 @@ class MultiDatasetUijPlots(object):
                     v_line_hierarchy=None,
                     rotate_x_labels=True,
                     reverse_legend_order=False,
-                    colour_space=(0,1)):
+                    colour_space=(0,1),
+                    colour_indices=None,
+                    colours=None):
         """Plot stacked bar plots for a series of hierarchies (plotted values are the average B-factors of each residue of the hierarchies)"""
 
         # TODO MERGE stacked_bar and multi_bar with mode='stacked' mode='grid'
@@ -2997,6 +3031,15 @@ class MultiDatasetUijPlots(object):
         assert len(hierarchies) == len(legends)
 
         m_h = hierarchies[0]
+
+        if colour_indices is not None:
+            assert len(hierarchies) == len(colour_indices)
+            colours = self.get_level_colours_arbitrary(colour_indices)
+        elif colours is not None:
+            assert len(hierarchies) == len(colours)
+        else:
+            cm = self.get_colour_map()
+            colours = cm(numpy.linspace(colour_space[0],colour_space[1],len(hierarchies)))
 
         # Check all hierarchies are the same
         for h in hierarchies:
@@ -3021,9 +3064,8 @@ class MultiDatasetUijPlots(object):
             # Cumulative y-values (for bottoms of bars)
             cuml_y = None
 
-            # Create colors + hatches
-            colors = pyplot.cm.rainbow(numpy.linspace(colour_space[0],colour_space[1],len(sel_hs)))
-            hatchs = itertools.cycle(['//', 'x', '\\'])
+            # Create colours + hatches
+            #hatchs = itertools.cycle(['//', 'x', '\\'])
             hatchs = itertools.cycle([None])
 
             # Create the output figure
@@ -3049,7 +3091,7 @@ class MultiDatasetUijPlots(object):
                         bottom=cuml_y,
                         width=1.0,
                         align='center',
-                        color=colors[i_h],
+                        color=colours[i_h],
                         label=legends[i_h],
                         hatch=hatchs.next(),
                         linewidth=0,
@@ -3060,25 +3102,42 @@ class MultiDatasetUijPlots(object):
                 # Append to cumulative y
                 cuml_y += y_vals
 
-            # Reference hierarchy
-            if reference_hierarchy is not None:
-                ref_h_sel = reference_hierarchy.select(sel)
-                y_vals = numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in ref_h_sel.residue_groups()])
+            # Plot lines at top of graph for prettiness/as reference hierarchy
+            if (reference_hierarchy is not None) or (len(sel_hs)==1):
+                if reference_hierarchy is not None:
+                    line_h_sel = reference_hierarchy.select(sel)
+                else:
+                    line_h_sel = sel_hs[0]
+                # Extract y-values
+                y_vals = numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in line_h_sel.residue_groups()])
                 # Duplicate the x-vals and y-vals and shift x-vals apart by half a unit
                 x_vals_dup = numpy.concatenate([(x_vals-0.5),(x_vals+0.5)]).reshape((2,x_vals.size)).T.reshape(2*x_vals.size).tolist()
                 y_vals_dup = numpy.concatenate([y_vals,y_vals]).reshape((2,y_vals.size)).T.reshape(2*y_vals.size).tolist()
                 # Add another point at the beginning and end so starts and ends on the baseline
                 x_vals_dup = numpy.concatenate([[x_vals_dup[0]], x_vals_dup, [x_vals_dup[-1]]])
                 y_vals_dup = numpy.concatenate([[0.0], y_vals_dup, [0.0]])
-                hdl = axis.plot(x_vals_dup, y_vals_dup, 'k-', label=reference_legend)
-                handles.extend(hdl)
+                hdl = axis.plot(x_vals_dup, y_vals_dup, 'k-', label=reference_legend, lw=0.5)
+                if reference_hierarchy is not None:
+                    handles.extend(hdl)
+
+            # Legends (reverse the plot legends!)
+            if reverse_legend_order is True:
+                handles.reverse()
 
             # No lines if cuml_y is None
             if cuml_y is None:
                 continue
 
-            # Legends (reverse the plot legends!)
-            if reverse_legend_order is True: handles.reverse()
+            # Plot boundaries
+            if v_line_hierarchy is not None:
+                v_lines = numpy.where(numpy.array([max(rg.atoms().extract_b()) for rg in v_line_hierarchy.select(sel).residue_groups()], dtype=bool))[0] + 1.5
+                for val in v_lines:
+                    axis.axvline(x=val, c='grey', ls='solid', label='boundaries', lw=0.5, zorder=0)
+                # Add a line at zero
+                h = axis.axvline(x=0.5, c='grey', ls='solid', label='boundaries', lw=0.5, zorder=0)
+                handles.append(h)
+
+            # Plot legend
             lgd = axis.legend(handles=handles, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
             # Axis ticks & labels
             x_ticks = numpy.arange(1, len(x_labels)+1, int(max(1.0, numpy.floor(len(x_labels)/20))))
@@ -3087,11 +3146,6 @@ class MultiDatasetUijPlots(object):
             axis.set_xticklabels([x_labels[int(i)] if (i<len(x_labels)) and (float(int(i))==i) else '' for i in axis.get_xticks()])
             # Rotate axis labels
             if rotate_x_labels: pyplot.setp(axis.get_xticklabels(), rotation=90)
-
-            # Plot boundaries
-            if v_line_hierarchy is not None:
-                v_lines = numpy.where(numpy.array([max(rg.atoms().extract_b()) for rg in v_line_hierarchy.select(sel).residue_groups()], dtype=bool))[0] + 1.5
-                for val in v_lines: axis.axvline(x=val, c='grey', ls='solid', lw=0.5)
 
             # Format and save
             fig.tight_layout()
@@ -3187,94 +3241,108 @@ class MultiDatasetUijPlots(object):
             fig.savefig(filename)#, dpi=300)
             pyplot.close(fig)
 
-    @staticmethod
-    def tracking_plots(table, filename):
+    def tracking_plots(self, table, filename):
 
         fig, axes = pyplot.subplots(nrows=2, ncols=1, sharex=True, sharey=False)
         # Create list if only one plot
         axes = numpy.array(axes).flatten()
-        # Set the figure title
-        fig.suptitle('Tracking data', y=0.99)
+
+        # Group by cycle & step to allow stacking
+        grouped = table.groupby(['cycle','step'], sort=False)
 
         # Create xpositions and labels
-        x_vals = numpy.arange(0, len(table.index))
+        x_vals = numpy.arange(0, grouped.ngroups)
         x_max = max(x_vals)
-        x_labs = [str(v) if not isinstance(v, int) else 'level {}'.format(v) for v in table['level'].values.tolist() ]
+        x_keys = [v[0] for v in grouped]
+        x_labs = [v[1] for v in x_keys]
 
         # FIRST AXIS
         ax = axes[0]
-        handles = []
         # Create RMSD plot
-        hdl = ax.plot(x_vals, table['rmsd'].tolist(), 'bo-', label='model')
-        handles.extend(hdl)
+        hdl1 = ax.plot(
+                 x_vals,
+                 grouped['rmsd'].max().values,
+                 'bo-',
+                 label='model',
+                 lw=1, ms=max(1, min(3, 5-0.1*len(x_vals))),
+                 )
         # Axis stuff
+        ax.set_title('Hierarchical Model Fit')
         ax.xaxis.set_ticks_position('bottom')
-        ax.set_ylabel('rmsd to input ($\AA^2$)')
+        ax.set_ylabel('model fit \n$8\pi^2rms(\Delta U)$ ($\AA^2$)')
         ax.set_ylim(bottom=0.0)
-        # Create legend for axis
-        lgd0 = ax.legend(handles=handles, bbox_to_anchor=(0.98, 0.95), loc=1, borderaxespad=0.)
 
         # SECOND AXIS
         ax = axes[1]
-        handles = []
         # Create an overall B-iso TOTAL line
-        hdl = ax.plot(x_vals,
-                      table['b_iso (total)'],
-                      'ko-',
-                      label = 'total')
-        handles.extend(hdl)
-        #hdl = ax.bar(left   = x_vals,
-        #             height = table['b_iso (total)'],
-        #             width  = 0.4,
-        #             align  = 'center',
-        #             label  = 'total')
-        #handles.append(hdl)
+        hdl2 = ax.plot(
+                 x_vals,
+                 grouped['b_iso (total)'].max().values,
+                 'ko-',
+                 label='total',
+                 lw=1, ms=max(1, min(3, 5-0.1*len(x_vals))),
+                 )
         # Create B-iso lines for each LEVEL
-        for s in sorted(set(table['level'].values.astype(str).tolist())):
-            if s in ['start','reset']: continue
-            sel = (table['level'].values.astype(str) == s)
-            hdl = ax.bar(left   = x_vals[sel],
-                         height = table['b_iso (level)'].values[sel],
-                         width  = 0.4,
+        colours = self.get_level_colours()
+        # Bottoms of bar where stacking occurs
+        y_cuml = numpy.zeros(len(x_vals))
+        # handles for legend at bottom of image
+        handles = []
+        for lvl in sorted(set(table['level'])):
+            if lvl is None: continue
+            assert isinstance(lvl, int)
+            # Get values
+            sel = (table['level'] == lvl)
+            sel_t = table[sel]
+            # The indices of the x-axis positions
+            i_x = [x_keys.index(v) for v in map(tuple,sel_t[['cycle','step']].values.tolist())]
+            # Extract y_vals
+            y_vals = sel_t['b_iso (level)'].values
+
+            # Plot
+            hdl = ax.bar(left   = x_vals[i_x],
+                         height = y_vals,
+                         bottom = y_cuml[i_x],
+                         width  = 0.8,
+                         color  = colours[lvl-1],
+                         edgecolor = 'k',
+                         linewidth = 0.5,
                          align  = 'center',
-                         label  = 'level')
-            if s == '1':
-                handles.append(hdl)
-            #hdl = ax.plot(x_vals[sel],
-            #              table['b_iso (level)'].values[sel],
-            #              '-',
-            #              label = 'level')
-            #hdl = ax.plot(x_vals[sel],
-            #              table['b_iso (level)'].values[sel],
-            #              'ko',
-            #              label = 'level')
-            #if s == '1':
-            #    handles.extend(hdl)
-        # Plot error bars for each level
-        ax.errorbar(x     = x_vals,
-                    y     = table['b_iso (level)'].values,
-                    fmt   = 'none',
-                    yerr  = ((table['b_iso (level)'] - table['b_min (level)']).values,
-                             (table['b_max (level)'] - table['b_iso (level)']).values),
-                    ecolor     = 'k',
-                    elinewidth = 1,
-                    capthick   = 1,
-                    capsize    = int(10./len(x_vals)))
+                         label  = 'Level {}'.format(lvl))
+            handles.append(hdl)
+            # Add to cuml
+            y_cuml[i_x] = y_cuml[i_x] + y_vals
         # Axis stuff
         ax.xaxis.set_ticks_position('bottom')
-        ax.set_xlabel('Optimisation stage')
-        ax.set_ylabel('B-iso Equivalent ($\AA^2$)')
+        ax.set_title('B-factors of Hierarchical Model')
+        ax.set_xlabel('Optimisation Stage/Cycle')
+        ax.set_ylabel('Isotropic B\n($\AA^2$)')
         ax.set_xticks(x_vals)
         ax.set_xticklabels(x_labs, rotation=90, ha='center')
+        ax.tick_params('x', labelsize=max(2, min(10, 14-0.15*len(grouped))))
         ax.set_xlim(left=-0.5, right=max(x_vals)+0.5)
         ax.set_ylim(bottom=0.0)
         # Create legend for axis
-        lgd1 = ax.legend(handles=handles, bbox_to_anchor=(0.02, 0.95), loc=2, borderaxespad=0.)
+        ncol = 3
+
+        # Add legend to first graph for both lines
+        lgd0 = axes[0].legend(handles=hdl1+hdl2, bbox_to_anchor=(1.02, 0.95), loc=2, borderaxespad=0.)
+
+        # Other legends
+        flip_h = []; [flip_h.extend(handles[i::ncol]) for i in range(ncol)]
+        lgd1 = axes[1].legend(
+                handles=flip_h, ncol=ncol,
+                bbox_to_anchor=(0.5, 0.0),
+                bbox_transform=fig.transFigure,
+                loc=9, borderaxespad=0.,
+                )
 
         # BOTH AXES -- Add vertical lines between macro-cycles
+        start_x = x_vals[[x_keys.index(v) for v in map(tuple,table[['cycle','step']].values.tolist()) if v[1]=='start']]
+        n_cycles = len(start_x)
         last_v = None
         delta = None
-        for i, v in enumerate(x_vals[(table['level']=='start')] - 0.5):
+        for i, v in enumerate(start_x - 0.5):
             # Dashed lines to separate cycles
             if (v > 0) and (v < x_max):
                 for ax in axes:
@@ -3283,25 +3351,128 @@ class MultiDatasetUijPlots(object):
             if last_v is not None:
                 delta = v - last_v
                 axes[0].text(x=last_v+delta/2.0,
-                             y=0.95*axes[0].get_ylim()[0] + 0.05*axes[0].get_ylim()[1],
-                             s='cycle {}'.format(i), # This is plotting the previous point so do not need +1
+                             y=0.05*axes[0].get_ylim()[0] + 0.95*axes[0].get_ylim()[1],
+                             s='cycle '*(n_cycles<6) +str(i), # This is plotting the previous point so do not need +1
                              horizontalalignment='center',
-                             verticalalignment='bottom',
+                             verticalalignment='top',
                             )
             last_v = v
         # Plot the last point (or do nothing for 1 cycle)
         if delta is not None:
-            axes[0].text(x=v+delta/2.0,
-                         y=0.95*axes[0].get_ylim()[0] + 0.05*axes[0].get_ylim()[1],
-                         s='cycle {}'.format(i+1), # This needs a +1
+            axes[0].text(x=min(v+delta/2.0, axes[0].get_xlim()[1]),
+                         y=0.05*axes[0].get_ylim()[0] + 0.95*axes[0].get_ylim()[1],
+                         s='cycle '*(n_cycles<6) +str(i+1), # This needs a +1
                          horizontalalignment='center',
-                         verticalalignment='bottom',
+                         verticalalignment='top',
                         )
 
         fig.tight_layout()
         fig.savefig(filename,
                     bbox_extra_artists=[lgd0,lgd1],
-                    bbox_inches='tight')
+                    bbox_inches='tight',
+                    dpi=200)
+        pyplot.close(fig)
+
+    def convergence_plots(self, table, filename):
+
+        fig, axes = pyplot.subplots(nrows=1, ncols=2, sharex=True, sharey=False)
+        axes = numpy.array(axes).flatten()
+
+        # Extract rows with non-zero values
+        table = table[table['b_iso (level)']!=0.0]
+        # Extract only inter-level optimisation values (last step of each cycle)
+        table = table[(table['step']=='inter-level')]
+        # Labels for each of the series to plot
+        m_cyc = 0 if (len(table) == 0) else min(table['cycle'])
+        labels = table[table['cycle']==m_cyc]['level'].values
+
+        # Colours for each level
+        colours = self.get_level_colours()
+
+        ########################
+        # FIRST AXIS
+        ########################
+        ax = axes[0]
+        handles = []
+        # Extract common list of x-values
+        x_keys = sorted(set(table['cycle'].values))
+        x_vals = numpy.array(x_keys)
+        # Cumulative y-values for stacking
+        y_cuml = numpy.zeros(len(x_vals))
+        # Plot same values as stacked bars
+        for l in labels:
+            assert isinstance(l, int)
+            # Extract relevant rows from table
+            l_table = table[table['level']==l]
+            # Extract plot vals
+            i_x = [x_keys.index(v) for v in l_table['cycle'].values]
+            y_vals = l_table['b_iso (level)'].values
+            # Plot stacked bar
+            hdl = ax.bar(left   = x_vals[i_x],
+                         height = y_vals,
+                         bottom = y_cuml[i_x],
+                         width  = 0.8,
+                         color  = colours[l-1],
+                         edgecolor = 'k',
+                         linewidth = 0.5,
+                         align  = 'center',
+                         label  = 'Level {}'.format(l))
+            handles.append(hdl)
+            # Add to cuml
+            y_cuml[i_x] = y_cuml[i_x] + y_vals
+
+        # Create legend for axis
+        ncol = 3
+        flip_h = []; [flip_h.extend(handles[i::ncol]) for i in range(ncol)]
+        lgd0 = ax.legend(
+                handles=flip_h, ncol=ncol,
+                bbox_to_anchor=(0.5, 0.0),
+                bbox_transform=fig.transFigure,
+                loc=9, borderaxespad=0.,
+                )
+
+        ax.xaxis.set_ticks_position('bottom')
+        ax.set_xticks(x_vals)
+        ax.tick_params('x', labelsize=max(2, min(10, 14-0.15*len(x_keys))))
+        ax.set_xlabel('Optimisation Cycle')
+        ax.set_ylabel('Average B-factor of Level')
+        ax.set_ylim(bottom=0.0)
+
+        ########################
+        # SECOND AXIS
+        ########################
+        ax = axes[1]
+        handles = []
+        for l in labels:
+            assert isinstance(l, int)
+            # Extract relevant rows from table
+            l_table = table[table['level']==l]
+            # Extract plot vals
+            x_vals = l_table['cycle'].values
+            y_vals = l_table['b_iso (level)'].values
+
+            hd_ = ax.plot(x_vals, y_vals, 'ko-', lw=2, ms=5)
+            hdl = ax.plot(x_vals, y_vals, 'o-', lw=1, ms=3, color=colours[l-1], label='Level {}'.format(l))
+            handles.extend(hdl)
+
+        # Axis stuff
+        ax.xaxis.set_ticks_position('bottom')
+        ax.tick_params('x', labelsize=max(2, min(10, 14-0.15*len(x_keys))))
+        ax.set_xlabel('Optimisation Cycle')
+        ax.set_ylabel('Average B-factor of Level')
+        ax.set_ylim(bottom=0.0)
+
+        # Create legend for axis
+        #lgd1 = ax.legend(handles=handles, ncol=3, bbox_to_anchor=(0.00, -0.15), loc=9, borderaxespad=0.)
+
+        t = fig.suptitle('Convergence of level b-factors',
+                y = 1.00, verticalalignment='bottom')
+
+        fig.tight_layout()
+        fig.savefig(filename,
+                    bbox_extra_artists=[t, lgd0],
+                    bbox_inches='tight',
+                    dpi=200)
         pyplot.close(fig)
 
 class MultiDatasetHierarchicalUijFitter(object):
@@ -3384,6 +3555,9 @@ class MultiDatasetHierarchicalUijFitter(object):
         assert len(self.level_labels) == len(self.levels)
 
         self.apply_masks()
+        self.make_hierarchy_as_tree()
+
+        self.plot = MultiDatasetUijPlots(n_levels=len(self.levels)+1)
 
     def __iter__(self):
         for i_level, level in enumerate(self.levels):
@@ -3401,6 +3575,13 @@ class MultiDatasetHierarchicalUijFitter(object):
             arr_sum = numpy.zeros_like(arr_sum)
             for i in range(3):
                 arr_sum[:,:,i] = iso_arr_sum
+        elif self.disorder_model == "mixed":
+            # Calculate the isotropic values for the isotropic atoms
+            iso_arr_sum = arr_sum[:,self.isotropic_mask,0:3].mean(axis=2)
+            # Zero out the values in-place and replace with isotropic values
+            arr_sum[:,self.isotropic_mask,:] = 0.0
+            for i in range(3):
+                arr_sum[:,self.isotropic_mask,i] = iso_arr_sum
         assert arr_sum.shape == self.observed_uij.shape
         # Subtract currently modelled from input data
         return self.observed_uij - arr_sum
@@ -3525,7 +3706,7 @@ class MultiDatasetHierarchicalUijFitter(object):
 
         return atom_hash, atom_coms
 
-    def get_hierarchy_as_tree(self):
+    def make_hierarchy_as_tree(self):
         """Identify the tree of groups that form each atom"""
 
         # Dictionary pointing to "owned" groups in the next level(s)
@@ -3584,6 +3765,8 @@ class MultiDatasetHierarchicalUijFitter(object):
                     #for l, vs in vals.items():
                     #    self.log('\t-> Level {}, Groups {}'.format(l, ', '.join(map(str,vs))))
 
+        self.group_tree = graph
+
         return graph
 
     def n_levels(self):
@@ -3601,27 +3784,45 @@ class MultiDatasetHierarchicalUijFitter(object):
     def n_input_values(self):
         if self.n_input_params_per_atom() is None:
             return 'unknown'
-        return self.observed_uij.shape[0] * self.observed_uij.shape[1] * self.n_input_params_per_atom()
+        return int(self.observed_uij.shape[0] * self.observed_uij.shape[1] * self.n_input_params_per_atom())
 
-    def optimise_level_amplitudes(self, n_cycles=1, n_cpus=1, recursions=1):
+    def optimise_level_amplitudes(self, n_cpus=1, recursions=1, include_residual=True):
         """Optimise amplitudes for pairs of adjacent levels"""
 
-        self.log.heading('Running inter-level amplitude optimisation')
+        self.log.bar(True, False)
+        self.log('Running inter-level amplitude optimisation')
+        self.log.bar(False, True)
 
-        self.log('Cycles: {}'.format(n_cycles))
         self.log('CPUs: {}'.format(n_cpus))
         self.log('Recursions (number of levels to be co-optimised): {}'.format(recursions))
+
+        # Filter the group tree (possibly removing the residual level)
+        group_tree_copy = copy.deepcopy(self.group_tree)
+        if include_residual is False:
+            for l in group_tree_copy.keys():
+                if l == 'X':
+                    group_tree_copy.pop('X')
+                    assert self.group_tree.has_key('X')
+                    continue
+                for g in group_tree_copy[l].keys():
+                    for l2 in group_tree_copy[l][g].keys():
+                        if l2 == 'X':
+                            group_tree_copy[l][g].pop('X')
+                            assert self.group_tree[l][g].has_key('X')
+                            continue
 
         # Create optimisation object -- edits levels in-place so shouldn't need to do anything to unpack results
         ao = InterLevelAmplitudeOptimiser(
                 target_uij = self.observed_uij,
                 levels     = self.levels,
                 residual   = self.residual,
-                group_tree = self.get_hierarchy_as_tree(),
+                group_tree = group_tree_copy,
+                weights    = self.uij_weights,
                 params     = self.params,
                 verbose    = self.verbose,
                 log        = self.log)
-        ao.optimise(n_cycles=n_cycles, n_cpus=n_cpus, recursions=recursions)
+        ao.set_residual_mask(self.dataset_mask)
+        ao.optimise(n_cpus=n_cpus, recursions=recursions)
         ao.apply_multipliers(self.levels, self.residual)
         self.log(ao.summary(show=True))
         return ao
@@ -3648,12 +3849,13 @@ class MultiDatasetHierarchicalUijFitter(object):
         self.dataset_mask[:] = False
         self.dataset_mask[dataset_indices] = True
 
-    def set_tracking(self, table, csv_path, png_path):
+    def set_tracking(self, table, csv_path, trk_path, cvg_path):
         self.tracking_data = table
         self.tracking_csv = csv_path
-        self.tracking_png = png_path
+        self.tracking_png = trk_path
+        self.convergence_png = cvg_path
 
-    def update_tracking(self, uij_lvl, i_cycle, i_level=None):
+    def update_tracking(self, uij_lvl, step, i_cycle, i_level=None):
         """Update the tracking table"""
 
         self.log.subheading('Updating tracking...')
@@ -3661,7 +3863,7 @@ class MultiDatasetHierarchicalUijFitter(object):
         # Extract uijs for all of the levels for all datasets
         uij_tot = uij_lvl.sum(axis=0)
         # Calculate the rms between fitted and input
-        rmsd = rms(self.observed_uij-uij_tot, axis=None)
+        rmsd = EIGHT_PI_SQ*rms(self.observed_uij-uij_tot, axis=None)
 
         # Average over all datasets
         uij_tot = uij_tot.mean(axis=0)
@@ -3670,58 +3872,68 @@ class MultiDatasetHierarchicalUijFitter(object):
         assert uij_lvl.shape == (len(self.levels)+1,) + self.observed_uij.shape[1:]
         assert uij_tot.shape == self.observed_uij.shape[1:]
 
-        # Extract the Uij for the selected level
-        if isinstance(i_level, int):
-            uij_sel = uij_lvl[i_level]
-            level_lab = str(i_level + 1)
-        elif i_level == 'residual':
-            uij_sel = uij_lvl[-1]
-            level_lab = str(i_level)
-        else:
-            uij_sel = None
-            level_lab = str(i_level)
+        if not isinstance(i_level, list):
+            i_level = [i_level]
 
-        # Calculate U-iso & B-iso for selected level
-        if uij_sel is not None:
-            assert uij_sel.shape == self.observed_uij.shape[1:]
-            # average values
-            b_iso_sel = numpy.mean(uij_to_b(uij_sel))
-            u_iso_sel = b_iso_sel / EIGHT_PI_SQ
-            # min/max values
-            b_min_sel = numpy.min(uij_to_b(uij_sel))
-            b_max_sel = numpy.max(uij_to_b(uij_sel))
-        else:
-            # average values
-            b_iso_sel = 0.0
-            u_iso_sel = 0.0
-            # min/max values
-            b_min_sel = numpy.nan
-            b_max_sel = numpy.nan
+        # Iterate through levels to be dumped into table
+        for i_l in i_level:
 
-        # Calculate U-iso & B-iso for complete model
-        b_iso_tot = numpy.mean(uij_to_b(uij_tot))
-        u_iso_tot = b_iso_tot / EIGHT_PI_SQ
+            # Extract the Uij for the selected level(s)
+            if isinstance(i_l, int):
+                uij_sel = uij_lvl[i_l]
+                level = i_l+1
+            else:
+                uij_sel = None
+                level = None
 
-        # Create human-readable cycle number
-        cycle_lab = str(i_cycle+1)
+            # Calculate U-iso & B-iso for selected level
+            if uij_sel is not None:
+                assert uij_sel.shape == self.observed_uij.shape[1:]
+                # average values
+                b_iso_sel = numpy.mean(uij_to_b(uij_sel))
+                u_iso_sel = b_iso_sel / EIGHT_PI_SQ
+                # min/max values
+                b_min_sel = numpy.min(uij_to_b(uij_sel))
+                b_max_sel = numpy.max(uij_to_b(uij_sel))
+            else:
+                # average values
+                b_iso_sel = 0.0
+                u_iso_sel = 0.0
+                # min/max values
+                b_min_sel = numpy.nan
+                b_max_sel = numpy.nan
 
-        # Add to tracking table
-        self.tracking_data.loc[len(self.tracking_data.index)] = {'cycle' : cycle_lab,
-                                                                 'level' : level_lab,
-                                                                 'rmsd'  : round(rmsd,3),
-                                                                 'u_iso (level)' : round(u_iso_sel,3),
-                                                                 'b_iso (level)' : round(b_iso_sel,3),
-                                                                 'b_min (level)' : round(b_min_sel,3),
-                                                                 'b_max (level)' : round(b_max_sel,3),
-                                                                 'u_iso (total)' : round(u_iso_tot,3),
-                                                                 'b_iso (total)' : round(b_iso_tot,3)}
+            # Calculate U-iso & B-iso for complete model
+            b_iso_tot = numpy.mean(uij_to_b(uij_tot))
+            u_iso_tot = b_iso_tot / EIGHT_PI_SQ
 
-        self.log(self.tracking_data.loc[len(self.tracking_data.index)-1].to_string())
+            # Create human-readable cycle number
+            cycle_lab = i_cycle
+
+            # Add to tracking table
+            self.tracking_data.loc[len(self.tracking_data.index)] = {'cycle' : cycle_lab,
+                                                                     'step'  : step,
+                                                                     'level' : level,
+                                                                     'rmsd'  : round(rmsd,3),
+                                                                     'u_iso (level)' : round(u_iso_sel,3),
+                                                                     'b_iso (level)' : round(b_iso_sel,3),
+                                                                     'b_min (level)' : round(b_min_sel,3),
+                                                                     'b_max (level)' : round(b_max_sel,3),
+                                                                     'u_iso (total)' : round(u_iso_tot,3),
+                                                                     'b_iso (total)' : round(b_iso_tot,3)}
+
+        self.log(self.tracking_data.loc[len(self.tracking_data)-len(i_level):].to_string())
         # Dump to csv
         self.tracking_data.to_csv(self.tracking_csv)
         # Make plots
-        MultiDatasetUijPlots.tracking_plots(table    = self.tracking_data,
-                                            filename = self.tracking_png)
+        self.plot.tracking_plots(
+                table = self.tracking_data,
+                filename = self.tracking_png
+                )
+        self.plot.convergence_plots(
+                table = self.tracking_data,
+                filename = self.convergence_png
+                )
 
     def apply_masks(self):
         self.log.subheading('Setting atom and datasets masks')
@@ -3734,35 +3946,6 @@ class MultiDatasetHierarchicalUijFitter(object):
             self.log('...level {}'.format(level.index))
             level.set_atomic_mask(self.atomic_mask)
 
-    # TODO make this z-score based on a half-normal distribution?
-    def update_dataset_mask(self, percentile, observed_fitted_differences):
-        """Identify the datasets with the worst fit and remove from optimisation"""
-        assert observed_fitted_differences.shape == self.observed_uij.shape
-        # Calculate the average absolute deviation
-        fit_err = numpy.abs(observed_fitted_differences).mean(axis=(1,2))
-        mask_thresh = numpy.percentile(fit_err, percentile)
-        mask = (fit_err < mask_thresh)
-        if (sum(mask) > 0) and (sum(mask*self.dataset_mask)>0):
-          self.log('> {} datasets removed with mask'.format(sum(self.dataset_mask)-sum(self.dataset_mask*mask)))
-          self.dataset_mask *= mask
-        else:
-          self.log('> No datasets removed with mask')
-        return mask
-
-    # TODO make this z-score based on a half-normal distribution?
-    def update_atomic_mask(self, percentile, atomic_uij):
-        assert atomic_uij.shape == self.observed_uij.shape[1:]
-        # Calculate the isotropic equivalent for each atom
-        iso_uij = numpy.mean(numpy.abs(atomic_uij[:,:3]),axis=1)
-        mask_thresh = numpy.percentile(iso_uij, percentile)
-        mask = (iso_uij < mask_thresh)
-        if (sum(mask) > 0) and (sum(mask*self.atomic_mask)>0):
-          self.log('> {} atoms removed with mask'.format(sum(self.atomic_mask)-sum(self.atomic_mask*mask)))
-          self.atomic_mask *= mask
-        else:
-          self.log('> No atoms removed with mask')
-        return mask
-
     def fit(self, n_cpus=1, n_macro_cycles=1, n_micro_cycles=1):
         """Run macro-cycles of parameter optimisation"""
 
@@ -3773,81 +3956,100 @@ class MultiDatasetHierarchicalUijFitter(object):
         fitted_uij_by_level = numpy.zeros((len(self.levels)+1,)+self.observed_uij.shape)
 
         # Run macro cycles of optimisation
-        for i_macro in xrange(n_macro_cycles):
-            self.log.heading('Macrocycle {} of {}'.format(i_macro+1, n_macro_cycles), spacer=True)
+        for i_macro in xrange(n_macro_cycles+1):
+            self.log.heading('Macrocycle {} of {}'.format(i_macro, n_macro_cycles), spacer=True)
 
-            # Update masks at beginning of each cycles
-            if i_macro == 0:
-                # Initialise tracking at the beginning of the run
-                self.update_tracking(uij_lvl=fitted_uij_by_level, i_cycle=i_macro, i_level='start')
-            else:
-                self.log.subheading('Updating parameters for next iteration')
-                self.log('Removing atoms with high residual uij from TLS optimisation')
-                self.update_atomic_mask(percentile=90, atomic_uij=self.residual.extract())
+            # Things that are different for the first cycle
+            if (i_macro == 0):
+                # Set dataset mask to the first optimisation dataset to give some reasonable starting values
+                optimisation_datasets = numpy.where(self.dataset_mask)[0].tolist()
+                self.set_optimisation_datasets([optimisation_datasets[0]])
 
-                # XXX Currently disabled -- need to think of better method XXX
-                #self.log('Removing datasets with high fit rmsds from TLS optimisation')
-                #self.update_dataset_mask(percentile=95, observed_fitted_differences=self.observed_uij-fitted_uij_by_level.sum(axis=0))
-
-                #self.log('Resetting residual Uijs to zero for next cycle')
-                #fitted_uij_by_level[-1] = 0.75 * fitted_uij_by_level[-1]
-
-                # Re-initialise tracking at the beginning of each subsequent cycle
-                self.update_tracking(uij_lvl=fitted_uij_by_level, i_cycle=i_macro, i_level='start')
+            # Re-initialise tracking at the beginning of each subsequent cycle
+            self.update_tracking(uij_lvl=fitted_uij_by_level, step='start', i_cycle=i_macro)
 
             # Ensure the masks are up-to-date
             self.apply_masks()
 
             # Iterate through the TLS levels of the fitting
             for i_level, fitter in enumerate(self.levels):
-                self.log.subheading('Macrocycle {} of {}: '.format(i_macro+1, n_macro_cycles)+'Fitting TLS Groups (level {} - {})'.format(fitter.index, fitter.label))
+                self.log.subheading('Macrocycle {} of {}: '.format(i_macro, n_macro_cycles)+'Fitting TLS Groups (level {} - {})'.format(fitter.index, fitter.label))
                 # Update the target uij by subtracting contributions from other levels
                 self.log('Updating target Uijs for optimisation')
                 fitter.set_target_uij(target_uij=self._calculate_target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=i_level))
                 # Optimise
                 fitted_uij = fitter.run(n_cpus=n_cpus, n_cycles=n_micro_cycles)
-                # Validate and store
-                num_to_print = 3
-                uij_fmt_str = ', '.join(6*['{{:.{:d}f}}'.format(int(-1*numpy.log10(self.params.precision.uij_tolerance)+1.0))])
-                eig_fmt_str = ', '.join(3*['{{:.{:d}f}}'.format(int(-1*numpy.log10(self.params.precision.uij_tolerance)+1.0))])
-                for i_dst, dataset_uij in enumerate(fitted_uij):
-                    uij_valid = uij_positive_are_semi_definite(uij=dataset_uij, tol=0.001) #self.params.precision.uij_tolerance)
-                    if uij_valid.sum() > 0.0:
-                        fmt_list = [(i+1, fitter.get_atom_group(index=i).label, i_level+1, uij_fmt_str.format(*tuple(dataset_uij[i])), eig_fmt_str.format(*tuple(sym_mat3_eigenvalues(dataset_uij[i])))) for i in numpy.where(uij_valid)[0]]
-                        err_msgs = ['Atom {:>5d} (group {}, level {}): \n\t\tUij -> ({})\n\t\tEigenvalues -> ({})'.format(*d) for d in fmt_list]
-                        if (len(err_msgs) > num_to_print) and (not self.verbose):
-                            n_hidden = len(err_msgs) - num_to_print
-                            err_msgs = err_msgs[:num_to_print]
-                            err_msgs.append('[...] ({} more similar warning{} not shown)'.format(n_hidden, 's' if n_hidden>1 else ''))
-                        self.warnings.append('Level {}: Uijs for dataset {} are not positive-semi-definite ({} atoms)\n\t{}'.format(i_level+1, i_dst, uij_valid.sum(), '\n\t'.join(err_msgs)))
                 # Store in output array
                 fitted_uij_by_level[i_level] = fitted_uij
                 # Update tracking
-                self.update_tracking(uij_lvl=fitted_uij_by_level, i_cycle=i_macro, i_level=i_level)
+                self.update_tracking(uij_lvl=fitted_uij_by_level, step='level {}'.format(i_level+1), i_cycle=i_macro, i_level=i_level)
+
+            # Disable fitting penalties after the first cycle
+            if (i_macro == 0):
+                pass
+                # Optimise the InterLevel Amplitudes
+                #self.optimise_level_amplitudes(n_cpus=1, recursions=len(self.levels), include_residual=False)
 
             # Fit the residuals
-            self.log.subheading('Macrocycle {} of {}: '.format(i_macro+1, n_macro_cycles)+'Fitting residual atomic Uijs')
+            self.log.subheading('Macrocycle {} of {}: '.format(i_macro, n_macro_cycles)+'Optimising residual atomic Uijs')
             # Update the target uij by subtracting contributions from other levels
             self.residual.set_target_uij(target_uij=self._calculate_target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=-1))
             # Update fitters and optimise -- always run two cycles of this
             fitted_uij_by_level[-1] = self.residual.run(n_cpus=n_cpus, n_cycles=1)
             # Update tracking
-            self.update_tracking(uij_lvl=fitted_uij_by_level, i_cycle=i_macro, i_level='residual')
+            self.update_tracking(uij_lvl=fitted_uij_by_level, step='residual', i_cycle=i_macro, i_level=len(fitted_uij_by_level)-1)
 
+            # Optimise the amplitudes between levels
+            self.log.subheading('Macrocycle {} of {}: '.format(i_macro, n_macro_cycles)+'Optimising inter-level amplitudes')
             # Optimise the InterLevel Amplitudes
-            self.optimise_level_amplitudes(n_cycles=1, n_cpus=1, recursions=max(1,len(self.levels)-2)) # don't optimise all at once -- suicide # TODO CHANGE ME
+            self.optimise_level_amplitudes(n_cpus=1, recursions=len(self.levels))
             # Update output
             for i, l in enumerate(self.levels):
                 fitted_uij_by_level[i] = l.extract()
             fitted_uij_by_level[-1] = self.residual.extract()
             # Update tracking
-            self.update_tracking(uij_lvl=fitted_uij_by_level, i_cycle=i_macro, i_level='jiggle')
+            self.update_tracking(uij_lvl=fitted_uij_by_level, step='inter-level', i_cycle=i_macro, i_level=range(len(fitted_uij_by_level)))
 
-            # Disable fitting penalties after the first cycle
             if (i_macro == 0):
+                # Restore the original optimisation datasets
+                self.set_optimisation_datasets(optimisation_datasets)
+                # Turn off fitting penalties for future optimisations
                 self.disable_fitting_penalties()
 
+        # Check validity of output model and generate warnings...
+        self.validate_fitted_uijs()
+
         return self.extract()
+
+    def validate_fitted_uijs(self):
+        """Check for negative Uij eigenvalues of output models, etc"""
+
+        self.log.subheading('Validating output Uijs')
+
+        num_to_print = 3
+        uij_fmt_str = ', '.join(6*['{{:.{:d}f}}'.format(int(-1*numpy.log10(self.params.precision.uij_tolerance)+1.0))])
+        eig_fmt_str = ', '.join(3*['{{:.{:d}f}}'.format(int(-1*numpy.log10(self.params.precision.uij_tolerance)+1.0))])
+
+        warnings = []
+        for i_level, level in enumerate(self.levels):
+            fitted_uij = level.extract()
+            for i_dst, dataset_uij in enumerate(fitted_uij):
+                uij_valid = uij_positive_are_semi_definite(uij=dataset_uij, tol=0.001) #self.params.precision.uij_tolerance)
+                if uij_valid.sum() > 0.0:
+                    fmt_list = [(i+1, level.get_atom_group(index=i).label, i_level+1, uij_fmt_str.format(*tuple(dataset_uij[i])), eig_fmt_str.format(*tuple(sym_mat3_eigenvalues(dataset_uij[i])))) for i in numpy.where(uij_valid)[0]]
+                    err_msgs = ['Atom {:>5d} (group {}, level {}): \n\t\tUij -> ({})\n\t\tEigenvalues -> ({})'.format(*d) for d in fmt_list]
+                    if (len(err_msgs) > num_to_print) and (not self.verbose):
+                        n_hidden = len(err_msgs) - num_to_print
+                        err_msgs = err_msgs[:num_to_print]
+                        err_msgs.append('[...] ({} more similar warning{} not shown)'.format(n_hidden, 's' if n_hidden>1 else ''))
+                    w = 'Level {}: Uijs for dataset {} are not positive-semi-definite ({} atoms)\n\t{}'.format(i_level+1, i_dst, uij_valid.sum(), '\n\t'.join(err_msgs))
+                    warnings.append(w)
+        if warnings:
+            self.log('{} Warnings!'.format(len(warnings)))
+            for w in warnings: self.log(w)
+        else:
+            self.log('No warnings during validation.')
+        self.warnings.extend(warnings)
 
     def extract(self, average_datasets=False):
         """Extract the fitted Uij for all structures or the average structure (averaged TLS)"""
@@ -3855,7 +4057,7 @@ class MultiDatasetHierarchicalUijFitter(object):
 
     def extract_tls(self, sum_levels=False, sum_modes=True, average_datasets=False):
         """Extract the fitted TLS Uij for all structure or the average structure (averaged TLS)"""
-        uij = numpy.array([f.extract(sum_modes=sum_modes, average_datasets=average_datasets) for f in self.levels])
+        uij = numpy.array([l.extract(sum_modes=sum_modes, average_datasets=average_datasets) for l in self.levels])
         if sum_levels is True:
             uij = uij.sum(axis=0)
         return uij
@@ -3863,30 +4065,45 @@ class MultiDatasetHierarchicalUijFitter(object):
     def summary(self, show=False):
         s = ''
         s += '\n> Input Data:'
-        s += '\nNumber of datasets: {}'.format(len(self.dataset_mask))
-        s += '\nNumber of atoms:    {}'.format(len(self.atomic_mask))
-        s += '\nNumber of input values: {}'.format(self.n_input_values())
+        s += '\nNumber of datasets: {}'.format(self.n_datasets)
+        s += '\nNumber of atoms (in each structure): {}'.format(len(self.atomic_mask))
         s += '\nInput Disorder Type: {}'.format(self.disorder_model)
         if self.disorder_model == 'mixed':
             n_iso = self.isotropic_mask.sum()
             n_ani = self.isotropic_mask.size - n_iso
             s += '\n\t{:d} anisotropic atoms ({:5.2%})'.format(n_ani, n_ani/float(self.isotropic_mask.size))
             s += '\n\t{:d} isotropic atoms   ({:5.2%})'.format(n_iso, n_iso/float(self.isotropic_mask.size))
+        s += '\nNumber of uij values per atom (average): {:.2f}'.format(self.n_input_params_per_atom())
+        s += '\nNumber of uij values (total): {}'.format(self.n_input_values())
         s += '\n'
         s += '\n> Hierarchical Model:'
         s += '\nNumber of levels (incl. residual): {}'.format(self.n_levels()+1)
+        s += '\nNumber of tls groups per level:'
+        for l in self.levels:
+            s += '\n\tLevel {} ({}): {}'.format(l.index, l.label, str(l.n_groups()))
         s += '\nNumber of TLS modes per group: {}'.format(self.params.n_tls_modes_per_tls_group)
-        s += '\nNumber of model parameters: {}'.format(self.n_params(non_zero=False))
-        s += '\nNumber of model parameters per level: {}'.format(', '.join([str(l.n_params(non_zero=False)) for l in self.levels+[self.residual]]))
+        s += '\nNumber of model parameters per group: {} x (20 + {}) = {}'.format(
+                self.params.n_tls_modes_per_tls_group,
+                self.n_datasets,
+                self.params.n_tls_modes_per_tls_group*(20+self.n_datasets),
+                )
+        s += '\nNumber of atoms in residual level: {}'.format(self.residual.n_atoms())
+        s += '\nNumber of model parameters (total): {}'.format(self.n_params(non_zero=False))
+        #s += '\nNumber of model parameters per level:'
+        #for l in self.levels+[self.residual]:
+        #    s += '\n\tLevel {}: {}'.format(l.index, str(l.n_params(non_zero=False)))
         s += '\n'
         s += '\n> Optimisation:'
-        s += '\nDatasets used for TLS optimisation: {} of {}'.format(sum(self.dataset_mask), len(self.dataset_mask))
-        s += '\nAtoms used for TLS optimisation:    {} of {}'.format(sum(self.atomic_mask), len(self.atomic_mask))
+        s += '\nDatasets used for TLS and residual optimisation: {} of {}'.format(sum(self.dataset_mask), len(self.dataset_mask))
+        s += '\nAtoms used for TLS optimisation: {} of {}'.format(sum(self.atomic_mask), len(self.atomic_mask))
+        s += '\nDataset Weighting: {}'.format(self.params.optimisation.dataset_weights)
+        s += '\nAtomic Weighting: {}'.format(self.params.optimisation.atom_weights)
+        s += '\nAtomic weights renormalised by dataset: {}'.format("Yes" if self.params.optimisation.renormalise_atom_weights_by_dataset else "No")
         s += '\n'
         s += '\n> Parameterisation:'
         s += '\nNumber of parameters per atom:'
-        s += '\n... in input data: {}'.format(format_no_fail(':2.0f', self.n_input_params_per_atom()))
-        s += '\n... in fitted model (possible): {:5.2f}'.format(self.n_params_per_atom(non_zero=False))
+        s += '\n... in input data (average over all atoms): {}'.format(format_no_fail(':2.2f', self.n_input_params_per_atom()))
+        s += '\n... in fitted model: {:5.2f}'.format(self.n_params_per_atom(non_zero=False))
         s += '\n... in fitted model (non-zero): {:5.2f}'.format(self.n_params_per_atom(non_zero=True))
         s += '\nNon-zero model parameters / number of input data: {}'.format(format_no_fail(':5.2%', self.parameter_ratio_gain(non_zero=True)))
         s += '\n'
@@ -3911,8 +4128,6 @@ class _MultiDatasetUijLevel(object):
         n_cpus = min(len(jobs), n_cpus)
         # Only do multiprocessing if actually needed
         if n_cpus > 1:
-            # Make jobs silent
-            for (f, d) in jobs: f.log.toggle(0)
             # Run jobs in parallel
             self.log('Running {} job(s) in {} process(es) [and {} cpu(s) per process]'.format(len(jobs), n_cpus, n_cpus_per_job))
             self.log('')
@@ -3920,8 +4135,6 @@ class _MultiDatasetUijLevel(object):
             finished_jobs = workers.map(func=_wrapper_fit, iterable=jobs, chunksize=self._chunksize)
             workers.close()
         else:
-            # Make jobs noisy
-            for (f, d) in jobs: f.log.toggle(1)
             # Run jobs in serial
             self.log('Running {} job(s) [with {} cpu(s)]'.format(len(jobs), n_cpus_per_job))
             self.log('')
@@ -4071,6 +4284,14 @@ class MultiDatasetTLSGroupLevel(_MultiDatasetUijLevel):
         if average_datasets is True:
             fitted_uij = fitted_uij.mean(axis=dst_axis)
         return fitted_uij
+
+    def extract_core(self):
+        shape = (self._n_tls,) + self._uij_shape
+        core_uijs = numpy.zeros(shape)
+        for i, sel, fitter in self:
+            f_uij = fitter.extract_core()
+            core_uijs[:,:,sel] = f_uij
+        return core_uijs
 
     def summary(self, show=True):
         num_model_params = self.n_params(non_zero=False)
@@ -4256,7 +4477,7 @@ def build_levels(model, params, log=None):
 
     return levels, labels
 
-def run(params):
+def run(params, args=None):
 
     # Load input pickle object
     if (params.input.pickle is None):
@@ -4273,7 +4494,12 @@ def run(params):
 
         # Report parameters
         log.heading('Input command')
-        log(' \\\n\t'.join(['pandemic.adp'] + sys.argv[1:]))
+        input_command = ' \\\n\t'.join(['pandemic.adp'] + args)
+        log(input_command)
+
+        log.heading('Non-default parameters')
+        log(master_phil.fetch_diff(source=master_phil.format(params)).as_str())
+
         log.heading('Input parameters')
         log(master_phil.format(params).as_str())
 
@@ -4439,7 +4665,7 @@ def run(params):
         # TODO only transfer the non-default params!
         #p.params = params
 
-        p.fitter.optimise_level_amplitudes(n_cycles=1, n_cpus=1, recursions=1)
+        #p.fitter.optimise_level_amplitudes(n_cpus=1, recursions=5)
 
     # Print all errors
     p.log.heading('Errors/Warnings')
@@ -4448,7 +4674,7 @@ def run(params):
 
     # Write HTML
     p.log.heading('Writing HTML output')
-    pandemic_html.write_adp_summary(parameterisation=p)
+    pandemic_html.write_adp_summary(parameterisation=p, input_command=input_command)
 
 ############################################################################
 
@@ -4456,11 +4682,12 @@ if __name__=='__main__':
 
     from giant.jiffies import run_default
     from pandemic import module_info
+    from functools import partial
     run_default._module_info = module_info
     from bamboo.common.profile import profile_code
     #a = profile_code()
     run_default(
-        run                 = run,
+        run                 = partial(run, args=sys.argv[1:]),
         master_phil         = master_phil,
         args                = sys.argv[1:],
         blank_arg_prepend   = blank_arg_prepend,

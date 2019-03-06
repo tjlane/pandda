@@ -126,6 +126,8 @@ class CommandManager(object):
         self.time_end = time.time()
         # Calculate runtime
         self.runtime = self.time_end-self.time_start
+        # Remove the thread object
+        self.thread = None
         # Return process exit status
         return self.process.returncode
 

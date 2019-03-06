@@ -14,8 +14,10 @@
   <div {% if div_name %}id="{{ div_name }}" class="panel-collapse collapse {% if panel_data.show|default(true) %}in{% endif %}"{% endif %}>
     <div class="panel-body">
       <div class="row row-centered">
-        {% for obj in panel_data.body -%}
-        {{ basic_format(obj) }}
+        {% for o in panel_data.body -%}
+        <div class="col-centered col-xs-12 col-md-{{ o.width | default(12) }}">
+          {{ basic_format(o) }}
+        </div>
         {% endfor -%} 
       </div>
     </div>
@@ -24,8 +26,7 @@
 {%- endmacro %}
 
 {% macro basic_format(obj) -%}
-        <div class="col-centered col-xs-12 col-md-{{ obj.width | default(12) }}" style="overflow-x: scroll">
-            <div {% if (obj.type or obj.classes) %}class="{% for c in obj.classes %}{{c}} {% endfor %} {% if obj.type %}{{obj.type}} {{obj.type}}-{{obj.colour | default('primary')}}{% endif %}"{% endif %} style="overflow-x: scroll">
+          <div {% if (obj.type or obj.classes) %}class="{% for c in obj.classes %}{{c}} {% endfor %} {% if obj.type %}{{obj.type}} {{obj.type}}-{{obj.colour | default('primary')}}{% endif %}"{% endif %}>
           {% if obj.title is defined %}
             <h4>{{ obj.title }}</h4>
           {% endif %}
@@ -46,8 +47,34 @@
             <div id="{{ div.id }}" {% if div.classes %}class="{% for c in div.classes %}{{c}} {% endfor %}"{% endif %}>
             </div>
           {% endfor %}
+          {% if obj.scroll is defined %}
+            <div class="row" style="white-space: nowrap; overflow-x: scroll;">
+              {% for o in obj.scroll -%}
+              <div class="col-centered col-xs-12 col-md-{{ o.width | default(12) }}" style="display: inline-block; float: none; white-space: normal;">
+                {{ basic_format(o) }}
+              </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+          {% if obj.body is defined %}
+            <div class="row">
+              {% for o in obj.body -%}
+              <div class="col-centered col-xs-12 col-md-{{ o.width | default(12) }}">
+                {{ basic_format(o) }}
+              </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+          {% if obj.panels is defined %}
+            <div class="row">
+            {% for o in obj.panels -%}
+              <div class="col-centered col-xs-12 col-md-{{ o.width | default(12) }}">
+                {{ basic_panel(o, o.div_name) }}
+              </div>
+            {% endfor %}
+            </div>
+          {% endif %}
           </div>
-        </div>
 {%- endmacro %}
 
 {% macro basic_tab_set(tabs, nav_classes=[]) -%}
@@ -64,7 +91,9 @@
                      <p>{{ t.description }}</p>
                      <div class="row">
                        {% for o in t.body -%}
-                       {{ basic_format(o) }}
+                       <div class="col-centered col-xs-12 col-md-{{ o.width | default(12) }}" style="overflow-x: scroll">
+                         {{ basic_format(o) }}
+                       </div>
                        {% endfor %}
                      </div>
                    </div>

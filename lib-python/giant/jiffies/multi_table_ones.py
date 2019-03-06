@@ -56,7 +56,7 @@ output {
         .multiple = False
 }
 settings {
-    cpus = 48
+    cpus = 1
         .type = int
     verbose = True
         .type = bool

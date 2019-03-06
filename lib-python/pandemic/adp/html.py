@@ -33,8 +33,14 @@ def format_summary(text, width=12, type='alert', colour='info'):
             title = lines.pop(0).strip('>\n ')
         else:
             title = None
+        fmt_lines = []
+        for l in lines:
+            if l.count(':')==1:
+                l = ':<strong>'.join(l.split(':')) + "</strong>"
+            l = l.replace('\t','&emsp;')
+            fmt_lines.append(l)
         p_dict = {'width'  : width,
-                  'text'   : '<br>'.join(lines).replace('\t','&emsp;'),
+                  'text'   : '<br>'.join(fmt_lines),
                   'type'   : type,
                   'colour' : colour}
         if title is not None:
@@ -58,27 +64,29 @@ def create_tls_matrix_summary(tls_matrices):
     out_dict = {'text':tls_mdl_str, 'width':12, 'type':'alert', 'colour':'info'}
     return out_dict
 
-def create_tls_decomposition_summary(tls_matrices, tolerance=1e-6):
+def create_tls_decomposition_summary(tls_matrices, tolerance=1e-6, amplitude=1.0):
     T = tuple(tls_matrices[['T11','T22','T33','T12','T13','T23']])
     L = tuple(tls_matrices[['L11','L22','L33','L12','L13','L23']])
     S = tuple(tls_matrices[['S11','S12','S13','S21','S22','S23','S31','S32','S33']])
+    a = amplitude
+    assert a >= 0.0
     from mmtbx.tls.decompose import decompose_tls_matrices
     dcm = decompose_tls_matrices(T=T, L=L, S=S,
                                  l_and_s_in_degrees=True,
                                  tol=tolerance)
     #from IPython import embed; embed(); raise Exception()
     if dcm.is_valid():
-        fmt_str_1 = '{:>8.3f}, {:>8.3f}, {:>8.3f}'
+        fmt_str_1 = '{:>8.6f}, {:>8.6f}, {:>8.6f}'
         dcm_lines = [
                 (
                     '<h5>Amplitudes of TLS Motions:</h5>'+\
                     '<samp>'+\
-                    ('Vibration (&#8491;):  '    +fmt_str_1+'<br>').format(*dcm.v_amplitudes)+\
-                    ('Libration (&#176;):  '     +fmt_str_1+'<br>').format(*[RAD2DEG*v for v in dcm.l_amplitudes])+\
+                    ('Vibration (&#8491;):  '    +fmt_str_1+'<br>').format(*[v*a for v in dcm.v_amplitudes])+\
+                    ('Libration (&#176;):  '     +fmt_str_1+'<br>').format(*[RAD2DEG*v*a for v in dcm.l_amplitudes])+\
                     ('Screw   (&#8491;/&#176;):  ' +fmt_str_1+'<br>').format(*[v/RAD2DEG for v in dcm.s_amplitudes])+\
                     '<br>'+\
-                    ('Libration (Rad):  '          +fmt_str_1+'<br>').format(*dcm.l_amplitudes)+\
-                    ('Screw   (&#8491;/Rad):  '    +fmt_str_1+'<br>').format(*dcm.s_amplitudes)+\
+                    ('Libration (Rad):  '          +fmt_str_1+'<br>').format(*[v*a for v in dcm.l_amplitudes])+\
+                    ('Screw   (&#8491;/Rad):  '    +fmt_str_1+'<br>').format(*[v*a for v in dcm.s_amplitudes])+\
                     '</samp>'
                 ),
                 (
@@ -106,7 +114,7 @@ def create_tls_decomposition_summary(tls_matrices, tolerance=1e-6):
         colour = 'success'
     else:
         dcm_string = 'Unable to decompose TLS matrices: <br>&nbsp;&nbsp;&nbsp;&nbsp;{}'.format(dcm.error())
-        colour = 'warning'
+        colour = 'danger'
     # Format output dictionary
     out_dict = {'text':dcm_string, 'width':12, 'type':'alert', 'colour':colour}
     return out_dict
@@ -114,7 +122,7 @@ def create_tls_decomposition_summary(tls_matrices, tolerance=1e-6):
 def create_tls_amplitude_summary(tls_amplitudes):
     tls_amp_table = tls_amplitudes.T
     # Change the names of the "Mode" columns
-    new_columns = ['Mode {}'.format(int(mode+1)) for mode in tls_amp_table.columns]
+    new_columns = ['Mode {}'.format(m) for m in tls_amp_table.columns]
     tls_amp_table.columns = new_columns
     # Remove columns names and add index name
     tls_amp_table.columns.name = 'Dataset'
@@ -156,23 +164,28 @@ def create_overview_tab(parameterisation):
            'description'    : '',
            'panels'         : [
                {
-                   'title'  : 'Parameterisation Summary',
-                   'body'   : [{'width':8,  'text': '', 'image':png2base64src_maybe(fm.get_file('tracking_png'), print_on_missing=DEBUG)}] + \
-                              [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'classes':['text-center']}] + \
-                              format_summary(f.summary(), width=6),
+                   'title'  : 'Optimisation Summary',
+                   'body'   : [
+                       {'width':6, 'text': '', 'image':png2base64src_maybe(fm.get_file('tracking_png'), print_on_missing=DEBUG)},
+                       {'width':6, 'text': '', 'image':png2base64src_maybe(fm.get_file('convergence_png'), print_on_missing=DEBUG)},
+                       ],
                    },
                {
                    'title':'Chain-by-Chain Disorder Summaries',
-                   'body': numpy.concatenate(zip(*[
-                                   [{'width':12,'title': 'Chain {}'.format(c)} for c in chain_ids],
-                                   [{'width':4, 'text': 'Partition Schematic',  'image':png2base64src_maybe(part_f.format(c), print_on_missing=DEBUG)} for c in chain_ids],
-                                   [{'width':4, 'text': 'TLS-level components', 'image':png2base64src_maybe(prof_f.format(c), print_on_missing=DEBUG)} for c in chain_ids],
-                                   [{'width':4, 'text': 'Residual component',   'image':png2base64src_maybe(resd_f.format(c), print_on_missing=DEBUG)} for c in chain_ids],
-                                            ])).tolist(),
+                   'body': numpy.concatenate([
+                       [
+                           {'width':12,'title': 'Chain {}'.format(c)},
+                           {'width':4, 'text': 'Partition Schematic',  'image':png2base64src_maybe(part_f.format(c), print_on_missing=DEBUG)},
+                           {'width':4, 'text': 'TLS-level components', 'image':png2base64src_maybe(prof_f.format(c), print_on_missing=DEBUG)},
+                           {'width':4, 'text': 'Residual component',   'image':png2base64src_maybe(resd_f.format(c), print_on_missing=DEBUG)},
+                           ] for c in chain_ids]).tolist(),
                    },
                {
-                   'title' : 'Level-by-Level Model Parameters Summary',
-                   'body'  : numpy.concatenate([format_summary(l.summary(show=False), width=6) for l in f.levels+[f.residual]]).tolist(),
+                   'title'  : 'Parameterisation Summary',
+                   'body'   : format_summary(f.summary(), width=6) + \
+                              [{'width':12, 'text': ' - '.join(['<i class="fa fa-bicycle fa-fw"></i>']*25), 'classes':['text-center']}] + \
+                              [{'width':12, 'title': 'Level-by-level Summaries'}] + \
+                              numpy.concatenate([format_summary(l.summary(show=False), width=6) for l in f.levels+[f.residual]]).tolist(),
                    },
                ],
           }
@@ -220,32 +233,41 @@ def create_levels_tab(parameterisation):
                 }
         overview_tab['panels'].append(panel)
         # Add images to the overview tab for each TLS level
+        dicts = []
         for i_level, (level_num, level_lab, level) in enumerate(f):
             chain_image = fm.get_file('pml-level-chain-template').format(level_num, c_id)
             stack_image = fm.get_file('png-tls-profile-template').format(level_num, c_id)
             aniso_image = fm.get_file('png-tls-anisotropy-template').format(level_num, c_id)
-            panel = {'title' : 'Level {} of {} ({})'.format(level_num, len(f.levels),level_lab),
-                     'width' : 4 if (len(f.levels)>3) or (len(f.levels)%2==0) else 6,
-                     'body'  : [
-                         {'width':12, 'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
-                         {'width':12, 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
-                         {'width':12, 'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)},
-                                        ],
+            d = {
+                    'title' : 'Level {} of {} ({})'.format(level_num, len(f.levels),level_lab),
+                    'width' : 4 if (len(f.levels)>3) or (len(f.levels)%2==0) else 6,
+                    'type':'alert', 'colour': 'info',
+                    'body'  : [
+                        {'width':12, 'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
+                        {'width':12, 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
+                        {'width':12, 'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)},
+                        ],
                     }
-            overview_tab['panels'].append(panel)
+            dicts.append(d)
         # Format residual level
         chain_image = fm.get_file('pml-residual-chain-template').format(c_id)
         stack_image = fm.get_file('png-residual-profile-template').format(c_id)
         aniso_image = fm.get_file('png-residual-anisotropy-template').format(c_id)
-        panel = {'title' : 'Final Level (residual)',
-                 'width' : 4 if (len(f.levels)>3) or (len(f.levels)%2==0) else 6,
-                 'body'  : [
-                     {'width':12, 'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
-                     {'width':12, 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
-                     {'width':12, 'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)},
-                                    ],
-                  }
-        overview_tab['panels'].append(panel)
+        d = {
+                'title' : 'Final Level (residual)',
+                'width' : 4 if (len(f.levels)>3) or (len(f.levels)%2==0) else 6,
+                'type':'alert', 'colour': 'info',
+                'body'  : [
+                    {'width':12, 'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
+                    {'width':12, 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
+                    {'width':12, 'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)},
+                    ],
+                }
+        dicts.append(d)
+        overview_tab['panels'].append({
+            'title':'Level-by-Level Overview for Chain A',
+            'width':12,
+            'body':dicts})
     # -------------------------------->
     # Create tab for each level
     # -------------------------------->
@@ -272,10 +294,18 @@ def create_levels_tab(parameterisation):
                          'description': '',
                          'active'     : (i_c==0),
                          'body'  : [
-                             {'width':6, 'title':'Coloured by Group',   'image':png2base64src_maybe(partn_image, print_on_missing=DEBUG)},
-                             {'width':6, 'title':'Fitted ADPs',         'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
-                             {'width':6, 'title':'Fitted ADPs by mode', 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
-                             {'width':6, 'title':'Anisotropy by atom',  'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)},
+                             {'width':6,
+                                 'title':'Image of chain, coloured by group',
+                                 'image':png2base64src_maybe(partn_image, print_on_missing=DEBUG)},
+                             {'width':6,
+                                 'title':'Level ADPs' + ' (average size over all datasets)'*(f.n_datasets>1),
+                                 'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
+                             {'width':6,
+                                 'title':'Level ADPs by mode' + ' (average size over all datasets)'*(f.n_datasets>1),
+                                 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
+                             {'width':6,
+                                 'title':'ADP Anisotropy' + ' (from average over all datasets)'*(f.n_datasets>1),
+                                 'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)},
                                       ],
                          }
             level_tab['chain_tabs'].append(chain_tab)
@@ -285,17 +315,61 @@ def create_levels_tab(parameterisation):
         # Extract groups for each level
         for i_group, (group_num, sel, group_fitter) in enumerate(level):
             # Extract TLS values for this group
-            tls_mats = tls_matrices.loc[group_num]
-            tls_amps = tls_amplitudes.loc[group_num]
+            tls_mats = tls_matrices.loc[group_num].drop(columns=['label'])
+            tls_amps = tls_amplitudes.loc[group_num].drop(columns=['label'])
+            tls_amps_av = tls_amps.mean(axis=1).values # average over datasets
             tls_coms = pandas.DataFrame(index=tls_amps.T.index, data=group_fitter.atomic_com)
-            # Get TLS matrix summaries
-            tls_mat_dicts = [create_tls_matrix_summary(tls_matrices=mats) for idx, mats in tls_mats.iterrows()]
-            for i, d in enumerate(tls_mat_dicts):
-                d.update({'title':'Mode {}:'.format(i+1)})
-            tls_dcm_dicts = [create_tls_decomposition_summary(tls_matrices=mats, tolerance=tls_tolerance) for idx, mats in tls_mats.iterrows()]
-            dcm_width = 12 if (p.params.fitting.n_tls_modes_per_tls_group==1) else 6
-            for i, d in enumerate(tls_dcm_dicts):
-                d.update({'title':'TLS Decomposition of Mode {}:'.format(i+1), 'width':dcm_width})
+            # Get TLS matrix summaries for core model
+            dicts = [{'title':'TLS matrices'}]
+            for i_mode, (idx, mats) in enumerate(tls_mats.iterrows()):
+                d = create_tls_matrix_summary(tls_matrices=mats)
+                d.update({
+                    'title':'Mode {} (normalised to arbitrary scale)'.format(i_mode+1),
+                    'width':12,
+                    })
+                dicts.append(d)
+            tls_mat_dicts_core = dicts
+            # Get TLS matrix summaries for each dataset
+            tls_mat_dicts = []
+            for i_dst, (dst_lab, dst_amps) in enumerate(tls_amps.T.iterrows()):
+                dicts = []
+                d = {
+                        'title':'TLS amplitudes',
+                        'text':'<br>'.join(['<samp>Mode {}: <strong>{:>7.5f}</strong></samp>'.format(i+1, v) for i,v in enumerate(dst_amps.values)]),
+                        'type':'alert',
+                        'colour':'info'
+                    }
+                dicts.append(d)
+                for i_mode, (idx, mats) in enumerate(tls_mats.iterrows()):
+                    # TLS matrix summary
+                    d = create_tls_matrix_summary(tls_matrices=dst_amps.values[i_mode]*mats)
+                    d.update({
+                        'title':'Mode {} (scaled for this dataset):'.format(i_mode+1),
+                        'width':12
+                        })
+                    dicts.append(d)
+                    # TLS decomposition summary
+                    d = create_tls_decomposition_summary(tls_matrices=mats, tolerance=tls_tolerance, amplitude=dst_amps.values[i_mode])
+                    d.update({
+                        'title':'TLS decomposition of mode {}:'.format(i_mode+1),
+                        'width':12
+                        })
+                    dicts.append(d)
+                tls_mat_dicts += [
+                        {'title':'TLS matrices for dataset {}'.format(dst_lab),
+                         'classes':['text-center'],
+                         'text':'<i class="fa fa-angle-double-left fa-2x" style="vertical-align: middle;"></i>' + \
+                                ' <strong>scroll for other datasets</strong> ' + \
+                                '<i class="fa fa-angle-double-right fa-2x" style="vertical-align: middle;"></i>',
+                         'width':12,'body':dicts}]
+            # Create scrolling div to contain summaries
+            tls_mat_dicts_dsts = {'panels':[{
+                'title':'TLS matrices for each dataset (click to expand/collapse)',
+                'div_name':counter.next(), 'show':True,
+                'body':[
+                    {'scroll':tls_mat_dicts},
+                    ]
+                }]}
             # Get TLS amplitude summaries
             tls_amp_dict = create_tls_amplitude_summary(tls_amplitudes=tls_amps)
             tls_amp_dict.update({'width':12, 'type':'alert', 'colour':'info', 'title':'All Amplitudes'})
@@ -308,12 +382,12 @@ def create_levels_tab(parameterisation):
             amp_image = fm.get_file('png-tls-amp-dist-template').format(level_num, group_num)
             image_dicts = []
             for text, image in [
-                    ('Average size over all datasets',      adp_image),
-                    ('Amplitude Distribution',              amp_image),
-                    ('Shape of disorder (arbitrary scale)', scl_image),
+                    ('Average size (all datasets)',  adp_image),
+                    ('Amplitude distribution',       amp_image),
+                    ('Normalised (arbitrary scale)', scl_image),
                                 ]:
                 if os.path.exists(image):
-                    image_dicts.append({'width':4, 'text':text, 'image':png2base64src_maybe(image, print_on_missing=DEBUG)})
+                    image_dicts.append({'width':4, 'title':text, 'image':png2base64src_maybe(image, print_on_missing=DEBUG)})
             # Create panel dictionary
             group_tab = {'id'    : tab['id']+'group{}'.format(counter.next()),
                          'short_name' : 'Group {}'.format(group_num),
@@ -322,7 +396,7 @@ def create_levels_tab(parameterisation):
                          'active'  : (i_group==0),
                          'body'  : [
                              {'width':12, 'text':'<br>'.join(['Number of atoms: {}'.format(sum(sel))])}
-                             ] + tls_mat_dicts + image_dicts + tls_dcm_dicts + [tls_amp_dict, tls_ori_dict]
+                             ] + tls_mat_dicts_core + image_dicts + [tls_mat_dicts_dsts] + [tls_amp_dict, tls_ori_dict]
                         }
             level_tab['group_tabs'].append(group_tab)
     # -------------------------------->
@@ -374,7 +448,7 @@ def create_analysis_tab(parameterisation):
 
     tab = {'id'             : 'statistics',
            'short_name'     : 'Multi-dataset Results/Analysis',
-           'long_name'      : 'Model Improvement Statistics from hierarchical TLS parameterisation',
+           'long_name'      : 'Model improvement statistics after hierarchical TLS parameterisation',
            'description'    : '',
            'panels'         : [],
            }
@@ -382,12 +456,26 @@ def create_analysis_tab(parameterisation):
     # Add panel containing R-factor plots images
     if p.params.analysis.calculate_r_factors:
         images = []
-        for f in [fm.get_file('all_rvalues_v_resolution'),
-                  fm.get_file('rgap_v_resolution'),
-                  fm.get_file('rfree_v_resolution'),
-                  fm.get_file('rwork_v_resolution'),
+        for title, text, f in [
+                ("R-factors change after fitting",
+                    "Change in the R-factors from the input model to the fitted hierarchical model.",
+                    fm.get_file('all_rvalues_v_resolution')),
+                ("R-Gap comparisons",
+                    "Comparison of R-Gap (= R-free - R-work) values for the input structures, fitted structures (and optionally reference R-values).",
+                    fm.get_file('rgap_v_resolution')),
+                ("R-Free Comparison",
+                    "Comparison of R-free values for the input structures, fitted structures (and optionally reference R-values).",
+                    fm.get_file('rfree_v_resolution')),
+                ("R-Work Comparison",
+                    "Comparison of R-work values for the input structures, fitted structures (and optionally reference R-values).",
+                    fm.get_file('rwork_v_resolution')),
                   ]:
-            images.append({'width':6, 'image':png2base64src_maybe(f, print_on_missing=DEBUG)})
+            images.append({
+                'width':6,
+                'title':title,
+                'image':png2base64src_maybe(f, print_on_missing=DEBUG),
+                'body' : [{'text': text}],
+                })
         # Append to panels
         tab['panels'].append({
             'title' :'R-factor Changes',
@@ -407,7 +495,7 @@ def create_analysis_tab(parameterisation):
         })
     # Panel for the table of data
     tab['panels'].append({
-        'title' : 'Inidividual Dataset Statistics',
+        'title' : 'Individual Dataset Statistics',
         'body'  : [{'text': 'Data from output CSV (dataset_scores.csv)'},
                    {'table': data_table.to_html(bold_rows=False, classes=['table table-striped table-hover datatable nowrap'])\
                            .replace('<th></th>','<th>Dataset</th>')\
@@ -417,7 +505,7 @@ def create_analysis_tab(parameterisation):
 
     return tab, [json_plot]
 
-def create_settings_tab(parameterisation):
+def create_settings_tab(parameterisation, input_command):
     master_phil = parameterisation.master_phil
     params = parameterisation.params
     fm = parameterisation.file_manager
@@ -431,7 +519,13 @@ def create_settings_tab(parameterisation):
            'description'    : '',
            'panels': [],
           }
+    tab['panels'].append({'title'          : 'Input command',
+                          'text'           : 'The following can be copy-pasted into a command shell to rerun the program (assuming the filepaths are correct)',
+                          'width'          : 12,
+                          'body'           : [{'width':12, 'title':'', 'text':wrap(string=input_command, tag='pre')}],
+            })
     tab['panels'].append({'title'          : 'Parameters different from defaults',
+                          'text'           : 'The following can copied to a parameter file (<filename>.params) and used as input (e.g. <samp>> pandemic.adp input.params</samp>)',
                           'width'          : 12,
                           'body'           : [{'width':12, 'title':'', 'text':wrap(string=diff_str, tag='pre')}],
             })
@@ -444,33 +538,9 @@ def create_settings_tab(parameterisation):
                           'width'          : 12,
                           'body'           : [
                               {
-                                  'title':'Weight of Fitting Penalty',
-                                  'text' :'A function that reduces the strength of the fitting penalties as the model Uij approaches the target Uij',
-                                  'image':png2base64src_maybe(fm.get_file('fitting_penalty_weights_png'), print_on_missing=DEBUG),
-                                  'width':6,
-                                  },
-                              {
                                   'title':'Model-Input Differences (Fitting Penalty)',
                                   'text' :'Penalties for producing larger Uij that observed values',
                                   'image':png2base64src_maybe(fm.get_file('over_target_values_png'), print_on_missing=DEBUG),
-                                  'width':6,
-                                  },
-                              {
-                                  'title':'Invalid TLS Matrices (Physical Penalty)',
-                                  'text' :'Penalties for producing non-physical TLS-matrices',
-                                  'image':png2base64src_maybe(fm.get_file('invalid_tls_values_png'), print_on_missing=DEBUG),
-                                  'width':6,
-                                  },
-                              {
-                                  'title':'Negative Amplitudes (Physical Penalty)',
-                                  'text' :'Penalties for producing negative TLS amplitudes',
-                                  'image':png2base64src_maybe(fm.get_file('invalid_amplitudes_png'), print_on_missing=DEBUG),
-                                  'width':6,
-                                  },
-                              {
-                                  'title':'Invalid Uij Values (Physical Penalty)',
-                                  'text' :'Penalties for producing residual Uijs with negative eigenvalues',
-                                  'image':png2base64src_maybe(fm.get_file('invalid_uij_values_png'), print_on_missing=DEBUG),
                                   'width':6,
                                   },
                                             ],
@@ -478,7 +548,7 @@ def create_settings_tab(parameterisation):
 
     return tab
 
-def write_adp_summary(parameterisation, out_dir_tag='root'):
+def write_adp_summary(parameterisation, out_dir_tag='root', input_command=None):
     """Write an overall, and a level-by-level summary of the parameterised ADPs"""
 
     # Get the html template
@@ -518,7 +588,7 @@ def write_adp_summary(parameterisation, out_dir_tag='root'):
     ##########################################################################################
     # Create statistics tab
     ##########################################################################################
-    output_data['tabs'].append(create_settings_tab(parameterisation))
+    output_data['tabs'].append(create_settings_tab(parameterisation, input_command=input_command))
 
     ##########################################################################################
     # Write out and format

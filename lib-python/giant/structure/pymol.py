@@ -49,7 +49,7 @@ def selection_images(structure_filename,
     if labels is None:
         labels = map(str,range(1, len(selections)+1))
 
-    assert (colours is None) or (colours in ['bfactor']) or isinstance(colours, list)
+    assert (colours is None) or (colours in ['bfactor','chainbow']) or isinstance(colours, list)
     if (colours is None):
         colours = ['green']
     if isinstance(colours, list):
@@ -57,6 +57,7 @@ def selection_images(structure_filename,
 
     if colour_selections is not None:
         assert colours != 'bfactor'
+        assert colours != 'chainbow'
 
     # Create script object
     s = PythonScript(pretty_models=False, pretty_maps=False)
@@ -96,6 +97,8 @@ def selection_images(structure_filename,
                 s.colour(obj="sele and ({})".format(sel), colour=colours.next())
         elif colours == 'bfactor':
             s.custom('spectrum', expression='b', selection='sele and (b>0)')
+        elif colours == 'chainbow':
+            s.chainbow("sele")
         else:
             s.colour_by_element(obj='sele', carbon_colour=colours.next())
         # Hide

@@ -8,14 +8,15 @@ from libtbx.math_utils import iceil
 
 from libtbx import adopt_init_args
 from libtbx.utils import Sorry, Failure
-from bamboo.common import Info, dict_from_class
+from bamboo.common import Info, dict_from_class, logs
 from bamboo.maths.functions import rms, get_function
 
 from giant.structure.tls import tls_str_to_n_params, get_t_l_s_from_vector
 from giant.structure.uij import sym_mat3_eigenvalues
 from mmtbx.tls.utils import uij_eigenvalues, TLSMatricesAndAmplitudesList
+from mmtbx.tls.optimise_mode_amplitudes import MultiLevelMultiDatasetUijAmplitudeFunctionalAndGradientCalculator
 
-from pandemic.adp.simplex import TLSSimplex, UijSimplex, AmplitudeSimplex
+from pandemic.adp.simplex import TLSSimplex, UijSimplex
 
 from IPython import embed
 
@@ -64,7 +65,7 @@ class BaseOptimiser(object):
             self.weights = numpy.ones(target_uij.shape[:-1])
         assert self.weights.shape == target_uij.shape[:-1]
 
-        self.optimisation_target = numpy.inf
+        self.optimisation_lst_sqr = numpy.inf
         self.optimisation_penalty = numpy.inf
 
         self.use_fitting_penalties = True
@@ -72,18 +73,6 @@ class BaseOptimiser(object):
 
 class BaseGroupOptimiser(BaseOptimiser):
 
-    #===========================================+>
-    # Private Functions
-    #===========================================+>
-
-#    def _blank_atom_selection(self):
-#        return numpy.zeros(self._n_atm, dtype=bool)
-#
-#    def _blank_dataset_selection(self):
-#        return numpy.zeros(self._n_dst, dtype=bool)
-#
-#    def _blank_parameter_selection(self):
-#        return numpy.zeros(self._n_prm, dtype=bool)
 
     def _optimise(self):
         """Run the optimisation for the current set of variables"""
@@ -91,7 +80,7 @@ class BaseGroupOptimiser(BaseOptimiser):
         # Prep variables for target function
         self._n_call = 0
         # Initialise the target metrics
-        self.optimisation_target = 1e6      # arbitrarily high number
+        self.optimisation_lst_sqr = 1e6      # arbitrarily high number
         self.optimisation_penalty = 0.0
         # Apply the masks to the target uij
         self._update_target()
@@ -197,10 +186,7 @@ class BaseGroupOptimiser(BaseOptimiser):
 
         # Increment counter
         self._n_call += 1
-        # Combine the optimising values in the complete parameter set
-        self._inject_values(values=values)
-        # Calculate physical penalties - reject this set if model is not physical
-        ppen = self.parameter_penalties()
+
         # Print info line if necessary
         if self.verbose:
             if self._n_call%20==1:
@@ -209,12 +195,19 @@ class BaseGroupOptimiser(BaseOptimiser):
                 self.log(line)
                 self.log(header)
                 self.log(line)
+
+        # Combine the optimising values in the complete parameter set
+        self._inject_values(values=values)
+
+        # Calculate physical penalties - reject this set if model is not physical
+        p_valid = self.is_valid()
         # Return now if physical penalty if non-zero to save time
-        if ppen > 0.0:
+        if p_valid is False:
             if self.verbose:
-                self.log('[{}] -> ({:>12}, {:10.3f})'.format(', '.join(['{:+7.4f}'.format(r) for r in values]), 'UNPHYSICAL', ppen))
+                self.log('[{}] -> ({:>12}, {:>10})'.format(', '.join(['{:+7.4f}'.format(r) for r in values]), 'UNPHYSICAL', ''))
             # Ensure that these parameters always have a higher values than the current best solution
-            return self.optimisation_target+self.optimisation_penalty+1e6 #ppen
+            return self.optimisation_lst_sqr+self.optimisation_penalty+1e2
+
         # Get the fitted uijs (including masked atoms)
         self._update_fitted()
 
@@ -228,15 +221,15 @@ class BaseGroupOptimiser(BaseOptimiser):
 
         # Calculate fitting penalties (add to target)
         if self.use_fitting_penalties:
-            penalty = self.fitting_penalties(delta_u=delta_u, msqr_delta_u=msqr_delta_u)
+            penalty = self.additional_target_terms(delta_u=delta_u, msqr_delta_u=msqr_delta_u)
         else:
             penalty = 0.0
 
         # Total target function value
         tot_val = target + penalty
         # Update minima
-        if tot_val < self.optimisation_target+self.optimisation_penalty:
-            self.optimisation_target  = target
+        if tot_val < self.optimisation_lst_sqr+self.optimisation_penalty:
+            self.optimisation_lst_sqr = target
             self.optimisation_penalty = penalty
         if self.verbose:
             self.log('[{}] -> ({:12.8f}, {:10.6f})'.format(', '.join(['{:+7.4f}'.format(r) for r in values]), target, penalty))
@@ -306,65 +299,51 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                            modes = range(self._n_tls))
 
         # Initialise simplex generator
-        self.simplex = TLSSimplex(vibration = params.step_size.vibration,
-                                  libration = params.step_size.libration,
-                                  angle     = params.step_size.angle,
-                                  amplitude = params.step_size.amplitude)
+        self.simplex = TLSSimplex(
+                amplitude_delta_min = params.simplex.amplitude_delta_min,
+                vibration_delta_min = params.simplex.vibration_delta_min,
+                libration_delta_min = params.simplex.libration_delta_min,
+                amplitude_delta_frac = params.simplex.amplitude_delta_frac,
+                vibration_delta_frac = params.simplex.vibration_delta_frac,
+                libration_delta_frac = params.simplex.libration_delta_frac,
+                )
 
-        # Parameter penalty functions
-        self._tls_matrix_penalty_function  = get_function(**dict_from_class(params.penalties.invalid_tls_values))
-        self._amplitudes_penalty_function  = get_function(**dict_from_class(params.penalties.invalid_amplitudes))
         # Fitting penalty functions
         self._model_input_penalty_function = get_function(**dict_from_class(params.penalties.over_target_values))
-
-        # Fitting penalty weighting function
-        if params.penalties.fitting_penalty_weights.form == "none":
-            func = numpy.ones_like
-        else:
-            func = get_function(**dict_from_class(params.penalties.fitting_penalty_weights))
-        self._fitting_penalty_weight_function = func
 
     #===========================================+>
     # Private Functions - common to parent class
     #===========================================+>
 
-    def fitting_penalties(self, delta_u, msqr_delta_u):
+    def additional_target_terms(self, delta_u, msqr_delta_u):
         """Calculate penalties to enforce priors about fitting (e.g. model should not be greater than input)"""
 
         # Calculate the average delta_u
         mabs_delta_u = self._mean_delta_u(delta_u)
-        #mean_delta_u = abs(flex.mean_weighted(delta_u.as_1d().as_double(), self._op.wgts_6))
         # Get penalty for each dataset
-        penalties = self._model_input_penalties(delta_u)
+        penalties = self._model_input_penalty_function(uij_eigenvalues(delta_u).as_1d().as_double())
         assert penalties.size == self._op.wgts_3.size()
 
-        # Weight the penalty function by a sigmoid of 0 -> du_sq/du_sq_0 -> 1
-        penalty_weight = self._fitting_penalty_weight_function(numpy.sqrt(msqr_delta_u))
-
         # Average penalties, with weights for each dataset
-        total_penalty =  mabs_delta_u * penalty_weight * numpy.sum(penalties) #/ 3.0 # Divide by the number of dimensions
+        total_penalty =  mabs_delta_u * numpy.sum(penalties) #/ 3.0 # Divide by the number of dimensions
 
         # Normalise by the NUMBER OF DATASETS
-        total_penalty /= self._op.n_dst
+        total_penalty /= (self._op.n_dst * self._op.n_atm)
 
         return total_penalty
 
-    def parameter_penalties(self):
+    def is_valid(self):
         """Calculate penalties to enforce that the parameters are physical (e.g. positive amplitudes)"""
         penalties = []
         for mode in self._parameters:
-            # Calculate matrices penalties (if required -- not required if not optimising matrices...)
             if self._op.optimise_matrices:
-                # Penalise physically-invalid TLS matrices
-                penalties.append(self._tls_matrix_penalties(matrices=mode.matrices))
-            # Calculate dataset penalties
+                if not mode.matrices.is_valid():
+                    return False
             if self._op.optimise_amplitudes:
-                # Penalties for negative amplitudes, etc
-                penalties.append(self._amplitude_penalties(values=mode.amplitudes.get()))
-                # Penalties for combinations of amplitudes that lead to non-physical TLS matrices
-                penalties.append(self._tls_matrix_penalty_function(mode.is_valid(self._op.i_dst)))
-        total_penalty = numpy.sum(penalties)
-        return total_penalty
+                values = mode.amplitudes.get()
+                if abs(flex.sum(values.select(values<0.0))):
+                    return False
+        return True
 
     #=======================+>
 
@@ -537,27 +516,8 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
     def _simplex_input(self):
         """Return the current values of the TLS matrices"""
         tls_matrices = [m.matrices for m in self.parameters()]
-        return {'tls_matrices':tls_matrices}
-
-    #===========================================+>
-    # Private Functions - custom for this class
-    #===========================================+>
-
-    def _tls_matrix_penalties(self, matrices):
-        """Return penalty for having unphysical TLS models"""
-        penalty = 0.0 if matrices.is_valid() else 1.0
-        return self._tls_matrix_penalty_function(penalty)
-
-    def _amplitude_penalties(self, values):
-        """Return penalty for having amplitudes with negative values"""
-        #penalty = abs(numpy.sum(values.select(values<-1.0*self._amp_tolerance)))
-        penalty = abs(numpy.sum(values.select(values<0.0))) # TODO
-        return self._amplitudes_penalty_function(penalty)
-
-    def _model_input_penalties(self, model_target_difference):
-        """Add penalty for having fitted ADPs greater than observed"""
-        penalties = uij_eigenvalues(model_target_difference).as_1d().as_double()
-        return self._model_input_penalty_function(penalties)
+        tls_amplitudes = [m.amplitudes.values for m in self.parameters()]
+        return {'tls_matrices':tls_matrices, 'tls_amplitudes':tls_amplitudes}
 
     #===========================================+>
     # Public Functions
@@ -587,11 +547,6 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         assert uij_eigs_min.shape == (len(dataset_mask),)
         min_eig = numpy.min(uij_eigs_min)
         if min_eig > 0.0:
-            #dst, atm = zip(*numpy.where(uij_eigs_min==min_eig))[0]
-            #uij_start = tuple(uij_vals[dst,atm].tolist())
-            #self.log('Minimum uij eigenvalue: {}'.format(round(min_eig,6)))
-            #self.log('Atom with minimal uij eigenvalue: Dataset {}, Atom {}'.format(dst, atm))
-            #self.log('Atomic uij: {}'.format(tuple([round(v,6) for v in uij_start])))
             self.log('Initialising the T-matrix with an isotropic uij')
             uij_start = (0.90,)*3 + (0.0,)*3
             self.log('Setting initial T-matrix values to {}'.format(uij_start))
@@ -652,6 +607,7 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                 all_cpts = "TLS"
                 # Are all matrix values zero?
                 null_mode = not self.parameters().get(index=i_tls).matrices.any(component_string=all_cpts)
+                #null_mode = False # TODO
                 # If null mode then optimise each matrix individually (for speed) and then optimise all together
                 cpt_groups = list(all_cpts)*null_mode + [all_cpts]*((not null_mode) or (len(all_cpts) > 1))
 
@@ -660,11 +616,10 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                 self.log('Optimising using {} datasets'.format(len(opt_dset_mask)))
                 self.log.bar(True, True)
                 self.log('Optimisation order for TLS matrix values: \n\t{}'.format('\n\t'.join(['({}) {}'.format(i+1, c) for i, c in enumerate(cpt_groups)])))
-                self.log('Optimising all TLS amplitude values: \n\t{}'.format('\n\t'.join(['({}) {}'.format(i+1, c) for i, c in enumerate(["TLS"])])))
 
                 # If starting from zero values, set translation matrix to sensible starting values
                 if (null_mode is True):
-                    self.initialise_matrices_and_amplitudes(i_tls=i_tls, dataset_mask=opt_dset_mask, atomic_mask=opt_atom_mask)
+                    self.initialise_matrices_and_amplitudes(i_tls=i_tls, dataset_mask=range(self._n_dst), atomic_mask=opt_atom_mask)
                     self.log(self.parameters().get(index=i_tls).summary())
 
                 # Append to running list
@@ -697,7 +652,7 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                         self.parameters().get(index=i_tls).amplitudes.multiply(scalar=multiplier)
 
                 # If TLS Matrices optimise to negligible values, move on to next
-                if not self.parameters().get(index=i_tls).matrices.any(all_cpts):
+                if not self.parameters().get(index=i_tls).matrices.any(all_cpts, tolerance=1e-3):
                     self.log('{} matrices are all zero -- not optimising amplitudes'.format(all_cpts))
                     self.parameters().get(index=i_tls).reset()
 
@@ -724,7 +679,7 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                 #self.parameters().zero_amplitudes(models=[i_tls])
                 # Run optimisation
                 self.optimise_amplitudes(
-                    modes       = mdl_cuml,
+                    modes  = mdl_cuml,
                     n_cpus = n_cpus)
                 # Log amplitudes summary
                 self.log.bar(blank_before=True, blank_after=True)
@@ -807,7 +762,7 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                 jobs.append((self.copy(), {'stdout':False}))
             else:
                 self._optimise()
-                self.log('> dataset {} of {} (target {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, self.optimisation_target, self.optimisation_penalty))
+                self.log('> dataset {} of {} (target {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, self.optimisation_lst_sqr, self.optimisation_penalty))
         # Run parallel jobs and inject results
         if n_cpus > 1:
             # Workers for multiprocessing
@@ -823,7 +778,7 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                     self.log(job)
                     raise Failure('error returned')
                 self._inject_values(values=job._extract_values(), variables=job.get_optimisation_variables())
-                self.log('> dataset {} of {} (target {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, job.optimisation_target,  job.optimisation_penalty))
+                self.log('> dataset {} of {} (target {:.3f}; penalty {:.1f})'.format(i_dst+1, self._n_dst, job.optimisation_lst_sqr,  job.optimisation_penalty))
             # Let's be good
             workers.close()
 
@@ -834,9 +789,6 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         """Check if models are invalid and attempt to correct them"""
 
         self.log.subheading('Checking for invalid TLS matrices')
-
-        # Extract the current mode delta
-        orig_step_values = self.simplex.current_values()
 
         for i_tls, mode in enumerate(self.parameters()):
 
@@ -849,6 +801,8 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                 self.log('Core TLS matrices are valid')
                 continue
 
+            # TODO Check if it has almost zero-values and just reset
+
             # Mode invalid -- try to fix
             self.log('Core matrices are invalid\n...attempting to re-optimise:')
             # Create copy of the matrices first
@@ -859,35 +813,9 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
             if not (mode.matrices.any("T") and mode.matrices.any("L")):
                 self.log('...T or L matrix are zero -- resetting S-matrix')
                 mode.matrices.set(values=[0.0]*9, component_string='S')
-            if mode.matrices.is_valid():
-                self.log('...core TLS matrices are now valid')
-                continue
-
-            # Determine the range that the mode values exist over (precision -> maximum value)
-            #log_min_model_delta     = int(numpy.ceil(-mode.matrices.get_precision() / 2.0))
-            #log_max_model_delta     = int(numpy.floor(numpy.log10(numpy.max(numpy.abs(mode.matrices.get())))/2.0))
-            #self.log('Min matrix step size:  {:e}'.format(10.**log_min_model_delta))
-            #self.log('Max matrix step size:  {:e}'.format(10.**log_max_model_delta))
-            ## Iteratively increase the matrix step until matrix becomes valid
-            #for step in 10.**(numpy.arange(log_min_model_delta, log_max_model_delta+1)):
-            #    self.log('...re-optimising with matrix value step-sizes of {}'.format(step))
-            #    step = float(step)
-            #    # Set simplex step
-            #    self.simplex.set_step_sizes(vibration=step,
-            #                                libration=step,
-            #                                angle=step)
-            #    # Run optimisations with the step size
-            #    self.optimise_matrices(modes      = [i_tls],
-            #                           components = 'TLS')
-            #    # Check again if the core matrices are valid
-            #    mode = self.parameters().get(index=i_tls)
-            #    if mode.matrices.is_valid():
-            #        break
-            #if mode.matrices.is_valid():
-            #    self.log('...core matrices are now valid (after step-size: {})'.format(step))
-            #    self.log('Before re-optimisation: \n{}'.format(mode_cpy.matrices.summary()))
-            #    self.log('After re-optimisation: \n{}'.format(mode.matrices.summary()))
-            #    continue
+                if mode.matrices.is_valid():
+                    self.log('...core TLS matrices are now valid')
+                    continue
 
             # Try resetting and optimising the TLS Matrices
             # Reset to zero and re-optimise
@@ -895,12 +823,9 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
             self.log('...resetting and redetermining TLS values')
             # Reset TLS matrices to zero
             mode.matrices.reset()
-            ## Set step to original value
-            #self.simplex.set_step_sizes(**orig_step_values)
             # Iterate through and optimise as originally
-            for cpts in ['T','L','S','TLS']:
-                self.optimise_matrices(modes      = [i_tls],
-                                       components = cpts)
+            self.optimise_matrices(modes      = [i_tls],
+                                   components = 'TLS')
             mode = self.parameters().get(index=i_tls)
             if mode.matrices.is_valid():
                 self.log('...core matrices now valid (after resetting and reoptimising)')
@@ -910,12 +835,7 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                 self.log('...rms between initial matrices and "fixed" matrices: {}'.format(rms_values))
                 continue
 
-            # XXX XXX XXX
             raise Failure('Failed to fix core model. \n{}'.format(mode_cpy.summary()))
-            # XXX XXX XXX
-
-        # Reset the old model delta
-        self.simplex.set_step_sizes(**orig_step_values)
 
     def extract(self, sum_modes=True):
         """Extract the fitted uij"""
@@ -944,6 +864,23 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
             assert uij.shape == (n_tls, n_dst, n_atm, 6)
         return uij
 
+    def extract_core(self):
+        """Extract the fitted uij (but not multiplied by the dataset amplitudes)"""
+        # Get the atomic coordinates
+        xyzs = self.atomic_xyz
+        coms = self.atomic_com
+        # Apply masks - datasets
+        n_dst = self._n_dst
+        n_atm = self._n_atm
+        n_tls = self._n_tls
+        # Validate
+        assert xyzs.shape == (n_dst, n_atm, 3)
+        # Calculate the TLS components
+        uij = [[m.matrices.uijs(sites_cart=flex.vec3_double(xyzs[i]), origin=tuple(coms[i])).as_1d().as_double().as_numpy_array() for i in xrange(n_dst)] for m in self.parameters()]
+        uij = numpy.array(uij).reshape((n_tls, n_dst, n_atm, 6))
+        assert uij.shape == (n_tls, n_dst, n_atm, 6)
+        return uij
+
     def result(self):
         """Extract the fitted parameters"""
         tls_mdls = numpy.array([p.matrices.get()   for p in self.parameters()])
@@ -953,9 +890,9 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
     def optimisation_summary(self, show=True):
         """Print the optimisation values and weights"""
         s = self.log._bar()+'\nOptimisation Summary: {}\n'.format(self.label)+self.log._bar()
-        s += '\nOptimisation Target: {:5.3f}'.format(self.optimisation_target)
+        s += '\nOptimisation Least Squares: {:5.3f}'.format(self.optimisation_lst_sqr)
         s += '\nOptimisation Penalty: {:5.3f}'.format(self.optimisation_penalty)
-        s += '\nOptimisation Total: {:5.3f}'.format(self.optimisation_target+self.optimisation_penalty)
+        s += '\nOptimisation Target: {:5.3f}'.format(self.optimisation_lst_sqr+self.optimisation_penalty)
         s += '\n'+self.log._bar()
         s += '\nModels used for optimisation (and total weights):'
         wts = self._op.wgts.mean(axis=1)
@@ -1012,23 +949,24 @@ class MultiDatasetUijFitter(BaseGroupOptimiser):
         self._parameters = numpy.zeros(self._n_prm)
 
         # Initialise simplex generator
-        self.simplex = UijSimplex()
+        self.simplex = UijSimplex(uij_delta=params.simplex.uij_delta)
 
         # Initialise the mask to all datasets
         self.set_dataset_mask(range(self._n_dst))
-
-        # Initialise penalty functions
-        self._uij_penalty_function = get_function(**dict_from_class(params.penalties.invalid_uij_values))
 
     #===========================================+>
     # Private Functions - common to parent class
     #===========================================+>
 
-    def fitting_penalties(self, delta_u, msqr_delta_u):
+    def additional_target_terms(self, delta_u, msqr_delta_u):
         return 0.0
 
-    def parameter_penalties(self):
-        return self._uij_penalty(values=self.result())
+    def is_valid(self):
+        eigenvalues = sym_mat3_eigenvalues(self.result())
+        penalty = abs(flex.sum(eigenvalues.select(eigenvalues<(-1.0*self._uij_tolerance))))
+        if penalty > 0.0:
+            return False
+        return True
 
     #=======================+>
 
@@ -1120,8 +1058,6 @@ class MultiDatasetUijFitter(BaseGroupOptimiser):
         if (self.target_uij.shape[0] == 1) and (not self._uij_penalty(values=self.target_uij[0])):
             self._inject_values(values=self.target_uij[0])
             return
-        # Otherwise optimise
-        #for i_cycle in xrange(n_cycles):
         self._optimise()
 
     def result(self):
@@ -1147,13 +1083,6 @@ class MultiDatasetUijFitter(BaseGroupOptimiser):
     def set_uij_tolerance(cls, tolerance):
         cls._uij_tolerance = tolerance
 
-    def _uij_penalty(self, values):
-        assert len(values) == 6
-        eigenvalues = sym_mat3_eigenvalues(values)
-        penalty = abs(flex.sum(eigenvalues.select(eigenvalues<(-1.0*self._uij_tolerance))))
-        #penalty = -1.0*flex.sum(eigenvalues.select(eigenvalues<0.0))
-        return self._uij_penalty_function(penalty)
-
 
 class OptimiseAmplitudes:
 
@@ -1162,14 +1091,32 @@ class OptimiseAmplitudes:
             target_uijs,
             base_uijs,
             variables,
-            initial_multipliers):
+            initial_multipliers=None,
+            residual_mask=None):
 
-        assert base_uijs.shape == (variables.n_opt, variables.n_atm, 6)
-        assert target_uijs.shape == (variables.n_dst, variables.n_atm, 6)
+        # Optimisation variables
+        self.variables = variables
 
-        self.v = variables
+        # Mode and target uijs
+        assert base_uijs.all() == (self.variables.n_opt, self.variables.n_atm)
+        assert target_uijs.all() == (self.variables.n_dst, self.variables.n_atm)
         self.base_uijs = base_uijs
         self.target_uijs = target_uijs
+
+        # Mask for residual optimisation
+        if (residual_mask is not None):
+            residual_mask = flex.bool(map(bool, residual_mask))
+        else:
+            residual_mask = flex.bool(n_dst, True)
+        assert residual_mask.all() == (self.variables.n_dst,)
+        self.residual_mask = residual_mask
+
+        # Input and eventual output amplitude vectors
+        if (initial_multipliers is None):
+            initial_multipliers = flex.double(self.variables.n_opt, 1.0)
+        else:
+            initial_multipliers = flex.double(initial_multipliers)
+        assert initial_multipliers.all() == (self.variables.n_opt,)
         self.initial = initial_multipliers
         self.result = None
 
@@ -1178,142 +1125,39 @@ class OptimiseAmplitudes:
 
     def _optimise(self):
 
-        self._level_uijs    = numpy.zeros((self.v.n_lvl+1, self.v.n_dst, self.v.n_atm, 6))
-        self._level_masks   = numpy.array([self.v.lvl_l_arr==l for l in range(self.v.n_lvl)+[-1]])
-        self._dataset_masks = numpy.array([self.v.dst_l_arr==l for l in range(self.v.n_dst)+[-1]])
+        self.log = logs.Log()
 
-        # Calculate the mean-subtracted base_uijs
-        self._base_uijs_d = self.base_uijs - self.base_uijs.mean(axis=1).reshape(self.base_uijs.shape[:1]+(1,6))
-        assert self._base_uijs_d.shape == self.base_uijs.shape
+        # Setup
+        self.log('INTIALISING')
+        self.f_g_calculator = MultiLevelMultiDatasetUijAmplitudeFunctionalAndGradientCalculator(
+                self.target_uijs,
+                self.base_uijs,
+                self.initial,
+                self.variables.group_indices,
+                self.variables.dataset_indices,
+                self.variables.wgts)
+        self.log('SETTING RESIDUAL MASK')
+        self.f_g_calculator.set_residual_mask(self.residual_mask)
+        self.x = self.f_g_calculator.x
 
-        self.x = flex.double(self.initial.copy())
-        minimizer = lbfgs.run(target_evaluator=self)
+        # Optimise
+        self.log('RUNNING')
+        minimizer = lbfgs.run(target_evaluator=self.f_g_calculator)
+
+        # Extract
         self.n_iter = minimizer.iter()
-        self.result = numpy.array(self.x)
-        self.result[self.result < 0.0] = 0.0
+        self.result = numpy.array(self.f_g_calculator.x)
+        self.result[self.result < 0.0] = 0.0 # Report this!?!
+
+        # Tidy up
         del self.x
+        del self.f_g_calculator # Delete after usage
+
         return self
 
     def compute_functional_and_gradients(self):
-
-        self.a = numpy.array(self.x)
-
-        # Identify any negative values
-        neg_mask = (self.a < 0.0)
-        neg_vals = self.a[neg_mask]
-
-        # Make all negative amplitudes zero for purposes of calculation
-        self.a[neg_mask] = 0.0
-
-        # amplitude-multiplied bases
-        self._mult_uijs = self.a.reshape((self.a.size,1,1)) * self.base_uijs
-        assert self._mult_uijs.shape == self.base_uijs.shape
-
-        # Calculate totals for each level
-        self.calculate_level_totals()
-
-        # Calculate target function and gradients
-        f, g = self.compute_f_and_g()
-
-        # Push the negative values in a positive direction
-        f += (neg_vals*neg_vals).sum()
-        g[neg_mask] += (2.0*neg_vals)
-
-        return f, flex.double(g)
-
-    def calculate_level_totals(self):
-
-        self._level_uijs[:] = 0.0
-
-        # Each level
-        for i_l in xrange(self.v.n_lvl):
-            # Mask to select this level
-            l_m = self._level_masks[i_l]
-            for i_d in xrange(self.v.n_dst):
-                # Mask to select this dataset
-                d_m = self._dataset_masks[i_d]
-                # Extract uijs for this dataset and level
-                d_uijs = self._mult_uijs[l_m*d_m].sum(axis=0)
-                assert d_uijs.shape == (self.v.n_atm, 6)
-                # Add to array
-                self._level_uijs[i_l, i_d] += d_uijs
-
-        # Residual level
-        l_m = self._level_masks[-1]
-        r_uijs = self._mult_uijs[l_m].sum(axis=0)
-        assert r_uijs.shape == (self.v.n_atm, 6)
-
-        #for i_d in xrange(self.v.n_dst):
-        self._level_uijs[self.v.n_lvl, :] += r_uijs
-
-        self._total_uijs = self._level_uijs.sum(axis=0)
-        assert self._total_uijs.shape == (self.v.n_dst, self.v.n_atm, 6)
-
-        # Subtract the mean from each dataset in each level (Average across atom dimension only)
-        self._level_uijs_d = self._level_uijs - self._level_uijs.mean(axis=2).reshape(self._level_uijs.shape[:2]+(1,6))
-
-    def compute_f_and_g(self):
-
-        target = 0.0
-        gradients = numpy.zeros(self.v.n_opt)
-
-        # Calculate target/gradients dataset-by-dataset
-        for i_dst in xrange(self.v.n_dst):
-
-            # Atom weights for this dataset
-            d_wgts = self.v.wgts_6[i_dst]
-
-            # Total uijs
-            d_uijs = self._total_uijs[i_dst]
-            d_uijs_diff = (self.target_uijs[i_dst] - d_uijs)
-
-            #########################
-            # functional
-            #########################
-            # Least-squares component
-            target += (d_uijs_diff * d_uijs_diff * d_wgts).sum()
-            # Covariance component - inter-level component
-            for i_l1 in xrange(self.v.n_lvl+1):
-                d1 = self._level_uijs_d[i_l1, i_dst]
-                for i_l2 in xrange(i_l1):
-                    d2 = self._level_uijs_d[i_l2, i_dst]
-                    cov = (d1 * d2 * d_wgts).sum() / (self.v.n_lvl+1)**2
-                    target += cov
-
-            #########################
-            # gradients
-            #########################
-
-            # Get all optimisation variables associated with the dataset -- combine dataset mask with residual mask
-            d_m = self._dataset_masks[i_dst] + self._dataset_masks[-1]
-
-            # Iterate through and calculate gradients for all
-            grads = []
-            for i_lb, b_uij, b_uij_d in zip(self.v.lvl_l_arr[d_m], self.base_uijs[d_m], self._base_uijs_d[d_m]):
-
-                # Gradient from least-squares
-                grad1 = (-2.0 * b_uij * d_uijs_diff * d_wgts).sum()
-
-                # Gradient from covariance
-                grad2 = 0.0
-                for i_l2 in xrange(self.v.n_lvl+1):
-                    # Skip if i==j (need modulus since i_lb is -1 for residual)
-                    if (i_lb % (self.v.n_lvl+1)) == i_l2:
-                        continue
-                    d2 = self._level_uijs_d[i_l2, i_dst]
-                    grad2 += (b_uij_d * d2 * d_wgts).sum() / (self.v.n_lvl+1)**2
-
-                grad = (grad1 + grad2)
-
-                # Append gradient
-                grads.append(grad)
-            # Add to total gradients
-            gradients[d_m] += numpy.array(grads)
-
-        # Apply the normalisations rights at the end (same for all!)
-        norm = self.v.n_dst * self.v.n_atm
-
-        return (target/norm, gradients/norm)
+        self.f_g_calculator.x = self.x
+        return self.f_g_calculator.compute_functional_and_gradients()
 
 
 class InterLevelAmplitudeOptimiser(BaseOptimiser):
@@ -1324,6 +1168,7 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
                  levels,
                  residual,
                  group_tree,
+                 weights=None,
                  params=None,
                  verbose=False,
                  log=None):
@@ -1331,7 +1176,7 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
                 target_uij=target_uij,
                 convergence_tolerance=params.optimisation.simplex_convergence,
                 label=None,
-                weights=None,
+                weights=weights,
                 params=params,
                 verbose=verbose,
                 log=log)
@@ -1365,21 +1210,60 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
             sel[a_s] = True
             self.level_group_selection_hash.setdefault('X',{})[a_n] = sel
 
+        # Which datasets to be used for optimising residuals
+        self.set_residual_mask(numpy.ones(self._n_dst, dtype=bool))
+
         # Extract the current uijs for levels and residual
         self.refresh(levels=levels, residual=residual)
+
+    def set_residual_mask(self, mask):
+        assert mask.size == self._n_dst
+        self.residual_mask = mask
 
     def refresh(self, levels, residual):
         """Update the input uijs and the group multipliers"""
 
         # Extract level uijs for all levels and atoms
-        self.level_uijs = numpy.array([l.extract(sum_modes=False, average_datasets=False) for l in levels])
+        self.level_uijs = numpy.array([l.extract_core() for l in levels])
         assert self.level_uijs.shape == (self._n_lvl, self._n_tls, self._n_dst, self._n_atm, 6)
         self.residual_uijs = residual.extract(expanded=False)
 
         # Amplitudes for each of the groups (what will be optimised in this object)
-        self.group_multipliers = [numpy.ones(shape=(l.n_groups(), self._n_tls, self._n_dst)) for l in levels] + [numpy.ones(residual.n_atoms())]
+        self.group_multipliers = self._extract_multipliers(levels, residual)
 
         self._ready = True
+
+    def _extract_multipliers(self, levels, residual):
+
+        mults = [numpy.zeros(shape=(l.n_groups(), self._n_tls, self._n_dst)) for l in levels] + \
+                [numpy.ones(residual.n_atoms())] # These are relative to the input
+        for i_l, l in enumerate(levels):
+            for i_g, (n_g, g_s, g_f) in enumerate(l):
+                for i_tls in range(self._n_tls):
+                    m = g_f.parameters().get(i_tls)
+                    mults[i_l][i_g, i_tls, :] = m.amplitudes.values
+        return mults
+
+    def apply_multipliers(self, levels, residual):
+        """Apply the optimised multipliers to the input levels"""
+
+        # Iterate through levels, fitters and apply multiplier to each set of tls amplitudes
+        for i_lvl, level in enumerate(levels):
+            for i_g, (g_n, g_s, g_f) in enumerate(level):
+                mults = self.group_multipliers[i_lvl][i_g]
+                for i_tls in range(self._n_tls):
+                    mode = g_f.parameters().get(index=i_tls)
+                    #vals = mode.amplitudes.values
+                    #newv = mults[i_tls] * vals
+                    #mode.amplitudes.set(newv)
+                    mode.amplitudes.set(mults[i_tls])
+        # And for the residual level
+        for a_n, a_s, a_f in residual:
+            mults = self.group_multipliers[-1][a_s]
+            vals = a_f.parameters()
+            vals[:] = mults * vals
+
+        self._ready = False
 
     def _generate_level_group_sets(self, tree, recursions=1):
 
@@ -1400,16 +1284,19 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
             return t_out + r_out
 
         job_list = []
-        n_levels = len(tree.keys()) + 1 # Number of levels (+ last level that doesn't link to anything)
+        n_links = len(tree.keys()) # Number of links between levels
         # Need to generate sets for the first n_levels - recursions
         for i_lvl, l1 in enumerate(sorted(tree.keys())):
             # Check if already optimised all
-            if (i_lvl+recursions) == n_levels:
+            if (i_lvl>0) and (i_lvl+recursions > n_links):
                 break
             l_jobs = []
             l_tree = tree[l1]
             for g1 in sorted(l_tree.keys()):
-                lg_pairs = [(l1,g1)] + get_linked_level_group_pairs_recursive(tree, l1, g1, recursions-1) # this is the first recursion
+                lg_pairs = [(l1,g1)]
+                if recursions > 0:
+                    linked_pairs = get_linked_level_group_pairs_recursive(tree, l1, g1, recursions-1) # this is the first recursion
+                    lg_pairs.extend(linked_pairs)
                 l_jobs.append(lg_pairs)
             job_list.append(l_jobs)
 
@@ -1417,13 +1304,17 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
 
     def _generate_optimisation_jobs_from_sets(self, level_group_set):
         """Generate control list for optimisation -- if datasets are independent, can be optimised separately, etc.."""
+
+        dataset_indices = range(self._n_dst)
+
         output = []
         for s in level_group_set:
+            # Generate output groups for each dataset, or combined, depending on whether contains residual
             levels, groups = zip(*s)
             if 'X' in levels:
-                output.append((range(self._n_dst), s))                      # One optimisation job - TODO apply optimisation mask if exists
+                output.append((dataset_indices, s))                 # One optimisation job
             else:
-                output.extend([([i], s) for i in xrange(self._n_dst)])      # One optimsation job for each dataset
+                output.extend([([i], s) for i in dataset_indices])  # One optimsation job for each dataset
         return output
 
     #=======================+>
@@ -1476,11 +1367,13 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
 
         assert t_uij.shape == (op.n_dst, op.n_atm, 6)
 
+        t_uij_flex = flex.sym_mat3_double(t_uij.reshape((op.n_dst*op.n_atm,6)))
+        t_uij_flex.reshape(flex.grid((op.n_dst,op.n_atm)))
+
         # Reshape for output
-        return t_uij
+        return t_uij_flex
 
     def _extract_fitted_for_optimise(self):
-
         op = self._op
 
         muls = numpy.zeros(op.n_opt)
@@ -1514,7 +1407,11 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
 
         assert i == op.n_opt
 
-        return muls, uijs
+        # Reshape to flex for optimisation
+        uijs_flex = flex.sym_mat3_double(uijs.reshape((op.n_opt*op.n_atm,6)))
+        uijs_flex.reshape(flex.grid((op.n_opt,op.n_atm)))
+
+        return muls, uijs_flex
 
     def set_variables(self, level_group_pairs, dataset_indices):
         """Prepare for optimisation"""
@@ -1546,7 +1443,7 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
         opt_lvl_labs = []
         opt_dst_labs = []
         # Mapping between the optimisation
-        atm_masks = numpy.zeros((n_opt, n_atm), dtype=bool)
+        #atm_masks = numpy.zeros((n_opt, n_atm), dtype=bool)
         # Create mapping between optimisation values and the level/group/affected uijs
         for i_grp, (l,g) in enumerate(level_group_pairs):
             i_l = self.level_index_hash[l]
@@ -1556,7 +1453,7 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
             opt_l_g_mask[i_l][i_g] = True
 
             # Store the atom selection this optimisation variable maps to
-            atm_masks[i_grp] = self.level_group_selection_hash[l][g][atom_selection]
+            #atm_masks[i_grp] = self.level_group_selection_hash[l][g][atom_selection]
 
             # Store the level and dataset this optimisation variable maps to
             if l != 'X':
@@ -1565,8 +1462,6 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
             else:
                 opt_lvl_labs.append(-1) # "No" level
                 opt_dst_labs.append(-1)  # "No" dataset
-        opt_lvl_labs = numpy.array(opt_lvl_labs, dtype=object)
-        opt_dst_labs = numpy.array(opt_dst_labs, dtype=object)
 
         # Extract optimisation weights
         wgts = self.weights[dataset_indices][:,atom_selection]
@@ -1574,16 +1469,8 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
         wgts = wgts / wgts.mean()
 
         # Do with wgts as n_dst*n_atm (but as 1d array for speed!)
-        wgts_1 = wgts
-        wgts_1 = flex.double(wgts.reshape((n_dst*n_atm,)).tolist())
-
-        # Do with wgts as n_dst*n_atm*3 (but as 1d array for speed!)
-        wgts_3 = numpy.repeat(wgts.reshape(wgts.shape+(1,)), repeats=3, axis=2)
-        #wgts_3 = flex.double(wgts_3.reshape((n_dst*n_atm*3,)).tolist())
-
-        # Do with wgts as n_dst*n_atm*6 (but as 1d array for speed!)
-        wgts_6 = numpy.repeat(wgts.reshape(wgts.shape+(1,)), repeats=6, axis=2)
-        #wgts_6 = flex.double(wgts_6.reshape((n_dst*n_atm*6,)).tolist())
+        wgts = flex.double(wgts.reshape((n_dst*n_atm,)).tolist())
+        wgts.reshape(flex.grid((n_dst, n_atm)))
 
         self._op = Info({
             #'i_lvl' : level_indices,
@@ -1598,13 +1485,10 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
             # Arrays for the optimisation variables
             'l_g_pairs' : level_group_pairs,
             'l_g_bools' : opt_l_g_mask,
-            'dst_l_arr' : opt_dst_labs,
-            'lvl_l_arr' : opt_lvl_labs,
+            'dataset_indices' : flex.int(opt_dst_labs),
+            'group_indices' : flex.int(opt_lvl_labs),
             # Masked Uij weights
             'wgts'   : wgts,
-            #'wgts_1' : wgts_1,
-            #'wgts_3' : wgts_3,
-            'wgts_6' : wgts_6,
             })
 
     def _extract_values(self, variables=None):
@@ -1634,64 +1518,61 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
             i_l = self.level_index_hash[l]
             i_g = g - 1
             if l != 'X':
-                self.group_multipliers[i_l][i_g, variables.i_tls, variables.i_dst] = [values.popleft() for _ in xrange(variables.n_tls*variables.n_dst)]
+                for i_tls in variables.i_tls:
+                    for i_dst in variables.i_dst:
+                        self.group_multipliers[i_l][i_g, i_tls, i_dst] = values.popleft()
             else:
                 self.group_multipliers[-1][i_g] = values.popleft()
 
         assert len(values) == 0, 'not all values have been popped'
 
-    def apply_multipliers(self, levels, residual):
-        """Apply the optimised multipliers to the input levels"""
-
-        # Iterate through levels, fitters and apply multiplier to each set of tls amplitudes
-        for i_lvl, level in enumerate(levels):
-            for i_g, (g_n, g_s, g_f) in enumerate(level):
-                mults = self.group_multipliers[i_lvl][i_g]
-                for i_tls in range(self._n_tls):
-                    mode = g_f.parameters().get(index=i_tls)
-                    vals = mode.amplitudes.values
-                    newv = mults[i_tls] * vals
-                    mode.amplitudes.set(newv)
-        # And for the residual level
-        for a_n, a_s, a_f in residual:
-            mults = self.group_multipliers[-1][a_s]
-            vals = a_f.parameters()
-            vals[:] = mults * vals
-
-        self._ready = False
-
     #===========================================+>
 
-    def optimise(self, n_cycles=1, n_cpus=1, recursions=1):
+    def optimise(self, n_cpus=1, recursions=1):
         """Optimise the amplitudes of a series of TLS/Uij Levels"""
         assert self._ready is True, 'Not ready for optimise -- use .refresh() first'
 
         # Optimisation sets of which amplitudes should be co-optimised
         level_group_sets = self._generate_level_group_sets(self.group_tree, recursions=recursions)
 
-        self.log('Running amplitude optimisations: --->')
-        for i in range(n_cycles):
-            for lg_set in level_group_sets:
-                jobs_input = self._generate_optimisation_jobs_from_sets(lg_set)
-                chunk_size = min(len(jobs_input), 100*n_cpus)
-                for i in xrange(0, len(jobs_input), chunk_size):
-                    self.log.heading('Job chunk {} of {}'.format(i+1, iceil(len(jobs_input)/chunk_size)))
-                    j_chunk = jobs_input[i:i+chunk_size]
-                    self.optimise_level_amplitudes(jobs_input=j_chunk, n_cpus=n_cpus)
+        self.log.heading('Running Amplitude Optimisations')
+
+        for lg_set in level_group_sets:
+            jobs_input = self._generate_optimisation_jobs_from_sets(lg_set)
+            # Perform jobs sequentially
+            chunk_size = min(len(jobs_input), 100*n_cpus)
+            for i in xrange(0, len(jobs_input), chunk_size):
+                self.log('Running jobs {} -> {} (of {})'.format(1+i, min(1+i+chunk_size, len(jobs_input)), len(jobs_input)))
+                j_chunk = jobs_input[i:i+chunk_size]
+                self.optimise_level_amplitudes(jobs_input=j_chunk, n_cpus=n_cpus)
 
     def optimise_level_amplitudes(self, jobs_input, n_cpus=1):
         # Optimise all amplitudes dataset-by-dataset
         jobs = []
 
-        n_cpus = min(n_cpus, len(jobs_input))
         # Generate jobs (and process if cpus==1)
+        n_cpus = min(n_cpus, len(jobs_input))
         self.log.subheading('Preparing optimisations...')
         for i, (dst_indices, lvl_groups) in enumerate(jobs_input):
             self.log.bar()
-            self.log('Job {}'.format(i+1))
+            self.log('Optimisation {}'.format(i+1))
             self.log('Datasets: {}'.format(str(dst_indices)))
-            for j in range(0,len(lvl_groups), 10):
-                self.log('{}   {}'.format('Groups:' if j==0 else '       ', str(lvl_groups[j:j+10])))
+            i = 0
+            srt_groups = sorted(lvl_groups)
+            while i < len(srt_groups):
+                lvl, grp = srt_groups[i]
+                all_grps = []
+                cur_lvl = lvl
+                cur_grp = grp
+                while (cur_lvl == lvl):
+                    all_grps.append(cur_grp)
+                    i += 1
+                    if i == len(srt_groups):
+                        break
+                    cur_lvl, cur_grp = srt_groups[i]
+                self.log('Groups from Level {}:'.format(lvl))
+                for j in range(0,len(all_grps), 10):
+                    self.log('\t' + ', '.join(['{:>5}'.format(v) for v in all_grps[j:j+10]]))
             # Select this dataset
             self.set_variables(dataset_indices=dst_indices, level_group_pairs=lvl_groups)
             # Append to job list (create copy) or run optimisation
@@ -1714,15 +1595,13 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
                 if isinstance(job, str):
                     self.log(job)
                     raise Failure('error returned')
-                self._inject_values(values=job.result, variables=job.v)
+                self._inject_values(values=job.result, variables=job.variables)
             # Let's be good
             workers.close()
 
     def _optimise(self):
         """Run the optimisation for the current set of variables"""
-
-        # Prep variables for target function
-        self._n_call = 0
+        # Create optimisation object
         optimiser = self.get_optimiser()._optimise()
         # Extract and update current values
         self._inject_values(values=optimiser.result, variables=self.get_optimisation_variables())
@@ -1736,8 +1615,9 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
         optimiser = OptimiseAmplitudes(
                 target_uijs         = t_uij,
                 base_uijs           = uijs,
-                variables           = self.get_optimisation_variables(),
-                initial_multipliers = muls
+                variables           = self._op,
+                initial_multipliers = muls,
+                residual_mask       = self.residual_mask[self._op.i_dst],
                 )
         return optimiser
 
@@ -1748,3 +1628,124 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
         """Print the number of parameters/input data"""
         return 'I\'m a summary!'
 
+
+#    def compute_functional_and_gradients(self):
+#
+#        self.a = numpy.array(self.x)
+#
+#        # Identify any negative values
+#        neg_mask = (self.a < 0.0)
+#        neg_vals = self.a[neg_mask]
+#
+#        # Make all negative amplitudes zero for purposes of calculation
+#        self.a[neg_mask] = 0.0
+#
+#        # amplitude-multiplied bases
+#        self._mult_uijs = self.a.reshape((self.a.size,1,1)) * self.base_uijs
+#        assert self._mult_uijs.shape == self.base_uijs.shape
+#
+#        # Calculate totals for each level
+#        self.calculate_level_totals()
+#
+#        # Calculate target function and gradients
+#        f, g = self.compute_f_and_g()
+#
+#        # Push the negative values in a positive direction
+#        f += (neg_vals*neg_vals).sum()
+#        g[neg_mask] += (2.0*neg_vals)
+#
+#        return f, flex.double(g)
+#
+#    def calculate_level_totals(self):
+#
+#        self._level_uijs[:] = 0.0
+#
+#        # Each level
+#        for i_l in xrange(self.v.n_lvl):
+#            # Mask to select this level
+#            l_m = self._level_masks[i_l]
+#            for i_d in xrange(self.v.n_dst):
+#                # Mask to select this dataset
+#                d_m = self._dataset_masks[i_d]
+#                # Extract uijs for this dataset and level
+#                d_uijs = self._mult_uijs[l_m*d_m].sum(axis=0)
+#                assert d_uijs.shape == (self.v.n_atm, 6)
+#                # Add to array
+#                self._level_uijs[i_l, i_d] += d_uijs
+#
+#        # Residual level
+#        l_m = self._level_masks[-1]
+#        r_uijs = self._mult_uijs[l_m].sum(axis=0)
+#        assert r_uijs.shape == (self.v.n_atm, 6)
+#
+#        #for i_d in xrange(self.v.n_dst):
+#        self._level_uijs[self.v.n_lvl, :] += r_uijs
+#
+#        self._total_uijs = self._level_uijs.sum(axis=0)
+#        assert self._total_uijs.shape == (self.v.n_dst, self.v.n_atm, 6)
+#
+#        # Subtract the mean from each dataset in each level (Average across atom dimension only)
+#        self._level_uijs_d = self._level_uijs - self._level_uijs.mean(axis=2).reshape(self._level_uijs.shape[:2]+(1,6))
+#
+#    def compute_f_and_g(self):
+#
+#        target = 0.0
+#        gradients = numpy.zeros(self.v.n_opt)
+#
+#        # Calculate target/gradients dataset-by-dataset
+#        for i_dst in xrange(self.v.n_dst):
+#
+#            # Atom weights for this dataset
+#            d_wgts = self.v.wgts_6[i_dst]
+#
+#            # Total uijs
+#            d_uijs = self._total_uijs[i_dst]
+#            d_uijs_diff = (self.target_uijs[i_dst] - d_uijs)
+#
+#            #########################
+#            # functional
+#            #########################
+#            # Least-squares component
+#            target += (d_uijs_diff * d_uijs_diff * d_wgts).sum()
+#            # Covariance component - inter-level component
+#            for i_l1 in xrange(self.v.n_lvl+1):
+#                d1 = self._level_uijs_d[i_l1, i_dst]
+#                for i_l2 in xrange(i_l1):
+#                    d2 = self._level_uijs_d[i_l2, i_dst]
+#                    cov = (d1 * d2 * d_wgts).sum() / (self.v.n_lvl+1)**2
+#                    target += cov
+#
+#            #########################
+#            # gradients
+#            #########################
+#
+#            # Get all optimisation variables associated with the dataset -- combine dataset mask with residual mask
+#            d_m = self._dataset_masks[i_dst] + self._dataset_masks[-1]
+#
+#            # Iterate through and calculate gradients for all
+#            grads = []
+#            for i_lb, b_uij, b_uij_d in zip(self.v.lvl_l_arr[d_m], self.base_uijs[d_m], self._base_uijs_d[d_m]):
+#
+#                # Gradient from least-squares
+#                grad1 = (-2.0 * b_uij * d_uijs_diff * d_wgts).sum()
+#
+#                # Gradient from covariance
+#                grad2 = 0.0
+#                for i_l2 in xrange(self.v.n_lvl+1):
+#                    # Skip if i==j (need modulus since i_lb is -1 for residual)
+#                    if (i_lb % (self.v.n_lvl+1)) == i_l2:
+#                        continue
+#                    d2 = self._level_uijs_d[i_l2, i_dst]
+#                    grad2 += (b_uij_d * d2 * d_wgts).sum() / (self.v.n_lvl+1)**2
+#
+#                grad = (grad1 + grad2)
+#
+#                # Append gradient
+#                grads.append(grad)
+#            # Add to total gradients
+#            gradients[d_m] += numpy.array(grads)
+#
+#        # Apply the normalisations rights at the end (same for all!)
+#        norm = self.v.n_dst * self.v.n_atm
+#
+#        return (target/norm, gradients/norm)

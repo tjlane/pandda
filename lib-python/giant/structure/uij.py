@@ -44,6 +44,7 @@ def uij_to_b(uij):
     """Convert anistropic uijs to isotropic B"""
     uij, single = _reshape_uij(vals=uij)
     out = EIGHT_PI_SQ*numpy.mean(uij[:,0:3],axis=1)
+    assert out.shape == (len(uij),)
     return _revert_output(vals=out, single=single)
 
 def anistropic_uij_to_isotropic_uij(uij):
