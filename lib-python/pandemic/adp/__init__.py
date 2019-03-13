@@ -22,7 +22,7 @@ from bamboo.common.command import CommandManager
 from bamboo.maths.functions import rms, get_function
 
 from giant.manager import Program
-from giant.dataset import CrystallographicModel
+from giant.dataset import CrystallographicModel, AtomicModel
 from giant.structure.uij import uij_positive_are_semi_definite, \
         sym_mat3_eigenvalues, uij_to_b, calculate_uij_anisotropy_ratio, \
         scale_uij_to_target_by_selection
@@ -41,9 +41,10 @@ from mmtbx.tls.utils import uij_eigenvalues, TLSMatrices, TLSAmplitudes
 
 try:
     import matplotlib
+    matplotlib.use('Agg')
     matplotlib.interactive(False)
     from matplotlib import pyplot, patches
-    pyplot.switch_backend('agg')
+    pyplot.switch_backend('agg') # yes I know this done twice -- for safety!
     pyplot.style.use('ggplot')
     pyplot.interactive(0)
     pyplot.rc('font', family='monospace')
@@ -98,6 +99,9 @@ input {
         .type = choice(multi=False)
         .multiple = False
         .help = "Control whether an error is raised if selected atoms in structures have anisotropic/isotropic/mixed Bs."
+    model_type = *crystallographic noncrystallographic
+        .help = "is this a crystal structure? or a cryo-EM model? or any other non-crystallographic model?"
+        .type = choice(multi=False)
     look_for_reflection_data = True
         .type = bool
     reference_r_values = None
@@ -119,7 +123,7 @@ output {
         .type = bool
     images {
         all = False
-            .help = "Generate all graphical output - may significantly increase runtime"
+            .help = "Generate all graphical output - will significantly increase runtime"
             .type = bool
         pymol = none *chain all
             .help = "Write residue-by-residue images of the output B-factors"
@@ -169,9 +173,12 @@ fitting {
     number_of_macro_cycles = 20
         .help = 'how many fitting cycles to run (over all levels) -- should be more than 0'
         .type = int
-    number_of_micro_cycles = 2
+    number_of_micro_cycles = 3
         .help = 'how many fitting cycles to run (for each level) -- should be more than 1'
         .type = int
+    fit_residual = True
+        .help = 'should the residual level be optimised? (it may be preferable to turn this off for small numbers of low-resolution structures)'
+        .type = bool
     optimisation {
         dataset_weights = one inverse_resolution inverse_resolution_squared *inverse_resolution_cubed
             .help = 'control how datasets are weighted during optimisation?'
@@ -182,37 +189,32 @@ fitting {
         renormalise_atom_weights_by_dataset = True
             .help = "Should atom weights be normalised to an average of 1 for each dataset?"
             .type = bool
-        max_datasets = None
-            .help = 'takes up to this number of datasets for TLS parameter optimisation'
-            .type = int
         sort_datasets_by = *resolution random name
             .help = 'how should datasets be ordered when selecting a subset of datasets for optimisation?'
             .type = choice(multi=False)
         random_seed = 0
+            .help = 'random number seed for dataset ordering (and reference dataset selection)'
             .type = int
         max_resolution = None
             .help = 'resolution limit for dataset to be used for TLS optimisation'
             .type = float
+        max_datasets = None
+            .help = 'takes up to this number of datasets for TLS parameter optimisation'
+            .type = int
         simplex
             .help = 'set the various step sizes taken during simplex optimisation'
         {
             amplitude_delta_frac = 0.01
                 .help = 'Amplitude step size (fractional)'
                 .type = float
-            vibration_delta_frac = 0.01
-                .help = 'Vibration step size (fractional)'
-                .type = float
-            libration_delta_frac = 0.01
-                .help = 'Libration step size (fractional)'
-                .type = float
             amplitude_delta_min = 1e-6
                 .help = 'Minimum amplitude step size (absolute)'
                 .type = float
-            vibration_delta_min = 1e-3
-                .help = 'Minimum libration step size (absolute)'
+            vibration_delta = 1.0
+                .help = 'Vibration step size for zero-value matrices (relative scale)'
                 .type = float
-            libration_delta_min = 1e-3
-                .help = 'Libration step size (absolute)'
+            libration_delta = 50.0
+                .help = 'Libration step size for zero-value matrices (relative scale)'
                 .type = float
             uij_delta = 1e-3
                 .help = 'Uij step size (absolute)'
@@ -238,8 +240,17 @@ fitting {
                     .help = "Offset of the form function (e.g. inversion point of the sigmoid function)"
             }
         }
-        simplex_convergence = 1e-12
-            .help = "cutoff for which the least-squares is considered converged"
+        simplex_convergence = 1e-10
+            .help = "cutoff for which the least-squares simplex is considered converged"
+            .type = float
+        gradient_convergence = 1e-10
+            .help = "cutoff for which the least-squares gradient is considered converged"
+            .type = float
+        normalised_tls_scale = 1e+0
+            .help = "Target scale for normalisation of TLS matrices (angstroms^2)"
+            .type = float
+        normalised_tls_eps = 1e-3
+            .help = "Cutoff for determining when a TLS-matrix has refined to zero-value (this is applied to the normalised TLS matrices)."
             .type = float
     }
     precision
@@ -272,9 +283,8 @@ analysis {
     table_ones_options {
         include scope giant.jiffies.multi_table_ones.options_phil
     }
-    diagnostics = False
-        .expert_level = 3
-        .help = "Write diagnostic graphs -- adds a significant amount of runtime"
+    generate_diagnostic_graphs = False
+        .help = "Write diagnostic graphs that show the fit rmsd as a function of dataset/residue/atom -- may add a significant amount of runtime"
         .type = bool
 }
 refinement {
@@ -547,7 +557,10 @@ class MultiDatasetUijParameterisation(Program):
             m.r_mtz = None
 
             # Write the input pdb to the output folder (without the header as this can affect R-factors calculations)
-            m.hierarchy.write_pdb_file(m.i_pdb, crystal_symmetry=m.crystal_symmetry)
+            m.hierarchy.write_pdb_file(
+                    m.i_pdb,
+                    crystal_symmetry=(m.crystal_symmetry if hasattr(m, 'crystal_symmetry') else None),
+                    )
             assert os.path.exists(m.i_pdb), 'PDB does not exist: {}'.format(m.i_pdb)
 
             # Check MTZ exists if requested
@@ -1210,7 +1223,11 @@ class MultiDatasetUijParameterisation(Program):
                 if headers is not None:
                     with open(mdl_f, 'w') as fh:
                         [fh.write(l[i].strip()+'\n') for l in headers]
-                h.write_pdb_file(mdl_f, open_append=open_append, crystal_symmetry=mdl.crystal_symmetry)
+                h.write_pdb_file(
+                        mdl_f,
+                        open_append=open_append,
+                        crystal_symmetry=(mdl.crystal_symmetry if hasattr(mdl, 'crystal_symmetry') else None),
+                        )
                 pdbs.append(mdl_f)
             except Exception as e:
                 self.log.bar()
@@ -1287,7 +1304,8 @@ class MultiDatasetUijParameterisation(Program):
                                               ('sphere_scale', 0.25)],
                                   width=1000, height=750,
                                   delete_script = (not self.params.settings.debug))
-                assert glob.glob(lvl_pml_prt_template.format(i_level+1,'*')), 'no files have been generated!'
+                if not glob.glob(lvl_pml_prt_template.format(i_level+1,'*')):
+                    self.warnings.append('no partition images have been generated by pymol! ({})'.format(lvl_pml_prt_template.format(i_level+1,'*')))
 
     def penalty_summary(self, out_dir_tag):
         """Write out the composition of the penalty functions"""
@@ -1579,7 +1597,8 @@ class MultiDatasetUijParameterisation(Program):
                                   title         = 'TLS contributions - Level {} ({})'.format(i_level+1, level.label),
                                   v_line_hierarchy = boundaries if (sum(boundaries.atoms().extract_b()) < 0.5*len(list(boundaries.residue_groups()))) else None,
                                   colour_indices = [float(i_level)+(float(i_mode)/float(n_tls)) for i_mode in range(n_tls)])
-            assert glob.glob(lvl_plt_template.format(i_level+1,'*')), 'no files have been generated!'
+            if not glob.glob(lvl_plt_template.format(i_level+1,'*')):
+                self.warnings.append('no plots have been generated! ({})'.format(lvl_plt_template.format(i_level+1,'*')))
 
             # ------------------------
             # Write out structure & graph of combined uijs
@@ -1602,7 +1621,8 @@ class MultiDatasetUijParameterisation(Program):
                                   style = 'lines+ellipsoids',
                                   colours = 'chainbow',
                                   width=1000, height=750)
-                assert glob.glob(lvl_pml_chn_template.format(i_level+1,'*')), 'no files have been generated!'
+                if not glob.glob(lvl_pml_chn_template.format(i_level+1,'*')):
+                    self.warnings.append('no pymol images have been generated! ({})'.format(lvl_pml_chn_template.format(i_level+1,'*')))
             # Write pymol images of each group
             if self.params.output.images.pymol == 'all':
                 # Output structure for LEVEL (scaled!) - for html only
@@ -1623,7 +1643,8 @@ class MultiDatasetUijParameterisation(Program):
                                  style = 'lines+ellipsoids',
                                  width = 250 if level.n_groups()>50 else 1000,
                                  height= 250 if level.n_groups()>50 else 750)
-                assert glob.glob(lvl_pml_grp_template.format(i_level+1,'*')), 'no files have been generated!'
+                if not glob.glob(lvl_pml_grp_template.format(i_level+1,'*')):
+                    self.warnings.append('no pymol images have been generated! ({})'.format(lvl_pml_grp_template.format(i_level+1,'*')))
                 # Images for each group
                 blank_h = self.blank_master_hierarchy()
                 cache_h = blank_h.atom_selection_cache()
@@ -1635,7 +1656,8 @@ class MultiDatasetUijParameterisation(Program):
                                  style = 'lines+ellipsoids',
                                  width = 250 if level.n_groups()>50 else 1000,
                                  height= 250 if level.n_groups()>50 else 750)
-                assert glob.glob(lvl_pml_scl_template.format(i_level+1,'*')), 'no files have been generated!'
+                if not glob.glob(lvl_pml_scl_template.format(i_level+1,'*')):
+                    self.warnings.append('no pymol images have been generated! ({})'.format(lvl_pml_scl_template.format(i_level+1,'*')))
             # ------------------------
             # Write out structure & graph of anisotropy
             # ------------------------
@@ -1651,7 +1673,8 @@ class MultiDatasetUijParameterisation(Program):
                                   y_lim=(0.0,1.05),
                                   y_lab='Anisotropy of Uij ($1 - \\frac{E_{min}}{E_{max}}$)',
                                   colours=['grey'])
-            assert glob.glob(lvl_aniso_plt_template.format(i_level+1,'*')), 'no files have been generated!'
+            if not glob.glob(lvl_aniso_plt_template.format(i_level+1,'*')):
+                self.warnings.append('no plots have been generated! ({})'.format(lvl_aniso_plt_template.format(i_level+1,'*')))
 
         return
 
@@ -1710,7 +1733,8 @@ class MultiDatasetUijParameterisation(Program):
                               legends=['Residual    '],
                               title='Uij Profile of Residual Level',
                               colour_indices=[len(self.levels)])
-        assert glob.glob(res_plt_template.format('*')), 'no files have been generated!'
+        if not glob.glob(res_plt_template.format('*')):
+            self.warnings.append('no files have been generated! ({})'.format(res_plt_template.format('*')))
         # Write pymol images for each chain
         if self.params.output.images.pymol != 'none':
             self.log('- Generating pymol images')
@@ -1720,7 +1744,8 @@ class MultiDatasetUijParameterisation(Program):
                               style = 'lines+ellipsoids',
                               colours = 'chainbow',
                               width=1000, height=750)
-            assert glob.glob(res_pml_chn_template.format('*')), 'no files have been generated!'
+            if not glob.glob(res_pml_chn_template.format('*')):
+                self.warnings.append('no files have been generated! ({})'.format(res_pml_chn_template.format('*')))
         # Write pymol images for each group
         if self.params.output.images.pymol == 'all':
             self.log('\t> {}'.format(res_pml_grp_template.format('*')))
@@ -1728,7 +1753,8 @@ class MultiDatasetUijParameterisation(Program):
                                 output_prefix = res_pml_grp_prefix,
                                 style = 'lines+ellipsoids',
                                 width=250, height=250)
-            assert glob.glob(res_pml_grp_template.format('*')), 'no files have been generated!'
+            if not glob.glob(res_pml_grp_template.format('*')):
+                self.warnings.append('no files have been generated! ({})'.format(res_pml_grp_template.format('*')))
         # ------------------------
         # Write out structure & graph of anisotropy
         # ------------------------
@@ -1744,7 +1770,8 @@ class MultiDatasetUijParameterisation(Program):
                               y_lim=(0.0,1.05),
                               y_lab='Anisotropy of Uij ($1 - \\frac{E_{min}}{E_{max}}$)',
                               colours=['grey'])
-        assert glob.glob(res_aniso_plt_template.format('*')), 'no files have been generated!'
+        if not glob.glob(res_aniso_plt_template.format('*')):
+            self.warnings.append('no files have been generated! ({})'.format(res_aniso_plt_template.format('*')))
 
         # TODO Output CSV of all residual components
 
@@ -1786,7 +1813,8 @@ class MultiDatasetUijParameterisation(Program):
                               title='TLS and residual contributions',
                               reverse_legend_order=True,
                               colour_indices=range(len(self.levels)+1))
-        assert glob.glob(stacked_template.format('*')), 'no files have been generated!'
+        if not glob.glob(stacked_template.format('*')):
+            self.warnings.append('no files have been generated! ({})'.format(stacked_template.format('*')))
 
     def calculate_electron_density_metrics(self, out_dir_tag):
         pass
@@ -1823,32 +1851,11 @@ class MultiDatasetUijParameterisation(Program):
             amp_mat = group_amplitudes.reshape((n_grp*n_tls, n_dst)).T
             all_amplitudes.append(amp_mat)
 
-            #dist_mat = numpy.zeros((n_dst,n_dst))
-            #for i1, i2 in flex.nested_loop((n_dst, n_dst)):
-            #    # Only need to do half
-            #    if i1 > i2: continue
-            #    # Store the rms amplitude difference of the two datasets
-            #    dist_mat[i1,i2] = rms(
-            #            group_amplitudes[:, :, i1] -
-            #            group_amplitudes[:, :, i2]
-            #            )
-            ## Make symmetric
-            #dist_mat += dist_mat.T
-            ## Append to level-by-level list
-            #level_distance_matrices.append(dist_mat)
-            # Calculate linkages
-            #link_mat = scipy.cluster.hierarchy.linkage(dist_mat, method='average', metric='euclidean')
-
             # Plot dendrogram
             fname = dendro_template.format(level.index)
             self.log('> {}'.format(fname))
             link_mat = scipy.cluster.hierarchy.linkage(amp_mat, method='average', metric='euclidean')
             dendrogram(fname=fname, link_mat=link_mat, labels=labels)
-
-        # Overall dendrogram
-        #dist_mat = rms(level_distance_matrices, axis=0)
-        #assert dist_mat.shape == (n_dst, n_dst)
-        #link_mat = scipy.cluster.hierarchy.linkage(dist_mat, method='average', metric='euclidean')
 
         # Plot dendrogram
         fname=dendro_template.format('all')
@@ -1880,69 +1887,103 @@ class MultiDatasetUijParameterisation(Program):
         self.analyse_fit_residual_correlations(uij_diff=(uij_inp-uij_all),
                                                out_dir=fit_dir)
 
-    def analyse_rms_fit_distributions(self, uij_fit, uij_inp, out_dir='./', max_x_width=25):
+    def analyse_fit_rms_distributions(self, uij_fit, uij_inp, out_dir='./', max_x_width=40):
         """Analyse the dataset-by-dataset and residue-by-residue and atom-by-atom fit qualities"""
 
         out_dir = easy_directory(out_dir)
 
         #------------------------------------------------------------------------------#
-        # Create series of output directories
+        # Create output directories
         #------------------------------------------------------------------------------#
-        dst_dir = easy_directory(os.path.join(out_dir, 'dataset_by_dataset'))
-        grp_dir = easy_directory(os.path.join(out_dir, 'group_by_group'))
         res_dir = easy_directory(os.path.join(out_dir, 'residue_by_residue'))
+        dst_dir = easy_directory(os.path.join(out_dir, 'dataset_by_dataset'))
         atm_dir = easy_directory(os.path.join(out_dir, 'atom_by_atom'))
 
         #------------------------------------------------------------------------------#
-        # Extract series of labels for datasets, atoms ...
+        # Extract series of labels for datasets, atoms ... extract rmsd values
         #------------------------------------------------------------------------------#
 
+        # ... dataset labels
         dst_labels = numpy.array([m.tag for m in self.models])
-
-        # Labels for each group in each level
-        grp_labels = [[g.label for i,s,g in level] for level in self.fitter.levels]
-
-        # Extract residue and atom labels for fitted atoms from the master
-        m_h = self.blank_master_hierarchy().select(flex.bool(self.atom_mask.tolist()), copy_atoms=True)
+        # ... atom labels
+        fit_sel = flex.bool(self.atom_mask.tolist())
+        m_h = self.blank_master_hierarchy().select(fit_sel, copy_atoms=True)
         atm_labels = numpy.array([ShortLabeller.format(a) for a in m_h.atoms()])
         res_labels = numpy.array([ShortLabeller.format(a.parent().parent()) for a in m_h.atoms()])
 
-        # Extract selections for each residue
-        _, unq_res_idxs = numpy.unique(res_labels, return_index=True)
-        unq_res_labs = res_labels[sorted(unq_res_idxs)]
-        all_res_sels = [res_labels==l for l in unq_res_labs]
-
-        #------------------------------------------------------------------------------#
-        # Measure differences between input and fitted uijs
-        #------------------------------------------------------------------------------#
-
+        # Average over uij sym_mat3
         uij_diff = uij_inp-uij_fit
+        rmsd_all = rms(uij_diff, axis=2)
 
-        # Calculate the rms of the difference (n_dsts x n_atoms)
-        rmsds_all = rms(uij_diff, axis=2)
-        rmsds_min = numpy.min(rmsds_all)
-        rmsds_max = numpy.max(rmsds_all)
+        y_lim = (0.0, 1.01*numpy.max(rmsd_all))
 
         #------------------------------------------------------------------------------#
-        # Dataset-by-dataset "error" boxplots
+        # Plot rmsds over datasets (compare datasets)
+        #------------------------------------------------------------------------------#
+
+        for i_dst in xrange(0, len(self.models), max_x_width):
+            filename = os.path.join(dst_dir, 'rmsds_datasets-{:04d}-{:04d}.png'.format(i_dst+1, i_dst+max_x_width))
+            self.log('\t> {}'.format(filename))
+            self.plot.violinplot(filename=filename,
+                                 y_vals=rmsd_all.T[:,i_dst:i_dst+max_x_width],
+                                 x_labels=dst_labels[i_dst:i_dst+max_x_width].tolist(),
+                                 title='rmsd of fitted and refined B-factors (by dataset)',
+                                 x_lab='dataset', y_lab='rmsd', rotate_x_labels=True,
+                                 x_lim=(0, min(len(self.models), max_x_width)+1), y_lim=y_lim)
+
+        #------------------------------------------------------------------------------#
+        # Plot rmsds by residue over datasets (compare residues)
         #------------------------------------------------------------------------------#
 
         self.log.subheading('Calculating dataset-by-dataset rmsds to input Uijs')
-        for i_level, level in enumerate(self.fitter.levels):
-            self.log('Level {}'.format(level.index))
-            for i_group, sel, fitter in level:
-                # Extract the uij rmsds for this group
-                rmsds_sel = rmsds_all[:,sel]
-                # Create boxplots of the rmsds by dataset
-                for i_d in xrange(0, len(self.models), max_x_width):
-                    filename = os.path.join(dst_dir, 'rmsds_level-{}_group-{:04d}_datasets-{:04d}-{:04d}.png'.format(level.index, i_group, i_d+1, i_d+max_x_width))
-                    self.log('\t> {}'.format(filename))
-                    self.plot.violinplot(filename=filename,
-                                         y_vals=rmsds_sel.T[:,i_d:i_d+max_x_width],
-                                         x_labels=dst_labels[i_d:i_d+max_x_width].tolist(),
-                                         title='rmsd of fitted and refined B-factors (by dataset)',
-                                         x_lab='dataset', y_lab='rmsd', rotate_x_labels=True,
-                                         x_lim=(0,max_x_width+1), y_lim=(rmsds_min, rmsds_max))
+
+        # Format rmsds as hierarchy
+        rmsd_hs = [self.custom_master_hierarchy(uij=None, iso=rmsd_all[i].tolist(), mask=fit_sel) for i in xrange(len(self.models))]
+
+        #############################
+        # Plot all datasets
+        #############################
+
+        # Plot all
+        prefix = os.path.join(res_dir, 'rmsds_all_datasets')
+        self.plot.alpha_scatter(
+                prefix=prefix,
+                hierarchies=[h.select(fit_sel, copy_atoms=True) for h in rmsd_hs],
+                title='All RMSDs',
+                y_lab='RMSD ($\AA^2$)',
+                y_lim=y_lim,
+                rotate_x_labels=True,
+                plot_mean=True,
+                )
+        # Write as structure
+        filename = prefix + '.pdb'
+        all_h = self.custom_master_hierarchy(uij=None, iso=rmsd_all.mean(axis=0).tolist(), mask=fit_sel)
+        all_h.write_pdb_file(
+                filename,
+                )
+
+        #############################
+        # Plot dataset by dataset
+        #############################
+
+        for i_dst, mdl in enumerate(self.models):
+            # Plot scatter (with average)
+            prefix = os.path.join(res_dir, 'rmsds_dataset_{}'.format(mdl.tag))
+            self.plot.alpha_scatter(
+                    prefix=prefix,
+                    hierarchies=[rmsd_hs[i_dst].select(fit_sel, copy_atoms=True)],
+                    title='Dataset {} RMSDs'.format(mdl.tag),
+                    y_lab='RMSD ($\AA^2$)',
+                    y_lim=y_lim,
+                    rotate_x_labels=True,
+                    plot_mean=True,
+                    )
+            # Write as structure
+            filename = prefix + '.pdb'
+            rmsd_hs[i_dst].write_pdb_file(
+                    filename,
+                    crystal_symmetry=(mdl.crystal_symmetry if hasattr(mdl, 'crystal_symmetry') else None),
+                    )
 
         #------------------------------------------------------------------------------#
         # Atom-by-atom and residue-by-residue "error" boxplots
@@ -1950,78 +1991,30 @@ class MultiDatasetUijParameterisation(Program):
 
         self.log.subheading('Calculating atom-by-atom and residue-by-residue rmsds to input Uijs')
         # Use this for the atom-by-atom graphs with atom_label=res_labels
-        residue_boundaries = self.partition_boundaries_custom(atom_labels=res_labels, mask=self.atom_mask.tolist())
-        residue_boundaries = residue_boundaries.select(flex.bool(self.atom_mask.tolist()))
+        residue_boundaries = self.partition_boundaries_custom(atom_labels=res_labels, mask=fit_sel).select(fit_sel)
         # Create boxplots of the rmsds by atom (for the first level only!)
-        for i_group, sel, fitter in self.fitter.levels[0]:
+        for chain_id in sorted(set([c.id for c in m_h.chains()])):
             self.log.bar()
-            self.log('Group {}'.format(i_group))
+            self.log('Chain {}'.format(chain_id))
             self.log.bar()
+            # Create a selection for each chain and select it in each hierarchy (m_h is already trimmed to fitted atoms)
+            sel = numpy.array(m_h.atom_selection_cache().selection('chain {}'.format(chain_id)), dtype=bool)
             # Extract the uij rmsds for this group
-            rmsds_sel = rmsds_all[:,sel]
-            # Extract the residue selections for this group
-            res_labels_sel = res_labels[sel]
-            _, u_res_idxs = numpy.unique(res_labels_sel, return_index=True)
-            g_res_labs = res_labels_sel[sorted(u_res_idxs)]
-            g_res_sels = [res_labels_sel==l for l in g_res_labs]
+            rmsd_sel = rmsd_all[:,sel]
             # Create boxplots of the rmsds by atom
             self.log('Atom-by-atom plots')
             for i_a in xrange(0, sum(sel), max_x_width):
-                filename = os.path.join(atm_dir, 'rmsds_level-0_group_{:02d}_atoms-{:06d}-{:06d}.png'.format(i_group, i_a+1, i_a+max_x_width))
+                filename = os.path.join(atm_dir, 'rmsds-chain_{}-atoms-{:06d}-{:06d}.png'.format(chain_id, i_a+1, i_a+max_x_width))
                 self.log('\t> {}'.format(filename))
                 self.plot.violinplot(filename=filename,
-                                     y_vals=rmsds_sel[:,i_a:i_a+max_x_width],
+                                     y_vals=rmsd_sel[:,i_a:i_a+max_x_width],
                                      x_labels=atm_labels[sel].tolist()[i_a:i_a+max_x_width],
                                      title='rmsd of fitted and refined B-factors (by atom)',
                                      x_lab='atom', y_lab='rmsd', rotate_x_labels=True,
-                                     x_lim=(0,max_x_width+1), y_lim=(rmsds_min, rmsds_max),
+                                     x_lim=(0,max_x_width+1), y_lim=y_lim,
                                      vlines=(numpy.where(numpy.array(list(residue_boundaries.select(flex.bool(sel.tolist())).atoms().extract_b()[i_a:i_a+max_x_width]), dtype=bool))[0] + 1.5))
-            self.log('Residue-by-residue plots')
-            # Create boxplots of the rmsds by residue
-            for i_r in xrange(0, len(g_res_sels), max_x_width):
-                filename = os.path.join(res_dir, 'rmsds_level-0_group-{:02d}_residues-{:06d}-{:06d}.png'.format(i_group, i_r+1, i_r+max_x_width))
-                self.log('\t> {}'.format(filename))
-                self.plot.violinplot(filename=filename,
-                                     y_vals=[rmsds_sel[:,a_sel].flatten() for a_sel in g_res_sels[i_r:i_r+max_x_width]],
-                                     x_labels=g_res_labs[i_r:i_r+max_x_width],
-                                     title='rmsd of fitted and refined B-factors (by residue)',
-                                     x_lab='residue', y_lab='rmsd', rotate_x_labels=True,
-                                     x_lim=(0,max_x_width+1), y_lim=(rmsds_min, rmsds_max))
 
-        #------------------------------------------------------------------------------#
-        # Atom-by-atom and residue-by-residue "error" boxplots
-        #------------------------------------------------------------------------------#
-
-        self.log('Writing average rmsd for each atom (average quality of fit over all datasets)')
-        # calculate dataset-averaged rmsds
-        rmsd_avg = numpy.mean(rmsds_all, axis=0)
-        prefix = os.path.join(out_dir, 'rmsds_average')
-        m_h = self.custom_master_hierarchy(uij=None, iso=rmsd_avg.tolist(), mask=flex.bool(self.atom_mask.tolist()))
-        m_f = prefix+'.pdb'
-        self.log('\t> {}'.format(m_f))
-        m_h.write_pdb_file(m_f)
-        self.log('\t> {}...png'.format(prefix))
-        # Output as b-factor plot
-        self.plot.multi_hierarchy_bar(prefix=prefix,
-                                      hierarchies=[m_h],
-                                      y_labs=['RMSD Mean (fitted uij - input uij) ($\AA$)'])
-
-        self.log('Writing IQR rmsd for each atom (variability of quality of fit over all datasets)')
-        # calculate dataset-IQR'd rmsds
-        rmsd_iqr = numpy.subtract(*numpy.percentile(rmsds_all, [75, 25],axis=0))
-        # Output as structure
-        prefix = os.path.join(out_dir, 'rmsds_average')
-        m_h = self.custom_master_hierarchy(uij=None, iso=rmsd_iqr.tolist(), mask=flex.bool(self.atom_mask.tolist()))
-        m_f = prefix+'.pdb'
-        self.log('\t> {}'.format(m_f))
-        m_h.write_pdb_file(m_f)
-        self.log('\t> {}...png'.format(prefix))
-        # Output as b-factor plot
-        self.plot.multi_hierarchy_bar(prefix=prefix,
-                                      hierarchies=[m_h],
-                                      y_labs=['RMSD IQR (fitted uij - input uij) ($\AA$)'])
-
-    def analyse_residual_correlations(self, uij_diff, out_dir='./', max_x_width=25):
+    def analyse_fit_residual_correlations(self, uij_diff, out_dir='./', max_x_width=25):
         """Calculate correlations between the atomic residuals and the fitted-input differences"""
 
         cor_dir = easy_directory(os.path.join(out_dir, 'error_correlations'))
@@ -2046,30 +2039,27 @@ class MultiDatasetUijParameterisation(Program):
             corr[:,i] = corr_vals
 
         # Extract atom labels and model labels
-        m_h = self.blank_master_hierarchy().select(flex.bool(self.atom_mask.tolist()), copy_atoms=True)
+        fit_sel = flex.bool(self.atom_mask.tolist())
+        m_h = self.blank_master_hierarchy().select(fit_sel, copy_atoms=True)
         atm_labels = numpy.array([ShortLabeller.format(a) for a in m_h.atoms()])
         res_labels = numpy.array([ShortLabeller.format(a.parent().parent()) for a in m_h.atoms()])
         mdl_labels = numpy.array([mdl.tag for mdl in self.models])
 
         # Extract residue boundaries
-        residue_boundaries = self.partition_boundaries_custom(atom_labels=res_labels, mask=self.atom_mask.tolist())
-        residue_boundaries = residue_boundaries.select(flex.bool(self.atom_mask.tolist()))
+        residue_boundaries = self.partition_boundaries_custom(atom_labels=res_labels, mask=fit_sel).select(fit_sel)
         # Make violin plot of the correlations
-        for i_group, sel, fitter in self.fitter.levels[0]:
+        for chain_id in sorted(set([c.id for c in m_h.chains()])):
             self.log.bar()
-            self.log('Group {}'.format(i_group))
+            self.log('Chain {}'.format(chain_id))
             self.log.bar()
+            # Create a selection for each chain and select it in each hierarchy (m_h is already trimmed to fitted atoms)
+            sel = numpy.array(m_h.atom_selection_cache().selection('chain {}'.format(chain_id)), dtype=bool)
             # Extract the uij rmsds for this group
             corr_sel = corr[:,sel]
-            # Extract the residue selections for this group
-            res_labels_sel = res_labels[sel]
-            _, u_res_idxs = numpy.unique(res_labels_sel, return_index=True)
-            g_res_labs = res_labels_sel[sorted(u_res_idxs)]
-            g_res_sels = [res_labels_sel==l for l in g_res_labs]
             # Create boxplots of the rmsds by atom
             self.log('Atom-by-atom plots')
             for i_a in xrange(0, sum(sel), max_x_width):
-                filename = os.path.join(cor_dir, 'residual-correction_level-0_group_{:02d}_atoms-{:06d}-{:06d}.png'.format(i_group, i_a+1, i_a+max_x_width))
+                filename = os.path.join(cor_dir, 'residual-correction_chain-{}_atoms-{:06d}-{:06d}.png'.format(chain_id, i_a+1, i_a+max_x_width))
                 self.log('\t> {}'.format(filename))
                 self.plot.violinplot(filename=filename,
                                      y_vals=corr_sel[:,i_a:i_a+max_x_width],
@@ -2187,7 +2177,7 @@ class MultiDatasetUijParameterisation(Program):
 
         # Run 1
         phil.input.pdb = [mdl.i_pdb for mdl in self.models]
-        phil.input.labelling  = self.params.input.labelling
+        phil.input.labelling  = 'foldername'
         phil.output.parameter_file = output_eff_orig
         phil.output.output_basename = os.path.splitext(output_eff_orig)[0]
         multi_table_ones.run(params=phil)
@@ -2484,55 +2474,6 @@ class MultiDatasetUijParameterisation(Program):
                                  rotate_x_labels = True,
                                  min_bin_width = 0.1,
                                  hlines = [0.0])
-        # ------------------------------------------------------------>
-        # Correlations between variables
-        # ------------------------------------------------------------>
-        # Scatter of resolution and fit RMSDs
-        filename = fm.add_file(file_name='resolution-vs-rmsds-and-bfactors.png', file_tag='resolution_v_rmsds_scatter', dir_tag=analysis_dir_tag)
-        self.log('> {}'.format(filename))
-        self.plot.multi_scatter(filename = filename,
-                                x = table['High Resolution Limit'],
-                                y_vals = [table['Mean Fitting RMSD'],
-                                          table['Median Fitting RMSD'],
-                                          table['Average B-factor (fitted atoms) (Input)'],
-                                          table['Average B-factor (fitted atoms) (Fitted)']],
-                                x_lab = 'Resolution (A)',
-                                y_lab = ['Mean RMSD',
-                                         'Median RMSD',
-                                         'Mean Input B-factor',
-                                         'Mean Fitted B-factor'],
-                                title = 'Resolution v. fitting metrics',
-                                shape = (2,2))
-        # Scatter of R-works and fit RMSDs
-        filename = fm.add_file(file_name='r-values-vs-rmsds-and-bfactors.png', file_tag='rvalues_v_rmsds_scatter', dir_tag=analysis_dir_tag)
-        self.log('> {}'.format(filename))
-        self.plot.multi_scatter(filename = filename,
-                                x_vals = [table['Mean Fitting RMSD'],
-                                          table['Median Fitting RMSD'],
-                                          table['Average B-factor (fitted atoms) (Input)'],
-                                          table['Average B-factor (fitted atoms) (Fitted)']],
-                                y_vals = [table['R-free Change (Fitted-Input)'],
-                                          table['R-free Change (Fitted-Input)'],
-                                          table['R-free Change (Fitted-Input)'],
-                                          table['R-free Change (Fitted-Input)'],
-                                          table['R-gap Change (Fitted-Input)'],
-                                          table['R-gap Change (Fitted-Input)'],
-                                          table['R-gap Change (Fitted-Input)'],
-                                          table['R-gap Change (Fitted-Input)']],
-                                x_lab = ['Mean RMSD',
-                                         'Median RMSD',
-                                         'Mean Input B-factor',
-                                         'Mean Fitted B-factor'],
-                                y_lab = ['R-change'],
-                                legends = ['R-free Change',
-                                           'R-free Change',
-                                           'R-free Change',
-                                           'R-free Change',
-                                           'R-gap Change',
-                                           'R-gap Change',
-                                           'R-gap Change',
-                                           'R-gap Change'],
-                                shape = (2,2))
         return
 
     def tidy_output_folder(self, actions):
@@ -2705,6 +2646,7 @@ class MultiDatasetUijPlots(object):
             # Plot a superposed scatter plot
             if plot_scatter is True:
                 for x, ys in zip(positions, y):
+                    if len(ys) == 0: continue
                     xs = [x]*len(ys)
                     jitter = numpy.random.randn(len(ys)) * 0.5 * bar_width / 3.0 # Normalise to be approx width of bar
                     jitter = jitter - jitter.mean()
@@ -3048,7 +2990,7 @@ class MultiDatasetUijPlots(object):
             assert m_h.is_similar_hierarchy(reference_hierarchy)
 
         # Create a plot for each chain
-        for chain_id in [c.id for c in m_h.chains()]:
+        for chain_id in sorted(set([c.id for c in m_h.chains()])):
 
             # Create a selection for each chain and select it in each hierarchy
             sel = m_h.atom_selection_cache().selection('chain {}'.format(chain_id))
@@ -3156,6 +3098,107 @@ class MultiDatasetUijPlots(object):
                         dpi=300)
             pyplot.close(fig)
 
+    def alpha_scatter(self,
+                      prefix,
+                      hierarchies,
+                      title=None,
+                      y_lab='Isotropic B ($\AA^2$)',
+                      y_lim=None,
+                      v_line_hierarchy=None,
+                      rotate_x_labels=True,
+                      plot_mean=True,
+                      add_jitter=True,
+                      ):
+        """Plot scatter plot over atoms (by residue) with alpha to prevent overplotting for a series of hierarchies (plotted values are the average B-factors of each residue of the hierarchies)"""
+
+        m_h = hierarchies[0]
+
+        # Check all hierarchies are the same
+        for h in hierarchies:
+            assert m_h.is_similar_hierarchy(h)
+
+        colours = pyplot.cm.rainbow(numpy.linspace(0,1,len(hierarchies)))
+
+        # Create a plot for each chain
+        for chain_id in sorted(set([c.id for c in m_h.chains()])):
+
+            # Create a selection for each chain and select it in each hierarchy
+            sel = m_h.atom_selection_cache().selection('chain {}'.format(chain_id))
+            sel_hs = [h.select(sel) for h in hierarchies]
+            sel_mh = sel_hs[0]
+
+            # Filename!
+            filename = prefix + '-chain_{}.png'.format(chain_id)
+
+            # Create x-values for each residue starting from 1
+            x_vals = numpy.array(range(len(list(sel_mh.residue_groups()))))+1
+            x_labels = ['']+[ShortLabeller.format(rg) for rg in sel_mh.residue_groups()]
+
+            # Create the output figure
+            fig, axis = pyplot.subplots(nrows=1, ncols=1)
+            if title is not None: axis.set_title(label=str(title))
+            axis.set_xlabel('Residue')
+            axis.set_ylabel(y_lab)
+            if y_lim:
+                axis.set_ylim(y_lim)
+
+            # Alpha value for scatter -- TODO optimise value?
+            alpha = 1.0 / (1.0 + float(len(hierarchies))**0.5)
+
+            # Mean values to be plotted as line
+            mean_arr = numpy.zeros(x_vals.shape)
+
+            # Iterative though hierarchies
+            for i_h, h in enumerate(sel_hs):
+                # Extract b-factors from this hierarchy
+                y_vals = [numpy.array(rg.atoms().extract_b()) for rg in h.residue_groups()]
+                # Append to mean arr
+                y_mean = numpy.array([y.mean() for y in y_vals])
+                assert len(y_mean) == len(mean_arr)
+                mean_arr = mean_arr + y_mean
+                # Reformat x,y for plotting
+                y = numpy.concatenate(y_vals)
+                x = numpy.concatenate([[x]*len(yvs) for x, yvs in zip(x_vals, y_vals)])
+                if add_jitter is True:
+                    jitter = numpy.random.randn(len(x)) * 0.1 / 3.0 # Normalise to be approx width of bar
+                    jitter = jitter - jitter.mean()
+                else:
+                    jitter = 0.0
+                # Plot the scatter
+                axis.scatter(x=x+jitter, y=y, s=5, alpha=alpha, facecolor=colours[i_h], lw=0.0)
+                # Plot line
+                axis.plot(x_vals, [v.mean() for v in y_vals], '-', color=colours[i_h], alpha=0.75, zorder=5, lw=0.75)
+
+            # Skip if no values plotted
+            if (mean_arr == 0.0).all():
+                continue
+
+            if plot_mean is True:
+                mean_arr = mean_arr / float(len(hierarchies))
+                axis.plot(x_vals, mean_arr, 'k-', lw=1.0, zorder=6)
+
+            if v_line_hierarchy is not None:
+                v_lines = numpy.where(numpy.array([max(rg.atoms().extract_b()) for rg in v_line_hierarchy.select(sel).residue_groups()], dtype=bool))[0] + 1.5
+                for val in v_lines:
+                    axis.axvline(x=val, c='grey', ls='solid', label='boundaries', lw=0.5, zorder=1)
+                # Add a line at zero
+                h = axis.axvline(x=0.5, c='grey', ls='solid', label='boundaries', lw=0.5, zorder=1)
+
+            # Axis ticks & labels
+            x_ticks = numpy.arange(1, len(x_labels)+1, int(max(1.0, numpy.floor(len(x_labels)/20))))
+            #x_ticks = numpy.unique(numpy.floor(numpy.linspace(1,len(x_labels)+1,20)))
+            axis.set_xticks(x_ticks)
+            axis.set_xticklabels([x_labels[int(i)] if (i<len(x_labels)) and (float(int(i))==i) else '' for i in axis.get_xticks()])
+            # Rotate axis labels
+            if rotate_x_labels: pyplot.setp(axis.get_xticklabels(), rotation=90)
+
+            # Format and save
+            fig.tight_layout()
+            fig.savefig(filename,
+                        bbox_inches='tight',
+                        dpi=300)
+            pyplot.close(fig)
+
     @staticmethod
     def multi_hierarchy_bar(prefix,
                             hierarchies,
@@ -3187,7 +3230,7 @@ class MultiDatasetUijPlots(object):
             assert m_h.is_similar_hierarchy(h)
 
         # Create a plot for each chain
-        for chain_id in [c.id for c in m_h.chains()]:
+        for chain_id in sorted(set([c.id for c in m_h.chains()])):
 
             # Create a selection for each chain and select it in each hierarchy
             sel = m_h.atom_selection_cache().selection('chain {}'.format(chain_id))
@@ -3269,6 +3312,7 @@ class MultiDatasetUijPlots(object):
                  )
         # Axis stuff
         ax.set_title('Hierarchical Model Fit')
+        ax.set_xticks([])
         ax.xaxis.set_ticks_position('bottom')
         ax.set_ylabel('model fit \n$8\pi^2rms(\Delta U)$ ($\AA^2$)')
         ax.set_ylim(bottom=0.0)
@@ -3960,7 +4004,7 @@ class MultiDatasetHierarchicalUijFitter(object):
         for i_macro in xrange(n_macro_cycles+1):
             self.log.heading('Macrocycle {} of {}'.format(i_macro, n_macro_cycles), spacer=True)
 
-            # Things that are different for the first cycle
+            # Things that are different for the first cycle -- optimise against one dataset only
             if (i_macro == 0):
                 # Set dataset mask to the first optimisation dataset to give some reasonable starting values
                 optimisation_datasets = numpy.where(self.dataset_mask)[0].tolist()
@@ -3985,24 +4029,20 @@ class MultiDatasetHierarchicalUijFitter(object):
                 # Update tracking
                 self.update_tracking(uij_lvl=fitted_uij_by_level, step='level {}'.format(i_level+1), i_cycle=i_macro, i_level=i_level)
 
-            # Disable fitting penalties after the first cycle
-            if (i_macro == 0):
-                pass
-                # Optimise the InterLevel Amplitudes
-                #self.optimise_level_amplitudes(n_cpus=1, recursions=len(self.levels), include_residual=False)
-
-            # Fit the residuals
-            self.log.subheading('Macrocycle {} of {}: '.format(i_macro, n_macro_cycles)+'Optimising residual atomic Uijs')
-            # Update the target uij by subtracting contributions from other levels
-            self.residual.set_target_uij(target_uij=self._calculate_target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=-1))
-            # Update fitters and optimise -- always run two cycles of this
-            fitted_uij_by_level[-1] = self.residual.run(n_cpus=n_cpus, n_cycles=1)
-            # Update tracking
-            self.update_tracking(uij_lvl=fitted_uij_by_level, step='residual', i_cycle=i_macro, i_level=len(fitted_uij_by_level)-1)
+            if self.params.fit_residual:
+                # Fit the residuals
+                self.log.subheading('Macrocycle {} of {}: '.format(i_macro, n_macro_cycles)+'Optimising residual atomic Uijs')
+                # Update the target uij by subtracting contributions from other levels
+                self.residual.set_target_uij(target_uij=self._calculate_target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=-1))
+                # Update fitters and optimise -- always run two cycles of this
+                fitted_uij_by_level[-1] = self.residual.run(n_cpus=n_cpus, n_cycles=1)
+                # Update tracking
+                self.update_tracking(uij_lvl=fitted_uij_by_level, step='residual', i_cycle=i_macro, i_level=len(fitted_uij_by_level)-1)
 
             # Optimise the amplitudes between levels
             self.log.subheading('Macrocycle {} of {}: '.format(i_macro, n_macro_cycles)+'Optimising inter-level amplitudes')
             # Optimise the InterLevel Amplitudes
+            #self.optimise_level_amplitudes(n_cpus=n_cpus, recursions=len(self.levels))
             self.optimise_level_amplitudes(n_cpus=1, recursions=len(self.levels))
             # Update output
             for i, l in enumerate(self.levels):
@@ -4035,7 +4075,7 @@ class MultiDatasetHierarchicalUijFitter(object):
         for i_level, level in enumerate(self.levels):
             fitted_uij = level.extract()
             for i_dst, dataset_uij in enumerate(fitted_uij):
-                uij_valid = uij_positive_are_semi_definite(uij=dataset_uij, tol=0.001) #self.params.precision.uij_tolerance)
+                uij_valid = uij_positive_are_semi_definite(uij=dataset_uij, tol=0.01) #self.params.precision.uij_tolerance)
                 if uij_valid.sum() > 0.0:
                     fmt_list = [(i+1, level.get_atom_group(index=i).label, i_level+1, uij_fmt_str.format(*tuple(dataset_uij[i])), eig_fmt_str.format(*tuple(sym_mat3_eigenvalues(dataset_uij[i])))) for i in numpy.where(uij_valid)[0]]
                     err_msgs = ['Atom {:>5d} (group {}, level {}): \n\t\tUij -> ({})\n\t\tEigenvalues -> ({})'.format(*d) for d in fmt_list]
@@ -4414,7 +4454,8 @@ def build_levels(model, params, log=None):
 
     if 'chain' in params.levels.auto_levels:
         log('Level {}: Creating level with groups for each chain'.format(len(levels)+1))
-        levels.append([PhenixSelection.format(c) for c in filter_h.chains()])
+        groups = [PhenixSelection.format(c) for c in filter_h.chains()]
+        levels.append(sorted(set(groups))) # Chains can be present multiple times
         labels.append('chain')
     if 'auto_group' in params.levels.auto_levels:
         log('Level {}: Creating level with groups determined by phenix.find_tls_groups'.format(len(levels)+1))
@@ -4504,6 +4545,9 @@ def run(params, args=None):
         log.heading('Input parameters')
         log(master_phil.format(params).as_str())
 
+        with open(os.path.join(params.output.out_dir, 'params.eff'), 'w') as fh:
+            fh.write(master_phil.format(params).as_str())
+
         log.heading('Processing input parameters')
 
         if params.settings.debug:
@@ -4575,7 +4619,27 @@ def run(params, args=None):
             label_func = filename
         else:
             raise Exception('Invalid labelling function: {}'.format(params.input.labelling))
-        models = [CrystallographicModel.from_file(f).label(tag=label_func(f)) for f in params.input.pdb]#[:10]
+        models = []
+        for f in params.input.pdb:
+            if params.input.model_type == "crystallographic":
+                m = CrystallographicModel.from_file(f)
+            else:
+                m = AtomicModel.from_file(f)
+            l = label_func(f)
+            if not l:
+                raise Sorry('No label generated using labelling function "{}"\n\tLabel {}\n\tFile {}'.format(params.input.labelling, l, f))
+            m.label(tag=l)
+            models.append(m)
+
+        # Check for duplicate labels
+        all_labels = [m.tag for m in models]
+        unq_labels = sorted(set(all_labels))
+        if len(unq_labels) != len(models):
+            counts = [(l, all_labels.count(l)) for l in unq_labels]
+            dups = ['{} (found {} times)'.format(l,c) for l,c in counts if c>1]
+            raise Sorry('Duplicate labels generated for models: \n\t{}'.format('\n\t'.join(dups)))
+
+        # Sort models for convenience
         models = sorted(models, key=lambda m: m.tag)
         log('{} models loaded'.format(len(models)))
 
@@ -4626,7 +4690,7 @@ def run(params, args=None):
         if len(models) > 1:
             p.calculate_amplitudes_dendrogram(out_dir_tag='analysis')
 
-        if p.params.analysis.diagnostics is True:
+        if p.params.analysis.generate_diagnostic_graphs is True:
             p.run_diagnostics()
 
         #------------------------------------------------------------------------------#

@@ -58,6 +58,7 @@ def default_secondary_structure_selections(hierarchy):
 
 def default_secondary_structure_selections_filled(hierarchy, verbose=False):
     """Return secondary structure selections and fill gaps with new selections"""
+    hierarchy = protein(hierarchy, copy=True)
 
     log = ScreenLogger(stdout=verbose)
 

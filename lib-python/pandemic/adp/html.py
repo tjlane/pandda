@@ -396,7 +396,7 @@ def create_levels_tab(parameterisation):
                          'active'  : (i_group==0),
                          'body'  : [
                              {'width':12, 'text':'<br>'.join(['Number of atoms: {}'.format(sum(sel))])}
-                             ] + tls_mat_dicts_core + image_dicts + [tls_mat_dicts_dsts] + [tls_amp_dict, tls_ori_dict]
+                             ] + tls_mat_dicts_core + image_dicts + [tls_mat_dicts_dsts] #+ [tls_amp_dict, tls_ori_dict]
                         }
             level_tab['group_tabs'].append(group_tab)
     # -------------------------------->

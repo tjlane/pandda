@@ -35,11 +35,9 @@ class _Simplex(object):
 
 class TLSSimplex(_Simplex):
     _steps = {
-            'vibration_delta_min'   : 1e-3,  # minimum absolute change in matrix values
-            'libration_delta_min'   : 1e-3,  # minimum absolute change in matrix values
+            'vibration_delta'       : 1e-3,  # minimum absolute change in matrix values
+            'libration_delta'       : 1e-3,  # minimum absolute change in matrix values
             'amplitude_delta_min'   : 1e-6,  # minimum absolute change in amplitude values
-            'vibration_delta_frac'  : 1e-2,  # fractional change in matrix values
-            'libration_delta_frac'  : 1e-2,  # fractional change in matrix values
             'amplitude_delta_frac'  : 1e-2,  # fractional change in amplitude values
             }
 
@@ -91,24 +89,23 @@ class TLSSimplex(_Simplex):
                         n_c = 6
                         c_deltas = self.get_sym_mat3_deltas(
                                 mat=m.T,
-                                delta_frac=self.get('vibration_delta_frac'),
-                                delta_min=self.get('vibration_delta_min'),
+                                delta_min=self.get('vibration_delta'),
                                 rot=(d.R_ML if d else None),
+                                base_set=0,
                                 )
                     elif (c=='L'):
                         n_c = 6
                         c_deltas = self.get_sym_mat3_deltas(
                                 mat=m.L,
-                                delta_frac=self.get('libration_delta_frac'),
-                                delta_min=self.get('libration_delta_min'),
+                                delta_min=self.get('libration_delta'),
                                 rot=(d.R_ML if d else None),
+                                base_set=0,
                                 )
                     elif (c=='S'):
                         n_c = 8
                         c_deltas = self.get_mat3_deltas(
                                 mat=m.S,
-                                delta_frac=self.get('libration_delta_frac'),
-                                delta_min=self.get('libration_delta_min'),
+                                delta_min=self.get('libration_delta'),
                                 rot=(d.R_ML if d else None),
                                 )
                         # Must truncate this to 8 values (don't need Szz)
@@ -140,36 +137,51 @@ class TLSSimplex(_Simplex):
         assert deltas.shape == (n_all+1, n_all)
         return deltas
 
-    def get_sym_mat3_deltas(self, mat, delta_frac, delta_min, rot=None):
+    def get_sym_mat3_deltas(self, mat, delta_min=1e-6, rot=None, base_set=0):
         """Get deltas caused by changes to a symmetric matrix in a rotated frame"""
 
         if rot is None:
             rot = self._I_sqr
 
-        # Create rotation matrix
+        # Create rotation matrix: R maps to diagonalised frame
         R = matrix.sqr(rot)
         R_t = R.transpose()
 
-        # Transform input matrix
-        mat_R = (R * matrix.sym(sym_mat3=mat) * R_t).as_sym_mat3()
+        # Transform input matrix to the rotated frame
+        mat_R = R * matrix.sym(sym_mat3=tuple(mat)) * R_t
 
         deltas = []
         n = 6
 
-        mat_deltas = [
-                (1., 1., 1., 0., 0., 0.),
-                (1.,-1., 0., 0., 0., 0.),
-                (0., 1.,-1., 0., 0., 0.),
-                (0., 0., 0., 1., 0., 0.),
-                (0., 0., 0., 0., 1., 0.),
-                (0., 0., 0., 0., 0., 1.),
+        mat_deltas_all = [
+                [
+                    ( 1., 0., 0., 0., 0., 0.),
+                    ( 0., 1., 0., 0., 0., 0.),
+                    ( 0., 0., 1., 0., 0., 0.),
+                    ( 0., 0., 0., 1., 0., 0.),
+                    ( 0., 0., 0., 0., 1., 0.),
+                    ( 0., 0., 0., 0., 0., 1.),
+                    ],
+                [
+                    (-1.,-1.,-1., 0., 0., 0.),
+                    ( 1.,-1., 0., 0., 0., 0.),
+                    ( 0., 1.,-1., 0., 0., 0.),
+                    ( 0., 0., 0., 1., 0., 0.),
+                    ( 0., 0., 0., 0., 1., 0.),
+                    ( 0., 0., 0., 0., 0., 1.),
+                    ],
                 ]
+
+        assert base_set < len(mat_deltas_all)
+        mat_deltas = mat_deltas_all[base_set]
 
         for i in range(n):
             # Form the delta matrix in the rotated frame
             d_R = list(mat_deltas[i])
             for i_el in range(n):
-                d_R[i_el] *= delta_min
+                # Get the sign of the current value of the element
+                sgn = (1., -1.)[mat_R[i_el] > 0.0]
+                d_R[i_el] *= (sgn * delta_min)
             # Transform back
             d = (R_t * matrix.sym(sym_mat3=tuple(d_R)) * R).as_sym_mat3()
             # Append to output
@@ -180,7 +192,7 @@ class TLSSimplex(_Simplex):
         assert (deltas.shape == (n,n))
         return deltas
 
-    def get_mat3_deltas(self, mat, delta_frac, delta_min, rot=None):
+    def get_mat3_deltas(self, mat, delta_min=1e-6, rot=None):
         """Get deltas caused by changes to a non-symmetric matrix in a rotated frame"""
 
         if rot is None:
@@ -190,19 +202,18 @@ class TLSSimplex(_Simplex):
         R = matrix.sqr(rot)
         R_t = R.transpose()
 
-        # Transform input matrix
-        mat_R = (R * matrix.sqr(elems=mat) * R_t).as_mat3()
+        # Transform input matrix to the rotated frame
+        mat_R = R * matrix.sqr(tuple(mat)) * R_t
 
         deltas = []
         n = 9
         for i in range(n):
-            # Generate the delta
-            v = mat_R[i] * delta_frac
-            if abs(v) < delta_min:
-                v = delta_min
+            i_el = i
             # Form the delta matrix in the rotated frame
             d_R = [0.0,]*n
-            d_R[i] = v
+            # Get the sign of the current value of the element
+            sgn = (1., -1.)[mat_R[i_el] > 0.0]
+            d_R[i_el] = (sgn * delta_min)
             # Transform back
             d = (R_t * matrix.sqr(tuple(d_R)) * R).as_mat3()
             # Append to output
