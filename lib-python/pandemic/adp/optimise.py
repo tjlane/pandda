@@ -14,7 +14,7 @@ from bamboo.maths.functions import rms, get_function
 from giant.structure.tls import tls_str_to_n_params, get_t_l_s_from_vector
 from giant.structure.uij import sym_mat3_eigenvalues
 from mmtbx.tls.utils import uij_eigenvalues, TLSMatricesAndAmplitudesList
-from mmtbx.tls.optimise_mode_amplitudes import MultiLevelMultiDatasetUijAmplitudeFunctionalAndGradientCalculator
+from mmtbx.tls.optimise_amplitudes import MultiGroupMultiDatasetUijAmplitudeFunctionalAndGradientCalculator
 
 from pandemic.adp.simplex import TLSSimplex, UijSimplex
 
@@ -38,7 +38,9 @@ def _wrapper_optimise(args):
 
 ############################################################################
 
+
 class BaseOptimiser(object):
+
 
     def __init__(self,
                  target_uij,
@@ -1109,57 +1111,69 @@ class OptimiseAmplitudes:
 
     def __init__(self,
             target_uijs,
+            target_weights,
+            base_amplitudes,
             base_uijs,
-            variables,
-            initial_multipliers=None,
+            base_atom_indices,
+            dataset_hash,
+            residual_uijs,
+            residual_amplitudes=None,
             residual_mask=None,
             convergence_tolerance=1e-5):
 
-        self.convergence_tolerance=convergence_tolerance
-
-        # Optimisation variables
-        self.variables = variables
-
-        # Mode and target uijs
-        assert base_uijs.all() == (self.variables.n_opt, self.variables.n_atm)
-        assert target_uijs.all() == (self.variables.n_dst, self.variables.n_atm)
-        self.base_uijs = base_uijs
-        self.target_uijs = target_uijs
+        # Compatibility of parameters is checked in the optimiser so not checking here
 
         # Mask for residual optimisation
         if (residual_mask is not None):
             residual_mask = flex.bool(map(bool, residual_mask))
-        else:
-            residual_mask = flex.bool(n_dst, True)
-        assert residual_mask.all() == (self.variables.n_dst,)
-        self.residual_mask = residual_mask
 
-        # Input and eventual output amplitude vectors
-        if (initial_multipliers is None):
-            initial_multipliers = flex.double(self.variables.n_opt, 1.0)
-        else:
-            initial_multipliers = flex.double(initial_multipliers)
-        assert initial_multipliers.all() == (self.variables.n_opt,)
-        self.initial = initial_multipliers
+        self.target_uijs        = target_uijs
+        self.target_weights     = target_weights
+        self.base_amplitudes    = base_amplitudes
+        self.base_uijs          = base_uijs
+        self.base_atom_indices  = base_atom_indices
+        self.dataset_hash       = dataset_hash
+        self.residual_uijs      = residual_uijs
+        self.residual_amplitudes = residual_amplitudes
+        self.residual_mask      = residual_mask
+        self.convergence_tolerance = convergence_tolerance
+
+        self.initial = None
         self.result = None
 
     def run(self):
-        return self._optimise()
+        self._optimise()
+        return self
 
     def _optimise(self):
 
         self.log = logs.Log()
 
         # Setup
-        self.f_g_calculator = MultiLevelMultiDatasetUijAmplitudeFunctionalAndGradientCalculator(
+        self.f_g_calculator = MultiGroupMultiDatasetUijAmplitudeFunctionalAndGradientCalculator(
                 self.target_uijs,
+                self.base_amplitudes,
                 self.base_uijs,
-                self.initial,
-                self.variables.group_indices,
-                self.variables.dataset_indices,
-                self.variables.wgts)
-        self.f_g_calculator.set_residual_mask(self.residual_mask)
-        self.x = self.f_g_calculator.x
+                self.base_atom_indices,
+                self.dataset_hash,
+                self.residual_uijs,
+                self.target_weights)
+        # Which datasets should be used for residual optimisation
+        if self.residual_mask is not None:
+            self.f_g_calculator.set_residual_mask(self.residual_mask)
+
+        # Apply residual amplitudes if given
+        if self.residual_amplitudes is not None:
+            current_amps = self.f_g_calculator.x
+            isel = flex.size_t_range(current_amps.size()-self.residual_uijs.size(), current_amps.size())
+            assert len(isel) == len(self.residual_uijs)
+            assert len(isel) == len(self.residual_amplitudes)
+            assert max(isel) == current_amps.size() - 1
+            current_vals = current_amps.select(isel)
+            assert current_vals.all_eq(1.0)
+            self.f_g_calculator.x.set_selected(isel, self.residual_amplitudes)
+
+        self.initial = copy.deepcopy(self.f_g_calculator.x)
 
         # Optimise
         t_params = lbfgs.termination_parameters(
@@ -1176,7 +1190,6 @@ class OptimiseAmplitudes:
         self.result[self.result < 0.0] = 0.0 # Report this!?!
 
         # Tidy up
-        del self.x
         del self.f_g_calculator # Delete after usage as not pickle-enabled
 
         return self
@@ -1203,10 +1216,10 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
                 verbose=verbose,
                 log=log)
 
-        self._n_lvl = len(levels)
-        self._n_tls = self.params.n_tls_modes_per_tls_group
-        self._n_dst = target_uij.shape[0]
-        self._n_atm = target_uij.shape[1]
+        self.n_lvl = len(levels)
+        self.n_tls = self.params.n_tls_modes_per_tls_group
+        self.n_dst = target_uij.shape[0]
+        self.n_atm = target_uij.shape[1]
 
         self.group_tree = group_tree
 
@@ -1220,64 +1233,50 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
         self.level_index_hash['X'] = len(levels)
         # Map between l.index and number of groups in level
         self.level_n_groups_hash = {l.index:l.n_groups() for l in levels}
-        self.level_n_groups_hash['X'] = residual.n_atoms()
         # Mapping between (level, group) and atom selection
         self.level_group_selection_hash = {}
         for l in levels:
             for g_n, g_s, g_f in l:
                self.level_group_selection_hash.setdefault(l.index,{})[g_n] = g_s
-        for a_n, a_s, a_f in residual:
-            # Reformat the residual selection into the same format as the level selections
-            sel = numpy.zeros(residual.n_atoms(), dtype=bool)
-            sel[a_s] = True
-            self.level_group_selection_hash.setdefault('X',{})[a_n] = sel
 
         # Which datasets to be used for optimising residuals
-        self.set_residual_mask(numpy.ones(self._n_dst, dtype=bool))
+        self.set_residual_mask(numpy.ones(self.n_dst, dtype=bool))
 
         # Extract the current uijs for levels and residual
         self.refresh(levels=levels, residual=residual)
 
     def set_residual_mask(self, mask):
-        assert mask.size == self._n_dst
+        assert mask.size == self.n_dst
         self.residual_mask = mask
 
     def refresh(self, levels, residual):
         """Update the input uijs and the group multipliers"""
-
         # Extract level uijs for all levels and atoms
         self.level_uijs = numpy.array([l.extract_core() for l in levels])
-        assert self.level_uijs.shape == (self._n_lvl, self._n_tls, self._n_dst, self._n_atm, 6)
+        assert self.level_uijs.shape == (self.n_lvl, self.n_tls, self.n_dst, self.n_atm, 6)
         self.residual_uijs = residual.extract(expanded=False)
-
         # Amplitudes for each of the groups (what will be optimised in this object)
         self.group_multipliers = self._extract_multipliers(levels, residual)
-
         self._ready = True
 
     def _extract_multipliers(self, levels, residual):
-
-        mults = [numpy.zeros(shape=(l.n_groups(), self._n_tls, self._n_dst)) for l in levels] + \
+        mults = [numpy.zeros(shape=(l.n_groups(), self.n_tls, self.n_dst)) for l in levels] + \
                 [numpy.ones(residual.n_atoms())] # These are relative to the input
         for i_l, l in enumerate(levels):
             for i_g, (n_g, g_s, g_f) in enumerate(l):
-                for i_tls in range(self._n_tls):
+                for i_tls in range(self.n_tls):
                     m = g_f.parameters().get(i_tls)
                     mults[i_l][i_g, i_tls, :] = m.amplitudes.values
         return mults
 
     def apply_multipliers(self, levels, residual):
         """Apply the optimised multipliers to the input levels"""
-
         # Iterate through levels, fitters and apply multiplier to each set of tls amplitudes
         for i_lvl, level in enumerate(levels):
             for i_g, (g_n, g_s, g_f) in enumerate(level):
                 mults = self.group_multipliers[i_lvl][i_g]
-                for i_tls in range(self._n_tls):
+                for i_tls in range(self.n_tls):
                     mode = g_f.parameters().get(index=i_tls)
-                    #vals = mode.amplitudes.values
-                    #newv = mults[i_tls] * vals
-                    #mode.amplitudes.set(newv)
                     mode.amplitudes.set(mults[i_tls])
         # And for the residual level
         for a_n, a_s, a_f in residual:
@@ -1287,22 +1286,25 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
 
         self._ready = False
 
-    def _generate_level_group_sets(self, tree, recursions=1):
+    def _generate_level_group_sets(self, tree, max_recursions=None):
 
-        def get_linked_level_group_pairs_recursive(tree, level, group, recursions=1):
+        def get_linked_level_group_pairs_recursive(tree, level, group, max_recursions=None):
             t_out = []
             linked_groups = tree.get(level, {}).get(group, None)
             if linked_groups is None:
                 return []
             # Get the linked groups on this level
             for l in sorted(linked_groups.keys()):
+                if l == 'X': continue
                 for g in linked_groups.get(l):
                     t_out.append((l,g))
             # Get the linked groups from the next level
             r_out = []
-            if recursions > 0:
+            if (max_recursions is None) or (max_recursions > 0):
+                if max_recursions is not None:
+                    max_recursions -= 1
                 for l,g in t_out:
-                    r_out.extend(get_linked_level_group_pairs_recursive(tree, l, g, recursions-1))
+                    r_out.extend(get_linked_level_group_pairs_recursive(tree, l, g, max_recursions))
             return t_out + r_out
 
         job_list = []
@@ -1310,30 +1312,31 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
         # Need to generate sets for the first n_levels - recursions
         for i_lvl, l1 in enumerate(sorted(tree.keys())):
             # Check if already optimised all
-            if (i_lvl>0) and (i_lvl+recursions > n_links):
+            if (i_lvl>0) and ((max_recursions is None) or (i_lvl+max_recursions > n_links)):
                 break
             l_jobs = []
             l_tree = tree[l1]
             for g1 in sorted(l_tree.keys()):
                 lg_pairs = [(l1,g1)]
-                if recursions > 0:
-                    linked_pairs = get_linked_level_group_pairs_recursive(tree, l1, g1, recursions-1) # this is the first recursion
+                if (max_recursions is None) or (max_recursions > 0):
+                    if max_recursions is not None:
+                        max_recursions -= 1
+                    linked_pairs = get_linked_level_group_pairs_recursive(tree, l1, g1, max_recursions)
                     lg_pairs.extend(linked_pairs)
                 l_jobs.append(lg_pairs)
             job_list.append(l_jobs)
 
         return job_list
 
-    def _generate_optimisation_jobs_from_sets(self, level_group_set):
+    def _generate_optimisation_jobs_from_sets(self, level_group_set, optimise_residual=True):
         """Generate control list for optimisation -- if datasets are independent, can be optimised separately, etc.."""
 
-        dataset_indices = range(self._n_dst)
+        dataset_indices = range(self.n_dst)
 
         output = []
         for s in level_group_set:
             # Generate output groups for each dataset, or combined, depending on whether contains residual
-            levels, groups = zip(*s)
-            if 'X' in levels:
+            if optimise_residual:
                 output.append((dataset_indices, s))                 # One optimisation job
             else:
                 output.extend([([i], s) for i in dataset_indices])  # One optimsation job for each dataset
@@ -1350,167 +1353,139 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
         op = self._op
 
         l_mults = numpy.zeros_like(self.level_uijs)
-        r_mults = numpy.zeros_like(self.residual_uijs)
 
-        for i_l in xrange(self._n_lvl):
+        for i_l in xrange(self.n_lvl):
             l_n = self.level_labels[i_l]
             for i_g in xrange(self.level_n_groups_hash[l_n]):
                 g_n = i_g + 1
                 # Skip the groups being optimised
-                if op.l_g_bools[i_l][i_g]:
+                if op.optimisation_groups_mask[i_l][i_g]:
                     continue
                 g_s = self.level_group_selection_hash[l_n][g_n]
                 # Skip groups outside the atom selection
-                if not (g_s * op.i_atm).any():
+                if not (g_s * op.b_atm).any():
                     continue
                 # Extract multipliers
-                for i_t in xrange(self._n_tls):
+                for i_t in xrange(self.n_tls):
                     for i_d in op.i_dst: # Only need to iterate over selected datasets
                         l_mults[i_l, i_t, i_d, g_s] = self.group_multipliers[i_l][i_g, i_t, i_d]
 
-        # And for the residual
-        r_n = 'X'
-        i_r = self.level_index_hash[r_n]
-        for i_a in xrange(self._n_atm):
-            a_n = i_a + 1
-            if op.l_g_bools[i_r][i_a]:
-                continue
-            a_s = self.level_group_selection_hash[r_n][a_n]
-            # Skip groups outside the atom selection
-            if not (a_s * op.i_atm).any():
-                continue
-            r_mults[a_s] = self.group_multipliers[-1][a_s]
-
         # Multiply the fitted uijs and subtract them from target
-        o_fitted =  (l_mults * self.level_uijs).sum(axis=(0,1)) + (r_mults * self.residual_uijs)
+        o_fitted = (l_mults * self.level_uijs).sum(axis=(0,1))
+        if not op.optimise_residual:
+            o_fitted = o_fitted + self.residual_uijs
 
         # Extract the ones required
-        t_uij = (self.target_uij - o_fitted)[op.i_dst][:, op.i_atm]
-
+        t_uij = (self.target_uij - o_fitted)[op.i_dst][:, op.b_atm]
         assert t_uij.shape == (op.n_dst, op.n_atm, 6)
 
+        # Reshape for output
         t_uij_flex = flex.sym_mat3_double(t_uij.reshape((op.n_dst*op.n_atm,6)))
         t_uij_flex.reshape(flex.grid((op.n_dst,op.n_atm)))
 
-        # Reshape for output
-        return t_uij_flex
+        # Extract optimisation weights
+        wgts = self.weights[op.i_dst][:,op.b_atm]
+        # Renormalise weights
+        wgts = wgts / wgts.mean()
+        # Do with wgts as n_dst*n_atm (but as 1d array for speed!)
+        wgts = flex.double(wgts.reshape((op.n_dst*op.n_atm,)).tolist())
+        wgts.reshape(flex.grid((op.n_dst, op.n_atm)))
+
+        return t_uij_flex, wgts
 
     def _extract_fitted_for_optimise(self):
         op = self._op
 
-        muls = numpy.zeros(op.n_opt)
-        uijs = numpy.zeros((op.n_opt, op.n_atm, 6))
+        muls_base = flex.double(op.n_base, 1.0)
+        uijs_base = []
+        sels_base = []
+
+        # Calculate new atomic indexes of the truncated set of atoms from the full set of indices
+        i_atm_rel = -1*numpy.ones(self.n_atm, dtype=int)
+        i_atm_rel[op.b_atm] = numpy.arange(op.n_atm)
 
         i = 0
-        for (l, g) in op.l_g_pairs:
+        for (l, g) in op.optimisation_groups_list:
             # Map labels to indices
             i_l = self.level_index_hash[l]
             i_g = g - 1
             # Extract atom selection for group
             g_s = self.level_group_selection_hash[l][g]
 
-            # Masked selection
-            g_s_mask = g_s[op.i_atm]
-            # Combined selection
-            g_s_comb = g_s*op.i_atm
+            # Combined selection (relative to the full set of atoms)
+            # Not sure of any case where the whole group would not be selected, but ...
+            g_s_mult = g_s*op.b_atm
+            # Map to indices on the masked array (relative to the truncated set)
+            new_i_sel = flex.size_t(i_atm_rel[g_s_mult].tolist())
+            n_sel = len(new_i_sel)
+            # Extract uijs for tls modes and datasets
+            for i_t in op.i_tls:
+                for i_d in op.i_dst:
+                    u = self.level_uijs[i_l, i_t, i_d, g_s_mult]
+                    uijs_base.append(flex.sym_mat3_double(u.reshape((n_sel,6))))
+                    sels_base.append(new_i_sel)
+                    muls_base[i] = self.group_multipliers[i_l][i_g, i_t, i_d]
+                    i += 1
+        assert i == op.n_base
 
-            if l != 'X':
-                # Extract uijs for tls modes and datasets
-                for i_t in op.i_tls:
-                    for i_d in op.i_dst:
-                        uijs[i, g_s_mask] = self.level_uijs[i_l, i_t, i_d, g_s_comb]
-                        muls[i] = self.group_multipliers[i_l][i_g, i_t, i_d]
-                        i += 1
-            else:
-                # Extract residual
-                uijs[i, g_s_mask] = self.residual_uijs[g_s_comb]
-                muls[i] = self.group_multipliers[i_l][i_g]
-                i += 1
+        # Extract residual to be optimised
+        if op.optimise_residual:
+            uijs_res = flex.sym_mat3_double(self.residual_uijs[op.b_atm])
+            muls_res = flex.double(self.group_multipliers[-1][op.b_atm].tolist())
+        else:
+            uijs_res = flex.sym_mat3_double(op.n_atm, (0.,0.,0.,0.,0.,0.))
+            muls_res = None
 
-        assert i == op.n_opt
+        # Mark which elements belong to which datasets
+        dataset_hash = flex.size_t(range(op.n_dst)*op.n_grp*op.n_tls)
 
-        # Reshape to flex for optimisation
-        uijs_flex = flex.sym_mat3_double(uijs.reshape((op.n_opt*op.n_atm,6)))
-        uijs_flex.reshape(flex.grid((op.n_opt,op.n_atm)))
+        return (muls_base, uijs_base, sels_base, uijs_res, muls_res, dataset_hash)
 
-        return muls, uijs_flex
-
-    def set_variables(self, level_group_pairs, dataset_indices):
+    def set_variables(self, level_group_pairs, dataset_indices, optimise_residual):
         """Prepare for optimisation"""
 
-        # Find which levels are being optimised
-        group_pairs = [p for p in level_group_pairs if p[0]!='X']
-        resdl_pairs = [p for p in level_group_pairs if p[0]=='X']
-
-        level_nums = sorted(set(zip(*group_pairs)[0]))
-        level_indices = [self.level_index_hash[l] for l in level_nums]    # Indices relative to the full list of levels
-
-        # Generate combined atom mask for all groups
-        atom_selection = numpy.zeros(self._n_atm, dtype=bool)
+        # Generate combined atom mask for all groups -- which atoms are included in optimisation
+        atom_selection_bool = numpy.zeros(self.n_atm, dtype=bool)
         for (l,g) in level_group_pairs:
             sel = self.level_group_selection_hash[l][g]
-            atom_selection[sel] = True
+            atom_selection_bool[sel] = True
+        atom_selection_isel = flex.size_t(numpy.where(atom_selection_bool)[0].tolist())
 
         # Numbers for checks and iterators
-        n_lvl = len(level_indices)
-        n_grp = len(group_pairs) # Number of non-residual groups
-        n_res = len(resdl_pairs) # Number of residual groups
-        n_tls = self._n_tls
+        n_grp = len(level_group_pairs) # Number of non-residual groups
+        n_tls = self.n_tls
         n_dst = len(dataset_indices)
-        n_opt = (n_grp * n_tls * n_dst) + n_res # Total number of amplitudes
-        n_atm = sum(atom_selection)
+        n_atm = len(atom_selection_isel)
+        # Number of parameters in optimisation
+        n_base = (n_grp * n_tls * n_dst) # Total number of amplitudes
+        n_resl = n_atm * int(optimise_residual)
 
         # Create a boolean mask for the levels/groups/datasets being optimised
-        opt_l_g_mask = [numpy.zeros(level_row.shape[0], dtype=bool) for level_row in self.group_multipliers]
-        opt_lvl_labs = []
-        opt_dst_labs = []
-        # Mapping between the optimisation
-        #atm_masks = numpy.zeros((n_opt, n_atm), dtype=bool)
+        level_group_mask = [numpy.zeros(level_row.shape[0], dtype=bool) for level_row in self.group_multipliers]
         # Create mapping between optimisation values and the level/group/affected uijs
         for i_grp, (l,g) in enumerate(level_group_pairs):
             i_l = self.level_index_hash[l]
-            i_g = (g - 1) # Possibly dangerous shortcut
-
+            i_g = (g - 1) # XXX Possibly dangerous shortcut XXX
             # Record this group as being optimised
-            opt_l_g_mask[i_l][i_g] = True
-
-            # Store the atom selection this optimisation variable maps to
-            #atm_masks[i_grp] = self.level_group_selection_hash[l][g][atom_selection]
-
-            # Store the level and dataset this optimisation variable maps to
-            if l != 'X':
-                opt_lvl_labs.extend([level_nums.index(l)]*n_dst*n_tls)   # Using indices relative to the selected values
-                opt_dst_labs.extend(range(n_dst)*n_tls)                  # Using indices relative to the selected values
-            else:
-                opt_lvl_labs.append(-1) # "No" level
-                opt_dst_labs.append(-1)  # "No" dataset
-
-        # Extract optimisation weights
-        wgts = self.weights[dataset_indices][:,atom_selection]
-        # Renormalise weights
-        wgts = wgts / wgts.mean()
-
-        # Do with wgts as n_dst*n_atm (but as 1d array for speed!)
-        wgts = flex.double(wgts.reshape((n_dst*n_atm,)).tolist())
-        wgts.reshape(flex.grid((n_dst, n_atm)))
+            level_group_mask[i_l][i_g] = True
 
         self._op = Info({
-            #'i_lvl' : level_indices,
-            'i_dst' : dataset_indices,   # Indices of datasets in optimisation (relative to full list)
-            'i_tls' : range(n_tls),      # Indices of tls modes in optimisation (relative to full list)
-            'i_atm' : atom_selection,    # Atom mask relative to the full atom array
-            'n_lvl' : n_lvl,             # Number of levels in optimisation (not including residual)
-            'n_tls' : n_tls,             # Number of tls modes in optimisation (currently all)
-            'n_dst' : n_dst,             # Number of datasets in optmisation
-            'n_atm' : n_atm,             # Total number of atoms in uij array
-            'n_opt' : n_opt,             # Number of optimisation variables
+            'i_dst' : dataset_indices,      # Indices of datasets in optimisation (relative to full list)
+            'i_tls' : range(n_tls),         # Indices of tls modes in optimisation (relative to full list)
+            'i_atm' : atom_selection_isel,  # Atom mask relative to the full atom array
+            'b_atm' : atom_selection_bool,  # Atom mask relative to the full atom array
+            'n_grp' : n_grp,                # Number of groups being optimised
+            'n_tls' : n_tls,                # Number of tls modes in optimisation (currently all)
+            'n_dst' : n_dst,                # Number of datasets in optmisation
+            'n_atm' : n_atm,                # Total number of atoms in uij array
+            'n_base' : n_base,              # Number of amplitudes from base elements
+            'n_resl' : n_resl,              # Number of amplitudes from residual
+            'n_amps' : n_base + n_resl,     # Total number of amplitudes
             # Arrays for the optimisation variables
-            'l_g_pairs' : level_group_pairs,
-            'l_g_bools' : opt_l_g_mask,
-            'dataset_indices' : flex.int(opt_dst_labs),
-            'group_indices' : flex.int(opt_lvl_labs),
-            # Masked Uij weights
-            'wgts'   : wgts,
+            'optimisation_groups_list' : level_group_pairs,
+            'optimisation_groups_mask' : level_group_mask,
+            # Flag
+            'optimise_residual': optimise_residual,
             })
 
     def _extract_values(self, variables=None):
@@ -1520,7 +1495,7 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
             variables = self._op
         # Iterate through objects and inject requested parameter values
         values = []
-        for (l, g) in variables.l_g_pairs:
+        for (l, g) in variables.optimisation_groups_list:
             i_l = self.level_index_hash[l]
             i_g = g - 1
             if (l != 'X'):
@@ -1536,39 +1511,44 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
             variables = self._op
         # Iterate through objects and extract requested parameter values
         values = collections.deque(values)
-        for (l, g) in variables.l_g_pairs:
+        for (l, g) in variables.optimisation_groups_list:
             i_l = self.level_index_hash[l]
             i_g = g - 1
-            if l != 'X':
-                for i_tls in variables.i_tls:
-                    for i_dst in variables.i_dst:
-                        self.group_multipliers[i_l][i_g, i_tls, i_dst] = values.popleft()
-            else:
-                self.group_multipliers[-1][i_g] = values.popleft()
+            for i_tls in variables.i_tls:
+                for i_dst in variables.i_dst:
+                    self.group_multipliers[i_l][i_g, i_tls, i_dst] = values.popleft()
 
-        assert len(values) == 0, 'not all values have been popped'
+        # Remaining values should be the amplitudes of the residuals (regardless of whether optimised)
+        assert len(values) == variables.n_atm
+
+        if variables.optimise_residual:
+            self.group_multipliers[-1][variables.b_atm] = numpy.array(values)
+        else:
+            assert (numpy.array(values) == 1.0).all()
+
+        return
 
     #===========================================+>
 
-    def optimise(self, n_cpus=1, recursions=1):
+    def optimise(self, n_cpus=1, max_recursions=None, optimise_residual=True):
         """Optimise the amplitudes of a series of TLS/Uij Levels"""
         assert self._ready is True, 'Not ready for optimise -- use .refresh() first'
 
         # Optimisation sets of which amplitudes should be co-optimised
-        level_group_sets = self._generate_level_group_sets(self.group_tree, recursions=recursions)
+        level_group_sets = self._generate_level_group_sets(self.group_tree, max_recursions=max_recursions)
 
         self.log.heading('Running Amplitude Optimisations')
 
         for lg_set in level_group_sets:
-            jobs_input = self._generate_optimisation_jobs_from_sets(lg_set)
+            jobs_input = self._generate_optimisation_jobs_from_sets(lg_set, optimise_residual=optimise_residual)
             # Perform jobs sequentially
             chunk_size = min(len(jobs_input), 100*n_cpus)
             for i in xrange(0, len(jobs_input), chunk_size):
                 self.log('Running jobs {} -> {} (of {})'.format(1+i, min(1+i+chunk_size, len(jobs_input)), len(jobs_input)))
                 j_chunk = jobs_input[i:i+chunk_size]
-                self.optimise_level_amplitudes(jobs_input=j_chunk, n_cpus=n_cpus)
+                self.optimise_level_amplitudes(jobs_input=j_chunk, n_cpus=n_cpus, optimise_residual=optimise_residual)
 
-    def optimise_level_amplitudes(self, jobs_input, n_cpus=1):
+    def optimise_level_amplitudes(self, jobs_input, n_cpus=1, optimise_residual=True):
         # Optimise all amplitudes dataset-by-dataset
         jobs = []
 
@@ -1596,7 +1576,11 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
                 for j in range(0,len(all_grps), 10):
                     self.log('\t' + ', '.join(['{:>5}'.format(v) for v in all_grps[j:j+10]]))
             # Select this dataset
-            self.set_variables(dataset_indices=dst_indices, level_group_pairs=lvl_groups)
+            self.set_variables(
+                    dataset_indices=dst_indices,
+                    level_group_pairs=lvl_groups,
+                    optimise_residual=optimise_residual,
+                    )
             # Append to job list (create copy) or run optimisation
             if n_cpus > 1:
                 jobs.append((self.get_optimiser(), {'stdout':False}))
@@ -1630,15 +1614,19 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
 
     def get_optimiser(self):
         # Extract fitted uijs for each mode
-        muls, uijs = self._extract_fitted_for_optimise()
+        muls_base, uijs_base, sels_base, uijs_res, muls_res, dataset_hash = self._extract_fitted_for_optimise()
         # Extract target uijs for the relevant atoms
-        t_uij = self._extract_target_for_optimise()
+        t_uij, wgts = self._extract_target_for_optimise()
         # Optimise these parameters
         optimiser = OptimiseAmplitudes(
                 target_uijs         = t_uij,
-                base_uijs           = uijs,
-                variables           = self._op,
-                initial_multipliers = muls,
+                target_weights      = wgts,
+                base_amplitudes     = muls_base,
+                base_uijs           = uijs_base,
+                base_atom_indices   = sels_base,
+                dataset_hash        = dataset_hash,
+                residual_uijs       = uijs_res,
+                residual_amplitudes = muls_res,
                 residual_mask       = self.residual_mask[self._op.i_dst],
                 convergence_tolerance = self.convergence_tolerance,
                 )

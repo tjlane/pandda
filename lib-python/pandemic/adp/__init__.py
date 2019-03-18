@@ -3831,7 +3831,7 @@ class MultiDatasetHierarchicalUijFitter(object):
             return 'unknown'
         return int(self.observed_uij.shape[0] * self.observed_uij.shape[1] * self.n_input_params_per_atom())
 
-    def optimise_level_amplitudes(self, n_cpus=1, recursions=1, include_residual=True):
+    def optimise_level_amplitudes(self, n_cpus=1, max_recursions=None, include_residual=True):
         """Optimise amplitudes for pairs of adjacent levels"""
 
         self.log.bar(True, False)
@@ -3839,22 +3839,21 @@ class MultiDatasetHierarchicalUijFitter(object):
         self.log.bar(False, True)
 
         self.log('CPUs: {}'.format(n_cpus))
-        self.log('Recursions (number of levels to be co-optimised): {}'.format(recursions))
+        self.log('Max recursions (number of levels to be co-optimised): {}'.format(max_recursions))
 
         # Filter the group tree (possibly removing the residual level)
         group_tree_copy = copy.deepcopy(self.group_tree)
-        if include_residual is False:
-            for l in group_tree_copy.keys():
-                if l == 'X':
-                    group_tree_copy.pop('X')
-                    assert self.group_tree.has_key('X')
-                    continue
-                for g in group_tree_copy[l].keys():
-                    for l2 in group_tree_copy[l][g].keys():
-                        if l2 == 'X':
-                            group_tree_copy[l][g].pop('X')
-                            assert self.group_tree[l][g].has_key('X')
-                            continue
+        for l in group_tree_copy.keys():
+            if l == 'X':
+                group_tree_copy.pop('X')
+                assert self.group_tree.has_key('X')
+                continue
+            for g in group_tree_copy[l].keys():
+                for l2 in group_tree_copy[l][g].keys():
+                    if l2 == 'X':
+                        group_tree_copy[l][g].pop('X')
+                        assert self.group_tree[l][g].has_key('X')
+                        continue
 
         # Create optimisation object -- edits levels in-place so shouldn't need to do anything to unpack results
         ao = InterLevelAmplitudeOptimiser(
@@ -3867,7 +3866,7 @@ class MultiDatasetHierarchicalUijFitter(object):
                 verbose    = self.verbose,
                 log        = self.log)
         ao.set_residual_mask(self.dataset_mask)
-        ao.optimise(n_cpus=n_cpus, recursions=recursions)
+        ao.optimise(n_cpus=n_cpus, max_recursions=max_recursions)
         ao.apply_multipliers(self.levels, self.residual)
         self.log(ao.summary(show=True))
         return ao
@@ -4042,8 +4041,7 @@ class MultiDatasetHierarchicalUijFitter(object):
             # Optimise the amplitudes between levels
             self.log.subheading('Macrocycle {} of {}: '.format(i_macro, n_macro_cycles)+'Optimising inter-level amplitudes')
             # Optimise the InterLevel Amplitudes
-            #self.optimise_level_amplitudes(n_cpus=n_cpus, recursions=len(self.levels))
-            self.optimise_level_amplitudes(n_cpus=1, recursions=len(self.levels))
+            self.optimise_level_amplitudes(n_cpus=1, max_recursions=None)
             # Update output
             for i, l in enumerate(self.levels):
                 fitted_uij_by_level[i] = l.extract()
@@ -4729,8 +4727,6 @@ def run(params, args=None):
         # Update unpickled object
         # TODO only transfer the non-default params!
         #p.params = params
-
-        #p.fitter.optimise_level_amplitudes(n_cpus=1, recursions=5)
 
     # Print all errors
     p.log.heading('Errors/Warnings')
