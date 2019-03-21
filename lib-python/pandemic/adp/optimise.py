@@ -3,7 +3,7 @@ import collections, operator
 import numpy
 
 from scitbx.array_family import flex
-from scitbx import simplex, lbfgs
+from scitbx import simplex
 from libtbx.math_utils import iceil
 
 from libtbx import adopt_init_args
@@ -14,7 +14,7 @@ from bamboo.maths.functions import rms, get_function
 from giant.structure.tls import tls_str_to_n_params, get_t_l_s_from_vector
 from giant.structure.uij import sym_mat3_eigenvalues
 from mmtbx.tls.utils import uij_eigenvalues, TLSMatricesAndAmplitudesList
-from mmtbx.tls.optimise_amplitudes import MultiGroupMultiDatasetUijAmplitudeFunctionalAndGradientCalculator
+from mmtbx.tls.optimise_amplitudes import OptimiseAmplitudes
 
 from pandemic.adp.simplex import TLSSimplex, UijSimplex
 
@@ -836,6 +836,18 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                     self.log('...core TLS matrices are now valid')
                     continue
 
+            # Attempt to reoptimise from the current position
+            self.log('...attempting to reoptimise to find a valid solution')
+            self.optimise_matrices(modes=[i_tls], components='TLS')
+            mode = self.parameters().get(index=i_tls)
+            if mode.matrices.is_valid():
+                self.log('...core matrices now valid (after resetting and reoptimising)')
+                self.log('Before re-optimisation: \n{}'.format(mode_cpy.matrices.summary()))
+                self.log('After re-optimisation: \n{}'.format(mode.matrices.summary()))
+                rms_values = rms(mode.matrices.get()-mode_cpy.matrices.get())
+                self.log('...rms between initial matrices and "fixed" matrices: {}'.format(rms_values))
+                continue
+
             # Try resetting and optimising the TLS Matrices
             # Reset to zero and re-optimise
             self.log('...core matrices are still invalid: \n{}'.format(mode.matrices.summary()))
@@ -843,8 +855,7 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
             # Reset TLS matrices to zero
             mode.matrices.reset()
             # Iterate through and optimise as originally
-            self.optimise_matrices(modes      = [i_tls],
-                                   components = 'TLS')
+            self.optimise_matrices(modes=[i_tls], components='TLS')
             mode = self.parameters().get(index=i_tls)
             if mode.matrices.is_valid():
                 self.log('...core matrices now valid (after resetting and reoptimising)')
@@ -1106,95 +1117,6 @@ class MultiDatasetUijFitter(BaseGroupOptimiser):
         cls._uij_tolerance = tolerance
 
 
-class OptimiseAmplitudes:
-
-
-    def __init__(self,
-            target_uijs,
-            target_weights,
-            base_amplitudes,
-            base_uijs,
-            base_atom_indices,
-            dataset_hash,
-            residual_uijs,
-            residual_amplitudes=None,
-            residual_mask=None,
-            convergence_tolerance=1e-5):
-
-        # Compatibility of parameters is checked in the optimiser so not checking here
-
-        # Mask for residual optimisation
-        if (residual_mask is not None):
-            residual_mask = flex.bool(map(bool, residual_mask))
-
-        self.target_uijs        = target_uijs
-        self.target_weights     = target_weights
-        self.base_amplitudes    = base_amplitudes
-        self.base_uijs          = base_uijs
-        self.base_atom_indices  = base_atom_indices
-        self.dataset_hash       = dataset_hash
-        self.residual_uijs      = residual_uijs
-        self.residual_amplitudes = residual_amplitudes
-        self.residual_mask      = residual_mask
-        self.convergence_tolerance = convergence_tolerance
-
-        self.initial = None
-        self.result = None
-
-    def run(self):
-        self._optimise()
-        return self
-
-    def _optimise(self):
-
-        self.log = logs.Log()
-
-        # Setup
-        self.f_g_calculator = MultiGroupMultiDatasetUijAmplitudeFunctionalAndGradientCalculator(
-                self.target_uijs,
-                self.base_amplitudes,
-                self.base_uijs,
-                self.base_atom_indices,
-                self.dataset_hash,
-                self.residual_uijs,
-                self.target_weights)
-        # Which datasets should be used for residual optimisation
-        if self.residual_mask is not None:
-            self.f_g_calculator.set_residual_mask(self.residual_mask)
-
-        # Apply residual amplitudes if given
-        if self.residual_amplitudes is not None:
-            current_amps = self.f_g_calculator.x
-            isel = flex.size_t_range(current_amps.size()-self.residual_uijs.size(), current_amps.size())
-            assert len(isel) == len(self.residual_uijs)
-            assert len(isel) == len(self.residual_amplitudes)
-            assert max(isel) == current_amps.size() - 1
-            current_vals = current_amps.select(isel)
-            assert current_vals.all_eq(1.0)
-            self.f_g_calculator.x.set_selected(isel, self.residual_amplitudes)
-
-        self.initial = copy.deepcopy(self.f_g_calculator.x)
-
-        # Optimise
-        t_params = lbfgs.termination_parameters(
-                traditional_convergence_test_eps=self.convergence_tolerance,
-                )
-        minimizer = lbfgs.run(
-                target_evaluator=self.f_g_calculator,
-                termination_params=t_params,
-                )
-
-        # Extract
-        self.n_iter = minimizer.iter()
-        self.result = numpy.array(self.f_g_calculator.x)
-        self.result[self.result < 0.0] = 0.0 # Report this!?!
-
-        # Tidy up
-        del self.f_g_calculator # Delete after usage as not pickle-enabled
-
-        return self
-
-
 class InterLevelAmplitudeOptimiser(BaseOptimiser):
 
 
@@ -1246,7 +1168,7 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
         self.refresh(levels=levels, residual=residual)
 
     def set_residual_mask(self, mask):
-        assert mask.size == self.n_dst
+        assert len(mask) == self.n_dst
         self.residual_mask = mask
 
     def refresh(self, levels, residual):
@@ -1627,7 +1549,7 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
                 dataset_hash        = dataset_hash,
                 residual_uijs       = uijs_res,
                 residual_amplitudes = muls_res,
-                residual_mask       = self.residual_mask[self._op.i_dst],
+                residual_mask       = self.residual_mask.select(flex.size_t(self._op.i_dst)),
                 convergence_tolerance = self.convergence_tolerance,
                 )
         return optimiser

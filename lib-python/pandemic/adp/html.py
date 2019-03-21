@@ -299,7 +299,9 @@ def create_levels_tab(parameterisation):
                                  'image':png2base64src_maybe(partn_image, print_on_missing=DEBUG)},
                              {'width':6,
                                  'title':'Level ADPs' + ' (average size over all datasets)'*(f.n_datasets>1),
-                                 'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
+                                 'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG),
+                                 'body' :[{'text' :'<strong>Please note</strong>: highly anisotropic atoms may not be visible in the above image.'}],
+                                 },
                              {'width':6,
                                  'title':'Level ADPs by mode' + ' (average size over all datasets)'*(f.n_datasets>1),
                                  'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
@@ -419,9 +421,16 @@ def create_levels_tab(parameterisation):
         aniso_image = fm.get_file('png-residual-anisotropy-template').format(c.id)
         panel = {'title' : 'Residual overview for chain {}'.format(c.id),
                  'body'  : [
-                     {'width':8, 'title':'Fitted ADPs',         'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG)},
-                     {'width':6, 'title':'Fitted ADPs profile', 'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG)},
-                     {'width':6, 'title':'Anisotropy by atom',   'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG)},
+                     {'width':8, 'title':'Fitted ADPs',
+                         'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG),
+                         'body' : [{'text' :'<strong>Please note</strong>: highly anisotropic atoms may not be visible in the above image.'}],
+                         },
+                     {'width':6, 'title':'Fitted ADPs profile',
+                         'image':png2base64src_maybe(stack_image, print_on_missing=DEBUG),
+                         },
+                     {'width':6, 'title':'Anisotropy by atom',
+                         'image':png2base64src_maybe(aniso_image, print_on_missing=DEBUG),
+                         },
                                     ],
                 }
         residual_tab['panels'].append(panel)

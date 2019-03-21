@@ -2,7 +2,7 @@ import os, sys, glob, copy, shutil, traceback
 import math, itertools, operator
 
 from IPython import embed
-import time
+import time, tqdm, signal
 
 import scipy.cluster
 import numpy, pandas
@@ -141,7 +141,7 @@ output {
 levels {
     overall_selection = "(not water) and (not element H)"
         .type = str
-    auto_levels = *chain auto_group *secondary_structure *residue *backbone *sidechain atom
+    auto_levels = *chain auto_group ss *secondary_structure *residue *backbone *sidechain atom
         .type = choice(multi=True)
     cbeta_in_backbone = True
         .help = "Flag to control whether the c-beta atom is considered part of the backbone or the sidechain"
@@ -213,7 +213,7 @@ fitting {
             vibration_delta = 1.0
                 .help = 'Vibration step size for zero-value matrices (relative scale)'
                 .type = float
-            libration_delta = 50.0
+            libration_delta = 45.0
                 .help = 'Libration step size for zero-value matrices (relative scale)'
                 .type = float
             uij_delta = 1e-3
@@ -423,7 +423,6 @@ def _wrapper_fit(args):
         return tr
     finally:
         fitter.log.log_file().write_to_log(clear_data=True)
-        print '{} ({}). Log written to {}'.format(msg, fitter.label, str(fitter.log.log_file()))
 
 ############################################################################
 
@@ -3442,6 +3441,10 @@ class MultiDatasetUijPlots(object):
         # Extract common list of x-values
         x_keys = sorted(set(table['cycle'].values))
         x_vals = numpy.array(x_keys)
+        # Select labels to plot (up to maximum)
+        max_labels = 1 + 10
+        plot_every = max(1, 1+((len(x_vals)-1)//max_labels))
+        x_labs = [x_vals[i] if (i%plot_every)==0 else '' for i in xrange(len(x_vals))]
         # Cumulative y-values for stacking
         y_cuml = numpy.zeros(len(x_vals))
         # Plot same values as stacked bars
@@ -3478,6 +3481,7 @@ class MultiDatasetUijPlots(object):
 
         ax.xaxis.set_ticks_position('bottom')
         ax.set_xticks(x_vals)
+        ax.set_xticklabels(x_labs)
         ax.tick_params('x', labelsize=max(2, min(10, 14-0.15*len(x_keys))))
         ax.set_xlabel('Optimisation Cycle')
         ax.set_ylabel('Average B-factor of Level')
@@ -3865,7 +3869,7 @@ class MultiDatasetHierarchicalUijFitter(object):
                 params     = self.params,
                 verbose    = self.verbose,
                 log        = self.log)
-        ao.set_residual_mask(self.dataset_mask)
+        ao.set_residual_mask(flex.bool(self.dataset_mask))
         ao.optimise(n_cpus=n_cpus, max_recursions=max_recursions)
         ao.apply_multipliers(self.levels, self.residual)
         self.log(ao.summary(show=True))
@@ -4153,7 +4157,7 @@ class MultiDatasetHierarchicalUijFitter(object):
 class _MultiDatasetUijLevel(object):
 
     _uij_shape = None
-    _chunksize = None
+    _chunksize = 1
 
     def n_params(self, non_zero=False):
         return sum([f.n_params(non_zero=non_zero) for i,g,f in self])
@@ -4170,14 +4174,38 @@ class _MultiDatasetUijLevel(object):
             # Run jobs in parallel
             self.log('Running {} job(s) in {} process(es) [and {} cpu(s) per process]'.format(len(jobs), n_cpus, n_cpus_per_job))
             self.log('')
-            workers = NonDaemonicPool(n_cpus)
-            finished_jobs = workers.map(func=_wrapper_fit, iterable=jobs, chunksize=self._chunksize)
-            workers.close()
+            sigint = signal.signal(signal.SIGINT, signal.SIG_IGN) # set the signal handler to ignore
+            pool = NonDaemonicPool(n_cpus)
+            signal.signal(signal.SIGINT, sigint) # Replace the original signal handler
+            finished_jobs = []
+            chunksize = min(self._chunksize, 1+int(float(len(jobs)-1)/float(n_cpus)))
+            try:
+                pbar = tqdm.tqdm(total=len(jobs), ncols=100)
+                for result in pool.imap_unordered(func=_wrapper_fit, iterable=jobs, chunksize=chunksize):
+                    pbar.update(1)
+                    finished_jobs.append(result)
+                pbar.close()
+            except KeyboardInterrupt:
+                pbar.close()
+                pool.terminate()
+                pool.join()
+                raise
+            # Close pool
+            pool.close()
+            pool.join()
+            # Resort the output so results presented in a readable fashion
+            finished_jobs = sorted(finished_jobs, key=lambda x: x.label)
+            #finished_jobs = workers.map(func=_wrapper_fit, iterable=jobs, chunksize=self._chunksize)
         else:
             # Run jobs in serial
             self.log('Running {} job(s) [with {} cpu(s)]'.format(len(jobs), n_cpus_per_job))
             self.log('')
-            finished_jobs = [_wrapper_fit(j) for j in jobs]
+            finished_jobs = []
+            pbar = tqdm.tqdm(total=len(jobs), ncols=100)
+            for result in (_wrapper_fit(j) for j in jobs):
+                pbar.update(1)
+                finished_jobs.append(result)
+            pbar.close()
         self.log('')
         self.log('Optimisation complete')
         self.log.subheading('Optimised values')
@@ -4231,7 +4259,7 @@ class _MultiDatasetUijLevel(object):
 
 class MultiDatasetTLSGroupLevel(_MultiDatasetUijLevel):
 
-    _chunksize = None
+    _chunksize = 20
 
     def __init__(self,
                  observed_uij,
@@ -4358,6 +4386,8 @@ class MultiDatasetTLSGroupLevel(_MultiDatasetUijLevel):
 
 class MultiDatasetResidualLevel(_MultiDatasetUijLevel):
 
+    _chunksize = 100
+
     def __init__(self,
                  observed_uij,
                  index=-1,
@@ -4460,7 +4490,7 @@ def build_levels(model, params, log=None):
         groups = [s.strip('"') for s in phenix_find_tls_groups(model.filename)]
         levels.append([g for g in groups if sum(cache.selection(g)>0)])
         labels.append('groups')
-    if 'secondary_structure' in params.levels.auto_levels:
+    if ('secondary_structure' in params.levels.auto_levels) or ('ss' in params.levels.auto_levels):
         log('Level {}: Creating level with groups based on secondary structure'.format(len(levels)+1))
         groups = [s.strip('"') for s in default_secondary_structure_selections_filled(hierarchy=filter_h, verbose=params.settings.verbose)]#model.hierarchy)]
         levels.append([g for g in groups if sum(cache.selection(g))>0])
@@ -4747,11 +4777,14 @@ if __name__=='__main__':
     run_default._module_info = module_info
     from bamboo.common.profile import profile_code
     #a = profile_code()
-    run_default(
-        run                 = partial(run, args=sys.argv[1:]),
-        master_phil         = master_phil,
-        args                = sys.argv[1:],
-        blank_arg_prepend   = blank_arg_prepend,
-        program             = PROGRAM,
-        description         = DESCRIPTION)
+    try:
+        run_default(
+            run                 = partial(run, args=sys.argv[1:]),
+            master_phil         = master_phil,
+            args                = sys.argv[1:],
+            blank_arg_prepend   = blank_arg_prepend,
+            program             = PROGRAM,
+            description         = DESCRIPTION)
+    except KeyboardInterrupt:
+        print '\nProgram terminated by user'
     #a.stop()
