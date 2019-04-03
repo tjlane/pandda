@@ -984,7 +984,7 @@ class MultiDatasetUijParameterisation(Program):
 
         # Dataset resolution weighting function
         if self.params.fitting.optimisation.atom_weights == 'one':
-            atom_weight = lambda r: 1.0
+            atom_weight = lambda r: r**(0.0)
         elif self.params.fitting.optimisation.atom_weights == 'inverse_mod_U':
             atom_weight = lambda r: r**(-1.0)
         elif self.params.fitting.optimisation.atom_weights == 'inverse_mod_U_squared':
