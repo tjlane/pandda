@@ -1,6 +1,6 @@
 import copy, traceback
 import collections, operator
-import numpy
+import math, numpy
 
 from scitbx.array_family import flex
 from scitbx import simplex
@@ -35,6 +35,17 @@ def _wrapper_optimise(args):
         return fitter
     except Exception as e:
         return traceback.format_exc()
+
+def make_uij_isotropic_in_place(uij, selection=None):
+    if selection is None:
+        selection = flex.bool(uij.size(), True)
+    assert len(uij.all()) == 1, 'array must be 1d'
+    u_sel = uij.select(selection)
+    n = u_sel.size()
+    u_sel = u_sel.as_double().as_numpy_array().reshape((n, 6))
+    u_iso = u_sel[:,:3].mean(axis=1).reshape((n,1)).repeat(3, axis=1)
+    u_iso = flex.sym_mat3_double(numpy.concatenate([u_iso, numpy.zeros_like(u_iso)], axis=1))
+    uij.set_selected(selection, u_iso)
 
 ############################################################################
 
@@ -250,6 +261,7 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                  n_tls=1,
                  label='',
                  weights=None,
+                 isotropic_mask=None,
                  params=None,
                  verbose=False,
                  log=None):
@@ -294,6 +306,9 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         self.set_atomic_mask(range(self._n_atm))
         self.set_dataset_mask(range(self._n_dst))
 
+        # Control which atoms should be isotropic
+        self.set_isotropic_mask(isotropic_mask)
+
         # Optimisation ranges
         self.set_variables(optimise_matrices = True,
                            optimise_amplitudes = True,
@@ -311,6 +326,14 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         # Fitting penalty functions
         self._model_input_penalty_function = get_function(**dict_from_class(params.penalties.over_target_values))
 
+    def set_isotropic_mask(self, mask):
+        if mask is None:
+            self.isotropic_mask = None
+            return
+        assert len(mask) == self._n_atm
+        self.isotropic_mask = flex.bool(mask.tolist()*self._n_dst)
+        assert self.isotropic_mask.size() == self._n_dst * self._n_atm
+
     #===========================================+>
     # Private Functions - common to parent class
     #===========================================+>
@@ -325,10 +348,10 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         assert penalties.size == self._op.wgts_3.size()
 
         # Average penalties, with weights for each dataset
-        total_penalty =  mabs_delta_u * numpy.sum(penalties) #/ 3.0 # Divide by the number of dimensions
+        total_penalty = math.log(self._op.n_atm) * msqr_delta_u * numpy.sum(penalties) #/ 3.0 # Divide by the number of dimensions
 
         # Normalise by the NUMBER OF DATASETS
-        total_penalty /= (self._op.n_dst * self._op.n_atm)
+        total_penalty /= (self._op.n_dst)# * self._op.n_atm)
 
         return total_penalty
 
@@ -351,6 +374,13 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         op = self._op
         uij = self._parameters.uijs(sites_carts=op.xyzs, origins=op.coms, selection=op.i_dst)
         assert uij.all() == (op.n_dst, op.n_atm,)
+
+        # Modify isotropic atoms
+        if self.isotropic_mask is not None:
+            uij.reshape(flex.grid((op.n_dst*op.n_atm,))) # Make 1-d
+            make_uij_isotropic_in_place(uij, selection=self.isotropic_mask)
+            uij.reshape(flex.grid((op.n_dst,op.n_atm,))) # Make N-d
+
         self._fitted_uij = uij
 
     def _update_target(self):
@@ -434,9 +464,6 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         wgts_6 = flex.double(wgts_6.reshape((n_dst*n_atm*6,)).tolist())
 
         # Make sure all weights are normalised!
-        #wgts_1 = wgts_1 / flex.mean(wgts_1)
-        #wgts_3 = wgts_3 / flex.mean(wgts_3)
-        #wgts_6 = wgts_6 / flex.mean(wgts_6)
         assert abs(flex.mean(wgts_1)-1.0) < 1e-3, 'weights should be normalised!'
         assert abs(flex.mean(wgts_3)-1.0) < 1e-3, 'weights should be normalised!'
         assert abs(flex.mean(wgts_6)-1.0) < 1e-3, 'weights should be normalised!'
@@ -535,33 +562,6 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         self.log('Resetting mode {}'.format(i_tls+1))
         self.parameters().get(index=i_tls).reset()
 
-        self.log('Looking for an appropriate scale for the amplitudes')
-        # Get the unfitted Uij (target uij minus uij already fitted from other modes)
-        uij_vals = (self.target_uij-self.extract())[dataset_mask][:,atomic_mask]
-        assert uij_vals.shape == (n_dst, n_atm, 6)
-        uij_vals_flex = flex.sym_mat3_double(uij_vals.reshape((n_dst*n_atm,6)))
-        uij_eigs_flex = uij_eigenvalues(uij_vals_flex)
-        uij_eigs = numpy.array(uij_eigs_flex).reshape((n_dst,n_atm,3))
-        assert uij_eigs.shape == (n_dst, n_atm, 3)
-        # Calculate the minimum eigenvalues for each dataset
-        uij_eigs_min = uij_eigs.min(axis=(1,2))
-        assert uij_eigs_min.shape == (len(dataset_mask),)
-        min_eig = numpy.min(uij_eigs_min)
-        # Set minimum eigenvalues as the amplitudes
-        amp_scales = numpy.zeros(self._n_dst)
-        amp_scales[dataset_mask] = uij_eigs_min
-        amp_scales[amp_scales<0.0] = 0.0
-        if amp_scales.any():
-            self.log('Scaling amplitudes by minimum eigenvalues of input Uijs')
-            self.log('Amplitude range: {} - {}'.format(amp_scales.min(), amp_scales.max()))
-        else:
-            self.log('No minimal eigenvalues of input Uijs are positive.')
-            self.log('Scaling amplitudes to a fixed minimal size ({})'.format(minimum_amplitude))
-            amp_scales[dataset_mask] = minimum_amplitude
-        self.log('Setting amplitudes')
-        mode = self.parameters().get(index=i_tls)
-        mode.amplitudes.set(values=amp_scales.tolist())
-
         self.log('Initialising the T-matrix with an isotropic uij')
         uij_start = (1.0,)*3 + (0.0,)*3
         self.log('Setting initial T-matrix values to {}'.format(uij_start))
@@ -570,11 +570,14 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         self.log(self.parameters().get(index=i_tls).matrices.summary())
 
         self.log('Optimising Amplitudes')
+        self.parameters().get(index=i_tls).amplitudes.multiply(0.0)
         self.optimise_amplitudes(
             modes  = [i_tls],
             n_cpus = n_cpus)
         self.log('Optimised TLS-amplitude values:')
         self.log(self.parameters().get(index=i_tls).amplitudes.summary())
+
+        self.parameters().get(index=i_tls).matrices.reset()
 
         self.log('Setting zero value amplitudes to minimum value')
         amps = self.parameters().get(index=i_tls).amplitudes.get()
@@ -585,17 +588,25 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         self.log('Starting amplitude values:')
         self.log(self.parameters().get(index=i_tls).amplitudes.summary())
 
-        #self.log.bar()
-        #self.log('Resetting Matrices to zero')
-        #self.log(self.parameters().get(index=i_tls).matrices.reset())
-        #self.log('Setting L Matrices:')
-        #self.parameters().get(index=i_tls).matrices.set(values=uij_start, component_string='L')
-
         self.log.bar()
         self.log('Starting values:')
         self.log(self.parameters().get(index=i_tls).summary())
 
         return self.parameters().get(index=i_tls)
+
+    def normalise_mode(self, index):
+        xyzs = flex.vec3_double(self.atomic_xyz.reshape(self._n_dst*self._n_atm,3))
+        xyzs.reshape(flex.grid(self._n_dst,self._n_atm))
+        coms = flex.vec3_double(self.atomic_com)
+        self.parameters().get(index=index).normalise_by_matrices(sites_carts=xyzs, origins=coms, target=self.params.normalised_tls_scale)
+
+    def reset(self, indices=None):
+        if indices is None:
+            indices = xrange(self._n_tls)
+        for i in indices:
+            self.parameters().get(index=i).matrices.reset()
+            self.parameters().get(index=i).matrices.set((1.,1.,1.,0.,0.,0.), "T")
+            self.parameters().get(index=i).amplitudes.zero_values()
 
     def optimise(self, n_cycles=1, n_cpus=1):
         """Optimise a (series of) TLS model(s) against the target data"""
@@ -620,10 +631,12 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                 # How should T-L-S be optimised - if all values are zero, optimise all separately then as those for each amplitude/component set
                 all_cpts = "TLS"
                 # Are all matrix values zero?
-                null_mode = not self.parameters().get(index=i_tls).matrices.any(component_string=all_cpts)
+                null_mode = self.parameters().get(index=i_tls).is_null(
+                        matrices_tolerance = self.params.normalised_tls_eps,
+                        amplitudes_tolerance = self.params.normalised_amplitude_eps
+                        )
                 # If null mode then optimise each matrix individually (for speed) and then optimise all together
-                #cpt_groups = list(all_cpts)*null_mode + [all_cpts]*((not null_mode) or (len(all_cpts) > 1))
-                cpt_groups = ["TLS"]
+                cpt_groups = ["T","L","S","TL", "LS","TS"]*null_mode + [all_cpts]
 
                 self.log.subheading('Optimising TLS mode {} of {}'.format(i_tls+1, self._n_tls))
                 self.log('Optimising using {} atoms'.format(len(opt_atom_mask)))
@@ -671,31 +684,22 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                         self.log('Applying scaling to amplitudes of {} to reduce restrictions on subsequent simplex optimisations'.format(multiplier))
                         self.parameters().get(index=i_tls).amplitudes.multiply(scalar=multiplier)
 
-                # If TLS Matrices optimise to negligible values, move on to next
-                if not self.parameters().get(index=i_tls).matrices.any(all_cpts, tolerance=self.params.normalised_tls_eps):
-                    self.log('{} matrices are all zero -- not optimising amplitudes'.format(all_cpts))
-                    self.parameters().get(index=i_tls).reset()
-                    # Set to isotropic so can still be used in inter-level optimisation
-                    if i_tls == 0:
-                        self.parameters().get(index=i_tls).matrices.set((1,1,1,0,0,0), "T")
-                        self.parameters().get(index=i_tls).amplitudes.zero_values()
+                if self.parameters().get(index=i_tls).is_null(
+                        matrices_tolerance = self.params.normalised_tls_eps,
+                        amplitudes_tolerance = self.params.normalised_amplitude_eps
+                        ):
+                    self.reset([i_tls])
                     continue
 
                 # Normalise matrices to give Uijs of approximately xA
-                xyzs = flex.vec3_double(self.atomic_xyz.reshape(self._n_dst*self._n_atm,3))
-                xyzs.reshape(flex.grid(self._n_dst,self._n_atm))
-                coms = flex.vec3_double(self.atomic_com)
-                self.parameters().get(index=i_tls).normalise_by_matrices(sites_carts=xyzs, origins=coms, target=self.params.normalised_tls_scale)
+                self.normalise_mode(index=i_tls)
                 self.optimise_invalid_modes() # Check that normalisation has not made any of the matrices invalid and correct if possible
 
-                # If TLS Matrices optimise to negligible values, move on to next
-                if not self.parameters().get(index=i_tls).matrices.any(all_cpts, tolerance=self.params.normalised_tls_eps):
-                    self.log('{} matrices are all zero -- not optimising amplitudes'.format(all_cpts))
-                    self.parameters().get(index=i_tls).reset()
-                    # Set to isotropic so can still be used in inter-level optimisation
-                    if i_tls == 0:
-                        self.parameters().get(index=i_tls).matrices.set((1,1,1,0,0,0), "T")
-                        self.parameters().get(index=i_tls).amplitudes.zero_values()
+                if self.parameters().get(index=i_tls).is_null(
+                        matrices_tolerance = self.params.normalised_tls_eps,
+                        amplitudes_tolerance = self.params.normalised_amplitude_eps
+                        ):
+                    self.reset([i_tls])
                     continue
 
                 # ---------------------------------->
@@ -703,9 +707,6 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                 # ---------------------------------->
                 # Report
                 self.log.subheading('Optimising TLS amplitudes for all datasets')
-                # Reset amplitudes to zero to prevent overparameterisation
-                #self.log('Resetting all amplitudes to zero')
-                #self.parameters().zero_amplitudes(models=[i_tls])
                 # Run optimisation
                 self.optimise_amplitudes(
                     modes  = mdl_cuml,
@@ -714,27 +715,31 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                 self.log.bar(blank_before=True, blank_after=True)
                 self.log(self.parameters().get(index=i_tls).amplitudes.summary())
 
+                if self.parameters().get(index=i_tls).is_null(
+                        matrices_tolerance = self.params.normalised_tls_eps,
+                        amplitudes_tolerance = self.params.normalised_amplitude_eps
+                        ):
+                    self.reset([i_tls])
+                    continue
+
             # Reapply atom and dataset masks
             self.set_dataset_mask(opt_dset_mask)
             self.set_atomic_mask(opt_atom_mask)
 
             # End of cycle house-keeping
             self.log.bar(True, False)
+
             # Break optimisation if all matrices are zero -- not worth running following optimisation cycles
-            if self.parameters().is_null():
+            if self.parameters().is_null(matrices_tolerance=self.params.normalised_tls_eps):
                 self.log('All matrices have refined to zero -- optimisation finished.')
-                # Reset parameters just to be sure
-                #self.parameters().reset()
                 self.log.bar()
+                self.reset()
                 break
+
             # Check to see if any amplitudes are negative
             self.log('Looking for negative TLS amplitudes')
             self.parameters().zero_negative_amplitudes()
             self.log.bar()
-            ## Identify modes that are zero and reset these
-            #self.log('Resetting zero-value modes')
-            #self.parameters().reset_null_modes()
-            #self.log.bar()
 
             # Show summary at end of cycle...
             self.log.subheading('End-of-cycle summary')
@@ -1126,6 +1131,7 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
                  residual,
                  group_tree,
                  weights=None,
+                 isotropic_mask=None,
                  params=None,
                  verbose=False,
                  log=None):
@@ -1163,9 +1169,16 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
 
         # Which datasets to be used for optimising residuals
         self.set_residual_mask(numpy.ones(self.n_dst, dtype=bool))
+        # Control which atoms should be isotropic
+        self.set_isotropic_mask(isotropic_mask)
 
         # Extract the current uijs for levels and residual
         self.refresh(levels=levels, residual=residual)
+
+    def set_isotropic_mask(self, mask):
+        if mask is not None:
+            assert len(mask) == self.n_atm
+        self.isotropic_mask = mask
 
     def set_residual_mask(self, mask):
         assert len(mask) == self.n_dst
@@ -1180,6 +1193,18 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
         # Amplitudes for each of the groups (what will be optimised in this object)
         self.group_multipliers = self._extract_multipliers(levels, residual)
         self._ready = True
+
+        if self.isotropic_mask is not None:
+            m = self.isotropic_mask
+            iso_vals = self.level_uijs[:,:,:,m,0:3].mean(axis=4)
+            self.level_uijs[:,:,:,m,:] = 0.0
+            for i in range(3):
+                self.level_uijs[:,:,:,m,i] = iso_vals
+
+            iso_vals = self.residual_uijs[m,0:3].mean(axis=1)
+            self.residual_uijs[m,:] = 0.0
+            for i in range(3):
+                self.residual_uijs[m,i] = iso_vals
 
     def _extract_multipliers(self, levels, residual):
         mults = [numpy.zeros(shape=(l.n_groups(), self.n_tls, self.n_dst)) for l in levels] + \
@@ -1217,14 +1242,16 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
                 return []
             # Get the linked groups on this level
             for l in sorted(linked_groups.keys()):
+                # Skip residual groups
                 if l == 'X': continue
+                # Append to output list
                 for g in linked_groups.get(l):
                     t_out.append((l,g))
             # Get the linked groups from the next level
             r_out = []
             if (max_recursions is None) or (max_recursions > 0):
                 if max_recursions is not None:
-                    max_recursions -= 1
+                    max_recursions = max_recursions - 1
                 for l,g in t_out:
                     r_out.extend(get_linked_level_group_pairs_recursive(tree, l, g, max_recursions))
             return t_out + r_out
@@ -1232,7 +1259,7 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
         job_list = []
         n_links = len(tree.keys()) # Number of links between levels
         # Need to generate sets for the first n_levels - recursions
-        for i_lvl, l1 in enumerate(sorted(tree.keys())):
+        for i_lvl, l1 in enumerate(sorted(tree.keys())[:-1]):
             # Check if already optimised all
             if (i_lvl>0) and ((max_recursions is None) or (i_lvl+max_recursions > n_links)):
                 break
@@ -1242,7 +1269,7 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
                 lg_pairs = [(l1,g1)]
                 if (max_recursions is None) or (max_recursions > 0):
                     if max_recursions is not None:
-                        max_recursions -= 1
+                        max_recursions = max_recursions - 1
                     linked_pairs = get_linked_level_group_pairs_recursive(tree, l1, g1, max_recursions)
                     lg_pairs.extend(linked_pairs)
                 l_jobs.append(lg_pairs)
@@ -1478,25 +1505,6 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
         n_cpus = min(n_cpus, len(jobs_input))
         self.log.subheading('Preparing optimisations...')
         for i, (dst_indices, lvl_groups) in enumerate(jobs_input):
-            self.log.bar()
-            self.log('Optimisation {}'.format(i+1))
-            self.log('Datasets: {}'.format(str(dst_indices)))
-            i = 0
-            srt_groups = sorted(lvl_groups)
-            while i < len(srt_groups):
-                lvl, grp = srt_groups[i]
-                all_grps = []
-                cur_lvl = lvl
-                cur_grp = grp
-                while (cur_lvl == lvl):
-                    all_grps.append(cur_grp)
-                    i += 1
-                    if i == len(srt_groups):
-                        break
-                    cur_lvl, cur_grp = srt_groups[i]
-                self.log('Groups from Level {}:'.format(lvl))
-                for j in range(0,len(all_grps), 10):
-                    self.log('\t' + ', '.join(['{:>5}'.format(v) for v in all_grps[j:j+10]]))
             # Select this dataset
             self.set_variables(
                     dataset_indices=dst_indices,
@@ -1550,6 +1558,7 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
                 residual_uijs       = uijs_res,
                 residual_amplitudes = muls_res,
                 residual_mask       = self.residual_mask.select(flex.size_t(self._op.i_dst)),
+                weight_sum_of_amplitudes_squared_term = self.params.optimisation.amplitude_sum_weight,
                 convergence_tolerance = self.convergence_tolerance,
                 )
         return optimiser

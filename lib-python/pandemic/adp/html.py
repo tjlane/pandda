@@ -152,7 +152,7 @@ def create_overview_tab(parameterisation):
     f = parameterisation.fitter
     fm = p.file_manager
 
-    chain_ids = [c.id for c in p.blank_master_hierarchy().select(flex.bool(p.atom_mask.tolist()),copy_atoms=True).chains()]
+    chain_ids = sorted(set([c.id for c in p.blank_master_hierarchy().select(flex.bool(p.atom_mask.tolist()),copy_atoms=True).chains()]))
 
     part_f = fm.get_file('level-partitions-by-chain-template')
     prof_f = fm.get_file('png-combined-profile-template')
@@ -174,11 +174,11 @@ def create_overview_tab(parameterisation):
                    'title':'Chain-by-Chain Disorder Summaries',
                    'body': numpy.concatenate([
                        [
-                           {'width':12,'title': 'Chain {}'.format(c)},
-                           {'width':4, 'text': 'Partition Schematic',  'image':png2base64src_maybe(part_f.format(c), print_on_missing=DEBUG)},
-                           {'width':4, 'text': 'TLS-level components', 'image':png2base64src_maybe(prof_f.format(c), print_on_missing=DEBUG)},
-                           {'width':4, 'text': 'Residual component',   'image':png2base64src_maybe(resd_f.format(c), print_on_missing=DEBUG)},
-                           ] for c in chain_ids]).tolist(),
+                           {'width':12,'title': 'Chain {}'.format(c_id)},
+                           {'width':4, 'text': 'Partition Schematic',  'image':png2base64src_maybe(part_f.format(c_id), print_on_missing=DEBUG)},
+                           {'width':4, 'text': 'TLS-level components', 'image':png2base64src_maybe(prof_f.format(c_id), print_on_missing=DEBUG)},
+                           {'width':4, 'text': 'Residual component',   'image':png2base64src_maybe(resd_f.format(c_id), print_on_missing=DEBUG)},
+                           ] for c_id in chain_ids]).tolist(),
                    },
                {
                    'title'  : 'Parameterisation Summary',
@@ -201,7 +201,7 @@ def create_levels_tab(parameterisation):
 
     tls_tolerance = p.params.fitting.precision.tls_tolerance
 
-    chain_ids = [c.id for c in p.blank_master_hierarchy().select(flex.bool(p.atom_mask.tolist()),copy_atoms=True).chains()]
+    chain_ids = sorted(set([c.id for c in p.blank_master_hierarchy().select(flex.bool(p.atom_mask.tolist()),copy_atoms=True).chains()]))
 
     tab = {'id'         : 'levels',
            'short_name' : 'Hierarchical Model Summary',
@@ -414,12 +414,15 @@ def create_levels_tab(parameterisation):
     # Get selection for fitted atoms
     atom_sel = flex.bool(p.atom_mask.tolist())
     # Create row for each residue
-    for i_c, c in enumerate(p.blank_master_hierarchy().select(atom_sel,copy_atoms=True).chains()):
+    for c_id in chain_ids:
+        h = p.blank_master_hierarchy().select(atom_sel,copy_atoms=True)
+        h = h.select(h.atom_selection_cache().selection('chain {}'.format(c_id)))
+
         # Panel for chain overview
-        chain_image = fm.get_file('pml-residual-chain-template').format(c.id)
-        stack_image = fm.get_file('png-residual-profile-template').format(c.id)
-        aniso_image = fm.get_file('png-residual-anisotropy-template').format(c.id)
-        panel = {'title' : 'Residual overview for chain {}'.format(c.id),
+        chain_image = fm.get_file('pml-residual-chain-template').format(c_id)
+        stack_image = fm.get_file('png-residual-profile-template').format(c_id)
+        aniso_image = fm.get_file('png-residual-anisotropy-template').format(c_id)
+        panel = {'title' : 'Residual overview for chain {}'.format(c_id),
                  'body'  : [
                      {'width':8, 'title':'Fitted ADPs',
                          'image':png2base64src_maybe(chain_image, print_on_missing=DEBUG),
@@ -435,12 +438,12 @@ def create_levels_tab(parameterisation):
                 }
         residual_tab['panels'].append(panel)
         # Panel for each residue
-        panel = {'title' : 'Residual components for chain {}'.format(c.id),
+        panel = {'title' : 'Residual components for chain {}'.format(c_id),
                  'show'  : False,
                  'body'  : [],
                 }
         residual_tab['panels'].append(panel)
-        for i_rg, rg in enumerate(c.residue_groups()):
+        for i_rg, rg in enumerate(h.residue_groups()):
             short_label = ShortLabeller.format(rg)
             long_label  = Labeller.format(rg)
             panel['body'].append({'width':4, 'text':long_label})

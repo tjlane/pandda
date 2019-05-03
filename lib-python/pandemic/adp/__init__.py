@@ -183,7 +183,7 @@ fitting {
         dataset_weights = one inverse_resolution inverse_resolution_squared *inverse_resolution_cubed
             .help = 'control how datasets are weighted during optimisation?'
             .type = choice(multi=False)
-        atom_weights = one inverse_mod_U inverse_mod_U_squared *inverse_mod_U_cubed
+        atom_weights = one *inverse_mod_U inverse_mod_U_squared inverse_mod_U_cubed
             .help = 'control how atoms are weighted during optimisation?'
             .type = choice(multi=False)
         renormalise_atom_weights_by_dataset = True
@@ -232,7 +232,7 @@ fitting {
                 y_scale = 10.0
                     .type = float
                     .help = 'manual multiplier for the sigmoid penalty function'
-                x_width = 0.00018355
+                x_width = 0.02
                     .type = float
                     .help = 'width of the buffer zone (width of buffer approx 6.9 time this value; default 0.0018355 -> 0.0018355*6.9*8*pi*pi = 1A B-factor)'
                 x_offset = 0.0
@@ -240,17 +240,23 @@ fitting {
                     .help = "Offset of the form function (e.g. inversion point of the sigmoid function)"
             }
         }
-        simplex_convergence = 1e-10
+        simplex_convergence = 1e-6
             .help = "cutoff for which the least-squares simplex is considered converged"
             .type = float
-        gradient_convergence = 1e-10
+        gradient_convergence = 1e-6
             .help = "cutoff for which the least-squares gradient is considered converged"
+            .type = float
+        amplitude_sum_weight = 1.0
+            .help = "weight on the sum of the amplitudes during amplitude optimisation"
             .type = float
         normalised_tls_scale = 1e+0
             .help = "Target scale for normalisation of TLS matrices (angstroms^2)"
             .type = float
         normalised_tls_eps = 1e-3
-            .help = "Cutoff for determining when a TLS-matrix has refined to zero-value (this is applied to the normalised TLS matrices)."
+            .help = "Cutoff for determining when a TLS-matrix has refined to zero-value (this is applied to the matrices after normalisation)."
+            .type = float
+        normalised_amplitude_eps = 1e-2
+            .help = "Cutoff for determining when a TLS-amplitude has refined to zero-value (this is applied to the amplitudes after normalisation)."
             .type = float
     }
     precision
@@ -420,9 +426,8 @@ def _wrapper_fit(args):
     except Exception as e:
         tr = traceback.format_exc()
         fitter.log(tr)
-        return tr
-    finally:
         fitter.log.log_file().write_to_log(clear_data=True)
+        return tr
 
 ############################################################################
 
@@ -499,7 +504,7 @@ class MultiDatasetUijParameterisation(Program):
             if self.params.analysis.calculate_electron_density_metrics:
                 message = 'edstats (script name "edstats.pl") is required when analysis.calculate_electron_density_metrics is True'
                 self.check_programs_are_available(['edstats.pl'])
-            if self.params.output.images.pymol != 'none':
+            if self.params.output.images.pymol is not None:
                 message = 'pymol is required when output.images.pymol is not set to "none"'
                 self.check_programs_are_available(['pymol'])
         except Exception as e:
@@ -850,7 +855,10 @@ class MultiDatasetUijParameterisation(Program):
                 # Set Uij values of isotropic atoms
                 observed_uij = numpy.zeros_like(observed_uij)
                 observed_uij[:,:,0] = iso_b_vals_all
-                observed_uij[:,:,2] = observed_uij[:,:,1] = observed_uij[:,:,0]
+                observed_uij[:,:,1] = iso_b_vals_all
+                observed_uij[:,:,2] = iso_b_vals_all
+                # Set isotropic mask
+                isotropic_mask = numpy.ones(observed_uij.shape[1], dtype=bool)
             else:
                 raise Sorry('All atoms selected for fitting have isotropic ADPs and input.input_uij_model is currently set to "{}".\nOptions:'.format(disorder_model) + \
                         '\n   1) Re-refine structures with anisotropic ADPs.' + \
@@ -859,7 +867,7 @@ class MultiDatasetUijParameterisation(Program):
             # meaning: SOME uij are isotropic
             if (self.params.input.input_uij_model == 'mixed'):
                 # Find atoms that are isotropic
-                isotropic_mask = (observed_uij == -1).any(axis=(0,2)) # Could also make 2d-mask
+                isotropic_mask = (observed_uij == -1).any(axis=(0,2)).astype(bool) # Could also make 2d-mask
                 # Set -1 values to 0.0
                 assert (observed_uij[:,isotropic_mask,:] == -1).all()
                 observed_uij[:,isotropic_mask,:] = 0.0
@@ -885,6 +893,8 @@ class MultiDatasetUijParameterisation(Program):
                 self.log('Input disorder model is set to "{}", but all input atoms have anisotropic Uij.'.format(self.params.input.input_uij_model))
                 disorder_model = 'anisotropic'
                 self.log('Updated disorder_model to "{}"'.format(disorder_model))
+            # Set isotropic mask to all False
+            #self.isotropic_mask = numpy.zeros(observed_uij.shape[1], dtype=bool)
 
         # All -1 values should now have been removeed from input array
         assert not (observed_uij==-1).any()
@@ -924,11 +934,10 @@ class MultiDatasetUijParameterisation(Program):
                                                         level_array  = self.level_array,
                                                         level_labels = self.level_labels,
                                                         uij_weights = total_weights,
+                                                        isotropic_mask = isotropic_mask,
                                                         params = self.params.fitting,
                                                         verbose = self.params.settings.verbose,
                                                         log = self.log)
-        # Set whether input is anisotropic or isotropic
-        self.fitter.set_input_info(disorder_model=disorder_model, isotropic_mask=isotropic_mask)
         # Select the datasets for be used for TLS optimisation
         self.fitter.set_optimisation_datasets(self.optimisation_datasets)
 
@@ -1278,7 +1287,7 @@ class MultiDatasetUijParameterisation(Program):
                                                           file_tag='pml-level-partition-template',
                                                           dir_tag=out_dir_tag)
         lvl_pml_prt_prefix = lvl_pml_prt_template.replace('-chain_{}.png','')
-        if self.params.output.images.pymol != 'none':
+        if self.params.output.images.pymol is not None:
             for i_level in xrange(len(self.level_array)):
                 # Images for each chain (of the partitions) - coloured by group
                 self.log('\t> {}'.format(lvl_pml_prt_template.format(i_level+1,'*')))
@@ -1610,7 +1619,7 @@ class MultiDatasetUijParameterisation(Program):
             self.log('\t> {}'.format(m_f))
             m_h.write_pdb_file(m_f)
             # Write pymol images of each chain
-            if self.params.output.images.pymol != 'none':
+            if self.params.output.images.pymol is not None:
                 # Generate pymol images
                 self.log('- Generating pymol images')
                 # Images for each chain
@@ -1735,7 +1744,7 @@ class MultiDatasetUijParameterisation(Program):
         if not glob.glob(res_plt_template.format('*')):
             self.warnings.append('no files have been generated! ({})'.format(res_plt_template.format('*')))
         # Write pymol images for each chain
-        if self.params.output.images.pymol != 'none':
+        if self.params.output.images.pymol is not None:
             self.log('- Generating pymol images')
             self.log('\t> {}'.format(res_pml_chn_template.format('*')))
             auto_chain_images(structure_filename = m_f,
@@ -3423,7 +3432,7 @@ class MultiDatasetUijPlots(object):
         axes = numpy.array(axes).flatten()
 
         # Extract rows with non-zero values
-        table = table[table['b_iso (level)']!=0.0]
+        #table = table[table['b_iso (level)']!=0.0]
         # Extract only inter-level optimisation values (last step of each cycle)
         table = table[(table['step']=='inter-level')]
         # Labels for each of the series to plot
@@ -3482,7 +3491,7 @@ class MultiDatasetUijPlots(object):
         ax.xaxis.set_ticks_position('bottom')
         ax.set_xticks(x_vals)
         ax.set_xticklabels(x_labs)
-        ax.tick_params('x', labelsize=max(2, min(10, 14-0.15*len(x_keys))))
+        ax.tick_params('x', labelsize=max(6, min(10, 14-0.15*len(x_keys))))
         ax.set_xlabel('Optimisation Cycle')
         ax.set_ylabel('Average B-factor of Level')
         ax.set_ylim(bottom=0.0)
@@ -3506,7 +3515,7 @@ class MultiDatasetUijPlots(object):
 
         # Axis stuff
         ax.xaxis.set_ticks_position('bottom')
-        ax.tick_params('x', labelsize=max(2, min(10, 14-0.15*len(x_keys))))
+        ax.tick_params('x', labelsize=max(6, min(10, 14-0.15*len(x_keys))))
         ax.set_xlabel('Optimisation Cycle')
         ax.set_ylabel('Average B-factor of Level')
         ax.set_ylim(bottom=0.0)
@@ -3532,6 +3541,7 @@ class MultiDatasetHierarchicalUijFitter(object):
                  level_array,
                  level_labels=None,
                  uij_weights=None,
+                 isotropic_mask=None,
                  params=None,
                  verbose=False,
                  log=None):
@@ -3562,6 +3572,8 @@ class MultiDatasetHierarchicalUijFitter(object):
         # Weights for each uij
         self.uij_weights = uij_weights
 
+        self.set_isotropic_mask(isotropic_mask=isotropic_mask)
+
         # Level labels, and grouping for each level
         self.level_labels = level_labels if level_labels else ['Level {}'.format(i) for i in xrange(1, len(level_array)+1)]
         self.level_array = level_array
@@ -3588,6 +3600,7 @@ class MultiDatasetHierarchicalUijFitter(object):
                                                          index = idx+1,
                                                          label = lab,
                                                          weights = self.uij_weights,
+                                                         isotropic_mask = self.isotropic_mask,
                                                          params = self.params.optimisation,
                                                          verbose = verbose,
                                                          log = self.log))
@@ -3845,27 +3858,14 @@ class MultiDatasetHierarchicalUijFitter(object):
         self.log('CPUs: {}'.format(n_cpus))
         self.log('Max recursions (number of levels to be co-optimised): {}'.format(max_recursions))
 
-        # Filter the group tree (possibly removing the residual level)
-        group_tree_copy = copy.deepcopy(self.group_tree)
-        for l in group_tree_copy.keys():
-            if l == 'X':
-                group_tree_copy.pop('X')
-                assert self.group_tree.has_key('X')
-                continue
-            for g in group_tree_copy[l].keys():
-                for l2 in group_tree_copy[l][g].keys():
-                    if l2 == 'X':
-                        group_tree_copy[l][g].pop('X')
-                        assert self.group_tree[l][g].has_key('X')
-                        continue
-
         # Create optimisation object -- edits levels in-place so shouldn't need to do anything to unpack results
         ao = InterLevelAmplitudeOptimiser(
                 target_uij = self.observed_uij,
                 levels     = self.levels,
                 residual   = self.residual,
-                group_tree = group_tree_copy,
+                group_tree = self.group_tree,
                 weights    = self.uij_weights,
+                isotropic_mask = self.isotropic_mask,
                 params     = self.params,
                 verbose    = self.verbose,
                 log        = self.log)
@@ -3881,17 +3881,20 @@ class MultiDatasetHierarchicalUijFitter(object):
             return 'unknown'
         return self.n_params(non_zero=non_zero) / self.n_input_values()
 
-    def set_input_info(self, disorder_model, isotropic_mask=None):
+    def set_isotropic_mask(self, isotropic_mask):
+        if isotropic_mask is None:
+            disorder_model = 'anisotropic'
+            self._input_params_per_atom = 6
+        elif isotropic_mask.sum() == isotropic_mask.size:
+            disorder_model = 'isotropic'
+            self._input_params_per_atom = 1
+        else:
+            assert isotropic_mask.sum() > 0, 'isotropic mask has been provided that selects no atoms'
+            disorder_model = 'mixed'
+            self._input_params_per_atom = 6.0 - 5.0*float(isotropic_mask.sum())/float(isotropic_mask.size)
+
         self.disorder_model = disorder_model
         self.isotropic_mask = isotropic_mask
-        if disorder_model == 'anisotropic':
-            self._input_params_per_atom = 6
-        elif disorder_model == 'isotropic':
-            self._input_params_per_atom = 1
-        elif disorder_model == 'mixed':
-            self._input_params_per_atom = 6.0 - 5.0*float(isotropic_mask.sum())/float(isotropic_mask.size)
-        else:
-            raise Exception('Invalid disorder model?!')
 
     def set_optimisation_datasets(self, dataset_indices):
         self.dataset_mask[:] = False
@@ -3903,7 +3906,7 @@ class MultiDatasetHierarchicalUijFitter(object):
         self.tracking_png = trk_path
         self.convergence_png = cvg_path
 
-    def update_tracking(self, uij_lvl, step, i_cycle, i_level=None):
+    def update_tracking(self, uij_lvl, step, i_cycle, i_level=None, write_graphs=False):
         """Update the tracking table"""
 
         self.log.subheading('Updating tracking...')
@@ -3971,17 +3974,19 @@ class MultiDatasetHierarchicalUijFitter(object):
                                                                      'b_iso (total)' : round(b_iso_tot,3)}
 
         self.log(self.tracking_data.loc[len(self.tracking_data)-len(i_level):].to_string())
-        # Dump to csv
-        self.tracking_data.to_csv(self.tracking_csv)
-        # Make plots
-        self.plot.tracking_plots(
-                table = self.tracking_data,
-                filename = self.tracking_png
-                )
-        self.plot.convergence_plots(
-                table = self.tracking_data,
-                filename = self.convergence_png
-                )
+
+        if write_graphs:
+            # Dump to csv
+            self.tracking_data.to_csv(self.tracking_csv)
+            # Make plots
+            self.plot.tracking_plots(
+                    table = self.tracking_data,
+                    filename = self.tracking_png
+                    )
+            self.plot.convergence_plots(
+                    table = self.tracking_data,
+                    filename = self.convergence_png
+                    )
 
     def apply_masks(self):
         self.log.subheading('Setting atom and datasets masks')
@@ -4026,7 +4031,7 @@ class MultiDatasetHierarchicalUijFitter(object):
                 self.log('Updating target Uijs for optimisation')
                 fitter.set_target_uij(target_uij=self._calculate_target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=i_level))
                 # Optimise
-                fitted_uij = fitter.run(n_cpus=n_cpus, n_cycles=n_micro_cycles)
+                fitted_uij = fitter.run(n_cpus=n_cpus, n_cycles=(max(10,n_micro_cycles) if i_macro==0 else n_micro_cycles))
                 # Store in output array
                 fitted_uij_by_level[i_level] = fitted_uij
                 # Update tracking
@@ -4045,13 +4050,20 @@ class MultiDatasetHierarchicalUijFitter(object):
             # Optimise the amplitudes between levels
             self.log.subheading('Macrocycle {} of {}: '.format(i_macro, n_macro_cycles)+'Optimising inter-level amplitudes')
             # Optimise the InterLevel Amplitudes
+            self.optimise_level_amplitudes(n_cpus=1, max_recursions=1)
             self.optimise_level_amplitudes(n_cpus=1, max_recursions=None)
             # Update output
             for i, l in enumerate(self.levels):
                 fitted_uij_by_level[i] = l.extract()
             fitted_uij_by_level[-1] = self.residual.extract()
             # Update tracking
-            self.update_tracking(uij_lvl=fitted_uij_by_level, step='inter-level', i_cycle=i_macro, i_level=range(len(fitted_uij_by_level)))
+            self.update_tracking(
+                    uij_lvl=fitted_uij_by_level,
+                    step='inter-level',
+                    i_cycle=i_macro,
+                    i_level=range(len(fitted_uij_by_level)),
+                    write_graphs=True
+                    )
 
             if (i_macro == 0):
                 # Restore the original optimisation datasets
@@ -4194,7 +4206,10 @@ class _MultiDatasetUijLevel(object):
             pool.close()
             pool.join()
             # Resort the output so results presented in a readable fashion
-            finished_jobs = sorted(finished_jobs, key=lambda x: x.label)
+            def get_label(x):
+                if isinstance(x, str): return x
+                return x.label
+            finished_jobs = sorted(finished_jobs, key=lambda x: get_label(x))
             #finished_jobs = workers.map(func=_wrapper_fit, iterable=jobs, chunksize=self._chunksize)
         else:
             # Run jobs in serial
@@ -4271,6 +4286,7 @@ class MultiDatasetTLSGroupLevel(_MultiDatasetUijLevel):
                  index=0,
                  label=None,
                  weights=None,
+                 isotropic_mask=None,
                  params=None,
                  verbose=False,
                  log=None):
@@ -4311,6 +4327,11 @@ class MultiDatasetTLSGroupLevel(_MultiDatasetUijLevel):
             assert len(i_origin) == 1
             observed_com = tls_origins[i_origin[0]]
             assert observed_com.shape == (observed_xyz.shape[0], 3)
+            # Select isotropic_mask
+            if isotropic_mask is not None:
+                sel_iso_mask = isotropic_mask[sel]
+            else:
+                sel_iso_mask = None
             # Create fitter object
             self.fitters[i] = MultiDatasetTLSFitter(target_uij = observed_uij[:,sel],
                                                           atomic_xyz = observed_xyz[:,sel],
@@ -4318,6 +4339,7 @@ class MultiDatasetTLSGroupLevel(_MultiDatasetUijLevel):
                                                           n_tls = n_tls,
                                                           label = '{:4d} of {:4d}'.format(i, self._n_groups),
                                                           weights = weights[:,sel],
+                                                          isotropic_mask = sel_iso_mask,
                                                           params = params,
                                                           verbose = verbose,
                                                           log = log)
@@ -4623,6 +4645,7 @@ def run(params, args=None):
             # ----------------
             log.bar()
         # Special settings if only one model is loaded
+
         if len(params.input.pdb) == 1:
             log.bar(True, False)
             log('One file provided for analysis -- updating settings')
@@ -4635,6 +4658,8 @@ def run(params, args=None):
             params.analysis.calculate_electron_density_metrics = False
             log('Setting input.look_for_reflection_data = False')
             params.input.look_for_reflection_data = False
+            log('Setting fitting.optimisation.dataset_weights = one')
+            params.fitting.optimisation.dataset_weights = 'one'
             log.bar()
 
         log.heading('Running setup')
