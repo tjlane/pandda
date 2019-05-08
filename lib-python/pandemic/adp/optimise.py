@@ -11,7 +11,7 @@ from libtbx.utils import Sorry, Failure
 from bamboo.common import Info, dict_from_class, logs
 from bamboo.maths.functions import rms, get_function
 
-from giant.structure.tls import tls_str_to_n_params, get_t_l_s_from_vector
+from giant.structure.tls import tls_str_to_n_params, get_t_l_s_from_vector, make_tls_isotropic
 from giant.structure.uij import sym_mat3_eigenvalues
 from mmtbx.tls.utils import uij_eigenvalues, TLSMatricesAndAmplitudesList
 from mmtbx.tls.optimise_amplitudes import OptimiseAmplitudes
@@ -39,6 +39,8 @@ def _wrapper_optimise(args):
 def make_uij_isotropic_in_place(uij, selection=None):
     if selection is None:
         selection = flex.bool(uij.size(), True)
+    shape = uij.all()
+    uij.reshape(flex.grid((numpy.product(shape),)))
     assert len(uij.all()) == 1, 'array must be 1d'
     u_sel = uij.select(selection)
     n = u_sel.size()
@@ -46,6 +48,8 @@ def make_uij_isotropic_in_place(uij, selection=None):
     u_iso = u_sel[:,:3].mean(axis=1).reshape((n,1)).repeat(3, axis=1)
     u_iso = flex.sym_mat3_double(numpy.concatenate([u_iso, numpy.zeros_like(u_iso)], axis=1))
     uij.set_selected(selection, u_iso)
+    uij.reshape(flex.grid(shape))
+    return uij
 
 ############################################################################
 
@@ -348,7 +352,7 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         assert penalties.size == self._op.wgts_3.size()
 
         # Average penalties, with weights for each dataset
-        total_penalty = math.log(self._op.n_atm) * msqr_delta_u * numpy.sum(penalties) #/ 3.0 # Divide by the number of dimensions
+        total_penalty = (self._op.n_atm-1)**0.5 * msqr_delta_u * numpy.sum(penalties) #/ 3.0 # Divide by the number of dimensions
 
         # Normalise by the NUMBER OF DATASETS
         total_penalty /= (self._op.n_dst)# * self._op.n_atm)
@@ -377,9 +381,7 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
 
         # Modify isotropic atoms
         if self.isotropic_mask is not None:
-            uij.reshape(flex.grid((op.n_dst*op.n_atm,))) # Make 1-d
             make_uij_isotropic_in_place(uij, selection=self.isotropic_mask)
-            uij.reshape(flex.grid((op.n_dst,op.n_atm,))) # Make N-d
 
         self._fitted_uij = uij
 
@@ -691,6 +693,16 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                     self.reset([i_tls])
                     continue
 
+                # Make output isotropic if mask is isotropic
+                if (self.isotropic_mask is not None) and self.isotropic_mask.all_eq(True):
+                    m = self.parameters().get(index=i_tls)
+                    t_iso, l_iso, s_iso = make_tls_isotropic(m.matrices.T, m.matrices.L, m.matrices.S)
+                    m.matrices.set(t_iso, 'T')
+                    m.matrices.set(l_iso, 'L')
+                    m.matrices.set(s_iso, 'S')
+                    # Check that isotropicisation has not made any of the matrices invalid and correct if possible
+                    self.optimise_invalid_modes()
+
                 # Normalise matrices to give Uijs of approximately xA
                 self.normalise_mode(index=i_tls)
                 self.optimise_invalid_modes() # Check that normalisation has not made any of the matrices invalid and correct if possible
@@ -890,10 +902,14 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         # Calculate the TLS components
         if sum_modes is True:
             uij = self.parameters().uijs(sites_carts=xyzs, origins=coms)
+            if self.isotropic_mask is not None:
+                make_uij_isotropic_in_place(uij, selection=self.isotropic_mask)
             assert uij.all() == (n_dst, n_atm,)
             uij = uij.as_1d().as_double().as_numpy_array().reshape((n_dst,n_atm,6))
         else:
             uij = [m.uijs(sites_carts=xyzs, origins=coms) for m in self.parameters()]
+            if self.isotropic_mask is not None:
+                [make_uij_isotropic_in_place(u, selection=self.isotropic_mask) for u in uij]
             assert uij[0].all() == (n_dst, n_atm,)
             uij = numpy.array([u.as_1d().as_double().as_numpy_array().reshape((n_dst,n_atm,6)) for u in uij])
             assert uij.shape == (n_tls, n_dst, n_atm, 6)
@@ -911,7 +927,7 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         # Validate
         assert xyzs.shape == (n_dst, n_atm, 3)
         # Calculate the TLS components
-        uij = [[m.matrices.uijs(sites_cart=flex.vec3_double(xyzs[i]), origin=tuple(coms[i])).as_1d().as_double().as_numpy_array() for i in xrange(n_dst)] for m in self.parameters()]
+        uij = [[make_uij_isotropic_in_place(m.matrices.uijs(sites_cart=flex.vec3_double(xyzs[i]), origin=tuple(coms[i])), selection=self.isotropic_mask).as_1d().as_double().as_numpy_array() for i in xrange(n_dst)] for m in self.parameters()]
         uij = numpy.array(uij).reshape((n_tls, n_dst, n_atm, 6))
         assert uij.shape == (n_tls, n_dst, n_atm, 6)
         return uij
@@ -1130,6 +1146,8 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
                  levels,
                  residual,
                  group_tree,
+                 convergence_tolerance,
+                 amplitude_sum_weight,
                  weights=None,
                  isotropic_mask=None,
                  params=None,
@@ -1137,12 +1155,14 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
                  log=None):
         super(InterLevelAmplitudeOptimiser, self).__init__(
                 target_uij=target_uij,
-                convergence_tolerance=params.optimisation.gradient_convergence,
+                convergence_tolerance=convergence_tolerance,
                 label=None,
                 weights=weights,
                 params=params,
                 verbose=verbose,
                 log=log)
+
+        self.amplitude_sum_weight = amplitude_sum_weight
 
         self.n_lvl = len(levels)
         self.n_tls = self.params.n_tls_modes_per_tls_group
@@ -1558,7 +1578,7 @@ class InterLevelAmplitudeOptimiser(BaseOptimiser):
                 residual_uijs       = uijs_res,
                 residual_amplitudes = muls_res,
                 residual_mask       = self.residual_mask.select(flex.size_t(self._op.i_dst)),
-                weight_sum_of_amplitudes_squared_term = self.params.optimisation.amplitude_sum_weight,
+                weight_sum_of_amplitudes_squared_term = self.amplitude_sum_weight,
                 convergence_tolerance = self.convergence_tolerance,
                 )
         return optimiser

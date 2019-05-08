@@ -213,7 +213,7 @@ fitting {
             vibration_delta = 1.0
                 .help = 'Vibration step size for zero-value matrices (relative scale)'
                 .type = float
-            libration_delta = 45.0
+            libration_delta = 10.0
                 .help = 'Libration step size for zero-value matrices (relative scale)'
                 .type = float
             uij_delta = 1e-3
@@ -229,24 +229,24 @@ fitting {
                 form = *sigmoid
                     .type = choice(multi=False)
                     .help = "Function to use to calculate how the penalty changes for a model that is greater than the target model"
-                y_scale = 10.0
+                y_scale = 0.5
                     .type = float
                     .help = 'manual multiplier for the sigmoid penalty function'
                 x_width = 0.02
                     .type = float
-                    .help = 'width of the buffer zone (width of buffer approx 6.9 time this value; default 0.0018355 -> 0.0018355*6.9*8*pi*pi = 1A B-factor)'
+                    .help = 'width of the buffer zone (width of buffer approx 6.9 time this value; default 0.02 -> 0.02*6.9*8*pi*pi = ~10A B-factor)'
                 x_offset = 0.0
                     .type = float
                     .help = "Offset of the form function (e.g. inversion point of the sigmoid function)"
             }
         }
-        simplex_convergence = 1e-6
+        simplex_convergence = 1e-10
             .help = "cutoff for which the least-squares simplex is considered converged"
             .type = float
-        gradient_convergence = 1e-6
+        gradient_convergence = 1e-10
             .help = "cutoff for which the least-squares gradient is considered converged"
             .type = float
-        amplitude_sum_weight = 1.0
+        amplitude_sum_weight = 0.5
             .help = "weight on the sum of the amplitudes during amplitude optimisation"
             .type = float
         normalised_tls_scale = 1e+0
@@ -3293,48 +3293,70 @@ class MultiDatasetUijPlots(object):
             fig.savefig(filename)#, dpi=300)
             pyplot.close(fig)
 
-    def tracking_plots(self, table, filename):
+    def tracking_plots(self, table, filename, number_to_plot=5):
+
+        # trim the table to certain rows
+        n = max(table['cycle'])
+        cycles_to_plot = range(0, n, int(n/number_to_plot)+1) + [n]
+        cycles_to_plot_bool = table['cycle'].isin(cycles_to_plot)
+        table = table[cycles_to_plot_bool]
 
         fig, axes = pyplot.subplots(nrows=2, ncols=1, sharex=True, sharey=False)
         # Create list if only one plot
         axes = numpy.array(axes).flatten()
 
         # Group by cycle & step to allow stacking
-        grouped = table.groupby(['cycle','step'], sort=False)
+        grouped = table.groupby(['cycle','step'], sort=False, as_index=False)
 
-        # Create xpositions and labels
+        n_total = len(grouped)
+
+        grouped_reduced = grouped.max()
+        grouped_reduced['x'] = range(len(grouped_reduced))
+
+        prev_x = prev_r = prev_b = None
+
+        for n_cycle, cycle_info in grouped_reduced.groupby('cycle', sort=False):
+
+            x_vals = cycle_info['x'].values
+            r_vals = cycle_info['rmsd'].values
+            b_vals = cycle_info['b_iso (total)'].values
+
+            # Create RMSD plot
+            hdl1 = axes[0].plot(
+                     x_vals, r_vals,
+                     'bo-', label='model',
+                     lw=1, ms=max(1, min(3, 5-0.1*grouped.ngroups)),
+                     )
+            if prev_x is not None:
+                axes[0].plot(
+                         [prev_x, x_vals[0]], [prev_r, r_vals[0]],
+                         'b:', label='model',
+                         lw=1, ms=max(1, min(3, 5-0.1*grouped.ngroups)),
+                         )
+            # Create an overall B-iso TOTAL line
+            hdl2 = axes[1].plot(
+                     x_vals, b_vals,
+                     'ko-', label='total',
+                     lw=1, ms=max(1, min(3, 5-0.1*grouped.ngroups)),
+                     )
+            if prev_x is not None:
+                axes[1].plot(
+                         [prev_x, x_vals[0]], [prev_b, b_vals[0]],
+                         'k:', label='total',
+                         lw=1, ms=max(1, min(3, 5-0.1*grouped.ngroups)),
+                         )
+
+            prev_x = x_vals[-1]
+            prev_r = r_vals[-1]
+            prev_b = b_vals[-1]
+
+        # Other plot -- done as one
+
         x_vals = numpy.arange(0, grouped.ngroups)
-        x_max = max(x_vals)
-        x_keys = [v[0] for v in grouped]
-        x_labs = [v[1] for v in x_keys]
+        x_max = max(x_vals)                 # remove
+        x_keys = [v[0] for v in grouped]    # remove
+        x_labs = [v[1] for v in x_keys]     # remove
 
-        # FIRST AXIS
-        ax = axes[0]
-        # Create RMSD plot
-        hdl1 = ax.plot(
-                 x_vals,
-                 grouped['rmsd'].max().values,
-                 'bo-',
-                 label='model',
-                 lw=1, ms=max(1, min(3, 5-0.1*len(x_vals))),
-                 )
-        # Axis stuff
-        ax.set_title('Hierarchical Model Fit')
-        ax.set_xticks([])
-        ax.xaxis.set_ticks_position('bottom')
-        ax.set_ylabel('model fit \n$8\pi^2rms(\Delta U)$ ($\AA^2$)')
-        ax.set_ylim(bottom=0.0)
-
-        # SECOND AXIS
-        ax = axes[1]
-        # Create an overall B-iso TOTAL line
-        hdl2 = ax.plot(
-                 x_vals,
-                 grouped['b_iso (total)'].max().values,
-                 'ko-',
-                 label='total',
-                 lw=1, ms=max(1, min(3, 5-0.1*len(x_vals))),
-                 )
         # Create B-iso lines for each LEVEL
         colours = self.get_level_colours()
         # Bottoms of bar where stacking occurs
@@ -3353,7 +3375,7 @@ class MultiDatasetUijPlots(object):
             y_vals = sel_t['b_iso (level)'].values
 
             # Plot
-            hdl = ax.bar(left   = x_vals[i_x],
+            hdl = axes[1].bar(left   = x_vals[i_x],
                          height = y_vals,
                          bottom = y_cuml[i_x],
                          width  = 0.8,
@@ -3365,7 +3387,17 @@ class MultiDatasetUijPlots(object):
             handles.append(hdl)
             # Add to cuml
             y_cuml[i_x] = y_cuml[i_x] + y_vals
+
         # Axis stuff
+        ax = axes[0]
+        ax.set_title('Hierarchical Model Fit')
+        ax.set_xticks([])
+        ax.xaxis.set_ticks_position('bottom')
+        ax.set_ylabel('model fit \n$8\pi^2rms(\Delta U)$ ($\AA^2$)')
+        ax.set_ylim(bottom=0.0)
+
+        # Axis stuff
+        ax = axes[1]
         ax.xaxis.set_ticks_position('bottom')
         ax.set_title('B-factors of Hierarchical Model')
         ax.set_xlabel('Optimisation Stage/Cycle')
@@ -3375,6 +3407,7 @@ class MultiDatasetUijPlots(object):
         ax.tick_params('x', labelsize=max(2, min(10, 14-0.15*len(grouped))))
         ax.set_xlim(left=-0.5, right=max(x_vals)+0.5)
         ax.set_ylim(bottom=0.0)
+
         # Create legend for axis
         ncol = 3
 
@@ -3405,7 +3438,7 @@ class MultiDatasetUijPlots(object):
                 delta = v - last_v
                 axes[0].text(x=last_v+delta/2.0,
                              y=0.05*axes[0].get_ylim()[0] + 0.95*axes[0].get_ylim()[1],
-                             s='cycle '*(n_cycles<6) +str(i-1), # This is plotting the previous point so need -1
+                             s='cycle '*(n_cycles<6) +str(cycles_to_plot[i-1]), # This is plotting the previous point so need -1
                              horizontalalignment='center',
                              verticalalignment='top',
                             )
@@ -3414,7 +3447,7 @@ class MultiDatasetUijPlots(object):
         if delta is not None:
             axes[0].text(x=min(v+delta/2.0, axes[0].get_xlim()[1]),
                          y=0.05*axes[0].get_ylim()[0] + 0.95*axes[0].get_ylim()[1],
-                         s='cycle '*(n_cycles<6) +str(i), # This does not need a -1
+                         s='cycle '*(n_cycles<6) +str(cycles_to_plot[i]), # This does not need a -1
                          horizontalalignment='center',
                          verticalalignment='top',
                         )
@@ -3509,8 +3542,11 @@ class MultiDatasetUijPlots(object):
             x_vals = l_table['cycle'].values
             y_vals = l_table['b_iso (level)'].values
 
-            hd_ = ax.plot(x_vals, y_vals, 'ko-', lw=2, ms=5)
-            hdl = ax.plot(x_vals, y_vals, 'o-', lw=1, ms=3, color=colours[l-1], label='Level {}'.format(l))
+            hd_ = ax.plot(x_vals, y_vals,
+                    'ko-', lw=2, ms=max(3, min(5, 7-0.1*len(x_vals))))
+            hdl = ax.plot(x_vals, y_vals,
+                    'o-', lw=1, ms=max(1, min(3, 5-0.1*len(x_vals))),
+                    color=colours[l-1], label='Level {}'.format(l))
             handles.extend(hdl)
 
         # Axis stuff
@@ -3848,7 +3884,7 @@ class MultiDatasetHierarchicalUijFitter(object):
             return 'unknown'
         return int(self.observed_uij.shape[0] * self.observed_uij.shape[1] * self.n_input_params_per_atom())
 
-    def optimise_level_amplitudes(self, n_cpus=1, max_recursions=None, include_residual=True):
+    def optimise_level_amplitudes(self, n_cpus=1, max_recursions=None, include_residual=True, last_cycle=False):
         """Optimise amplitudes for pairs of adjacent levels"""
 
         self.log.bar(True, False)
@@ -3864,6 +3900,8 @@ class MultiDatasetHierarchicalUijFitter(object):
                 levels     = self.levels,
                 residual   = self.residual,
                 group_tree = self.group_tree,
+                convergence_tolerance = self.params.optimisation.gradient_convergence,
+                amplitude_sum_weight = 0.0 if last_cycle is True else self.params.optimisation.amplitude_sum_weight,
                 weights    = self.uij_weights,
                 isotropic_mask = self.isotropic_mask,
                 params     = self.params,
@@ -4035,7 +4073,13 @@ class MultiDatasetHierarchicalUijFitter(object):
                 # Store in output array
                 fitted_uij_by_level[i_level] = fitted_uij
                 # Update tracking
-                self.update_tracking(uij_lvl=fitted_uij_by_level, step='level {}'.format(i_level+1), i_cycle=i_macro, i_level=i_level)
+                self.update_tracking(
+                        uij_lvl=fitted_uij_by_level,
+                        step='level {}'.format(i_level+1),
+                        i_cycle=i_macro,
+                        i_level=i_level,
+                        write_graphs=(i_macro==0),
+                        )
 
             if self.params.fit_residual:
                 # Fit the residuals
@@ -4045,13 +4089,19 @@ class MultiDatasetHierarchicalUijFitter(object):
                 # Update fitters and optimise -- always run two cycles of this
                 fitted_uij_by_level[-1] = self.residual.run(n_cpus=n_cpus, n_cycles=1)
                 # Update tracking
-                self.update_tracking(uij_lvl=fitted_uij_by_level, step='residual', i_cycle=i_macro, i_level=len(fitted_uij_by_level)-1)
+                self.update_tracking(
+                        uij_lvl=fitted_uij_by_level,
+                        step='residual',
+                        i_cycle=i_macro,
+                        i_level=len(fitted_uij_by_level)-1,
+                        write_graphs=(i_macro==0),
+                        )
 
             # Optimise the amplitudes between levels
             self.log.subheading('Macrocycle {} of {}: '.format(i_macro, n_macro_cycles)+'Optimising inter-level amplitudes')
             # Optimise the InterLevel Amplitudes
-            self.optimise_level_amplitudes(n_cpus=1, max_recursions=1)
-            self.optimise_level_amplitudes(n_cpus=1, max_recursions=None)
+            self.optimise_level_amplitudes(n_cpus=1, max_recursions=1, include_residual=False)
+            self.optimise_level_amplitudes(n_cpus=1, max_recursions=None, last_cycle=(i_macro==n_macro_cycles))
             # Update output
             for i, l in enumerate(self.levels):
                 fitted_uij_by_level[i] = l.extract()
@@ -4062,7 +4112,7 @@ class MultiDatasetHierarchicalUijFitter(object):
                     step='inter-level',
                     i_cycle=i_macro,
                     i_level=range(len(fitted_uij_by_level)),
-                    write_graphs=True
+                    write_graphs=True,
                     )
 
             if (i_macro == 0):
@@ -4408,7 +4458,7 @@ class MultiDatasetTLSGroupLevel(_MultiDatasetUijLevel):
 
 class MultiDatasetResidualLevel(_MultiDatasetUijLevel):
 
-    _chunksize = 100
+    _chunksize = 250
 
     def __init__(self,
                  observed_uij,
@@ -4600,6 +4650,9 @@ def run(params, args=None):
 
         log.heading('Processing input parameters')
 
+        if len(params.input.pdb) == 0:
+            raise Sorry('No structures have been provided for analysis (input.pdb=[...])')
+
         if params.settings.debug:
             log('DEBUG is turned on -- setting verbose=True')
             params.settings.verbose = True
@@ -4680,7 +4733,13 @@ def run(params, args=None):
                 m = AtomicModel.from_file(f)
             l = label_func(f)
             if not l:
-                raise Sorry('No label generated using labelling function "{}"\n\tLabel {}\n\tFile {}'.format(params.input.labelling, l, f))
+                if len(params.input.pdb) == 1:
+                    log('No label created for label function: {}'.format(params.input.labelling))
+                    log('Trying to label by filename instead')
+                    label_func = filename
+                    l = label_func(f)
+                if not l:
+                    raise Sorry('No label generated using labelling function "{}"\n\tLabel {}\n\tFile {}'.format(params.input.labelling, l, f))
             m.label(tag=l)
             models.append(m)
 

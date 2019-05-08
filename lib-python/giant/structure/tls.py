@@ -4,7 +4,6 @@ import numpy
 
 import iotbx.pdb
 
-from scitbx import matrix, linalg
 from scitbx.array_family import flex
 from mmtbx.tls import tlso, uaniso_from_tls_one_group
 
@@ -38,4 +37,52 @@ def get_t_l_s_from_vector(vals):
 def tls_str_to_n_params(s, include_szz=True):
     assert not set(s).difference('TLS')
     return 6*('T' in s) + 6*('L' in s) + (8+include_szz)*('S' in s)
+
+def make_tls_isotropic(t, l, s, l_and_s_in_degrees=True):
+
+    from scitbx import matrix, linalg
+    from mmtbx.tls import decompose, analysis
+
+    d = decompose.decompose_tls_matrices(
+            T=t, L=l, S=s,
+            l_and_s_in_degrees=l_and_s_in_degrees,
+            )
+
+    # Make vibrational amplitudes isotropic
+    t = numpy.sqrt(numpy.mean(numpy.square(d.v_amplitudes)))
+
+    tls = analysis.tls_from_motions(
+            dx = d.l_amplitudes[0],
+            dy = d.l_amplitudes[1],
+            dz = d.l_amplitudes[2],
+            l_x = matrix.rec(d.l_axis_directions[0], (3,1)),
+            l_y = matrix.rec(d.l_axis_directions[1], (3,1)),
+            l_z = matrix.rec(d.l_axis_directions[2], (3,1)),
+            sx = d.s_amplitudes[0],
+            sy = d.s_amplitudes[1],
+            sz = d.s_amplitudes[2],
+            tx = t, # set all the same
+            ty = t,
+            tz = t,
+            v_x = matrix.rec((1,0,0), (3,1)), # don't need to provide actual axes as no longer defined
+            v_y = matrix.rec((0,1,0), (3,1)),
+            v_z = matrix.rec((0,0,1), (3,1)),
+            w_M_lx = matrix.rec(d.l_axis_intersections[0], (3,1)),
+            w_M_ly = matrix.rec(d.l_axis_intersections[1], (3,1)),
+            w_M_lz = matrix.rec(d.l_axis_intersections[2], (3,1)),
+            )
+
+    T = tls.T_M
+    L = tls.L_M
+    S = tls.S_M
+
+    # Should return in degrees also
+    if l_and_s_in_degrees is True:
+        import math
+        scale = 180./math.pi
+        T = T
+        L = L * scale * scale
+        S = S * scale
+
+    return (T.as_sym_mat3(), L.as_sym_mat3(), S.as_mat3())
 
