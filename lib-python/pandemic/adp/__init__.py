@@ -19,7 +19,7 @@ from bamboo.common import Meta, ListStream, dict_from_class
 from bamboo.common.logs import Log, LogStream, ScreenLogger
 from bamboo.common.path import easy_directory, rel_symlink, foldername, filename
 from bamboo.common.command import CommandManager
-from bamboo.maths.functions import rms, get_function
+from bamboo.maths.functions import rms, Sigmoid
 
 from giant.manager import Program
 from giant.dataset import CrystallographicModel, AtomicModel
@@ -226,16 +226,13 @@ fitting {
             over_target_values
                 .help = 'penalties when the fitted Uij is greater than the target Uij. penalty p is number of atoms with a Uij(fitted) > Uij(target). calculated as number of negative eigenvalues of tensor Uij(fitted)-Uij(target).'
             {
-                form = *sigmoid
-                    .type = choice(multi=False)
-                    .help = "Function to use to calculate how the penalty changes for a model that is greater than the target model"
-                y_scale = 0.5
+                barrier_height = 0.0005
                     .type = float
                     .help = 'manual multiplier for the sigmoid penalty function'
-                x_width = 0.02
+                barrier_width = 0.02
                     .type = float
                     .help = 'width of the buffer zone (width of buffer approx 6.9 time this value; default 0.02 -> 0.02*6.9*8*pi*pi = ~10A B-factor)'
-                x_offset = 0.0
+                barrier_offset = 0.0
                     .type = float
                     .help = "Offset of the form function (e.g. inversion point of the sigmoid function)"
             }
@@ -876,7 +873,8 @@ class MultiDatasetUijParameterisation(Program):
                 iso_b_vals_sel = iso_b_vals_all[:,isotropic_mask]
                 # Set Uij values of isotropic atoms
                 observed_uij[:,isotropic_mask,0] = iso_b_vals_sel
-                observed_uij[:,isotropic_mask,2] = observed_uij[:,isotropic_mask,1] = observed_uij[:,isotropic_mask,0]
+                observed_uij[:,isotropic_mask,1] = iso_b_vals_sel
+                observed_uij[:,isotropic_mask,2] = iso_b_vals_sel
             else:
                 raise Sorry('Some atoms for fitting (but not all) have anisotropically-refined ADPs and input.input_uij_model is currently set to "{}".\nOptions:'.format(disorder_model) + \
                         '\n   1) Re-refine structures so that all atoms selected have {} ADPs and set input.input_uij_model={}.'.format(disorder_model, disorder_model) + \
@@ -1318,38 +1316,29 @@ class MultiDatasetUijParameterisation(Program):
     def penalty_summary(self, out_dir_tag):
         """Write out the composition of the penalty functions"""
 
-        # Create a UijPenalty object
-        penalties_dict = dict_from_class(self.params.fitting.optimisation.penalties)
+        p = self.params.fitting.optimisation.penalties
 
         penalties_meta = [
                 ('over_target_values',
+                    Sigmoid(
+                        y_scale=p.over_target_values.barrier_height,
+                        x_width=p.over_target_values.barrier_width,
+                        x_offset=p.over_target_values.barrier_offset),
                     'Penalty functions for eigenvalues\nof $\Delta$U=U$_{model}$-U$_{target}$',
                     'Eigenvalue of 8*$\pi^{2}$*$\Delta$U',
                     'Penalty Value',
-                    None,
+                    (   p.over_target_values.barrier_offset-10.0*p.over_target_values.barrier_width,
+                        p.over_target_values.barrier_offset+10.0*p.over_target_values.barrier_width),
                     8.*math.pi*math.pi,
                     ),
                 ]
 
-        for penalty_key, title, x_lab, y_lab, x_lim, x_scale in penalties_meta:
-            self.log('Plotting penalty function for {}'.format(penalty_key))
-            d = penalties_dict[penalty_key]
-            if d.form == 'none':
-                x_vals = numpy.array([-1,1])
-                y_vals = numpy.array([ 1,1])
-            else:
-                func = get_function(**dict_from_class(d))
-                if x_lim is None:
-                    if d.form == 'piecewise_linear':
-                        x_lim = (func.x_discontinuity_location-1.0, func.x_discontinuity_location+1.0)
-                    elif d.form == 'sigmoid':
-                        x_lim = (func.x_offset-10.0*func.x_width, func.x_offset+10.0*func.x_width)
-                    else:
-                        x_lim = (-1.0, 1.0)
-                x_vals = numpy.linspace(x_lim[0], x_lim[1], 101)
-                y_vals = func(x_vals)
-            f_name = self.file_manager.add_file(file_name=penalty_key+'.png',
-                                                file_tag=penalty_key+'_png',
+        for key, func, title, x_lab, y_lab, x_lim, x_scale in penalties_meta:
+            self.log('Plotting penalty function for {}'.format(key))
+            x_vals = numpy.linspace(x_lim[0], x_lim[1], 101)
+            y_vals = func(x_vals)
+            f_name = self.file_manager.add_file(file_name=key+'.png',
+                                                file_tag=key+'_png',
                                                 dir_tag=out_dir_tag)
             self.plot.lineplot(
                     filename=f_name,
@@ -3911,7 +3900,14 @@ class MultiDatasetHierarchicalUijFitter(object):
         ao.optimise(n_cpus=n_cpus, max_recursions=max_recursions)
         ao.apply_multipliers(self.levels, self.residual)
         self.log(ao.summary(show=True))
-        return ao
+
+        # Update output
+        fitted_uij = numpy.zeros((len(self.levels)+1,)+self.observed_uij.shape)
+        for i, l in enumerate(self.levels):
+            fitted_uij[i] = l.extract()
+        fitted_uij[-1] = self.residual.extract()
+        assert fitted_uij.shape == (len(self.levels)+1,) + self.observed_uij.shape
+        return fitted_uij
 
     def parameter_ratio_gain(self, non_zero=False):
         """Total number of input values divided by number of model parameters (used or total)"""
@@ -4069,9 +4065,11 @@ class MultiDatasetHierarchicalUijFitter(object):
                 self.log('Updating target Uijs for optimisation')
                 fitter.set_target_uij(target_uij=self._calculate_target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=i_level))
                 # Optimise
-                fitted_uij = fitter.run(n_cpus=n_cpus, n_cycles=(max(10,n_micro_cycles) if i_macro==0 else n_micro_cycles))
-                # Store in output array
-                fitted_uij_by_level[i_level] = fitted_uij
+                fitted_uij_by_level[i_level] = fitter.run(n_cpus=n_cpus, n_cycles=(max(5,n_micro_cycles) if i_macro==0 else n_micro_cycles))
+                # Optimise the amplitudes between levels
+                if i_macro > 0:
+                    self.log.subheading('Macrocycle {} of {}: '.format(i_macro, n_macro_cycles)+'Optimising inter-level amplitudes')
+                    fitted_uij_by_level = self.optimise_level_amplitudes(n_cpus=1, max_recursions=None, last_cycle=(i_macro==n_macro_cycles))
                 # Update tracking
                 self.update_tracking(
                         uij_lvl=fitted_uij_by_level,
@@ -4088,6 +4086,10 @@ class MultiDatasetHierarchicalUijFitter(object):
                 self.residual.set_target_uij(target_uij=self._calculate_target_uij(fitted_uij_by_level=fitted_uij_by_level, i_level=-1))
                 # Update fitters and optimise -- always run two cycles of this
                 fitted_uij_by_level[-1] = self.residual.run(n_cpus=n_cpus, n_cycles=1)
+                # Optimise the amplitudes between levels
+                if i_macro > 0:
+                    self.log.subheading('Macrocycle {} of {}: '.format(i_macro, n_macro_cycles)+'Optimising inter-level amplitudes')
+                    fitted_uij_by_level = self.optimise_level_amplitudes(n_cpus=1, max_recursions=None, last_cycle=(i_macro==n_macro_cycles))
                 # Update tracking
                 self.update_tracking(
                         uij_lvl=fitted_uij_by_level,
@@ -4097,15 +4099,6 @@ class MultiDatasetHierarchicalUijFitter(object):
                         write_graphs=(i_macro==0),
                         )
 
-            # Optimise the amplitudes between levels
-            self.log.subheading('Macrocycle {} of {}: '.format(i_macro, n_macro_cycles)+'Optimising inter-level amplitudes')
-            # Optimise the InterLevel Amplitudes
-            self.optimise_level_amplitudes(n_cpus=1, max_recursions=1, include_residual=False)
-            self.optimise_level_amplitudes(n_cpus=1, max_recursions=None, last_cycle=(i_macro==n_macro_cycles))
-            # Update output
-            for i, l in enumerate(self.levels):
-                fitted_uij_by_level[i] = l.extract()
-            fitted_uij_by_level[-1] = self.residual.extract()
             # Update tracking
             self.update_tracking(
                     uij_lvl=fitted_uij_by_level,

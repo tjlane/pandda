@@ -9,7 +9,7 @@ from libtbx.math_utils import iceil
 from libtbx import adopt_init_args
 from libtbx.utils import Sorry, Failure
 from bamboo.common import Info, dict_from_class, logs
-from bamboo.maths.functions import rms, get_function
+from bamboo.maths.functions import rms, Sigmoid
 
 from giant.structure.tls import tls_str_to_n_params, get_t_l_s_from_vector, make_tls_isotropic
 from giant.structure.uij import sym_mat3_eigenvalues
@@ -37,8 +37,8 @@ def _wrapper_optimise(args):
         return traceback.format_exc()
 
 def make_uij_isotropic_in_place(uij, selection=None):
-    if selection is None:
-        selection = flex.bool(uij.size(), True)
+    #if selection is None:
+    #    selection = flex.bool(uij.size(), True)
     shape = uij.all()
     uij.reshape(flex.grid((numpy.product(shape),)))
     assert len(uij.all()) == 1, 'array must be 1d'
@@ -328,15 +328,19 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                 )
 
         # Fitting penalty functions
-        self._model_input_penalty_function = get_function(**dict_from_class(params.penalties.over_target_values))
+        self._model_input_penalty_function = Sigmoid(
+                y_scale = params.penalties.over_target_values.barrier_height,
+                x_width = params.penalties.over_target_values.barrier_width,
+                x_offset = params.penalties.over_target_values.barrier_offset,
+                )
 
     def set_isotropic_mask(self, mask):
         if mask is None:
             self.isotropic_mask = None
             return
         assert len(mask) == self._n_atm
-        self.isotropic_mask = flex.bool(mask.tolist()*self._n_dst)
-        assert self.isotropic_mask.size() == self._n_dst * self._n_atm
+        self.isotropic_mask = flex.bool(mask.tolist())
+        assert self.isotropic_mask.size() == self._n_atm
 
     #===========================================+>
     # Private Functions - common to parent class
@@ -352,7 +356,7 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         assert penalties.size == self._op.wgts_3.size()
 
         # Average penalties, with weights for each dataset
-        total_penalty = (self._op.n_atm-1)**0.5 * msqr_delta_u * numpy.sum(penalties) #/ 3.0 # Divide by the number of dimensions
+        total_penalty = msqr_delta_u * numpy.sum(penalties) #/ 3.0 # Divide by the number of dimensions
 
         # Normalise by the NUMBER OF DATASETS
         total_penalty /= (self._op.n_dst)# * self._op.n_atm)
@@ -380,8 +384,8 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         assert uij.all() == (op.n_dst, op.n_atm,)
 
         # Modify isotropic atoms
-        if self.isotropic_mask is not None:
-            make_uij_isotropic_in_place(uij, selection=self.isotropic_mask)
+        if op.isotropic_mask is not None:
+            make_uij_isotropic_in_place(uij, selection=op.isotropic_mask)
 
         self._fitted_uij = uij
 
@@ -454,6 +458,11 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         xyzs.reshape(flex.grid(n_dst,n_atm))
         coms = flex.vec3_double(coms)
 
+        if self.isotropic_mask is None:
+            isom = None
+        else:
+            isom = flex.bool(list(self.isotropic_mask.select(flex.size_t(atm_mask)))*n_dst)
+
         # Do with wgts as n_dst*n_atm (but as 1d array for speed!)
         wgts_1 = flex.double(wgts.reshape((n_dst*n_atm,)).tolist())
 
@@ -479,6 +488,7 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
             'i_mdl' : modes,
             'i_dst' : flex.size_t(dst_mask),
             'i_atm' : flex.size_t(atm_mask),
+            'isotropic_mask' : isom,
             # Lengths of above lists
             'n_mdl' : len(modes),
             'n_dst' : n_dst,
