@@ -1,13 +1,14 @@
 import os, sys
 import pandemic.resources
-
 import bamboo
-__version__ = bamboo.__version__
+
+__version__ = "0.1.0"
 
 HEADER_TEXT = """
 ------------------------------------------------------------------>
 -
--  Package Version {!s}""".format(__version__)+"""
+-  PanDEMIC Version {!s}""".format(__version__)+"""
+-  Package Version {!s}""".format(bamboo.__version__)+"""
 -
 -  __________                    .___             .__
 -  \\______   \\_____    ____    __| _/____   _____ |__| ____

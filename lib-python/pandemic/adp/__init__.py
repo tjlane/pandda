@@ -115,7 +115,7 @@ output {
     out_dir = pandemic-adp
         .help = "output directory"
         .type = str
-    pickle = True
+    pickle = False
         .type = bool
         .multiple = False
     html = True
@@ -4069,7 +4069,8 @@ class MultiDatasetHierarchicalUijFitter(object):
                 # Optimise the amplitudes between levels
                 if i_macro > 0:
                     self.log.subheading('Macrocycle {} of {}: '.format(i_macro, n_macro_cycles)+'Optimising inter-level amplitudes')
-                    fitted_uij_by_level = self.optimise_level_amplitudes(n_cpus=1, max_recursions=None, last_cycle=(i_macro==n_macro_cycles))
+                    fitted_uij_by_level = self.optimise_level_amplitudes(n_cpus=1, max_recursions=1, include_residual=True, last_cycle=(i_macro==n_macro_cycles))
+                    fitted_uij_by_level = self.optimise_level_amplitudes(n_cpus=1, max_recursions=None, include_residual=True, last_cycle=(i_macro==n_macro_cycles))
                 # Update tracking
                 self.update_tracking(
                         uij_lvl=fitted_uij_by_level,
@@ -4089,7 +4090,8 @@ class MultiDatasetHierarchicalUijFitter(object):
                 # Optimise the amplitudes between levels
                 if i_macro > 0:
                     self.log.subheading('Macrocycle {} of {}: '.format(i_macro, n_macro_cycles)+'Optimising inter-level amplitudes')
-                    fitted_uij_by_level = self.optimise_level_amplitudes(n_cpus=1, max_recursions=None, last_cycle=(i_macro==n_macro_cycles))
+                    fitted_uij_by_level = self.optimise_level_amplitudes(n_cpus=1, max_recursions=1, include_residual=True, last_cycle=(i_macro==n_macro_cycles))
+                    fitted_uij_by_level = self.optimise_level_amplitudes(n_cpus=1, max_recursions=None, include_residual=True, last_cycle=(i_macro==n_macro_cycles))
                 # Update tracking
                 self.update_tracking(
                         uij_lvl=fitted_uij_by_level,
