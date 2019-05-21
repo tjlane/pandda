@@ -96,7 +96,7 @@ def selection_images(structure_filename,
             for sel in colour_selections:
                 s.colour(obj="sele and ({})".format(sel), colour=colours.next())
         elif colours == 'bfactor':
-            s.custom('spectrum', expression='b', selection='sele and (b>0)')
+            s.custom('spectrum', expression='b', palette='blue_red', selection='sele and (b>0)')
         elif colours == 'chainbow':
             s.chainbow("sele")
         else:

@@ -1616,7 +1616,7 @@ class MultiDatasetUijParameterisation(Program):
                 auto_chain_images(structure_filename = m_f,
                                   output_prefix = lvl_pml_chn_prefix.format(i_level+1),
                                   style = 'lines+ellipsoids',
-                                  colours = 'chainbow',
+                                  colours = 'bfactor',
                                   width=1000, height=750)
                 if not glob.glob(lvl_pml_chn_template.format(i_level+1,'*')):
                     self.warnings.append('no pymol images have been generated! ({})'.format(lvl_pml_chn_template.format(i_level+1,'*')))
@@ -1739,7 +1739,7 @@ class MultiDatasetUijParameterisation(Program):
             auto_chain_images(structure_filename = m_f,
                               output_prefix = res_pml_chn_prefix,
                               style = 'lines+ellipsoids',
-                              colours = 'chainbow',
+                              colours = 'bfactor',
                               width=1000, height=750)
             if not glob.glob(res_pml_chn_template.format('*')):
                 self.warnings.append('no files have been generated! ({})'.format(res_pml_chn_template.format('*')))
