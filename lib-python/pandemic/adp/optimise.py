@@ -11,7 +11,7 @@ from libtbx.utils import Sorry, Failure
 from bamboo.common import Info, dict_from_class, logs
 from bamboo.maths.functions import rms, Sigmoid
 
-from giant.structure.tls import tls_str_to_n_params, get_t_l_s_from_vector, make_tls_isotropic
+from giant.structure.tls import tls_str_to_n_params, get_t_l_s_from_vector
 from giant.structure.uij import sym_mat3_eigenvalues
 from mmtbx.tls.utils import uij_eigenvalues, TLSMatricesAndAmplitudesList
 from mmtbx.tls.optimise_amplitudes import OptimiseAmplitudes
@@ -702,16 +702,6 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
                         ):
                     self.reset([i_tls])
                     continue
-
-                # Make output isotropic if mask is isotropic
-                if (self.isotropic_mask is not None) and self.isotropic_mask.all_eq(True):
-                    m = self.parameters().get(index=i_tls)
-                    t_iso, l_iso, s_iso = make_tls_isotropic(m.matrices.T, m.matrices.L, m.matrices.S)
-                    m.matrices.set(t_iso, 'T')
-                    m.matrices.set(l_iso, 'L')
-                    m.matrices.set(s_iso, 'S')
-                    # Check that isotropicisation has not made any of the matrices invalid and correct if possible
-                    self.optimise_invalid_modes()
 
                 # Normalise matrices to give Uijs of approximately xA
                 self.normalise_mode(index=i_tls)
