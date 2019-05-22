@@ -243,7 +243,7 @@ fitting {
         gradient_convergence = 1e-10
             .help = "cutoff for which the least-squares gradient is considered converged"
             .type = float
-        amplitude_sum_weight = 0.5
+        amplitude_sum_weight = 1.0
             .help = "weight on the sum of the amplitudes during amplitude optimisation"
             .type = float
         normalised_tls_scale = 1e+0
