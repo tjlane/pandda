@@ -900,16 +900,18 @@ class MultiDatasetTLSFitter(BaseGroupOptimiser):
         xyzs.reshape(flex.grid(n_dst,n_atm))
         coms = flex.vec3_double(coms)
         # Calculate the TLS components
+        if self.isotropic_mask is not None:
+            exp_isotropic_mask = flex.bool(list(self.isotropic_mask)*n_dst)
         if sum_modes is True:
             uij = self.parameters().uijs(sites_carts=xyzs, origins=coms)
             if self.isotropic_mask is not None:
-                make_uij_isotropic_in_place(uij, selection=self.isotropic_mask)
+                make_uij_isotropic_in_place(uij, selection=exp_isotropic_mask)
             assert uij.all() == (n_dst, n_atm,)
             uij = uij.as_1d().as_double().as_numpy_array().reshape((n_dst,n_atm,6))
         else:
             uij = [m.uijs(sites_carts=xyzs, origins=coms) for m in self.parameters()]
             if self.isotropic_mask is not None:
-                [make_uij_isotropic_in_place(u, selection=self.isotropic_mask) for u in uij]
+                [make_uij_isotropic_in_place(u, selection=exp_isotropic_mask) for u in uij]
             assert uij[0].all() == (n_dst, n_atm,)
             uij = numpy.array([u.as_1d().as_double().as_numpy_array().reshape((n_dst,n_atm,6)) for u in uij])
             assert uij.shape == (n_tls, n_dst, n_atm, 6)
