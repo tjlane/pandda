@@ -73,7 +73,6 @@ def default_secondary_structure_selections_filled(hierarchy, verbose=False):
     auto_sel_proc = [sel_regex.findall(s)[0] for s in auto_sel]
 
     # Output template and list
-    sel_template = "chain '{}' and resid {:d}  through {:d} "
     output_sel_all = []
 
     # Extract the chain IDs
@@ -187,6 +186,7 @@ def default_secondary_structure_selections_filled(hierarchy, verbose=False):
         output_sel_all.extend(o_sels)
 
     # Sort output for fun
+    sel_template = "chain '{}' and resid {:d}  through {:d}"
     output_sel_all = sorted(output_sel_all)
     output_sel = [sel_template.format(*v) for v in output_sel_all]
     log('Processed Selections:\n\t{}'.format('\n\t'.join(output_sel)))

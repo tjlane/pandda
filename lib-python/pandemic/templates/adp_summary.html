@@ -57,14 +57,14 @@
           background-color: #ddd !important;
       }
       .tab-borders {
-          padding-top: 1px;
-          padding-bottom: 1em;
-          padding-left: 1em;
-          padding-right: 1em;
-          border-bottom-left-radius: 1em;
+          padding-top:    1.0em;
+          padding-bottom: 0.5em;
+          padding-left:   0.5em;
+          padding-right:  0.5em;
+          border-bottom-left-radius:  1em;
           border-bottom-right-radius: 1em;
-          border-left: 1px solid #ddd;
-          border-right: 1px solid #ddd;
+          border-left:   1px solid #ddd;
+          border-right:  1px solid #ddd;
           border-bottom: 1px solid #ddd;
       }
     </style>
@@ -102,108 +102,11 @@
     <div class="container">
       <h1>{{ title }}</h1>
       <h2>{{ introduction }}</h2>
-      <ul class="nav nav-tabs">
-        {% for tab in tabs %}
-        <li {% if tab.active -%}class="active"{% endif -%}><a data-toggle="tab" href="#{{ tab.id }}">{{ tab.short_name }}</a></li>
-        {%- endfor %}
-      </ul>
-      <div class="tab-content">
-        {% for tab in tabs %}
-        <div id="{{ tab.id }}" class="tab-pane fade {% if tab.active -%}in active{% endif -%}">
-          <h3>{{ tab.long_name }}</h3>
-          <p>{{ tab.description }}</p>
 
-          {% if tab.id == 'overview' %}
+      {% for c in contents %}
+        {{ macros.format_standard(c, div_namer=dn) }}
+      {% endfor %}
 
-          <div id ="overview-tab">
-
-            <div class="row">
-              {% for panel in tab.panels %}
-              {% set this_div = dn.next() -%}
-              <div class="col-centered col-xs-12 col-md-{{ panel.width|default(12) }}">
-                {{ macros.basic_panel(div_name=this_div, panel_data=panel) }}
-              </div>
-              {% endfor %}
-            </div>
-
-          </div>
-
-          {% elif tab.id == 'statistics' %}
-
-          <div id="statistics-tab">
-
-            <div class="row">
-              {% for panel in tab.panels %}
-              {% set this_div = dn.next() -%}
-              <div class="col-centered col-xs-12 col-md-{{ panel.width|default(12) }}">
-                {{ macros.basic_panel(div_name=this_div, panel_data=panel) }}
-              </div>
-              {% endfor %}
-            </div>
-
-          </div>
-
-          {% elif tab.id == 'levels' %}
-
-          <div id="levels-tab">
-            <ul class="nav nav-tabs">
-              {% for sub_tab in tab.tabs %}
-              <li {% if sub_tab.active -%}class="active"{% endif -%}><a data-toggle="tab" href="#{{ sub_tab.id }}">{{ sub_tab.short_name }}</a></li>
-              {%- endfor %}
-            </ul>
-            <div class="tab-content">
-              {% for sub_tab in tab.tabs %}
-              <div id="{{ sub_tab.id }}" class="tab-pane fade {% if sub_tab.active -%}in active{% endif -%}">
-                <h3>{{ sub_tab.long_name }}</h3>
-                <p>{{ sub_tab.description }}</p>
-                <div class="row">
-                  {% if sub_tab.panels is defined %}
-                  {% for panel in sub_tab.panels %}
-                  {% set this_div = dn.next() -%}
-                  <div class="col-centered col-xs-12 col-md-{{ panel.width|default(12) }}">
-                    {{ macros.basic_panel(div_name=this_div, panel_data=panel) }}
-                  </div>
-                  {% endfor %}
-                  {% endif %}
-
-                  {% if sub_tab.chain_tabs is defined %}
-                  <div class="col-centered col-xs-12 col-padded-y">
-                    <h4>Chain-by-Chain Summaries</h4>
-                    {{ macros.basic_tab_set(sub_tab.chain_tabs) }}
-                  </div>
-                  {% endif %}
-                
-                  {% if sub_tab.group_tabs is defined %}
-                  <div class="col-centered col-xs-12 col-padded-y">
-                    <h4>Group-by-Group Summaries</h4>
-                    {{ macros.basic_tab_set(sub_tab.group_tabs, nav_classes=['nav-hover']) }}
-                  </div>
-                  {% endif %}
-
-                </div>
-              </div>
-              {% endfor %}
-            </div>
-          </div>
-
-          {% elif tab.id == 'settings' %}
-
-          <div id ="settings-tab">
-            <div class="row">
-              {% for panel in tab.panels %}
-              {% set this_div = dn.next() -%}
-              <div class="col-centered col-xs-12 col-md-{{ panel.width|default(12) }}">
-                {{ macros.basic_panel(div_name=this_div, panel_data=panel) }}
-              </div>
-              {% endfor %}
-            </div>
-          </div>
-
-          {% endif %}
-
-        </div> 
-        {% endfor %}
-      </div>
     </div>
   </body>
 </html>

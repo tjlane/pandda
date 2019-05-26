@@ -1,105 +1,115 @@
-{% macro basic_panel(panel_data, div_name=None) -%}
-<div class="panel panel-{{ panel_data.colour | default('primary') }}">
+{% macro format_standard(obj, div_namer=None) -%}
+  {% if obj.type == 'panel' %}
+    {{ format_panel(obj, div_namer=div_namer) }}
+  {% elif obj.type == 'tabs' %}
+    {{ format_tabs(obj, div_namer=div_namer) }}
+  {% elif obj.type == 'scroll' %}
+    {{ format_block(obj) }}
+    {{ format_contents_scroll(obj, div_namer=div_namer) }}
+  {% else %}
+    <div {% if obj.id %}id="{{ obj.id }}" {% endif %}{% if (obj.type or obj.classes) %}class="{{format_classes(obj)}} {% if obj.type %}{{obj.type}} {{obj.type}}-{{obj.colour | default('primary')}}{% endif %}"{% endif %}>
+    {{ format_block(obj) }}
+    {{ format_contents(obj, div_namer=div_namer) }}
+    </div>
+  {% endif %}
+{%- endmacro %}
+
+{% macro format_classes(obj, defn=True) -%}
+  {% if obj.classes %}{% for c in obj.classes %}{{c}} {% endfor %}{% endif %}
+{%- endmacro %}
+
+{% macro format_list(item_list, defn=True) -%}
+  {% for c in item_list %}{{c}} {% endfor %}
+{%- endmacro %}
+
+{% macro format_block(obj) -%}
+  {% if obj.title is defined %}
+    <h4>{{ obj.title }}</h4>
+  {% endif %}
+  {% if obj.text is defined %}
+    <p>{{ obj.text }}</p>
+  {% endif %}
+  {% if obj.image is defined %}
+    <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
+      <img class="img-responsive" src="{{ obj.image }}" alt="No Image">
+    </a>
+  {% endif %}
+  {% if obj.table is defined %}
+    <div class="table-responsive">
+      {{ obj.table }}
+    </div>
+  {% endif %}
+  {% if obj.footnote is defined %}
+    <p>{{ obj.footnote }}</p>
+  {% endif %}
+{%- endmacro %}
+
+{% macro format_contents(obj, div_namer=None) -%}
+{% if obj.contents %}
+<div class="row row-centered">
+  {% for o in obj.contents -%}
+    <div class="col-centered col-xs-12 col-md-{{ o.width | default(12) }}">
+    {{ format_standard(o, div_namer=div_namer) }}
+    </div>
+  {% endfor -%} 
+</div>
+{% endif %}
+{%- endmacro %}
+
+{% macro format_contents_scroll(obj, div_namer=None) -%}
+<div class="row" style="white-space: nowrap; overflow-x: scroll;">
+  {% for o in obj.contents -%}
+    <div class="col-centered col-xs-12 col-md-{{ o.width | default(12) }}" style="display: inline-block; float: none; white-space: normal;">
+      {{ format_standard(o, div_namer=div_namer) }}
+    </div>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro format_panel(panel, div_namer=None) -%}
+{% if panel.id is defined %}
+  {% set panel_id = panel.id %}
+{% elif div_namer %}
+  {% set panel_id = div_namer.next() %}
+{% endif %}
+<div class="panel panel-{{ panel.colour | default('primary') }}">
   <div class="panel-heading">
-    {% if panel_data.title %}
     <h3 class="panel-title">
-      {% if div_name -%}
-      <a data-toggle="collapse" href="#{{ div_name }}">{{ panel_data.title }}</a>
+      {% if panel_id is defined -%}
+        <a data-toggle="collapse" href="#{{ panel_id }}">{{ panel.title }}</a>
       {% else -%}
-      {{ panel_data.title }}
+        {{ panel.title }}
       {% endif -%}
     </h3>
-    {% endif -%}
   </div>
-  <div {% if div_name %}id="{{ div_name }}" class="panel-collapse collapse {% if panel_data.show|default(true) %}in{% endif %}"{% endif %}>
+  <div {% if panel_id is defined %}id="{{ panel_id }}" class="panel-collapse collapse {% if panel.show|default(true) %}in{% endif %}"{% endif %}>
     <div class="panel-body">
-      <div class="row row-centered">
-        {% for o in panel_data.body -%}
-        <div class="col-centered col-xs-12 col-md-{{ o.width | default(12) }}">
-          {{ basic_format(o) }}
-        </div>
-        {% endfor -%} 
-      </div>
+      {{ format_contents(panel, div_namer=div_namer) }}
     </div>
   </div>
 </div>
 {%- endmacro %}
 
-{% macro basic_format(obj) -%}
-          <div {% if (obj.type or obj.classes) %}class="{% for c in obj.classes %}{{c}} {% endfor %} {% if obj.type %}{{obj.type}} {{obj.type}}-{{obj.colour | default('primary')}}{% endif %}"{% endif %}>
-          {% if obj.title is defined %}
-            <h4>{{ obj.title }}</h4>
-          {% endif %}
-          {% if obj.text is defined %}
-            <p>{{ obj.text }}</p>
-          {% endif %}
-          {% if obj.image is defined %}
-            <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
-              <img class="img-responsive" src="{{ obj.image }}" alt="No Image">
-            </a>
-          {% endif %}
-          {% if obj.table is defined %}
-            <div class="table-responsive">
-              {{ obj.table }}
-            </div>
-          {% endif %}
-          {% for div in obj.divs %}
-            <div id="{{ div.id }}" {% if div.classes %}class="{% for c in div.classes %}{{c}} {% endfor %}"{% endif %}>
-            </div>
-          {% endfor %}
-          {% if obj.scroll is defined %}
-            <div class="row" style="white-space: nowrap; overflow-x: scroll;">
-              {% for o in obj.scroll -%}
-              <div class="col-centered col-xs-12 col-md-{{ o.width | default(12) }}" style="display: inline-block; float: none; white-space: normal;">
-                {{ basic_format(o) }}
-              </div>
-              {% endfor %}
-            </div>
-          {% endif %}
-          {% if obj.body is defined %}
-            <div class="row">
-              {% for o in obj.body -%}
-              <div class="col-centered col-xs-12 col-md-{{ o.width | default(12) }}">
-                {{ basic_format(o) }}
-              </div>
-              {% endfor %}
-            </div>
-          {% endif %}
-          {% if obj.panels is defined %}
-            <div class="row">
-            {% for o in obj.panels -%}
-              <div class="col-centered col-xs-12 col-md-{{ o.width | default(12) }}">
-                {{ basic_panel(o, o.div_name) }}
-              </div>
-            {% endfor %}
-            </div>
-          {% endif %}
-          </div>
-{%- endmacro %}
-
-{% macro basic_tab_set(tabs, nav_classes=[]) -%}
-               <div role="navigation">
-                 <ul class="nav nav-tabs{% for c in nav_classes %} {{c}}{% endfor %}">
-                   {% for t in tabs %}
-                   <li {% if t.active -%}class="active"{% endif -%} role="presentation"><a data-toggle="tab" href="#{{ t.id }}">{{ t.short_name }}</a></li>
-                   {%- endfor %}
-                 </ul>
-                 <div class="tab-content tab-borders">
-                   {% for t in tabs %}
-                   <div id="{{ t.id }}" class="tab-pane fade {% if t.active -%}in active{% endif -%}">
-                     <h3>{{ t.long_name }}</h3>
-                     <p>{{ t.description }}</p>
-                     <div class="row">
-                       {% for o in t.body -%}
-                       <div class="col-centered col-xs-12 col-md-{{ o.width | default(12) }}" style="overflow-x: scroll">
-                         {{ basic_format(o) }}
-                       </div>
-                       {% endfor %}
-                     </div>
-                   </div>
-                   {% endfor %}
-                 </div>
-               </div>
+{% macro format_tabs(tabs, div_namer=None) -%}
+{% if tabs.title is defined %}<h4>{{ tabs.title }}</h4>{% endif %}
+<div role="navigation">
+  <ul class="nav nav-tabs {{format_classes(tabs)}}">
+    {% for t in tabs.contents %}
+    {% if t.id is not defined %}
+      {% do t.update({'id':div_namer.next()}) %}
+    {% endif %}
+    <li {% if t.active -%}class="active"{% endif -%} role="presentation"><a data-toggle="tab" href="#{{ t.id }}">{{ t.alt_title }}</a></li>
+    {%- endfor %}
+  </ul>
+  <div class="tab-content">
+    {% for t in tabs.contents %}
+    <div id="{{ t.id }}" class="tab-pane tab-borders-close fade {% if t.active -%}in active{% endif -%} {{format_classes(t)}}">
+      {{ format_block(t) }}
+      {{ format_contents(t, div_namer=div_namer) }}
+    </div>
+    {% endfor %}
+  </div>
+</div>
 {%- endmacro %}
 
 {% macro lightbox_setup(id='lightbox') %}

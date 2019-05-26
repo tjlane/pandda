@@ -26,17 +26,17 @@ def sym_mat3_eigenvalues(uij):
     assert len(uij) == 6
     return linalg.eigensystem_real_symmetric(uij).values()
 
-def uij_positive_are_semi_definite(uij, tol=1e-6):
+def uij_are_positive_semi_definite(uij, tol=1e-6):
     """Calculate eigenvalues for each uij and check that all are greater than zero (within tolerance)"""
     # Convert to list if only one uij
     uij, single = _reshape_uij(vals=uij)
     # Check tolerance negative
-    tol = -1.0 * abs(tol)
+    neg_tol = -1.0 * abs(tol)
     # Extract eigenvalues for each atom
     eigenvalues = numpy.apply_along_axis(sym_mat3_eigenvalues, 1, uij)
-    # Check all greater than zero
-    neg = (eigenvalues < tol)
-    out = neg.sum(axis=1).astype(bool)
+    # Check all greater than "zero"
+    pos = (eigenvalues > neg_tol)
+    out = pos.all(axis=1)
     # Convert back to value or return list as appropriate
     return _revert_output(vals=out, single=single)
 
@@ -64,6 +64,9 @@ def calculate_uij_anisotropy_ratio(uij, tolerance=1e-6):
     eigenvalues = numpy.apply_along_axis(sym_mat3_eigenvalues, 1, uij)
     maxe = numpy.max(eigenvalues, axis=1)
     mine = numpy.min(eigenvalues, axis=1)
+    # Don't allow negative values
+    maxe[maxe < 0.0] = 0.0
+    mine[mine < 0.0] = 0.0
     # Find the atoms with zero eigenvalues
     zero_size = (maxe < tolerance)
     # Set min and max eigenvalues to 1.0 so that ratio gives 1.0

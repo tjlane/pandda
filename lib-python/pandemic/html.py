@@ -17,6 +17,7 @@ class _AutoDivNamer(object):
 
 PANDEMIC_HTML_ENV = jinja2.Environment(
         loader=jinja2.PackageLoader('pandemic', 'templates'),
+        extensions=['jinja2.ext.do'],
         trim_blocks=True,
         lstrip_blocks=True)
 

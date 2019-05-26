@@ -3,6 +3,7 @@ import os, sys, subprocess, threading, shlex, time
 from distutils.spawn import find_executable
 
 from bamboo.common.logs import Log
+from libtbx.utils import Sorry, Failure
 
 
 class CommandManager(object):
@@ -147,7 +148,7 @@ class CommandManager(object):
             fh.write(self.error+'\n')
             fh.write('============================>'+'\n')
 
-        self.log('Log file for {} written to {}'.format(self.program[0], log_file))
+        #self.log('Log file for {} written to {}'.format(self.program[0], log_file))
 
 
 def not_installed(programs):
@@ -156,3 +157,9 @@ def not_installed(programs):
         if not find_executable(p):
             not_found.append(p)
     return not_found
+
+def check_programs_are_available(programs):
+    ni = not_installed(programs)
+    if ni:
+        raise Sorry('The following programs are not available/installed:\n\t{}'.format('\n\t'.join(ni)))
+

@@ -107,8 +107,9 @@ def selection_images(structure_filename,
         # Ray trace
         if ray_trace:
             s.ray(height=height, width=width)
-        png_name = s.png(f_name=output_prefix+labels[i]+'.png')
-        png_filenames.append(png_name)
+        f_name = output_prefix+labels[i]+'.png'
+        s.png(f_name=f_name)
+        png_filenames.append(f_name)
 
     f_name = s.write_script(output_prefix+'.py')
     l_name = f_name.replace('.py', '.log')

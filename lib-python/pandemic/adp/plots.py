@@ -1,0 +1,1218 @@
+import itertools
+import numpy
+
+from libtbx import adopt_init_args
+
+from bamboo.common.logs import Log
+from giant.structure.formatting import ShortLabeller
+
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+    matplotlib.interactive(False)
+    from matplotlib import pyplot, patches
+    pyplot.switch_backend('agg') # yes I know this done twice -- for safety!
+    pyplot.interactive(0)
+except Exception as e:
+    print e
+
+def dendrogram(fname, link_mat, labels=None, ylab=None, xlab=None, ylim=None, annotate_y_min=0.25, num_nodes=20):
+    from matplotlib import pyplot
+    fig = pyplot.figure()
+    ax1 = pyplot.subplot(1,1,1)
+    dend = scipy.cluster.hierarchy.dendrogram(link_mat, p=num_nodes, truncate_mode='lastp', labels=labels)
+    # Change labels if requested
+    #if labels: ax1.set_xticklabels([labels[i] for i in dend['leaves']])
+    if xlab:   ax1.set_xlabel(xlab)
+    if ylab:   ax1.set_ylabel(ylab)
+    if ylim:   ax1.set_ylim(ylim)
+    # Make sure the labels are rotated
+    xlocs, xlabels = pyplot.xticks()
+    pyplot.setp(xlabels, rotation=90)
+    for i, d in zip(dend['icoord'], dend['dcoord']):
+        x = 0.5 * sum(i[1:3])
+        y = d[1]
+        if y < annotate_y_min: continue
+        pyplot.plot(x, y, 'ro')
+        pyplot.annotate("%.3g" % y, (x, y), xytext=(0, -8), textcoords='offset points', va='top', ha='center')
+    pyplot.tight_layout()
+    fig.savefig(fname)
+    return fig
+
+
+class PlotHelper:
+
+    def __init__(self, 
+        colour_map_name = 'rainbow', 
+        plot_style = 'ggplot',
+        font_family = 'monospace',
+        font_name = None,
+        dpi = 300,
+        log = None,
+        ):
+        if log is None: 
+            log = Log()
+
+        adopt_init_args(self, locals())
+
+        if (plot_style is not None) and (plot_style not in ['xkcd']): 
+            try: 
+                self.log('Setting plot_style to "{}"'.format(plot_style))
+                pyplot.style.use(plot_style)
+            except Exception as e:   
+                self.log('Failed to set plot style to {}.\n\t{}'.format(plot_style, str(e)))
+
+        if (plot_style == 'xkcd'):
+            try: 
+                pyplot.xkcd()
+                self.log('Theme set to "xkcd".')
+            except: 
+                self.log('Failed to set plot style "xkcd".')
+
+        if (font_family is not None): 
+            try: 
+                self.log('Setting font_family to "{}"'.format(font_family))
+                pyplot.rc('font', family=font_family)
+            except Exception as e:   
+                self.log('Failed to set font family to {}.\n\t{}'.format(font_family, str(e)))
+
+        if (font_name is not None): 
+            try: 
+                assert font_family is not None, 'Cannot set font: must provide a font family in order to set font.'
+                font_family_str = 'font.'+str(font_family)
+                assert font_family_str in pyplot.rcParams.keys(), 'Cannot set font: invalid font family provided "{}".'.format(font_family)
+                family_fonts = pyplot.rcParams[font_family_str]
+                if (font_name not in family_fonts):
+                    self.log('WARNING: font "{}" does not exist in font family "{}". Setting the font may not work... (valid options: {})'.format(font_name, font_family, ', '.join(family_fonts)))
+                self.log('Setting font_name to "{}"'.format(font_name))
+                pyplot.rcParams[font_family_str].insert(0, font_name)
+            except Exception as e:
+                self.log('Failed to set font to {}.\n\t{}'.format(font_name, str(e)))
+
+    def get_colour_map(self):
+        return matplotlib.cm.get_cmap(self.colour_map_name)
+
+    def get_colours(self, n):
+        cm = self.get_colour_map()
+        return cm(numpy.linspace(0., 1., n))
+
+    def initialise_figure(self, 
+        title, 
+        x_label, 
+        y_label,
+        ):
+        fig, axis = pyplot.subplots(nrows=1, ncols=1)
+        axis.set_title(title)
+        axis.set_xlabel(x_label)
+        axis.set_ylabel(y_label)
+        return fig, axis
+
+    def make_x_ticks(self,
+        axis,
+        x_ticks,
+        x_tick_labels = None,
+        n_labels = 10,
+        ):
+        n_total = len(x_ticks)
+        if (x_tick_labels is None):
+            x_tick_labels = map(str, x_ticks)
+        i_x_ticks = numpy.arange(0, n_total, int(max(1.0, numpy.floor(n_total/n_labels))))
+        axis.set_xticks([x_ticks[i] for i in i_x_ticks])
+        axis.set_xticklabels([x_tick_labels[i] for i in i_x_ticks])
+
+    def write_and_close_fig(self, fig, filename, **kw_args):
+        fig.tight_layout()
+        fig.savefig(filename, bbox_inches='tight', dpi=self.dpi, **kw_args)
+        pyplot.close(fig)
+
+    def bin_x_values(self, 
+        data, 
+        n_bins=10,
+        ):
+        """Generate bins for data and return binned values and indices of binning"""
+
+        data = numpy.array(data)
+        bins = numpy.linspace(data.min(), data.max(), n_bins+1)
+        # To avoid extra bin for the max value
+        bins[-1] += 0.001*abs(bins[-1])
+        # Assign data to bins
+        indices = numpy.digitize(data, bins)
+        # Generate bin labels
+        bin_labels = ['{:.2f} - {:.2f}'.format(bins[i],bins[i+1]) for i in xrange(n_bins)]
+        return bins, indices, bin_labels
+
+    def resolve_value_arrays(self, 
+        x_vals, 
+        x_vals_array, 
+        y_vals, 
+        y_vals_array,
+        ):
+        assert [x_vals is None, x_vals_array is None].count(True) == 1
+        assert [y_vals is None, y_vals_array is None].count(True) == 1
+
+        if (x_vals is not None) and (y_vals is not None):
+            x_vals_array = [x_vals]
+            y_vals_array = [y_vals]
+        elif (x_vals is None) and (y_vals is None):
+            assert len(x_vals_array) == len(y_vals_array)
+        elif (x_vals is not None):
+            x_vals_array = [x_vals] * len(y_vals_array)
+        else:
+            y_vals_array = [y_vals] * len(x_vals_array)
+
+        assert len(x_vals_array) == len(y_vals_array)
+        n = len(x_vals_array)
+
+        return (n, x_vals_array, y_vals_array)
+
+
+class PandemicAdpPlotter:
+    """
+    Generic plotting class. Needs to be initialised for some functions but not for all.
+    """
+
+    helper = None
+
+    def __init__(self, 
+        n_levels = None,
+        helper = None,
+        ):
+
+        adopt_init_args(self, locals(), exclude=('helper',))
+
+        # Use provided if given
+        if (helper is not None): 
+            self.helper = helper
+        # If class variable is not initialised then initialise new instance
+        elif (self.helper is None): 
+            self.helper = PlotHelper()
+
+    def get_level_colours_arbitrary(self, indices):
+        cm = self.helper.get_colour_map()
+        return cm(numpy.array(indices)/float(self.n_levels-1))
+
+    def get_level_colours(self):
+        cm = self.helper.get_colour_map()
+        return cm(numpy.linspace(0., 1., self.n_levels))
+
+    def multi_hierarchy_plot_by_residue(self, 
+        hierarchies,
+        plot_function,
+        plot_kw_args,
+        prefix,
+        residue_values_function = None,
+        y_array_values_function = None,
+        ):
+        """Plot a graph binned by each residue of a structure, where the input values are the B-factors of the atoms. Produces one image for each chain."""
+
+        if residue_values_function is None:
+            residue_values_function = self.array_passthrough
+
+        if y_array_values_function is None:
+            y_array_values_function = self.array_passthrough
+
+        output_files = {}
+
+        m_h = hierarchies[0]
+
+        # Create a plot for each chain
+        for chain_id in sorted(set([c.id for c in m_h.chains()])):
+
+            # Create a selection for each chain and select it in each hierarchy
+            sel = m_h.atom_selection_cache().selection('chain {}'.format(chain_id))
+            hierarchies_sel = [h.select(sel) for h in hierarchies]
+            m_h_sel = m_h.select(sel)
+
+            # Filename!
+            filename = prefix + '-chain_{}.png'.format(chain_id)
+            output_files[chain_id] = filename
+
+            # Create x-values for each residue starting from 1
+            x_tick_labels = [ShortLabeller.format(rg) for rg in m_h_sel.residue_groups()]
+            x_vals = 1.0 + numpy.arange(len(x_tick_labels))
+
+            # Mean values to be plotted as line
+            y_vals_array = []
+            for h in hierarchies_sel:
+                y_vals = [residue_values_function(list(rg.atoms().extract_b())) for rg in h.residue_groups()]
+                y_vals_array.append(y_vals)
+
+            # Post-process the extracted values (for instance, combine all hierarchies into one using array_concatentate)
+            y_vals_array = y_array_values_function(y_vals_array)
+            n = max(map(len,y_vals_array))
+
+            # 
+            kw_args = {}
+            kw_args.update(plot_kw_args)
+
+            plot_function(
+                x_vals = x_vals,
+                y_vals_array = y_vals_array,
+                x_ticks = x_vals,
+                x_tick_labels = x_tick_labels,
+                filename = filename,
+                **plot_kw_args
+                )
+
+        return output_files
+
+    @staticmethod
+    def array_passthrough(values):
+        return values
+
+    @staticmethod
+    def array_concatenate(values):
+        new_values = []
+        for old_values in zip(*values):
+            l = numpy.concatenate([numpy.array(v).flatten() for v in old_values])
+            new_values.append(l)
+        return [new_values]
+
+    def scatter(self,
+        x_vals = None,
+        x_vals_array = None,
+        y_vals = None,
+        y_vals_array = None,
+        title = '',
+        x_label = '',
+        y_label = '',
+        x_ticks = None,
+        x_tick_labels = None,
+        x_lim = None,
+        y_lim = None,
+        alphas = None,
+        legends = None,
+        filename = None,
+        **plot_kw_args
+        ):
+
+        fig, axis = self.helper.initialise_figure(
+            title = title, 
+            x_label = x_label, 
+            y_label = y_label,
+            )
+
+        n, x_vals_array, y_vals_array = self.helper.resolve_value_arrays(
+            x_vals = x_vals,
+            x_vals_array = x_vals_array,
+            y_vals = y_vals,
+            y_vals_array = y_vals_array,
+            )
+
+        colours = self.helper.get_colours(n)
+
+        if alphas is None: 
+            alphas = [1.] * n
+        elif isinstance(alphas, float):
+            alphas = [alphas] * n
+        else: 
+            assert len(alphas) == n
+
+        handles = []
+        for i, (x, y) in enumerate(zip(x_vals_array, y_vals_array)):
+            kw_args = {
+                'marker' : 'D', 
+                'color':colours[i], 
+                'alpha':alphas[i],
+                }
+            kw_args.update(plot_kw_args)
+            hdl = axis.scatter(
+                x = x, 
+                y = y, 
+                **kw_args
+                )
+            handles.append(hdl)
+
+        if (x_ticks is not None):
+            self.helper.make_x_ticks(
+                axis = axis,
+                x_ticks = x_ticks,
+                x_tick_labels = x_tick_labels,
+                n_labels = 20,
+                )
+
+        if y_lim is not None:
+            axis.set_ylim(y_lim)
+
+        if legends is not None:
+            assert len(legends) == n
+            assert len(handles) == n
+            axis.legend(handles, legends)
+
+        if filename is not None:
+            self.helper.write_and_close_fig(fig=fig, filename=filename)
+
+        return fig, axis
+
+    def lineplot(self,
+        x_vals = None,
+        x_vals_array = None,
+        y_vals = None,
+        y_vals_array = None,
+        title = '',
+        x_label = '',
+        y_label = '',
+        x_ticks = None,
+        x_tick_labels = None,
+        y_lim = None,
+        rotate_x_labels = True,
+        alphas = None,
+        legends = None,
+        filename = None,
+        **plot_kw_args
+        ):
+
+        fig, axis = self.helper.initialise_figure(
+            title = title, 
+            x_label = x_label, 
+            y_label = y_label,
+            )
+
+        n, x_vals_array, y_vals_array = self.helper.resolve_value_arrays(
+            x_vals = x_vals,
+            x_vals_array = x_vals_array,
+            y_vals = y_vals,
+            y_vals_array = y_vals_array,
+            )
+
+        colours = self.helper.get_colours(n)
+
+        if alphas is None:
+            alphas = [1.] * n
+        elif isinstance(alphas, float):
+            alphas = [alphas] * n
+        else: 
+            assert len(alphas) == n
+
+        handles = []
+        for i, (x, y) in enumerate(zip(x_vals_array, y_vals_array)):
+            kw_args = {
+                'color' : colours[i], 
+                'alpha' : alphas[i],
+                }
+            kw_args.update(plot_kw_args)
+            hdl = axis.plot(x, y, **kw_args)
+            handles.extend(hdl)
+
+        if (x_ticks is not None):
+            self.helper.make_x_ticks(
+                axis = axis,
+                x_ticks = x_ticks,
+                x_tick_labels = x_tick_labels,
+                n_labels = 20,
+                )
+
+        if y_lim is not None:
+            axis.set_ylim(y_lim)
+
+        if legends is not None:
+            assert len(legends) == n
+            assert len(handles) == n
+            axis.legend(handles, legends)
+
+        if rotate_x_labels:
+            pyplot.setp(axis.get_xticklabels(), rotation=90)
+
+        if filename is not None:
+            self.helper.write_and_close_fig(fig=fig, filename=filename)
+
+        return fig, axis
+
+    def boxplot(self,
+        x_vals = None,
+        x_vals_array = None,
+        y_vals = None,
+        y_vals_array = None,
+        title = '',
+        x_label = '',
+        y_label = '',
+        x_ticks = None,
+        x_tick_labels = None,
+        hlines = [],
+        vlines = [],
+        rotate_x_labels = True,
+        legends = None,
+        filename = None,
+        **plot_kw_args
+        ):
+        """Generate standard boxplot"""
+
+        assert x_vals_array is None
+
+        fig, axis = self.helper.initialise_figure(
+            title = title, 
+            x_label = x_label, 
+            y_label = y_label,
+            )
+
+        if (x_vals is None): 
+            if (y_vals is not None): 
+                x_vals = 1 + numpy.arange(len(y_vals))
+            else: 
+                x_vals = 1 + numpy.arange(len(y_vals_array[0]))
+
+        n, x_vals_array, y_vals_array = self.helper.resolve_value_arrays(
+            x_vals = x_vals,
+            x_vals_array = x_vals_array,
+            y_vals = y_vals,
+            y_vals_array = y_vals_array,
+            )
+
+        if (x_ticks is None):
+            x_ticks = x_vals
+
+        if (x_tick_labels is None):
+            x_tick_labels = map(str, x_ticks)
+
+        #colours = self.helper.get_colours(n)
+
+        for i, (x, y) in enumerate(zip(x_vals_array, y_vals_array)):
+            kw_args = {
+                'meanprops' : {'marker' : '*', 'markersize' : 1}
+                }
+            kw_args.update(plot_kw_args)
+            axis.boxplot(
+                x = y,
+                positions = x,
+                labels = x_tick_labels,
+                showmeans = True,
+                **kw_args
+                )
+
+        if (x_ticks is not None):
+            self.helper.make_x_ticks(
+                axis = axis,
+                x_ticks = x_ticks,
+                x_tick_labels = x_tick_labels,
+                n_labels = 20,
+                )
+
+        for l in hlines: axis.axhline(l)
+        for l in vlines: axis.axvline(l)
+
+        if rotate_x_labels:
+            pyplot.setp(axis.get_xticklabels(), rotation=90)
+
+        if filename is not None:
+            self.helper.write_and_close_fig(fig=fig, filename=filename)
+
+        return fig, axis
+
+    # adp.process_output - REFACTOR
+    def binned_boxplot(self,
+        filename,
+        x,
+        y=None,
+        y_vals=None,
+        legends=None,
+        title='',
+        x_lab='x',
+        y_lab='y',
+        rotate_x_labels=True,
+        plot_scatter=True,
+        max_bins=10,
+        min_bin_width=None,
+        hlines=[],
+        vlines=[],
+        plot_type='violinplot',
+        ):
+        """Generate a binned boxplot from data (or array of data)"""
+
+        assert [(y is None),(y_vals is None)].count(False) == 1, 'must provide y OR y_vals'
+        if y is not None: y_vals = [y]
+        y_vals = [numpy.array(y) for y in y_vals]
+        n_y = len(y_vals)
+
+        if legends is not None:
+            assert len(legends) == n_y
+
+        assert isinstance(max_bins, int) and max_bins>0
+
+        if min_bin_width is not None:
+            assert min_bin_width > 0
+            min_x = numpy.min(x)
+            max_x = numpy.max(x)
+            n_bins = int(min(max_bins, 1+((max_x-min_x)//min_bin_width)))
+        else:
+            n_bins = max_bins
+        assert n_bins >= 1
+
+        # Stupid list of things to not cut off of the graph
+        extra_artists = []
+
+        # Generate binning for the x axis
+        bins, indices, bin_labels = self.helper.bin_x_values(data=x, n_bins=n_bins)
+        # Sort the y_vals into the bins
+        binned_y = [[y[indices==i] for i in xrange(1, n_bins+1)] for y in y_vals]
+        # Width of the boxplot bars
+        bar_width = 2./float(1+3*n_y) # half-bar padding between bars
+        # Colours of each of y_vals
+        colours = pyplot.cm.rainbow(numpy.linspace(0,1,n_y))
+
+        # Create figures
+        fig, axis = pyplot.subplots(nrows=1, ncols=1)
+        axis.set_title(title)
+        # Draw horizontal/vertical lines (do first so they're at the bottom)
+        for v in hlines: axis.axhline(y=v, linewidth=1, zorder=1)
+        for v in vlines: axis.axvline(x=v, linewidth=1, zorder=1)
+        # Store plot objects
+        plot_dicts = []
+        for i_y, y in enumerate(binned_y):
+            # Offset for this bar set relative to (n-1)
+            x_offset = 0.5 + (1+1.5*i_y)*bar_width
+            positions = numpy.arange(n_bins) + x_offset
+            # Filter on values that are actually present
+            y_idx = [i for i in xrange(len(y)) if len(y[i])>0]
+            # Plot
+            if plot_type == 'boxplot':
+                plt = axis.boxplot(
+                        y,
+                        positions=positions,
+                        widths=bar_width,
+                        showmeans=False,
+                        patch_artist=True)
+            else:
+                plt = axis.violinplot(
+                        [y[i] for i in y_idx],
+                        positions=[positions[i] for i in y_idx],
+                        widths=bar_width,
+                        showmeans=True,
+                        showextrema=True)
+            plot_dicts.append(plt)
+            # Color the boxplots
+            c = colours[i_y]
+            for obj in ['boxes','bodies']:
+                for patch in plt.get(obj, []):
+                    patch.set_facecolor(c)
+                    patch.set_edgecolor('k')
+            for obj in ['means','medians']:
+                for line in plt.get(obj, []):
+                    line.set_facecolor(c)
+                    line.set_edgecolor('k')
+            for obj in ['cbars','cmeans','cmedians','cmins','cmaxes']:
+                lc = plt.get(obj, None)
+                if lc is not None:
+                    lc.set_facecolor(c)
+                    lc.set_edgecolor('k')
+            # Plot a superposed scatter plot
+            if plot_scatter is True:
+                for x, ys in zip(positions, y):
+                    if len(ys) == 0: continue
+                    xs = [x]*len(ys)
+                    jitter = numpy.random.randn(len(ys)) * 0.5 * bar_width / 3.0 # Normalise to be approx width of bar
+                    jitter = jitter - jitter.mean()
+                    axis.scatter(x=xs+jitter, y=ys, s=10, facecolor=c, edgecolor='k', zorder=10)
+
+        # Make labels
+        bin_centres = numpy.arange(n_bins)+1
+        axis.set_xticks(bin_centres)
+        axis.set_xticklabels(bin_labels)
+        # Axis labels
+        axis.set_xlabel(x_lab)
+        axis.set_ylabel(y_lab)
+        # Axis limits
+        axis.set_xlim((0.25, n_bins+0.75))
+        # Plot v_lines
+        if n_y > 1:
+            for i in xrange(n_bins+1):
+                axis.axvline(i+0.5, c='grey', ls="dashed", lw=1.0)#ls="solid", lw=0.5)
+        # X-axis rotations
+        if rotate_x_labels:
+            pyplot.setp(axis.get_xticklabels(), rotation=45)
+        # Make legend
+        if legends is not None:
+            #handles = [patches.Patch(edgecolor='k', facecolor=colours[i_y], label=legends[i_y]) for i_y in xrange(n_y)]
+            #lgd = axis.legend(handles=handles,
+            #                  bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+            #extra_artists.append(lgd)
+            # Plot additional text on the graph
+            y_min, y_max = axis.get_ylim()
+            fig_scale = (axis.transData.transform((1.0,0.)) - axis.transData.transform((0.0,0.)))[0]
+            fig_width = 30.0 * n_y # final width of the fonts in the scale of the image
+            x_width = fig_width / fig_scale # Width on the x-axis scale
+            t_width = x_width / float(n_y)
+            fontsize = 10
+            text_artists = []
+            max_l_length = max(map(len,legends))
+            for i_y, l in enumerate(legends):
+                y_pos = (0.5*y_min+0.5*y_max) #(0.05*(y_max-y_min) if (y_max>0.0>y_min) else (0.5*y_min+0.5*y_max))
+                t = axis.text(
+                        x=(n_bins+0.5)+(0.5+i_y)*t_width, y=y_pos, s=l.center(max_l_length),
+                        bbox=dict(boxstyle='round', facecolor=colours[i_y], edgecolor='k', linewidth=0.5, alpha=0.75, pad=0.3),
+                        fontsize=fontsize, rotation=90, ha='center', va='center', zorder=1)
+                text_artists.append(t)
+            axis.set_xlim(right=n_bins+0.5+x_width)
+
+        self.helper.write_and_close_fig(
+            fig = fig, 
+            filename = filename,
+            bbox_extra_artists = extra_artists+text_artists,
+            )
+
+        return
+
+    # echt.process_output - REFACTOR
+    def multi_histogram(self,
+        filename,
+        x_vals,
+        titles,
+        x_labs,
+        rotate_x_labels=True,
+        shape=None,
+        n_bins=30,
+        x_lim=None,
+        ):
+        """Generate standard histogram"""
+
+        if shape is not None:
+            nrow, ncol = shape
+        else:
+            nrow, ncol = (len(x_vals), 1)
+        assert nrow*ncol == len(x_vals)
+
+        fig, axes = pyplot.subplots(nrows=nrow, ncols=ncol, sharey=False)
+
+        # Fix for 1 subplot
+        if nrow==ncol==1: axes = numpy.array([axes])
+
+        for i, axis in enumerate(axes.flatten()):
+
+            # Select x-axis limits
+            if x_lim is not None:
+                assert len(x_lim) == 2
+                i_x_lim = [min(numpy.min(x_vals[i]), x_lim[0]) if (x_lim[0] is not None) else numpy.min(x_vals[i]),
+                           max(numpy.max(x_vals[i]), x_lim[1]) if (x_lim[1] is not None) else numpy.max(x_vals[i])]
+            else:
+                i_x_lim = [numpy.min(x_vals[i]), numpy.max(x_vals[i])]
+            # Make sure does not have zero width
+            if (i_x_lim[1] - i_x_lim[0]) < 1e-6:
+                i_x_lim[0] -= 0.01*abs(i_x_lim[0])
+                i_x_lim[1] += 0.01*abs(i_x_lim[1])
+
+            axis.set_title(titles[i])
+            axis.hist(x=x_vals[i], bins=n_bins, range=i_x_lim)
+            axis.set_xlabel(x_labs[0])
+            axis.set_ylabel('Count')
+            axis.set_xlim(i_x_lim)
+            if rotate_x_labels:
+                pyplot.setp(axis.get_xticklabels(), rotation=90)
+        fig.tight_layout()
+        fig.savefig(filename)#, dpi=300)
+        pyplot.close(fig)
+
+        return
+
+    # adp.hierarchy
+    def level_plots(self,
+        filename,
+        hierarchies,
+        labels,
+        title,
+        rotate_x_labels=True,
+        ):
+        """Plot a schematic representation of the hierarchical partitioning"""
+
+        colours = self.get_level_colours()
+
+        fig, axis = self.helper.initialise_figure(
+            title = title, 
+            x_label = 'Atom', 
+            y_label = '',
+            )
+        axis.set_facecolor('w')
+
+        assert len(hierarchies) <= (self.n_levels)
+
+        for i_h, h in enumerate(hierarchies):
+            # Extract B-factors and atom labels
+            b_vals = numpy.array(h.atoms().extract_b())
+            n_atoms = len(b_vals)
+            # Extract colour for this level
+            col = colours[i_h]
+            # Plot a bar around the atoms (below other bars)
+            axis.broken_barh([(0.25, n_atoms+0.50)], (i_h+0.5, 1.0), edgecolor=None, facecolor='w')
+            # Iterate through b values and draw boxes for each
+            for b in numpy.unique(b_vals):
+                # Skip zero or negative values
+                if b < 0: continue
+                # Indices of values in this group
+                idx = numpy.where((b_vals==b))[0]
+                # Cluster the indices to create bars
+                if len(idx)==1:
+                    cluster = [1]
+                else:
+                    import scipy.cluster
+                    cluster = scipy.cluster.hierarchy.fclusterdata(X=idx.reshape((len(idx),1)), t=1.1, criterion='distance', metric='euclidean', method='single')
+                # Iterate through clusters and draw
+                plot_vals = []
+                for g in numpy.unique(cluster):
+                    c_idxs = idx[g==cluster]
+                    min_i = numpy.min(c_idxs)
+                    max_i = numpy.max(c_idxs)
+                    plot_vals.append((min_i+0.5, max_i-min_i+1.00))
+                # Plot
+                axis.broken_barh(plot_vals, (i_h+0.5, 1.0), edgecolor='k', facecolor=col)
+
+        # Set axes, etc.
+        a_labels = numpy.array([ShortLabeller.format(a.parent().parent()) for a in hierarchies[0].atoms()])
+
+        self.helper.make_x_ticks(
+            axis = axis,
+            x_ticks = 1.0 + numpy.arange(len(a_labels)),
+            x_tick_labels = a_labels,
+            n_labels = 30,
+            )
+
+        axis.set_yticks(range(1, len(hierarchies)+1))
+        axis.set_yticklabels(labels)
+        axis.set_xlim((-0.01*len(a_labels), 1.01*(len(a_labels)+1)))
+        pyplot.setp(axis.get_xticklabels(), rotation=90)
+        for l in axis.get_yticklabels():
+            l.set_multialignment('right')
+        # Format and save
+        self.helper.write_and_close_fig(fig=fig, filename=filename)
+
+    # echt.process_output
+    def stacked_bar(self,
+        prefix,
+        hierarchies,
+        legends,
+        reference_hierarchy=None,
+        reference_legend=None,
+        title=None,
+        y_lab='Isotropic B ($\AA^2$)',
+        y_lim=None,
+        v_line_hierarchy=None,
+        rotate_x_labels=True,
+        reverse_legend_order=False,
+        colour_space=(0,1),
+        colour_indices=None,
+        colours=None,
+        ):
+        """Plot stacked bar plots for a series of hierarchies (plotted values are the average B-factors of each residue of the hierarchies)"""
+
+        legends = list(legends)
+        assert len(hierarchies) == len(legends)
+
+        m_h = hierarchies[0]
+
+        if colour_indices is not None:
+            assert len(hierarchies) == len(colour_indices)
+            colours = self.get_level_colours_arbitrary(colour_indices)
+        elif colours is not None:
+            assert len(hierarchies) == len(colours)
+        else:
+            cm = self.helper.get_colour_map()
+            colours = cm(numpy.linspace(colour_space[0],colour_space[1],len(hierarchies)))
+
+        # Check all hierarchies are the same
+        for h in hierarchies:
+            assert m_h.is_similar_hierarchy(h)
+        if reference_hierarchy is not None:
+            assert m_h.is_similar_hierarchy(reference_hierarchy)
+
+        # Create a plot for each chain
+        for chain_id in sorted(set([c.id for c in m_h.chains()])):
+
+            # Create a selection for each chain and select it in each hierarchy
+            sel = m_h.atom_selection_cache().selection('chain {}'.format(chain_id))
+            sel_hs = [h.select(sel) for h in hierarchies]
+            sel_mh = sel_hs[0]
+
+            # Filename!
+            filename = prefix + '-chain_{}.png'.format(chain_id)
+
+            # Create x-values for each residue starting from 1
+            x_vals = numpy.array(range(len(list(sel_mh.residue_groups()))))+1
+            x_labels = ['']+[ShortLabeller.format(rg) for rg in sel_mh.residue_groups()]
+            # Cumulative y-values (for bottoms of bars)
+            cuml_y = None
+
+            # Create colours + hatches
+            #hatchs = itertools.cycle(['//', 'x', '\\'])
+            hatchs = itertools.cycle([None])
+
+            # Create the output figure
+            fig, axis = pyplot.subplots(nrows=1, ncols=1)
+            if title is not None: axis.set_title(label=str(title))
+            axis.set_xlabel('Residue')
+            axis.set_ylabel(y_lab)
+            if y_lim:
+                axis.set_ylim(y_lim)
+
+            # Iterative though hierarchies
+            handles = []
+            for i_h, h in enumerate(sel_hs):
+                # Extract b-factors from this hierarchy
+                y_vals = numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in h.residue_groups()])
+                # Initialise cumulative object
+                if cuml_y is None:
+                    cuml_y = numpy.zeros_like(y_vals)
+                # Plot the bar
+                hdl = axis.bar(
+                        left=x_vals,
+                        height=y_vals,
+                        bottom=cuml_y,
+                        width=1.0,
+                        align='center',
+                        color=colours[i_h],
+                        label=legends[i_h],
+                        hatch=hatchs.next(),
+                        linewidth=0,
+                        edgecolor='black',
+                        zorder=5,
+                        )
+                handles.append(hdl)
+
+                # Append to cumulative y
+                cuml_y += y_vals
+
+            # Plot lines at top of graph for prettiness/as reference hierarchy
+            if (reference_hierarchy is not None) or (len(sel_hs)==1):
+                if reference_hierarchy is not None:
+                    line_h_sel = reference_hierarchy.select(sel)
+                else:
+                    line_h_sel = sel_hs[0]
+                # Extract y-values
+                y_vals = numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in line_h_sel.residue_groups()])
+                # Duplicate the x-vals and y-vals and shift x-vals apart by half a unit
+                x_vals_dup = numpy.concatenate([(x_vals-0.5),(x_vals+0.5)]).reshape((2,x_vals.size)).T.reshape(2*x_vals.size).tolist()
+                y_vals_dup = numpy.concatenate([y_vals,y_vals]).reshape((2,y_vals.size)).T.reshape(2*y_vals.size).tolist()
+                # Add another point at the beginning and end so starts and ends on the baseline
+                x_vals_dup = numpy.concatenate([[x_vals_dup[0]], x_vals_dup, [x_vals_dup[-1]]])
+                y_vals_dup = numpy.concatenate([[0.0], y_vals_dup, [0.0]])
+                hdl = axis.plot(x_vals_dup, y_vals_dup, 'k-', label=reference_legend, lw=0.5, zorder=5)
+                if reference_hierarchy is not None:
+                    handles.extend(hdl)
+
+            # Legends (reverse the plot legends!)
+            if reverse_legend_order is True:
+                handles.reverse()
+
+            # No lines if cuml_y is None
+            if cuml_y is None:
+                continue
+
+            # Plot boundaries
+            if v_line_hierarchy is not None:
+                v_lines = numpy.where(numpy.array([max(rg.atoms().extract_b()) for rg in v_line_hierarchy.select(sel).residue_groups()], dtype=bool))[0] + 1.5
+                for val in v_lines:
+                    axis.axvline(x=val, c='grey', ls='solid', label='boundaries', lw=0.5, zorder=1)
+                # Add a line at zero
+                h = axis.axvline(x=0.5, c='grey', ls='solid', label='boundaries', lw=0.5, zorder=1)
+                handles.append(h)
+
+            # Plot legend
+            lgd = axis.legend(handles=handles, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+            # Axis ticks & labels
+            x_ticks = numpy.arange(1, len(x_labels)+1, int(max(1.0, numpy.floor(len(x_labels)/20))))
+            #x_ticks = numpy.unique(numpy.floor(numpy.linspace(1,len(x_labels)+1,20)))
+            axis.set_xticks(x_ticks)
+            axis.set_xticklabels([x_labels[int(i)] if (i<len(x_labels)) and (float(int(i))==i) else '' for i in axis.get_xticks()])
+            # Rotate axis labels
+            if rotate_x_labels: pyplot.setp(axis.get_xticklabels(), rotation=90)
+
+            # Format and save
+            self.helper.write_and_close_fig(
+                fig = fig, 
+                filename = filename,
+                bbox_extra_artists=[lgd],
+                )
+
+    @staticmethod
+    def failure_graph(filename, exception=None, title=None, **args):
+        fig = pyplot.figure()
+        if title is None: title=filename
+        if exception is not None: title += '\n---\n'+str(exception) + '\n---'
+        pyplot.title('Failed to make {}'.format( title ))
+        fig.savefig(filename)
+        pyplot.close(fig)
+
+
+class TrackingPlotter(PandemicAdpPlotter):
+
+
+    def tracking_plots(self,
+        table,
+        filename,
+        number_to_plot=5,
+        ):
+
+        # trim the table to certain rows
+        start_cycle = min(table['cycle'])
+        n = max(table['cycle'])
+        cycles_to_plot = range(start_cycle, n, int(n/number_to_plot)+1) + [n]
+        cycles_to_plot_bool = table['cycle'].isin(cycles_to_plot)
+        table = table[cycles_to_plot_bool]
+
+        fig, axes = pyplot.subplots(nrows=2, ncols=1, sharex=True, sharey=False)
+        # Create list if only one plot
+        axes = numpy.array(axes).flatten()
+
+        # Group by cycle & step to allow stacking
+        grouped = table.groupby(['cycle','step'], sort=False, as_index=False)
+
+        n_total = len(grouped)
+
+        grouped_reduced = grouped.max()
+        grouped_reduced['x'] = range(len(grouped_reduced))
+
+        prev_x = prev_r = prev_b = None
+
+        for n_cycle, cycle_info in grouped_reduced.groupby('cycle', sort=False):
+
+            x_vals = cycle_info['x'].values
+            r_vals = cycle_info['rmsd'].values
+            b_vals = cycle_info['b_iso (total)'].values
+
+            # Create RMSD plot
+            hdl1 = axes[0].plot(
+                     x_vals, r_vals,
+                     'bo-', label='model',
+                     lw=1, ms=max(1, min(3, 5-0.1*grouped.ngroups)),
+                     )
+            if prev_x is not None:
+                axes[0].plot(
+                         [prev_x, x_vals[0]], [prev_r, r_vals[0]],
+                         'b:', label='model',
+                         lw=1, ms=max(1, min(3, 5-0.1*grouped.ngroups)),
+                         )
+            # Create an overall B-iso TOTAL line
+            hdl2 = axes[1].plot(
+                     x_vals, b_vals,
+                     'ko-', label='total',
+                     lw=1, ms=max(1, min(3, 5-0.1*grouped.ngroups)),
+                     )
+            if prev_x is not None:
+                axes[1].plot(
+                         [prev_x, x_vals[0]], [prev_b, b_vals[0]],
+                         'k:', label='total',
+                         lw=1, ms=max(1, min(3, 5-0.1*grouped.ngroups)),
+                         )
+
+            prev_x = x_vals[-1]
+            prev_r = r_vals[-1]
+            prev_b = b_vals[-1]
+
+        # Other plot -- done as one
+
+        x_vals = numpy.arange(0, grouped.ngroups)
+        x_max = max(x_vals)                 # remove
+        x_keys = [v[0] for v in grouped]    # remove
+        x_labs = [v[1] for v in x_keys]     # remove
+
+        # Create B-iso lines for each LEVEL
+        colours = self.get_level_colours()
+        # Bottoms of bar where stacking occurs
+        y_cuml = numpy.zeros(len(x_vals))
+        # handles for legend at bottom of image
+        handles = []
+        for lvl in sorted(set(table['level'])):
+            if lvl is None: continue
+            assert isinstance(lvl, int)
+            # Get values
+            sel = (table['level'] == lvl)
+            sel_t = table[sel]
+            # The indices of the x-axis positions
+            i_x = [x_keys.index(v) for v in map(tuple,sel_t[['cycle','step']].values.tolist())]
+            # Extract y_vals
+            y_vals = sel_t['b_iso (level)'].values
+
+            # Plot
+            hdl = axes[1].bar(left   = x_vals[i_x],
+                         height = y_vals,
+                         bottom = y_cuml[i_x],
+                         width  = 0.8,
+                         color  = colours[lvl-1],
+                         edgecolor = 'k',
+                         linewidth = 0.5,
+                         align  = 'center',
+                         label  = 'Level {}'.format(lvl))
+            handles.append(hdl)
+            # Add to cuml
+            y_cuml[i_x] = y_cuml[i_x] + y_vals
+
+        # Axis stuff
+        ax = axes[0]
+        ax.set_title('Hierarchical Model Fit')
+        ax.set_xticks([])
+        ax.xaxis.set_ticks_position('bottom')
+        ax.set_ylabel('model fit \n$8\pi^2rms(\Delta U)$ ($\AA^2$)')
+        ax.set_ylim(bottom=0.0)
+
+        # Axis stuff
+        ax = axes[1]
+        ax.xaxis.set_ticks_position('bottom')
+        ax.set_title('B-factors of Hierarchical Model')
+        ax.set_xlabel('Optimisation Stage/Cycle')
+        ax.set_ylabel('Isotropic B\n($\AA^2$)')
+        ax.set_xticks(x_vals)
+        ax.set_xticklabels(x_labs, rotation=90, ha='center')
+        ax.tick_params('x', labelsize=max(2, min(10, 14-0.15*len(grouped))))
+        ax.set_xlim(left=-0.5, right=max(x_vals)+0.5)
+        ax.set_ylim(bottom=0.0)
+
+        # Create legend for axis
+        ncol = 3
+
+        # Add legend to first graph for both lines
+        lgd0 = axes[0].legend(handles=hdl1+hdl2, bbox_to_anchor=(1.02, 0.95), loc=2, borderaxespad=0.)
+
+        # Other legends
+        flip_h = []; [flip_h.extend(handles[i::ncol]) for i in range(ncol)]
+        lgd1 = axes[1].legend(
+                handles=flip_h, ncol=ncol,
+                bbox_to_anchor=(0.5, 0.0),
+                bbox_transform=fig.transFigure,
+                loc=9, borderaxespad=0.,
+                )
+
+        # BOTH AXES -- Add vertical lines between macro-cycles
+        start_x = x_vals[[x_keys.index(v) for v in map(tuple,table[['cycle','step']].values.tolist()) if v[1]=='start']]
+        n_cycles = len(start_x)
+        last_v = None
+        delta = None
+        for i, v in enumerate(start_x - 0.5):
+            # Dashed lines to separate cycles
+            if (v > 0) and (v < x_max):
+                for ax in axes:
+                    ax.axvline(x=v, linewidth=1, zorder=1, color='k', linestyle='--')
+            # Text to label each cycle
+            if last_v is not None:
+                delta = v - last_v
+                axes[0].text(x=last_v+delta/2.0,
+                             y=0.05*axes[0].get_ylim()[0] + 0.95*axes[0].get_ylim()[1],
+                             s='cycle '*(n_cycles<6) +str(cycles_to_plot[i-1]), # This is plotting the previous point so need -1
+                             horizontalalignment='center',
+                             verticalalignment='top',
+                            )
+            last_v = v
+        # Plot the last point (or do nothing for 1 cycle)
+        if delta is not None:
+            axes[0].text(x=min(v+delta/2.0, axes[0].get_xlim()[1]),
+                         y=0.05*axes[0].get_ylim()[0] + 0.95*axes[0].get_ylim()[1],
+                         s='cycle '*(n_cycles<6) +str(cycles_to_plot[i]), # This does not need a -1
+                         horizontalalignment='center',
+                         verticalalignment='top',
+                        )
+
+        fig.tight_layout()
+        fig.savefig(filename,
+                    bbox_extra_artists=[lgd0,lgd1],
+                    bbox_inches='tight',
+                    dpi=200)
+        pyplot.close(fig)
+
+    def convergence_plots(self,
+        table,
+        filename,
+        ):
+
+        fig, axes = pyplot.subplots(nrows=1, ncols=2, sharex=True, sharey=False)
+        axes = numpy.array(axes).flatten()
+
+        # Extract rows with non-zero values
+        #table = table[table['b_iso (level)']!=0.0]
+        # Extract only inter-level optimisation values (last step of each cycle)
+        table = table[(table['step']=='inter-level')]
+        # Labels for each of the series to plot
+        m_cyc = 0 if (len(table) == 0) else min(table['cycle'])
+        labels = table[table['cycle']==m_cyc]['level'].values
+
+        # Colours for each level
+        colours = self.get_level_colours()
+
+        ########################
+        # FIRST AXIS
+        ########################
+        ax = axes[0]
+        handles = []
+        # Extract common list of x-values
+        x_keys = sorted(set(table['cycle'].values))
+        x_vals = numpy.array(x_keys)
+        # Select labels to plot (up to maximum)
+        max_labels = 1 + 10
+        plot_every = max(1, 1+((len(x_vals)-1)//max_labels))
+        x_labs = [x_vals[i] if (i%plot_every)==0 else '' for i in xrange(len(x_vals))]
+        # Cumulative y-values for stacking
+        y_cuml = numpy.zeros(len(x_vals))
+        # Plot same values as stacked bars
+        for l in labels:
+            assert isinstance(l, int)
+            # Extract relevant rows from table
+            l_table = table[table['level']==l]
+            # Extract plot vals
+            i_x = [x_keys.index(v) for v in l_table['cycle'].values]
+            y_vals = l_table['b_iso (level)'].values
+            # Plot stacked bar
+            hdl = ax.bar(left   = x_vals[i_x],
+                         height = y_vals,
+                         bottom = y_cuml[i_x],
+                         width  = 0.8,
+                         color  = colours[l-1],
+                         edgecolor = 'k',
+                         linewidth = 0.5,
+                         align  = 'center',
+                         label  = 'Level {}'.format(l))
+            handles.append(hdl)
+            # Add to cuml
+            y_cuml[i_x] = y_cuml[i_x] + y_vals
+
+        # Create legend for axis
+        ncol = 3
+        flip_h = []; [flip_h.extend(handles[i::ncol]) for i in range(ncol)]
+        lgd0 = ax.legend(
+                handles=flip_h, ncol=ncol,
+                bbox_to_anchor=(0.5, 0.0),
+                bbox_transform=fig.transFigure,
+                loc=9, borderaxespad=0.,
+                )
+
+        ax.xaxis.set_ticks_position('bottom')
+        ax.set_xticks(x_vals)
+        ax.set_xticklabels(x_labs)
+        ax.tick_params('x', labelsize=max(6, min(10, 14-0.15*len(x_keys))))
+        ax.set_xlabel('Optimisation Cycle')
+        ax.set_ylabel('Average B-factor of Level')
+        ax.set_ylim(bottom=0.0)
+
+        ########################
+        # SECOND AXIS
+        ########################
+        ax = axes[1]
+        handles = []
+        for l in labels:
+            assert isinstance(l, int)
+            # Extract relevant rows from table
+            l_table = table[table['level']==l]
+            # Extract plot vals
+            x_vals = l_table['cycle'].values
+            y_vals = l_table['b_iso (level)'].values
+
+            hd_ = ax.plot(x_vals, y_vals,
+                    'ko-', lw=2, ms=max(3, min(5, 7-0.1*len(x_vals))))
+            hdl = ax.plot(x_vals, y_vals,
+                    'o-', lw=1, ms=max(1, min(3, 5-0.1*len(x_vals))),
+                    color=colours[l-1], label='Level {}'.format(l))
+            handles.extend(hdl)
+
+        # Axis stuff
+        ax.xaxis.set_ticks_position('bottom')
+        ax.tick_params('x', labelsize=max(6, min(10, 14-0.15*len(x_keys))))
+        ax.set_xlabel('Optimisation Cycle')
+        ax.set_ylabel('Average B-factor of Level')
+        ax.set_ylim(bottom=0.0)
+
+        # Create legend for axis
+        #lgd1 = ax.legend(handles=handles, ncol=3, bbox_to_anchor=(0.00, -0.15), loc=9, borderaxespad=0.)
+
+        t = fig.suptitle('Convergence of level b-factors',
+                y = 1.00, verticalalignment='bottom')
+
+        fig.tight_layout()
+        fig.savefig(filename,
+                    bbox_extra_artists=[t, lgd0],
+                    bbox_inches='tight',
+                    dpi=200)
+        pyplot.close(fig)
+

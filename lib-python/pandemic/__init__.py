@@ -17,7 +17,7 @@ HEADER_TEXT = """
 -   |____|    (____  /___|  /\\____ |\\___  >__|_|  /__|\\___  >
 -                  \\/     \\/      \\/    \\/      \\/        \\/
 -
--  PAN-Dataset Ensemble Modelling of Isomorphous Crystals
+-  PAN-Dataset Ensemble Modelling of Iso-structural Crystals
 -
 ------------------------------------------------------------------>
 

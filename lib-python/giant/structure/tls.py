@@ -1,4 +1,4 @@
-
+import os
 import math
 import numpy
 
@@ -8,6 +8,37 @@ from scitbx.array_family import flex
 from mmtbx.tls import tlso, uaniso_from_tls_one_group
 
 deg_to_rad_scale = math.pi/180
+
+############
+
+def phenix_find_tls_groups(filename=None, hierarchy=None):
+    assert [filename, hierarchy].count(None) == 1, 'Must supply either filename or hierarchy'
+    if hierarchy is not None: 
+        import tempfile
+        tmp_file = tempfile.mktemp(suffix='.pdb')
+        hierarchy.write_pdb_file(tmp_file)
+        filename = tmp_file
+
+    from bamboo.common.command import CommandManager
+    cmd = CommandManager('phenix.find_tls_groups')
+    cmd.add_command_line_arguments(filename)
+    #cmd.print_settings()
+    ret_code = cmd.run()
+
+    if ret_code != 0:
+        print cmd.output
+        print cmd.error
+        raise Exception('Failed to determine TLS groups: {}'.format(' '.join(cmd.program)))
+
+    import re
+    regex = re.compile("refinement\.refine\.adp \{([\s\S]*?)\}")
+    tls_command = regex.findall(cmd.output)[0]
+    tls_selections = [s.strip() for s in tls_command.split('tls =') if s.strip()]
+
+    if hierarchy is not None: 
+        os.remove(tmp_file) # called by tmp_file just in case...
+
+    return tls_selections
 
 ############
 

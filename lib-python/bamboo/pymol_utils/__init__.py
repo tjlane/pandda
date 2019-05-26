@@ -26,6 +26,7 @@ class _PymolScript(object):
 
     defaults = {'ray':     {'width':1024, 'height':786},
                 'zoom':    {'buffer':1.0, 'complete':0},
+                'rebuild': {'selection':'all','representation':'everything'}
                }
 
     def __init__(self, pretty_models=True, pretty_maps=True):
@@ -115,7 +116,7 @@ class _PymolScript(object):
 
     def set(self, setting, *args, **kwargs):
         self._append(self._man_set \
-                     .format(setting = setting,
+                     .format(setting = repr(setting),
                              args    = ','.join([repr(a) for a in args]),
                              kwargs  = ','.join(['{}={}'.format(k, repr(kwargs[k])) for k in kwargs.keys()])) \
                      .replace(',,',',') \
@@ -146,15 +147,15 @@ class _PymolScript(object):
     def fetch_map(self, pdb_code, map_type='2fofc'):
         pass
 
-    def load_pdb(self, f_name, obj=None):
+    def load_pdb(self, f_name, obj=None, state=0):
         """Load pdb file f_name"""
         if obj is None: obj = os.path.basename(os.path.splitext(f_name)[0])
-        self._append(self._load_basic.format(f_name=f_name, obj=obj))
+        self._append(self._load_basic.format(f_name=f_name, obj=obj, state=state))
         return obj
 
-    def load_map(self, f_name, obj=None):
+    def load_map(self, f_name, obj=None, state=0):
         if obj is None: obj = os.path.basename(os.path.splitext(f_name)[0])
-        self._append(self._load_basic.format(f_name=f_name, obj=obj))
+        self._append(self._load_basic.format(f_name=f_name, obj=obj, state=state))
         return obj
 
     def make_mesh(self, obj, mesh_suffix='.mesh', contour_level=1, colour=None):
@@ -167,8 +168,20 @@ class _PymolScript(object):
     # Quick addition of Shape objects
     # ----------------------------------------------------------------------- #
 
-    def add_shape(self, shape, obj):
-        self._append(shape.as_cmd(name=obj))
+    def add_generic_object(self, item, obj, state=0):
+        self._append(item.as_cmd(obj=obj, state=state))
+
+    def add_shape(self, shape, obj, state=0):
+        self.add_generic_object(item=shape, obj=obj, state=state)
+
+    def add_shapes(self, cgo_shapes, obj, state=0):
+        cgo_str = ''
+        for c in cgo_shapes: 
+            c_str = c.as_string().strip('[]')
+            cgo_str += c_str + ', '
+        cgo_str = '[' + cgo_str + ']'
+        cmd = 'cmd.load_cgo(%s, "%s", state=%s)' % (cgo_str, obj, state)
+        self._append(cmd)
 
     # ----------------------------------------------------------------------- #
     # Multi-command defaults
@@ -196,7 +209,7 @@ class _PymolScript(object):
 
     def colour(self, obj, colour=None):
         if colour is None: colour = self.get_colour()
-        cmd = self._format(template=self._man_colour, colour=colour, obj=obj)
+        cmd = self._format(template=self._man_colour, colour=repr(colour), obj=repr(obj))
         self._append(cmd)
         return colour
 
@@ -220,11 +233,11 @@ class PythonScript(_PymolScript):
     _import_pml = 'from pymol import cmd, util'
     _import_cgo = 'from pymol.cgo import *'
 
-    _load_basic = 'cmd.load("{f_name}","{obj}")'
+    _load_basic = 'cmd.load("{f_name}","{obj}",state={state})'
     _isomesh    = 'cmd.isomesh("{obj}", "{map}", {contour_level})'
 
-    _man_set        = 'cmd.set("{setting}",{args},{kwargs})'
-    _man_colour     = 'cmd.color("{colour}", "{obj}")'
+    _man_set        = 'cmd.set({setting},{args},{kwargs})'
+    _man_colour     = 'cmd.color({colour}, selection={obj})'
     _man_custom     = 'cmd.{function}({args},{kwargs})'
 
     _cmd_quit       = 'cmd.quit()'
@@ -236,6 +249,13 @@ class PythonScript(_PymolScript):
     _cmd_orient     = 'cmd.orient("{obj}")'
     _cmd_zoom       = 'cmd.zoom("{obj}", buffer={buffer}, complete={complete})'
     _cmd_png        = 'cmd.png("{f_name}")'
+    _cmd_disable    = 'cmd.disable("{obj}")'
+    _cmd_enable     = 'cmd.enable("{obj}")'
+
+    _cmd_label      = 'cmd.label("{selection}", "{expression}")'
+    _cmd_rebuild    = 'cmd.rebuild(selection="{selection}", representation="{representation}")'
+
+    _cmd_ramp_new   = 'cmd.ramp_new("{obj}", map_name="{mol_or_map_obj}", range={range}, color={color})'
 
     _util_colour_by = {'black'    : 'util.cbab("{obj}")',
                        'green'    : 'util.cbag("{obj}")',
@@ -249,6 +269,10 @@ class PythonScript(_PymolScript):
                        'yellow'   : 'util.cbay("{obj}")'}
 
     _util_chainbow = 'util.chainbow("{obj}")'
+
+    def change_into_directory(self, path):
+        self._append('import os')
+        self._append('os.chdir({})'.format(repr(path)))
 
     @classmethod
     def run(cls, script):

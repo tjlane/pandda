@@ -1,18 +1,20 @@
 import os,sys,re,glob,copy,shutil,tempfile
 
+from libtbx.utils import Sorry, Failure
+
 from bamboo.common.command import CommandManager
 from bamboo.common.path import easy_directory
 from bamboo.common.logs import Log
 
 from giant.xray.tls import phenix_find_tls_groups
 
+
 class _refiner(object):
+
 
     program = None
 
-    _kw_list = []
-
-    def __init__(self, pdb_file, mtz_file=None, cif_files=None, out_prefix=None, log=None, **kw_args):
+    def __init__(self, pdb_file, mtz_file=None, cif_files=None, out_prefix=None, log=None):
 
         # Set defaults if not given
         if mtz_file is None:
@@ -46,14 +48,8 @@ class _refiner(object):
 
         # Command object for refinement
         self.cmd = CommandManager(self.program, log=self.log)
-        self.kw_args = kw_args
 
-        self.validate()
-
-    def validate(self):
-        """Validate kw_args"""
-        if set(self.kw_args.keys()).difference(self._kw_list):
-            raise Sorry('Invalid/unsupported arguments provided: {}'.format(set(self.kw_args.keys()).difference(self._kw_list)))
+        self.setup()
 
     def print_settings(self):
         self.log.bar()
@@ -73,8 +69,12 @@ class _refiner(object):
     def setup(self):
         raise Exception('Dummy class -- not implemented')
 
+    def finalise(self):
+        raise Exception('Dummy class -- not implemented')
+
     def refine(self):
         """...run the refinement"""
+        self.finalise()
         return self.cmd.run()
 
     def export(self):
@@ -97,13 +97,13 @@ class _refiner(object):
             self.cmd.write_output(self.out_log_file)
         except Exception as e:
             print '------------>'
-            print e
-            print '------------>'
             print self.cmd.output
             print '------------>'
             print self.cmd.error
             print '------------>'
-            raise Exception('Failed during refinement')
+            print e
+            print '------------>'
+            raise Failure('No files available for export after refinement with {}'.format(self.program))
         finally:
             # Delete temporary directory
             shutil.rmtree(self.tmp_dir)
@@ -111,19 +111,11 @@ class _refiner(object):
 
 class refine_phenix(_refiner):
 
-    program = 'phenix.refine'
 
-    _kw_list = [
-            'cmd_line_args',
-            'n_cycles',
-            'strategy',
-            ]
+    program = 'phenix.refine'
 
     def setup(self):
         """Prepare command object"""
-        kw = self.kw_args
-
-        self.validate()
 
         self.cmd.add_command_line_arguments(self.pdb_file, self.mtz_file)
 
@@ -132,41 +124,41 @@ class refine_phenix(_refiner):
 
         self.cmd.add_command_line_arguments('output.prefix={}'.format(self.tmp_pre))
 
-        if 'cmd_line_args' in kw:
-            self.cmd.add_command_line_arguments(kw['cmd_line_args'])
-
-        if 'strategy' in kw:
-            self.cmd.add_command_line_arguments('refine.strategy={}'.format(kw['strategy']))
-
-        if 'n_cycles' in kw:
-            self.cmd.add_command_line_arguments('main.number_of_macro_cycles={:d}'.format(kw['n_cycles']))
-
         return self
 
-    def refine_coordinates_only(self):
-        self.kw_args['strategy'] = 'individual_sites'
+    def finalise(self):
         return self
 
-    def refine_b_factors_only(self):
-        self.kw_args['strategy'] = 'individual_adp'
+    def add_custom_args(self, args):
+        self.cmd.add_command_line_arguments(args)
+        return self
+
+    def add_parameter_file(self, parameter_file):
+        if not (parameter_file.endswith('.eff') or parameter_file.endswith('.def')):
+            raise Sorry('Parameter files must end with .eff or .def')
+        self.cmd.add_command_line_arguments(parameter_file)
+        return self
+
+    def set_n_cycles(self, n):
+        self.cmd.add_command_line_arguments('main.number_of_macro_cycles={:d}'.format(n))
+        return self
+
+    def set_refine_coordinates_only(self):
+        self.cmd.add_command_line_arguments('refine.strategy=individual_sites')
+        return self
+
+    def set_refine_b_factors_only(self):
+        self.cmd.add_command_line_arguments('refine.strategy=individual_adp')
         return self
 
 
 class refine_refmac(_refiner):
 
-    program = 'refmac5'
 
-    _kw_list = [
-            'cmd_line_args',
-            'std_in',
-            'n_cycles',
-            ]
+    program = 'refmac5'
 
     def setup(self):
         """Prepare command object"""
-        kw = self.kw_args
-
-        self.validate()
 
         # Input files
         self.cmd.add_command_line_arguments('XYZIN', self.pdb_file)
@@ -184,12 +176,9 @@ class refine_refmac(_refiner):
             assert os.path.exists(cif_file)
             self.cmd.add_command_line_arguments('LIBIN', cif_file)
 
-        # Process STDIN arguments
-        if 'std_in' in kw:
-            for l in kw['std_in']:
-                self.cmd.add_standard_input(l)
-        if 'n_cycles' in kw:
-            self.cmd.add_standard_input('NCYC {}'.format(n_cycles))
+        return self
+
+    def finalise(self):
 
         ###################################
         #          MUST BE AT END         #
@@ -199,21 +188,38 @@ class refine_refmac(_refiner):
 
         return self
 
-    def refine_b_factors_only(self):
-        self.kw_args.setdefault('std_in',[]).append("REFI BONLY")
+    def add_custom_args(self, args):
+        self.cmd.add_standard_input(args)
         return self
 
-    def refine_coordinates_only(self):
-        self.kw_args.setdefault('std_in',[]).append("BREF OVER")
+    def add_parameter_file(self, parameter_file):
+        with open(parameter_file, 'r') as fh:
+            self.cmd.add_standard_input(fh.readlines())
         return self
+
+    def set_n_cycles(self, n):
+        self.cmd.add_standard_input('NCYC {:d}'.format(n))
+        return self
+
+    def set_refine_coordinates_only(self):
+        self.cmd.add_standard_input("BREF OVER")
+        return self
+
+    def set_refine_b_factors_only(self):
+        self.cmd.add_standard_input("REFI BONLY")
+        return self
+
+    ################# just refmac ##################
 
     def zero_cycles(self):
-        self.kw_args['n_cycles'] = 0
+        self.set_n_cycles(0)
         return self
 
     def complete_model(self):
-        self.kw_args.setdefault('std_in',[]).append("BUIL Y")
+        self.cmd.add_standard_input("BUIL Y")
         return self
+
+    ################# just refmac ##################
 
 
 class BFactorRefinementFactory(object):
