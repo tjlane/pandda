@@ -1,6 +1,7 @@
 import os, copy, collections
 from libtbx import adopt_init_args, group_args
 from bamboo.common.logs import Log
+from pandemic.adp.utils import show_file_dict
 import numpy
 
 def optimisation_summary_from_target_evaluator(target_evaluator):
@@ -48,6 +49,42 @@ class LevelTargetUijCalculator:
         return self.uij_target - arr_sum
 
 
+class InitialiseEchtLevel:
+
+
+    def __init__(self,
+            starting_t_matrix = (1.,1.,1.,0.,0.,0.),
+            starting_l_matrix = None,
+            starting_s_matrix = None,
+            starting_amplitudes = None,
+            ):
+        adopt_init_args(self, locals())
+
+    def __call__(self,
+            model_object,
+            i_level,
+            ):
+        tls_objects = model_object.tls_objects[i_level]
+        for tls_obj in tls_objects:
+            for mode in tls_obj.tls_parameters:
+                if self.starting_t_matrix is not None:
+                    mode.matrices.set(values=self.starting_t_matrix, component_string='T')
+                if self.starting_l_matrix is not None:
+                    mode.matrices.set(values=self.starting_l_matrix, component_string='L')
+                if self.starting_s_matrix is not None:
+                    mode.matrices.set(values=self.starting_s_matrix, component_string='S')
+
+    def summary(self):
+        s = ''
+        if self.starting_t_matrix is not None: 
+            s += ('> Setting T matrices to {}\n'.format(self.starting_t_matrix))
+        if self.starting_l_matrix is not None: 
+            s += ('> Setting L matrices to {}\n'.format(self.starting_l_matrix))
+        if self.starting_s_matrix is not None: 
+            s += ('> Setting S matrices to {}\n'.format(self.starting_s_matrix))
+        return s
+
+
 class OptimiseEchtModel:
 
 
@@ -55,6 +92,7 @@ class OptimiseEchtModel:
             optimise_tls_function,
             optimise_adp_function,
             optimise_level_amplitudes_function,
+            n_cycles = 1,
             n_cpus = 1,
             verbose = False,
             log = None,
@@ -79,6 +117,8 @@ class OptimiseEchtModel:
 
         self.optimise_level_amplitudes = optimise_level_amplitudes_function
 
+        self.initialise_level = InitialiseEchtLevel()
+
         from pandemic.adp.echt.optimise.repair import RepairEchtModel
         self.repair_model = RepairEchtModel()
 
@@ -95,107 +135,170 @@ class OptimiseEchtModel:
         self.log('\nOptimising TLS models for {} levels'.format(model_object.n_tls_levels) \
             + ' (+ {} level)'.format(model_object.adp_level_name)*(self.optimise_adp_level is not None))
 
-        # Increment counter at beginning of cycle (ensure we have a new number)
-        tracking_object.i_cycle += 1
+        if uij_isotropic_mask is None: 
+            uij_isotropic_mask_or_not = lambda x: x
+        else: 
+            uij_isotropic_mask_or_not = uij_isotropic_mask
 
         # Class for calculating target for each optimisation
         calculate_uij_target = LevelTargetUijCalculator(uij_target)
 
+        # Initial amplitude optimisation
+        if (self.optimise_level_amplitudes is not None):
+
+            self.log.subheading('Macrocycle {}: '.format(tracking_object.i_cycle)+'Optimising inter-level amplitudes')
+
+            # Ensure no negative eigenvalues
+            self.repair_model(model_object)
+
+            for max_recursions in [1, None]:
+                if max_recursions is None:
+                    self.log('Optimising all levels simultaneously')
+                else:
+                    self.log('Optimising sets of {} neighbouring levels'.format(max_recursions+1))
+                self.optimise_level_amplitudes(
+                    uij_target = uij_target,
+                    uij_target_weights = uij_target_weights,
+                    uij_isotropic_mask = uij_isotropic_mask,
+                    model_object = model_object,
+                    level_group_connections  = level_group_connections,
+                    max_recursions = max_recursions,
+                    # dataset mask
+                    )
+
+        # Record the object before optimisation
         tracking_object.update(
             uij_target = uij_target,
-            uij_lvl = model_object.uijs(),
+            uij_lvl = uij_isotropic_mask_or_not(model_object.uijs()),
             step = 'start',
+            i_level = range(model_object.n_levels),
+            write_graphs = True,
             )
 
-        # Iterate through the TLS levels of the fitting
-        for i_level in xrange(model_object.n_tls_levels):
+        # "micro-cycles"
+        for i_sub_cycle in xrange(self.n_cycles):
 
-            self.log.subheading('Macrocycle {}: '.format(tracking_object.i_cycle)+'Fitting TLS Groups (level {} - {})'.format(i_level+1, model_object.tls_level_names[i_level]))
+            # Iterate through the TLS levels of the fitting
+            for i_level in xrange(model_object.n_tls_levels):
 
-            # Optimise the groups for one level
-            model_object.tls_objects[i_level] = self.optimise_tls_level(
-                uij_target = calculate_uij_target(uij_fitted=model_object.uijs(), ignore_level=i_level),
-                uij_target_weights = uij_target_weights,
-                uij_isotropic_mask = uij_isotropic_mask,
-                uij_optimisation_mask = uij_optimisation_mask,
-                tls_groups = model_object.tls_objects[i_level],
-                tls_selections = model_object.tls_selections[i_level],
-                )
-
-            # Optimise the amplitudes between levels
-            if self.optimise_level_amplitudes is not None:
-
-                self.log.subheading('Macrocycle {}: '.format(tracking_object.i_cycle)+'Optimising inter-level amplitudes')
-
-                # Ensure no negative eigenvalues
-                self.repair_model(model_object)
-
-                for max_recursions in [1, None]:
-                    if max_recursions is None:
-                        self.log('Optimising all levels simultaneously')
-                    else:
-                        self.log('Optimising sets of {} neighbouring levels'.format(max_recursions+1))
+                if (tracking_object.i_cycle == 1) and (i_sub_cycle == 0):
+                    self.log.subheading('Initialising values in Level {}'.format(i_level+1))
+                    self.log(self.initialise_level.summary())
+                    # Set all e.g. T matrices to diag(1,1,1)
+                    self.initialise_level(model_object, i_level=i_level)
+                    # Initial amplitude optimisation to get them away from zero
+                    self.log('Optimising level amplitudes')
                     self.optimise_level_amplitudes(
+                            uij_target = uij_target,
+                            uij_target_weights = uij_target_weights,
+                            uij_isotropic_mask = uij_isotropic_mask,
+                            model_object = model_object,
+                            level_group_connections  = level_group_connections,
+                            max_recursions = None,
+                            # dataset mask
+                            )
+                    if (self.verbose is True): 
+                        # Update tracking
+                        tracking_object.update(
+                            uij_target = uij_target,
+                            uij_lvl = uij_isotropic_mask_or_not(model_object.uijs()),
+                            step = '{}-{} (init-l{})'.format(tracking_object.i_cycle, i_sub_cycle+1, i_level+1),
+                            # step = 'residual',
+                            i_level = range(model_object.n_levels),
+                            write_graphs = False,
+                            )
+
+                self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.i_cycle, i_sub_cycle+1)+'Fitting TLS Groups (level {} - {})'.format(i_level+1, model_object.tls_level_names[i_level]))
+
+                # Optimise the groups for one level
+                self.repair_model(model_object)
+                model_object.tls_objects[i_level] = self.optimise_tls_level(
+                    uij_target = calculate_uij_target(uij_fitted=uij_isotropic_mask_or_not(model_object.uijs()), ignore_level=i_level),
+                    uij_target_weights = uij_target_weights,
+                    uij_isotropic_mask = uij_isotropic_mask,
+                    uij_optimisation_mask = uij_optimisation_mask,
+                    tls_groups = model_object.tls_objects[i_level],
+                    tls_selections = model_object.tls_selections[i_level],
+                    )
+
+                # Optimise the amplitudes between levels
+                if self.optimise_level_amplitudes is not None:
+
+                    self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.i_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
+
+                    # Ensure no negative eigenvalues
+                    self.repair_model(model_object)
+
+                    for max_recursions in [1, None]:
+                        if max_recursions is None:
+                            self.log('Optimising all levels simultaneously')
+                        else:
+                            self.log('Optimising sets of {} neighbouring levels'.format(max_recursions+1))
+                        self.optimise_level_amplitudes(
+                            uij_target = uij_target,
+                            uij_target_weights = uij_target_weights,
+                            uij_isotropic_mask = uij_isotropic_mask,
+                            model_object = model_object,
+                            level_group_connections  = level_group_connections,
+                            max_recursions = max_recursions,
+                            # dataset mask
+                            )
+
+                if (self.verbose is True): 
+                    # Update tracking
+                    tracking_object.update(
                         uij_target = uij_target,
-                        uij_target_weights = uij_target_weights,
-                        uij_isotropic_mask = uij_isotropic_mask,
-                        model_object = model_object,
-                        level_group_connections  = level_group_connections,
-                        max_recursions = max_recursions,
-                        # dataset mask
+                        uij_lvl = uij_isotropic_mask_or_not(model_object.uijs()),
+                        step = '{}-{} (l{})'.format(tracking_object.i_cycle, i_sub_cycle+1, i_level+1),
+                        # step = 'residual',
+                        i_level = range(model_object.n_levels),
+                        write_graphs = False,
                         )
+
+            if self.optimise_adp_level is not None:
+
+                # Fit the residuals
+                self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.i_cycle, i_sub_cycle+1)+'Optimising residual atomic Uijs')
+
+                # Update the target uij by subtracting contributions from other levels
+                self.repair_model(model_object)
+                model_object.adp_values = self.optimise_adp_level(
+                    uij_values = model_object.adp_values,
+                    uij_target = calculate_uij_target(uij_fitted=uij_isotropic_mask_or_not(model_object.uijs()), ignore_level=-1),
+                    uij_target_weights = uij_target_weights,
+                    uij_isotropic_mask = uij_isotropic_mask,
+                    uij_optimisation_mask = uij_optimisation_mask,
+                    )
+
+                # Optimise the amplitudes between levels
+                if self.optimise_level_amplitudes is not None:
+
+                    self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.i_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
+
+                    # Ensure no negative eigenvalues
+                    self.repair_model(model_object)
+
+                    for max_recursions in [1, None]:
+                        if max_recursions is None:
+                            self.log('Optimising all levels simultaneously')
+                        else:
+                            self.log('Optimising sets of {} neighbouring levels'.format(max_recursions+1))
+                        self.optimise_level_amplitudes(
+                            uij_target = uij_target,
+                            uij_target_weights = uij_target_weights,
+                            uij_isotropic_mask = uij_isotropic_mask,
+                            model_object = model_object,
+                            level_group_connections  = level_group_connections,
+                            max_recursions = max_recursions,
+                            )
 
             # Update tracking
             tracking_object.update(
                 uij_target = uij_target,
-                uij_lvl = model_object.uijs(),
-                step = 'level {}'.format(i_level+1),
-                i_level = i_level,
-                write_graphs = False,
-                )
-
-        if self.optimise_adp_level is not None:
-
-            # Fit the residuals
-            self.log.subheading('Macrocycle {}: '.format(tracking_object.i_cycle)+'Optimising residual atomic Uijs')
-
-            # Update the target uij by subtracting contributions from other levels
-            model_object.adp_values = self.optimise_adp_level(
-                uij_values = model_object.adp_values,
-                uij_target = calculate_uij_target(uij_fitted=model_object.uijs(), ignore_level=-1),
-                uij_target_weights = uij_target_weights,
-                uij_isotropic_mask = uij_isotropic_mask,
-                uij_optimisation_mask = uij_optimisation_mask,
-                )
-
-            # Optimise the amplitudes between levels
-            if self.optimise_level_amplitudes is not None:
-
-                self.log.subheading('Macrocycle {}: '.format(tracking_object.i_cycle)+'Optimising inter-level amplitudes')
-
-                # Ensure no negative eigenvalues
-                self.repair_model(model_object)
-
-                for max_recursions in [1, None]:
-                    if max_recursions is None:
-                        self.log('Optimising all levels simultaneously')
-                    else:
-                        self.log('Optimising sets of {} neighbouring levels'.format(max_recursions+1))
-                    self.optimise_level_amplitudes(
-                        uij_target = uij_target,
-                        uij_target_weights = uij_target_weights,
-                        uij_isotropic_mask = uij_isotropic_mask,
-                        model_object = model_object,
-                        level_group_connections  = level_group_connections,
-                        max_recursions = max_recursions,
-                        )
-
-            # Update tracking
-            tracking_object.update(
-                uij_target = uij_target,
-                uij_lvl = model_object.uijs(),
-                step = 'residual',
-                i_level = model_object.n_levels-1,
+                uij_lvl = uij_isotropic_mask_or_not(model_object.uijs()),
+                step = '{}-{}'.format(tracking_object.i_cycle, i_sub_cycle+1),
+                # step = 'residual',
+                i_level = range(model_object.n_levels),
                 write_graphs = False,
                 )
 
@@ -205,8 +308,8 @@ class OptimiseEchtModel:
         # Update tracking
         tracking_object.update(
             uij_target = uij_target,
-            uij_lvl = model_object.uijs(),
-            step = 'inter-level',
+            uij_lvl = uij_isotropic_mask_or_not(model_object.uijs()),
+            step = 'end',
             i_level = range(model_object.n_levels),
             write_graphs = True,
             )
@@ -216,19 +319,19 @@ class OptimiseEchtModel:
 
 class UpdateOptimisationFunction:
 
-
     level_amplitude_string = 'level amplitudes weights'
+    
+    show_file_dict = show_file_dict
 
     def __init__(self,
-        n_cycles,
         gradient_optimisation_decay_factor,
+        optimisation_weights_to_update,
         model_optimisation_function,
         plotting_object = None,
         verbose = True,
         log = None,
         ):
         if log is None: log = Log()
-        assert n_cycles >= 1
         start_values = group_args(
             level_amplitudes_optimisation_weights = copy.deepcopy(model_optimisation_function.optimise_level_amplitudes.optimisation_weights),
             )
@@ -241,32 +344,33 @@ class UpdateOptimisationFunction:
         ):
 
         assert i_cycle >= 0
-        assert i_cycle < self.n_cycles
-
-        # Percentage of program remaining
-        if self.n_cycles <= 1:
-            frac = 0.0
-        else:
-            frac = float(self.n_cycles-i_cycle) / float(self.n_cycles)
 
         decay_factor = self.gradient_optimisation_decay_factor
         total_decay_factor = decay_factor ** i_cycle
 
         # Update parameters
         self.log.subheading('Updating Level Amplitude Optimisation Weights')
-        self.log('> Cycle {}'.format(i_cycle+1))
-        self.log('> Total decay factor (relative to starting values): {}'.format(total_decay_factor))
-        for k, v in self.start_values.level_amplitudes_optimisation_weights.__dict__.iteritems():
-            new_v = v / total_decay_factor
-            self.log('Updating {} = {} -> {}'.format(k, v, new_v))
+        self.log('> Cycle {}\n'.format(i_cycle+1))
+        self.log('> Total decay factor (relative to starting values): {}\n'.format(total_decay_factor))
+        for k in self.optimisation_weights_to_update:
+            orig_v = self.start_values.level_amplitudes_optimisation_weights.__dict__[k] 
+            new_v = orig_v / total_decay_factor
+            self.log('Updating {} = {} -> {}'.format(k, orig_v, new_v))
             model_optimisation_function.optimise_level_amplitudes.optimisation_weights.__dict__[k] = new_v
+
+        # Update history
+        self.log('\nCurrent values:')
+        for k, v in model_optimisation_function.optimise_level_amplitudes.optimisation_weights.__dict__.iteritems():
+            self.log('{} -> {}'.format(k, v))
             self.history \
                 .setdefault(self.level_amplitude_string, collections.OrderedDict()) \
-                .setdefault(k, []).append((i_cycle+1, new_v))
+                .setdefault(k, []).append((i_cycle+1, v))
 
     def write(self, output_directory):
 
-        output_files = {}
+        self.log.subheading('Writing optimisation weights graphs')
+
+        output_files = collections.OrderedDict()
 
         for s in [self.level_amplitude_string]:
             prefix = os.path.join(output_directory, s.replace(' ', '_'))
@@ -287,5 +391,7 @@ class UpdateOptimisationFunction:
                 axis.set_yscale('log', base=10.)
                 self.plotting_object.helper.write_and_close_fig(fig=fig, filename=filename)
                 output_files.setdefault(s,collections.OrderedDict())[variable] = filename
+
+        self.show_file_dict(output_files)
 
         return output_files

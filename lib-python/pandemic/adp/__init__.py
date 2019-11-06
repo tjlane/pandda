@@ -70,7 +70,7 @@ output {
             .help = "Write distribution graphs for each TLS group"
             .type = bool
         colour_map = 'rainbow'
-            .help = "Colour map to use for making graphs. Can be any valid matplotlib colour map."
+            .help = "Colour map to use for making graphs. Can be any valid matplotlib colour map. Try: plasmaPastel1, gist_earth, ocean."
             .type = str
         plot_style = 'ggplot'
             .help = "Plot style to use for making graphs. Can be any valid matplotlib plot style."
@@ -79,9 +79,9 @@ output {
             .help = "Font family to use for making graphs. Can be any valid matplotlib font family."
             .type = str
         font_name = None
-            .help = "Specifty a specific font to use for making graphs."
+            .help = "Specify a specific font to use for making graphs (must be available in the font family defined by font_family)."
             .type = str
-        dpi = 300
+        dpi = 200
             .help = "dpi of output images"
             .type = int
     }
@@ -101,8 +101,11 @@ model {
     cbeta_in_backbone = True
         .help = "Flag to control whether the c-beta atom is considered part of the backbone or the sidechain"
         .type = bool
-    remove_duplicate_groups = True
-        .help = "Flag to control whether identical groups that are present in multiple levels are removed (only the group in the highest level will be kept)."
+    remove_duplicate_groups = none keep_highest_group *keep_lowest_group
+        .help = "Flag to control whether identical groups that are present in multiple levels are removed (by default, duplicate groups will be removed from lower levels)."
+        .type = choice(multi=False)
+    atomic_adp_level = True
+        .help = 'should the atomic adp level be optimised? (it may be preferable to turn this off for small numbers of low-resolution structures)'
         .type = bool
     custom_level
         .multiple = True
@@ -146,19 +149,20 @@ model {
             .help = "how many decimals of precision to be used for TLS amplitudes"
             .type = int
     }
-    atomic_adp_level = True
-        .help = 'should the atomic adp level be optimised? (it may be preferable to turn this off for small numbers of low-resolution structures)'
-        .type = bool
 }
 optimisation {
-    run_initial_cycle_with_barrier_term = False
+    min_macro_cycles = 10
+        .help = 'minimum number of fitting cycles to run (over all levels) -- must be at least 1'
+        .type = int
+    max_macro_cycles = 100
+        .help = 'maximum number of fitting cycles to run (over all levels) -- must be at least 1'
+        .type = int
+    number_of_micro_cycles = 1
+        .help = 'how many fitting cycles to run (for each level) -- must be at least 1'
+        .type = int
+    fit_isotropic_b_factors_by_magnitude_only = True
         .type = bool
-    number_of_macro_cycles = 10
-        .help = 'how many fitting cycles to run (over all levels) -- should be more than 0'
-        .type = int
-    number_of_micro_cycles = 2
-        .help = 'how many fitting cycles to run (for each level) -- should be more than 1'
-        .type = int
+        .help = "Treat isotropic B-factors as anisotropic ADPs (will fit to the shapes of isotropic ADPs as well as the size)."
     dataset_selection {
         max_resolution = None
             .help = 'resolution limit for dataset to be used for TLS optimisation'
@@ -177,7 +181,7 @@ optimisation {
         dataset_weights = one inverse_resolution inverse_resolution_squared *inverse_resolution_cubed
             .help = 'control how datasets are weighted during optimisation?'
             .type = choice(multi=False)
-        atom_weights = one *inverse_mod_U inverse_mod_U_squared inverse_mod_U_cubed
+        atom_weights = *one inverse_mod_U inverse_mod_U_squared inverse_mod_U_cubed
             .help = 'control how atoms are weighted during optimisation?'
             .type = choice(multi=False)
         renormalise_atom_weights_by_dataset = True
@@ -205,18 +209,35 @@ optimisation {
     }
     gradient_optimisation {
         gradient_convergence = 1e-10
-            .help = "cutoff for which the least-squares gradient is considered converged"
+            .help = "cutoff for which the least-squares gradient is considered converged."
             .type = float
         optimisation_weights {
-            sum_of_amplitudes_squared = 1.0
-                .help = "weight for sum(amplitudes)^2"
+            sum_of_amplitudes = 0.9 
+                .help = "weight for sum(amplitudes). minimises the number of TLS components in the optimisation. equivalent to a lasso weighting term."
                 .type = float
-            sum_of_squared_amplitudes = 1.0
-                .help = "weight for sum(amplitudes^2)"
+            sum_of_squared_amplitudes = 0.1
+                .help = "weight for sum(amplitudes^2). minimises the variance in the sizes of the TLS components in the optimisation. equivalent to a ridge regression term."
+                .type = float
+            sum_of_amplitudes_squared = 0.0
+                .help = "weight for sum(amplitudes)^2. related to a lasso weighting term."
                 .type = float
         }
-        cycle_decay_factor = 10.0
-            .help = "amount by which optimisation_weights are reduced every cycle. factor of 2 -> scaled by 0.5 every cycle"
+        global_weight_scale = 100.0
+            .help = "global scale applied to all optimisation_weights."
+            .type = float
+        global_weight_decay_factor = 2.0
+            .help = "amount by which optimisation_weights are reduced every cycle. factor of 2 -> scaled by 0.5 every cycle."
+            .type = float
+        weights_to_decay = *sum_of_amplitudes *sum_of_amplitudes_squared *sum_of_squared_amplitudes
+            .help = "which optimisation_weights to decay every cycle."
+            .type = choice(multi=True)
+    }
+    termination {
+        max_b_change = 0.1
+            .help = "Stop optimisation when all atoms are changing less that this value every cycle"
+            .type = float
+        max_u_change = None
+            .help = "Stop optimisation when all atoms are changing less that this value every cycle"
             .type = float
     }
     first_cycle {
@@ -258,11 +279,8 @@ analysis {
     refine_output_structures = False
         .help = "Refine the structures after fitting (coordinates and occupancies)"
         .type = bool
-    calculate_r_factors = True
+    calculate_r_factors = False
         .help = "Recalculate r-factors for the input, output (and refined) models"
-        .type = bool
-    calculate_electron_density_metrics = False
-        .expert_level = 3
         .type = bool
     table_one_options {
         include scope giant.jiffies.multi_table_ones.options_phil
@@ -270,12 +288,8 @@ analysis {
     tls_group_clustering {
         xyz_cutoff_distance = 4.0
             .type = float
-        metric = helliger_distance *overlap_mass
+        metric = *overlap_mass
             .type = choice(multi=False)
-        helliger_distance {
-            linkage = single *average complete
-                .type = choice(multi=False)
-        }
         overlap_mass {
             comparison = simple_average *weighted_average
                 .type = choice(multi=False)
@@ -346,7 +360,7 @@ def run(params, args=None):
     #
     from pandemic.adp import \
         process_input, process_output, \
-        weights, objects, hierarchy, plots
+        weights, tracking, results, hierarchy, plots
 
     #
     # Validate input parameters
@@ -444,8 +458,8 @@ def run(params, args=None):
     pandemic.adp.html.HtmlSummary.embed_images = params.output.html.embed_images
 
     # Optimisation tracking / model evolution
-    import pandemic.adp.html.tracking
-    TrackingHtmlSummary = pandemic.adp.html.tracking.TrackingHtmlSummary
+    import pandemic.adp.html.tracking as tracking_html
+    TrackingHtmlSummary = tracking_html.TrackingHtmlSummary
 
     # Summary of the hierarchical model -- model specific
     ModelHtmlSummary = None
@@ -484,20 +498,20 @@ def run(params, args=None):
 
         # Optimisation functions
 
-        optimise_tls_initial = echt.optimise.tls.OptimiseTLSGroup(
-            convergence_tol = params.optimisation.simplex_optimisation.simplex_convergence,
-            tolerances = params.optimisation.tolerances,
-            eps_values = params.optimisation.eps,
-            simplex_params = group_args(
-                vibration_delta = params.optimisation.simplex_optimisation.vibration_delta,
-                libration_delta = params.optimisation.simplex_optimisation.libration_delta,
-                amplitude_delta = params.optimisation.simplex_optimisation.amplitude_delta,
-                ),
-            barrier_params = params.optimisation.first_cycle.sigmoid_buffer,
-            n_cycles = max(3, params.optimisation.number_of_micro_cycles),
-            verbose = params.settings.verbose,
-            log = log,
-            )
+        # optimise_tls_initial = echt.optimise.tls.OptimiseTLSGroup(
+        #     convergence_tol = params.optimisation.simplex_optimisation.simplex_convergence,
+        #     tolerances = params.optimisation.tolerances,
+        #     eps_values = params.optimisation.eps,
+        #     simplex_params = group_args(
+        #         vibration_delta = params.optimisation.simplex_optimisation.vibration_delta,
+        #         libration_delta = params.optimisation.simplex_optimisation.libration_delta,
+        #         amplitude_delta = params.optimisation.simplex_optimisation.amplitude_delta,
+        #         ),
+        #     barrier_params = params.optimisation.first_cycle.sigmoid_buffer,
+        #     #n_cycles = max(3, params.optimisation.number_of_micro_cycles),
+        #     verbose = params.settings.verbose,
+        #     log = log,
+        #     )
 
         optimise_tls_normal = echt.optimise.tls.OptimiseTLSGroup(
             convergence_tol = params.optimisation.simplex_optimisation.simplex_convergence,
@@ -509,12 +523,12 @@ def run(params, args=None):
                 amplitude_delta = params.optimisation.simplex_optimisation.amplitude_delta,
                 ),
             barrier_params = None,
-            n_cycles = params.optimisation.number_of_micro_cycles,
+            #n_cycles = params.optimisation.number_of_micro_cycles,
             verbose = params.settings.verbose,
             log = log,
             )
 
-        if params.model.atomic_adp_level:
+        if params.model.atomic_adp_level is True:
             optimise_adp_values = echt.optimise.uij.OptimiseUijValue(
                 convergence_tol = params.optimisation.simplex_optimisation.simplex_convergence,
                 tolerances = params.optimisation.tolerances,
@@ -530,7 +544,10 @@ def run(params, args=None):
 
         optimise_level_amplitudes = echt.optimise.inter_level.OptimiseInterLevelAmplitudes(
             convergence_tolerance = params.optimisation.gradient_optimisation.gradient_convergence,
-            optimisation_weights =  params.optimisation.gradient_optimisation.optimisation_weights,
+            optimisation_weights =  weights.scale_weights(
+                weights = params.optimisation.gradient_optimisation.optimisation_weights,
+                scale = params.optimisation.gradient_optimisation.global_weight_scale,
+                ),
             optimise_atomic_adp_amplitudes = params.model.atomic_adp_level,
             verbose = params.settings.verbose,
             log=log,
@@ -543,25 +560,25 @@ def run(params, args=None):
         #     log=log,
         #     )
 
-        optimise_model_initial = echt.optimise.OptimiseEchtModel(
-            optimise_tls_function = optimise_tls_initial,
-            optimise_adp_function = optimise_adp_values,
-            optimise_level_amplitudes_function = None,
-            n_cpus = params.settings.cpus,
-            verbose = params.settings.verbose,
-            log = log,
-            )
+        # optimise_model_initial = echt.optimise.OptimiseEchtModel(
+        #     optimise_tls_function = optimise_tls_initial,
+        #     optimise_adp_function = optimise_adp_values,
+        #     optimise_level_amplitudes_function = None,
+        #     n_cpus = params.settings.cpus,
+        #     verbose = params.settings.verbose,
+        #     log = log,
+        #     )
 
         optimise_model_main = echt.optimise.OptimiseEchtModel(
             optimise_tls_function = optimise_tls_normal,
             optimise_adp_function = optimise_adp_values,
             optimise_level_amplitudes_function = optimise_level_amplitudes,
+            n_cycles = params.optimisation.number_of_micro_cycles,
             n_cpus = params.settings.cpus,
             verbose = params.settings.verbose,
             log = log,
             )
 
-        # TODO REMOVE?
         # optimise_model_final = echt.optimise.OptimiseEchtModel(
         #     optimise_tls_function = optimise_tls_normal,
         #     optimise_adp_function = optimise_adp_values,
@@ -572,13 +589,15 @@ def run(params, args=None):
         #     )
 
         update_optimisation_function = echt.optimise.UpdateOptimisationFunction(
-            n_cycles = params.optimisation.number_of_macro_cycles,
-            gradient_optimisation_decay_factor = params.optimisation.gradient_optimisation.cycle_decay_factor,
+            gradient_optimisation_decay_factor = params.optimisation.gradient_optimisation.global_weight_decay_factor,
+            optimisation_weights_to_update = params.optimisation.gradient_optimisation.weights_to_decay,
             model_optimisation_function = optimise_model_main,
             plotting_object = plots.PandemicAdpPlotter(),
             verbose = params.settings.verbose,
             log = log,
             )
+
+        model_specific_tracking_class = echt.tracking.EchtTracking
 
         validate_model = echt.validate.ValidateEchtModel(
             uij_tolerance = params.optimisation.tolerances.uij_tolerance,
@@ -594,6 +613,7 @@ def run(params, args=None):
             verbose = params.settings.verbose,
             log = log,
             )
+
 
         # Define / override summary classes (these take standard inputs wherever possible)
 
@@ -669,9 +689,18 @@ def run(params, args=None):
     #
     # Create progress-tracking object (gets a special plotting object)
     #
-    tracking_object = objects.PandemicTrackingObject(
+    tracking_object = tracking.PandemicTrackingObject(
         output_directory = file_system.optimisation_directory,
-        plotting_object = plots.TrackingPlotter(n_levels=model_object.n_levels),
+        plotting_object = tracking.TrackingPlotter(n_levels=model_object.n_levels),
+        model_object = model_object,
+        verbose = params.settings.verbose,
+        log = log,
+        )
+
+    model_specific_tracking_object = model_specific_tracking_class(
+        output_directory = file_system.optimisation_directory,
+        plotting_object = tracking.TrackingPlotter(n_levels=model_object.n_levels),
+        model_object = model_object,
         verbose = params.settings.verbose,
         log = log,
         )
@@ -679,7 +708,7 @@ def run(params, args=None):
     #
     # Output results object
     #
-    results_object = objects.PandemicResultsObject(
+    results_object = results.PandemicResultsObject(
         filename = os.path.join(file_system.output_directory, 'output_data.csv'),
         plotting_object = plotting_object,
         models = models,
@@ -815,29 +844,40 @@ def run(params, args=None):
     #
     # First optimisation
     #
-    if params.optimisation.run_initial_cycle_with_barrier_term:
+    # if params.optimisation.run_initial_cycle_with_barrier_term:
         
-        log.subheading('Performing initial optimisation', spacer=True)
-        tracking_object.i_cycle -= 1 # so that first cycle appears as 0-cycle
-        model_object = optimise_model_initial(
-            model_object = model_object,
-            level_group_connections = hierarchy_info.level_group_tree,
-            uij_target = extract_uijs_task.result.model_uij,
-            uij_target_weights = uij_weights_task.result.total_weight_array,
-            uij_isotropic_mask = extract_uijs_task.result.isotropic_mask,
-            tracking_object = tracking_object,
-            )
+    #     log.subheading('Performing initial optimisation', spacer=True)
+    #     tracking_object.i_cycle -= 1 # so that first cycle appears as 0-cycle
+    #     model_object = optimise_model_initial(
+    #         model_object = model_object,
+    #         level_group_connections = hierarchy_info.level_group_tree,
+    #         uij_target = extract_uijs_task.result.model_uij,
+    #         uij_target_weights = uij_weights_task.result.total_weight_array,
+    #         uij_isotropic_mask = extract_uijs_task.result.isotropic_mask,
+    #         tracking_object = tracking_object,
+    #         )
+
+    if (params.optimisation.fit_isotropic_b_factors_by_magnitude_only is True): 
+        optimise_isotropic_mask = extract_uijs_task.result.isotropic_mask
+    else:
+        optimise_isotropic_mask = extract_uijs_task.result.isotropic_mask.as_fully_anisotropic()
 
     #
     # "Normal" optimisation
     #
-    for i_cycle in xrange(params.optimisation.number_of_macro_cycles):
+
+    tracking_object.i_cycle = 0
+
+    for _ in xrange(params.optimisation.max_macro_cycles): # could replace with while true and break statement
+
+        # Increment before each cycle -- ensures new counter for this cycle.
+        tracking_object.i_cycle += 1
 
         log.subheading('Macrocycle {}'.format(tracking_object.i_cycle), spacer=True)
 
         update_optimisation_function.update(
             model_optimisation_function = optimise_model_main,
-            i_cycle = tracking_object.i_cycle,
+            i_cycle = tracking_object.i_cycle-1, # probably should change this...
             )
 
         model_object = optimise_model_main(
@@ -845,9 +885,22 @@ def run(params, args=None):
             level_group_connections = hierarchy_info.level_group_tree,
             uij_target = extract_uijs_task.result.model_uij,
             uij_target_weights = uij_weights_task.result.total_weight_array,
-            uij_isotropic_mask = extract_uijs_task.result.isotropic_mask,
+            uij_isotropic_mask = optimise_isotropic_mask, # !!!
             tracking_object = tracking_object,
             )
+
+        model_specific_tracking_object.update(
+            model_object = model_object,
+            i_cycle = tracking_object.i_cycle,
+            )
+
+        if tracking_object.is_converged(
+                b_tolerance = params.optimisation.termination.max_b_change,
+                u_tolerance = params.optimisation.termination.max_u_change,
+                ):
+            if (tracking_object.i_cycle >= params.optimisation.min_macro_cycles):
+                log.heading('Terminating optimisation -- model has converged', spacer=True)
+                break
 
     # Write graphs of the optimsation parameters and return file dict
     optimisation_parameters_files = update_optimisation_function.write(
@@ -894,7 +947,7 @@ def run(params, args=None):
         overall_atom_mask = hierarchy_info.overall_atom_mask,
         level_group_array = hierarchy_info.level_group_array,
         model_object = model_object,
-        isotropic_mask = extract_uijs_task.result.isotropic_mask,
+        isotropic_mask = optimise_isotropic_mask, # !!! this could maybe be the optimisation mask
         reference_model = models[0],
         uij_target = extract_uijs_task.result.model_uij,
         results_object = results_object,
@@ -908,7 +961,7 @@ def run(params, args=None):
     fitted_structures = write_output_structures(
         level_group_array = hierarchy_info.level_group_array,
         model_object = model_object,
-        isotropic_mask = extract_uijs_task.result.isotropic_mask,
+        isotropic_mask = extract_uijs_task.result.isotropic_mask, # !!!
         models = models,
         overall_selection = params.model.overall_selection,
         overall_selection_bool = hierarchy_info.overall_atom_mask,
@@ -929,6 +982,8 @@ def run(params, args=None):
     #    
     generic_analysis_task.run(
         uij_target =  extract_uijs_task.result.model_uij,
+        uij_target_weights = uij_weights_task.result.total_weight_array,
+        uij_isotropic_mask = extract_uijs_task.result.isotropic_mask, # !!!
         model_object = model_object,
         model_hierarchy_info = hierarchy_info,
         reference_hierarchy = models[0].hierarchy,
@@ -983,6 +1038,11 @@ def run(params, args=None):
                 TrackingHtmlSummary(
                     tracking_object = tracking_object,
                     ),
+                ] + pandemic.adp.html.as_html_summaries_maybe(
+                    tasks = [
+                        model_specific_tracking_object,
+                        ],
+                    ) + [
                 ModelHtmlSummary(
                     hierarchy_files = write_hierarchy_summary_task.result.output_files,
                     model_files = model_files,

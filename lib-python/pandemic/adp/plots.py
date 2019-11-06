@@ -1,4 +1,4 @@
-import itertools
+import itertools, collections
 import numpy
 
 from libtbx import adopt_init_args
@@ -211,7 +211,7 @@ class PandemicAdpPlotter:
         if y_array_values_function is None:
             y_array_values_function = self.array_passthrough
 
-        output_files = {}
+        output_files = collections.OrderedDict()
 
         m_h = hierarchies[0]
 
@@ -811,6 +811,8 @@ class PandemicAdpPlotter:
         if reference_hierarchy is not None:
             assert m_h.is_similar_hierarchy(reference_hierarchy)
 
+        output_files = collections.OrderedDict()
+
         # Create a plot for each chain
         for chain_id in sorted(set([c.id for c in m_h.chains()])):
 
@@ -821,6 +823,7 @@ class PandemicAdpPlotter:
 
             # Filename!
             filename = prefix + '-chain_{}.png'.format(chain_id)
+            output_files[chain_id] = filename
 
             # Create x-values for each residue starting from 1
             x_vals = numpy.array(range(len(list(sel_mh.residue_groups()))))+1
@@ -919,6 +922,8 @@ class PandemicAdpPlotter:
                 bbox_extra_artists=[lgd],
                 )
 
+        return output_files
+
     @staticmethod
     def failure_graph(filename, exception=None, title=None, **args):
         fig = pyplot.figure()
@@ -927,292 +932,3 @@ class PandemicAdpPlotter:
         pyplot.title('Failed to make {}'.format( title ))
         fig.savefig(filename)
         pyplot.close(fig)
-
-
-class TrackingPlotter(PandemicAdpPlotter):
-
-
-    def tracking_plots(self,
-        table,
-        filename,
-        number_to_plot=5,
-        ):
-
-        # trim the table to certain rows
-        start_cycle = min(table['cycle'])
-        n = max(table['cycle'])
-        cycles_to_plot = range(start_cycle, n, int(n/number_to_plot)+1) + [n]
-        cycles_to_plot_bool = table['cycle'].isin(cycles_to_plot)
-        table = table[cycles_to_plot_bool]
-
-        fig, axes = pyplot.subplots(nrows=2, ncols=1, sharex=True, sharey=False)
-        # Create list if only one plot
-        axes = numpy.array(axes).flatten()
-
-        # Group by cycle & step to allow stacking
-        grouped = table.groupby(['cycle','step'], sort=False, as_index=False)
-
-        n_total = len(grouped)
-
-        grouped_reduced = grouped.max()
-        grouped_reduced['x'] = range(len(grouped_reduced))
-
-        prev_x = prev_r = prev_b = None
-
-        for n_cycle, cycle_info in grouped_reduced.groupby('cycle', sort=False):
-
-            x_vals = cycle_info['x'].values
-            r_vals = cycle_info['rmsd'].values
-            b_vals = cycle_info['b_iso (total)'].values
-
-            # Create RMSD plot
-            hdl1 = axes[0].plot(
-                     x_vals, r_vals,
-                     'bo-', label='model',
-                     lw=1, ms=max(1, min(3, 5-0.1*grouped.ngroups)),
-                     )
-            if prev_x is not None:
-                axes[0].plot(
-                         [prev_x, x_vals[0]], [prev_r, r_vals[0]],
-                         'b:', label='model',
-                         lw=1, ms=max(1, min(3, 5-0.1*grouped.ngroups)),
-                         )
-            # Create an overall B-iso TOTAL line
-            hdl2 = axes[1].plot(
-                     x_vals, b_vals,
-                     'ko-', label='total',
-                     lw=1, ms=max(1, min(3, 5-0.1*grouped.ngroups)),
-                     )
-            if prev_x is not None:
-                axes[1].plot(
-                         [prev_x, x_vals[0]], [prev_b, b_vals[0]],
-                         'k:', label='total',
-                         lw=1, ms=max(1, min(3, 5-0.1*grouped.ngroups)),
-                         )
-
-            prev_x = x_vals[-1]
-            prev_r = r_vals[-1]
-            prev_b = b_vals[-1]
-
-        # Other plot -- done as one
-
-        x_vals = numpy.arange(0, grouped.ngroups)
-        x_max = max(x_vals)                 # remove
-        x_keys = [v[0] for v in grouped]    # remove
-        x_labs = [v[1] for v in x_keys]     # remove
-
-        # Create B-iso lines for each LEVEL
-        colours = self.get_level_colours()
-        # Bottoms of bar where stacking occurs
-        y_cuml = numpy.zeros(len(x_vals))
-        # handles for legend at bottom of image
-        handles = []
-        for lvl in sorted(set(table['level'])):
-            if lvl is None: continue
-            assert isinstance(lvl, int)
-            # Get values
-            sel = (table['level'] == lvl)
-            sel_t = table[sel]
-            # The indices of the x-axis positions
-            i_x = [x_keys.index(v) for v in map(tuple,sel_t[['cycle','step']].values.tolist())]
-            # Extract y_vals
-            y_vals = sel_t['b_iso (level)'].values
-
-            # Plot
-            hdl = axes[1].bar(left   = x_vals[i_x],
-                         height = y_vals,
-                         bottom = y_cuml[i_x],
-                         width  = 0.8,
-                         color  = colours[lvl-1],
-                         edgecolor = 'k',
-                         linewidth = 0.5,
-                         align  = 'center',
-                         label  = 'Level {}'.format(lvl))
-            handles.append(hdl)
-            # Add to cuml
-            y_cuml[i_x] = y_cuml[i_x] + y_vals
-
-        # Axis stuff
-        ax = axes[0]
-        ax.set_title('Hierarchical Model Fit')
-        ax.set_xticks([])
-        ax.xaxis.set_ticks_position('bottom')
-        ax.set_ylabel('model fit \n$8\pi^2rms(\Delta U)$ ($\AA^2$)')
-        ax.set_ylim(bottom=0.0)
-
-        # Axis stuff
-        ax = axes[1]
-        ax.xaxis.set_ticks_position('bottom')
-        ax.set_title('B-factors of Hierarchical Model')
-        ax.set_xlabel('Optimisation Stage/Cycle')
-        ax.set_ylabel('Isotropic B\n($\AA^2$)')
-        ax.set_xticks(x_vals)
-        ax.set_xticklabels(x_labs, rotation=90, ha='center')
-        ax.tick_params('x', labelsize=max(2, min(10, 14-0.15*len(grouped))))
-        ax.set_xlim(left=-0.5, right=max(x_vals)+0.5)
-        ax.set_ylim(bottom=0.0)
-
-        # Create legend for axis
-        ncol = 3
-
-        # Add legend to first graph for both lines
-        lgd0 = axes[0].legend(handles=hdl1+hdl2, bbox_to_anchor=(1.02, 0.95), loc=2, borderaxespad=0.)
-
-        # Other legends
-        flip_h = []; [flip_h.extend(handles[i::ncol]) for i in range(ncol)]
-        lgd1 = axes[1].legend(
-                handles=flip_h, ncol=ncol,
-                bbox_to_anchor=(0.5, 0.0),
-                bbox_transform=fig.transFigure,
-                loc=9, borderaxespad=0.,
-                )
-
-        # BOTH AXES -- Add vertical lines between macro-cycles
-        start_x = x_vals[[x_keys.index(v) for v in map(tuple,table[['cycle','step']].values.tolist()) if v[1]=='start']]
-        n_cycles = len(start_x)
-        last_v = None
-        delta = None
-        for i, v in enumerate(start_x - 0.5):
-            # Dashed lines to separate cycles
-            if (v > 0) and (v < x_max):
-                for ax in axes:
-                    ax.axvline(x=v, linewidth=1, zorder=1, color='k', linestyle='--')
-            # Text to label each cycle
-            if last_v is not None:
-                delta = v - last_v
-                axes[0].text(x=last_v+delta/2.0,
-                             y=0.05*axes[0].get_ylim()[0] + 0.95*axes[0].get_ylim()[1],
-                             s='cycle '*(n_cycles<6) +str(cycles_to_plot[i-1]), # This is plotting the previous point so need -1
-                             horizontalalignment='center',
-                             verticalalignment='top',
-                            )
-            last_v = v
-        # Plot the last point (or do nothing for 1 cycle)
-        if delta is not None:
-            axes[0].text(x=min(v+delta/2.0, axes[0].get_xlim()[1]),
-                         y=0.05*axes[0].get_ylim()[0] + 0.95*axes[0].get_ylim()[1],
-                         s='cycle '*(n_cycles<6) +str(cycles_to_plot[i]), # This does not need a -1
-                         horizontalalignment='center',
-                         verticalalignment='top',
-                        )
-
-        fig.tight_layout()
-        fig.savefig(filename,
-                    bbox_extra_artists=[lgd0,lgd1],
-                    bbox_inches='tight',
-                    dpi=200)
-        pyplot.close(fig)
-
-    def convergence_plots(self,
-        table,
-        filename,
-        ):
-
-        fig, axes = pyplot.subplots(nrows=1, ncols=2, sharex=True, sharey=False)
-        axes = numpy.array(axes).flatten()
-
-        # Extract rows with non-zero values
-        #table = table[table['b_iso (level)']!=0.0]
-        # Extract only inter-level optimisation values (last step of each cycle)
-        table = table[(table['step']=='inter-level')]
-        # Labels for each of the series to plot
-        m_cyc = 0 if (len(table) == 0) else min(table['cycle'])
-        labels = table[table['cycle']==m_cyc]['level'].values
-
-        # Colours for each level
-        colours = self.get_level_colours()
-
-        ########################
-        # FIRST AXIS
-        ########################
-        ax = axes[0]
-        handles = []
-        # Extract common list of x-values
-        x_keys = sorted(set(table['cycle'].values))
-        x_vals = numpy.array(x_keys)
-        # Select labels to plot (up to maximum)
-        max_labels = 1 + 10
-        plot_every = max(1, 1+((len(x_vals)-1)//max_labels))
-        x_labs = [x_vals[i] if (i%plot_every)==0 else '' for i in xrange(len(x_vals))]
-        # Cumulative y-values for stacking
-        y_cuml = numpy.zeros(len(x_vals))
-        # Plot same values as stacked bars
-        for l in labels:
-            assert isinstance(l, int)
-            # Extract relevant rows from table
-            l_table = table[table['level']==l]
-            # Extract plot vals
-            i_x = [x_keys.index(v) for v in l_table['cycle'].values]
-            y_vals = l_table['b_iso (level)'].values
-            # Plot stacked bar
-            hdl = ax.bar(left   = x_vals[i_x],
-                         height = y_vals,
-                         bottom = y_cuml[i_x],
-                         width  = 0.8,
-                         color  = colours[l-1],
-                         edgecolor = 'k',
-                         linewidth = 0.5,
-                         align  = 'center',
-                         label  = 'Level {}'.format(l))
-            handles.append(hdl)
-            # Add to cuml
-            y_cuml[i_x] = y_cuml[i_x] + y_vals
-
-        # Create legend for axis
-        ncol = 3
-        flip_h = []; [flip_h.extend(handles[i::ncol]) for i in range(ncol)]
-        lgd0 = ax.legend(
-                handles=flip_h, ncol=ncol,
-                bbox_to_anchor=(0.5, 0.0),
-                bbox_transform=fig.transFigure,
-                loc=9, borderaxespad=0.,
-                )
-
-        ax.xaxis.set_ticks_position('bottom')
-        ax.set_xticks(x_vals)
-        ax.set_xticklabels(x_labs)
-        ax.tick_params('x', labelsize=max(6, min(10, 14-0.15*len(x_keys))))
-        ax.set_xlabel('Optimisation Cycle')
-        ax.set_ylabel('Average B-factor of Level')
-        ax.set_ylim(bottom=0.0)
-
-        ########################
-        # SECOND AXIS
-        ########################
-        ax = axes[1]
-        handles = []
-        for l in labels:
-            assert isinstance(l, int)
-            # Extract relevant rows from table
-            l_table = table[table['level']==l]
-            # Extract plot vals
-            x_vals = l_table['cycle'].values
-            y_vals = l_table['b_iso (level)'].values
-
-            hd_ = ax.plot(x_vals, y_vals,
-                    'ko-', lw=2, ms=max(3, min(5, 7-0.1*len(x_vals))))
-            hdl = ax.plot(x_vals, y_vals,
-                    'o-', lw=1, ms=max(1, min(3, 5-0.1*len(x_vals))),
-                    color=colours[l-1], label='Level {}'.format(l))
-            handles.extend(hdl)
-
-        # Axis stuff
-        ax.xaxis.set_ticks_position('bottom')
-        ax.tick_params('x', labelsize=max(6, min(10, 14-0.15*len(x_keys))))
-        ax.set_xlabel('Optimisation Cycle')
-        ax.set_ylabel('Average B-factor of Level')
-        ax.set_ylim(bottom=0.0)
-
-        # Create legend for axis
-        #lgd1 = ax.legend(handles=handles, ncol=3, bbox_to_anchor=(0.00, -0.15), loc=9, borderaxespad=0.)
-
-        t = fig.suptitle('Convergence of level b-factors',
-                y = 1.00, verticalalignment='bottom')
-
-        fig.tight_layout()
-        fig.savefig(filename,
-                    bbox_extra_artists=[t, lgd0],
-                    bbox_inches='tight',
-                    dpi=200)
-        pyplot.close(fig)
-

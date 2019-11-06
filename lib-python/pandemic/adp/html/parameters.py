@@ -19,10 +19,21 @@ class ParameterHtmlSummary(HtmlSummary):
             'contents'  : [],
             }
         adopt_init_args(self, locals())
+        self.add_top_message()
         self.add_phil_summaries()
 
     def main_summary(self):
         return [self.main_output]
+
+    def add_top_message(self):
+
+        text = """
+        Output written to: {out_dir}.
+        """.format(
+            out_dir = os.path.abspath(self.running_params.output.out_dir)
+            )
+
+        self.main_output['contents'].extend(self.format_summary(text))
 
     def add_phil_summaries(self):
 
@@ -53,7 +64,7 @@ class ParameterHtmlSummary(HtmlSummary):
             'contents'  : [
                 {
                     'width':12,
-                    'text':'The following can copied to a parameter file (<filename>.eff) and used as input (e.g. <samp> pandemic.adp input.eff</samp>)',
+                    'text':'The following can be copied to a parameter file (<filename>.eff) and used as input (e.g. <samp> pandemic.adp input.eff</samp>)',
                     },
                 {
                     'width':12,
@@ -67,6 +78,10 @@ class ParameterHtmlSummary(HtmlSummary):
             'width' : 12,
             'show'  : False,
             'contents'  : [
+                {
+                    'width':12,
+                    'text':'The following can be copied to a parameter file (<filename>.eff) and used as input (e.g. <samp> pandemic.adp input.eff</samp>)',
+                    },
                 {
                     'width':12,
                     'text':self.wrap_string(string=phil_str, tag='pre'),

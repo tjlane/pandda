@@ -240,7 +240,7 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
                     import copy
                     atom_hash = copy.copy(array[i_l])
                     break
-        else: 
+        else:
             log('No levels that cover all atoms')
             found_valid_level = False
 
@@ -331,6 +331,10 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
                         length = n_tls_modes,
                         n_amplitudes = len(models),
                         )
+                # Initalise to isotropic
+                for mode in tls_parameters:
+                    mode.amplitudes.set([0.,]*mode.amplitudes.size())
+                    # mode.matrices.set(values=(1.,1.,1.,0.,0.,0.), component_string='T')
                 # Create convenience class for generating uijs from parameters
                 group = MultiDatasetTLSGroup(
                     index = group_number,

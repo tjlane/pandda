@@ -50,7 +50,7 @@ def parameterisation_optimisation_summary():
     s += '\nNon-zero tls parameters:'
     for i_l, l in mo.tls_level_names:
         s += '\n\tLevel {} ({}): {} groups'.format(i_l+1, l, n_tls_params_real[i_l])
-    s += '\nTotal non-zero tls parameters: {}'.format(sum(n_tls_params_real))    
+    s += '\nTotal non-zero tls parameters: {}'.format(sum(n_tls_params_real))
 
     s += '\nNumber of parameters in {} level: 1*{} + 6*{} = {}'.format(
             mo.adp_level_name, n_iso, n_ani, n_adp_params,

@@ -4,8 +4,10 @@ import numpy
 from libtbx import adopt_init_args, group_args
 from scitbx.array_family import flex
 from pandemic.adp.utils import StructureFactory, PartitionBordersFactory
+from pandemic.adp.utils import show_file_dict
 
 from bamboo.common.path import easy_directory
+from bamboo.pymol_utils import PythonScript
 from giant.structure.pymol import auto_residue_images, auto_chain_images, selection_images
 from giant.structure.uij import uij_to_b, \
         calculate_uij_anisotropy_ratio, \
@@ -109,9 +111,6 @@ class MultiModelStructureWriter:
         output_directory = easy_directory(output_directory)
 
         atom_mask = flex.bool(atom_mask)
-
-        if isotropic_mask is None:
-            isotropic_mask = lambda x: x
 
         structure_factories = [StructureFactory(master_h=m.hierarchy) for m in models]
 
@@ -253,23 +252,30 @@ class WriteEchtParameterSummary:
 class WriteEchtModelSummary:
 
 
-    all_levels_uijs_profiles_png = 'all-levels-uij-profile-chain_{}.png'
+    all_levels_uijs_profiles_png   = 'all-levels-uij-profile-chain_{}.png'
     all_levels_uijs_anisotropy_png = 'all-levels-uij-anisotropy-chain_{}.png'
 
-    level_uijs_profile_png = 'uij-profile-level_{}-chain_{}.png'
+    level_uijs_profile_png    = 'uij-profile-level_{}-chain_{}.png'
     level_uijs_anisotropy_png = 'uij-anisotropy-level_{}-chain_{}.png'
+
+    target_uijs_pdb         = 'average_uijs_input.pdb'
+    output_uijs_pdb         = 'average_uijs_output.pdb'
 
     level_uijs_pdb          = 'level_{}-all.pdb'
     level_uijs_rescaled_pdb = 'level_{}-all-rescaled.pdb'
     level_uijs_by_mode_pdb  = 'level_{}-mode_{}.pdb'
 
-    level_uijs_pymol_by_chain_png           = 'level_{}-chain_{}.png'
-    level_uijs_pymol_by_group_png           = 'level_{}-group_{}.png'
-    level_uijs_pymol_by_group_rescaled_png  = 'level_{}-rescaled-group_{}.png'
+    level_uijs_pymol_by_chain_png          = 'level_{}-chain_{}.png'
+    level_uijs_pymol_by_group_png          = 'level_{}-group_{}.png'
+    level_uijs_pymol_by_group_rescaled_png = 'level_{}-rescaled-group_{}.png'
 
     level_tls_matrices_csv   = 'tls_matrices_level_{:04d}.csv'
     level_tls_amplitudes_csv = 'tls_amplitudes_level_{:04d}.csv'
     level_tls_amplitudes_png = 'tls-model-amplitudes-level-{}-group-{}.png'
+
+    pymol_script_py = 'pymol_script.py'
+
+    show_file_dict = show_file_dict
 
     def __init__(self,
         output_directory,
@@ -282,22 +288,7 @@ class WriteEchtModelSummary:
         csv_directory = easy_directory(os.path.join(output_directory, 'csvs'))
         pdb_directory = easy_directory(os.path.join(output_directory, 'structures'))
         pymol_directory = easy_directory(os.path.join(output_directory, 'pymol_images'))
-        amplitude_directory = easy_directory(os.path.join(output_directory, 'group_amplitude_distributions'))
         adopt_init_args(self, locals())
-
-    def show(self, file_dict, indent=0):
-        log = self.log
-        s = '  '
-        for k, v in file_dict.iteritems():
-            if isinstance(v, dict):
-                log(s*indent + '> {}'.format(k))
-                self.show(v, indent+1)
-            elif isinstance(v, str):
-                log(s*indent + '> {}: {}'.format(k, v))
-            else:
-                log(s*indent + '> {}'.format(k))
-                for vv in v:
-                    log(s*(indent+1)+vv)
 
     def filepath(self, filename, directory=None):
         if directory is None: directory = self.output_directory
@@ -324,15 +315,25 @@ class WriteEchtModelSummary:
         average_uijs_by_level, \
         residual_uijs = self.extract_average_uij_values(model_object)
 
-        # Target values
+        # input/output values
         average_uijs_target = uij_target.mean(axis=0)
+        average_uijs_output = average_uijs_by_level.sum(axis=0) + residual_uijs
 
         # Structure-writer
         structure_factory = PartitionBordersFactory(master_h=reference_model.hierarchy)
 
         output_files = collections.OrderedDict()
 
-        of = self.write_average_structures(
+        of = self.write_average_target_output_structures(
+            average_uijs_target = average_uijs_target, # isotropic mask not necessary here because determined by input anyway...
+            average_uijs_output = isotropic_mask(average_uijs_output),
+            overall_atom_mask = overall_atom_mask,
+            structure_factory = structure_factory,
+            )
+        self.show_file_dict(of)
+        output_files.update(of)
+
+        of = self.write_average_level_structures(
             average_mode_uijs = average_uijs_by_mode,
             average_level_uijs = average_uijs_by_level,
             residual_level_uijs = residual_uijs,
@@ -341,7 +342,7 @@ class WriteEchtModelSummary:
             structure_factory = structure_factory,
             model_object = model_object,
             )
-        self.show(of)
+        self.show_file_dict(of)
         output_files.update(of)
 
         of = self.write_average_structure_plots(
@@ -354,13 +355,13 @@ class WriteEchtModelSummary:
             structure_factory = structure_factory,
             model_object = model_object,
             )
-        self.show(of)
+        self.show_file_dict(of)
         output_files.update(of)
 
         of = self.write_tls_matrix_and_amplitude_csvs(
             model_object = model_object,
             )
-        self.show(of)
+        self.show_file_dict(of)
         output_files.update(of)
 
         of = self.make_pymol_images_of_average_structures(
@@ -370,7 +371,11 @@ class WriteEchtModelSummary:
             reference_hierarchy = reference_model.hierarchy,
             overall_atom_mask = overall_atom_mask,
             )
-        self.show(of)
+        self.show_file_dict(of)
+        output_files.update(of)
+
+        of = {'pymol_script' : self.make_pymol_script_of_average_structures(file_dict=output_files)}
+        self.show_file_dict(of)
         output_files.update(of)
 
         self.plot = None
@@ -389,7 +394,40 @@ class WriteEchtModelSummary:
         residual_uijs = numpy.array(model_object.adp_values)    # (n_atoms, 6)
         return av_uijs_by_mode, av_uijs_by_level, residual_uijs
 
-    def write_average_structures(self,
+    def write_average_target_output_structures(self,
+        average_uijs_target,
+        average_uijs_output,
+        overall_atom_mask,
+        structure_factory,
+        ):
+
+        file_dict = collections.OrderedDict()
+
+        uij = average_uijs_target
+        m_h = structure_factory.custom_copy(
+                uij=uij,
+                iso=uij_to_b(uij),
+                mask=overall_atom_mask,
+                blank_copy=True,
+                )
+        m_f = self.filepath(self.target_uijs_pdb, self.pdb_directory)
+        m_h.write_pdb_file(m_f)
+        file_dict['target_uijs_pdb'] = m_f
+
+        uij = average_uijs_output
+        m_h = structure_factory.custom_copy(
+                uij=uij,
+                iso=uij_to_b(uij),
+                mask=overall_atom_mask,
+                blank_copy=True,
+                )
+        m_f = self.filepath(self.output_uijs_pdb, self.pdb_directory)
+        m_h.write_pdb_file(m_f)
+        file_dict['output_uijs_pdb'] = m_f
+
+        return file_dict
+
+    def write_average_level_structures(self,
         average_mode_uijs,
         average_level_uijs,
         residual_level_uijs,
@@ -398,9 +436,6 @@ class WriteEchtModelSummary:
         structure_factory,
         model_object,
         ):
-
-        if isotropic_mask is None:
-            isotropic_mask = lambda x: x
 
         file_dict = collections.OrderedDict()
         # Iterate through the levels and plot TLS contributions for each mode for each model for each level
@@ -698,50 +733,7 @@ class WriteEchtModelSummary:
             mat_tab.to_csv(mat_csv)
             amp_tab.to_csv(amp_csv)
 
-        self.show_group_amplitude_statistics(amp_tab_all)
-
         return file_dict
-
-    def show_group_amplitude_statistics(self,
-        group_amplitudes,
-        ):
-
-        log = self.log
-
-        log.subheading('Summary of group amplitudes for levels in ECHT model')
-        for i_level, ga in enumerate(group_amplitudes):
-            log.bar()
-            log('Amplitude statistics by dataset: Level {}'.format(i_level+1))
-            log.bar(False, True)
-            # Plot histogram of amplitudes for each dataset for this level
-            ga_new = ga.copy().set_index(['group','mode','label'])
-            ga_new.index = range(len(ga_new.index))
-            ga_new = ga_new.transpose()
-            for label, values in ga_new.iterrows():
-                log.bar()
-                # Plot histogram of amplitudes across all groups
-                if len(values) > 5:
-                    try:
-                        from ascii_graph import Pyasciigraph
-                        g=Pyasciigraph(float_format='{0:d}')
-                        counts, bounds = numpy.histogram(a=values, bins=10)
-                        graph_data = [('{:.3f}-{:.3f}'.format(bounds[i],bounds[i+1]), v) for i,v in enumerate(counts)]
-                        for l in g.graph(label='\n> Histogram of amplitudes for dataset {}\n'.format(label), data=graph_data):
-                            if l.startswith('#######'): continue
-                            log(l.replace(u"\u2588", '=').replace('= ','> '))
-                    except ImportError:
-                        pass
-                    except:
-                        raise
-                # Write summary statistics
-                log('\n> Amplitude statistics for level {}, dataset {}\n'.format(i_level+1, label))
-                mn = values.mean()
-                md = values.median()
-                sd = values.std()
-                log('> Mean:   {:.3f} A^2 (B-factor {:.3f} A^2)'.format(mn, EIGHT_PI_SQ*mn))
-                log('> Median: {:.3f} A^2 (B-factor {:.3f} A^2)'.format(md, EIGHT_PI_SQ*md))
-                log('> Std:    {:.3f} A^2 (B-factor {:.3f} A^2)'.format(sd, EIGHT_PI_SQ*sd))
-            log.bar(True, True)
 
     def make_pymol_images_of_average_structures(self,
         level_uijs_pdbs_dict,
@@ -831,9 +823,47 @@ class WriteEchtModelSummary:
 
         return file_dict
 
+    def make_pymol_script_of_average_structures(self,
+        file_dict,
+        ):
+
+        s = PythonScript(pretty_models=False, pretty_maps=False)
+
+        s.change_into_directory(path=os.path.abspath(self.pdb_directory))
+
+        for f in [file_dict.get('target_uijs_pdb',None)] + file_dict.get('level_uijs_pdb',{}).values():
+            if f is None: continue
+            obj = os.path.basename(f)
+            s.load_pdb(
+                f_name = os.path.relpath(os.path.abspath(f), start=self.pdb_directory),
+                obj = obj,
+                )
+
+        for f in [file_dict.get('output_uijs_pdb',None)] + file_dict.get('level_uijs_by_mode_pdb',{}).values():
+            obj = os.path.basename(f)
+            s.load_pdb(
+                f_name = os.path.relpath(os.path.abspath(f), start=self.pdb_directory),
+                obj = obj,
+                )
+            s.disable(obj=obj)
+
+        s.show_as(obj='all', style='lines')
+        s.show(obj='all', style='ellipsoids')
+        s.custom('spectrum', expression='b', selection='all')
+        s.set('grid_mode', 1)
+
+        s.orient(obj='all')
+
+        filename = os.path.join(self.pdb_directory, self.pymol_script_py)
+        s.write_script(filename)
+
+        return filename
+
 
 class WriteEchtStructures:
 
+
+    pymol_script_py = 'pymol_script.py'
 
     def __init__(self,
         output_directory,
@@ -925,6 +955,18 @@ class WriteEchtStructures:
         self.show('All tls levels', pdbs)
         output_dict['all_tls_levels'] = pdbs
 
+        # Atomic level contributions
+        log.subheading('Writing atomic level')
+        uij_atom = uij_lvl[-1]
+        pdbs = output_structures(
+            uij = uij_atom,
+            iso = map(uij_to_b, uij_atom),
+            headers = None,
+            model_suffix = '.atomic-level.pdb',
+            blank_copy = True)
+        self.show('{} level'.format(model_object.adp_level_name).capitalize(), pdbs)
+        output_dict['atomic_level'] = pdbs
+
         # Level by level TLS-parameterised structures (single level contribution)
         log.subheading('Writing individual TLS levels')
         for i_level in xrange(model_object.n_tls_levels):
@@ -952,5 +994,59 @@ class WriteEchtStructures:
             self.show('Levels {}-{}'.format(i_level+1, j_level+1), pdbs)
             output_dict.setdefault('tls_levels', collections.OrderedDict())[(i_level,j_level)] = pdbs
 
+        log.subheading('Writing convenience pymol scripts')
+        pymol_scripts = self.write_pymol_scripts(
+            model_keys = [m.tag for m in models], 
+            file_dict = output_dict,
+            )
+        self.show('Pymol scripts for viewing each structure', pymol_scripts)
+        output_dict['pymol_scripts'] = pymol_scripts
+
         return output_dict
+
+    def write_pymol_scripts(self, model_keys, file_dict):
+
+        output_files = collections.OrderedDict()
+
+        for key in model_keys: 
+
+            # Output directory and filename
+            py_d = os.path.join(self.output_directory, key)
+            assert os.path.exists(py_d)
+            py_f = os.path.join(py_d, self.pymol_script_py)
+
+            s = PythonScript(pretty_models=False, pretty_maps=False)
+
+            s.change_into_directory(path=os.path.abspath(py_d))
+
+            f_list = []
+
+            f = file_dict.get('all_components',{}).get(key)
+            if (f is not None): f_list.append(f)
+
+            for i_l, f_dict in file_dict.get('tls_levels',{}).iteritems():
+                f = f_dict.get(key)
+                if (f is not None): 
+                    f_list.append(f)
+
+            f = file_dict.get('atomic_level',{}).get(key)
+            if (f is not None): f_list.append(f)
+
+            for f in f_list: 
+                obj = os.path.basename(f)
+                s.load_pdb(f_name=os.path.relpath(os.path.abspath(f), start=py_d), obj=obj)
+
+            s.show_as(obj='all', style='lines')
+            s.show(obj='all', style='ellipsoids')
+            s.custom('spectrum', expression='b', selection='all')
+            s.set('grid_mode', 1)
+
+            s.orient(obj='all')
+
+            s.write_script(py_f)
+
+            output_files[key] = py_f
+
+        return output_files
+            
 

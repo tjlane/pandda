@@ -74,9 +74,9 @@ def validate_parameters(params, log=None):
         if params.analysis.calculate_r_factors is True:
             message = 'phenix.table_one is required when analysis.calculate_r_factors is True'
             check_programs_are_available(['phenix.table_one'])
-        if params.analysis.calculate_electron_density_metrics:
-            message = 'edstats (script name "edstats.pl") is required when analysis.calculate_electron_density_metrics is True'
-            check_programs_are_available(['edstats.pl'])
+        #if params.analysis.calculate_electron_density_metrics:
+        #    message = 'edstats (script name "edstats.pl") is required when analysis.calculate_electron_density_metrics is True'
+        #    check_programs_are_available(['edstats.pl'])
         if params.output.images.pymol is not None:
             message = 'pymol is required when output.images.pymol is not set to "none"'
             check_programs_are_available(['pymol'])
@@ -288,8 +288,8 @@ class ProcessInputModelsTask:
             self.analysis_params.refine_output_structures = False
             self.log('Setting analysis.calculate_r_factors = False')
             self.analysis_params.calculate_r_factors = False
-            self.log('Setting analysis.calculate_electron_density_metrics = False')
-            self.analysis_params.calculate_electron_density_metrics = False
+            #self.log('Setting analysis.calculate_electron_density_metrics = False')
+            #self.analysis_params.calculate_electron_density_metrics = False
             self.log.bar()
 
 
@@ -457,11 +457,11 @@ class ExtractAndProcessModelUijsTask:
         actual_disorder_model = self.determine_disorder_model_from_mask(isotropic_mask)
 
         # Delete the isotropic mask if not needed
-        if isotropic_mask.selection.all_eq(False):
-            isotropic_mask = None
+        #if isotropic_mask.selection.all_eq(False):
+        #    isotropic_mask = None
 
         # Extract b-values for isotropic atoms and convert to isotropic Uij
-        if isotropic_mask is not None:
+        if not isotropic_mask.all_anisotropic:
             model_uij = self.generate_uij_for_isotropic_atoms(
                     models_atoms = models_atoms,
                     model_uij = model_uij,
@@ -488,10 +488,7 @@ class ExtractAndProcessModelUijsTask:
         log('Expected disorder model was {}'.format(self.expected_disorder_model))
         log('Actual disorder model is {}'.format(r.disorder_model))
         log.bar()
-        if r.isotropic_mask is None:
-            log('Anisotropic atoms: {}'.format(r.model_uij.shape[1]))
-        else:
-            log('Anisotropic atoms: {}'.format((r.isotropic_mask.selection==False).iselection().size()))
-            log('Isotropic atoms:   {}'.format((r.isotropic_mask.selection==True).iselection().size()))
+        log('Anisotropic atoms: {}'.format(r.isotropic_mask.n_anisotropic))
+        log('Isotropic atoms: {}'.format(r.isotropic_mask.n_isotropic))
         log.bar()
 

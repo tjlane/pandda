@@ -6,8 +6,10 @@ import numpy, pandas
 # debugging flags
 DEBUG = False
 
-
+from pandemic.adp.html import HtmlSummary
 from pandemic.adp.html.parameters import ParameterHtmlSummary
+
+
 class EchtParameterHtmlSummary(ParameterHtmlSummary):
 
 
@@ -48,7 +50,6 @@ class EchtParameterHtmlSummary(ParameterHtmlSummary):
         return [self.main_output]
 
 
-from pandemic.adp.html import HtmlSummary
 class EchtModelHtmlSummary(HtmlSummary):
 
 
@@ -149,13 +150,6 @@ class EchtModelHtmlSummary(HtmlSummary):
         atoms_per_group_per_level = [[g.n_atoms for g in gs] for gs in mo.tls_objects]
         group_sizes_per_level = ['{} - {} atoms'.format(min(n), max(n)) for n in atoms_per_group_per_level]
 
-        if (isotropic_mask is not None):
-            n_iso = isotropic_mask.selection.iselection().size()
-            n_ani = mo.n_atoms - n_iso
-        else:
-            n_iso = 0
-            n_ani = mo.n_atoms
-
         adp_level_opt = numpy.array(mo.adp_values).any()
 
         s = ''
@@ -172,7 +166,7 @@ class EchtModelHtmlSummary(HtmlSummary):
         s += '\nTotal TLS Groups: {}'.format(n_tls_groups)
         if adp_level_opt:
             s += '\nSize of ADP level ({}): {} atoms'.format(mo.adp_level_name, mo.n_atoms)
-            s += '\nAnisotropic - Isotropic atoms: {} - {}'.format(n_ani, n_iso)
+            s += '\nAnisotropic - Isotropic atoms: {} - {}'.format(isotropic_mask.n_anisotropic, isotropic_mask.n_isotropic)
         else:
             s += '\n\tNo atomic level was optimised'.format(mo.adp_level_name)
 
@@ -194,12 +188,9 @@ class EchtModelHtmlSummary(HtmlSummary):
         if (not adp_level_opt):
             n_iso = 0
             n_ani = 0
-        elif (isotropic_mask is not None):
-            n_iso = isotropic_mask.selection.iselection().size()
-            n_ani = isotropic_mask.selection.size() - n_iso
         else:
-            n_iso = 0
-            n_ani = mo.n_atoms
+            n_iso = isotropic_mask.n_isotropic
+            n_ani = isotropic_mask.n_anisotropic
 
         n_adp_params = 6 * n_ani + n_iso
         n_tls_params = sum(n_tls_params_per_level)
@@ -316,7 +307,16 @@ class EchtModelHtmlSummary(HtmlSummary):
         img3 = mf.get('level_uijs_profiles_png', {})
         img4 = mf.get('level_uijs_anisotropy_png', {})
 
-        chain_ids = sorted(img1.values()[0].keys())
+        chain_ids = []
+        if img1.values():
+            chain_ids += img1.values()[0].keys()
+        if img2.values():
+            chain_ids += img2.values()[0].keys()
+        if img3.values():
+            chain_ids += img3.values()[0].keys()
+        if img4.values():
+            chain_ids += img4.values()[0].keys()
+        chain_ids = sorted(set(chain_ids))
 
         # -------------------------------->
         # Create tab for each level
@@ -626,7 +626,6 @@ class EchtModelHtmlSummary(HtmlSummary):
         dcm = decompose_tls_matrices(T=T, L=L, S=S,
                                      l_and_s_in_degrees=True,
                                      tol=tolerance)
-        #from IPython import embed; embed(); raise Exception()
         if dcm.is_valid():
             fmt_str_1 = '{:>8.6f}, {:>8.6f}, {:>8.6f}'
             dcm_lines = [
@@ -700,3 +699,34 @@ class EchtModelHtmlSummary(HtmlSummary):
                 border=0)
         html_table = html_table.replace('<th>', '<th class="text-center">')
         return {'table': html_table}
+
+
+class EchtTrackingHtmlSummary(HtmlSummary):
+
+
+    def __init__(self, task):
+        adopt_init_args(self, locals())
+
+    def short_summary(self):
+
+        table = self.task.table.dropna(axis='columns', how='all')
+
+        max_cycle = max(table['cycle'])
+        table = table[table['cycle'] == max_cycle]
+        table = table.set_index('cycle')
+
+        panel = {
+            'type'  : 'panel',
+            'title' : 'ECHT statistics at end of optimisation',
+            'width' : 6,
+            'show'  : True,
+            'contents'  : [
+                {
+                    'text': 'All data can be found in {}'.format(self.task.tracking_csv),
+                    'table': table.round(1).to_html(index=False, bold_rows=False, classes=['table table-striped table-hover nowrap'])\
+                               .replace('border="1" ', ''),
+                    },
+                ],
+            }
+
+        return [panel]

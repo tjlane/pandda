@@ -51,6 +51,8 @@ class HierarchicalModelAnalysisTask:
 
     def run(self, 
         uij_target,
+        uij_target_weights,
+        uij_isotropic_mask,
         model_object,
         model_hierarchy_info,
         reference_hierarchy,
@@ -75,8 +77,9 @@ class HierarchicalModelAnalysisTask:
         if self.analyse_residuals is not False:
             self.log.subheading('Analysing Model-Target Residuals', spacer=True)
             residuals_out = self.analyse_residuals.run(
-                uij_fitted = uij_fitted,
+                uij_fitted = uij_isotropic_mask(uij_fitted),
                 uij_target = uij_target,
+                uij_target_weights = uij_target_weights,
                 level_names = level_names,
                 dataset_labels = dataset_labels,
                 reference_hierarchy = reference_hierarchy.select(overall_atom_selection, copy_atoms=True),

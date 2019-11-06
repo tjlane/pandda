@@ -1,4 +1,4 @@
-import copy
+import copy, tqdm
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
 from scitbx.array_family import flex
@@ -212,7 +212,13 @@ class OptimiseUijLevel:
             ) for i_u, u in enumerate(uij_values)]
 
         if self.n_cpus == 1:
-            results = [self.optimisation_function(**a) for a in args]
+            #results = [self.optimisation_function(**a) for a in args]
+            results = []
+            pbar = tqdm.tqdm(total=len(args), ncols=100)
+            for a in args: 
+                results.append(self.optimisation_function(**a))
+                pbar.update(1)
+            pbar.close()
         else:
             # update chunksize for parallelisation
             self.run_parallel.chunksize = min(500, max(1, int(0.2*len(args)/float(self.run_parallel.n_cpus))))

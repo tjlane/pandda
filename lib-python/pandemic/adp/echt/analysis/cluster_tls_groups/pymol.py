@@ -57,7 +57,8 @@ class base_pymol_script:
 
         s.show_as(obj=self.structure_obj, style='lines')
         s.show(obj=self.structure_obj, style='ellipsoids')
-        s.colour(obj=self.structure_obj, colour="grey90")
+        #s.colour(obj=self.structure_obj, colour="grey90")
+        s.custom('spectrum', expression='b', selection=self.structure_obj)
 
         ##################################################
 
@@ -131,6 +132,7 @@ class base_pymol_script:
                 con_shapes.append(cyl)
 
         s.add_shapes(con_shapes, obj='tls-group-neighbours')
+        s.disable(obj='tls-group-neighbours')
 
         ##################################################
 

@@ -1,8 +1,18 @@
 from libtbx import adopt_init_args, group_args
+import copy
 import numpy
 
 from bamboo.common.logs import Log
 
+def scale_weights(weights, scale):
+
+    new_weights = copy.deepcopy(weights)
+
+    for k in new_weights.__dict__.keys():
+        if k.startswith('_'): continue
+        new_weights.__dict__[k] = scale * new_weights.__dict__[k]
+
+    return new_weights
 
 def combine_optimisation_weights(
         atom_weight_array,

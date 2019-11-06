@@ -11,9 +11,9 @@ class PandemicAdpFileSystem:
             ):
         output_directory    = self.make(output_directory)
         hierarchy_directory = self.make(output_directory, 'hierarchical_model')
-        optimisation_directory = self.make(hierarchy_directory, 'optimisation')
-        structure_directory = self.make(output_directory, 'output_structures')
-        analysis_directory  = self.make(output_directory, 'output_analysis')
+        optimisation_directory = self.make(output_directory, 'optimisation')
+        structure_directory = self.make(output_directory, 'structures')
+        analysis_directory  = self.make(output_directory, 'analysis')
         adopt_init_args(self, locals())
 
     def make(self, *args):

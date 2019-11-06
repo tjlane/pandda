@@ -185,14 +185,14 @@ class GenerateLevelSelectionsTask:
                     idx = l_params.depth - 1
                 elif l_params.insert_before is not None:
                     if l_params.insert_before not in labels:
-                        msg = 'Trying to insert level "{new}" before level "{ref}" but "{new}" does not exist yet!'.format(new=l_params.label, ref=l_params.insert_before)
+                        msg = 'Trying to insert level "{new}" before level "{ref}" but "{ref}" does not exist yet!'.format(new=l_params.label, ref=l_params.insert_before)
                         msg += '\nYou might try adding groups in a different order? (the reference group must be added before this group).'
                         raise Sorry(msg)
                     # insertion index is where the reference group is (will be inserted at this point, shifting reference down)
                     idx = labels.index(l_params.insert_before)
                 elif l_params.insert_after is not None:
                     if l_params.insert_after not in labels:
-                        msg = 'Trying to insert level "{new}" after level "{ref}" but "{new}" does not exist yet!'.format(new=l_params.label, ref=l_params.insert_after)
+                        msg = 'Trying to insert level "{new}" after level "{ref}" but "{ref}" does not exist yet!'.format(new=l_params.label, ref=l_params.insert_after)
                         msg += '\nYou might try adding groups in a different order? (the reference group must be added before this group).'
                         raise Sorry(msg)
                     # insertion index is one after the reference group
@@ -235,7 +235,7 @@ class BuildLevelArrayTask:
 
     def __init__(self,
         overall_selection = None,
-        remove_duplicate_groups = False,
+        remove_duplicate_groups = None,
         warnings = None,
         log = None,
         ):
@@ -259,9 +259,10 @@ class BuildLevelArrayTask:
             assert_complete = False,
             )
 
-        if self.remove_duplicate_groups is True:
+        if (self.remove_duplicate_groups is not None):
             self.remove_duplicate_groups_from_array(
                 level_group_array = level_group_array,
+                keep_which_group = self.remove_duplicate_groups,
                 )
 
         # Check for empty levels
@@ -398,8 +399,10 @@ class BuildLevelArrayTask:
 
     def remove_duplicate_groups_from_array(self,
         level_group_array,
-        remove_higher_group = True,
+        keep_which_group,
         ):
+
+        assert keep_which_group in ['keep_highest_group', 'keep_lowest_group']
 
         report_strings = []
 
@@ -436,7 +439,7 @@ class BuildLevelArrayTask:
 
                     # Duplicate groups!
                     if duplicate is True:
-                        if remove_higher_group is True: 
+                        if keep_which_group == 'keep_lowest_group': 
                             # Remove the group at the higher level
                             level_group_array[j_level, j_group_sel] = -1
                             # Report
@@ -677,6 +680,8 @@ class WriteHierarchySummaryTask:
     level_atoms_pymol_png = 'level_{:04d}-partitions-chain_{}.png'
     level_partitions_png = 'all-level-partitions-chain_{}.png'
 
+    pymol_script_py = 'pymol_script.py'
+
     def __init__(self,
         output_directory,
         pymol_images = None,
@@ -752,6 +757,10 @@ class WriteHierarchySummaryTask:
                 )
             self.show(of)
             output_files.update(of)
+
+        of = {'pymol_script' : self.make_pymol_script(file_dict=output_files)}
+        self.show(of)
+        output_files.update(of)
 
         self.result = group_args(
             output_files = output_files,
@@ -857,5 +866,34 @@ class WriteHierarchySummaryTask:
                 file_dict.setdefault('level_atoms_pymol_png', collections.OrderedDict())[level_lab] = output_hash
 
         return file_dict
+
+    def make_pymol_script(self, file_dict):
+
+        from bamboo.pymol_utils import PythonScript
+
+        s = PythonScript(pretty_models=False, pretty_maps=False)
+
+        s.change_into_directory(path=os.path.abspath(self.output_directory))
+
+        for f in file_dict.get('level_atoms_pdb',{}).values():
+            if f is None: continue
+            obj = os.path.basename(f)
+            s.load_pdb(
+                f_name = os.path.relpath(os.path.abspath(f), start=self.output_directory), 
+                obj = os.path.basename(f),
+                )
+            s.colour(obj=obj, colour='grey')
+            s.custom('spectrum', expression='b%10', palette="blue_white_green", selection="{} and (b>-1)".format(obj))
+        
+        s.show_as(obj='all', style='spheres')
+        s.show(obj='all', style='sticks')
+        s.set('sphere_scale', 0.25)
+        s.set('grid_mode', 1)
+        s.orient(obj='all')
+
+        filename = self.filepath(self.pymol_script_py)
+        s.write_script(filename)
+
+        return filename
 
 

@@ -17,19 +17,14 @@ class ClusterTLSGroupsTaskHtmlSummary(HtmlSummary):
             'contents' : [],
         }
 
-        output['contents'].append(self.make_intro_panel())
-        output['contents'].append(self.make_tab_set())
+        output['contents'].extend(self.make_intro_panel())
+        output['contents'].extend(self.make_tab_set())
 
         return [output]
 
     def make_intro_panel(self):
 
-        output = {
-            'title' : 'Clustering Parameters',
-            'type' : 'panel',
-            'contents' : self.format_summary(self.task.cluster.description()),
-        }
-        return output
+        return self.format_summary(self.task.cluster.description())
 
     def make_tab_set(self):
 
@@ -47,11 +42,11 @@ class ClusterTLSGroupsTaskHtmlSummary(HtmlSummary):
         # Make first active
         tabs[0]['active'] = True
 
-        return {
+        return [{
             'type' : 'tabs',
             'title' : 'Clustering Results',
             'contents' : tabs,
-        }
+        }]
 
     def cluster_result_html_summary(self, cluster_result, cluster_files):
 
@@ -63,7 +58,7 @@ class ClusterTLSGroupsTaskHtmlSummary(HtmlSummary):
             'title' : 'New groupings for different thresholds',
             'width' : 8,
             'image' : self.image(cluster_files.get('modules_png')),
-            'footnote' : 'visual pymol script: {script}'.format(script=cluster_files.get('pymol_script')),
+            'footnote' : 'to visualise, run: <pre>pymol {script}</pre>'.format(script=cluster_files.get('pymol_script')),
         }]
 
         out['contents'] += [{

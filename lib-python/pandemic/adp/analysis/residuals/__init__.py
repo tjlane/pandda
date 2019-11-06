@@ -36,6 +36,7 @@ class AnalyseResidualsTask:
     def run(self,
         uij_fitted,
         uij_target,
+        uij_target_weights,
         level_names,
         dataset_labels,
         reference_hierarchy,
@@ -51,6 +52,7 @@ class AnalyseResidualsTask:
         self.validate(
             uij_fitted = uij_fitted,
             uij_target = uij_target,
+            uij_target_weights = uij_target_weights,
             level_names = level_names,
             dataset_labels = dataset_labels,
             reference_hierarchy = reference_hierarchy,
@@ -74,6 +76,14 @@ class AnalyseResidualsTask:
             )
 
         of = self.fit_residual_plots(
+            uij_target = uij_target,
+            uij_fitted = uij_fitted.sum(axis=0),
+            dataset_labels = dataset_labels,
+            structure_factory = structure_factory,
+            )
+        output_files.update(of)
+
+        of = self.fit_residual_structures(
             uij_target = uij_target,
             uij_fitted = uij_fitted.sum(axis=0),
             dataset_labels = dataset_labels,
@@ -109,6 +119,7 @@ class AnalyseResidualsTask:
     def validate(self,
         uij_fitted,
         uij_target,
+        uij_target_weights,
         level_names,
         dataset_labels,
         reference_hierarchy,
@@ -119,6 +130,7 @@ class AnalyseResidualsTask:
         assert uij_fitted.shape[2] == reference_hierarchy.atoms_size()
         assert uij_fitted.shape[3] == 6
         assert uij_fitted.shape[1:] == uij_target.shape
+        assert uij_fitted.shape[1:-1] == uij_target_weights.shape
 
     def rmsd_statistics(self,
         results_table,
@@ -242,6 +254,32 @@ class AnalyseResidualsTask:
 
         return output_files
 
+    def fit_residual_structures(self,
+        uij_target,
+        uij_fitted,
+        dataset_labels,
+        structure_factory,
+        ):
+        
+        output_files = collections.OrderedDict()
+
+        atom_rmsds = EIGHTPISQ * rms(uij_target-uij_fitted, axis=-1)
+        mean_rmsds = numpy.mean(atom_rmsds, axis=0)
+
+        mean_rmsds_uij = numpy.zeros(mean_rmsds.shape+(6,))
+        mean_rmsds_uij[...,0] = mean_rmsds
+        mean_rmsds_uij[...,1] = mean_rmsds
+        mean_rmsds_uij[...,2] = mean_rmsds
+
+        rmsd_h = structure_factory.custom_copy(iso=mean_rmsds, uij=mean_rmsds_uij)
+
+        filename = os.path.join(self.output_directory, 'residuals.pdb')
+        rmsd_h.write_pdb_file(filename)
+
+        output_files['residuals_pdb'] = filename
+
+        return output_files
+
     def residual_v_bfactor_plots(self,
         uij_target,
         uij_fitted,
@@ -315,7 +353,7 @@ class AnalyseResidualsTask:
         return {'residual_correlations' : output_files}
 
     def as_html_summary(self):
-        from pandemic.adp.analysis.residuals_html import AnalyseResidualHtmlSummary
+        from pandemic.adp.analysis.residuals.html import AnalyseResidualHtmlSummary
         return AnalyseResidualHtmlSummary(self)
 
 

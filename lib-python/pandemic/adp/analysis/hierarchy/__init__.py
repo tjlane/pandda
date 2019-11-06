@@ -93,13 +93,13 @@ class AssessHierarchyGroupsTask:
         # Calculate the maximum iso uij for each atom (potentially across datasets)
         non_residual_levels_uijs = model_uijs[:-1]
         # mean over diagonal of u to get B, then max over datasets
-        uijs_iso_max = non_residual_levels_uijs[..., 0:3].mean(axis=-1).max(axis=1) 
+        uijs_iso_max = non_residual_levels_uijs[..., 0:3].mean(axis=-1).max(axis=1)
         assert (uijs_iso_max.shape == level_group_array.shape)
 
         for i_level, level_values in enumerate(level_group_array):
 
             for i_group in sorted(set(level_values)):
-                if i_group == -1: 
+                if i_group == -1:
                     continue
                 # Find the atoms in this group
                 group_sel = (level_values == i_group)
@@ -129,9 +129,9 @@ class AssessHierarchyGroupsTask:
 
         # Create hierarchies of the groups for each level
         level_hierarchies = [structure_factory.custom_copy(
-            uij = None,  
-            iso = v, 
-            mask = overall_atom_selection, 
+            uij = None,
+            iso = v,
+            mask = overall_atom_selection,
             blank_copy = False) for v in level_group_array]
 
         output_files = collections.OrderedDict()
@@ -139,24 +139,24 @@ class AssessHierarchyGroupsTask:
         # Write hierarchy plot for each chain
         b_h = structure_factory.blank_copy()
         b_c = b_h.atom_selection_cache()
-        for c in b_h.chains():
-            chain_sel = b_c.selection('chain {}'.format(c.id))
+        for c_id in sorted([c.id for c in b_h.chains()]):
+            chain_sel = b_c.selection('chain {}'.format(c_id))
             hierarchies = [h.select(chain_sel, copy_atoms=True) for h in level_hierarchies]
             # Skip if no partitions in this chain
             #if (numpy.array([h.atoms().extract_b() for h in hierarchies]) == -1).all():
             #    continue
-            filename = os.path.join(self.output_directory, 'level-paritions-chain-{}.png'.format(c.id))
+            filename = os.path.join(self.output_directory, 'level-paritions-chain-{}.png'.format(c_id))
             self.plotting_object.level_plots(
                 filename=filename,
                 hierarchies=hierarchies,
                 labels = ['Level {}\n({})'.format(i_l+1, l) for i_l, l in enumerate(level_labels)],
-                title='chain {}'.format(c.id),
+                title='chain {}'.format(c_id),
                 )
-            output_files[c.id] = filename
+            output_files[c_id] = filename
 
         return {'level_partitions': output_files}
 
-    def array_to_indices(self, 
+    def array_to_indices(self,
         level_group_array,
         ):
 
@@ -183,5 +183,5 @@ class AssessHierarchyGroupsTask:
             )
 
     def as_html_summary(self):
-        from pandemic.adp.analysis.hierarchy_html import AssessHierarchyGroupsHtmlSummary
+        from pandemic.adp.analysis.hierarchy.html import AssessHierarchyGroupsHtmlSummary
         return AssessHierarchyGroupsHtmlSummary(self)

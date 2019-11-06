@@ -105,14 +105,29 @@ class UijIsotropicMask:
     def __init__(self,
             selection,
             ):
+
         assert selection.nd() == 1
+
         n = selection.size()
+
+        n_isotropic = sum(selection)
+        n_anisotropic = n - n_isotropic
+
+        all_isotropic = (n == n_isotropic)
+        all_anisotropic = (n == n_anisotropic)
+
         adopt_init_args(self, locals())
 
     def __call__(self,
             uij_array,
             in_place = False,
             ):
+
+        if (self.all_anisotropic is True): 
+            if (in_place is True): 
+                return uij_array
+            else: 
+                return copy.copy(uij_array)
 
         # Is it a numpy array?
         is_numpy_array = True if hasattr(uij_array, 'shape') else False
@@ -132,9 +147,15 @@ class UijIsotropicMask:
         if len(shape) == 1:
             assert shape == (self.n,)
             selection = self.selection
-        elif len(shape) == 2:
-            assert shape[1] == self.n
-            l = shape[0]
+        # elif len(shape) == 2:
+        #     assert shape[1] == self.n
+        #     l = shape[0]
+        #     selection = (flex.double(l,1).matrix_outer_product(self.selection.as_double()) == 1.0)
+        #     assert selection.all() == (l, self.n)
+        #     selection = selection.as_1d()
+        elif len(shape) > 1:
+            assert shape[-1] == self.n
+            l = numpy.product(shape[:-1])
             selection = (flex.double(l,1).matrix_outer_product(self.selection.as_double()) == 1.0)
             assert selection.all() == (l, self.n)
             selection = selection.as_1d()
@@ -164,6 +185,14 @@ class UijIsotropicMask:
             mask = flex.bool(mask)
         new_selection = self.selection.select(mask)
         return UijIsotropicMask(selection=new_selection)
+
+    def as_fully_isotropic(self):
+        selection = flex.bool(self.selection.size(), True)
+        return UijIsotropicMask(selection)
+
+    def as_fully_anisotropic(self):
+        selection = flex.bool(self.selection.size(), False)
+        return UijIsotropicMask(selection)
 
     @classmethod
     def from_uij_array(cls,
