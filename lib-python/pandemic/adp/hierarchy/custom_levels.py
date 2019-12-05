@@ -67,7 +67,7 @@ class WriteNewCustomLevelsEffFile:
 class _MakeNewEffFile:
 
 
-    def __init__(self, 
+    def __init__(self,
         selection_strings_dict,
         master_phil,
         custom_level_scope_name = 'model.custom_level',
@@ -81,7 +81,7 @@ class _MakeNewEffFile:
         adopt_init_args(self, locals())
 
     @classmethod
-    def from_model_object(cls, 
+    def from_model_object(cls,
         model_object,
         master_phil,
         custom_level_scope_name = 'model.custom_level',
@@ -100,10 +100,11 @@ class _MakeNewEffFile:
 
 class MakeNewCustomLevelEffFilesFromIndices(_MakeNewEffFile):
 
+
     def __call__(self,
         level_name,
         indices_hierarchy,
-        output_filename, 
+        output_filename,
         label_template,
         comment_lines = [],
         depth = None,
@@ -123,10 +124,13 @@ class MakeNewCustomLevelEffFilesFromIndices(_MakeNewEffFile):
             selection_strings = self.selection_strings_dict[level_name],
             )
 
+        # level1: '1+2,4+5+6,...'
+        output_level_name_strings = [', '.join(['+'.join(map(str,[i+1 for i in g_indices])) for g_indices in l_indices]) for l_indices in indices_hierarchy]
+
         eff_phil = self.make_eff_file(
             selection_string_hierarchy = strings_hierarchy,
             output_filename = output_filename,
-            output_level_names = [label_template.format(i_l+1) for i_l in range(len(strings_hierarchy))],
+            output_level_names = map(label_template.format, output_level_name_strings),#[label_template.format(i_l+1) for i_l in range(len(strings_hierarchy))],
             comment_lines = comment_lines,
             depth = depth,
             insert_before = insert_before,
@@ -158,7 +162,7 @@ class MakeNewCustomHierarchyEffFilesFromIndices(_MakeNewEffFile):
         indices_hierarchy,
         input_level_names,
         output_level_names,
-        output_filename, 
+        output_filename,
         comment_lines = [],
         depth = None,
         insert_before = None,

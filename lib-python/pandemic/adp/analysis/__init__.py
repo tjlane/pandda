@@ -12,20 +12,20 @@ from bamboo.common.path import easy_directory
 class HierarchicalModelAnalysisTask:
 
 
-    def __init__(self, 
+    def __init__(self,
         output_directory,
         plotting_object,
         master_phil,
         analyse_residuals = True,
         assess_hierarchy_groups = True,
-        verbose = False, 
+        verbose = False,
         log = None,
         ):
         if log is None: log = Log()
 
         output_directory = easy_directory(output_directory)
 
-        if analyse_residuals is True: 
+        if analyse_residuals is True:
             from pandemic.adp.analysis.residuals import AnalyseResidualsTask
             analyse_residuals = AnalyseResidualsTask(
                 output_directory = easy_directory(os.path.join(output_directory, 'residuals')),
@@ -34,7 +34,7 @@ class HierarchicalModelAnalysisTask:
                 log = log,
                 )
 
-        if assess_hierarchy_groups is True: 
+        if assess_hierarchy_groups is True:
             from pandemic.adp.analysis.hierarchy import AssessHierarchyGroupsTask
             assess_hierarchy_groups = AssessHierarchyGroupsTask(
                 output_directory = easy_directory(os.path.join(output_directory, 'hierarchy_groups')),
@@ -48,12 +48,13 @@ class HierarchicalModelAnalysisTask:
 
         adopt_init_args(self, locals())
 
-    def run(self, 
+    def run(self,
         uij_target,
         uij_target_weights,
         uij_isotropic_mask,
         model_object,
         model_hierarchy_info,
+        model_hierarchy_files,
         reference_hierarchy,
         ):
 
@@ -83,15 +84,15 @@ class HierarchicalModelAnalysisTask:
                 dataset_labels = dataset_labels,
                 reference_hierarchy = reference_hierarchy.select(overall_atom_selection, copy_atoms=True),
                 )
-        else: 
+        else:
             residuals_out = None
 
         if self.assess_hierarchy_groups is not False:
             self.log.subheading('Assessing Hierarchical Group Partitions', spacer=True)
             assess_hierarchy_out = self.assess_hierarchy_groups.run(
                 model_object = model_object,
-                level_labels = model_hierarchy_info.level_labels,
-                level_group_array = model_hierarchy_info.level_group_array,
+                model_hierarchy_info = model_hierarchy_info,
+                model_hierarchy_files = model_hierarchy_files,
                 reference_hierarchy = reference_hierarchy,
                 overall_atom_selection = overall_atom_selection,
                 write_levels_function = write_levels_function,
@@ -109,7 +110,7 @@ class HierarchicalModelAnalysisTask:
     def as_html_summary(self):
         from pandemic.adp.html import HtmlSummaryCollator, as_html_summaries_maybe
         return HtmlSummaryCollator(
-            title = 'Analysis of Hierarchical model Uijs/ADPs/B-factors',
+            title = 'Analysis of Hierarchical model ADPs',
             alt_title = 'Fitting Analysis',
             summaries = as_html_summaries_maybe([
                 self.analyse_residuals,

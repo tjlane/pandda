@@ -43,42 +43,42 @@ def dendrogram(fname, link_mat, labels=None, ylab=None, xlab=None, ylim=None, an
 
 class PlotHelper:
 
-    def __init__(self, 
-        colour_map_name = 'rainbow', 
+    def __init__(self,
+        colour_map_name = 'rainbow',
         plot_style = 'ggplot',
         font_family = 'monospace',
         font_name = None,
         dpi = 300,
         log = None,
         ):
-        if log is None: 
+        if log is None:
             log = Log()
 
         adopt_init_args(self, locals())
 
-        if (plot_style is not None) and (plot_style not in ['xkcd']): 
-            try: 
+        if (plot_style is not None) and (plot_style not in ['xkcd']):
+            try:
                 self.log('Setting plot_style to "{}"'.format(plot_style))
                 pyplot.style.use(plot_style)
-            except Exception as e:   
+            except Exception as e:
                 self.log('Failed to set plot style to {}.\n\t{}'.format(plot_style, str(e)))
 
         if (plot_style == 'xkcd'):
-            try: 
+            try:
                 pyplot.xkcd()
                 self.log('Theme set to "xkcd".')
-            except: 
+            except:
                 self.log('Failed to set plot style "xkcd".')
 
-        if (font_family is not None): 
-            try: 
+        if (font_family is not None):
+            try:
                 self.log('Setting font_family to "{}"'.format(font_family))
                 pyplot.rc('font', family=font_family)
-            except Exception as e:   
+            except Exception as e:
                 self.log('Failed to set font family to {}.\n\t{}'.format(font_family, str(e)))
 
-        if (font_name is not None): 
-            try: 
+        if (font_name is not None):
+            try:
                 assert font_family is not None, 'Cannot set font: must provide a font family in order to set font.'
                 font_family_str = 'font.'+str(font_family)
                 assert font_family_str in pyplot.rcParams.keys(), 'Cannot set font: invalid font family provided "{}".'.format(font_family)
@@ -97,9 +97,9 @@ class PlotHelper:
         cm = self.get_colour_map()
         return cm(numpy.linspace(0., 1., n))
 
-    def initialise_figure(self, 
-        title, 
-        x_label, 
+    def initialise_figure(self,
+        title,
+        x_label,
         y_label,
         ):
         fig, axis = pyplot.subplots(nrows=1, ncols=1)
@@ -126,8 +126,8 @@ class PlotHelper:
         fig.savefig(filename, bbox_inches='tight', dpi=self.dpi, **kw_args)
         pyplot.close(fig)
 
-    def bin_x_values(self, 
-        data, 
+    def bin_x_values(self,
+        data,
         n_bins=10,
         ):
         """Generate bins for data and return binned values and indices of binning"""
@@ -142,10 +142,10 @@ class PlotHelper:
         bin_labels = ['{:.2f} - {:.2f}'.format(bins[i],bins[i+1]) for i in xrange(n_bins)]
         return bins, indices, bin_labels
 
-    def resolve_value_arrays(self, 
-        x_vals, 
-        x_vals_array, 
-        y_vals, 
+    def resolve_value_arrays(self,
+        x_vals,
+        x_vals_array,
+        y_vals,
         y_vals_array,
         ):
         assert [x_vals is None, x_vals_array is None].count(True) == 1
@@ -174,7 +174,7 @@ class PandemicAdpPlotter:
 
     helper = None
 
-    def __init__(self, 
+    def __init__(self,
         n_levels = None,
         helper = None,
         ):
@@ -182,10 +182,10 @@ class PandemicAdpPlotter:
         adopt_init_args(self, locals(), exclude=('helper',))
 
         # Use provided if given
-        if (helper is not None): 
+        if (helper is not None):
             self.helper = helper
         # If class variable is not initialised then initialise new instance
-        elif (self.helper is None): 
+        elif (self.helper is None):
             self.helper = PlotHelper()
 
     def get_level_colours_arbitrary(self, indices):
@@ -196,7 +196,7 @@ class PandemicAdpPlotter:
         cm = self.helper.get_colour_map()
         return cm(numpy.linspace(0., 1., self.n_levels))
 
-    def multi_hierarchy_plot_by_residue(self, 
+    def multi_hierarchy_plot_by_residue(self,
         hierarchies,
         plot_function,
         plot_kw_args,
@@ -242,7 +242,7 @@ class PandemicAdpPlotter:
             y_vals_array = y_array_values_function(y_vals_array)
             n = max(map(len,y_vals_array))
 
-            # 
+            #
             kw_args = {}
             kw_args.update(plot_kw_args)
 
@@ -288,8 +288,8 @@ class PandemicAdpPlotter:
         ):
 
         fig, axis = self.helper.initialise_figure(
-            title = title, 
-            x_label = x_label, 
+            title = title,
+            x_label = x_label,
             y_label = y_label,
             )
 
@@ -302,24 +302,24 @@ class PandemicAdpPlotter:
 
         colours = self.helper.get_colours(n)
 
-        if alphas is None: 
+        if alphas is None:
             alphas = [1.] * n
         elif isinstance(alphas, float):
             alphas = [alphas] * n
-        else: 
+        else:
             assert len(alphas) == n
 
         handles = []
         for i, (x, y) in enumerate(zip(x_vals_array, y_vals_array)):
             kw_args = {
-                'marker' : 'D', 
-                'color':colours[i], 
+                'marker' : 'D',
+                'color':colours[i],
                 'alpha':alphas[i],
                 }
             kw_args.update(plot_kw_args)
             hdl = axis.scatter(
-                x = x, 
-                y = y, 
+                x = x,
+                y = y,
                 **kw_args
                 )
             handles.append(hdl)
@@ -360,12 +360,13 @@ class PandemicAdpPlotter:
         alphas = None,
         legends = None,
         filename = None,
+        legend_kw_args = {'bbox_to_anchor':(1.02, 0.95), 'loc':2, 'borderaxespad':0.},
         **plot_kw_args
         ):
 
         fig, axis = self.helper.initialise_figure(
-            title = title, 
-            x_label = x_label, 
+            title = title,
+            x_label = x_label,
             y_label = y_label,
             )
 
@@ -382,13 +383,13 @@ class PandemicAdpPlotter:
             alphas = [1.] * n
         elif isinstance(alphas, float):
             alphas = [alphas] * n
-        else: 
+        else:
             assert len(alphas) == n
 
         handles = []
         for i, (x, y) in enumerate(zip(x_vals_array, y_vals_array)):
             kw_args = {
-                'color' : colours[i], 
+                'color' : colours[i],
                 'alpha' : alphas[i],
                 }
             kw_args.update(plot_kw_args)
@@ -406,16 +407,23 @@ class PandemicAdpPlotter:
         if y_lim is not None:
             axis.set_ylim(y_lim)
 
+        artists = []
+
         if legends is not None:
             assert len(legends) == n
             assert len(handles) == n
-            axis.legend(handles, legends)
+            lgd = axis.legend(handles, legends, **legend_kw_args)
+            artists.append(lgd)
 
         if rotate_x_labels:
             pyplot.setp(axis.get_xticklabels(), rotation=90)
 
         if filename is not None:
-            self.helper.write_and_close_fig(fig=fig, filename=filename)
+            self.helper.write_and_close_fig(
+                fig = fig,
+                filename = filename,
+                bbox_extra_artists = artists,
+                )
 
         return fig, axis
 
@@ -429,6 +437,7 @@ class PandemicAdpPlotter:
         y_label = '',
         x_ticks = None,
         x_tick_labels = None,
+        y_lim = None,
         hlines = [],
         vlines = [],
         rotate_x_labels = True,
@@ -441,15 +450,15 @@ class PandemicAdpPlotter:
         assert x_vals_array is None
 
         fig, axis = self.helper.initialise_figure(
-            title = title, 
-            x_label = x_label, 
+            title = title,
+            x_label = x_label,
             y_label = y_label,
             )
 
-        if (x_vals is None): 
-            if (y_vals is not None): 
+        if (x_vals is None):
+            if (y_vals is not None):
                 x_vals = 1 + numpy.arange(len(y_vals))
-            else: 
+            else:
                 x_vals = 1 + numpy.arange(len(y_vals_array[0]))
 
         n, x_vals_array, y_vals_array = self.helper.resolve_value_arrays(
@@ -485,6 +494,9 @@ class PandemicAdpPlotter:
                 x_tick_labels = x_tick_labels,
                 n_labels = 20,
                 )
+
+        if (y_lim is not None):
+            axis.set_ylim(y_lim)
 
         for l in hlines: axis.axhline(l)
         for l in vlines: axis.axvline(l)
@@ -639,7 +651,7 @@ class PandemicAdpPlotter:
             axis.set_xlim(right=n_bins+0.5+x_width)
 
         self.helper.write_and_close_fig(
-            fig = fig, 
+            fig = fig,
             filename = filename,
             bbox_extra_artists = extra_artists+text_artists,
             )
@@ -710,8 +722,8 @@ class PandemicAdpPlotter:
         colours = self.get_level_colours()
 
         fig, axis = self.helper.initialise_figure(
-            title = title, 
-            x_label = 'Atom', 
+            title = title,
+            x_label = 'Atom',
             y_label = '',
             )
         axis.set_facecolor('w')
@@ -912,7 +924,7 @@ class PandemicAdpPlotter:
 
             # Format and save
             self.helper.write_and_close_fig(
-                fig = fig, 
+                fig = fig,
                 filename = filename,
                 bbox_extra_artists=[lgd],
                 )

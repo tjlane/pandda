@@ -7,9 +7,22 @@ from libtbx.utils import Sorry, Failure
 from bamboo.common.logs import Log
 from bamboo.maths.functions import rms
 
+from pandemic.adp import constants
 from pandemic.adp.utils import show_file_dict
 
-EIGHTPISQ = 8.0*math.pi*math.pi
+#################################
+
+import iotbx.pdb
+RES_ORDER_LIST = list(iotbx.pdb.common_residue_names_amino_acid) + list(iotbx.pdb.common_residue_names_rna_dna)
+RES_ORDER_DICT = dict(zip(RES_ORDER_LIST, range(len(RES_ORDER_LIST))))
+
+ATOM_ORDER_LIST = ['N', 'CA', 'C', 'O', 'OXT', 'CB']
+# Create all possible atom namings for amino acids (brute-force; could hard-code)
+for l in ['G', 'D', 'E', 'Z', 'H']: # Sort first on distance from CA
+    for n in ['', 1, 2]: # Then sort by fork
+        for elem in ['C', 'N', 'O', 'S']: # Then sort by element
+            ATOM_ORDER_LIST.append(elem+l+str(n))
+ATOM_ORDER_DICT = dict(zip(ATOM_ORDER_LIST, range(len(ATOM_ORDER_LIST))))
 
 
 class AnalyseResidualsTask:
@@ -43,9 +56,6 @@ class AnalyseResidualsTask:
         reference_hierarchy,
         ):
 
-        if level_names is None:     level_names = ['Level {}'.format(i+1) for i in range(uij_fitted.shape[0])]
-        if dataset_labels is None:  dataset_labels = ['Dataset {}'.format(i+1) for i in range(uij_fitted.shape[1])]
-
         results_table = pandas.DataFrame(index=dataset_labels)
 
         output_files = collections.OrderedDict()
@@ -59,7 +69,7 @@ class AnalyseResidualsTask:
             reference_hierarchy = reference_hierarchy,
             )
 
-        from pandemic.adp.utils import StructureFactory
+        from pandemic.adp.output.structures import StructureFactory
         structure_factory = StructureFactory(master_h=reference_hierarchy)
 
         self.log.subheading('Assessing model fit and calculating summary statistics')
@@ -76,20 +86,22 @@ class AnalyseResidualsTask:
             uij_fitted = uij_fitted.sum(axis=0),
             )
 
-        of = self.fit_residual_plots(
+        of = self.residual_plots(
             uij_target = uij_target,
             uij_fitted = uij_fitted.sum(axis=0),
             dataset_labels = dataset_labels,
             structure_factory = structure_factory,
             )
+        self.show_file_dict(of)
         output_files.update(of)
 
-        of = self.fit_residual_structures(
+        of = self.residual_structures(
             uij_target = uij_target,
             uij_fitted = uij_fitted.sum(axis=0),
             dataset_labels = dataset_labels,
             structure_factory = structure_factory,
             )
+        self.show_file_dict(of)
         output_files.update(of)
 
         of = self.residual_v_bfactor_plots(
@@ -97,6 +109,15 @@ class AnalyseResidualsTask:
             uij_fitted = uij_fitted.sum(axis=0),
             dataset_labels = dataset_labels,
             )
+        self.show_file_dict(of)
+        output_files.update(of)
+
+        of = self.residual_v_atom_type_plots(
+            uij_target = uij_target,
+            uij_fitted = uij_fitted.sum(axis=0),
+            reference_hierarchy = reference_hierarchy,
+            )
+        self.show_file_dict(of)
         output_files.update(of)
 
         of = self.correlation_plots(
@@ -106,9 +127,8 @@ class AnalyseResidualsTask:
             dataset_labels = dataset_labels,
             structure_factory = structure_factory,
             )
+        self.show_file_dict(of)
         output_files.update(of)
-
-        self.show_file_dict(output_files)
 
         self.result = group_args(
             output_files = output_files,
@@ -163,6 +183,8 @@ class AnalyseResidualsTask:
                 data[self.median_model_fit_rmsd],
                 ))
 
+        log('')
+
     def b_factor_statistics(self,
         results_table,
         uij_target,
@@ -188,13 +210,15 @@ class AnalyseResidualsTask:
             if i_r == 10:
                 log('...')
                 break
-            log('Dataset {:10}: {:6.3f} (input) -> {:6.3f} (fitted)'.format(
+            log('> Dataset {:10}: {:6.3f} (input) -> {:6.3f} (fitted)'.format(
                 tag,
                 data[self.average_b_factor_column+self.target_suffix],
                 data[self.average_b_factor_column+self.fitted_suffix],
                 ))
 
-    def fit_residual_plots(self,
+        log('')
+
+    def residual_plots(self,
         uij_target,
         uij_fitted,
         dataset_labels,
@@ -214,7 +238,7 @@ class AnalyseResidualsTask:
         # plot by residue
         #
 
-        atom_hierarchies = [structure_factory.custom_copy(iso=EIGHTPISQ*a) for a in atom_rmsds]
+        atom_hierarchies = [structure_factory.custom_copy(iso=constants.EIGHTPISQ*a) for a in atom_rmsds]
         of = self.plotting_object.multi_hierarchy_plot_by_residue(
             hierarchies = atom_hierarchies,
             plot_function = self.plotting_object.boxplot,
@@ -241,7 +265,7 @@ class AnalyseResidualsTask:
             i_max = i_min + n_per_image
             filename = os.path.join(self.output_directory, 'residual_by_dataset_{}-{}.png'.format(i_min+1, i_max))
             self.plotting_object.boxplot(
-                y_vals = list(EIGHTPISQ*atom_rmsds[i_min:i_max]),
+                y_vals = list(constants.EIGHTPISQ*atom_rmsds[i_min:i_max]),
                 title = 'Fitting Residuals by Dataset\n residual = $8\pi^2$rms($U_{model} - U_{target}$)',
                 x_label = 'Dataset',
                 y_label = 'Residuals ($\AA^2$)',
@@ -255,7 +279,7 @@ class AnalyseResidualsTask:
 
         return output_files
 
-    def fit_residual_structures(self,
+    def residual_structures(self,
         uij_target,
         uij_fitted,
         dataset_labels,
@@ -264,7 +288,7 @@ class AnalyseResidualsTask:
         
         output_files = collections.OrderedDict()
 
-        atom_rmsds = EIGHTPISQ * rms(uij_target-uij_fitted, axis=-1)
+        atom_rmsds = rms(uij_target-uij_fitted, axis=-1)
         mean_rmsds = numpy.mean(atom_rmsds, axis=0)
 
         mean_rmsds_uij = numpy.zeros(mean_rmsds.shape+(6,))
@@ -272,7 +296,7 @@ class AnalyseResidualsTask:
         mean_rmsds_uij[...,1] = mean_rmsds
         mean_rmsds_uij[...,2] = mean_rmsds
 
-        rmsd_h = structure_factory.custom_copy(iso=mean_rmsds, uij=mean_rmsds_uij)
+        rmsd_h = structure_factory.custom_copy(iso=constants.EIGHTPISQ*mean_rmsds, uij=mean_rmsds_uij)
 
         filename = os.path.join(self.output_directory, 'residuals.pdb')
         rmsd_h.write_pdb_file(filename)
@@ -288,8 +312,8 @@ class AnalyseResidualsTask:
         ):
 
         # Plot rmsds against B-factors
-        atom_rmsds = EIGHTPISQ * rms(uij_target-uij_fitted, axis=-1)
-        iso_target = EIGHTPISQ * uij_target[...,0:3].mean(axis=-1)
+        atom_rmsds = constants.EIGHTPISQ * rms(uij_target-uij_fitted, axis=-1)
+        iso_target = constants.EIGHTPISQ * uij_target[...,0:3].mean(axis=-1)
 
         filename = os.path.join(self.output_directory, 'residual_vs_bfactor.png')
 
@@ -310,6 +334,59 @@ class AnalyseResidualsTask:
             )
 
         return {'residuals_vs_bfactor' : filename}
+
+    def residual_v_atom_type_plots(self,
+        uij_target,
+        uij_fitted,
+        reference_hierarchy,
+        ):
+
+        flierprops = dict(marker='D', markersize=2., markerfacecolor='g')
+        
+        # Extract identifiers for atom types (resname - atomname)
+        atom_labels = [((a.parent().resname, a.name)) for a in reference_hierarchy.atoms()]
+        
+        # Extract atom rmsds
+        atom_rmsds = constants.EIGHTPISQ * rms(uij_target-uij_fitted, axis=-1)
+        # transport tables to sort by atoms
+        atom_rmsds = atom_rmsds.T
+        # Sanity check
+        assert len(atom_rmsds) == len(atom_labels)
+        # Sort atom rmsds by atom name
+        atom_rmsds_dict = {}
+        for label, rmsds in zip(atom_labels, atom_rmsds):
+            atom_rmsds_dict.setdefault(label,[]).extend(rmsds)
+
+        assert len(atom_rmsds_dict.keys()) == len(set(atom_labels))
+
+        # Extract as lists for plotting
+        sort_func = lambda (resname, atomname): (RES_ORDER_DICT.get(resname.strip(),''), ATOM_ORDER_DICT.get(atomname.strip(),''))
+        plot_labels = sorted(atom_rmsds_dict.keys(), key=sort_func) 
+        plot_rmsds = [atom_rmsds_dict[l] for l in plot_labels]
+
+        n = len(plot_labels)
+
+        min_max = (0.0, 1.05*atom_rmsds.max())
+
+        of = collections.OrderedDict()
+        n_per_image = 30
+        for i_min in range(0, len(plot_labels), n_per_image):
+            i_max = i_min + n_per_image
+            filename = os.path.join(self.output_directory, 'residual_by_atom_type_{}-{}.png'.format(i_min+1, i_max))
+            self.plotting_object.boxplot(
+                y_vals = list(plot_rmsds[i_min:i_max]),
+                title = 'Fitting Residuals by Atom Type\n residual = $8\pi^2$rms($U_{model} - U_{target}$)',
+                x_label = 'Atom Type',
+                y_label = 'Residuals ($\AA^2$)',
+                x_tick_labels = ['{} - {}'.format(l[1].replace(' ',''), l[0].lower()) for l in plot_labels[i_min:i_max]],
+                y_lim = min_max,
+                flierprops = flierprops,
+                rotate_x_labels = True,
+                filename = filename,
+                )
+            of['{}-{}'.format(i_min+1,i_max)] = filename
+        
+        return {'residuals_by_atom_type' : of}
 
     def correlation_plots(self,
         uij_target,
@@ -337,7 +414,7 @@ class AnalyseResidualsTask:
                 hierarchies = atom_hierarchies,
                 plot_function = self.plotting_object.lineplot,
                 plot_kw_args = {
-                    'title' : 'Residual v Target Correlations\n{} level'.format(l_name.capitalize()),
+                    'title' : 'Residual v Target Correlations\n{} level'.format(l_name.title()),
                     'x_label' : 'Residue',
                     'y_label' : 'Correlation',
                     'y_lim'   : (-1.0, 1.0),

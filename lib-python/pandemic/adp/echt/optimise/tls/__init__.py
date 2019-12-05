@@ -50,7 +50,7 @@ class OptimiseTLSGroup:
         assert uij_target.shape == (n_datasets, n_atoms, 6)
         assert uij_target_weights.shape == (n_datasets, n_atoms)
 
-        from pandemic.adp.echt.optimise.tls_matrices import OptimiseTLSGroup_Matrices, TLSSimplexGenerator
+        from pandemic.adp.echt.optimise.tls.matrices import OptimiseTLSGroup_Matrices, TLSSimplexGenerator
 
         # Create optimisation task for matrix optimisation
         optimise_matrices = OptimiseTLSGroup_Matrices(

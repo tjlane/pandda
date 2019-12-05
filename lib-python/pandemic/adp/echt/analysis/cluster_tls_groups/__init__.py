@@ -82,9 +82,10 @@ class ClusterTLSGroupsTask:
 
             # Want absolute index of level
             i_l = model_object.all_level_names.index(level_name)
+            i_tls = model_object.tls_level_names.index(level_name)
 
             # Extract tls group objects from model
-            tls_groups = model_object.tls_objects[i_l]
+            tls_groups = model_object.tls_objects[i_tls]
             n_groups = len(tls_groups)
 
             # Skip if processing more groups than maximum
@@ -137,8 +138,7 @@ class ClusterTLSGroupsTask:
 
         output_files = collections.OrderedDict()
 
-        unique_directory = easy_directory(os.path.join(self.output_directory, 'individual_levels'))
-        cumulative_directory = easy_directory(os.path.join(self.output_directory, 'cumulative_levels'))
+        out_directory = easy_directory(os.path.join(self.output_directory, 'new_groupings'))
 
         self.log.subheading('Outputting levels generated at each clustering threshold', spacer=True)
 
@@ -149,13 +149,13 @@ class ClusterTLSGroupsTask:
             # Want absolute index of level
             i_l = model_object.all_level_names.index(level_name)
 
-            # Unique 
-            of = o_dict.setdefault('unique', collections.OrderedDict())
             self.log.subheading('New groupings derived from level {} ({})'.format(i_l+1, level_name))
+
             for threshold, hierarchy in level_data.module_info.threshold_unique_hierarchies.iteritems():
 
-                filename = os.path.join(unique_directory, 'level_{}_threshold_{}.eff'.format(i_l+1, threshold))
-                label_template = '{} (child {{}})'.format(level_name)
+                filename = os.path.join(out_directory, 'level_{}_threshold_{}.eff'.format(i_l+1, threshold))
+                
+                label_template = '{} (groups {{}})'.format(level_name)
 
                 phil_str = write_levels_function(
                     level_name = level_name,
@@ -168,41 +168,13 @@ class ClusterTLSGroupsTask:
                     insert_after = None,
                     reverse_levels = False,
                     )
-                of[threshold] = filename
-            
-                # Report
-                self.log.bar()
-                self.log('@ threshold: {}'.format(threshold))
-                self.log.bar()
-                self.log(phil_str[:self.characters_to_print] + '...'*(len(phil_str)>self.characters_to_print))
-                self.log('> Written to {}'.format(filename))
-
-            # Cumulative 
-            self.log.subheading('Cumulative groupings derived from level {} ({})'.format(i_l+1, level_name))
-            of = o_dict.setdefault('cumulative', collections.OrderedDict())
-            for threshold, hierarchy in level_data.module_info.threshold_cumulative_hierarchies.iteritems():
-
-                filename = os.path.join(cumulative_directory, 'level_{}_threshold_{}.eff'.format(i_l+1, threshold))
-                label_template = '{} (child {{}})'.format(level_name)
-
-                phil_str = write_levels_function(
-                    level_name = level_name,
-                    indices_hierarchy = hierarchy,
-                    output_filename = filename, 
-                    label_template = label_template,
-                    comment_lines = [],
-                    depth = None,
-                    insert_before = level_name,
-                    insert_after = None,
-                    reverse_levels = False,
-                    )
-                of[threshold] = filename
+                o_dict[threshold] = filename
 
                 # Report
                 self.log.bar()
                 self.log('@ threshold: {}'.format(threshold))
                 self.log.bar()
-                self.log(self.truncate_lines(phil_str, max_lines=20))
+                self.log(self.truncate_lines(phil_str, max_lines=10))
                 #self.log(phil_str[:self.characters_to_print] + '...'*(len(phil_str)>self.characters_to_print))
                 self.log('> Written to {}'.format(filename))
 

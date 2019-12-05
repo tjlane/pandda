@@ -3,7 +3,11 @@ import numpy, pandas
 
 from libtbx import adopt_init_args, group_args
 
+
 class EchtTracking:
+
+    csv_name = 'tracking_echt.csv'
+    png_name = 'tracking_amplitudes.png'
 
     def __init__(self,
         output_directory,
@@ -17,12 +21,14 @@ class EchtTracking:
         table = pandas.DataFrame(
             columns=['cycle', 'type', 'average'] + model_object.dataset_labels,
             )
-        tracking_csv = os.path.join(output_directory, 'tracking_echt.csv')
+        tracking_csv = os.path.join(output_directory, self.csv_name)
+        tracking_png = os.path.join(output_directory, self.png_name)
         adopt_init_args(self, locals())
 
     def update(self,
         model_object,
-        i_cycle,
+        n_cycle,
+        write_graphs = True,
         ):
 
         log = self.log
@@ -34,10 +40,44 @@ class EchtTracking:
         amplitudes_squared = amplitudes ** 2
         amplitudes_squared_sum = amplitudes_squared.sum(axis=0)
 
-        self.table.loc[len(self.table)] = [i_cycle, 'sum of amplitudes',     amplitudes_sum.mean()] + list(amplitudes_sum)
-        self.table.loc[len(self.table)] = [i_cycle, 'sum of (amplitudes^2)', amplitudes_squared_sum.mean()] + list(amplitudes_squared_sum)
+        self.table.loc[len(self.table)] = [n_cycle, 'sum of amplitudes',     amplitudes_sum.mean()] + list(amplitudes_sum)
+        self.table.loc[len(self.table)] = [n_cycle, 'sum of (amplitudes^2)', amplitudes_squared_sum.mean()] + list(amplitudes_squared_sum)
 
         self.table.to_csv(self.tracking_csv)
+
+        if write_graphs is True:
+            self.write_graphs()
+
+    def write_graphs(self):
+
+        table = self.table
+
+        weight_labels = sorted(set(table['type']))
+
+        x_vals_array = []
+        y_vals_array = []
+        for label in weight_labels:
+            l_table = table[table['type']==label]
+            x_vals_array.append(l_table['cycle'].values)
+            y_vals_array.append(l_table['average'].values)
+
+        x_ticks = map(int,sorted(set(table['cycle'].values)))
+
+        self.plotting_object.lineplot(
+            x_vals_array = x_vals_array,
+            y_vals_array = y_vals_array,
+            title = 'Model parameters/penalties across cycles',
+            x_label = 'Cycle',
+            y_label = 'Amplitudes ($\AA^2$ or $\AA^4$)',
+            x_ticks = x_ticks,
+            legends = weight_labels,
+            filename = self.tracking_png,
+            legend_kw_args = {'bbox_to_anchor':(1.0, -0.15), 'loc':1, 'borderaxespad':0.},
+            marker = '.',
+            markersize = 10,
+            markeredgecolor = 'k',
+            linewidth = 3,
+            )
 
     def extract_amplitudes(self,
         model_object,
@@ -63,5 +103,5 @@ class EchtTracking:
         return amplitudes
 
     def as_html_summary(self):
-        from pandemic.adp.echt.html import EchtTrackingHtmlSummary
+        from pandemic.adp.echt.html.tracking import EchtTrackingHtmlSummary
         return EchtTrackingHtmlSummary(self)

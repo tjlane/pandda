@@ -23,25 +23,25 @@ class PostProcessingHtmlSummary(HtmlSummary):
         tab = {'id'        : 'statistics',
                'alt_title' : 'R-factor Statistics',
                'title' : 'Model R-factor Summary',
+               'fancy_title' : True,
                'contents'  : [],
                }
 
-        tab['contents'].append(self.get_interactive_results_plot())
-        tab['contents'].append(self.get_dataset_statistics_table())
+        tab['contents'].extend(self.get_interactive_results_plot_panels())
+        tab['contents'].extend(self.get_dataset_statistics_table_panels())
+        tab['contents'].extend(self.get_rfactor_panels())
 
-        panels = self.get_rfactor_panels()
-        if panels:
-            tab['contents'].append({'title' : 'R-factor statistics'})
-            tab['contents'].extend(panels)
-
-        return [tab]
+        if len(tab['contents']) > 0:
+            return [tab]
+        else:
+            return []
 
     def get_rfactor_panels(self):
 
         panels = []
 
         f = self.analysis_files.get('r_values')
-        if f:
+        if f is not None:
             images = []
             images.append({
                 'width' : 6,
@@ -68,7 +68,7 @@ class PostProcessingHtmlSummary(HtmlSummary):
                 })
 
         f = self.analysis_files.get('r_value_differences')
-        if f:
+        if f is not None:
             images = []
             for (s1, s2), img in f.iteritems():
                 images.append({
@@ -83,45 +83,55 @@ class PostProcessingHtmlSummary(HtmlSummary):
                 'contents' : images,
                 })
 
+        # Only add title if some data added
+        if len(panels) > 0:
+            panels.insert(0, {'title' : 'R-factor statistics'})
+
         return panels
 
-    def get_interactive_results_plot(self):
+    def get_interactive_results_plot_panels(self):
 
-        # Extract data table for plot and table
+        panels = []
+
+        # Extract data for plotting
         table = self.results_object.table.dropna(axis='columns', how='all')
-        # Panel for the interactive plots
-        json_plot = {
-            'id'        : 'variable-plots-{}'.format(self.counter.next()),
-            'json'      : table.T.to_json(orient='split'),
-            'default_x' : 'High Resolution Limit',
-            'default_y' : 'R-free Diff. (Fitted-Input)',
-            }
-        self._json_plots.append(json_plot)
-        panel = {
-            'type' : 'panel',
-            'title' : 'Interactive Summary Graphs',
-            'contents' : [{'id': json_plot['id']}],
-            }
+        if len(table.columns) > 0:
+            # JSON data for the interactive plots
+            json_plot = {
+                'id'        : 'variable-plots-{}'.format(self.counter.next()),
+                'json'      : table.T.to_json(orient='split'),
+                'default_x' : 'High Resolution Limit',
+                'default_y' : 'R-free Diff. (Fitted-Input)',
+                }
+            self._json_plots.append(json_plot)
+            # Panel for the interactive plots to be loaded into
+            panels.append({
+                'type' : 'panel',
+                'title' : 'Interactive Summary Graphs',
+                'contents' : [{'id': json_plot['id']}],
+                })
 
-        return panel
+        return panels
 
-    def get_dataset_statistics_table(self):
+    def get_dataset_statistics_table_panels(self):
 
+        panels = []
+
+        # Extract table columns with data
         table = self.results_object.table.dropna(axis='columns', how='all')
-        panel = {
-            'type'  : 'panel',
-            'title' : 'Individual Dataset Statistics Table (click to expand/collapse)',
-            'show'  : False,
-            'contents'  : [
-                {
-                    'text': 'Data from output CSV',
-                    'table': table.to_html(bold_rows=False, classes=['table table-striped table-hover datatable nowrap'])\
-                               .replace('<th></th>','<th>Dataset</th>')\
-                               .replace('border="1" ', ''),
-                    },
-                ],
-            }
+        if len(table.columns) > 0:
+            panels.append({
+                'type'  : 'panel',
+                'title' : 'Individual Dataset Statistics Table (click to expand/collapse)',
+                'show'  : False,
+                'contents'  : [
+                    {
+                        'text': 'Data from output CSV',
+                        'table': table.to_html(bold_rows=False, classes=['table table-striped table-hover datatable nowrap'])\
+                                   .replace('<th></th>','<th>Dataset</th>')\
+                                   .replace('border="1" ', ''),
+                        },
+                    ],
+                })
 
-        return panel
-
-
+        return panels

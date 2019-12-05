@@ -225,7 +225,7 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
                         overlap = set(g_this[i_l_test]).intersection(set(g_other[i_l_test])).difference({-1})
                         if overlap:
                             log('      ...there is a group on level {} whose atoms are split between this group and another'.format(i_l_test+1))
-                            log('      ...(groups: {})'.format(', '.join(sorted(overlap))))
+                            log('      ...(groups: {})'.format(', '.join(map(str,sorted(overlap)))))
                             log('> This partitioning is not appropriate.')
                             found_valid_level = False
                             break

@@ -7,16 +7,16 @@ from libtbx.utils import Sorry, Failure
 
 from bamboo.maths.functions import rms
 from giant.structure.uij import uij_to_b
-
-EIGHT_PI_SQ = 8*math.pi*math.pi
+from pandemic.adp import constants
 
 
 class PandemicTrackingObject:
 
 
     csv_name1 = 'tracking_levels.csv'
-    csv_name2 = 'tracking_rmsds_by_dataset.csv'
-    png_base = 'tracking_levels_'
+    png_base1 = 'tracking_levels_'
+    csv_name2 = 'tracking_rmsds.csv'
+    png_base2 = 'tracking_rmsds_'
 
     def __init__(self,
             output_directory,
@@ -39,9 +39,10 @@ class PandemicTrackingObject:
             )
         tracking_csv1 = os.path.join(output_directory, self.csv_name1)
         tracking_csv2 = os.path.join(output_directory, self.csv_name2)
-        tracking_png1 = os.path.join(output_directory, self.png_base+'1.png')
-        tracking_png2 = os.path.join(output_directory, self.png_base+'2.png')
-        i_cycle = 0
+        tracking_png1 = os.path.join(output_directory, self.png_base1+'1.png')
+        tracking_png2 = os.path.join(output_directory, self.png_base1+'2.png')
+        tracking_png3 = os.path.join(output_directory, self.png_base2+'1.png')
+        n_cycle = 0
 
         last_cycle_uij = None
         last_cycle_max_change = None
@@ -66,7 +67,7 @@ class PandemicTrackingObject:
         # Extract uijs for all of the levels for all datasets
         uij_dst = uij_lvl.sum(axis=0)
         # Calculate the rms between fitted and input
-        rmsd = EIGHT_PI_SQ*rms(uij_target-uij_dst, axis=None)
+        rmsd = constants.EIGHTPISQ*rms(uij_target-uij_dst, axis=None)
 
         # Average over all datasets
         uij_tot = uij_dst.mean(axis=0)
@@ -92,7 +93,7 @@ class PandemicTrackingObject:
             if uij_sel is not None:
                 # average values
                 b_iso_sel = numpy.mean(uij_to_b(uij_sel))
-                u_iso_sel = b_iso_sel / EIGHT_PI_SQ
+                u_iso_sel = b_iso_sel / constants.EIGHTPISQ
                 # min/max values
                 b_min_sel = numpy.min(uij_to_b(uij_sel))
                 b_max_sel = numpy.max(uij_to_b(uij_sel))
@@ -106,10 +107,10 @@ class PandemicTrackingObject:
 
             # Calculate U-iso & B-iso for complete model
             b_iso_tot = numpy.mean(uij_to_b(uij_tot))
-            u_iso_tot = b_iso_tot / EIGHT_PI_SQ
+            u_iso_tot = b_iso_tot / constants.EIGHTPISQ
 
             # Create human-readable cycle number
-            cycle_lab = self.i_cycle
+            cycle_lab = self.n_cycle
 
             # Add to tracking table
             self.table.loc[len(self.table.index)] = {
@@ -128,21 +129,10 @@ class PandemicTrackingObject:
 
         log(self.table.loc[len(self.table)-len(i_level):].to_string())
 
-        if write_graphs:
-            # Make plots
-            self.plotting_object.tracking_plots(
-                    table = self.table,
-                    filename = self.tracking_png1,
-                    )
-            self.plotting_object.convergence_plots(
-                    table = self.table,
-                    filename = self.tracking_png2,
-                    )
-
-        if (step == 'end'): 
+        if (step == 'end'):
 
             # Store by-dataset RMSDs
-            dataset_rmsds = [EIGHT_PI_SQ*rms(d, axis=None) for d in (uij_target-uij_dst)]
+            dataset_rmsds = [constants.EIGHTPISQ*rms(d, axis=None) for d in (uij_target-uij_dst)]
             self.table_by_dataset.loc[len(self.table_by_dataset)] = [cycle_lab, 'rmsd', rmsd] + list(dataset_rmsds)
 
             # Check convergence
@@ -151,22 +141,56 @@ class PandemicTrackingObject:
                     uij_1 = self.last_cycle_uij,
                     uij_2 = uij_lvl,
                     )
-            else: 
+            else:
                 self.last_cycle_max_change = self._find_max_difference(
                     uij_1 = 0.0,
                     uij_2 = uij_lvl,
                     )
 
-            self.log('\nMaximum change since last cycle: {} (B-factor)'.format(EIGHT_PI_SQ*self.last_cycle_max_change))
+            self.log('\nMaximum change since last cycle: {} (B-factor)'.format(constants.EIGHTPISQ*self.last_cycle_max_change))
 
             # Update last cycle
             self.last_cycle_uij = uij_lvl
             # Store history
-            self.last_cycle_history[self.i_cycle] = self.last_cycle_max_change
+            self.last_cycle_history[self.n_cycle] = self.last_cycle_max_change
 
         # Dump to csv
         self.table.to_csv(self.tracking_csv1)
         self.table_by_dataset.to_csv(self.tracking_csv2)
+
+        if write_graphs:
+            self.write_graphs()
+
+        return
+
+    def write_graphs(self):
+
+        # Make plots
+        self.plotting_object.tracking_plots(
+            table = self.table,
+            filename = self.tracking_png1,
+            )
+        self.plotting_object.convergence_plots(
+            table = self.table,
+            filename = self.tracking_png2,
+            )
+
+        tmp_table = self.table_by_dataset[(self.table_by_dataset['type'] == 'rmsd')]
+        self.plotting_object.lineplot(
+            x_vals = list(tmp_table['cycle'].values), 
+            y_vals = list(tmp_table['overall'].values),
+            title = 'Model fit across cycles',
+            x_label = 'Cycle',
+            y_label = 'RMSD (B-factor; $\AA^2$)',
+            x_ticks = tmp_table['cycle'].values,
+            legends = ['rmsd'],
+            filename = self.tracking_png3,
+            legend_kw_args = {'bbox_to_anchor':(1.0, -0.15), 'loc':1, 'borderaxespad':0.},
+            marker = '.',
+            markersize = 10,
+            markeredgecolor = 'k',
+            linewidth = 3,
+            )
 
         return
 
@@ -180,23 +204,23 @@ class PandemicTrackingObject:
         assert [(b_tolerance is None), (u_tolerance is None)].count(False) == 1
 
         # All calculations done in U -> convert to uij
-        if u_tolerance is not None: 
-            b_tolerance = float(u_tolerance) * EIGHT_PI_SQ
-        if b_tolerance is not None: 
-            u_tolerance = float(b_tolerance) / EIGHT_PI_SQ
+        if u_tolerance is not None:
+            b_tolerance = float(u_tolerance) * constants.EIGHTPISQ
+        if b_tolerance is not None:
+            u_tolerance = float(b_tolerance) / constants.EIGHTPISQ
 
         # Sanity check
         assert u_tolerance is not None
         assert b_tolerance is not None
-        
+
         self.log.subheading('Checking convergence')
         self.log('Convergence cutoff: {:.3f} ({:.3f} B-factor)'.format(u_tolerance, b_tolerance))
-        self.log('Largest change over last cycle: {:.3f} ({:.3f} B-factor)'.format(self.last_cycle_max_change, EIGHT_PI_SQ*self.last_cycle_max_change))
+        self.log('Largest change over last cycle: {:.3f} ({:.3f} B-factor)'.format(self.last_cycle_max_change, constants.EIGHTPISQ*self.last_cycle_max_change))
 
         if (self.last_cycle_max_change < u_tolerance):
             self.log('Model has converged')
             return True
-        
+
         return False
 
     def _find_max_difference(self, uij_1, uij_2):
@@ -204,6 +228,10 @@ class PandemicTrackingObject:
         rms_diffs = rms(diff, axis=-1)
         min_diff = rms_diffs.max()
         return min_diff
+
+    def as_html_summary(self):
+        from pandemic.adp.html.tracking import TrackingHtmlSummary
+        return TrackingHtmlSummary(self)
 
 
 from pandemic.adp.plots import PandemicAdpPlotter
@@ -249,13 +277,13 @@ class TrackingPlotter(PandemicAdpPlotter):
             # Create RMSD plot
             hdl1 = axes[0].plot(
                      x_vals, r_vals,
-                     'bo-', label='model',
+                     'bo-', label='rmsd',
                      lw=1, ms=max(1, min(3, 5-0.1*grouped.ngroups)),
                      )
             if prev_x is not None:
                 axes[0].plot(
                          [prev_x, x_vals[0]], [prev_r, r_vals[0]],
-                         'b:', label='model',
+                         'b:', label='rmsd',
                          lw=1, ms=max(1, min(3, 5-0.1*grouped.ngroups)),
                          )
             # Create an overall B-iso TOTAL line
@@ -321,7 +349,7 @@ class TrackingPlotter(PandemicAdpPlotter):
         ax.set_title('Hierarchical Model Fit')
         ax.set_xticks([])
         ax.xaxis.set_ticks_position('bottom')
-        ax.set_ylabel('model fit \n$8\pi^2rms(\Delta U)$ ($\AA^2$)')
+        ax.set_ylabel('model fit\n($\AA^2$)')
         ax.set_ylim(bottom=0.0)
 
         # Axis stuff
@@ -336,20 +364,22 @@ class TrackingPlotter(PandemicAdpPlotter):
         ax.set_xlim(left=-0.5, right=max(x_vals)+0.5)
         ax.set_ylim(bottom=0.0)
 
-        # Create legend for axis
-        ncol = 3
-
         # Add legend to first graph for both lines
-        lgd0 = axes[0].legend(handles=hdl1+hdl2, bbox_to_anchor=(1.02, 0.95), loc=2, borderaxespad=0.)
+        lgd0a = axes[0].legend(handles=hdl1, bbox_to_anchor=(1.02, 0.95), loc=2, borderaxespad=0.)
+        lgd0b = axes[1].legend(handles=hdl2, bbox_to_anchor=(1.02, 0.95), loc=2, borderaxespad=0.)
 
         # Other legends
-        flip_h = []; [flip_h.extend(handles[i::ncol]) for i in range(ncol)]
+        ncol = 3
+        #flip_h = []; [flip_h.extend(handles[i::ncol]) for i in range(ncol)]
+        flip_h = handles # (used to reorder but now keep as are)
         lgd1 = axes[1].legend(
                 handles=flip_h, ncol=ncol,
                 bbox_to_anchor=(0.5, 0.0),
                 bbox_transform=fig.transFigure,
                 loc=9, borderaxespad=0.,
                 )
+        # Need to re-add the old legend!
+        axes[1].add_artist(lgd0b)
 
         # BOTH AXES -- Add vertical lines between macro-cycles
         start_x = x_vals[[x_keys.index(v[:2]) for v in map(tuple,table[['cycle','step','level#']].values.tolist()) if v[1]=='start' and v[2]==1]]
@@ -365,7 +395,7 @@ class TrackingPlotter(PandemicAdpPlotter):
             if (last_v is not None):
                 delta = v - last_v
                 axes[0].text(x=last_v+delta/2.0,
-                             y=0.05*axes[0].get_ylim()[0] + 0.95*axes[0].get_ylim()[1],
+                             y=0.1*axes[0].get_ylim()[0] + 0.9*axes[0].get_ylim()[1],
                              s='cycle '*(n_cycles<6) +str(cycles_to_plot[i-1]), # This is plotting the previous point so need -1
                              horizontalalignment='center',
                              verticalalignment='top',
@@ -374,7 +404,7 @@ class TrackingPlotter(PandemicAdpPlotter):
         # Plot the last point (or do nothing for 1 cycle)
         if delta is not None:
             axes[0].text(x=min(v+delta/2.0, axes[0].get_xlim()[1]),
-                         y=0.05*axes[0].get_ylim()[0] + 0.95*axes[0].get_ylim()[1],
+                         y=0.1*axes[0].get_ylim()[0] + 0.9*axes[0].get_ylim()[1],
                          s='cycle '*(n_cycles<6) +str(cycles_to_plot[i]), # This does not need a -1
                          horizontalalignment='center',
                          verticalalignment='top',
@@ -382,7 +412,7 @@ class TrackingPlotter(PandemicAdpPlotter):
 
         fig.tight_layout()
         fig.savefig(filename,
-                    bbox_extra_artists=[lgd0,lgd1],
+                    bbox_extra_artists=[lgd0a,lgd0b,lgd1],
                     bbox_inches='tight',
                     dpi=200)
         pyplot.close(fig)
@@ -446,7 +476,8 @@ class TrackingPlotter(PandemicAdpPlotter):
 
         # Create legend for axis
         ncol = 3
-        flip_h = []; [flip_h.extend(handles[i::ncol]) for i in range(ncol)]
+        #flip_h = []; [flip_h.extend(handles[i::ncol]) for i in range(ncol)]
+        flip_h = handles # (used to reorder but now keep as are)
         lgd0 = ax.legend(
                 handles=flip_h, ncol=ncol,
                 bbox_to_anchor=(0.5, 0.0),
@@ -477,14 +508,14 @@ class TrackingPlotter(PandemicAdpPlotter):
             y_vals = l_table['b_avg'].values
 
             hd_ = ax.plot(x_vals, y_vals,
-                    'ko-', 
-                    lw = 2, 
+                    'ko-',
+                    lw = 2,
                     ms = max(3, min(5, 7-0.1*len(x_vals))))
             hdl = ax.plot(x_vals, y_vals,
-                    'o-', 
-                    lw = 1, 
+                    'o-',
+                    lw = 1,
                     ms = max(1, min(3, 5-0.1*len(x_vals))),
-                    color = colours[l_no-1], 
+                    color = colours[l_no-1],
                     label = '{}: {}'.format(l_no, l_name),
                     )
             handles.extend(hdl)

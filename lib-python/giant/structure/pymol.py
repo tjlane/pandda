@@ -1,5 +1,4 @@
-import os
-import itertools
+import os, itertools, collections
 
 from iotbx.pdb.hierarchy import input as ih
 
@@ -13,38 +12,57 @@ def _load_and_filter(structure_filename, selection):
     s = c.selection(selection)
     return s_h.select(s)
 
-def auto_chain_images(structure_filename, output_prefix, selection='not water', style='cartoon', het_style=None, **kw_args):
+def auto_chain_images(
+        structure_filename, 
+        output_prefix, 
+        selection = 'not water', 
+        style = 'cartoon', 
+        het_style = None, 
+        **kw_args
+        ):
     h = _load_and_filter(structure_filename, selection)
-    return selection_images(structure_filename  = structure_filename,
-                            output_prefix       = output_prefix+'-chain_',
-                            selections  = [PymolSelection.format(c) for c in h.chains()],
-                            labels      = [ShortLabeller.format(c)  for c in h.chains()],
-                            style = style, het_style=het_style, **kw_args)
+    output_files = selection_images(
+        structure_filename = structure_filename,
+        output_prefix = output_prefix+'-chain_',
+        selections = [PymolSelection.format(c) for c in h.chains()],
+        labels     = [ShortLabeller.format(c)  for c in h.chains()],
+        style = style, het_style=het_style, **kw_args)
+    return collections.OrderedDict(zip([c.id for c in h.chains()], output_files))
 
-def auto_residue_images(structure_filename, output_prefix, selection='not water', style='sticks', het_style=None, **kw_args):
+def auto_residue_images(
+        structure_filename, 
+        output_prefix, 
+        selection = 'not water', 
+        style = 'sticks', 
+        het_style = None, 
+        **kw_args
+        ):
     h = _load_and_filter(structure_filename, selection)
-    return selection_images(structure_filename  = structure_filename,
-                            output_prefix       = output_prefix+'-residue_',
-                            selections  = [PymolSelection.format(r) for r in h.residue_groups()],
-                            labels      = [ShortLabeller.format(r)  for r in h.residue_groups()],
-                            style = style, het_style=het_style, **kw_args)
+    output_files = selection_images(
+        structure_filename = structure_filename,
+        output_prefix = output_prefix+'-residue_',
+        selections = [PymolSelection.format(r) for r in h.residue_groups()],
+        labels     = [ShortLabeller.format(r)  for r in h.residue_groups()],
+        style = style, het_style=het_style, **kw_args)
+    return collections.OrderedDict(zip([r.id_str() for r in h.residue_groups()], output_files))
 
-def selection_images(structure_filename,
-                     output_prefix,
-                     selections,
-                     labels = None,
-                     style  = 'sticks',
-                     colours = None,
-                     hide_rest = True,
-                     ray_trace = True,
-                     settings = [],
-                     run_script = True,
-                     delete_script  = True,
-                     width  = 800,
-                     height = 600,
-                     colour_selections = None,
-                     het_style = None,
-                    ):
+def selection_images(
+        structure_filename,
+        output_prefix,
+        selections,
+        labels = None,
+        style = 'sticks',
+        colours = None,
+        hide_rest = True,
+        ray_trace = True,
+        settings = [],
+        run_script = True,
+        delete_script = True,
+        width = 800,
+        height = 600,
+        colour_selections = None,
+        het_style = None,
+        ):
 
     if labels is None:
         labels = map(str,range(1, len(selections)+1))

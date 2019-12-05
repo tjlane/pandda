@@ -3,11 +3,12 @@ import math, numpy
 from scitbx.matrix import sym, diag
 from scitbx.linalg import eigensystem_real_symmetric
 from libtbx import adopt_init_args, group_args
+from pandemic.adp import constants
+
 from pandemic.adp.echt.analysis.cluster_tls_groups.utils import \
     make_selection_strings, tls_group_comparison_matrix, tls_group_adjacency_matrix
 from pandemic.adp.echt.analysis.cluster_tls_groups.pymol import base_pymol_script
 
-EIGHT_PI_SQ = 8. * math.pi * math.pi
 
 def uij_overlap_mass(a,b):
     """Calculate the common overlap between two symmetric tensors"""
@@ -129,7 +130,7 @@ def make_pymol_script(
                     group_shapes.append(cyl)
 
         s.add_shapes(group_shapes, obj='new_groups', state=i_l+1)  
-    s.disable(obj='new_groups')
+    #s.disable(obj='new_groups')
     
     sc.write()
 
@@ -150,6 +151,7 @@ class ClusterTLSGroups_OverlapMass:
         verbose = False,
         log = None,
         ):
+        if log is None: log = Log()
         adopt_init_args(self, locals())
 
         self.metric_type = 'similarity'
@@ -170,7 +172,7 @@ class ClusterTLSGroups_OverlapMass:
 
         uij_overlap_function = self._comparison_functions[self.comparison]
 
-        tls_overlap = EIGHT_PI_SQ * tls_group_comparison_matrix(
+        tls_overlap = constants.EIGHTPISQ * tls_group_comparison_matrix(
             tls_groups = tls_groups,
             comparison_function = uij_overlap_function,
             make_symmetric = None,
@@ -187,7 +189,7 @@ class ClusterTLSGroups_OverlapMass:
             comparison_matrix = tls_overlap,
             )
 
-        return group_args(
+        result = group_args(
             comparison_matrix = tls_overlap,
             connectivity = connectivity,
             module_info = module_output,
@@ -195,20 +197,49 @@ class ClusterTLSGroups_OverlapMass:
             reduced_hierarchy = module_output.reduced_hierarchy,
             )
 
+        self.log(self.summary(result))
+
+        return result
+
     def description(self):
         text = """
+        > Clustering Parameters
         Similarity metric used: Overlap Mass ({comparison})
         Connectivity cutoff: {xyz_threshold}
 
+        > Clustering Metric Description
         The overlap between TLS Group 1 and TLS Group 2 is the amount of B-factor of TLS Group 2 that is reproduced by using the TLS matrices from TLS Group 1 on the coordinates of TLS Group 2. 
         This can be thought of as the amount of B-factor of TLS Group 2 that would be the same if we replaced TLS Group 2 with TLS Group 1.
-        This metric is not symmetric: The overlap of Group1->Group2 is not the same as Group2->Group1.
+        NOTE! This metric is not symmetric: The overlap of Group1 -> Group2 is not the same as Group2 -> Group1.
         Using this metric, clustering is at different thresholds to identify groups that could be merged into a larger group. 
         During clustering, connections are only considered to neighbouring groups with {xyz_threshold} Angstrom.""".format(
             comparison = self.comparison,
             xyz_threshold = self.xyz_cutoff_distance,
             )
         return text
+
+    def summary(self, result):
+
+        r = result
+
+        off_diagonal_values = r.comparison_matrix[~numpy.eye(r.comparison_matrix.shape[0], dtype=bool)]
+        thresholds = r.module_info.threshold_unique_modules.keys()
+
+        s = ""
+        s += "Overlap between groups: {:.3f} - {:.3f} A^2.\n".format(off_diagonal_values.min(), off_diagonal_values.max())
+        s += "\n"
+        if thresholds: 
+            s += "Modules identified at thresholds from {:.3f} - {:.3f} A^2.\n".format(min(thresholds),max(thresholds))
+            s += "\n"
+            s += "Thresholds & Modules:"
+            for thresh, modules in r.module_info.threshold_unique_modules.iteritems(): 
+                s += "\n\n"
+                s += "> Threshold: {}\n".format(thresh)
+                s += "  New potential groupings: {}".format(", ".join(['+'.join(map(str,[i+1 for i in sorted(m)])) for m in modules]))
+        else: 
+            s += "No modules identified"
+
+        return s
 
     def write_output(self,
         result,
@@ -223,21 +254,37 @@ class ClusterTLSGroups_OverlapMass:
         y_width = self.identify_modules.threshold_delta
 
         ###############################################
+        
+        # What is the range in the thresholds?
+        if result.module_info.threshold_unique_hierarchies: 
+            y_lim = (
+                min(result.module_info.threshold_unique_hierarchies.keys()),
+                max(result.module_info.threshold_unique_hierarchies.keys()),
+                )
+        else: 
+            y_lim = None
 
-        from pandemic.adp.echt.analysis.cluster_tls_groups.plots import LevelPlotAccumulator
+        # Sort hierarchies in ascending order
+        threshold_unique_hierarchies = sorted(result.module_info.threshold_unique_hierarchies.iteritems())
+
+        ###############################################
 
         filename = os.path.join(output_directory, output_prefix+'-new_levels.png')
         output_files['modules_png'] = filename
+
+        from pandemic.adp.echt.analysis.cluster_tls_groups.plots import LevelPlotAccumulator
+
+        # Initialise plot object
         output_plot = LevelPlotAccumulator(
             n_groups = len(tls_groups),
             title = "New TLS groupings generated\nfrom {} input TLS groups".format(len(tls_groups)),
             x_label = 'Existing TLS Groups',
             y_label = 'B-factor overlap threshold ($\AA^2$)',
             y_width = y_width,
+            y_lim = y_lim,
             )
 
-        # Sort hierarchies in ascending order
-        threshold_unique_hierarchies = sorted(result.module_info.threshold_unique_hierarchies.iteritems())
+        # Add levels to plot
         last_threshold = None
         for i_block, (threshold, unique_hierarchy) in enumerate(threshold_unique_hierarchies):
             #if i_block > 0: 
@@ -245,7 +292,7 @@ class ClusterTLSGroups_OverlapMass:
             #for i, indices_groups in enumerate(unique_hierarchy):
             label = str(threshold)
             output_plot.add_level(
-                list_of_lists_of_indices_tuples=sorted(map(sorted,unique_hierarchy)), 
+                list_of_lists_of_indices_tuples=unique_hierarchy, #sorted(map(sorted,unique_hierarchy)), 
                 y_value = threshold,
                 label = label,
                 )

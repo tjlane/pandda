@@ -10,12 +10,12 @@ class ParameterHtmlSummary(HtmlSummary):
         input_command,
         master_phil,
         running_params,
-        parameter_files = None,
         ):
         main_output = {
             'id'        : 'settings',
             'alt_title' : 'Settings',
-            'title'     : 'Program Parameters',
+            'title' : 'Program Parameters',
+            'fancy_title' : True,
             'contents'  : [],
             }
         adopt_init_args(self, locals())
@@ -76,7 +76,6 @@ class ParameterHtmlSummary(HtmlSummary):
             'type'  : 'panel',
             'title' : 'All Parameters',
             'width' : 12,
-            'show'  : False,
             'contents'  : [
                 {
                     'width':12,

@@ -16,7 +16,7 @@ DESCRIPTION = """
 
 ############################################################################
 
-blank_arg_prepend = {'.pdb':'pdb=', '.cif':'cif=', '.pickle':'input.pickle='}
+blank_arg_prepend = {'.pdb':'pdb=', '.cif':'cif=', '.pickle':'input.pickle=', '.json':'input.json='}
 
 import libtbx.phil
 master_phil = libtbx.phil.parse("""
@@ -40,7 +40,7 @@ input {
     reference_r_values = None
         .type = path
         .help = "Reference R-values against which to compare the fitted and refined models. Labelling the CSV must be the same as the dataset labelling. If not provided will use the R-values of the input structures."
-    pickle = None
+    json = None
         .type = path
         .multiple = False
 }
@@ -50,12 +50,18 @@ output {
         .type = str
     copy_reflection_data_to_output_folder = True
         .type = bool
-    clean_up_files = *compress_logs *compress_pdbs *delete_mtzs
+    clean_up_files = compress_pdbs delete_mtzs
         .help = "Delete unnecessary output files (MTZs)"
         .type = choice(multi=True)
+    json = True
+        .type = bool
+        .multiple = False
     pickle = False
         .type = bool
         .multiple = False
+    write_isotropic_output_for_isotropic_atoms = True
+        .type = bool
+        .help = "Will make the output ADPs isotropic for atoms where the input atoms contained isotropic B-factors."
     html {
         make_html = True
             .help = "Write all output data in an html file"
@@ -76,8 +82,8 @@ output {
             .type = str
         plot_style = 'ggplot'
             .help = "Plot style to use for making graphs. Can be any valid matplotlib plot style."
-            .type = str        
-        font_family = 'monospace'
+            .type = str
+        font_family = None
             .help = "Font family to use for making graphs. Can be any valid matplotlib font family."
             .type = str
         font_name = None
@@ -157,7 +163,7 @@ optimisation {
     number_of_micro_cycles = 1
         .help = 'how many fitting cycles to run (for each level) -- must be at least 1'
         .type = int
-    fit_isotropic_b_factors_by_magnitude_only = True
+    fit_isotropic_atoms_by_magnitude_only = True
         .type = bool
         .help = "Treat isotropic B-factors as anisotropic ADPs (will fit to the shapes of isotropic ADPs as well as the size)."
     dataset_selection {
@@ -206,7 +212,7 @@ optimisation {
             .help = "cutoff for which the least-squares gradient is considered converged."
             .type = float
         optimisation_weights {
-            sum_of_amplitudes = 0.9 
+            sum_of_amplitudes = 0.9
                 .help = "weight for sum(amplitudes). minimises the number of TLS components in the optimisation. equivalent to a lasso weighting term."
                 .type = float
             sum_of_squared_amplitudes = 0.1
@@ -216,10 +222,10 @@ optimisation {
                 .help = "weight for sum(amplitudes)^2. related to a lasso weighting term."
                 .type = float
         }
-        global_weight_scale = 100.0
+        global_weight_scale = 5000.0
             .help = "global scale applied to all optimisation_weights."
             .type = float
-        global_weight_decay_factor = 2.0
+        global_weight_decay_factor = 1.5
             .help = "amount by which optimisation_weights are reduced every cycle. factor of 2 -> scaled by 0.5 every cycle."
             .type = float
         weights_to_decay = *sum_of_amplitudes *sum_of_amplitudes_squared *sum_of_squared_amplitudes
@@ -338,13 +344,14 @@ def run(params, args=None):
     # Imports
     #
     from pandemic.adp import \
-        process_input, process_output, \
-        weights, tracking, results, hierarchy, plots
+        preprocess, postprocess, \
+        weights, tracking, results, \
+        hierarchy, plots, json_manager
 
     #
     # Validate input parameters
     #
-    process_input.validate_parameters(params=params, log=log)
+    preprocess.validate_parameters(params=params, log=log)
 
     ##################################################
     #                                                #
@@ -352,14 +359,14 @@ def run(params, args=None):
     #                                                #
     ##################################################
 
-    load_models = process_input.ModelLoader(
+    load_models = preprocess.load_models.ModelLoader(
         model_type = params.input.model_type,
         labelling = params.input.labelling,
         verbose = params.settings.verbose,
         log = log,
         )
 
-    process_input_models_task = process_input.ProcessInputModelsTask(
+    process_input_models_task = preprocess.process_models.ProcessInputModelsTask(
         output_directory = file_system.structure_directory,
         dataset_selection_params = params.optimisation.dataset_selection,
         weights_params = params.optimisation.weights,
@@ -372,7 +379,7 @@ def run(params, args=None):
         log = log,
         )
 
-    select_optimisation_datasets = process_input.SelectOptimisationDatasetsTask(
+    select_optimisation_datasets = preprocess.select_datasets.SelectOptimisationDatasetsTask(
         max_resolution = params.optimisation.dataset_selection.max_resolution,
         max_datasets = params.optimisation.dataset_selection.max_datasets,
         sort_datasets_by = params.optimisation.dataset_selection.sort_datasets_by,
@@ -381,7 +388,7 @@ def run(params, args=None):
         log = log,
         )
 
-    extract_uijs_task = process_input.ExtractAndProcessModelUijsTask(
+    extract_uijs_task = preprocess.extract_uijs.ExtractAndProcessModelUijsTask(
         expected_disorder_model = params.input.input_adp_model,
         verbose = params.settings.verbose,
         log = log,
@@ -524,7 +531,7 @@ def run(params, args=None):
             log = log,
             )
 
-        update_optimisation_function = echt.optimise.UpdateOptimisationFunction(
+        update_optimisation_object = echt.optimise.UpdateOptimisationFunction(
             gradient_optimisation_decay_factor = params.optimisation.gradient_optimisation.global_weight_decay_factor,
             optimisation_weights_to_update = params.optimisation.gradient_optimisation.weights_to_decay,
             model_optimisation_function = optimise_model_main,
@@ -533,7 +540,7 @@ def run(params, args=None):
             log = log,
             )
 
-        model_specific_tracking_class = echt.tracking.EchtTracking
+        model_tracking_class = echt.tracking.EchtTracking
 
         validate_model = echt.validate.ValidateEchtModel(
             uij_tolerance = params.optimisation.tolerances.uij_tolerance,
@@ -550,17 +557,15 @@ def run(params, args=None):
             log = log,
             )
 
-
         # Define / override summary classes (these take standard inputs wherever possible)
 
-        WriteModelSummary = echt.process_output.WriteEchtModelSummary
-        WriteStructures = echt.process_output.WriteEchtStructures
+        WriteModelSummary = echt.output.WriteEchtModelSummary
+        WriteStructures = echt.output.WriteEchtStructures
 
         # Define / override Html classes
 
         import pandemic.adp.echt.html
         ModelHtmlSummary = echt.html.EchtModelHtmlSummary
-        ParameterHtmlSummary = echt.html.EchtParameterHtmlSummary
 
     else:
         raise Sorry('Unknown Hierarchical B-factor model selected: {}'.format(params.model.b_factor_model))
@@ -588,6 +593,32 @@ def run(params, args=None):
         level_labels        = hierarchy_info.level_labels,
         overall_atom_mask   = hierarchy_info.overall_atom_mask,
         )
+
+    # Initialise model_object using json if provided
+    if params.input.json is not None:
+        input_json_manager = json_manager.JsonDataManager.from_json_file(
+            filename = params.input.json,
+            warnings = warnings,
+            verbose = params.settings.verbose,
+            log = log,
+            )
+        input_json_manager.apply_to_model_object(model_object=model_object)
+
+    #
+    # Write output json for the starting model
+    #
+    if params.output.json is True:
+        output_json_filename = os.path.join(file_system.output_directory, 'starting_model.json')
+        output_json_manager = json_manager.JsonDataManager.from_model_object(
+            model_object = model_object,
+            warnings = warnings,
+            verbose = params.settings.verbose,
+            log = log,
+            )
+        output_json_manager.write_json(
+            filename = output_json_filename,
+            mode = 'w',
+            )
 
     # Extract fitted uijs
     extract_uijs_task.run(
@@ -624,7 +655,7 @@ def run(params, args=None):
     #
     # Create progress-tracking object (gets a special plotting object)
     #
-    tracking_object = tracking.PandemicTrackingObject(
+    main_tracking_object = tracking.PandemicTrackingObject(
         output_directory = file_system.optimisation_directory,
         plotting_object = tracking.TrackingPlotter(n_levels=model_object.n_levels),
         model_object = model_object,
@@ -632,7 +663,7 @@ def run(params, args=None):
         log = log,
         )
 
-    model_specific_tracking_object = model_specific_tracking_class(
+    model_tracking_object = model_tracking_class(
         output_directory = file_system.optimisation_directory,
         plotting_object = tracking.TrackingPlotter(n_levels=model_object.n_levels),
         model_object = model_object,
@@ -667,7 +698,7 @@ def run(params, args=None):
     #
 
     # Post-processing
-    post_process_task = process_output.PostProcessTask(
+    post_process_task = postprocess.PostProcessTask(
         output_directory = file_system.analysis_directory,
         structure_directory = file_system.structure_directory,
         refine_structures = params.analysis.refine_output_structures,
@@ -685,8 +716,9 @@ def run(params, args=None):
     #
 
     # Summary of the input/constructed B-factor hierarchy
-    write_hierarchy_summary_task = hierarchy.WriteHierarchySummaryTask(
+    write_hierarchy_summary_task = hierarchy.WriteHierarchicalModelSummaryTask(
         output_directory = file_system.make(file_system.hierarchy_directory, 'model_setup'),
+        master_phil = master_phil,
         pymol_images = params.output.images.pymol,
         warnings = warnings,
         verbose = params.settings.verbose,
@@ -763,23 +795,23 @@ def run(params, args=None):
 
     log.heading('Optimising Hierarchical Disorder Model', spacer=True)
 
-    if (params.optimisation.fit_isotropic_b_factors_by_magnitude_only is True): 
+    if (params.optimisation.fit_isotropic_atoms_by_magnitude_only is True):
         optimise_isotropic_mask = extract_uijs_task.result.isotropic_mask
     else:
         optimise_isotropic_mask = extract_uijs_task.result.isotropic_mask.as_fully_anisotropic()
 
-    tracking_object.i_cycle = 0
+    main_tracking_object.n_cycle = 0
 
     for _ in xrange(params.optimisation.max_macro_cycles): # could replace with while true and break statement
 
         # Increment before each cycle -- ensures new counter for this cycle.
-        tracking_object.i_cycle += 1
+        main_tracking_object.n_cycle += 1
 
-        log.subheading('Macrocycle {}'.format(tracking_object.i_cycle), spacer=True)
+        log.subheading('Macrocycle {}'.format(main_tracking_object.n_cycle), spacer=True)
 
-        update_optimisation_function.update(
+        update_optimisation_object.update(
             model_optimisation_function = optimise_model_main,
-            i_cycle = tracking_object.i_cycle-1, # probably should change this...
+            n_cycle = main_tracking_object.n_cycle,
             )
 
         model_object = optimise_model_main(
@@ -787,25 +819,25 @@ def run(params, args=None):
             level_group_connections = hierarchy_info.level_group_tree,
             uij_target = extract_uijs_task.result.model_uij,
             uij_target_weights = uij_weights_task.result.total_weight_array,
-            uij_isotropic_mask = optimise_isotropic_mask, # !!!
-            tracking_object = tracking_object,
+            uij_isotropic_mask = optimise_isotropic_mask,
+            tracking_object = main_tracking_object,
             )
 
-        model_specific_tracking_object.update(
+        model_tracking_object.update(
             model_object = model_object,
-            i_cycle = tracking_object.i_cycle,
+            n_cycle = main_tracking_object.n_cycle,
             )
 
-        if tracking_object.is_converged(
+        if main_tracking_object.is_converged(
                 b_tolerance = params.optimisation.termination.max_b_change,
                 u_tolerance = params.optimisation.termination.max_u_change,
                 ):
-            if (tracking_object.i_cycle >= params.optimisation.min_macro_cycles):
+            if (main_tracking_object.n_cycle >= params.optimisation.min_macro_cycles):
                 log.heading('Terminating optimisation -- model has converged', spacer=True)
                 break
 
     # Write graphs of the optimsation parameters and return file dict
-    parameter_files = update_optimisation_function.write(
+    update_optimisation_object.write(
         output_directory = file_system.optimisation_directory,
         )
 
@@ -827,6 +859,11 @@ def run(params, args=None):
     #                              #
     ################################
 
+    if params.output.write_isotropic_output_for_isotropic_atoms is True:
+        output_isotropic_mask = extract_uijs_task.result.isotropic_mask
+    else:
+        output_isotropic_mask = extract_uijs_task.result.isotropic_mask.as_fully_anisotropic()
+
     #
     # Output graphs/csvs
     #
@@ -835,7 +872,7 @@ def run(params, args=None):
         overall_atom_mask = hierarchy_info.overall_atom_mask,
         level_group_array = hierarchy_info.level_group_array,
         model_object = model_object,
-        isotropic_mask = optimise_isotropic_mask, # !!! this could maybe be the optimisation mask
+        isotropic_mask = output_isotropic_mask,
         reference_model = models[0],
         uij_target = extract_uijs_task.result.model_uij,
         results_object = results_object,
@@ -849,15 +886,34 @@ def run(params, args=None):
     fitted_structures = write_output_structures(
         level_group_array = hierarchy_info.level_group_array,
         model_object = model_object,
-        isotropic_mask = extract_uijs_task.result.isotropic_mask, # !!!
+        isotropic_mask = output_isotropic_mask,
         models = models,
         overall_selection = params.model.overall_selection,
         overall_selection_bool = hierarchy_info.overall_atom_mask,
         )
 
-    # Pickle output object
-    from libtbx import easy_pickle
-    easy_pickle.dump(os.path.join(file_system.output_directory, 'model.pickle'), model_object)
+    #
+    # Pickle model object
+    #
+    if params.output.pickle is True:
+        from libtbx import easy_pickle
+        easy_pickle.dump(os.path.join(file_system.output_directory, 'model.pickle'), model_object)
+
+    #
+    # Write model JSON
+    #
+    if params.output.json is True:
+        output_json_filename = os.path.join(file_system.output_directory, 'optimised_model.json')
+        output_json_manager = json_manager.JsonDataManager.from_model_object(
+            model_object = model_object,
+            warnings = warnings,
+            verbose = params.settings.verbose,
+            log = log,
+            )
+        output_json_manager.write_json(
+            filename = output_json_filename,
+            mode = 'w',
+            )
 
     ################################
     #                              #
@@ -867,13 +923,14 @@ def run(params, args=None):
 
     #
     # Generic model analysis task
-    #    
+    #
     generic_analysis_task.run(
         uij_target =  extract_uijs_task.result.model_uij,
         uij_target_weights = uij_weights_task.result.total_weight_array,
-        uij_isotropic_mask = extract_uijs_task.result.isotropic_mask, # !!!
+        uij_isotropic_mask = output_isotropic_mask,
         model_object = model_object,
         model_hierarchy_info = hierarchy_info,
+        model_hierarchy_files = write_hierarchy_summary_task.result.output_files,
         reference_hierarchy = models[0].hierarchy,
         )
 
@@ -911,53 +968,70 @@ def run(params, args=None):
     ################################
 
     #
-    # Write output csvs
+    # Write output csvs/graphs
     #
     results_object.write()
+    model_tracking_object.write_graphs()
 
     #
     # Write HTML
     #
 
-    if params.output.html.make_html is True: 
-        
+    if params.output.html.make_html is True:
+
         write_html_summary_task.run(
             html_objects = [
-                TrackingHtmlSummary(
-                    tracking_object = tracking_object,
+                pandemic.adp.html.HtmlSummaryConcatenator(
+                    title = 'Model Optimisation',
+                    summaries = pandemic.adp.html.as_html_summaries_maybe(
+                        tasks = [
+                            main_tracking_object,
+                            model_tracking_object,
+                            update_optimisation_object,
+                            ],
+                        ),
                     ),
-                ] + pandemic.adp.html.as_html_summaries_maybe(
-                    tasks = [
-                        model_specific_tracking_object,
-                        ],
-                    ) + [
                 ModelHtmlSummary(
+                    hierarchy_info = None,
                     hierarchy_files = write_hierarchy_summary_task.result.output_files,
                     model_files = model_files,
                     model_object = model_object,
                     isotropic_mask = extract_uijs_task.result.isotropic_mask,
                     parameters = params,
                     ),
-                ] + pandemic.adp.html.as_html_summaries_maybe(
-                    tasks = [
-                        generic_analysis_task,
-                        model_specific_analysis_task,
-                        ],
-                    ) + [
                 PostProcessingHtmlSummary(
                     results_object = results_object,
                     analysis_files = post_process_task.result.output_files,
                     ),
+                ] + \
+                pandemic.adp.html.as_html_summaries_maybe(
+                    tasks = [
+                        generic_analysis_task,
+                        model_specific_analysis_task,
+                        ],
+                    ) + \
+                [
                 ParameterHtmlSummary(
                     input_command = input_command,
                     master_phil = master_phil,
                     running_params = params,
-                    parameter_files = parameter_files,
                     ),
                 ],
             )
 
+    if params.output.clean_up_files:
+
+        from pandemic.adp import file_system
+        tidy = file_system.TidyOutputFolder(
+            compress_pdbs = ('compress_pdbs' in params.output.clean_up_files),
+            delete_mtzs   = ('delete_mtzs'   in params.output.clean_up_files),
+            log = log,
+            )
+        tidy(output_directory=params.output.out_dir)
+
     warnings.report()
+
+    return None
 
 ############################################################################
 

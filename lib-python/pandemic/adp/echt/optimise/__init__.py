@@ -76,11 +76,11 @@ class InitialiseEchtLevel:
 
     def summary(self):
         s = ''
-        if self.starting_t_matrix is not None: 
+        if self.starting_t_matrix is not None:
             s += ('> Setting T matrices to {}\n'.format(self.starting_t_matrix))
-        if self.starting_l_matrix is not None: 
+        if self.starting_l_matrix is not None:
             s += ('> Setting L matrices to {}\n'.format(self.starting_l_matrix))
-        if self.starting_s_matrix is not None: 
+        if self.starting_s_matrix is not None:
             s += ('> Setting S matrices to {}\n'.format(self.starting_s_matrix))
         return s
 
@@ -135,9 +135,9 @@ class OptimiseEchtModel:
         self.log('\nOptimising TLS models for {} levels'.format(model_object.n_tls_levels) \
             + ' (+ {} level)'.format(model_object.adp_level_name)*(self.optimise_adp_level is not None))
 
-        if uij_isotropic_mask is None: 
+        if uij_isotropic_mask is None:
             uij_isotropic_mask_or_not = lambda x: x
-        else: 
+        else:
             uij_isotropic_mask_or_not = uij_isotropic_mask
 
         # Class for calculating target for each optimisation
@@ -146,7 +146,7 @@ class OptimiseEchtModel:
         # Initial amplitude optimisation
         if (self.optimise_level_amplitudes is not None):
 
-            self.log.subheading('Macrocycle {}: '.format(tracking_object.i_cycle)+'Optimising inter-level amplitudes')
+            self.log.subheading('Macrocycle {}: '.format(tracking_object.n_cycle)+'Optimising inter-level amplitudes')
 
             # Ensure no negative eigenvalues
             self.repair_model(model_object)
@@ -181,7 +181,7 @@ class OptimiseEchtModel:
             # Iterate through the TLS levels of the fitting
             for i_level in xrange(model_object.n_tls_levels):
 
-                if (tracking_object.i_cycle == 1) and (i_sub_cycle == 0):
+                if (tracking_object.n_cycle == 1) and (i_sub_cycle == 0):
                     self.log.subheading('Initialising values in Level {}'.format(i_level+1))
                     self.log(self.initialise_level.summary())
                     # Set all e.g. T matrices to diag(1,1,1)
@@ -197,17 +197,17 @@ class OptimiseEchtModel:
                             max_recursions = None,
                             # dataset mask TODO
                             )
-                    if (self.verbose is True): 
+                    if (self.verbose is True):
                         # Update tracking
                         tracking_object.update(
                             uij_target = uij_target,
                             uij_lvl = uij_isotropic_mask_or_not(model_object.uijs()),
-                            step = '{}-{} (init-l{})'.format(tracking_object.i_cycle, i_sub_cycle+1, i_level+1),
+                            step = '{}-{} (init-l{})'.format(tracking_object.n_cycle, i_sub_cycle+1, i_level+1),
                             i_level = range(model_object.n_levels),
                             write_graphs = False,
                             )
 
-                self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.i_cycle, i_sub_cycle+1)+'Fitting TLS Groups (level {} - {})'.format(i_level+1, model_object.tls_level_names[i_level]))
+                self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Fitting TLS Groups (level {} - {})'.format(i_level+1, model_object.tls_level_names[i_level]))
 
                 # Optimise the groups for one level
                 self.repair_model(model_object)
@@ -223,7 +223,7 @@ class OptimiseEchtModel:
                 # Optimise the amplitudes between levels
                 if self.optimise_level_amplitudes is not None:
 
-                    self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.i_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
+                    self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
 
                     # Ensure no negative eigenvalues
                     self.repair_model(model_object)
@@ -243,12 +243,12 @@ class OptimiseEchtModel:
                             # dataset mask
                             )
 
-                if (self.verbose is True): 
+                if (self.verbose is True):
                     # Update tracking
                     tracking_object.update(
                         uij_target = uij_target,
                         uij_lvl = uij_isotropic_mask_or_not(model_object.uijs()),
-                        step = '{}-{} (l{})'.format(tracking_object.i_cycle, i_sub_cycle+1, i_level+1),
+                        step = '{}-{} (l{})'.format(tracking_object.n_cycle, i_sub_cycle+1, i_level+1),
                         i_level = range(model_object.n_levels),
                         write_graphs = False,
                         )
@@ -256,7 +256,7 @@ class OptimiseEchtModel:
             if self.optimise_adp_level is not None:
 
                 # Fit the atomic level
-                self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.i_cycle, i_sub_cycle+1)+'Optimising atomic Uijs')
+                self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising atomic Uijs')
 
                 # Update the target uij by subtracting contributions from other levels
                 self.repair_model(model_object)
@@ -271,7 +271,7 @@ class OptimiseEchtModel:
                 # Optimise the amplitudes between levels
                 if self.optimise_level_amplitudes is not None:
 
-                    self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.i_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
+                    self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
 
                     # Ensure no negative eigenvalues
                     self.repair_model(model_object)
@@ -294,7 +294,7 @@ class OptimiseEchtModel:
             tracking_object.update(
                 uij_target = uij_target,
                 uij_lvl = uij_isotropic_mask_or_not(model_object.uijs()),
-                step = '{}-{}'.format(tracking_object.i_cycle, i_sub_cycle+1),
+                step = '{}-{}'.format(tracking_object.n_cycle, i_sub_cycle+1),
                 i_level = range(model_object.n_levels),
                 write_graphs = False,
                 )
@@ -318,7 +318,7 @@ class UpdateOptimisationFunction:
 
 
     level_amplitude_string = 'level amplitudes weights'
-    
+
     show_file_dict = show_file_dict
 
     def __init__(self,
@@ -334,24 +334,27 @@ class UpdateOptimisationFunction:
             level_amplitudes_optimisation_weights = copy.deepcopy(model_optimisation_function.optimise_level_amplitudes.optimisation_weights),
             )
         history = collections.OrderedDict()
+        result = group_args(
+            output_files = None,
+            )
         adopt_init_args(self, locals(), exclude=('model_optimisation_function',))
 
     def update(self,
         model_optimisation_function,
-        i_cycle,
+        n_cycle,
         ):
 
-        assert i_cycle >= 0
+        assert n_cycle >= 1
 
         decay_factor = self.gradient_optimisation_decay_factor
-        total_decay_factor = decay_factor ** i_cycle
+        total_decay_factor = decay_factor ** (n_cycle-1)
 
         # Update parameters
         self.log.subheading('Updating Level Amplitude Optimisation Weights')
-        self.log('> Cycle {}\n'.format(i_cycle+1))
+        self.log('> Cycle {}\n'.format(n_cycle))
         self.log('> Total decay factor (relative to starting values): {}\n'.format(total_decay_factor))
         for k in self.optimisation_weights_to_update:
-            orig_v = self.start_values.level_amplitudes_optimisation_weights.__dict__[k] 
+            orig_v = self.start_values.level_amplitudes_optimisation_weights.__dict__[k]
             new_v = orig_v / total_decay_factor
             self.log('Updating {} = {} -> {}'.format(k, orig_v, new_v))
             model_optimisation_function.optimise_level_amplitudes.optimisation_weights.__dict__[k] = new_v
@@ -362,7 +365,7 @@ class UpdateOptimisationFunction:
             self.log('{} -> {}'.format(k, v))
             self.history \
                 .setdefault(self.level_amplitude_string, collections.OrderedDict()) \
-                .setdefault(k, []).append((i_cycle+1, v))
+                .setdefault(k, []).append((n_cycle, v))
 
     def write(self, output_directory):
 
@@ -381,15 +384,23 @@ class UpdateOptimisationFunction:
                     title = 'Weight "{}" over cycles'.format(variable),
                     x_label = 'cycle',
                     y_label = 'weight',
-                    marker = '*',
+                    x_ticks = map(int,x_vals),
                     filename = None, # returns fig and axis
+                    marker = '*',
+                    markersize = 10,
+                    markeredgecolor = 'k',
+                    linewidth = 3,
                     )
-                axis.set_xticks(x_vals)
-                axis.set_xticklabels(map(int,x_vals))
                 axis.set_yscale('log', base=10.)
                 self.plotting_object.helper.write_and_close_fig(fig=fig, filename=filename)
                 output_files.setdefault(s,collections.OrderedDict())[variable] = filename
 
         self.show_file_dict(output_files)
 
+        self.result.output_files = output_files
+
         return output_files
+
+    def as_html_summary(self):
+        from pandemic.adp.echt.html.optimise import EchtOptimisationParametersHtmlSummary
+        return EchtOptimisationParametersHtmlSummary(self)

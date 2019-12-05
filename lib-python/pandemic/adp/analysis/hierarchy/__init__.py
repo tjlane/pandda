@@ -6,9 +6,8 @@ from libtbx.utils import Sorry, Failure
 
 from bamboo.common.logs import Log
 
+from pandemic.adp import constants
 from pandemic.adp.utils import show_file_dict
-
-EIGHTPISQ = 8.0*math.pi*math.pi
 
 
 class AssessHierarchyGroupsTask:
@@ -29,12 +28,16 @@ class AssessHierarchyGroupsTask:
 
     def run(self,
         model_object,
-        level_labels,
-        level_group_array,
+        model_hierarchy_info,
+        model_hierarchy_files,
         reference_hierarchy,
         overall_atom_selection,
         write_levels_function,
         ):
+
+        # Extract from hierarchy info (generic input object)
+        level_labels = model_hierarchy_info.level_labels
+        level_group_array = model_hierarchy_info.level_group_array
 
         output_files = collections.OrderedDict()
 
@@ -44,35 +47,51 @@ class AssessHierarchyGroupsTask:
             b_factor_threshold = self.min_b_factor,
             )
 
-        of = self.plot_level_group_array(
+        # Get/plot images of the input hierarchy
+        input_hierarchy_images = model_hierarchy_files.get('level_partitions_png')
+        if (input_hierarchy_images is None): 
+            input_hierarchy_images = self.plot_level_group_array(
+                level_group_array = level_group_array,
+                level_labels = level_labels,
+                reference_hierarchy = reference_hierarchy,
+                overall_atom_selection = overall_atom_selection,
+                template_filename = 'input-level-partitions-chain-{}.png',
+                )
+        output_files['input_partitions_png'] = input_hierarchy_images
+            
+        # Plot images of output hierarchy
+        output_hierarchy_images = self.plot_level_group_array(
             level_group_array = level_group_array_filt,
             level_labels = level_labels,
             reference_hierarchy = reference_hierarchy,
             overall_atom_selection = overall_atom_selection,
+            template_filename = 'output-level-partitions-chain-{}.png',
             )
-        output_files.update(of)
+        output_files['output_partitions_png'] = output_hierarchy_images
 
         filename =  os.path.join(self.output_directory, 'input_hierarchy.eff')
-        self.write_hierarchy_as_eff(
-            level_labels = level_labels,
-            level_group_indices = self.array_to_indices(
-                level_group_array = level_group_array_filt,
+        write_levels_function(
+            indices_hierarchy = self.array_to_indices(
+                level_group_array = level_group_array,
                 ),
-            write_levels_function = write_levels_function,
-            filename = filename,
+            input_level_names = level_labels,
+            output_level_names = level_labels,
+            output_filename = filename,
             )
         output_files['input_eff_file'] = filename
 
         filename =  os.path.join(self.output_directory, 'output_hierarchy.eff')
-        self.write_hierarchy_as_eff(
-            level_labels = level_labels,
-            level_group_indices = self.array_to_indices(
-                level_group_array = level_group_array,
+        write_levels_function(
+            indices_hierarchy = self.array_to_indices(
+                level_group_array = level_group_array_filt,
                 ),
-            write_levels_function = write_levels_function,
-            filename = filename,
+            input_level_names = level_labels,
+            output_level_names = level_labels,
+            output_filename = filename,
             )
         output_files['output_eff_file'] = filename
+
+        self.show_file_dict(output_files)
 
         self.result = group_args(
             output_files = output_files,
@@ -86,10 +105,10 @@ class AssessHierarchyGroupsTask:
         b_factor_threshold,
         ):
 
-        self.log('Filtering groups with a B-factor less than {}A.'.format(b_factor_threshold))
+        self.log('Filtering groups with a B-factor less than {}A^2.'.format(b_factor_threshold))
 
         level_group_array = copy.deepcopy(level_group_array)
-        u_threshold = float(b_factor_threshold) / EIGHTPISQ
+        u_threshold = float(b_factor_threshold) / constants.EIGHTPISQ
 
         # Calculate the maximum iso uij for each atom (potentially across datasets)
         non_atomic_levels_uijs = model_uijs[:-1]
@@ -118,6 +137,7 @@ class AssessHierarchyGroupsTask:
         level_labels,
         reference_hierarchy,
         overall_atom_selection,
+        template_filename = 'level-partitions-chain-{}.png',
         ):
 
         # Create copy of input hierarchy and set all b-factors to -1
@@ -125,7 +145,7 @@ class AssessHierarchyGroupsTask:
         reference_hierarchy = reference_hierarchy.deep_copy()
         reference_hierarchy.atoms().set_b(flex.double(reference_hierarchy.atoms_size(), -1))
         # Create structure factory
-        from pandemic.adp.utils import StructureFactory
+        from pandemic.adp.output.structures import StructureFactory
         structure_factory = StructureFactory(master_h=reference_hierarchy)
 
         # Create hierarchies of the groups for each level
@@ -146,7 +166,7 @@ class AssessHierarchyGroupsTask:
             # Skip if no partitions in this chain
             #if (numpy.array([h.atoms().extract_b() for h in hierarchies]) == -1).all():
             #    continue
-            filename = os.path.join(self.output_directory, 'level-paritions-chain-{}.png'.format(c_id))
+            filename = os.path.join(self.output_directory, template_filename.format(c_id))
             self.plotting_object.level_plots(
                 filename=filename,
                 hierarchies=hierarchies,
@@ -155,7 +175,7 @@ class AssessHierarchyGroupsTask:
                 )
             output_files[c_id] = filename
 
-        return {'level_partitions': output_files}
+        return output_files
 
     def array_to_indices(self,
         level_group_array,
@@ -168,20 +188,6 @@ class AssessHierarchyGroupsTask:
             level_group_indices.append([[i] for i in indices])
 
         return level_group_indices
-
-    def write_hierarchy_as_eff(self,
-        level_labels,
-        level_group_indices,
-        write_levels_function,
-        filename,
-        ):
-
-        write_levels_function(
-            indices_hierarchy = level_group_indices,
-            input_level_names = level_labels,
-            output_level_names = level_labels,
-            output_filename = filename,
-            )
 
     def as_html_summary(self):
         from pandemic.adp.analysis.hierarchy.html import AssessHierarchyGroupsHtmlSummary

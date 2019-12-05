@@ -12,7 +12,7 @@ class IdentifyModules:
 
 
     def __init__(self,
-        threshold_start = 5.0,
+        threshold_start = 1.0,
         threshold_delta = 1.0,
         comparison_metric = 'similarity',
         verbose = False,
@@ -70,8 +70,12 @@ class IdentifyModules:
                 threshold = threshold,
                 )
             modules = self.filter_subsets(modules)
-            if filter_complete_sets is True: 
+
+            # Remove trivial sets of all
+            if (filter_complete_sets is True): 
                 modules = self.filter_complete_sets(modules, n_total=n)
+                # Skip to next if still finding everything to avoid breaking below
+                if not modules: continue
 
             # Stop once we stop finding modules
             if not modules: break
@@ -124,7 +128,7 @@ class IdentifyModules:
             reduced_hierarchy = self.create_hierarchy_from_modules(cumulative_modules, resort=True) # already sorted
 
             # Store output
-            threshold_unique_modules[threshold] = unique_modules
+            threshold_unique_modules[threshold] = [tuple(sorted(m)) for m in unique_modules]
             threshold_unique_hierarchies[threshold] = self.sets_to_tuples(unique_hierarchy)
             threshold_cumulative_hierarchies[threshold] = self.sets_to_tuples(cumulative_hierarchy)
             threshold_reduced_hierarchies[threshold] = self.sets_to_tuples(reduced_hierarchy)
@@ -178,8 +182,11 @@ class IdentifyModules:
         connectivity,
         comparison_matrix,
         threshold,
-        min_neighbours = 4,
+        min_neighbours = 3,
         ):
+
+        # How many nodes is each node connected to?
+        max_node_connectivity = connectivity.sum(axis=0)
 
         modules = []
 
@@ -214,11 +221,20 @@ class IdentifyModules:
                     connectivity_copy[i_new] = (sim_mask * connectivity[i_new])
 
                 # Prune nodes with low connectivity
+                #
+                # len(module_nodes)-1   -> overrides min_neighbours for small modules
+                # min_neighbours+1      -> +1 accounts for self connectivity
+                #
                 curr_min_neighbours = min(len(module_nodes)-1, min_neighbours+1)
                 # Count connections for each point
                 connection_counts = connectivity_copy.sum(axis=0)
-                # Which nodes have fewer than 1 external connection? (2 = self + other)
-                prune_nodes = list(set(numpy.where(connection_counts < curr_min_neighbours)[0]))
+                # Which nodes have fewer required connections?
+                prune_bool = (connection_counts < curr_min_neighbours)
+                # Unselect any nodes for pruning that have fewer than curr_min_neighbours connections (as impossible to ever fulfil)
+                prune_bool[(max_node_connectivity < curr_min_neighbours)] = False
+                # Extract nodes for pruning
+                prune_nodes = list(numpy.where(prune_bool)[0])
+
                 if prune_nodes: 
                     # Remove connections from pruned nodes
                     connectivity_copy[prune_nodes] = 0
@@ -235,7 +251,7 @@ class IdentifyModules:
                 prev_module_nodes = copy.deepcopy(module_nodes)
 
             # Skip singletons
-            if (not module_nodes) or (len(module_nodes) == 1):
+            if (not module_nodes) or (len(module_nodes) <= 1):
                 continue
 
             modules.append(module_nodes)

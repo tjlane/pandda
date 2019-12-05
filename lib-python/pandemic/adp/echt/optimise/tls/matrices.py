@@ -10,10 +10,6 @@ from giant.structure.tls import tls_str_to_n_params
 class TLSSimplexGenerator:
 
 
-    _DEG2RAD = math.pi/180.0
-    _RAD2DEG = 1.0 / _DEG2RAD
-    _RAD2DEGSQ = _RAD2DEG*_RAD2DEG
-
     _I_sqr = (1.,0.,0.,
               0.,1.,0.,
               0.,0.,1.)

@@ -96,7 +96,21 @@ class AnalyseTLSAmplitudesTask:
                 mn = values.mean()
                 md = values.median()
                 sd = values.std()
-                log('> Mean:   {:.3f} A^2 (B-factor {:.3f} A^2)'.format(mn, EIGHT_PI_SQ*mn))
-                log('> Median: {:.3f} A^2 (B-factor {:.3f} A^2)'.format(md, EIGHT_PI_SQ*md))
-                log('> Std:    {:.3f} A^2 (B-factor {:.3f} A^2)'.format(sd, EIGHT_PI_SQ*sd))
+                log('> Mean:   {:.3f} A^2 (B-factor {:.3f} A^2)'.format(mn, constants.EIGHTPISQ*mn))
+                log('> Median: {:.3f} A^2 (B-factor {:.3f} A^2)'.format(md, constants.EIGHTPISQ*md))
+                log('> Std:    {:.3f} A^2 (B-factor {:.3f} A^2)'.format(sd, constants.EIGHTPISQ*sd))
             log.bar(True, True)
+
+                # Write histograms of amplitudes -- only for non-zero models
+                #if (tls_matrices.sum() > 0.0) and self.distribution_images:
+                #    hist_png = self.filepath(self.level_tls_amplitudes_png.format(i_level+1, i_group+1), self.amplitude_directory)
+                #    titles = ['Mode {}:'.format(i_m+1) for i_m in xrange(model_object.n_modes)]
+                #    x_vals = [tls_amplitudes[i_m,:]    for i_m in xrange(model_object.n_modes)]
+                #    self.plot.multi_histogram(filename  = hist_png,
+                #                              x_vals    = x_vals,
+                #                              titles    = titles,
+                #                              x_labs    = ['']*model_object.n_modes,
+                #                              rotate_x_labels = True,
+                #                              shape     = (tls_amplitudes.shape[0], 1),
+                #                              n_bins    = 30, x_lim=[0, None])
+                #    file_dict.setdefault('level_tls_amplitudes_png',collections.OrderedDict())[(level_name,group_object.label)] = amp_csv

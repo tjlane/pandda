@@ -153,6 +153,7 @@ class LevelPlotAccumulator:
             x_label = 'Existing Groups',
             y_label = 'Threshold',
             y_width = 1.0,
+            y_lim = None,
             title = None,
             fig_axis_pair = None,
             n_colours = 20,
@@ -179,9 +180,17 @@ class LevelPlotAccumulator:
         if title is not None: 
             self.axis.set_title(label=str(title))
         
-        self.font_size = int(32-n_groups)
-        if self.font_size < 10: 
+        if (y_lim is not None): 
+            y_range = abs(y_lim[1] - y_lim[0]) + y_width
+        else: 
+            y_range = None
+
+        if n_groups > 100:
             self.font_size = 0
+        elif (y_range is not None): 
+            self.font_size = 10.0 * (20.0 / y_range)
+        else: 
+            self.font_size = 10.0
 
         self.axis.set_xlabel(x_label)
         self.axis.set_ylabel(y_label)
@@ -246,17 +255,17 @@ class LevelPlotAccumulator:
                     edgecolor='k', facecolor=group_colour,
                     )
 
-                if self.font_size > 0:
+                if (self.font_size > 0): #and (n_sub_levels < 3):
                     for i, x in enumerate(x_values): 
                         self.axis.text(
                             x, y_sub_level + bar_width / 2.0, int(group_label), 
-                            fontsize=self.font_size,
+                            fontsize=self.font_size/n_sub_levels,
                             horizontalalignment='center',
                             verticalalignment='center',
-                            rotation=90, rotation_mode="default",
+                            rotation=0, rotation_mode="default",
                             )
                 
-                if self.legend is None: 
+                if False and (self.legend is None): 
                     from matplotlib import patches
                     hdl = patches.Patch(edgecolor='k', facecolor='b')
                     self.legend = self.axis.legend(

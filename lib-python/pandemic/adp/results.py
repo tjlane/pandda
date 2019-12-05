@@ -8,8 +8,6 @@ from libtbx.utils import Sorry, Failure
 from bamboo.maths.functions import rms
 from giant.structure.uij import uij_to_b
 
-EIGHT_PI_SQ = 8*math.pi*math.pi
-
 
 class PandemicResultsObject:
 

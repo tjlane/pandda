@@ -1,13 +1,16 @@
 import os
 from libtbx import adopt_init_args
+from libtbx.utils import Sorry, Failure
 from bamboo.html import png2base64src_maybe
 
+import pandemic.resources
 
 def as_html_summary_maybe(obj):
+    if obj is None:
+        return None
     if hasattr(obj, 'as_html_summary'):
         return obj.as_html_summary()
-    else:
-        return None
+    return None
 
 def as_html_summaries_maybe(tasks):
     out = []
@@ -28,6 +31,7 @@ class Counter(object):
 # Base class for html outputs
 class HtmlSummary:
 
+
     # Permanent counter than links all subclasses!
     # Ensures all divs are uniquely numbered
     counter = Counter()
@@ -40,7 +44,7 @@ class HtmlSummary:
         return '<'+tag+'>'+str(string)+'</'+tag+'>'
 
     @staticmethod
-    def format_summary(text, width=12, type='alert', colour='info'):
+    def format_summary(text, width=12, type='alert', colour=None, classes=None):
         paragraphs = text.split('\n\n')
         output = []
         for p in paragraphs:
@@ -57,23 +61,31 @@ class HtmlSummary:
                 fmt_lines.append(l)
             p_dict = {'type'   : type,
                       'width'  : width,
-                      'text'   : '<br>'.join(fmt_lines),
-                      'colour' : colour}
+                      }
             if title is not None:
                 p_dict['title'] = title
+            if fmt_lines:
+                p_dict['contents'] = [{'text':l} for l in fmt_lines]
+            if colour is not None:
+                p_dict['colour'] = colour
+            if classes is not None:
+                p_dict['classes'] = classes
             output.append(p_dict)
         return output
 
-    def short_summary(self): 
+    def short_summary(self):
         return []
-    def main_summary(self): 
+    def main_summary(self):
         return []
-    def json_plots(self): 
+    def json_plots(self):
         return []
 
-    def image(self, path):
-        if self.embed_images is True:
-            return png2base64src_maybe(path, print_on_missing=self.debug)
+    @classmethod
+    def image(cls, path):
+        if (path is None) or not os.path.exists(path):
+            path = pandemic.resources.NO_IMAGE_PATH
+        if cls.embed_images is True:
+            return png2base64src_maybe(path, print_on_missing=cls.debug)
         else:
             return path
 
@@ -86,7 +98,8 @@ class HtmlSummaryCollator(HtmlSummary):
         alt_title = None,
         summaries = [],
         ):
-        if alt_title is None: alt_title = title
+        if alt_title is None:
+            alt_title = title
         adopt_init_args(self, locals())
 
     def main_summary(self):
@@ -95,18 +108,17 @@ class HtmlSummaryCollator(HtmlSummary):
         for s in self.summaries:
             content_list += s.main_summary()
         for t in content_list:
-            if not t.get('alt_title'):
-                t['alt_title'] = t['title']
+            assert t.get('alt_title')
 
-        if True or (len(content_list) > 1):
+        if len(content_list) > 0:
             content_list[0]['active'] = True
-            contents = [{'type' : 'tabs', 'contents' : content_list}]
-        else:
-            contents = content_list
+
+        contents = [{'type' : 'tabs', 'contents' : content_list}]
 
         output = {
-            'title' : self.title,
             'alt_title' : self.alt_title,
+            'title' : self.title,
+            'fancy_title' : True,
             'contents' : contents,
         }
 
@@ -114,13 +126,63 @@ class HtmlSummaryCollator(HtmlSummary):
 
     def short_summary(self):
         l = []
-        for s in self.summaries: 
+        for s in self.summaries:
             l += s.short_summary()
         return l
 
     def json_plots(self):
         l = []
-        for s in self.summaries: 
+        for s in self.summaries:
+            l += s.json_plots()
+        return l
+
+
+class HtmlSummaryConcatenator:
+
+
+    def __init__(self,
+            title = None,
+            alt_title = None,
+            summaries = [],
+            ):
+        if alt_title is None:
+            alt_title = title
+        adopt_init_args(self, locals())
+
+    def main_summary(self):
+        collated = None
+        for s in self.summaries:
+            s_summary = s.main_summary()
+            if len(s_summary) == 0:
+                continue
+            if collated is None:
+                collated = s_summary.pop(0)
+                if self.title is None:
+                    self.title = collated.get('title')
+                if self.alt_title is None:
+                    self.alt_title = collated.get('alt_title')
+            for other_summary in s_summary:
+                collated['contents'].extend(other_summary['contents'])
+                if self.title is None:
+                    self.title = other_summary.get('title')
+                if self.alt_title is None:
+                    self.alt_title = other_summary.get('alt_title')
+        if collated is None:
+            return []
+        # Finally apply the title and alt_title
+        collated['title'] = self.title
+        collated['alt_title'] = self.alt_title
+        return [collated]
+
+    def short_summary(self):
+        l = []
+        for s in self.summaries:
+            l += s.short_summary()
+        return l
+
+    def json_plots(self):
+        l = []
+        for s in self.summaries:
             l += s.json_plots()
         return l
 
@@ -158,9 +220,6 @@ class WriteHtmlSummaryTask:
                 json_plots.extend(obj.json_plots())
 
         self.make_output(
-            header = 'PanDEMIC ADP Output Summary',
-            title = 'PanDEMIC ADP Parameterisation',
-            introduction = 'Hierarchical ADP parameterisation summary from pandemic.adp',
             overview_objects = short_summaries,
             tab_objects = main_summaries,
             json_plots = json_plots,
@@ -169,9 +228,6 @@ class WriteHtmlSummaryTask:
         return self
 
     def make_output(self,
-        header,
-        title,
-        introduction,
         overview_objects,
         tab_objects,
         json_plots = [],
@@ -184,15 +240,23 @@ class WriteHtmlSummaryTask:
         from pandemic.html import PANDEMIC_HTML_ENV
         template = PANDEMIC_HTML_ENV.get_template('adp_summary.html')
 
+        # Hard-coded for now...
+        header_title = 'PanDEMIC ADP Summary'
+        body_header = self.get_body_header()
+
         # ===========================================================>
         # Construct the data object to populate the template
         output_data = {}
-        output_data['header'] = header
-        output_data['title'] = title
-        output_data['introduction'] = introduction
+        output_data.update({
+            'header_title' : header_title,
+            'body_header' : body_header,
+            })
+        # Jsons
+        if json_plots:
+            output_data['json_plots'] = json_plots
         # ===========================================================>
         # Construct the tabs
-        output_data['contents'] = []
+        output_data.setdefault('contents', [])
 
         # Create overview tab
         tab_set = {'type':'tabs', 'contents':[]}
@@ -204,16 +268,21 @@ class WriteHtmlSummaryTask:
 
         output_data['contents'].append(tab_set)
 
-        # Jsons
-        if json_plots:
-            output_data['json_plots'] = json_plots
-
         # Write out and format
         with open(self.output_filename_path, 'w') as out_html:
             out_html.write(template.render(output_data).encode( "utf-8" ))
 
         log('Output HTML written to {}'.format(self.output_filename_path))
 
+    def get_body_header(self):
+        d = {
+            'title' : 'Hierarchical Disorder Characterisation Summary',
+            'sub_title' : 'Please cite: << Paper Title Here >>',
+            'description' : 'N. Pearce & P. Gros, 2020.',
+            'image' : HtmlSummary.image(pandemic.resources.FULL_LOGO_PATH),
+        }
+
+        return d
 
     def create_overview_tab(self, objects):
 
@@ -221,8 +290,11 @@ class WriteHtmlSummaryTask:
             'id'        : 'overview',
             'alt_title' : 'Overview',
             'title'     : 'Hierarchical Disorder Parameterisation Overview',
-            'contents'  : objects,
+            'fancy_title' : True,
+            'contents'  : [],
             }
+
+        tab['contents'] += objects
 
         return tab
 
