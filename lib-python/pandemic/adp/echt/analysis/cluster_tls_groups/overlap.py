@@ -7,6 +7,8 @@ from pandemic.adp.echt.analysis.cluster_tls_groups.utils import \
     make_selection_strings, tls_group_comparison_matrix, tls_group_adjacency_matrix
 from pandemic.adp.echt.analysis.cluster_tls_groups.pymol import base_pymol_script
 
+EIGHT_PI_SQ = 8. * math.pi * math.pi
+
 def uij_overlap_mass(a,b):
     """Calculate the common overlap between two symmetric tensors"""
     # Difference between two inputs
@@ -44,8 +46,6 @@ def uij_overlap_mass_function_simple_average(uijs_a, uijs_b):
     overlaps = uij_overlap_mass_function(uijs_a, uijs_b)
     o = numpy.mean(overlaps)
     return o
-
-EIGHT_PI_SQ = 8. * math.pi * math.pi
 
 def make_pymol_script(
     tls_groups,

@@ -5,6 +5,7 @@ from libtbx import adopt_init_args, group_args
 
 from bamboo.common.path import rel_symlink, easy_directory
 from pandemic.adp.parallel import RunParallelWithProgressBarUnordered
+from pandemic.adp.utils import show_file_dict
 
 def wrapper_run(obj):
     try:
@@ -197,6 +198,8 @@ class PostProcessTask:
 
     r_factor_keys = ['r_free', 'r_work', 'r_gap']
 
+    show_file_dict = show_file_dict
+
     def __init__(self,
         output_directory,
         structure_directory,
@@ -230,20 +233,6 @@ class PostProcessTask:
                     )
 
         adopt_init_args(self, locals())
-
-    def show(self, file_dict, indent=0):
-        log = self.log
-        s = '  '
-        for k, v in file_dict.iteritems():
-            if isinstance(v, dict):
-                log(s*indent + '> {}'.format(k))
-                self.show(v, indent+1)
-            elif isinstance(v, str):
-                log(s*indent + '> {}: {}'.format(k, v))
-            else:
-                log(s*indent + '> {}'.format(k))
-                for vv in v:
-                    log(s*(indent+1)+vv)
 
     def run(self,
         dataset_labels,
@@ -475,7 +464,7 @@ class PostProcessTask:
                     )
                 output_dict.setdefault('r_value_differences', collections.OrderedDict())[(col1.strip(strip_chars), col2.strip(strip_chars))] = filename
 
-        self.show(output_dict)
+        self.show_file_dict(output_dict)
 
         self.result = group_args(
             output_files = output_dict,

@@ -48,6 +48,11 @@ output {
     out_dir = pandemic-adp
         .help = "output directory"
         .type = str
+    copy_reflection_data_to_output_folder = True
+        .type = bool
+    clean_up_files = *compress_logs *compress_pdbs *delete_mtzs
+        .help = "Delete unnecessary output files (MTZs)"
+        .type = choice(multi=True)
     pickle = False
         .type = bool
         .multiple = False
@@ -66,11 +71,8 @@ output {
         pymol = none *chain all
             .help = "Write residue-by-residue images of the output B-factors"
             .type = choice(multi=False)
-        distributions = False
-            .help = "Write distribution graphs for each TLS group"
-            .type = bool
         colour_map = 'rainbow'
-            .help = "Colour map to use for making graphs. Can be any valid matplotlib colour map. Try: plasmaPastel1, gist_earth, ocean."
+            .help = "Colour map to use for making graphs. Can be any valid matplotlib colour map. Try: plasma, Pastel1, gist_earth, ocean."
             .type = str
         plot_style = 'ggplot'
             .help = "Plot style to use for making graphs. Can be any valid matplotlib plot style."
@@ -85,11 +87,6 @@ output {
             .help = "dpi of output images"
             .type = int
     }
-    copy_reflection_data_to_output_folder = True
-        .type = bool
-    clean_up_files = *compress_logs *delete_mtzs
-        .help = "Delete unnecessary output files (MTZs)"
-        .type = choice(multi=True)
 }
 model {
     b_factor_model = *echt
@@ -102,7 +99,7 @@ model {
         .help = "Flag to control whether the c-beta atom is considered part of the backbone or the sidechain"
         .type = bool
     remove_duplicate_groups = none keep_highest_group *keep_lowest_group
-        .help = "Flag to control whether identical groups that are present in multiple levels are removed (by default, duplicate groups will be removed from lower levels)."
+        .help = "Flag to control whether identical groups that are present in multiple levels are removed (by default, the group in the lowest level will be kept)."
         .type = choice(multi=False)
     atomic_adp_level = True
         .help = 'should the atomic adp level be optimised? (it may be preferable to turn this off for small numbers of low-resolution structures)'
@@ -133,7 +130,7 @@ model {
     }
     echt {
         n_tls_modes_per_tls_group = 1
-            .help = 'how many TLS models to fit per group of atoms?'
+            .help = 'how many TLS modes to fit per group of atoms? (only worth doing for more than one dataset)'
             .type = int
         tls_amplitude_model = *simple_multiplier
             .help = 'how do amplitudes transform each TLS group in each dataset? \n\tsimple_multiplier = T->aT, L->aL, S->aS.'
@@ -200,9 +197,6 @@ optimisation {
         libration_delta = 10.0
             .help = 'Libration step size for zero-value matrices (relative scale)'
             .type = float
-        amplitude_delta = 1e-6
-            .help = 'Step size for TLS group amplitudes'
-            .type = float
         uij_delta = 1e-3
             .help = 'Uij step size (absolute)'
             .type = float
@@ -239,21 +233,6 @@ optimisation {
         max_u_change = None
             .help = "Stop optimisation when all atoms are changing less that this value every cycle"
             .type = float
-    }
-    first_cycle {
-        sigmoid_buffer
-            .help = 'penalties when the fitted Uij is greater than the target Uij. penalty p is number of atoms with a Uij(fitted) > Uij(target). calculated as number of negative eigenvalues of tensor Uij(fitted)-Uij(target).'
-        {
-            barrier_height = 0.33
-                .type = float
-                .help = 'manual multiplier for the sigmoid penalty function'
-            barrier_width = 0.01
-                .type = float
-                .help = 'width of the buffer zone (width of buffer approx 6.9 time this value; default 0.01 -> 0.01*6.9*8*pi*pi = ~5A B-factor) & 0.02 -> 0.02*6.9*8*pi*pi = ~10A B-factor)'
-            barrier_offset = 0.0
-                .type = float
-                .help = "Offset of the form function (e.g. inversion point of the sigmoid function)"
-        }
     }
     eps {
         tls_matrices_eps = 1e-3
@@ -498,38 +477,20 @@ def run(params, args=None):
 
         # Optimisation functions
 
-        # optimise_tls_initial = echt.optimise.tls.OptimiseTLSGroup(
-        #     convergence_tol = params.optimisation.simplex_optimisation.simplex_convergence,
-        #     tolerances = params.optimisation.tolerances,
-        #     eps_values = params.optimisation.eps,
-        #     simplex_params = group_args(
-        #         vibration_delta = params.optimisation.simplex_optimisation.vibration_delta,
-        #         libration_delta = params.optimisation.simplex_optimisation.libration_delta,
-        #         amplitude_delta = params.optimisation.simplex_optimisation.amplitude_delta,
-        #         ),
-        #     barrier_params = params.optimisation.first_cycle.sigmoid_buffer,
-        #     #n_cycles = max(3, params.optimisation.number_of_micro_cycles),
-        #     verbose = params.settings.verbose,
-        #     log = log,
-        #     )
-
-        optimise_tls_normal = echt.optimise.tls.OptimiseTLSGroup(
+        optimise_tls_function = echt.optimise.tls.OptimiseTLSGroup(
             convergence_tol = params.optimisation.simplex_optimisation.simplex_convergence,
             tolerances = params.optimisation.tolerances,
             eps_values = params.optimisation.eps,
             simplex_params = group_args(
                 vibration_delta = params.optimisation.simplex_optimisation.vibration_delta,
                 libration_delta = params.optimisation.simplex_optimisation.libration_delta,
-                amplitude_delta = params.optimisation.simplex_optimisation.amplitude_delta,
                 ),
-            barrier_params = None,
-            #n_cycles = params.optimisation.number_of_micro_cycles,
             verbose = params.settings.verbose,
             log = log,
             )
 
         if params.model.atomic_adp_level is True:
-            optimise_adp_values = echt.optimise.uij.OptimiseUijValue(
+            optimise_adp_function = echt.optimise.uij.OptimiseUijValue(
                 convergence_tol = params.optimisation.simplex_optimisation.simplex_convergence,
                 tolerances = params.optimisation.tolerances,
                 eps_values = params.optimisation.eps,
@@ -540,9 +501,9 @@ def run(params, args=None):
                 log = log,
                 )
         else:
-            optimise_adp_values = None
+            optimise_adp_function = None
 
-        optimise_level_amplitudes = echt.optimise.inter_level.OptimiseInterLevelAmplitudes(
+        optimise_level_amplitudes_function = echt.optimise.inter_level.OptimiseInterLevelAmplitudes(
             convergence_tolerance = params.optimisation.gradient_optimisation.gradient_convergence,
             optimisation_weights =  weights.scale_weights(
                 weights = params.optimisation.gradient_optimisation.optimisation_weights,
@@ -553,40 +514,15 @@ def run(params, args=None):
             log=log,
             )
 
-        # optimise_level_amplitudes_final = echt.optimise.inter_level.OptimiseInterLevelAmplitudes(
-        #     convergence_tolerance = params.optimisation.gradient_optimisation.gradient_convergence,
-        #     optimise_atomic_adp_amplitudes = params.model.atomic_adp_level,
-        #     verbose = params.settings.verbose,
-        #     log=log,
-        #     )
-
-        # optimise_model_initial = echt.optimise.OptimiseEchtModel(
-        #     optimise_tls_function = optimise_tls_initial,
-        #     optimise_adp_function = optimise_adp_values,
-        #     optimise_level_amplitudes_function = None,
-        #     n_cpus = params.settings.cpus,
-        #     verbose = params.settings.verbose,
-        #     log = log,
-        #     )
-
         optimise_model_main = echt.optimise.OptimiseEchtModel(
-            optimise_tls_function = optimise_tls_normal,
-            optimise_adp_function = optimise_adp_values,
-            optimise_level_amplitudes_function = optimise_level_amplitudes,
+            optimise_tls_function = optimise_tls_function,
+            optimise_adp_function = optimise_adp_function,
+            optimise_level_amplitudes_function = optimise_level_amplitudes_function,
             n_cycles = params.optimisation.number_of_micro_cycles,
             n_cpus = params.settings.cpus,
             verbose = params.settings.verbose,
             log = log,
             )
-
-        # optimise_model_final = echt.optimise.OptimiseEchtModel(
-        #     optimise_tls_function = optimise_tls_normal,
-        #     optimise_adp_function = optimise_adp_values,
-        #     optimise_level_amplitudes_function = optimise_level_amplitudes_final,
-        #     n_cpus = params.settings.cpus,
-        #     verbose = params.settings.verbose,
-        #     log = log,
-        #     )
 
         update_optimisation_function = echt.optimise.UpdateOptimisationFunction(
             gradient_optimisation_decay_factor = params.optimisation.gradient_optimisation.global_weight_decay_factor,
@@ -617,7 +553,6 @@ def run(params, args=None):
 
         # Define / override summary classes (these take standard inputs wherever possible)
 
-        WriteParameterSummary = echt.process_output.WriteEchtParameterSummary
         WriteModelSummary = echt.process_output.WriteEchtModelSummary
         WriteStructures = echt.process_output.WriteEchtStructures
 
@@ -749,13 +684,6 @@ def run(params, args=None):
     # Initialise output tasks (may have been overridden above)
     #
 
-    # Summary of the input parameters
-    write_parameter_summary = WriteParameterSummary(
-        output_directory = file_system.optimisation_directory,
-        verbose = params.settings.verbose,
-        log = log,
-        )
-
     # Summary of the input/constructed B-factor hierarchy
     write_hierarchy_summary_task = hierarchy.WriteHierarchySummaryTask(
         output_directory = file_system.make(file_system.hierarchy_directory, 'model_setup'),
@@ -804,12 +732,6 @@ def run(params, args=None):
     #                              #
     ################################
 
-    # Write parameter summary
-    parameter_files = write_parameter_summary(
-        params = params,
-        plotting_object = plotting_object,
-        )
-
     # Write summary of hierarchical partitioning
     write_hierarchy_summary_task.run(
         reference_hierarchy           = models[0].hierarchy,
@@ -841,30 +763,10 @@ def run(params, args=None):
 
     log.heading('Optimising Hierarchical Disorder Model', spacer=True)
 
-    #
-    # First optimisation
-    #
-    # if params.optimisation.run_initial_cycle_with_barrier_term:
-        
-    #     log.subheading('Performing initial optimisation', spacer=True)
-    #     tracking_object.i_cycle -= 1 # so that first cycle appears as 0-cycle
-    #     model_object = optimise_model_initial(
-    #         model_object = model_object,
-    #         level_group_connections = hierarchy_info.level_group_tree,
-    #         uij_target = extract_uijs_task.result.model_uij,
-    #         uij_target_weights = uij_weights_task.result.total_weight_array,
-    #         uij_isotropic_mask = extract_uijs_task.result.isotropic_mask,
-    #         tracking_object = tracking_object,
-    #         )
-
     if (params.optimisation.fit_isotropic_b_factors_by_magnitude_only is True): 
         optimise_isotropic_mask = extract_uijs_task.result.isotropic_mask
     else:
         optimise_isotropic_mask = extract_uijs_task.result.isotropic_mask.as_fully_anisotropic()
-
-    #
-    # "Normal" optimisation
-    #
 
     tracking_object.i_cycle = 0
 
@@ -903,23 +805,9 @@ def run(params, args=None):
                 break
 
     # Write graphs of the optimsation parameters and return file dict
-    optimisation_parameters_files = update_optimisation_function.write(
+    parameter_files = update_optimisation_function.write(
         output_directory = file_system.optimisation_directory,
         )
-    parameter_files.update(optimisation_parameters_files)
-
-    #
-    # Last cycle of optimisation
-    #
-    # log.subheading('Performing final optimisation', spacer=True)
-    # model_object = optimise_model_final(
-    #     model_object = model_object,
-    #     level_group_connections = hierarchy_info.level_group_tree,
-    #     uij_target = extract_uijs_task.result.model_uij,
-    #     uij_target_weights = uij_weights_task.result.total_weight_array,
-    #     uij_isotropic_mask = extract_uijs_task.result.isotropic_mask,
-    #     tracking_object = tracking_object,
-    #     )
 
     log.heading('Optimisation finished', spacer=True)
 

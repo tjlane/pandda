@@ -25,7 +25,6 @@ class HierarchicalModelAnalysisTask:
 
         output_directory = easy_directory(output_directory)
 
-        # Model fit graphs 
         if analyse_residuals is True: 
             from pandemic.adp.analysis.residuals import AnalyseResidualsTask
             analyse_residuals = AnalyseResidualsTask(
@@ -117,11 +116,3 @@ class HierarchicalModelAnalysisTask:
                 self.assess_hierarchy_groups,
                 ]),
             )
-
-
-class AnalysisElectronDensityFit:
-
-    def calculate_electron_density_metrics(self, out_dir_tag):
-        pass
-
-

@@ -18,33 +18,25 @@ class EchtParameterHtmlSummary(ParameterHtmlSummary):
         pf = self.parameter_files
 
         panels = []
-        if pf.get('barrier_penalty'):
-            panels.append({
-                'type'      : 'panel',
-                'title'     : 'Simplex optimisation functions',
-                'width'     : 12,
-                'contents'  : [
-                    {
-                        'width' : 6,
-                        'title' : 'Model-Input Differences (Fitting Penalty)',
-                        'text'  : 'Penalties for producing larger Uij that observed values (used in the first cycle only)',
-                        'image' : self.image(pf.get('barrier_penalty')),
-                        },
-                    ],
-                })
 
         if pf.get('level amplitudes weights'):
-            wgt_dict = pf.get('level amplitudes weights')
-            panels.append({
+
+            p = {
                 'type'      : 'panel',
                 'title'     : 'Level amplitude optimisation weights',
                 'width'     : 12,
-                'contents'  : [{
-                        'width' : 6,
-                        'title' : variable,
-                        'image' : self.image(image_path),
-                        } for variable, image_path in wgt_dict.iteritems()],
-                })
+                'contents'  : [],
+                }
+            panels.append(p)
+
+            wgt_dict = pf.get('level amplitudes weights')
+
+            for variable, image_path in wgt_dict.iteritems():
+                txt = '> {}'.format(variable)
+                txt_block = {'width':4, 'contents' : self.format_summary(txt)}
+                p['contents'].append(txt_block)
+                img_block = {'width' : 8, 'image' : self.image(image_path)}
+                p['contents'].append(img_block)
 
         self.main_output.setdefault('contents', []).extend(panels)
         return [self.main_output]
@@ -76,7 +68,7 @@ class EchtModelHtmlSummary(HtmlSummary):
         img2 = mf.get('all_levels_uijs_anisotropy_png', {})
         img3 = hf.get('level_partitions_png', {})
 
-        chain_ids = sorted(set(img1.keys()+img2.keys()+img3.keys()))
+        chain_ids = sorted(set(img1.keys()+img2.keys()+img3.keys())) # hacky, but ok.
 
         output = {
             'type'     : 'panel',

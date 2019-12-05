@@ -4,21 +4,10 @@ from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
 
 from pandemic.adp.echt.analysis.cluster_tls_groups import ClusterTLSGroupsTask
+from pandemic.adp.echt.analysis.amplitudes import AnalyseTLSAmplitudesTask
 
 from bamboo.common.path import easy_directory
 from bamboo.common.logs import Log
-
-class AnalyseInterDatasetsTLSAmplitudesTask:
-
-    def __init__(self, 
-        output_directory,
-        verbose = False,
-        log = None,
-        ):
-        adopt_init_args(self, locals())
-
-    def run(self):
-        pass
 
 
 class AnalyseEchtModelTask:
@@ -42,7 +31,7 @@ class AnalyseEchtModelTask:
             log = log,
             )
 
-        analyse_tls_amplitudes_task = AnalyseInterDatasetsTLSAmplitudesTask(
+        analyse_tls_amplitudes_task = AnalyseTLSAmplitudesTask(
             output_directory = easy_directory(os.path.join(output_directory, 'dataset_clustering')),
             verbose = verbose,
             log = log,

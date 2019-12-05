@@ -23,33 +23,3 @@ class TargetTerm_UijLeastSquares:
         self.uij_weights = uij_weights.as_1d().matrix_outer_product(flex.double(6, 1)).as_1d()
         # Divide through by total number of atoms
         self.scale = 1.0 / float(reduce(operator.mul, uij_weights.all()))
-
-
-class TargetTerm_UijTargetBarrier:
-
-
-    def __init__(self,
-            barrier_height,
-            barrier_width,
-            barrier_offset = 0.0,
-            ):
-        barrier_function = Sigmoid(
-                y_scale = barrier_height,
-                x_width = barrier_width,
-                x_offset = barrier_offset,
-                )
-        adopt_init_args(self, locals())
-
-    def __call__(self,
-            lsq,
-            uij_deltas,
-            ):
-        barrier_terms = self.barrier_function(uij_eigenvalues(uij_deltas).as_1d().as_double().as_numpy_array())
-        return self.scale * lsq * (self.uij_weights * barrier_terms).sum()
-
-    def set_uij_weights(self, uij_weights):
-        self.uij_weights = uij_weights.matrix_outer_product(flex.double(3, 1)).as_1d().as_numpy_array()
-        self.scale = 1.0
-        for i in uij_weights.all()[:-1]:
-            self.scale /= float(i)
-

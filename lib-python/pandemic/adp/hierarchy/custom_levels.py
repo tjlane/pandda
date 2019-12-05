@@ -1,6 +1,7 @@
 import copy, collections
 from libtbx import adopt_init_args
 
+
 class WriteNewCustomLevelsEffFile:
 
 

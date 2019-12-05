@@ -1,11 +1,12 @@
 import os, glob, collections
 import numpy
 
-from bamboo.common.logs import Log
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
 
+from bamboo.common.logs import Log
 from giant.structure.pymol import auto_residue_images, auto_chain_images, selection_images
+from pandemic.adp.utils import show_file_dict
 
 def translate_phenix_selections_to_pymol_selections_simple(selections, verbose=False):
     """Convert simplex phenix selections into simplex pymol selections"""
@@ -310,18 +311,18 @@ class BuildLevelArrayTask:
 
         assert len(level_group_array) == len(selection_strings)
 
-        if overall_mask is not None: 
+        if overall_mask is not None:
             n_atoms = sum(overall_mask)
 
         for level_values, level_strings in zip(level_group_array, selection_strings):
 
-            if overall_mask is not None: 
+            if overall_mask is not None:
                 assert len(level_values) == n_atoms
 
             assert min(level_values) >= -1
             assert max(level_values) < len(level_strings)
 
-            if assert_complete is True: 
+            if assert_complete is True:
                 assert range(len(level_strings)) == sorted(set(level_values).difference({-1}))
 
     def generate_array(self,
@@ -439,7 +440,7 @@ class BuildLevelArrayTask:
 
                     # Duplicate groups!
                     if duplicate is True:
-                        if keep_which_group == 'keep_lowest_group': 
+                        if keep_which_group == 'keep_lowest_group':
                             # Remove the group at the higher level
                             level_group_array[j_level, j_group_sel] = -1
                             # Report
@@ -568,7 +569,6 @@ class BuildLevelArrayAsTreeTask:
                 if i_l_below < 0:
                     # No group found
                     continue
-                    #raise Exception('Broken! Couldn\'t find a group in a lower level')
 
                 # Create dictionary for the lower level, pointing to higher levels
                 below_dict = graph.setdefault(i_l_below, {})
@@ -682,6 +682,8 @@ class WriteHierarchySummaryTask:
 
     pymol_script_py = 'pymol_script.py'
 
+    show_file_dict = show_file_dict
+
     def __init__(self,
         output_directory,
         pymol_images = None,
@@ -691,20 +693,6 @@ class WriteHierarchySummaryTask:
         ):
         if log is None: log = Log()
         adopt_init_args(self, locals())
-
-    def show(self, file_dict, indent=0):
-        log = self.log
-        s = '  '
-        for k, v in file_dict.iteritems():
-            if isinstance(v, dict):
-                log(s*indent + '> {}'.format(k))
-                self.show(v, indent+1)
-            elif isinstance(v, str):
-                log(s*indent + '> {}: {}'.format(k, v))
-            else:
-                log(s*indent + '> {}'.format(k))
-                for vv in v:
-                    log(s*(indent+1)+vv)
 
     def filepath(self, filename):
         return os.path.join(self.output_directory, filename)
@@ -735,7 +723,7 @@ class WriteHierarchySummaryTask:
             overall_atom_mask = overall_atom_mask,
             structure_factory = s_fac,
             )
-        self.show(of)
+        self.show_file_dict(of)
         output_files.update(of)
 
         of = self.make_level_atoms_plots(
@@ -744,7 +732,7 @@ class WriteHierarchySummaryTask:
             structure_factory = s_fac,
             plotting_object = plotting_object,
             )
-        self.show(of)
+        self.show_file_dict(of)
         output_files.update(of)
 
         # Generate images of each chain of each level coloured by group
@@ -755,11 +743,11 @@ class WriteHierarchySummaryTask:
                 level_labels = level_labels,
                 structure_factory = s_fac,
                 )
-            self.show(of)
+            self.show_file_dict(of)
             output_files.update(of)
 
         of = {'pymol_script' : self.make_pymol_script(file_dict=output_files)}
-        self.show(of)
+        self.show_file_dict(of)
         output_files.update(of)
 
         self.result = group_args(
@@ -879,12 +867,12 @@ class WriteHierarchySummaryTask:
             if f is None: continue
             obj = os.path.basename(f)
             s.load_pdb(
-                f_name = os.path.relpath(os.path.abspath(f), start=self.output_directory), 
+                f_name = os.path.relpath(os.path.abspath(f), start=self.output_directory),
                 obj = os.path.basename(f),
                 )
             s.colour(obj=obj, colour='grey')
             s.custom('spectrum', expression='b%10', palette="blue_white_green", selection="{} and (b>-1)".format(obj))
-        
+
         s.show_as(obj='all', style='spheres')
         s.show(obj='all', style='sticks')
         s.set('sphere_scale', 0.25)

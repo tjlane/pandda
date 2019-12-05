@@ -67,12 +67,6 @@ class StructureFactory:
 class PartitionBordersFactory(StructureFactory):
 
 
-    #def partition_boundaries(self, i_level):
-    #    """Find the boundaries between the level partitions"""
-    #    l = self.level_array[i_level]
-    #    mask = self.atom_mask.tolist()
-    #    return self.partition_boundaries_custom(atom_labels=l, mask=mask)
-
     def partition_boundaries(self, atom_labels, mask=None):
         """Find the boundaries for labelled regions"""
 
@@ -147,12 +141,6 @@ class UijIsotropicMask:
         if len(shape) == 1:
             assert shape == (self.n,)
             selection = self.selection
-        # elif len(shape) == 2:
-        #     assert shape[1] == self.n
-        #     l = shape[0]
-        #     selection = (flex.double(l,1).matrix_outer_product(self.selection.as_double()) == 1.0)
-        #     assert selection.all() == (l, self.n)
-        #     selection = selection.as_1d()
         elif len(shape) > 1:
             assert shape[-1] == self.n
             l = numpy.product(shape[:-1])
@@ -201,26 +189,3 @@ class UijIsotropicMask:
         ):
         selection = flex.bool((array == -1).all(axis=axis))
         return cls(selection)
-
-
-class xAtomAndDatasetMask:
-
-
-    def __init__(self,
-            atom_mask,
-            dataset_mask,
-            ):
-        n_atoms = atom_mask.size()
-        n_datasets = dataset_mask.size()
-        n_selected_atoms = flex.sum(atom_mask.as_int())
-        n_selected_datasets = flex.sum(dataset_mask.as_int())
-        combined_mask = (dataset_mask.as_double().matrix_outer_product(atom_mask.as_double()) == 1.0)
-        adopt_init_args(self, locals())
-
-    def __call__(self,
-            array,
-            ):
-        assert array.all() == (self.n_datasets, self.n_atoms)
-        sel = array.as_1d().select(self.combined_mask.as_1d())
-        sel.reshape(flex.grid((self.n_selection_datasets, self.n_selected_atoms)))
-        return sel

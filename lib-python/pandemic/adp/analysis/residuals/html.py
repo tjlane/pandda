@@ -158,7 +158,6 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
                 tab_set2_contents = tab_hash[c]['contents'][0]['contents']
 
                 tab_set2_contents.append({
-                    #'title' : ' '.join([s.capitalize() for s in l.split(' ')]),
                     'alt_title': ' '.join([s.capitalize() for s in l.split(' ')]),
                     'contents' : [{'image' : self.image(p), 'width':8}],
                 })

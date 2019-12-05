@@ -4,6 +4,7 @@ from bamboo.common.logs import Log
 
 import numpy
 
+
 class RepairEchtModel:
 
 

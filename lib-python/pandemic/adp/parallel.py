@@ -3,17 +3,6 @@ from libtbx import adopt_init_args
 
 import traceback, multiprocessing, multiprocessing.pool
 
-class NonDaemonicProcess(multiprocessing.Process):
-    # make 'daemon' attribute always return False
-    def _get_daemon(self):
-        return False
-    def _set_daemon(self, value):
-        pass
-    daemon = property(_get_daemon, _set_daemon)
-
-class NonDaemonicPool(multiprocessing.pool.Pool):
-    Process = NonDaemonicProcess
-
 
 class MultiProcessWrapper:
 
@@ -33,7 +22,6 @@ class MultiProcessWrapper:
             tr = traceback.format_exc()
             if hasattr(self.function, 'log'):
                 self.function.log(tr)
-                #self.function.log.log_file().write(clear_data=True)
             return (i, tr)
 
 
@@ -53,7 +41,7 @@ class RunParallelWithProgressBarUnordered:
 
         # Redirect termination signal
         sigint = signal.signal(signal.SIGINT, signal.SIG_IGN) # set the signal handler to ignore
-        pool = NonDaemonicPool(self.n_cpus)
+        pool = multiprocessing.pool.Pool(self.n_cpus)
         signal.signal(signal.SIGINT, sigint) # Replace the original signal handler
         results = []
         cur_chunksize = min(self.chunksize, 1+int(float(len(arg_list)-1)/float(self.n_cpus)))

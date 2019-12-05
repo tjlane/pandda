@@ -195,60 +195,6 @@ class MultiModelStructureWriter:
         return pdbs
 
 
-class WriteEchtParameterSummary:
-
-
-    def __init__(self,
-        output_directory,
-        verbose = False,
-        log = None,
-        ):
-        adopt_init_args(self, locals())
-
-    def __call__(self,
-        params,
-        plotting_object,
-        ):
-        """Write out the composition of the penalty functions"""
-
-        from bamboo.maths.functions import Sigmoid
-
-        sb = params.optimisation.first_cycle.sigmoid_buffer
-
-        penalties_meta = [
-                ('barrier_penalty',
-                    Sigmoid(
-                        y_scale=sb.barrier_height,
-                        x_width=sb.barrier_width,
-                        x_offset=sb.barrier_offset),
-                    'Penalty functions for eigenvalues\nof $\Delta$U=U$_{model}$-U$_{target}$',
-                    'Eigenvalue of 8*$\pi^{2}$*$\Delta$U',
-                    'Penalty Value',
-                    (   sb.barrier_offset-10.0*sb.barrier_width,
-                        sb.barrier_offset+10.0*sb.barrier_width),
-                    8.*math.pi*math.pi,
-                    ),
-                ]
-
-        file_dict = collections.OrderedDict()
-
-        for key, func, title, x_lab, y_lab, x_lim, x_scale in penalties_meta:
-            x_vals = numpy.linspace(x_lim[0], x_lim[1], 101)
-            y_vals = func(x_vals)
-            f_name = os.path.join(self.output_directory, key+'.png')
-            file_dict[key] = f_name
-            plotting_object.lineplot(
-                x_vals = x_scale*x_vals,
-                y_vals = y_vals,
-                title = title,
-                x_label = x_lab,
-                y_label = y_lab,
-                filename = f_name,
-                )
-
-        return file_dict
-
-
 class WriteEchtModelSummary:
 
 
@@ -313,11 +259,11 @@ class WriteEchtModelSummary:
         # Model values
         average_uijs_by_mode, \
         average_uijs_by_level, \
-        residual_uijs = self.extract_average_uij_values(model_object)
+        atomic_uijs = self.extract_average_uij_values(model_object)
 
         # input/output values
         average_uijs_target = uij_target.mean(axis=0)
-        average_uijs_output = average_uijs_by_level.sum(axis=0) + residual_uijs
+        average_uijs_output = average_uijs_by_level.sum(axis=0) + atomic_uijs
 
         # Structure-writer
         structure_factory = PartitionBordersFactory(master_h=reference_model.hierarchy)
@@ -336,7 +282,7 @@ class WriteEchtModelSummary:
         of = self.write_average_level_structures(
             average_mode_uijs = average_uijs_by_mode,
             average_level_uijs = average_uijs_by_level,
-            residual_level_uijs = residual_uijs,
+            atomic_level_uijs = atomic_uijs,
             overall_atom_mask = overall_atom_mask,
             isotropic_mask = isotropic_mask,
             structure_factory = structure_factory,
@@ -349,7 +295,7 @@ class WriteEchtModelSummary:
             level_group_array = level_group_array,
             average_mode_uijs = average_uijs_by_mode,
             average_level_uijs = average_uijs_by_level,
-            residual_level_uijs = residual_uijs,
+            atomic_level_uijs = atomic_uijs,
             average_target_uijs = average_uijs_target,
             overall_atom_mask = overall_atom_mask,
             structure_factory = structure_factory,
@@ -391,8 +337,8 @@ class WriteEchtModelSummary:
         """Extract average values"""
         av_uijs_by_mode = model_object.uijs_tls().mean(axis=2)  # (n_tls, n_mode, *n_dataset*, n_atom, 6)
         av_uijs_by_level = av_uijs_by_mode.sum(axis=1)          # (n_tls, *n_mode*, n_atom, 6)
-        residual_uijs = numpy.array(model_object.adp_values)    # (n_atoms, 6)
-        return av_uijs_by_mode, av_uijs_by_level, residual_uijs
+        atomic_uijs = numpy.array(model_object.adp_values)    # (n_atoms, 6)
+        return av_uijs_by_mode, av_uijs_by_level, atomic_uijs
 
     def write_average_target_output_structures(self,
         average_uijs_target,
@@ -430,7 +376,7 @@ class WriteEchtModelSummary:
     def write_average_level_structures(self,
         average_mode_uijs,
         average_level_uijs,
-        residual_level_uijs,
+        atomic_level_uijs,
         overall_atom_mask,
         isotropic_mask,
         structure_factory,
@@ -471,8 +417,8 @@ class WriteEchtModelSummary:
             m_f = self.filepath(self.level_uijs_rescaled_pdb.format(i_level+1), self.pdb_directory)
             m_h_scl.write_pdb_file(m_f)
             file_dict.setdefault('level_uijs_rescaled_pdb',collections.OrderedDict())[level_name] = m_f
-        # Write residual level
-        uij = residual_level_uijs
+        # Write atomic level
+        uij = atomic_level_uijs
         m_h = structure_factory.custom_copy(
                 uij=isotropic_mask(uij),
                 iso=uij_to_b(uij),
@@ -488,7 +434,7 @@ class WriteEchtModelSummary:
         level_group_array,
         average_mode_uijs,
         average_level_uijs,
-        residual_level_uijs,
+        atomic_level_uijs,
         average_target_uijs,
         overall_atom_mask,
         structure_factory,
@@ -566,9 +512,9 @@ class WriteEchtModelSummary:
         # ------------------------------------------------------------------------------------------------------------------------- #
 
         # ------------------------
-        # Write profiles for residual level
+        # Write profiles for atomic level
         # ------------------------
-        uijs = residual_level_uijs
+        uijs = atomic_level_uijs
         filenames_glob   = self.filepath(self.level_uijs_profile_png.format(model_object.n_levels, '*'))
         filenames_prefix = filenames_glob.replace('-chain_*.png','')
         self.plot.stacked_bar(prefix         = filenames_prefix,
@@ -586,9 +532,9 @@ class WriteEchtModelSummary:
             file_dict.setdefault('level_uijs_profiles_png',collections.OrderedDict())[model_object.adp_level_name] = output_hash
 
         # ------------------------
-        # Write graph of anisotropy for residual level
+        # Write graph of anisotropy for atomic level
         # ------------------------
-        ani = 1.0 - calculate_uij_anisotropy_ratio(uij=residual_level_uijs)
+        ani = 1.0 - calculate_uij_anisotropy_ratio(uij=atomic_level_uijs)
         filenames_glob   = self.filepath(self.level_uijs_anisotropy_png.format(model_object.n_levels, '*'))
         filenames_prefix = filenames_glob.replace('-chain_*.png','')
         graph_title = ('Anisotropy of Level {} ({})'+ \
@@ -617,7 +563,7 @@ class WriteEchtModelSummary:
         # ------------------------
         # Write stacked profiles for all levels
         # ------------------------
-        uijs = numpy.append(average_level_uijs, [residual_level_uijs], axis=0)
+        uijs = numpy.append(average_level_uijs, [atomic_level_uijs], axis=0)
         assert uijs.shape == (model_object.n_levels, model_object.n_atoms, 6)
         filenames_glob =  self.filepath(self.all_levels_uijs_profiles_png.format('*'))
         filenames_prefix = filenames_glob.replace('-chain_*.png','')

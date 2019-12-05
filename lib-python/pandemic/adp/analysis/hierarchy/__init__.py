@@ -13,6 +13,7 @@ EIGHTPISQ = 8.0*math.pi*math.pi
 
 class AssessHierarchyGroupsTask:
 
+
     show_file_dict = show_file_dict
 
     def __init__(self,
@@ -91,9 +92,9 @@ class AssessHierarchyGroupsTask:
         u_threshold = float(b_factor_threshold) / EIGHTPISQ
 
         # Calculate the maximum iso uij for each atom (potentially across datasets)
-        non_residual_levels_uijs = model_uijs[:-1]
+        non_atomic_levels_uijs = model_uijs[:-1]
         # mean over diagonal of u to get B, then max over datasets
-        uijs_iso_max = non_residual_levels_uijs[..., 0:3].mean(axis=-1).max(axis=1)
+        uijs_iso_max = non_atomic_levels_uijs[..., 0:3].mean(axis=-1).max(axis=1)
         assert (uijs_iso_max.shape == level_group_array.shape)
 
         for i_level, level_values in enumerate(level_group_array):

@@ -37,7 +37,6 @@ class TLSSimplexGenerator:
                     ],
                 ]
 
-
     def __init__(self,
             vibration_delta = 1e-3,
             libration_delta = 1e-3,

@@ -163,7 +163,7 @@ class OptimiseEchtModel:
                     model_object = model_object,
                     level_group_connections  = level_group_connections,
                     max_recursions = max_recursions,
-                    # dataset mask
+                    # dataset mask TODO
                     )
 
         # Record the object before optimisation
@@ -195,7 +195,7 @@ class OptimiseEchtModel:
                             model_object = model_object,
                             level_group_connections  = level_group_connections,
                             max_recursions = None,
-                            # dataset mask
+                            # dataset mask TODO
                             )
                     if (self.verbose is True): 
                         # Update tracking
@@ -203,7 +203,6 @@ class OptimiseEchtModel:
                             uij_target = uij_target,
                             uij_lvl = uij_isotropic_mask_or_not(model_object.uijs()),
                             step = '{}-{} (init-l{})'.format(tracking_object.i_cycle, i_sub_cycle+1, i_level+1),
-                            # step = 'residual',
                             i_level = range(model_object.n_levels),
                             write_graphs = False,
                             )
@@ -250,15 +249,14 @@ class OptimiseEchtModel:
                         uij_target = uij_target,
                         uij_lvl = uij_isotropic_mask_or_not(model_object.uijs()),
                         step = '{}-{} (l{})'.format(tracking_object.i_cycle, i_sub_cycle+1, i_level+1),
-                        # step = 'residual',
                         i_level = range(model_object.n_levels),
                         write_graphs = False,
                         )
 
             if self.optimise_adp_level is not None:
 
-                # Fit the residuals
-                self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.i_cycle, i_sub_cycle+1)+'Optimising residual atomic Uijs')
+                # Fit the atomic level
+                self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.i_cycle, i_sub_cycle+1)+'Optimising atomic Uijs')
 
                 # Update the target uij by subtracting contributions from other levels
                 self.repair_model(model_object)
@@ -297,7 +295,6 @@ class OptimiseEchtModel:
                 uij_target = uij_target,
                 uij_lvl = uij_isotropic_mask_or_not(model_object.uijs()),
                 step = '{}-{}'.format(tracking_object.i_cycle, i_sub_cycle+1),
-                # step = 'residual',
                 i_level = range(model_object.n_levels),
                 write_graphs = False,
                 )
@@ -318,6 +315,7 @@ class OptimiseEchtModel:
 
 
 class UpdateOptimisationFunction:
+
 
     level_amplitude_string = 'level amplitudes weights'
     

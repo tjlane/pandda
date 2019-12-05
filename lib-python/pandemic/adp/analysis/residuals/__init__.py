@@ -14,6 +14,7 @@ EIGHTPISQ = 8.0*math.pi*math.pi
 
 class AnalyseResidualsTask:
 
+
     mean_model_fit_rmsd = 'Mean RMSD'
     median_model_fit_rmsd = 'Median RMSD'
 

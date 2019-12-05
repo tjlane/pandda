@@ -10,11 +10,13 @@ try:
     import matplotlib
     matplotlib.use('Agg')
     matplotlib.interactive(False)
-    from matplotlib import pyplot, patches
+    from matplotlib import pyplot
     pyplot.switch_backend('agg') # yes I know this done twice -- for safety!
     pyplot.interactive(0)
 except Exception as e:
     print e
+    import matplotlib
+    from matplotlib import pyplot
 
 def dendrogram(fname, link_mat, labels=None, ylab=None, xlab=None, ylim=None, annotate_y_min=0.25, num_nodes=20):
     from matplotlib import pyplot
@@ -22,7 +24,6 @@ def dendrogram(fname, link_mat, labels=None, ylab=None, xlab=None, ylim=None, an
     ax1 = pyplot.subplot(1,1,1)
     dend = scipy.cluster.hierarchy.dendrogram(link_mat, p=num_nodes, truncate_mode='lastp', labels=labels)
     # Change labels if requested
-    #if labels: ax1.set_xticklabels([labels[i] for i in dend['leaves']])
     if xlab:   ax1.set_xlabel(xlab)
     if ylab:   ax1.set_ylabel(ylab)
     if ylim:   ax1.set_ylim(ylim)
@@ -464,8 +465,6 @@ class PandemicAdpPlotter:
         if (x_tick_labels is None):
             x_tick_labels = map(str, x_ticks)
 
-        #colours = self.helper.get_colours(n)
-
         for i, (x, y) in enumerate(zip(x_vals_array, y_vals_array)):
             kw_args = {
                 'meanprops' : {'marker' : '*', 'markersize' : 1}
@@ -621,10 +620,6 @@ class PandemicAdpPlotter:
             pyplot.setp(axis.get_xticklabels(), rotation=45)
         # Make legend
         if legends is not None:
-            #handles = [patches.Patch(edgecolor='k', facecolor=colours[i_y], label=legends[i_y]) for i_y in xrange(n_y)]
-            #lgd = axis.legend(handles=handles,
-            #                  bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
-            #extra_artists.append(lgd)
             # Plot additional text on the graph
             y_min, y_max = axis.get_ylim()
             fig_scale = (axis.transData.transform((1.0,0.)) - axis.transData.transform((0.0,0.)))[0]

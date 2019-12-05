@@ -1,9 +1,20 @@
-amplitude_directory = easy_directory(os.path.join(output_directory, 'group_amplitude_distributions'))
+from libtbx import adopt_init_args, group_args
+from bamboo.common.path import easy_directory
 
 
-class AnalyseAmplitudes:
+class AnalyseTLSAmplitudesTask:
 
-    
+
+    def __init__(self, 
+        output_directory,
+        verbose = False,
+        log = None,
+        ):
+        #amplitude_directory = easy_directory(os.path.join(output_directory, 'group_amplitude_distributions'))
+        adopt_init_args(self, locals())
+
+    def run(self):
+        pass
 
     def calculate_amplitudes_dendrogram(self, out_dir_tag):
         """Cluster the amplitudes across the datasets"""

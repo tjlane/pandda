@@ -101,13 +101,6 @@
             pyplot.close(fig)
 
 
-
-
-    # not used
-    @staticmethod
-
-
-
     # adp.analysis
     @staticmethod
     def violinplot(

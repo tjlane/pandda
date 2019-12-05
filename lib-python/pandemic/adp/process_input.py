@@ -47,16 +47,6 @@ def validate_parameters(params, log=None):
     if (len(params.input.pdb) == 1):
         log.bar(True, False)
         log('One file provided for analysis -- updating settings')
-        # TURN THIS OFF -- there may be advantages for fitting a simple hierarchical model to one structure (e.g. low resolution)
-        #log('For one model, it is not neccessary to refine the fitted model or recalculate R-factors (or even look for reflection data)')
-        #log('Setting analysis.refine_output_structures = False')
-        #params.analysis.refine_output_structures = False
-        #log('Setting analysis.calculate_r_factors = False')
-        #params.analysis.calculate_r_factors = False
-        #log('Setting analysis.calculate_electron_density_metrics = False')
-        #params.analysis.calculate_electron_density_metrics = False
-        #log('Setting input.look_for_reflection_data = False')
-        #params.input.look_for_reflection_data = False
         log('Setting fitting.optimisation.dataset_weights = one')
         params.optimisation.weights.dataset_weights = 'one'
         log.bar()
@@ -456,10 +446,6 @@ class ExtractAndProcessModelUijsTask:
         # Determine the disorder model
         actual_disorder_model = self.determine_disorder_model_from_mask(isotropic_mask)
 
-        # Delete the isotropic mask if not needed
-        #if isotropic_mask.selection.all_eq(False):
-        #    isotropic_mask = None
-
         # Extract b-values for isotropic atoms and convert to isotropic Uij
         if not isotropic_mask.all_anisotropic:
             model_uij = self.generate_uij_for_isotropic_atoms(
@@ -477,7 +463,9 @@ class ExtractAndProcessModelUijsTask:
                 model_uij = model_uij,
                 isotropic_mask = isotropic_mask,
                 )
+
         self.show_summary()
+        
         return self.result
 
     def show_summary(self):

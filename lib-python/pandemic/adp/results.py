@@ -171,7 +171,6 @@ class PandemicResultsObject:
             table_one['Low Resolution Limit'], table_one['High Resolution Limit'] = zip(*table_one['Resolution range'].apply(lambda x: x.split('(')[0].split('-')))
 
         # Select columns that exist
-        #table_one = table_one[table_one.intersection(column_labels)]
         table_one = table_one[table_one.columns.intersection(column_labels)]
 
         # Remove "high-resolution shell" statistics
@@ -279,44 +278,6 @@ class PandemicResultsObject:
             log.bar()
 
         return
-
-    # TODO
-    def calculate_uij_statistics(self, 
-        uij_target,
-        uij_levels,
-        uij_residual,
-        ):
-
-        self.log.bar(True, False)
-        self.log('Calculating mean and median fitting rmsds by dataset')
-        self.log.bar()
-        # Calculate rmsd between input and fitted uijs
-        uij_rmsd = rms(uij_inp-uij_fit, axis=2)
-        # Extract mean/median dataset-by-dataset RMSDs
-        dset_medn_rmsds = numpy.median(uij_rmsd, axis=1)
-        dset_mean_rmsds = numpy.mean(uij_rmsd, axis=1)
-        main_table['Mean Fitting RMSD']   = dset_mean_rmsds
-        main_table['Median Fitting RMSD'] = dset_medn_rmsds
-        for i in xrange(0, min(10, len(self.models))):
-            self.log('Model {:10}: {:6.3f} (mean), {:6.3f} (median)'.format(self.models[i].tag, dset_mean_rmsds[i], dset_medn_rmsds[i]))
-
-        self.log.bar(True, False)
-        self.log('Calculating isotropic ADPs for input and fitted ADPs by dataset')
-        self.log.bar()
-        # Calculate isotropic ADPs for input and fitted uijs
-        uij_inp_iso = numpy.array(map(uij_to_b, uij_inp))
-        uij_fit_iso = numpy.array(map(uij_to_b, uij_fit))
-        # Calculate mean/median ADPs for each atom
-        dset_mean_inp_iso = numpy.mean(uij_inp_iso, axis=1)
-        dset_mean_fit_iso = numpy.mean(uij_fit_iso, axis=1)
-        main_table['Average B-factor (fitted atoms) (Input)']               = dset_mean_inp_iso
-        main_table['Average B-factor (fitted atoms) (Fitted)']              = dset_mean_fit_iso
-        main_table['Average B-factor (fitted atoms) Change (Fitted-Input)'] = dset_mean_fit_iso - dset_mean_inp_iso
-        for i in xrange(0, min(10, len(self.models))):
-            self.log('Model {:10}: {:6.3f} (input) -> {:6.3f} (fitted)'.format(self.models[i].tag, dset_mean_inp_iso[i], dset_mean_fit_iso[i]))
-
-        # Store output table (object is changed in the join steps)
-        self.tables.statistics = main_table
 
     def write(self):
         """Add data to CSV and write"""

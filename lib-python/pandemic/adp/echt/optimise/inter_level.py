@@ -17,6 +17,7 @@ def uij_modulus(uij_array):
 
 class OptimisationSetGenerator:
 
+
     def __init__(self, level_group_connections):
         adopt_init_args(self, locals())
 
