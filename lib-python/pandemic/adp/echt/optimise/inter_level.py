@@ -15,10 +15,200 @@ def uij_modulus(uij_array):
     return uij_mods
 
 
+class LevelGroupTree:
+
+
+    def __init__(self,
+        links,
+        cache_sets = True,
+        ):
+
+        # Cache for saving results
+        set_cache = {}
+        # Max number of possible links
+        max_links = len(links.keys())
+
+        adopt_init_args(self, locals())
+
+        # Find the roots of the tree
+        self.roots = self._find_roots()
+        # Reverse the directional links to find parents of each node
+        self.node_parents = self._find_node_parents()
+
+    def _find_roots(self):
+        """Find roots of the tree (nodes which are not children)"""
+        roots = set(self.iter_nodes())
+        for l, g in self.iter_nodes():
+            l_g_pairs = self.get_children(l,g)
+            # Remove anything that is a child
+            roots.difference_update(l_g_pairs)
+        return sorted(roots)
+
+    def _find_node_parents(self):
+        """Find the parents of each node and return as dictionary"""
+        # Dictionary of parents for each node
+        node_parents = {}
+        for l, g in self.iter_nodes():
+            for lg_child in self.get_children(l,g):
+                node_parents.setdefault(lg_child, []).append((l,g))
+        return node_parents
+
+    def iter_nodes(self):
+        for l_label, l_links in sorted(self.links.items()):
+            for g_label in sorted(l_links.keys()):
+                yield (l_label, g_label)
+
+    def iter_nodes_by_level(self):
+        for l_label, l_links in sorted(self.links.items()):
+            yield (l_label, l_links.keys())
+
+    def is_convergent_node(self, l, g):
+        """Check if a node has more than one parent"""
+        return (len(self.node_parents.get((l,g),[])) > 1)
+
+    def get_children(self, l, g):
+        l_g_links = self.links.get(l,{}).get(g,{})
+        children = []
+        for l_child, g_children in sorted(l_g_links.items()):
+            children.extend([(l_child, g_child) for g_child in g_children])
+        return children
+
+    def get_parents(self, l, g):
+        return self.node_parents.get((l,g),[])
+
+    def get_children_recursive(self,
+        l, g, max_recursions,
+        get_parents_for_convergent_nodes = True,
+        ):
+        """Get the children of a node recursively, going through `max_recursions` number of links"""
+        children = []
+        # If one recursion, just return the current children
+        if max_recursions > 0:
+            # Get the direct children of this node
+            children += self.get_children(l,g)
+            # If more than one recursion, recurse to the level below (get chidren of children)
+            if max_recursions > 1:
+                for cl, cg in children:
+                    # Get children of this node
+                    children += self.get_children_recursive(
+                        l=cl, g=cg,                         # One "level" lower than original (l,g)
+                        max_recursions=max_recursions-1,    # !!! Decrement this as we have moved down a level
+                        get_parents_for_convergent_nodes=get_parents_for_convergent_nodes,
+                        )
+                    # Get parents of this node?
+                    if (get_parents_for_convergent_nodes is True) and self.is_convergent_node(cl,cg):
+                        parents = self.get_parents(cl,cg)
+                        # Should be a convergent node with more than one parent
+                        assert len(parents) > 1
+                        # Remove the seed parent
+                        parents.remove((l,g))
+                        # Append to output list
+                        children += parents
+                        # Recursively add all children
+                        for pl, pg in parents:
+                            children += self.get_children_recursive(
+                                l=pl, g=pg,                     # Same "level" as original (l,g)
+                                max_recursions=max_recursions,  # !!! Do not decrement this as we have not descended a level
+                                get_parents_for_convergent_nodes=get_parents_for_convergent_nodes,
+                                )
+        # Make non-redundant and sort
+        return sorted(set(children))
+
+    def get_recursive_sets(self, max_recursions):
+
+        # Look for previous solutions if present
+        result = self.set_cache.get(max_recursions, None)
+        if result is not None:
+            return result
+
+        # List of recursions starting from ALL levels
+        output_sets = []
+        # Iter through groups in each level
+        for l, groups in self.iter_nodes_by_level():
+            # List of recursions starting from THIS level
+            level_sets = []
+            # Find recursive sets for each group
+            for g in groups:
+                # Group starts with itself
+                level_group_set = [(l,g)] + self.get_children_recursive(
+                        l = l,
+                        g = g,
+                        max_recursions = max_recursions,
+                        get_parents_for_convergent_nodes = True,
+                        )
+                level_sets.append(level_group_set)
+            # Merge overlapping groups (paths may converge)
+            output_sets += self.merge_overlapping_groups(level_sets)
+
+        # Cache result?
+        if self.cache_sets is True:
+            self.set_cache[max_recursions] = output_sets
+
+        return output_sets
+
+    def get_complete_sets(self):
+
+        cache_label = 'complete'
+
+        result = self.set_cache.get(cache_label, None)
+        if result is not None:
+            return result
+
+        max_recursions = self.max_links
+
+        # List of recursions starting from each root
+        root_sets = []
+        # Iter through each root
+        for l, g in self.roots:
+            root_set = [(l,g)] + self.get_children_recursive(
+                    l = l,
+                    g = g,
+                    max_recursions = max_recursions,
+                    get_parents_for_convergent_nodes = False, # Do not need to find parents as will be merged later
+                    )
+            root_sets.append(root_set)
+
+        output_sets = self.merge_overlapping_groups(root_sets)
+
+        # Cache result?
+        if self.cache_sets is True:
+            self.set_cache[cache_label] = output_sets
+
+        return output_sets
+
+    def merge_overlapping_groups(self, list_of_l_g_pairs):
+
+        input_sets = [set(l_g_pairs) for l_g_pairs in list_of_l_g_pairs]
+        output_sets = []
+
+        # Any overlaps found between the sets?
+        global_overlaps_found = False
+
+        for i_s in input_sets:
+            # local flag for this set
+            this_overlaps_found = False
+            # Iterate through sets and merge into those with overlaps
+            for o_s in output_sets:
+                if i_s.intersection(o_s):
+                    o_s.update(i_s)
+                    this_overlaps_found = True
+            # If no overlaps, append to output list
+            if this_overlaps_found is False:
+                output_sets.append(i_s)
+            else:
+                global_overlaps_found = True
+
+        # Run recursively until no overlaps are returned
+        if global_overlaps_found is True:
+            return self.merge_overlapping_groups(output_sets)
+
+        return map(sorted, output_sets)
+
+
 class OptimisationSetGenerator:
 
 
-    def __init__(self, level_group_connections):
+    def __init__(self, level_group_tree):
         adopt_init_args(self, locals())
 
     def __call__(self,
@@ -40,40 +230,10 @@ class OptimisationSetGenerator:
 
     def generate_optimisation_sets(self, max_recursions):
 
-        tree = self.level_group_connections
-
-        if max_recursions is None: 
-            return self.find_complete_sets(tree)
+        if max_recursions is None:
+            return self.level_group_tree.get_complete_sets()
         else:
-            return self.find_iterative_sets(tree, max_recursions)
-
-    def find_iterative_sets(self, tree, max_recursions):
-        l_g_sets = []
-        for i_key, l in enumerate(sorted(tree.keys())):
-            l_tree = tree[l]
-            for g in sorted(l_tree.keys()):
-                l_g_pair = (l, g)
-                if (max_recursions > 0):
-                    linked_pairs = [l_g_pair] + self.get_linked_level_group_pairs_recursive(tree, l, g, max_recursions)
-                    l_g_sets.append(linked_pairs)
-                else:
-                    l_g_sets.append([l_g_pair])
-        return l_g_sets
-
-    def find_complete_sets(self, tree):
-        l_g_sets = []
-        found_set = set()
-        for i_key, l in enumerate(sorted(tree.keys())):
-            l_tree = tree[l]
-            for g in sorted(l_tree.keys()):
-                l_g_pair = (l, g)
-                if l_g_pair in found_set: 
-                    continue
-                else:
-                    linked_pairs = [l_g_pair] + self.get_linked_level_group_pairs_recursive(tree, l, g, None)
-                    l_g_sets.append(linked_pairs)
-                    found_set.update(linked_pairs)
-        return l_g_sets
+            return self.level_group_tree.get_recursive_sets(max_recursions)
 
     def generate_optimisation_jobs_from_sets(self,
         set_list,
@@ -87,27 +247,8 @@ class OptimisationSetGenerator:
             if optimise_atomic_adp_amplitudes is True:
                 output.append((dataset_indices, s))                 # One optimisation job
             else:
-                output.extend([([i], s) for i in dataset_indices])  # One optimsation job for each dataset
+                output.extend([([i], s) for i in dataset_indices])  # One optimisation job for each dataset
         return output
-
-    def get_linked_level_group_pairs_recursive(self, tree, level, group, max_recursions=None):
-        t_out = []
-        linked_groups = tree.get(level, {}).get(group, None)
-        if linked_groups is None:
-            return []
-        # Get the linked groups on this level
-        for l in sorted(linked_groups.keys()):
-            # Append to output list
-            for g in linked_groups.get(l):
-                t_out.append((l,g))
-        # Get the linked groups from the next level
-        r_out = []
-        if (max_recursions is None) or (max_recursions > 0):
-            if max_recursions is not None:
-                max_recursions = max_recursions - 1
-            for l,g in t_out:
-                r_out.extend(self.get_linked_level_group_pairs_recursive(tree, l, g, max_recursions))
-        return t_out + r_out
 
 
 class OptimiseInterLevelAmplitudes:
@@ -120,19 +261,18 @@ class OptimiseInterLevelAmplitudes:
         verbose = False,
         log = None,
         ):
-        if optimisation_weights is not None: 
+        if optimisation_weights is not None:
             from mmtbx.tls.optimise_amplitudes import OptimisationWeights
             optimisation_weights = OptimisationWeights.from_other(optimisation_weights)
 
         adopt_init_args(self, locals())
-
 
     def __call__(self,
         uij_target,
         uij_target_weights,
         uij_isotropic_mask,
         model_object,
-        level_group_connections,
+        level_group_tree,
         adp_optimisation_dataset_mask = None, # TODO
         max_recursions = None,
         ):
@@ -158,7 +298,7 @@ class OptimiseInterLevelAmplitudes:
             adp_optimisation_dataset_mask = flex.bool(model_object.n_datasets, True)
         assert adp_optimisation_dataset_mask.size() == model_object.n_datasets
 
-        get_optimisation_indices_sets = OptimisationSetGenerator(level_group_connections=level_group_connections)
+        get_optimisation_indices_sets = OptimisationSetGenerator(level_group_tree=level_group_tree)
 
         optimisation_sets = get_optimisation_indices_sets(
             i_datasets = range(model_object.n_datasets),
@@ -243,7 +383,8 @@ class OptimiseInterLevelAmplitudes:
                 adp_uij_values = adp_uij_values,
                 )
 
-        return (model_object, adp_uij_values)
+        return None
+        #return (model_object, adp_uij_values)
 
     @staticmethod
     def extract_group_values_for_optimisation(
@@ -251,7 +392,7 @@ class OptimiseInterLevelAmplitudes:
         uij_isotropic_mask = None,
         ):
 
-        # Store in one array for convenience
+        # One array of uij values
         group_uij_values = numpy.zeros((
             model_object.n_tls_levels,
             model_object.n_modes,
@@ -260,21 +401,25 @@ class OptimiseInterLevelAmplitudes:
             6,
             ), dtype=float)
 
+        # One array of amplitudes/multipliers
         group_multipliers = [numpy.zeros((
             len(groups),
             model_object.n_modes,
             model_object.n_datasets,
             )) for groups in model_object.tls_objects]
 
+        # Extract amplitudes and uijs group-by-group
         for i_level in xrange(model_object.n_tls_levels):
             for i_group, group in enumerate(model_object.tls_objects[i_level]):
                 selection = model_object.tls_selections[i_level][i_group]
                 for i_mode, (amps, uijs) in enumerate(group.uijs_unmultiplied()):
-                    #u = numpy.array(uijs).reshape((group.n_datasets, group.n_atoms, 6))
+                    # Extract the uijs for each dataset
                     for i_dataset in xrange(group.n_datasets):
                         group_uij_values[i_level, i_mode, i_dataset, selection] = uijs[i_dataset]
+                    # Extract the amplitudes for this mode/group
                     group_multipliers[i_level][i_group, i_mode, :] = amps
 
+        # Apply isotropic mask if provided
         if uij_isotropic_mask is not None:
             for i_level in xrange(model_object.n_tls_levels):
                 for i_mode in xrange(model_object.n_modes):
@@ -287,9 +432,11 @@ class OptimiseInterLevelAmplitudes:
         adp_values,
         uij_isotropic_mask = None,
         ):
-        # TODO -- shouldn't need to apply this as optimised isotropic ADPs should be made isotrpoic during optimisation...
+        # Apply isotropic mask if provided
         if uij_isotropic_mask is not None:
             adp_values = uij_isotropic_mask(adp_values)
+
+        # Convert to numpy array and calculate modulus (size) of each uij
         adp_values = numpy.array(adp_values).reshape((adp_values.all()+(6,)))
         adp_multipliers = uij_modulus(adp_values)
 

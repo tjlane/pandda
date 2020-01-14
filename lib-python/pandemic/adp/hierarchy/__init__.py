@@ -61,7 +61,7 @@ class CreateHierarchicalModelTask:
             level_group_selection_strings = selections.level_group_selection_strings,
             )
 
-        graphs = self.array_as_tree.run(
+        array_tree = self.array_as_tree.run(
             level_group_array = arrays.level_group_array,
             )
 
@@ -69,7 +69,7 @@ class CreateHierarchicalModelTask:
             level_labels                    = selections.level_labels,
             level_group_array               = arrays.level_group_array,
             level_group_selection_strings   = arrays.level_group_selection_strings,
-            level_group_tree                = graphs.graph,
+            level_group_tree                = array_tree.tree,
             overall_atom_mask               = arrays.overall_atom_mask,
             )
 

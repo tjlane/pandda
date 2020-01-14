@@ -124,7 +124,7 @@ class OptimiseEchtModel:
 
     def __call__(self,
             model_object,
-            level_group_connections,
+            level_group_tree,
             uij_target,
             uij_target_weights,
             uij_isotropic_mask,
@@ -161,7 +161,7 @@ class OptimiseEchtModel:
                     uij_target_weights = uij_target_weights,
                     uij_isotropic_mask = uij_isotropic_mask,
                     model_object = model_object,
-                    level_group_connections  = level_group_connections,
+                    level_group_tree  = level_group_tree,
                     max_recursions = max_recursions,
                     # dataset mask TODO
                     )
@@ -193,7 +193,7 @@ class OptimiseEchtModel:
                             uij_target_weights = uij_target_weights,
                             uij_isotropic_mask = uij_isotropic_mask,
                             model_object = model_object,
-                            level_group_connections  = level_group_connections,
+                            level_group_tree  = level_group_tree,
                             max_recursions = None,
                             # dataset mask TODO
                             )
@@ -238,7 +238,7 @@ class OptimiseEchtModel:
                             uij_target_weights = uij_target_weights,
                             uij_isotropic_mask = uij_isotropic_mask,
                             model_object = model_object,
-                            level_group_connections  = level_group_connections,
+                            level_group_tree  = level_group_tree,
                             max_recursions = max_recursions,
                             # dataset mask
                             )
@@ -286,7 +286,7 @@ class OptimiseEchtModel:
                             uij_target_weights = uij_target_weights,
                             uij_isotropic_mask = uij_isotropic_mask,
                             model_object = model_object,
-                            level_group_connections  = level_group_connections,
+                            level_group_tree = level_group_tree,
                             max_recursions = max_recursions,
                             )
 

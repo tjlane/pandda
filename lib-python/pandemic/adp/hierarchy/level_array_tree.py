@@ -1,6 +1,8 @@
 from libtbx import adopt_init_args, group_args
 from bamboo.common.logs import Log
 
+from pandemic.adp.echt.optimise.inter_level import LevelGroupTree
+
 
 class BuildLevelArrayAsTreeTask:
 
@@ -65,7 +67,7 @@ class BuildLevelArrayAsTreeTask:
                     above_list.append(i_g_above)
 
         self.result = group_args(
-            graph = graph,
+            tree = LevelGroupTree(links=graph),
             )
         self.show_summary()
 
@@ -73,7 +75,7 @@ class BuildLevelArrayAsTreeTask:
 
     def show_summary(self):
 
-        graph = self.result.graph
+        graph = self.result.tree.links
 
         log = self.log
         log.subheading('Tree summary of hierarchy:')

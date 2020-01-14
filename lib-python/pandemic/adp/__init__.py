@@ -316,7 +316,7 @@ def run(params, args=None):
     file_system = file_system.PandemicAdpFileSystem(output_directory=params.output.out_dir)
 
     from bamboo.common.logs import Log
-    log = Log(log_file=os.path.join(file_system.output_directory, 'fitting.log'))
+    log = Log(log_file=os.path.join(file_system.output_directory, 'pandemic.log'))
 
     #
     # Warning message accumulator
@@ -815,12 +815,12 @@ def run(params, args=None):
             )
 
         model_object = optimise_model_main(
-            model_object = model_object,
-            level_group_connections = hierarchy_info.level_group_tree,
-            uij_target = extract_uijs_task.result.model_uij,
-            uij_target_weights = uij_weights_task.result.total_weight_array,
-            uij_isotropic_mask = optimise_isotropic_mask,
-            tracking_object = main_tracking_object,
+            model_object        = model_object,
+            level_group_tree    = hierarchy_info.level_group_tree,
+            uij_target          = extract_uijs_task.result.model_uij,
+            uij_target_weights  = uij_weights_task.result.total_weight_array,
+            uij_isotropic_mask  = optimise_isotropic_mask,
+            tracking_object     = main_tracking_object,
             )
 
         model_tracking_object.update(
