@@ -144,27 +144,18 @@ class OptimiseEchtModel:
         calculate_uij_target = LevelTargetUijCalculator(uij_target)
 
         # Initial amplitude optimisation
-        if (self.optimise_level_amplitudes is not None):
-
-            self.log.subheading('Macrocycle {}: '.format(tracking_object.n_cycle)+'Optimising inter-level amplitudes')
-
-            # Ensure no negative eigenvalues
-            self.repair_model(model_object)
-
-            for max_recursions in [1, None]:
-                if max_recursions is None:
-                    self.log('Optimising all levels simultaneously')
-                else:
-                    self.log('Optimising sets of {} neighbouring levels'.format(max_recursions+1))
-                self.optimise_level_amplitudes(
-                    uij_target = uij_target,
-                    uij_target_weights = uij_target_weights,
-                    uij_isotropic_mask = uij_isotropic_mask,
-                    model_object = model_object,
-                    level_group_tree  = level_group_tree,
-                    max_recursions = max_recursions,
-                    # dataset mask TODO
-                    )
+        self.log.subheading('Macrocycle {}: '.format(tracking_object.n_cycle)+'Optimising inter-level amplitudes')
+        self.repair_model(model_object)
+        self.log('Optimising groups of amplitudes for all independent hierarchies')
+        self.optimise_level_amplitudes(
+            uij_target = uij_target,
+            uij_target_weights = uij_target_weights,
+            uij_isotropic_mask = uij_isotropic_mask,
+            model_object = model_object,
+            level_group_tree  = level_group_tree,
+            max_recursions = None,
+            # dataset mask TODO
+            )
 
         # Record the object before optimisation
         tracking_object.update(
@@ -187,7 +178,7 @@ class OptimiseEchtModel:
                     # Set all e.g. T matrices to diag(1,1,1)
                     self.initialise_level(model_object, i_level=i_level)
                     # Initial amplitude optimisation to get them away from zero
-                    self.log('Optimising level amplitudes')
+                    self.log('Optimising groups of amplitudes for all independent hierarchies')
                     self.optimise_level_amplitudes(
                             uij_target = uij_target,
                             uij_target_weights = uij_target_weights,
@@ -222,26 +213,18 @@ class OptimiseEchtModel:
 
                 # Optimise the amplitudes between levels
                 if self.optimise_level_amplitudes is not None:
-
                     self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
-
-                    # Ensure no negative eigenvalues
                     self.repair_model(model_object)
-
-                    for max_recursions in [1, None]:
-                        if max_recursions is None:
-                            self.log('Optimising all levels simultaneously')
-                        else:
-                            self.log('Optimising sets of {} neighbouring levels'.format(max_recursions+1))
-                        self.optimise_level_amplitudes(
-                            uij_target = uij_target,
-                            uij_target_weights = uij_target_weights,
-                            uij_isotropic_mask = uij_isotropic_mask,
-                            model_object = model_object,
-                            level_group_tree  = level_group_tree,
-                            max_recursions = max_recursions,
-                            # dataset mask
-                            )
+                    self.log('Optimising groups of amplitudes for all independent hierarchies')
+                    self.optimise_level_amplitudes(
+                        uij_target = uij_target,
+                        uij_target_weights = uij_target_weights,
+                        uij_isotropic_mask = uij_isotropic_mask,
+                        model_object = model_object,
+                        level_group_tree  = level_group_tree,
+                        max_recursions = None,
+                        # dataset mask
+                        )
 
                 if (self.verbose is True):
                     # Update tracking
@@ -269,26 +252,17 @@ class OptimiseEchtModel:
                     )
 
                 # Optimise the amplitudes between levels
-                if self.optimise_level_amplitudes is not None:
-
-                    self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
-
-                    # Ensure no negative eigenvalues
-                    self.repair_model(model_object)
-
-                    for max_recursions in [1, None]:
-                        if max_recursions is None:
-                            self.log('Optimising all levels simultaneously')
-                        else:
-                            self.log('Optimising sets of {} neighbouring levels'.format(max_recursions+1))
-                        self.optimise_level_amplitudes(
-                            uij_target = uij_target,
-                            uij_target_weights = uij_target_weights,
-                            uij_isotropic_mask = uij_isotropic_mask,
-                            model_object = model_object,
-                            level_group_tree = level_group_tree,
-                            max_recursions = max_recursions,
-                            )
+                self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
+                self.repair_model(model_object)
+                self.log('Optimising groups of amplitudes for all independent hierarchies')
+                self.optimise_level_amplitudes(
+                    uij_target = uij_target,
+                    uij_target_weights = uij_target_weights,
+                    uij_isotropic_mask = uij_isotropic_mask,
+                    model_object = model_object,
+                    level_group_tree = level_group_tree,
+                    max_recursions = None,
+                    )
 
             # Update tracking
             tracking_object.update(
