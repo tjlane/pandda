@@ -168,19 +168,26 @@ class base_pymol_script:
                 com_shapes.append(cyl)
             s.add_shapes(com_shapes, obj=obj_name, state=i+1)
 
+        # Find min/max for colour bar
         if min_max_values is None:
             min_v = 0.0
             max_v = comparison_matrix.max()
         else:
             min_v, max_v = min_max_values
 
+        # Spacing of colour samples
         del_v = (max_v - min_v) / 10.0
+
+        if del_v > 0.0: 
+            color_range = numpy.arange(min_v, max_v+del_v, del_v)
+        else: 
+            color_range = [min_v, max_v]
 
         s.ramp_new(
             obj=obj_name+'-scalebar',
             mol_or_map_obj=self.structure_obj,
             range = str([min_v, max_v]),
-            color = str([list(colour_function(v)) for v in numpy.arange(min_v,max_v+del_v,del_v)]),
+            color = str([list(colour_function(v)) for v in color_range]),
             )
 
         s.disable(obj=obj_name)

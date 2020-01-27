@@ -406,7 +406,9 @@ class AnalyseResidualsTask:
         for i_l, l_name in enumerate(level_names):
 
             # Extract cross-correlations between atoms
+            err_settings = numpy.seterr(invalid='ignore')
             uij_correlations = [numpy.corrcoef(uij_diff[i_d], uij_fitted[i_l, i_d])[diag_idxs[0], diag_idxs[1]] for i_d in range(uij_target.shape[0])]
+            numpy.seterr(**err_settings)
 
             atom_hierarchies = [structure_factory.custom_copy(iso=c) for c in uij_correlations]
 

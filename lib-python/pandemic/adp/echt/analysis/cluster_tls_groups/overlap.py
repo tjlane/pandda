@@ -62,7 +62,7 @@ def make_pymol_script(
     from bamboo.pymol_utils import shapes
 
     minimum = 0.
-    maximum = similarity_matrix[~numpy.eye(similarity_matrix.shape[0], dtype=bool)].max()
+    maximum = 1e-16 + similarity_matrix[~numpy.eye(similarity_matrix.shape[0], dtype=bool)].max()
     midpoint = (minimum + maximum) / 2.
 
     def map_value_to_colour(v, minimum=minimum, midpoint=midpoint, maximum=maximum):

@@ -9,7 +9,7 @@ def test_structure_factory():
 	from iotbx.pdb import hierarchy
 	pdb_h = hierarchy.input(pdb_string=pdb_str).hierarchy
 
-	from pandemic.adp.utils import StructureFactory
+	from pandemic.adp.output.structures import StructureFactory
 	sf = StructureFactory(master_h=pdb_h)
 
 	mask = pdb_h.atom_selection_cache().selection('resseq 12 or resseq 14')
@@ -115,7 +115,7 @@ def test_partition_borders():
 	from iotbx.pdb import hierarchy
 	pdb_h = hierarchy.input(pdb_string=pdb_str).hierarchy
 
-	from pandemic.adp.utils import PartitionBordersFactory
+	from pandemic.adp.output.structures import PartitionBordersFactory
 	sf = PartitionBordersFactory(master_h=pdb_h)
 
 	atom_labels = [a.resseq for a in pdb_h.atoms_with_labels()]
@@ -151,26 +151,3 @@ def test_partition_borders():
 	atom_labels = [a.name for a in pdb_h.select(sel).atoms_with_labels()]
 	bounds = sf.partition_boundaries(atom_labels, mask=sel)
 	assert list((bounds.atoms().extract_b() > 0.0).iselection()) == [7, 8, 16, 17]
-
-def test_uij_isotropic_mask():
-
-	from iotbx.pdb import hierarchy
-	pdb_h = hierarchy.input(pdb_string=pdb_str).hierarchy
-
-	from pandemic.adp.utils import UijIsotropicMask
-
-	sel = pdb_h.atom_selection_cache().selection('resseq 12')
-	mask = UijIsotropicMask(sel)
-	uijs = mask(pdb_h.atoms().extract_uij())
-	uijs_man = [((u[0]+u[1]+u[2])/3.,)*3+(0.,)*3 for u in pdb_h.select(sel).atoms().extract_uij()]
-	assert list(uijs.select(sel)) == uijs_man
-	assert list(uijs.select(sel==False)) == list(pdb_h.select(sel==False).atoms().extract_uij())
-
-	mask_all = UijIsotropicMask(sel)
-	mask_cut = mask_all[pdb_h.atom_selection_cache().selection('resseq 12:13')]
-	assert mask_cut.selection.all_eq(flex.bool([True]*9 + [False]*8))
-
-
-
-
-

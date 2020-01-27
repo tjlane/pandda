@@ -177,9 +177,9 @@ class UijArrayWeightsTask:
         if resolutions is not None: 
             assert len(resolutions) == len(uij_values)
 
-        if resolutions.count(None):
-            assert resolutions.count(None) == len(resolutions), 'either all resolutions must be provided or none: {}'.format(resolutions)
-            resolutions = None
+            if resolutions.count(None):
+                assert resolutions.count(None) == len(resolutions), 'either all resolutions must be provided or none: {}'.format(resolutions)
+                resolutions = None
 
         dataset_weight_array = self.calculate_dataset_weights(
             resolutions = resolutions,

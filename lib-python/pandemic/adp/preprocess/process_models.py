@@ -7,7 +7,7 @@ from bamboo.common.path import easy_directory
 from giant.xray.crystal import CrystalSummary
 
 def get_resolution_from_model_pdb_input(model=None, mtz_filename=None):
-    return CrystalSummary.from_pdb(pdb_input=model.input).high_res
+    return model.input.resolution()
 
 def get_resolution_from_model_mtz(model=None, mtz_filename=None):
     return CrystalSummary.from_mtz(mtz_filename).high_res

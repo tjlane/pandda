@@ -41,7 +41,13 @@ class ModelLoader:
         log.subheading('Building model list -- {} files'.format(len(pdb_files)))
         models = []
         for f in pdb_files:
-            m = self.model_class.from_file(f)
+            # Read pdb file to model object
+            try: 
+                m = self.model_class.from_file(f)
+            except Exception as e: 
+                self.log('Error while loading file {}: \n\t{}'.format(f, e))
+                raise Sorry('Failed to load pdb file -- have you selected the correct model_type? Current model_type is {}.'.format(self.model_type))
+            # Generate label from filename
             l = self.label_func(f)
             if not l:
                 if len(pdb_files) == 1:

@@ -23,7 +23,7 @@ def validate_parameters(params, log=None):
     if params.output.images.all:
         log('params.output.images.all = {}'.format(params.output.images.all))
         # ----------------
-        new = 'all'
+        new = 'chain'
         log('Setting params.output.images.pymol to {}'.format(new))
         params.output.images.pymol = new
         # ----------------
@@ -42,26 +42,51 @@ def validate_parameters(params, log=None):
         log.bar()
 
     try:
+        # Initalise variable to blank string (overwritten at each check)
+        message = ''
+        # Standard string for missing programs
+        missing_program_info_string = """
+        The program is not currently available in any of the PATH directories.
+        [ It must be available as an executable script/link -- not as an alias.  ] 
+        """
+
         if params.analysis.refine_output_structures is True:
             if params.refinement.program == 'phenix':
-                message = 'phenix.refine is required when analysis.refine_output_structures=True and refinement.program=phenix'
+                message = """
+                phenix.refine is required when analysis.refine_output_structures=True and refinement.program=phenix. 
+                {missing_program_info_string}
+                """.format(missing_program_info_string=missing_program_info_string)
                 check_programs_are_available(['phenix.refine'])
             elif params.refinement.program == 'refmac':
-                message = 'refmac5 is required when analysis.refine_output_structures=True and refinement.program=refmac'
+                message = """
+                refmac5 is required when analysis.refine_output_structures=True and refinement.program=refmac.
+                {missing_program_info_string}
+                """.format(missing_program_info_string=missing_program_info_string)
                 check_programs_are_available(['refmac5'])
             else:
                 raise Sorry('Must select refinement.program when analysis.refine_output_structures=True')
+
         if params.analysis.calculate_r_factors is True:
-            message = 'phenix.table_one is required when analysis.calculate_r_factors is True'
+            message = """
+            phenix.table_one is required when analysis.calculate_r_factors=True.
+            {missing_program_info_string}
+            To turn off this function add analysis.calculate_r_factors=False to command line options.
+            """.format(missing_program_info_string=missing_program_info_string)
             check_programs_are_available(['phenix.table_one'])
+
         #if params.analysis.calculate_electron_density_metrics:
         #    message = 'edstats (script name "edstats.pl") is required when analysis.calculate_electron_density_metrics is True'
         #    check_programs_are_available(['edstats.pl'])
+
         if params.output.images.pymol is not None:
-            message = 'pymol is required when output.images.pymol is not set to "none"'
+            message = """
+            pymol is required when output.images.pymol is not set to "none". 
+            {missing_program_info_string}
+            To turn off pymol add output.images.pymol=none to the command line options.
+            """.format(missing_program_info_string=missing_program_info_string)
             check_programs_are_available(['pymol'])
     except Exception as e:
-        #log(e)
+        log(message)
         raise
 
 

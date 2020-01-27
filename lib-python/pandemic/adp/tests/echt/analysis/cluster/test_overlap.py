@@ -2,7 +2,7 @@ from pytest import approx, raises
 
 def test_uij_overlap_mass():
 
-    from pandemic.adp.echt.analysis.cluster.overlap import uij_overlap_mass, uij_overlap_mass_function, \
+    from pandemic.adp.echt.analysis.cluster_tls_groups.overlap import uij_overlap_mass, uij_overlap_mass_function, \
         uij_overlap_mass_function_weighted_average, uij_overlap_mass_function_simple_average
 
     a_b_o = [

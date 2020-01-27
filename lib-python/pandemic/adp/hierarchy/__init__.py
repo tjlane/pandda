@@ -14,7 +14,7 @@ class CreateHierarchicalModelTask:
         custom_levels,
         overall_selection,
         cbeta_in_backbone,
-        remove_duplicate_groups = False,
+        remove_duplicate_groups = None,
         warnings = None,
         verbose = False,
         log = None,

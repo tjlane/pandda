@@ -3,41 +3,13 @@ from pytest import approx, raises, mark
 from libtbx import group_args
 import iotbx.pdb
 
-def test_translate_phenix_selections_to_pymol_selections_simple():
-    from pandemic.adp.hierarchy import translate_phenix_selections_to_pymol_selections_simple
+from pandemic.resources.structure_test_snippets import pdb_test_structure_atoms
 
-    for phenix_str, pymol_str in [
-            (
-                ['chain B'],
-                ['chain B'],
-                ),
-            (
-                ['chain C and resid 10 through 21'],
-                ['chain C and resi 10:21'],
-                ),
-            (
-                ['chain B and resid 121B through 130'],
-                ['chain B and resi 121B:130'],
-                ),
-            (
-                ['chain A and resseq 15:20'],
-                [None],
-                ),
-            (
-                ['chain A', 'chains B'],
-                ['chain A', None],
-                ),
-            ]:
+def test_GenerateLevelSelectionsTask_auto_levels_1():
 
-        t = translate_phenix_selections_to_pymol_selections_simple(phenix_str)
-        assert t == pymol_str
+    from pandemic.adp.hierarchy.level_selections import GenerateLevelSelectionsTask
 
-def test_generate_level_selections_task_auto_levels_1():
-
-    from pandemic.adp.hierarchy import GenerateLevelSelectionsTask
-
-    from pandemic.resources.structure_test_snippets import pdb_test_structure_set
-    hierarchy = iotbx.pdb.hierarchy.input(pdb_string=pdb_test_structure_set[0]).hierarchy
+    hierarchy = iotbx.pdb.hierarchy.input(pdb_string=pdb_test_structure_atoms[0]).hierarchy
 
     for input_levels, level_labels, correct_groups in [
         [
@@ -221,13 +193,11 @@ def test_generate_level_selections_task_auto_levels_1():
         for i, l in enumerate(level_labels):
             assert gs.result.level_group_selection_strings[i] == sorted(correct_groups[l])
 
-@mark.slow
-def test_generate_level_selections_task_auto_levels_2():
+def test_GenerateLevelSelectionsTask_auto_levels_2():
 
-    from pandemic.adp.hierarchy import GenerateLevelSelectionsTask
+    from pandemic.adp.hierarchy.level_selections import GenerateLevelSelectionsTask
 
-    from pandemic.resources.structure_test_snippets import pdb_test_structure_set
-    hierarchy = iotbx.pdb.hierarchy.input(pdb_string=pdb_test_structure_set[0]).hierarchy
+    hierarchy = iotbx.pdb.hierarchy.input(pdb_string=pdb_test_structure_atoms[0]).hierarchy
 
     for input_levels, level_labels, correct_groups in [
         [
@@ -254,12 +224,11 @@ def test_generate_level_selections_task_auto_levels_2():
         for i, l in enumerate(level_labels):
             assert gs.result.level_group_selection_strings[i] == sorted(correct_groups[l])
 
-def test_generate_level_selections_task_cbeta_inclusion_and_overall_selection():
+def test_GenerateLevelSelectionsTask_cbeta_inclusion_and_overall_selection():
 
-    from pandemic.adp.hierarchy import GenerateLevelSelectionsTask
+    from pandemic.adp.hierarchy.level_selections import GenerateLevelSelectionsTask
 
-    from pandemic.resources.structure_test_snippets import pdb_test_structure_set
-    hierarchy = iotbx.pdb.hierarchy.input(pdb_string=pdb_test_structure_set[0]).hierarchy
+    hierarchy = iotbx.pdb.hierarchy.input(pdb_string=pdb_test_structure_atoms[0]).hierarchy
 
     for input_levels, level_labels, correct_groups in [
         [
@@ -351,12 +320,11 @@ def test_generate_level_selections_task_cbeta_inclusion_and_overall_selection():
         for i, l in enumerate(level_labels):
             assert gs.result.level_group_selection_strings[i] == sorted(correct_groups[l])
 
-def test_generate_level_selections_task_custom_levels():
+def test_GenerateLevelSelectionsTask_custom_levels():
 
-    from pandemic.adp.hierarchy import GenerateLevelSelectionsTask
+    from pandemic.adp.hierarchy.level_selections import GenerateLevelSelectionsTask
 
-    from pandemic.resources.structure_test_snippets import pdb_test_structure_set
-    hierarchy = iotbx.pdb.hierarchy.input(pdb_string=pdb_test_structure_set[0]).hierarchy
+    hierarchy = iotbx.pdb.hierarchy.input(pdb_string=pdb_test_structure_atoms[0]).hierarchy
 
     standard_levels = ['chain', 'residue']
     custom_levels = [
@@ -398,21 +366,20 @@ def test_generate_level_selections_task_custom_levels():
     assert len(gs.result.level_group_selection_strings[3]) == 51
     assert gs.result.level_group_selection_strings[4] == ['resname ALA', 'resname ILE']
 
-def test_build_level_array_task():
+def test_BuildLevelArrayTask():
 
     import numpy
 
-    from pandemic.adp.hierarchy import BuildLevelArrayTask
+    from pandemic.adp.hierarchy.level_array import BuildLevelArrayTask
 
-    from pandemic.resources.structure_test_snippets import pdb_test_structure_set
-    hierarchy = iotbx.pdb.hierarchy.input(pdb_string=pdb_test_structure_set[0]).hierarchy
+    hierarchy = iotbx.pdb.hierarchy.input(pdb_string=pdb_test_structure_atoms[0]).hierarchy
 
     bl = BuildLevelArrayTask(
         overall_selection = None,
         )
 
     bl.run(
-        master_h = hierarchy,
+        hierarchy = hierarchy,
         level_group_selection_strings = [
             ['chain A'],
             ['resseq 1911:1920','resseq 1921:1930','resseq 1940:1950','resseq 2000:2010'],
@@ -453,7 +420,7 @@ def test_build_level_array_task():
         )
 
     bl.run(
-        master_h = hierarchy,
+        hierarchy = hierarchy,
         level_group_selection_strings = [
             ['chain A'],
             ['resseq 1911:1920','resseq 1921:1930','resseq 1940:1950','resseq 2000:2010'],
@@ -481,7 +448,7 @@ def test_build_level_array_task():
 
     with raises(Exception) as e:
         bl.run(
-            master_h = hierarchy,
+            hierarchy = hierarchy,
             level_group_selection_strings = [
                 ['chain A'],
                 ['resseq 1920:1930'],
@@ -489,11 +456,11 @@ def test_build_level_array_task():
             )
     assert str(e.value) == "Levels have been created that contain no atoms!\nInvalid Levels: [2]"
 
-def test_build_level_array_as_tree_task():
+def test_BuildLevelArrayAsTreeTask():
 
     import numpy
 
-    from pandemic.adp.hierarchy import BuildLevelArrayAsTreeTask
+    from pandemic.adp.hierarchy.level_array_tree import BuildLevelArrayAsTreeTask
 
     level_group_array = -1 * numpy.ones((3, 20))
 
@@ -514,21 +481,20 @@ def test_build_level_array_as_tree_task():
 
     bl.run(level_group_array = level_group_array)
 
-    assert bl.result.graph == {
+    assert bl.result.tree.links == {
         0: {0: {1: [0, 1], 2: [2, 3]}},
         1: {0: {2: [0, 1]}, 1: {2: [4, 5]}},
         2: {0: {}, 1: {}, 2: {}, 3: {}, 4: {}, 5: {}, 6: {}},
     }
 
-def test_create_hierarchical_model_task():
+def test_CreateHierarchicalModelTask():
     """Integration test"""
 
     import numpy
 
     from pandemic.adp.hierarchy import CreateHierarchicalModelTask
 
-    from pandemic.resources.structure_test_snippets import pdb_test_structure_set
-    hierarchy = iotbx.pdb.hierarchy.input(pdb_string=pdb_test_structure_set[0]).hierarchy
+    hierarchy = iotbx.pdb.hierarchy.input(pdb_string=pdb_test_structure_atoms[0]).hierarchy
 
     hm = CreateHierarchicalModelTask(
         auto_levels = ['chain', 'ss'],
@@ -554,9 +520,38 @@ def test_create_hierarchical_model_task():
     assert hm.result.level_group_selection_strings[0] == ["chain 'A'"]
     assert hm.result.level_group_selection_strings[1] == ["chain 'A' and resid 1900  through 1905", "chain 'A' and resid 1906  through 1909", "chain 'A' and resid 1910  through 1920"]
     #
-    assert hm.result.level_group_tree == {0: {0: {1: [0, 1, 2]}}, 1: {0: {}, 1: {}, 2: {}}}
+    assert hm.result.level_group_tree.links == {0: {0: {1: [0, 1, 2]}}, 1: {0: {}, 1: {}, 2: {}}}
     #
     assert hm.result.overall_atom_mask.shape == (428,)
     assert numpy.where(hm.result.overall_atom_mask)[0].tolist() == range(0,171)
 
+def test_translate_phenix_selections_to_pymol_selections_simple():
+
+    from pandemic.adp.hierarchy.summary import translate_phenix_selections_to_pymol_selections_simple
+
+    for phenix_str, pymol_str in [
+            (
+                ['chain B'],
+                ['chain B'],
+                ),
+            (
+                ['chain C and resid 10 through 21'],
+                ['chain C and resi 10:21'],
+                ),
+            (
+                ['chain B and resid 121B through 130'],
+                ['chain B and resi 121B:130'],
+                ),
+            (
+                ['chain A and resseq 15:20'],
+                [None],
+                ),
+            (
+                ['chain A', 'chains B'],
+                ['chain A', None],
+                ),
+            ]:
+
+        t = translate_phenix_selections_to_pymol_selections_simple(phenix_str)
+        assert t == pymol_str
 

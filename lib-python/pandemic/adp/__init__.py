@@ -74,7 +74,7 @@ output {
         all = False
             .help = "Generate all graphical output - will significantly increase runtime"
             .type = bool
-        pymol = none *chain all
+        pymol = none *chain
             .help = "Write residue-by-residue images of the output B-factors"
             .type = choice(multi=False)
         colour_map = 'rainbow'
@@ -785,7 +785,7 @@ def run(params, args=None):
     #
     if params.settings.dry_run:
         log.heading('Exiting after initialisation: dry_run=True')
-        sys.exit()
+        raise SystemExit('Program exited normally')
 
     ################################
     #                              #
@@ -1035,22 +1035,28 @@ def run(params, args=None):
 
 ############################################################################
 
-if __name__=='__main__':
-
+def run_pandemic_adp(args):
+    from functools import partial
     from giant.jiffies import run_default
     from pandemic import module_info
-    from functools import partial
     run_default._module_info = module_info
+
+    run_default(
+        run                 = partial(run, args=args),
+        master_phil         = master_phil,
+        args                = args,
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION,
+        )
+
+if __name__=='__main__':
+
     from bamboo.common.profile import profile_code
-    #a = profile_code()
     try:
-        run_default(
-            run                 = partial(run, args=sys.argv[1:]),
-            master_phil         = master_phil,
-            args                = sys.argv[1:],
-            blank_arg_prepend   = blank_arg_prepend,
-            program             = PROGRAM,
-            description         = DESCRIPTION)
+        #a = profile_code()
+        run_pandemic_adp(args=sys.argv[1:])
+        #a.stop()
     except KeyboardInterrupt:
         print '\nProgram terminated by user'
-    #a.stop()
+

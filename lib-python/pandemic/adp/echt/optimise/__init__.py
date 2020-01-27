@@ -391,7 +391,9 @@ class UpdateOptimisationFunction:
                     markeredgecolor = 'k',
                     linewidth = 3,
                     )
-                axis.set_yscale('log', base=10.)
+                # Log scale if data has positive values
+                if max(y_vals) > 0.0:
+                    axis.set_yscale('log', base=10.)
                 self.plotting_object.helper.write_and_close_fig(fig=fig, filename=filename)
                 output_files.setdefault(s,collections.OrderedDict())[variable] = filename
 
