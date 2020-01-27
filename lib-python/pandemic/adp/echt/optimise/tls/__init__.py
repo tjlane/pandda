@@ -14,14 +14,14 @@ class OptimiseTLSGroup:
     component_optimisation_list = ["T","L","S","TL","LS","TS","TLS"]
 
     def __init__(self,
-            convergence_tol,
-            tolerances,
-            eps_values,
-            simplex_params,
-            n_cpus=1,
-            verbose = False,
-            log = None,
-            ):
+        convergence_tol,
+        tolerances,
+        eps_values,
+        simplex_params,
+        n_cpus=1,
+        verbose = False,
+        log = None,
+        ):
 
         if eps_values is None:
             eps_values = group_args(
@@ -79,13 +79,11 @@ class OptimiseTLSGroup:
             # Extract mode object
             mode = multi_dataset_tls_group.tls_parameters[i_mode]
 
-            # Skip (and reset) if amplitudes are null
+            # Skip if amplitudes are null
             if mode.is_null(
                     matrices_tolerance = 0.0, # means does not check matrices
                     amplitudes_tolerance = self.eps_values.tls_amplitudes_eps,
                     ):
-                self.reset_matrices(mode)
-                self.reset_amplitudes(mode)
                 continue
 
             # Reset at beginning if matrices are null or invalid
@@ -109,8 +107,7 @@ class OptimiseTLSGroup:
                     matrices_tolerance = self.eps_values.tls_matrices_eps,
                     amplitudes_tolerance = 0.0,
                     ):
-                self.reset_matrices(mode)
-                self.reset_amplitudes(mode)
+                self.reset_mode(mode)
                 continue
 
             # Normalise the resulting matrices and amplitudes
@@ -155,18 +152,15 @@ class OptimiseTLSGroup:
 
             # At the end, if nothing else, reset everything, to ensure that something valid is returned...
             if not mode.matrices.is_valid(): 
-                self.reset_matrices(mode)
-                self.reset_amplitudes(mode)
+                self.reset_mode(mode)
 
-        # If everything is null, stop optimisation
+        # If everything is null, reset everything
         if multi_dataset_tls_group.tls_parameters.is_null(
                 matrices_tolerance = self.eps_values.tls_matrices_eps,
                 amplitudes_tolerance = self.eps_values.tls_amplitudes_eps,
                 ):
             for i_mode, mode in enumerate(multi_dataset_tls_group.tls_parameters):
-                self.reset_matrices(mode)
-                if i_mode != 0:
-                    mode.matrices.set(values=(0.)*21, component_string='TLS')
+                self.reset_mode(mode)
 
         # TODO
         optimisation_info = None
@@ -175,12 +169,9 @@ class OptimiseTLSGroup:
         return (multi_dataset_tls_group, optimisation_info)
 
     @staticmethod
-    def reset_matrices(mode):
+    def reset_mode(mode):
         mode.matrices.reset()
         mode.matrices.set(values=(1.,1.,1.,0.,0.,0.), component_string='T')
-
-    @staticmethod
-    def reset_amplitudes(mode):
         mode.amplitudes.zero_values()
 
 

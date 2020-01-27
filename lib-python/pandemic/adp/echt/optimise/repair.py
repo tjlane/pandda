@@ -40,7 +40,8 @@ class RepairEchtModel:
                 delta = abs(min_eig - self.minimimum_uij_eigenvalue)
                 mode = tls_group.tls_parameters[i_m]
                 current_t = list(mode.matrices.T)
-                for i in range(3): current_t[i] += delta
+                for i in range(3): 
+                    current_t[i] += delta
                 mode.matrices.set(values=tuple(current_t), component_string="T") 
 
     def repair_adp_values(self, 

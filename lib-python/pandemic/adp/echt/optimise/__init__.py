@@ -122,6 +122,12 @@ class OptimiseEchtModel:
         from pandemic.adp.echt.optimise.repair import RepairEchtModel
         self.repair_model = RepairEchtModel()
 
+        from pandemic.adp.echt.optimise.sanitise import SanitiseEchtModel
+        self.sanitise_model = SanitiseEchtModel(
+            tls_matrices_eps = optimise_tls_function.eps_values.tls_matrices_eps,
+            tls_amplitudes_eps = optimise_tls_function.eps_values.tls_amplitudes_eps,
+            )
+
     def __call__(self,
             model_object,
             level_group_tree,
@@ -275,6 +281,9 @@ class OptimiseEchtModel:
 
         # Ensure no negative eigenvalues
         self.repair_model(model_object)
+
+        # Reset null groups in the model ready for next cycle
+        self.sanitise_model(model_object)
 
         # Update tracking
         tracking_object.update(
