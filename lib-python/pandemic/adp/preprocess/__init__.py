@@ -32,7 +32,7 @@ def validate_parameters(params, log=None):
         params.output.images.distributions = new
         # ----------------
         log.bar()
-    
+
     # Special settings if only one model is loaded
     if (len(params.input.pdb) == 1):
         log.bar(True, False)
@@ -47,13 +47,13 @@ def validate_parameters(params, log=None):
         # Standard string for missing programs
         missing_program_info_string = """
         The program is not currently available in any of the PATH directories.
-        [ It must be available as an executable script/link -- not as an alias.  ] 
+        [ It must be available as an executable script/link -- not as an alias.  ]
         """
 
         if params.analysis.refine_output_structures is True:
             if params.refinement.program == 'phenix':
                 message = """
-                phenix.refine is required when analysis.refine_output_structures=True and refinement.program=phenix. 
+                phenix.refine is required when analysis.refine_output_structures=True and refinement.program=phenix.
                 {missing_program_info_string}
                 """.format(missing_program_info_string=missing_program_info_string)
                 check_programs_are_available(['phenix.refine'])
@@ -80,7 +80,7 @@ def validate_parameters(params, log=None):
 
         if params.output.images.pymol is not None:
             message = """
-            pymol is required when output.images.pymol is not set to "none". 
+            pymol is required when output.images.pymol is not set to "none".
             {missing_program_info_string}
             To turn off pymol add output.images.pymol=none to the command line options.
             """.format(missing_program_info_string=missing_program_info_string)
@@ -89,4 +89,10 @@ def validate_parameters(params, log=None):
         log(message)
         raise
 
+    # Simple checks
+    if params.optimisation.min_macro_cycles > params.optimisation.max_macro_cycles:
+        raise Sorry("max_macro_cycles must be greater than or equal to min_macro_cycles! ({} < {})".format(
+            params.optimisation.min_macro_cycles,
+            params.optimisation.max_macro_cycles,
+            ))
 

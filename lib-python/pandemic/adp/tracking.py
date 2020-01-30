@@ -12,6 +12,7 @@ from pandemic.adp import constants
 
 class PandemicTrackingObject:
 
+    eps_b = 0.01
 
     csv_name1 = 'tracking_levels.csv'
     png_base1 = 'tracking_levels_'
@@ -151,6 +152,7 @@ class PandemicTrackingObject:
 
             # Update last cycle
             self.last_cycle_uij = uij_lvl
+            self.last_cycle_mean_b = self.table.iloc[-1]['b_avg (total)']
             # Store history
             self.last_cycle_history[self.n_cycle] = self.last_cycle_max_change
 
@@ -209,15 +211,21 @@ class PandemicTrackingObject:
         if b_tolerance is not None:
             u_tolerance = float(b_tolerance) / constants.EIGHTPISQ
 
+        # Get average B-factor of the model
+        last_cycle_b = self.last_cycle_mean_b
+        non_zero_b = (last_cycle_b > self.eps_b)
+
         # Sanity check
         assert u_tolerance is not None
         assert b_tolerance is not None
 
         self.log.subheading('Checking convergence')
+        self.log('Average B-factor of model: {}'.format(last_cycle_b))
+        self.log('Model is approximately zero: {}'.format(['yes', 'no'][non_zero_b]))
         self.log('Convergence cutoff: {:.3f} ({:.3f} B-factor)'.format(u_tolerance, b_tolerance))
         self.log('Largest change over last cycle: {:.3f} ({:.3f} B-factor)'.format(self.last_cycle_max_change, constants.EIGHTPISQ*self.last_cycle_max_change))
 
-        if (self.last_cycle_max_change < u_tolerance):
+        if (non_zero_b) and (self.last_cycle_max_change < u_tolerance):
             self.log('Model has converged')
             return True
 
