@@ -166,6 +166,14 @@ optimisation {
     fit_isotropic_atoms_by_magnitude_only = True
         .type = bool
         .help = "Treat isotropic B-factors as anisotropic ADPs (will fit to the shapes of isotropic ADPs as well as the size)."
+    intermediate_output {
+        write_model_every = 10
+            .help = 'output summary of hierarchical model every <n> cycles'
+            .type = int
+        remove_previous = True
+            .help = 'remove previous intermediate files at each update or at end of program.'
+            .type = bool
+    }
     dataset_selection {
         max_resolution = None
             .help = 'resolution limit for dataset to be used for TLS optimisation'
@@ -540,7 +548,7 @@ def run(params, args=None):
             log = log,
             )
 
-        model_tracking_class = echt.tracking.EchtTracking
+        ModelTrackingClass = echt.tracking.EchtTracking
 
         validate_model = echt.validate.ValidateEchtModel(
             uij_tolerance = params.optimisation.tolerances.uij_tolerance,
@@ -663,7 +671,7 @@ def run(params, args=None):
         log = log,
         )
 
-    model_tracking_object = model_tracking_class(
+    model_tracking_object = ModelTrackingClass(
         output_directory = file_system.optimisation_directory,
         plotting_object = tracking.TrackingPlotter(n_levels=model_object.n_levels),
         model_object = model_object,
@@ -717,7 +725,7 @@ def run(params, args=None):
 
     # Summary of the input/constructed B-factor hierarchy
     write_hierarchy_summary_task = hierarchy.WriteHierarchicalModelSummaryTask(
-        output_directory = file_system.make(file_system.hierarchy_directory, 'model_setup'),
+        output_directory = file_system.partition_directory,
         master_phil = master_phil,
         pymol_images = params.output.images.pymol,
         warnings = warnings,
@@ -743,6 +751,16 @@ def run(params, args=None):
         verbose = params.settings.verbose,
         log = log,
         )
+
+    # Copy of this task for writing out during optimisation
+    from pandemic.adp.utils import TaskMultipleRunWrapper
+    write_fitted_model_summary_intermediate = TaskMultipleRunWrapper(
+        output_directory = file_system.optimisation_directory,
+        task = write_fitted_model_summary,
+        task_output_directory_prefix = 'optimised_model_cycle_',
+        )
+    # Turn off pymol images
+    write_fitted_model_summary_intermediate.task.pymol_images = None
 
     # Write output structures for each dataset
     write_output_structures = WriteStructures(
@@ -787,6 +805,22 @@ def run(params, args=None):
         log.heading('Exiting after initialisation: dry_run=True')
         raise SystemExit('Program exited normally')
 
+    ####################################
+    #                                  #
+    #  Prep different isotropic masks  #
+    #                                  #
+    ####################################
+
+    if (params.optimisation.fit_isotropic_atoms_by_magnitude_only is True):
+        optimise_isotropic_mask = extract_uijs_task.result.isotropic_mask
+    else:
+        optimise_isotropic_mask = extract_uijs_task.result.isotropic_mask.as_fully_anisotropic()
+
+    if params.output.write_isotropic_output_for_isotropic_atoms is True:
+        output_isotropic_mask = extract_uijs_task.result.isotropic_mask
+    else:
+        output_isotropic_mask = extract_uijs_task.result.isotropic_mask.as_fully_anisotropic()
+
     ################################
     #                              #
     #  Run main optimisation task  #
@@ -794,11 +828,6 @@ def run(params, args=None):
     ################################
 
     log.heading('Optimising Hierarchical Disorder Model', spacer=True)
-
-    if (params.optimisation.fit_isotropic_atoms_by_magnitude_only is True):
-        optimise_isotropic_mask = extract_uijs_task.result.isotropic_mask
-    else:
-        optimise_isotropic_mask = extract_uijs_task.result.isotropic_mask.as_fully_anisotropic()
 
     main_tracking_object.n_cycle = 0
 
@@ -836,6 +865,23 @@ def run(params, args=None):
                 log.heading('Terminating optimisation -- model has converged', spacer=True)
                 break
 
+        if params.optimisation.intermediate_output.write_model_every:
+            if (main_tracking_object.n_cycle % params.optimisation.intermediate_output.write_model_every) == 0:
+                log.subheading('Macrocycle {}'.format(main_tracking_object.n_cycle) + ' - Writing intermediate model summary')
+                # Write out the model during optimisation
+                model_files = write_fitted_model_summary_intermediate(
+                    output_directory_suffix = '{:03d}'.format(main_tracking_object.n_cycle), 
+                    remove_previous = params.optimisation.intermediate_output.remove_previous,
+                    # Normal arguments (passed to task)
+                    overall_atom_mask = hierarchy_info.overall_atom_mask,
+                    level_group_array = hierarchy_info.level_group_array,
+                    model_object = model_object,
+                    isotropic_mask = output_isotropic_mask,
+                    reference_model = models[0],
+                    uij_target = extract_uijs_task.result.model_uij,
+                    plotting_object = plotting_object,
+                    )
+
     # Write graphs of the optimsation parameters and return file dict
     update_optimisation_object.write(
         output_directory = file_system.optimisation_directory,
@@ -859,11 +905,6 @@ def run(params, args=None):
     #                              #
     ################################
 
-    if params.output.write_isotropic_output_for_isotropic_atoms is True:
-        output_isotropic_mask = extract_uijs_task.result.isotropic_mask
-    else:
-        output_isotropic_mask = extract_uijs_task.result.isotropic_mask.as_fully_anisotropic()
-
     #
     # Output graphs/csvs
     #
@@ -875,9 +916,11 @@ def run(params, args=None):
         isotropic_mask = output_isotropic_mask,
         reference_model = models[0],
         uij_target = extract_uijs_task.result.model_uij,
-        results_object = results_object,
         plotting_object = plotting_object,
         )
+    # Tidy up output from the intermediates...
+    if params.optimisation.intermediate_output.remove_previous: 
+        write_fitted_model_summary_intermediate.delete_output()
 
     #
     # Write fitted structures for each of the datasets

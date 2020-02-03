@@ -12,6 +12,7 @@ class PandemicAdpFileSystem:
     def __init__(self, output_directory):
 
         output_directory    = self.make(output_directory)
+        partition_directory = self.make(output_directory, 'level_partitions')
         hierarchy_directory = self.make(output_directory, 'hierarchical_model')
         optimisation_directory = self.make(output_directory, 'optimisation')
         structure_directory = self.make(output_directory, 'structures')

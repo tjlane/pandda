@@ -15,7 +15,11 @@ def filename(f):
 def easy_directory(directory):
     """Checks a directory exists and creates it if not"""
     if not os.path.exists(directory):
-        os.mkdir(directory)
+        up_dir = os.path.dirname(directory)
+        if (up_dir != '') and (not os.path.exists(up_dir)):
+            easy_directory(up_dir)
+        if not os.path.exists(directory):
+            os.mkdir(directory)
     return directory
 
 def rel_symlink(orig, link):

@@ -50,13 +50,23 @@ class WriteEchtModelSummary:
         verbose = False,
         log = None,
         ):
-        csv_directory = easy_directory(os.path.join(output_directory, 'csvs'))
-        pdb_directory = easy_directory(os.path.join(output_directory, 'structures'))
-        pymol_directory = easy_directory(os.path.join(output_directory, 'pymol_images'))
         adopt_init_args(self, locals())
+        self.check_and_create_output_folders()
+
+    def check_and_create_output_folders(self):
+        """
+        Checks output folders exist and creates if necessary. 
+        Run at beginning of calling function so that folders are updated relative to output_directory.
+        """
+        easy_directory(self.output_directory)
+        self.csv_directory = easy_directory(os.path.join(self.output_directory, 'csvs'))
+        self.pdb_directory = easy_directory(os.path.join(self.output_directory, 'structures'))
+        if (self.pymol_images is not None):
+            self.pymol_directory = easy_directory(os.path.join(self.output_directory, 'pymol_images'))
 
     def filepath(self, filename, directory=None):
-        if directory is None: directory = self.output_directory
+        if directory is None: 
+            directory = self.output_directory
         return os.path.join(directory, filename)
 
     def __call__(self,
@@ -66,9 +76,10 @@ class WriteEchtModelSummary:
         isotropic_mask,
         uij_target,
         level_group_array,
-        results_object,
         plotting_object,
         ):
+
+        self.check_and_create_output_folders()
 
         self.plot = plotting_object
 
