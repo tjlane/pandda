@@ -151,7 +151,7 @@ class OptimiseTLSGroup:
                     )
 
             # At the end, if nothing else, reset everything, to ensure that something valid is returned...
-            if not mode.matrices.is_valid(): 
+            if not mode.matrices.is_valid():
                 self.reset_mode(mode)
 
         # If everything is null, reset everything
@@ -166,7 +166,7 @@ class OptimiseTLSGroup:
         optimisation_info = None
 
         # Only return the minimum to reduce pickle overhead
-        return (multi_dataset_tls_group, optimisation_info)
+        return multi_dataset_tls_group
 
     @staticmethod
     def reset_mode(mode):
@@ -184,9 +184,11 @@ class OptimiseTLSLevel:
             log = None,
             ):
         if log is None: log = Log()
-        from pandemic.adp.parallel import MultiProcessWrapper, RunParallelWithProgressBarUnordered
-        optimisation_wrapper = MultiProcessWrapper(function=optimisation_function)
-        run_parallel = RunParallelWithProgressBarUnordered(n_cpus)
+        from pandemic.adp.parallel import RunParallelWithProgressBarUnordered
+        run_parallel = RunParallelWithProgressBarUnordered(
+            function = optimisation_function,
+            n_cpus = n_cpus,
+        )
         adopt_init_args(self, locals())
 
     def __call__(self,
@@ -207,23 +209,18 @@ class OptimiseTLSLevel:
             uij_target_weights = uij_target_weights[:,sel],
             uij_isotropic_mask = (uij_isotropic_mask[sel] if uij_isotropic_mask else None),
             uij_optimisation_mask = uij_optimisation_mask,
-            ) for i_grp, (grp, sel) in enumerate(zip(tls_groups, tls_selections))]
+            ) for (grp, sel) in zip(tls_groups, tls_selections)]
 
         if (self.n_cpus == 1):
-            #results = [self.optimisation_function(**a) for a in args]
             results = []
             pbar = tqdm.tqdm(total=len(args), ncols=100)
-            for a in args: 
+            for a in args:
                 results.append(self.optimisation_function(**a))
                 pbar.update(1)
             pbar.close()
         else:
-            # update chunksize for parallelisation
-            self.run_parallel.chunksize = min(100, max(1, int(len(args)/float(self.run_parallel.n_cpus))))
-
-            [a.update({'sort_value':i}) for i,a in enumerate(args)]
-            results = self.run_parallel(function=self.optimisation_wrapper, arg_list=args)
-            results = [r[1] for r in sorted(results, key=lambda x: x[0])]
+            # Run with parallel wrapper
+            results = self.run_parallel(arg_dicts=args)
 
         errors = []
         for r in results:
@@ -236,11 +233,8 @@ class OptimiseTLSLevel:
             self.log.bar()
             raise Failure('{} errors raised during optimisation (above)'.format(len(errors)))
 
-        new_tls_groups = [r[0] for r in results]
+        new_tls_groups = results
         output_group_labels = [g.label for g in new_tls_groups]
         assert input_group_labels == output_group_labels
 
         return new_tls_groups
-
-
-

@@ -13,51 +13,75 @@ class MultiProcessWrapper:
         adopt_init_args(self, locals())
 
     def __call__(self,
-            arg_dict,
+            task_queue,
+            done_queue,
             ):
-        i = arg_dict.pop('sort_value')
-        try:
-            return (i, self.function(**arg_dict))
-        except:
-            tr = traceback.format_exc()
-            if hasattr(self.function, 'log'):
-                self.function.log(tr)
-            return (i, tr)
+
+        for i, arg_dict in iter(task_queue.get, 'STOP'):
+
+            try:
+                output = (i, self.function(**arg_dict))
+            except:
+                tr = traceback.format_exc()
+                if hasattr(self.function, 'log'):
+                    self.function.log(tr)
+                output = (i, tr)
+
+            done_queue.put(output)
 
 
 class RunParallelWithProgressBarUnordered:
 
 
     def __init__(self,
+            function,
             n_cpus,
             chunksize = 10,
             ):
         adopt_init_args(self, locals())
 
     def __call__(self,
-            function,
-            arg_list,
+            arg_dicts,
             ):
 
-        # Redirect termination signal
+        from multiprocessing import Process, Queue
+
+        task_queue = Queue()
+        done_queue = Queue()
+
+        function = MultiProcessWrapper(self.function)
+
+        # Redirect termination signal while processes are spawned
         sigint = signal.signal(signal.SIGINT, signal.SIG_IGN) # set the signal handler to ignore
-        pool = multiprocessing.pool.Pool(self.n_cpus)
+        processes = []
+        for i in range(self.n_cpus):
+            p = Process(target=function, args=(task_queue, done_queue))
+            p.start()
+            processes.append(p)
         signal.signal(signal.SIGINT, sigint) # Replace the original signal handler
-        results = []
-        cur_chunksize = min(self.chunksize, 1+int(float(len(arg_list)-1)/float(self.n_cpus)))
+
+        for i, task in enumerate(arg_dicts):
+            task_queue.put((i, task))
+
+        pbar = tqdm.tqdm(total=len(arg_dicts), ncols=100)
+
         try:
-            pbar = tqdm.tqdm(total=len(arg_list), ncols=100)
-            for complete in pool.imap_unordered(func=function, iterable=arg_list, chunksize=cur_chunksize):
+            results = []
+            for i in range(len(arg_dicts)):
+                complete = done_queue.get()
                 pbar.update(1)
                 results.append(complete)
             pbar.close()
         except KeyboardInterrupt:
-            pbar.close()
-            pool.terminate()
-            pool.join()
+            for p in processes:
+                p.terminate()
             raise
-        # Close pool
-        pool.close()
-        pool.join()
+        finally:
+            pbar.close()
+            for p in processes:
+                task_queue.put('STOP')
+
+        # Sort output results
+        results = [r[1] for r in sorted(results, key=lambda x: x[0])]
 
         return results

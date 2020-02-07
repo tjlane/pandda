@@ -69,12 +69,12 @@ class OptimiseUijValue_TargetEvaluator:
             log = None,
             ):
         if log is None: log = Log()
-        
+
         # Init values
         n_call = 0
         best_target = self.start_target
         best_target_terms = None
-        
+
         # Function to check e.g. amplitudes not negative
         validate = ValidateUijValues(uij_tol = uij_tol)
 
@@ -125,12 +125,12 @@ class OptimiseUijValue:
         other_target_functions = []
 
         simplex_generator = UijSimplexGenerator(uij_delta = simplex_params.uij_delta)
-        
+
         adopt_init_args(self, locals())
 
     def __call__(self,
             uij_value,
-            uij_target, 
+            uij_target,
             uij_target_weights,
             uij_optimisation_mask,
             ):
@@ -165,14 +165,14 @@ class OptimiseUijValue:
                                         evaluator = evaluator,
                                         tolerance = self.convergence_tol)
 
-        # Create results object
-        results = group_args(
-            n_iter = evaluator.n_call,
-            target_function_value = evaluator.best_target,
-            target_function_values = evaluator.best_target_terms,
-            )
+        # # Create results object
+        # results = group_args(
+        #     n_iter = evaluator.n_call,
+        #     target_function_value = evaluator.best_target,
+        #     target_function_values = evaluator.best_target_terms,
+        #     )
 
-        return (optimised.get_solution(), results)
+        return optimised.get_solution()
 
 
 class OptimiseUijLevel:
@@ -184,22 +184,22 @@ class OptimiseUijLevel:
             log = None,
             ):
         if log is None: log = Log()
-        from pandemic.adp.parallel import MultiProcessWrapper, RunParallelWithProgressBarUnordered
-        optimisation_wrapper = MultiProcessWrapper(function=optimisation_function)
-        run_parallel = RunParallelWithProgressBarUnordered(n_cpus)
+        from pandemic.adp.parallel import RunParallelWithProgressBarUnordered
+        run_parallel = RunParallelWithProgressBarUnordered(
+            function = optimisation_function,
+            n_cpus = n_cpus,
+        )
         adopt_init_args(self, locals())
 
     def __call__(self,
             uij_values,
             uij_target,
             uij_target_weights,
-            uij_isotropic_mask,
+            uij_isotropic_mask = None,
             uij_optimisation_mask = None,
             ):
 
         if uij_optimisation_mask is not None:
-            print uij_optimisation_mask
-            raise Sorry('AA@')
             uij_target = uij_target[uij_optimisation_mask]
             uij_target_weights = uij_target_weights[uij_optimisation_mask]
 
@@ -211,21 +211,16 @@ class OptimiseUijLevel:
             uij_optimisation_mask = uij_optimisation_mask,
             ) for i_u, u in enumerate(uij_values)]
 
-        if self.n_cpus == 1:
-            #results = [self.optimisation_function(**a) for a in args]
+        if (self.n_cpus == 1):
             results = []
             pbar = tqdm.tqdm(total=len(args), ncols=100)
-            for a in args: 
+            for a in args:
                 results.append(self.optimisation_function(**a))
                 pbar.update(1)
             pbar.close()
         else:
-            # update chunksize for parallelisation
-            self.run_parallel.chunksize = min(500, max(1, int(0.2*len(args)/float(self.run_parallel.n_cpus))))
-
-            [a.update({'sort_value':i}) for i,a in enumerate(args)]
-            results = self.run_parallel(function=self.optimisation_wrapper, arg_list=args)
-            results = [r[1] for r in sorted(results, key=lambda x: x[0])]
+            # Run with parallel wrapper
+            results = self.run_parallel(arg_dicts=args)
 
         errors = []
         for r in results:
@@ -238,17 +233,11 @@ class OptimiseUijLevel:
             self.log.bar()
             raise Failure('{} errors raised during optimisation (above)'.format(len(errors)))
 
-        # Make output isotropic as required
-        from scitbx.array_family import flex
-        new_adp_values = flex.sym_mat3_double([tuple(r[0]) for r in results])
+        # Repackage optimised values
+        new_adp_values = flex.sym_mat3_double(map(tuple,results))
 
         # Make necessary values isotropic
         if uij_isotropic_mask is not None:
             new_adp_values = uij_isotropic_mask(new_adp_values)
 
         return new_adp_values
-
-
-
-
-

@@ -38,7 +38,10 @@ class RefineStructures:
         else:
             raise Failure('Invalid refinement program selected: {}'.format(refinement_program))
 
-        run_parallel = RunParallelWithProgressBarUnordered(n_cpus)
+        run_parallel = RunParallelWithProgressBarUnordered(
+            function = wrapper_run,
+            n_cpus = n_cpus,
+        )
 
         adopt_init_args(self, locals())
 
@@ -91,7 +94,7 @@ class RefineStructures:
 
         # Refine all of the models
         self.log.subheading('Running {} refinements'.format(len(arg_list)))
-        results = self.run_parallel(function=wrapper_run, arg_list=arg_list)
+        results = self.run_parallel(arg_dicts=arg_list)
 
         output_structures = collections.OrderedDict()
         for r in results:
