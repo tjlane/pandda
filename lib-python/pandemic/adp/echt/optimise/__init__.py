@@ -251,9 +251,9 @@ class OptimiseEchtModel:
                 self.repair_model(model_object)
                 model_object.adp_values = self.optimise_adp_level(
                     uij_values = model_object.adp_values,
-                    uij_target = calculate_uij_target(uij_fitted=uij_isotropic_mask_or_not(model_object.uijs()), ignore_level=-1),
+                    uij_target = calculate_uij_target(uij_fitted=model_object.uijs(), ignore_level=i_level),
                     uij_target_weights = uij_target_weights,
-                    uij_isotropic_mask = uij_isotropic_mask,
+                    uij_isotropic_mask = None,
                     uij_optimisation_mask = uij_optimisation_mask,
                     )
 
@@ -376,7 +376,10 @@ class UpdateOptimisationFunction:
                     )
                 # Log scale if data has positive values
                 if max(y_vals) > 0.0:
-                    axis.set_yscale('log', base=10.)
+                    try:
+                        axis.set_yscale('log', base=10.)
+                    except:
+                        pass
                 self.plotting_object.helper.write_and_close_fig(fig=fig, filename=filename)
                 output_files.setdefault(s,collections.OrderedDict())[variable] = filename
 

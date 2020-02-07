@@ -163,7 +163,7 @@ optimisation {
     number_of_micro_cycles = 1
         .help = 'how many fitting cycles to run (for each level) -- must be at least 1'
         .type = int
-    fit_isotropic_atoms_by_magnitude_only = True
+    fit_tls_for_isotropic_atoms_by_magnitude_only = True
         .type = bool
         .help = "Treat isotropic B-factors as anisotropic ADPs (will fit to the shapes of isotropic ADPs as well as the size)."
     intermediate_output {
@@ -811,7 +811,7 @@ def run(params, args=None):
     #                                  #
     ####################################
 
-    if (params.optimisation.fit_isotropic_atoms_by_magnitude_only is True):
+    if (params.optimisation.fit_tls_for_isotropic_atoms_by_magnitude_only is True):
         optimise_isotropic_mask = extract_uijs_task.result.isotropic_mask
     else:
         optimise_isotropic_mask = extract_uijs_task.result.isotropic_mask.as_fully_anisotropic()
@@ -870,7 +870,7 @@ def run(params, args=None):
                 log.subheading('Macrocycle {}'.format(main_tracking_object.n_cycle) + ' - Writing intermediate model summary')
                 # Write out the model during optimisation
                 model_files = write_fitted_model_summary_intermediate(
-                    output_directory_suffix = '{:03d}'.format(main_tracking_object.n_cycle), 
+                    output_directory_suffix = '{:03d}'.format(main_tracking_object.n_cycle),
                     remove_previous = params.optimisation.intermediate_output.remove_previous,
                     # Normal arguments (passed to task)
                     overall_atom_mask = hierarchy_info.overall_atom_mask,
@@ -919,7 +919,7 @@ def run(params, args=None):
         plotting_object = plotting_object,
         )
     # Tidy up output from the intermediates...
-    if params.optimisation.intermediate_output.remove_previous: 
+    if params.optimisation.intermediate_output.remove_previous:
         write_fitted_model_summary_intermediate.delete_output()
 
     #
