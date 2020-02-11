@@ -860,7 +860,7 @@ class PandemicAdpPlotter:
                     cuml_y = numpy.zeros_like(y_vals)
                 # Plot the bar
                 hdl = axis.bar(
-                        left=x_vals,
+                        x=x_vals,
                         height=y_vals,
                         bottom=cuml_y,
                         width=1.0,

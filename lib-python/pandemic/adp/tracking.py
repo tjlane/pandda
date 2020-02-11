@@ -179,7 +179,7 @@ class PandemicTrackingObject:
 
         tmp_table = self.table_by_dataset[(self.table_by_dataset['type'] == 'rmsd')]
         self.plotting_object.lineplot(
-            x_vals = list(tmp_table['cycle'].values), 
+            x_vals = list(tmp_table['cycle'].values),
             y_vals = list(tmp_table['overall'].values),
             title = 'Model fit across cycles',
             x_label = 'Cycle',
@@ -221,7 +221,7 @@ class PandemicTrackingObject:
 
         self.log.subheading('Checking convergence')
         self.log('Average B-factor of model: {}'.format(last_cycle_b))
-        self.log('Model is approximately zero: {}'.format(['yes', 'no'][non_zero_b]))
+        self.log('Model is approximately zero: {}'.format(['yes', 'no'][int(non_zero_b)]))
         self.log('Convergence cutoff: {:.3f} ({:.3f} B-factor)'.format(u_tolerance, b_tolerance))
         self.log('Largest change over last cycle: {:.3f} ({:.3f} B-factor)'.format(self.last_cycle_max_change, constants.EIGHTPISQ*self.last_cycle_max_change))
 
@@ -338,7 +338,8 @@ class TrackingPlotter(PandemicAdpPlotter):
             y_vals = sel_t['b_avg'].values
 
             # Plot
-            hdl = axes[1].bar(left   = x_vals[i_x],
+            hdl = axes[1].bar(
+                         x = x_vals[i_x],
                          height = y_vals,
                          bottom = y_cuml[i_x],
                          width  = 0.8,
@@ -468,7 +469,7 @@ class TrackingPlotter(PandemicAdpPlotter):
             i_x = [x_keys.index(v) for v in l_table['cycle'].values]
             y_vals = l_table['b_avg'].values
             # Plot stacked bar
-            hdl = ax.bar(left   = x_vals[i_x],
+            hdl = ax.bar(x      = x_vals[i_x],
                          height = y_vals,
                          bottom = y_cuml[i_x],
                          width  = 1.0,
