@@ -62,12 +62,12 @@ class TidyOutputFolder:
                     if file.endswith('.log'):
                         filepath = os.path.join(r, file)
                         log('Compressing: {}'.format(filepath))
-                        try: 
+                        try:
                             zip_file = compress_file(filepath, delete_original=True)
-                        except Exception as e: 
+                        except Exception as e:
                             log('...failed to compress.')
 
-        if (self.compress_pdbs is True): 
+        if (self.compress_pdbs is True):
 
             log.subheading('Compressing pdb files')
 
@@ -78,5 +78,5 @@ class TidyOutputFolder:
                         log('Compressing: {}'.format(filepath))
                         try:
                             zip_file = compress_file(filepath, delete_original=True)
-                        except Exception as e: 
+                        except Exception as e:
                             log('...failed to compress.')
