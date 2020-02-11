@@ -62,7 +62,7 @@ class _CheckPandemicOutputFiles:
         ):
 
         # Overwrite if pymol not installed
-        if 'pymol' in MISSING_PROGRAMS: 
+        if 'pymol' in MISSING_PROGRAMS:
             pymol_images = False
 
         # How many levels are expected?
@@ -79,9 +79,9 @@ class _CheckPandemicOutputFiles:
 
     def get_structure_labels(self, filenames):
 
-        if self.labelling == 'filename': 
+        if self.labelling == 'filename':
             return [filename(f) for f in filenames]
-        elif self.labelling == 'foldername': 
+        elif self.labelling == 'foldername':
             return [foldername(f) for f in filenames]
         else:
             raise Exception('bad test')
@@ -92,6 +92,10 @@ class _CheckPandemicOutputFiles:
         ):
 
         self.check_misc(
+            output_directory=output_directory,
+            )
+
+        self.check_level_partitions(
             output_directory=output_directory,
             )
 
@@ -118,35 +122,40 @@ class _CheckPandemicOutputFiles:
 
     def check_misc(self, output_directory):
 
-        for f in self.misc_files: 
+        for f in self.misc_files:
+            self.check_file(output_directory/f)
+
+    def check_level_partitions(self, output_directory):
+
+        for f in self.level_partition_files:
             self.check_file(output_directory/f)
 
     def check_hierarchical_model(self, output_directory):
 
-        for f in self.hierarchical_model_files: 
+        for f in self.hierarchical_model_files:
             self.check_file(output_directory/f)
 
     def check_optimisation(self, output_directory):
 
-        for f in self.optimisation_files: 
+        for f in self.optimisation_files:
             self.check_file(output_directory/f)
 
     def check_output_structures(self, output_directory, input_structures):
 
         structure_labels = self.get_structure_labels(input_structures)
 
-        for s in structure_labels: 
+        for s in structure_labels:
             for f in self.structures_files:
                 self.check_file(output_directory/f.format(label=s))
 
     def check_analysis(self, output_directory):
 
-        for f in self.analysis_files: 
+        for f in self.analysis_files:
             self.check_file(output_directory/f)
 
     def check_pymol_images(self, output_directory):
 
-        for f in self.pymol_files: 
+        for f in self.pymol_files:
             self.check_file(output_directory/f, expected_exists=self.pymol_images)
 
     def check_file(self, filename, expected_exists=True):
@@ -173,8 +182,11 @@ class CheckPandemicOutputFiles(_CheckPandemicOutputFiles):
 
         ###################################################
 
+        self.level_partition_files = [
+            "level_partitions/pymol_script.py",
+        ]
+
         self.hierarchical_model_files = [
-            "hierarchical_model/model_setup/pymol_script.py",
             "hierarchical_model/structures/pymol_script.py",
             "hierarchical_model/structures/average_uijs_input.pdb",
             "hierarchical_model/structures/average_uijs_output.pdb",
@@ -184,16 +196,16 @@ class CheckPandemicOutputFiles(_CheckPandemicOutputFiles):
             for f in [
                 "hierarchical_model/all-levels-uij-anisotropy-chain_{chain}.png",
                 "hierarchical_model/all-levels-uij-profile-chain_{chain}.png",
-                ]: 
+                ]:
                 self.hierarchical_model_files.append(f.format(chain=chain))
 
-        for leveln in self.tls_level_numbers: 
+        for leveln in self.tls_level_numbers:
             for f in [
                 "hierarchical_model/csvs/tls_amplitudes_level_{leveln:04d}.csv",
                 "hierarchical_model/csvs/tls_matrices_level_{leveln:04d}.csv",
                 "hierarchical_model/csvs/tls_origins_level_{leveln:04d}.csv",
                 "hierarchical_model/structures/level_{leveln}-mode_1.pdb",
-                ]: 
+                ]:
                 self.hierarchical_model_files.append(f.format(leveln=leveln))
         for leveln in self.all_level_numbers:
             for f in [
@@ -201,7 +213,7 @@ class CheckPandemicOutputFiles(_CheckPandemicOutputFiles):
                 ]:
                 self.hierarchical_model_files.append(f.format(leveln=leveln))
 
-        for chain, leveln in itertools.product(self.chains, self.all_level_numbers): 
+        for chain, leveln in itertools.product(self.chains, self.all_level_numbers):
             for f in [
                 "hierarchical_model/uij-anisotropy-level_{leveln}-chain_{chain}.png",
                 "hierarchical_model/uij-anisotropy-level_{leveln}-chain_{chain}.png",
@@ -232,14 +244,14 @@ class CheckPandemicOutputFiles(_CheckPandemicOutputFiles):
             "structures/{label}/{label}.all-tls-levels.pdb",
             "structures/{label}/{label}.all.pdb",
             "structures/{label}/{label}.atomic-level.pdb",
-            "structures/{label}/{label}.input.pdb",            
+            "structures/{label}/{label}.input.pdb",
         ]
 
-        for leveln in self.tls_level_numbers: 
+        for leveln in self.tls_level_numbers:
             for f in [
                 "structures/{{label}}/{{label}}.tls-level-{leveln:04d}.pdb",
                 ]:
-                self.structures_files.append(f.format(leveln=leveln))          
+                self.structures_files.append(f.format(leveln=leveln))
 
         for leveli, levelj in itertools.product(self.tls_level_numbers, self.tls_level_numbers):
             if leveli >= levelj: continue
@@ -263,7 +275,7 @@ class CheckPandemicOutputFiles(_CheckPandemicOutputFiles):
             "analysis/tls_group_clustering/tls_clustering_level_2-new_levels.png",
         ]
 
-        for chain in self.chains: 
+        for chain in self.chains:
             for f in [
                 "analysis/hierarchy_groups/output-level-partitions-chain-{chain}.png",
                 "analysis/residuals/residual_by_residue-chain_{chain}.png",
@@ -276,10 +288,10 @@ class CheckPandemicOutputFiles(_CheckPandemicOutputFiles):
                 ]:
                 self.analysis_files.append(f.format(chain=chain, leveln=leveln))
 
-        ################################################### 
+        ###################################################
 
         self.pymol_files = [
-        
+
         ]
 
 
@@ -360,7 +372,7 @@ class TestPandemicIntegrationSingleStructure:
             )
 
         checker.check_all(
-            output_directory=directories[0], 
+            output_directory=directories[0],
             input_structures=structures,
             )
 
@@ -443,14 +455,14 @@ class TestPandemicIntegrationSingleStructure:
             dry_run=False,
             )
 
-        if 'pymol' in MISSING_PROGRAMS: 
+        if 'pymol' in MISSING_PROGRAMS:
             with raises(Exception) as e:
                 run_with_pymol()
             assert """pymol is required when output.images.pymol is not set to "none".""" in str(e.value)
             assert """The program is not currently available in any of the PATH directories.""" in str(e.value)
             assert """[ It must be available as an executable script/link -- not as an alias.  ]""" in str(e.value)
             assert """To turn off pymol add output.images.pymol=none to the command line options.""" in str(e.value)
-        else: 
+        else:
             structures, directories = run_with_pymol()
 
             # Check existence of output files
@@ -460,9 +472,9 @@ class TestPandemicIntegrationSingleStructure:
                 pymol_images=True,
                 )
 
-            for d in directories: 
+            for d in directories:
                 checker.check_pymol_images(
-                    output_directory=d, 
+                    output_directory=d,
                     )
 
 
