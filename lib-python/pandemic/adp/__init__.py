@@ -59,7 +59,7 @@ output {
     pickle = False
         .type = bool
         .multiple = False
-    write_isotropic_output_for_isotropic_atoms = True
+    write_isotropic_output_for_isotropic_atoms = False
         .type = bool
         .help = "Will make the output ADPs isotropic for atoms where the input atoms contained isotropic B-factors."
     html {
@@ -163,7 +163,7 @@ optimisation {
     number_of_micro_cycles = 1
         .help = 'how many fitting cycles to run (for each level) -- must be at least 1'
         .type = int
-    fit_tls_for_isotropic_atoms_by_magnitude_only = True
+    fit_tls_for_isotropic_atoms_by_magnitude_only = False
         .type = bool
         .help = "Treat isotropic B-factors as anisotropic ADPs (will fit to the shapes of isotropic ADPs as well as the size)."
     intermediate_output {
@@ -233,7 +233,7 @@ optimisation {
         global_weight_scale = 5000.0
             .help = "global scale applied to all optimisation_weights."
             .type = float
-        global_weight_decay_factor = 1.5
+        global_weight_decay_factor = 1.25
             .help = "amount by which optimisation_weights are reduced every cycle. factor of 2 -> scaled by 0.5 every cycle."
             .type = float
         weights_to_decay = *sum_of_amplitudes *sum_of_amplitudes_squared *sum_of_squared_amplitudes
