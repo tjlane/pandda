@@ -1,4 +1,4 @@
-import os, copy, collections
+import os, copy, collections, functools
 from libtbx import adopt_init_args, group_args
 from bamboo.common.logs import Log
 from pandemic.adp.utils import show_file_dict
@@ -149,19 +149,22 @@ class OptimiseEchtModel:
         # Class for calculating target for each optimisation
         calculate_uij_target = LevelTargetUijCalculator(uij_target)
 
+        # Prefill all of the arguments to the amplitude optimisation function (called from multiple places with same arguments)
+        optimise_amplitudes = functools.partial(
+            self.optimise_level_amplitudes,
+            uij_target = uij_target,
+            uij_target_weights = uij_target_weights,
+            uij_isotropic_mask = uij_isotropic_mask,
+            level_group_tree  = level_group_tree,
+            max_recursions = None,
+            # dataset mask TODO
+        )
+
         # Initial amplitude optimisation
         self.log.subheading('Macrocycle {}: '.format(tracking_object.n_cycle)+'Optimising inter-level amplitudes')
         self.repair_model(model_object)
         self.log('Optimising groups of amplitudes for all independent hierarchies')
-        self.optimise_level_amplitudes(
-            uij_target = uij_target,
-            uij_target_weights = uij_target_weights,
-            uij_isotropic_mask = uij_isotropic_mask,
-            model_object = model_object,
-            level_group_tree  = level_group_tree,
-            max_recursions = None,
-            # dataset mask TODO
-            )
+        optimise_amplitudes(model_object=model_object)
 
         # Record the object before optimisation
         tracking_object.update(
@@ -179,21 +182,16 @@ class OptimiseEchtModel:
             for i_level in xrange(model_object.n_tls_levels):
 
                 if (tracking_object.n_cycle == 1) and (i_sub_cycle == 0):
+
+                    # Set all e.g. T matrices to diag(1,1,1)
                     self.log.subheading('Initialising values in Level {}'.format(i_level+1))
                     self.log(self.initialise_level.summary())
-                    # Set all e.g. T matrices to diag(1,1,1)
                     self.initialise_level(model_object, i_level=i_level)
+
                     # Initial amplitude optimisation to get them away from zero
                     self.log('Optimising groups of amplitudes for all independent hierarchies')
-                    self.optimise_level_amplitudes(
-                            uij_target = uij_target,
-                            uij_target_weights = uij_target_weights,
-                            uij_isotropic_mask = uij_isotropic_mask,
-                            model_object = model_object,
-                            level_group_tree  = level_group_tree,
-                            max_recursions = None,
-                            # dataset mask TODO
-                            )
+                    optimise_amplitudes(model_object=model_object)
+
                     if (self.verbose is True):
                         # Update tracking
                         tracking_object.update(
@@ -222,15 +220,7 @@ class OptimiseEchtModel:
                     self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
                     self.repair_model(model_object)
                     self.log('Optimising groups of amplitudes for all independent hierarchies')
-                    self.optimise_level_amplitudes(
-                        uij_target = uij_target,
-                        uij_target_weights = uij_target_weights,
-                        uij_isotropic_mask = uij_isotropic_mask,
-                        model_object = model_object,
-                        level_group_tree  = level_group_tree,
-                        max_recursions = None,
-                        # dataset mask
-                        )
+                    optimise_amplitudes(model_object=model_object)
 
                 if (self.verbose is True):
                     # Update tracking
@@ -264,14 +254,7 @@ class OptimiseEchtModel:
                     self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
                     self.repair_model(model_object)
                     self.log('Optimising groups of amplitudes for all independent hierarchies')
-                    self.optimise_level_amplitudes(
-                        uij_target = uij_target,
-                        uij_target_weights = uij_target_weights,
-                        uij_isotropic_mask = uij_isotropic_mask,
-                        model_object = model_object,
-                        level_group_tree = level_group_tree,
-                        max_recursions = None,
-                        )
+                    optimise_amplitudes(model_object=model_object)
 
             # Update tracking
             tracking_object.update(
