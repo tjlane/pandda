@@ -24,7 +24,7 @@ class SanitiseEchtModel:
             for tls_group in l_tls_objects:
                 self.sanitise_tls_group(tls_group=tls_group)
 
-    def sanitise_tls_group(self, 
+    def sanitise_tls_group(self,
         tls_group,
         ):
 
@@ -35,6 +35,9 @@ class SanitiseEchtModel:
                     matrices_tolerance = self.tls_matrices_eps,
                     amplitudes_tolerance = self.tls_amplitudes_eps,
                     ):
+
+                self.log('Resetting group: "{}" (Mode {})'.format(tls_group.label, i_m+1))
+
                 mode.matrices.reset()
                 mode.matrices.set(values=(1.,1.,1.,0.,0.,0.), component_string='T')
                 mode.amplitudes.zero_values()

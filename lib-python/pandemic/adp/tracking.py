@@ -1,4 +1,4 @@
-import os
+import os, copy
 import math, collections
 import numpy, pandas
 
@@ -10,19 +10,182 @@ from giant.structure.uij import uij_to_b
 from pandemic.adp import constants
 
 
-class PandemicTrackingObject:
+class PandemicConvergenceChecker:
 
-    eps_b = 0.01
+    def __init__(self,
+        max_rmsd_b = None,
+        max_delta_b = None,
+        delta_b_window_frac = 0.05,
+        delta_b_window_min = 5,
+        eps_b = 0.01,
+        log = None,
+        ):
+        """
+        Applies multiple checks to find if the model has converged.
+        rmsd_b_max: rmsd of model and target must be less than this for convergence
+        delta_b_max: change in all B-factors over the last delta_n_cycles must be less than this,
+            where delta_n_cycles is less given by max(delta_cycle_min, delta_cycle_frac*n_cycle_total)
+        eps_b: mean B-factor of model must be greater than this
+        """
+
+        # Store history of the class
+        last_cycle_history = collections.OrderedDict()
+
+        # Cycle number where the model became non-zero
+        effective_n_start = None
+
+        adopt_init_args(self, locals())
+
+        self._new_last_cycle_object()
+
+    def _new_last_cycle_object(self,
+        uij = 0.0,
+        non_zero = False,
+        delta_b = None,
+        mean_b = None,
+        rmsd_b = None,
+        ):
+
+        # Store convergence values for a specific point
+        self.last_cycle = group_args(
+            uij = uij,
+            non_zero = non_zero,
+            delta_b = delta_b,
+            mean_b = mean_b,
+            rmsd_b = rmsd_b,
+        )
+
+        return self.last_cycle
+
+    def update(self,
+        n_cycle,
+        uij_level,
+        rmsd_b,
+        ):
+
+        # Sanitise
+        n_cycle = int(n_cycle)
+
+        # average b-factor
+        mean_b_lvl_atom = constants.EIGHTPISQ * uij_level[..., 0:3].mean(axis=-1) # average diagonal by atom
+        mean_b = mean_b_lvl_atom.sum(axis=0).mean() # sum levels and average
+
+        # Check if model is still zero and record cycle number if not
+        non_zero_b = bool((mean_b_lvl_atom > self.eps_b).any())
+        if (self.effective_n_start is None) and (non_zero_b is True):
+            self.effective_n_start = n_cycle
+
+        # Calculate delta B
+        largest_delta_b = 0.0
+        # First cycle where model is non-zero: compare to zero
+        if (self.effective_n_start == n_cycle):
+            largest_delta_b = mean_b_lvl_atom.max()
+        # Compare over previous N cycles
+        elif (self.effective_n_start is not None):
+            # Calculate number of cycles to check the convergence over
+            n_non_zero_cycles = max(1, n_cycle - self.effective_n_start)
+            # Size of the window (minimum size or as fraction of cycles)
+            n_check_start_delta = max(
+                int(self.delta_b_window_min),
+                int(numpy.ceil(self.delta_b_window_frac * n_non_zero_cycles)),
+            )
+            # Find the start cycle - must be at least the first cycle
+            n_check_start = max(1, n_cycle - n_check_start_delta)
+
+            # Calculate changes between selected previous cycles and current cycle
+            for nn_cyc in range(n_check_start, n_cycle):
+                # maximum change since last cycle
+                largest_delta_b = max(
+                    largest_delta_b,
+                    constants.EIGHTPISQ * self._find_max_u_difference(
+                        uij_1 = self.last_cycle_history[nn_cyc].uij,
+                        uij_2 = uij_level,
+                    ),
+                )
+
+        # Reinitialise last_cycle object for overriding
+        self._new_last_cycle_object(
+            uij = uij_level,
+            non_zero = non_zero_b,
+            delta_b = largest_delta_b,
+            mean_b = mean_b,
+            rmsd_b = rmsd_b,
+        )
+
+        # Store history
+        self.last_cycle_history[n_cycle] = copy.copy(self.last_cycle)
+
+    def show(self):
+
+        lc = self.last_cycle
+
+        s = 'Convergence Checker Summary:\n'
+        s += '> Model is approximately zero: {}\n'.format(
+            'no' if lc.non_zero else 'yes',
+        )
+        s += '> Average B-factor of model: {}\n'.format(
+            lc.mean_b,
+        )
+        s += '> Maximum change over recent cycles: {} (B-factor)\n'.format(
+            lc.delta_b,
+        )
+        s += '    (cutoff for convergence: {})\n'.format(
+            self.max_delta_b,
+        )
+        s += '> RMSD from target and fitted Uij : {} (B-factor)\n'.format(
+            lc.rmsd_b,
+        )
+        s += '    (cutoff for convergence: {})\n'.format(
+            self.max_rmsd_b,
+        )
+
+        self.log(s)
+
+    def is_converged(self):
+
+        # Initalise to true -- any failed test will set to false
+        converged = True
+
+        lc = self.last_cycle
+
+        # Check if model is still zero
+        if (bool(lc.non_zero) is False):
+            self.log('Model is zero -- not converged')
+            converged = False
+
+        if (self.max_rmsd_b is not None) and (lc.rmsd_b > self.max_rmsd_b):
+            self.log('RMSD is above threshold -- not converged')
+            converged = False
+
+        # Check if the change in B is less than tolerance
+        if (self.max_delta_b is not None) and (lc.delta_b > self.max_delta_b):
+            self.log('Delta B is above threshold -- not converged')
+            converged = False
+
+        return converged
+
+    def _find_max_u_difference(self, uij_1, uij_2):
+        diff = (uij_2 - uij_1)
+        rms_diffs = rms(diff, axis=-1)
+        min_diff = rms_diffs.max()
+        return min_diff
+
+
+class PandemicTrackingObject:
 
     csv_name1 = 'tracking_levels.csv'
     png_base1 = 'tracking_levels_'
     csv_name2 = 'tracking_rmsds.csv'
     png_base2 = 'tracking_rmsds_'
 
+    _convergence_checker_class = PandemicConvergenceChecker
+
     def __init__(self,
             output_directory,
             plotting_object,
-            model_object,
+            dataset_names,
+            level_names,
+            convergence_args = {},
             verbose = False,
             log = None,
             ):
@@ -36,7 +199,7 @@ class PandemicTrackingObject:
                 ],
             )
         table_by_dataset = pandas.DataFrame(
-            columns=['cycle', 'type', 'overall'] + model_object.dataset_labels,
+            columns=['cycle', 'type', 'overall'] + dataset_names,
             )
         tracking_csv1 = os.path.join(output_directory, self.csv_name1)
         tracking_csv2 = os.path.join(output_directory, self.csv_name2)
@@ -45,13 +208,10 @@ class PandemicTrackingObject:
         tracking_png3 = os.path.join(output_directory, self.png_base2+'1.png')
         n_cycle = 0
 
-        last_cycle_uij = None
-        last_cycle_max_change = None
-        last_cycle_history = collections.OrderedDict()
+        # Class to check when the model has converged
+        convergence_checker = self._convergence_checker_class(log=log, **convergence_args)
 
-        level_labels = model_object.all_level_names
-
-        adopt_init_args(self, locals(), exclude=('model_object',))
+        adopt_init_args(self, locals(), exclude=('convergence_args',))
 
     def update(self,
         uij_target,
@@ -68,7 +228,8 @@ class PandemicTrackingObject:
         # Extract uijs for all of the levels for all datasets
         uij_dst = uij_lvl.sum(axis=0)
         # Calculate the rms between fitted and input
-        rmsd = constants.EIGHTPISQ*rms(uij_target-uij_dst, axis=None)
+        u_rmsd = rms(uij_target-uij_dst, axis=None)
+        b_rmsd = constants.EIGHTPISQ*u_rmsd
 
         # Average over all datasets
         uij_tot = uij_dst.mean(axis=0)
@@ -84,7 +245,7 @@ class PandemicTrackingObject:
             if isinstance(i_l, int):
                 uij_sel = uij_lvl[i_l]
                 level_number = i_l+1
-                level_name = self.level_labels[i_l]
+                level_name = self.level_names[i_l]
             else:
                 uij_sel = None
                 level_number = None
@@ -119,7 +280,7 @@ class PandemicTrackingObject:
                 'step'   : step,
                 'level#' : level_number,
                 'level'  : level_name,
-                'rmsd'   : round(rmsd,3),
+                'rmsd'   : round(b_rmsd,3),
                 'u_avg' : round(u_iso_sel,3),
                 'b_avg' : round(b_iso_sel,3),
                 'b_min' : round(b_min_sel,3),
@@ -134,27 +295,14 @@ class PandemicTrackingObject:
 
             # Store by-dataset RMSDs
             dataset_rmsds = [constants.EIGHTPISQ*rms(d, axis=None) for d in (uij_target-uij_dst)]
-            self.table_by_dataset.loc[len(self.table_by_dataset)] = [cycle_lab, 'rmsd', rmsd] + list(dataset_rmsds)
+            self.table_by_dataset.loc[len(self.table_by_dataset)] = [cycle_lab, 'rmsd', b_rmsd] + list(dataset_rmsds)
 
-            # Check convergence
-            if self.last_cycle_uij is not None:
-                self.last_cycle_max_change = self._find_max_difference(
-                    uij_1 = self.last_cycle_uij,
-                    uij_2 = uij_lvl,
-                    )
-            else:
-                self.last_cycle_max_change = self._find_max_difference(
-                    uij_1 = 0.0,
-                    uij_2 = uij_lvl,
-                    )
-
-            self.log('\nMaximum change since last cycle: {} (B-factor)'.format(constants.EIGHTPISQ*self.last_cycle_max_change))
-
-            # Update last cycle
-            self.last_cycle_uij = uij_lvl
-            self.last_cycle_mean_b = self.table.iloc[-1]['b_avg (total)']
-            # Store history
-            self.last_cycle_history[self.n_cycle] = self.last_cycle_max_change
+            # Update convergence data
+            self.convergence_checker.update(
+                n_cycle = self.n_cycle,
+                uij_level = uij_lvl,
+                rmsd_b = b_rmsd,
+            )
 
         # Dump to csv
         self.table.to_csv(self.tracking_csv1)
@@ -196,46 +344,11 @@ class PandemicTrackingObject:
 
         return
 
-    def is_converged(self, b_tolerance=None, u_tolerance=None):
-
-        # If no tolerances provided -- consider is not converged
-        if (b_tolerance is None) and (u_tolerance is None):
-            return False
-
-        # Can only provide maximum of one
-        assert [(b_tolerance is None), (u_tolerance is None)].count(False) == 1
-
-        # All calculations done in U -> convert to uij
-        if u_tolerance is not None:
-            b_tolerance = float(u_tolerance) * constants.EIGHTPISQ
-        if b_tolerance is not None:
-            u_tolerance = float(b_tolerance) / constants.EIGHTPISQ
-
-        # Get average B-factor of the model
-        last_cycle_b = self.last_cycle_mean_b
-        non_zero_b = (last_cycle_b > self.eps_b)
-
-        # Sanity check
-        assert u_tolerance is not None
-        assert b_tolerance is not None
-
+    def is_converged(self):
         self.log.subheading('Checking convergence')
-        self.log('Average B-factor of model: {}'.format(last_cycle_b))
-        self.log('Model is approximately zero: {}'.format(['yes', 'no'][int(non_zero_b)]))
-        self.log('Convergence cutoff: {:.3f} ({:.3f} B-factor)'.format(u_tolerance, b_tolerance))
-        self.log('Largest change over last cycle: {:.3f} ({:.3f} B-factor)'.format(self.last_cycle_max_change, constants.EIGHTPISQ*self.last_cycle_max_change))
-
-        if (non_zero_b) and (self.last_cycle_max_change < u_tolerance):
-            self.log('Model has converged')
-            return True
-
-        return False
-
-    def _find_max_difference(self, uij_1, uij_2):
-        diff = (uij_2 - uij_1)
-        rms_diffs = rms(diff, axis=-1)
-        min_diff = rms_diffs.max()
-        return min_diff
+        self.convergence_checker.show()
+        cvgd = self.convergence_checker.is_converged()
+        return cvgd
 
     def as_html_summary(self):
         from pandemic.adp.html.tracking import TrackingHtmlSummary

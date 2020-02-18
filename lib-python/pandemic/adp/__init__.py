@@ -157,7 +157,7 @@ optimisation {
     min_macro_cycles = 10
         .help = 'minimum number of fitting cycles to run (over all levels) -- must be at least 1'
         .type = int
-    max_macro_cycles = 100
+    max_macro_cycles = 500
         .help = 'maximum number of fitting cycles to run (over all levels) -- must be at least 1'
         .type = int
     number_of_micro_cycles = 1
@@ -241,11 +241,16 @@ optimisation {
             .type = choice(multi=True)
     }
     termination {
+        max_b_rmsd = None
+            .help = "Stop optimisation when the rmsd between the input and the output is less than this"
+            .type = float
         max_b_change = 0.1
             .help = "Stop optimisation when all atoms are changing less that this value every cycle"
             .type = float
-        max_u_change = None
-            .help = "Stop optimisation when all atoms are changing less that this value every cycle"
+        max_b_change_window_frac = 0.05
+            .help = "Fraction of cycles over which max_b_change is measured"
+            .type = float
+        max_b_change_window_min = 5
             .type = float
     }
     eps {
@@ -665,15 +670,22 @@ def run(params, args=None):
     #
     main_tracking_object = tracking.PandemicTrackingObject(
         output_directory = file_system.optimisation_directory,
-        plotting_object = tracking.TrackingPlotter(n_levels=model_object.n_levels),
-        model_object = model_object,
+        plotting_object = tracking.TrackingPlotter(n_levels=model_object.n_levels), # Move internally
+        dataset_names = model_object.dataset_labels,
+        level_names = model_object.all_level_names,
+        convergence_args = dict(
+            max_rmsd_b = params.optimisation.termination.max_b_rmsd,
+            max_delta_b = params.optimisation.termination.max_b_change,
+            delta_b_window_frac = params.optimisation.termination.max_b_change_window_frac,
+            delta_b_window_min = params.optimisation.termination.max_b_change_window_min,
+            ),
         verbose = params.settings.verbose,
         log = log,
         )
 
     model_tracking_object = ModelTrackingClass(
         output_directory = file_system.optimisation_directory,
-        plotting_object = tracking.TrackingPlotter(n_levels=model_object.n_levels),
+        plotting_object = tracking.TrackingPlotter(n_levels=model_object.n_levels), # Move internally
         model_object = model_object,
         verbose = params.settings.verbose,
         log = log,
@@ -831,7 +843,7 @@ def run(params, args=None):
 
     main_tracking_object.n_cycle = 0
 
-    for _ in xrange(params.optimisation.max_macro_cycles): # could replace with while true and break statement
+    for _ in xrange(params.optimisation.max_macro_cycles):
 
         # Increment before each cycle -- ensures new counter for this cycle.
         main_tracking_object.n_cycle += 1
@@ -857,10 +869,7 @@ def run(params, args=None):
             n_cycle = main_tracking_object.n_cycle,
             )
 
-        if main_tracking_object.is_converged(
-                b_tolerance = params.optimisation.termination.max_b_change,
-                u_tolerance = params.optimisation.termination.max_u_change,
-                ):
+        if main_tracking_object.is_converged():
             if (main_tracking_object.n_cycle >= params.optimisation.min_macro_cycles):
                 log.heading('Terminating optimisation -- model has converged', spacer=True)
                 break

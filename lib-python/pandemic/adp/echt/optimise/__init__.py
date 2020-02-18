@@ -244,31 +244,34 @@ class OptimiseEchtModel:
 
             if self.optimise_adp_level is not None:
 
-                # Fit the atomic level
-                self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising atomic Uijs')
+                if model_object.uijs()[..., 0:3].mean(axis=-1).max() == 0.0:
+                    self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Not optimising ADPs as rest of model is zero')
+                else:
+                    # Fit the atomic level
+                    self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising atomic Uijs')
 
-                # Update the target uij by subtracting contributions from other levels
-                self.repair_model(model_object)
-                model_object.adp_values = self.optimise_adp_level(
-                    uij_values = model_object.adp_values,
-                    uij_target = calculate_uij_target(uij_fitted=model_object.uijs(), ignore_level=i_level),
-                    uij_target_weights = uij_target_weights,
-                    uij_isotropic_mask = None,
-                    uij_optimisation_mask = uij_optimisation_mask,
-                    )
+                    # Update the target uij by subtracting contributions from other levels
+                    self.repair_model(model_object)
+                    model_object.adp_values = self.optimise_adp_level(
+                        uij_values = model_object.adp_values,
+                        uij_target = calculate_uij_target(uij_fitted=model_object.uijs(), ignore_level=i_level),
+                        uij_target_weights = uij_target_weights,
+                        uij_isotropic_mask = None,
+                        uij_optimisation_mask = uij_optimisation_mask,
+                        )
 
-                # Optimise the amplitudes between levels
-                self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
-                self.repair_model(model_object)
-                self.log('Optimising groups of amplitudes for all independent hierarchies')
-                self.optimise_level_amplitudes(
-                    uij_target = uij_target,
-                    uij_target_weights = uij_target_weights,
-                    uij_isotropic_mask = uij_isotropic_mask,
-                    model_object = model_object,
-                    level_group_tree = level_group_tree,
-                    max_recursions = None,
-                    )
+                    # Optimise the amplitudes between levels
+                    self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
+                    self.repair_model(model_object)
+                    self.log('Optimising groups of amplitudes for all independent hierarchies')
+                    self.optimise_level_amplitudes(
+                        uij_target = uij_target,
+                        uij_target_weights = uij_target_weights,
+                        uij_isotropic_mask = uij_isotropic_mask,
+                        model_object = model_object,
+                        level_group_tree = level_group_tree,
+                        max_recursions = None,
+                        )
 
             # Update tracking
             tracking_object.update(
@@ -279,11 +282,11 @@ class OptimiseEchtModel:
                 write_graphs = False,
                 )
 
-        # Ensure no negative eigenvalues
-        self.repair_model(model_object)
+            # Ensure no negative eigenvalues
+            self.repair_model(model_object)
 
-        # Reset null groups in the model ready for next cycle
-        self.sanitise_model(model_object)
+            # Reset null groups in the model ready for next cycle
+            self.sanitise_model(model_object)
 
         # Update tracking
         tracking_object.update(

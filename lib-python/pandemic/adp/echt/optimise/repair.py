@@ -8,15 +8,15 @@ import numpy
 class RepairEchtModel:
 
 
-    def __init__(self, 
+    def __init__(self,
         minimimum_uij_eigenvalue=0.0,
-        verbose = False, 
+        verbose = False,
         log = None,
         ):
         if log is None: log = Log()
         adopt_init_args(self, locals())
 
-    def __call__(self, 
+    def __call__(self,
         model_object,
         ):
 
@@ -26,7 +26,7 @@ class RepairEchtModel:
 
         model_object.adp_values = self.repair_adp_values(model_object.adp_values)
 
-    def repair_tls_group(self, 
+    def repair_tls_group(self,
         tls_group,
         ):
 
@@ -40,11 +40,11 @@ class RepairEchtModel:
                 delta = abs(min_eig - self.minimimum_uij_eigenvalue)
                 mode = tls_group.tls_parameters[i_m]
                 current_t = list(mode.matrices.T)
-                for i in range(3): 
+                for i in range(3):
                     current_t[i] += delta
-                mode.matrices.set(values=tuple(current_t), component_string="T") 
+                mode.matrices.set(values=tuple(current_t), component_string="T")
 
-    def repair_adp_values(self, 
+    def repair_adp_values(self,
         adp_values,
         ):
         from mmtbx.tls.utils import uij_eigenvalues
