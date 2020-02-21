@@ -44,6 +44,7 @@ class PandemicConvergenceChecker:
         delta_b = None,
         mean_b = None,
         rmsd_b = None,
+        checking_from = None,
         ):
 
         # Store convergence values for a specific point
@@ -53,6 +54,7 @@ class PandemicConvergenceChecker:
             delta_b = delta_b,
             mean_b = mean_b,
             rmsd_b = rmsd_b,
+            checking_from = checking_from,
         )
 
         return self.last_cycle
@@ -77,6 +79,7 @@ class PandemicConvergenceChecker:
 
         # Calculate delta B
         largest_delta_b = 0.0
+        checking_from = None
         # First cycle where model is non-zero: compare to zero
         if (self.effective_n_start == n_cycle):
             largest_delta_b = mean_b_lvl_atom.max()
@@ -91,6 +94,7 @@ class PandemicConvergenceChecker:
             )
             # Find the start cycle - must be at least the first cycle
             n_check_start = max(1, n_cycle - n_check_start_delta)
+            checking_from = n_check_start
 
             # Calculate changes between selected previous cycles and current cycle
             for nn_cyc in range(n_check_start, n_cycle):
@@ -110,6 +114,7 @@ class PandemicConvergenceChecker:
             delta_b = largest_delta_b,
             mean_b = mean_b,
             rmsd_b = rmsd_b,
+            checking_from = checking_from,
         )
 
         # Store history
@@ -126,7 +131,8 @@ class PandemicConvergenceChecker:
         s += '> Average B-factor of model: {}\n'.format(
             lc.mean_b,
         )
-        s += '> Maximum change over recent cycles: {} (B-factor)\n'.format(
+        s += '> Maximum change over recent cycles (since {}): {} (B-factor)\n'.format(
+            lc.checking_from,
             lc.delta_b,
         )
         s += '    (cutoff for convergence: {})\n'.format(
