@@ -254,10 +254,10 @@ optimisation {
             .type = float
     }
     eps {
-        tls_matrices_eps = 1e-3
+        tls_matrices_eps = 1e-6
             .help = "Cutoff for determining when a TLS-matrix has refined to zero-value (this is applied to the matrices after normalisation)."
             .type = float
-        tls_amplitudes_eps = 1e-2
+        tls_amplitudes_eps = 1e-6
             .help = "Cutoff for determining when a TLS-amplitude has refined to zero-value (this is applied to the amplitudes after normalisation)."
             .type = float
     }

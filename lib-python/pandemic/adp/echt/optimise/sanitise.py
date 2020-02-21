@@ -4,12 +4,12 @@ from bamboo.common.logs import Log
 
 import numpy
 
+
 class SanitiseEchtModel:
 
-
     def __init__(self,
-        tls_matrices_eps = 1e-6,
-        tls_amplitudes_eps = 1e-6,
+        tls_matrices_eps = 1e-12,
+        tls_amplitudes_eps = 1e-12,
         verbose = False,
         log = None,
         ):
@@ -29,15 +29,12 @@ class SanitiseEchtModel:
         ):
 
         for i_m, mode in enumerate(tls_group.tls_parameters):
-
             # Reset "null" groups
             if mode.is_null(
                     matrices_tolerance = self.tls_matrices_eps,
                     amplitudes_tolerance = self.tls_amplitudes_eps,
                     ):
-
                 self.log('Resetting group: "{}" (Mode {})'.format(tls_group.label, i_m+1))
-
                 mode.matrices.reset()
                 mode.matrices.set(values=(1.,1.,1.,0.,0.,0.), component_string='T')
                 mode.amplitudes.zero_values()
