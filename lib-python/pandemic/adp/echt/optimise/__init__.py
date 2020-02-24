@@ -322,15 +322,22 @@ class UpdateOptimisationFunction:
         self.log.subheading('Updating Level Amplitude Optimisation Weights')
         self.log('> Cycle {}\n'.format(n_cycle))
         self.log('> Total decay factor (relative to starting values): {}\n'.format(total_decay_factor))
+
+        start_weights = self.start_values.level_amplitudes_optimisation_weights
+        new_weights_dict = {}
         for k in self.optimisation_weights_to_update:
-            orig_v = self.start_values.level_amplitudes_optimisation_weights.__dict__[k]
-            new_v = orig_v / total_decay_factor
-            self.log('Updating {} = {} -> {}'.format(k, orig_v, new_v))
-            model_optimisation_function.optimise_level_amplitudes.optimisation_weights.__dict__[k] = new_v
+            sta_v = getattr(start_weights, k)
+            new_v = sta_v / total_decay_factor
+            self.log('Updating {} = {} -> {}'.format(k, sta_v, new_v))
+            new_weights_dict[k] = new_v
+        # Create new object, overriding the selected weights
+        new_weights = start_weights.transfer_from_other(new_weights_dict)
+        # Replace the original weights object with the new weights object
+        model_optimisation_function.optimise_level_amplitudes.optimisation_weights = new_weights
 
         # Update history
         self.log('\nCurrent values:')
-        for k, v in model_optimisation_function.optimise_level_amplitudes.optimisation_weights.__dict__.iteritems():
+        for k, v in new_weights._asdict().items():
             self.log('{} -> {}'.format(k, v))
             self.history \
                 .setdefault(self.level_amplitude_string, collections.OrderedDict()) \

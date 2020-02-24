@@ -73,7 +73,7 @@ class OptimiseInterLevelAmplitudes:
         ):
         if optimisation_weights is not None:
             from mmtbx.tls.optimise_amplitudes import OptimisationWeights
-            optimisation_weights = OptimisationWeights.from_other(optimisation_weights)
+            optimisation_weights = OptimisationWeights.defaults().transfer_from_other(optimisation_weights)
 
         adopt_init_args(self, locals())
 
