@@ -9,7 +9,7 @@ def test_structure_factory():
 	from iotbx.pdb import hierarchy
 	pdb_h = hierarchy.input(pdb_string=pdb_str).hierarchy
 
-	from pandemic.adp.output.structures import StructureFactory
+	from pandemic.adp.hierarchy.utils import StructureFactory
 	sf = StructureFactory(master_h=pdb_h)
 
 	mask = pdb_h.atom_selection_cache().selection('resseq 12 or resseq 14')
@@ -115,7 +115,7 @@ def test_partition_borders():
 	from iotbx.pdb import hierarchy
 	pdb_h = hierarchy.input(pdb_string=pdb_str).hierarchy
 
-	from pandemic.adp.output.structures import PartitionBordersFactory
+	from pandemic.adp.hierarchy.utils import PartitionBordersFactory
 	sf = PartitionBordersFactory(master_h=pdb_h)
 
 	atom_labels = [a.resseq for a in pdb_h.atoms_with_labels()]

@@ -14,20 +14,18 @@ class OptimiseTLSGroup:
     component_optimisation_list = ["T","L","S","TL","LS","TS","TLS"]
 
     def __init__(self,
-        convergence_tol,
-        tolerances,
-        eps_values,
         simplex_params,
-        n_cpus=1,
+        convergence_tolerance,
+        eps_values,
         verbose = False,
         log = None,
         ):
 
-        if eps_values is None:
-            eps_values = group_args(
-                    tls_matrices_eps = -1,
-                    tls_amplitudes_eps = -1,
-                    )
+        # if eps_values is None:
+        #     eps_values = group_args(
+        #         matrix_eps = -1,
+        #         amplitude_eps = -1,
+        #         )
 
         # Use selected target function
         target_function = self.target_function_class()
@@ -36,6 +34,16 @@ class OptimiseTLSGroup:
         other_target_functions = []
 
         adopt_init_args(self, locals())
+
+        self.validate()
+
+    def validate(self):
+
+        for f in ['vibration_delta', 'libration_delta']:
+            assert hasattr(self.simplex_params, f)
+
+        for f in ['matrix_eps', 'amplitude_eps']:
+            assert hasattr(self.eps_values, f)
 
     def __call__(self,
         multi_dataset_tls_group,
@@ -62,35 +70,25 @@ class OptimiseTLSGroup:
                 ),
             target_function = self.target_function,
             other_target_functions = self.other_target_functions,
-            convergence_tol = self.convergence_tol,
-            tls_matrix_tol = self.tolerances.tls_matrix_tolerance,
-            tls_matrix_eps = self.eps_values.tls_matrices_eps,
-            isotropic_mask = uij_isotropic_mask,
+            convergence_tolerance = self.convergence_tolerance,
+            uij_isotropic_mask = uij_isotropic_mask,
             verbose = self.verbose,
             log = self.log,
             )
 
-        # Extract loop parameters
-        i_modes = range(multi_dataset_tls_group.tls_parameters.size())
-
         # Do cycles of alternating optimisation
-        for i_mode in i_modes:
+        for i_mode in range(multi_dataset_tls_group.tls_parameters.size()):
 
             # Extract mode object
             mode = multi_dataset_tls_group.tls_parameters[i_mode]
 
-            # Skip if amplitudes are null
-            if mode.is_null(
-                    matrices_tolerance = 0.0, # means does not check matrices
-                    amplitudes_tolerance = self.eps_values.tls_amplitudes_eps,
-                    ):
+            # Skip if amplitudes are exactly zero
+            if mode.amplitudes.get().all_eq(0.0):
                 continue
 
             # Reset at beginning if matrices are null or invalid
-            if (not mode.matrices.is_valid()) or mode.is_null(
-                    matrices_tolerance = self.eps_values.tls_matrices_eps,
-                    amplitudes_tolerance = 0.0, # means does not check amplitudes
-                    ):
+            if not mode.matrices.is_valid():
+                # Just set the matrices to zero for following optimisation
                 mode.matrices.reset()
 
             # Iterate through component set
@@ -102,21 +100,26 @@ class OptimiseTLSGroup:
                     optimise_i_mode = i_mode,
                     )
 
-            # If has refined to zero-values, reset.
-            if mode.is_null(
-                    matrices_tolerance = self.eps_values.tls_matrices_eps,
-                    amplitudes_tolerance = 0.0,
-                    ):
-                self.reset_mode(mode)
-                continue
+            # # If has refined to zero-values, reset.
+            # if mode.is_null(
+            #         matrices_tolerance = self.eps_values.matrix_eps,
+            #         amplitudes_tolerance = self.eps_values.amplitude_eps,
+            #         ):
+            #     self.default_matrix(mode)
+            #     continue
 
             # Normalise the resulting matrices and amplitudes
-            if mode.is_valid():
-                mode.normalise_by_matrices(
-                    sites_carts=multi_dataset_tls_group.coordinates,
-                    origins=multi_dataset_tls_group.origins,
-                    target=1.0,
+            if mode.matrices.is_valid():
+                ret = mode.normalise_by_matrices(
+                    sites_carts = multi_dataset_tls_group.coordinates,
+                    origins = multi_dataset_tls_group.origins,
+                    target = 1.0,
                     )
+                # matrices produce negligible uijs -- continue
+                if ret == -1:
+                    self.zero_amplitudes(mode)
+                    self.default_matrix(mode)
+                    continue
 
             # Check that mode is valid after normalisation
             if not mode.matrices.is_valid():
@@ -128,9 +131,9 @@ class OptimiseTLSGroup:
                         optimise_components = cpts,
                         optimise_i_mode = i_mode,
                         )
-                    # Break as soon as it becomes valid
-                    if mode.matrices.is_valid():
-                        break
+                    # # Break as soon as it becomes valid
+                    # if mode.matrices.is_valid():
+                    #     break
 
                 # If still not valid, reset and re-optimise (now with the amplitudes at the "correct" scale)
                 if not mode.matrices.is_valid():
@@ -143,24 +146,38 @@ class OptimiseTLSGroup:
                             )
 
             # Ensure normalised at the end
-            if mode.is_valid():
-                mode.normalise_by_matrices(
-                    sites_carts=multi_dataset_tls_group.coordinates,
-                    origins=multi_dataset_tls_group.origins,
-                    target=1.0,
+            if mode.matrices.is_valid():
+                ret = mode.normalise_by_matrices(
+                    sites_carts = multi_dataset_tls_group.coordinates,
+                    origins = multi_dataset_tls_group.origins,
+                    target = 1.0,
                     )
+                # matrices produce negligible uijs -- continue
+                if ret == -1:
+                    self.zero_amplitudes(mode)
+                    self.default_matrix(mode)
 
+            # # # # # # # # # # # #
+            # THIS IS "GIVING UP"
+            #
             # At the end, if nothing else, reset everything, to ensure that something valid is returned...
             if not mode.matrices.is_valid():
-                self.reset_mode(mode)
+                self.zero_amplitudes(mode)
+                self.default_matrix(mode)
+                continue
+            #
+            # THIS IS "GIVING UP"
+            # # # # # # # # # # # #
 
-        # If everything is null, reset everything
-        if multi_dataset_tls_group.tls_parameters.is_null(
-                matrices_tolerance = self.eps_values.tls_matrices_eps,
-                amplitudes_tolerance = self.eps_values.tls_amplitudes_eps,
-                ):
-            for i_mode, mode in enumerate(multi_dataset_tls_group.tls_parameters):
-                self.reset_mode(mode)
+        # If everything is null, reset everything (first mode non-zero T, otherwise all zero)
+        # if multi_dataset_tls_group.tls_parameters.is_null(
+        #         matrices_tolerance = self.eps_values.matrix_eps,
+        #         amplitudes_tolerance = self.eps_values.amplitude_eps,
+        #         ):
+        #     for i_mode, mode in enumerate(multi_dataset_tls_group.tls_parameters):
+        #         self.default_matrix(mode)
+        #     # Give non-zero matrices to first mode
+        #     self.default_matrix(multi_dataset_tls_group.tls_parameters[0])
 
         # TODO
         optimisation_info = None
@@ -169,9 +186,12 @@ class OptimiseTLSGroup:
         return multi_dataset_tls_group
 
     @staticmethod
-    def reset_mode(mode):
+    def default_matrix(mode):
         mode.matrices.reset()
         mode.matrices.set(values=(1.,1.,1.,0.,0.,0.), component_string='T')
+
+    @staticmethod
+    def zero_amplitudes(mode):
         mode.amplitudes.zero_values()
 
 
@@ -188,6 +208,7 @@ class OptimiseTLSLevel:
         run_parallel = RunParallelWithProgressBarUnordered(
             function = optimisation_function,
             n_cpus = n_cpus,
+            max_chunksize = 10,
         )
         adopt_init_args(self, locals())
 

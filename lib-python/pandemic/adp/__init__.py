@@ -141,23 +141,47 @@ model {
         tls_amplitude_model = *simple_multiplier
             .help = 'how do amplitudes transform each TLS group in each dataset? \n\tsimple_multiplier = T->aT, L->aL, S->aS.'
             .type = choice(multi=False)
+        precision
+            .help = 'set various levels of precision for calculations'
+        {
+            tls_matrix_decimals = 16
+                .help = "how many decimals of precision to be used for TLS matrices (PDB maximum is three, but more needed here due to amplitudes less than one)"
+                .type = int
+            tls_amplitude_decimals = 16
+                .help = "how many decimals of precision to be used for TLS amplitudes"
+                .type = int
+        }
+        eps {
+            tls_matrix_eps = 1e-6
+                .help = "define non-zero values for matrix elements"
+                .type = float
+            tls_amplitude_eps = 1e-3
+                .help = "define non-zero values for amplitudes"
+                .type = float
+        }
+        tolerances {
+            tls_matrix_tolerance = 1e-6
+                .help = "optimisation tolerance for TLS matrices (maximum allowed negative eigenvalues)"
+                .type = float
+            tls_amplitude_tolerance = 1e-6
+                .help = "optimisation tolerance for TLS amplitudes (maximum allowed negative amplitudes)"
+                .type = float
+        }
     }
-    precision
-        .help = 'set various levels of precision for calculations'
-    {
-        tls_matrix_decimals = 12
-            .help = "how many decimals of precision to be used for TLS matrices (PDB maximum is three, but more needed here due to amplitudes less than one)"
-            .type = int
-        tls_amplitude_decimals = 12
-            .help = "how many decimals of precision to be used for TLS amplitudes"
-            .type = int
+    adp_values {
+        uij_eps = 1e-3
+            .help = "define non-zero values for uij elements"
+            .type = float
+        uij_tolerance = 1e-6
+            .help = "optimisation tolerance for Uij values (maximum allowed negative eigenvalues of Uijs)"
+            .type = float
     }
 }
 optimisation {
     min_macro_cycles = 10
         .help = 'minimum number of fitting cycles to run (over all levels) -- must be at least 1'
         .type = int
-    max_macro_cycles = 500
+    max_macro_cycles = 999
         .help = 'maximum number of fitting cycles to run (over all levels) -- must be at least 1'
         .type = int
     number_of_micro_cycles = 1
@@ -165,9 +189,9 @@ optimisation {
         .type = int
     fit_tls_for_isotropic_atoms_by_magnitude_only = False
         .type = bool
-        .help = "Treat isotropic B-factors as anisotropic ADPs (will fit to the shapes of isotropic ADPs as well as the size)."
+        .help = "Only use the magnitude of isotropic B-factors (True) or treat them as spherical anisotropic ADPs (False)?"
     intermediate_output {
-        write_model_every = 10
+        write_model_every = 5
             .help = 'output summary of hierarchical model every <n> cycles'
             .type = int
         remove_previous = True
@@ -192,49 +216,52 @@ optimisation {
         dataset_weights = one inverse_resolution inverse_resolution_squared *inverse_resolution_cubed
             .help = 'control how datasets are weighted during optimisation?'
             .type = choice(multi=False)
-        atom_weights = *one inverse_mod_U inverse_mod_U_squared inverse_mod_U_cubed
+        atom_weights = one inverse_mod_U inverse_mod_U_squared *inverse_mod_U_cubed
             .help = 'control how atoms are weighted during optimisation?'
             .type = choice(multi=False)
         renormalise_atom_weights_by_dataset = True
-            .help = "Should atom weights be normalised to an average of 1 for each dataset?"
+            .help = "Should atom_weights be normalised to an average of 1 for each dataset? (dataset_weights are then applied)"
             .type = bool
     }
     simplex_optimisation
         .help = 'set the various step sizes taken during simplex optimisation'
     {
-        simplex_convergence = 1e-10
+        simplex_convergence = 1e-8
             .help = "cutoff for which the least-squares simplex is considered converged"
             .type = float
-        vibration_delta = 1.0
+        vibration_delta = 1e-2
             .help = 'Vibration step size for zero-value matrices (relative scale)'
             .type = float
-        libration_delta = 10.0
+        libration_delta = 1e-2
             .help = 'Libration step size for zero-value matrices (relative scale)'
             .type = float
-        uij_delta = 1e-3
+        uij_delta = 1e-6
             .help = 'Uij step size (absolute)'
             .type = float
     }
     gradient_optimisation {
-        gradient_convergence = 1e-10
-            .help = "cutoff for which the least-squares gradient is considered converged."
+        gradient_convergence = 1e-16
+            .help = "cutoff for which the least-squares gradient optimisation is considered converged."
             .type = float
         optimisation_weights {
-            sum_of_amplitudes = 0.9
+            sum_of_amplitudes = 1.0
                 .help = "weight for sum(amplitudes). minimises the number of TLS components in the optimisation. equivalent to a lasso weighting term."
                 .type = float
-            sum_of_squared_amplitudes = 0.1
+            sum_of_squared_amplitudes = 1.0
                 .help = "weight for sum(amplitudes^2). minimises the variance in the sizes of the TLS components in the optimisation. equivalent to a ridge regression term."
                 .type = float
             sum_of_amplitudes_squared = 0.0
                 .help = "weight for sum(amplitudes)^2. related to a lasso weighting term."
                 .type = float
         }
-        global_weight_scale = 5000.0
+        global_weight_scale = 1e3
             .help = "global scale applied to all optimisation_weights."
             .type = float
-        global_weight_decay_factor = 1.25
-            .help = "amount by which optimisation_weights are reduced every cycle. factor of 2 -> scaled by 0.5 every cycle."
+        global_weight_decay_factor = 0.7
+            .help = "amount by which optimisation_weights is scaled every cycle. must be less than 1."
+            .type = float
+        minimum_weight = 1e-16
+            .help = "minimum weight value. weight decay will not continue once one of the weights reaches this value. The proportions between the different weights will be kept."
             .type = float
         weights_to_decay = *sum_of_amplitudes *sum_of_amplitudes_squared *sum_of_squared_amplitudes
             .help = "which optimisation_weights to decay every cycle."
@@ -242,34 +269,15 @@ optimisation {
     }
     termination {
         max_b_rmsd = None
-            .help = "Stop optimisation when the rmsd between the input and the output is less than this"
+            .help = "Stop optimisation when the rmsd between the input and the output is changing less than this."
             .type = float
-        max_b_change = 0.1
-            .help = "Stop optimisation when all atoms are changing less that this value every cycle"
+        max_b_change = 1.0
+            .help = "Stop optimisation when all atoms are changing less that this value every cycle."
             .type = float
         max_b_change_window_frac = 0.05
-            .help = "Fraction of cycles over which max_b_change is measured"
+            .help = "Fraction of cycles over which these changes are measured."
             .type = float
-        max_b_change_window_min = 5
-            .type = float
-    }
-    eps {
-        tls_matrices_eps = 1e-6
-            .help = "Cutoff for determining when a TLS-matrix has refined to zero-value (this is applied to the matrices after normalisation)."
-            .type = float
-        tls_amplitudes_eps = 1e-6
-            .help = "Cutoff for determining when a TLS-amplitude has refined to zero-value (this is applied to the amplitudes after normalisation)."
-            .type = float
-    }
-    tolerances {
-        tls_matrix_tolerance = 1e-6
-            .help = "tolerance for validating TLS matrices (cutoff for defining zero when calculating negative eigenvalues, etc)"
-            .type = float
-        tls_amplitude_tolerance = 1e-8
-            .help = "tolerance for validating TLS amplitudes (cutoff for defining zero when calculating negative amplitudes, etc)"
-            .type = float
-        uij_tolerance = 1e-6
-            .help = "tolerance for validating Uij values (maximum allowed negative eigenvalues of Uijs)"
+        max_b_change_window_min = 3
             .type = float
     }
 }
@@ -356,15 +364,18 @@ def run(params, args=None):
     #
     # Imports
     #
+    # import plots first to set matplotlib variables
+    #
     from pandemic.adp import \
+        plots, \
         preprocess, postprocess, \
         weights, tracking, results, \
-        hierarchy, plots, json_manager
+        hierarchy, json_manager
 
     #
     # Validate input parameters
     #
-    preprocess.validate_parameters(params=params, log=log)
+    preprocess.validate.validate_parameters(params=params, log=log)
 
     ##################################################
     #                                                #
@@ -423,6 +434,7 @@ def run(params, args=None):
         remove_duplicate_groups = params.model.remove_duplicate_groups,
         warnings = warnings,
         verbose = params.settings.verbose,
+        n_cpus = params.settings.cpus,
         log = log,
         )
 
@@ -456,16 +468,12 @@ def run(params, args=None):
     # Update class attributes
     pandemic.adp.html.HtmlSummary.embed_images = params.output.html.embed_images
 
-    # Optimisation tracking / model evolution
-    import pandemic.adp.html.tracking as tracking_html
-    TrackingHtmlSummary = tracking_html.TrackingHtmlSummary
-
     # Summary of the hierarchical model -- model specific
     ModelHtmlSummary = None
 
     # R-factor analysis, etc
-    import pandemic.adp.html.post_process
-    PostProcessingHtmlSummary = pandemic.adp.html.post_process.PostProcessingHtmlSummary
+    import pandemic.adp.postprocess.html as postprocesshtml
+    PostProcessingHtmlSummary = postprocesshtml.PostProcessingHtmlSummary
 
     # Print input commands / input parameters / non-default parameters
     import pandemic.adp.html.parameters
@@ -488,9 +496,10 @@ def run(params, args=None):
 
         create_model_object_task = echt.hierarchy.CreateEchtModelTask(
             n_tls_modes = params.model.echt.n_tls_modes_per_tls_group,
-            tls_matrix_decimals = params.model.precision.tls_matrix_decimals,
-            tls_amplitude_decimals = params.model.precision.tls_amplitude_decimals,
-            tls_matrix_tolerance = params.optimisation.tolerances.tls_matrix_tolerance,
+            matrix_decimals = params.model.echt.precision.tls_matrix_decimals,
+            amplitude_decimals = params.model.echt.precision.tls_amplitude_decimals,
+            matrix_tolerance = params.model.echt.tolerances.tls_matrix_tolerance,
+            amplitude_tolerance = params.model.echt.tolerances.tls_amplitude_tolerance,
             verbose = params.settings.verbose,
             log = log,
             )
@@ -498,12 +507,14 @@ def run(params, args=None):
         # Optimisation functions
 
         optimise_tls_function = echt.optimise.tls.OptimiseTLSGroup(
-            convergence_tol = params.optimisation.simplex_optimisation.simplex_convergence,
-            tolerances = params.optimisation.tolerances,
-            eps_values = params.optimisation.eps,
             simplex_params = group_args(
                 vibration_delta = params.optimisation.simplex_optimisation.vibration_delta,
                 libration_delta = params.optimisation.simplex_optimisation.libration_delta,
+                ),
+            convergence_tolerance = params.optimisation.simplex_optimisation.simplex_convergence,
+            eps_values = group_args(
+                matrix_eps = params.model.echt.eps.tls_matrix_eps,
+                amplitude_eps = params.model.echt.eps.tls_amplitude_eps,
                 ),
             verbose = params.settings.verbose,
             log = log,
@@ -511,25 +522,26 @@ def run(params, args=None):
 
         if params.model.atomic_adp_level is True:
             optimise_adp_function = echt.optimise.uij.OptimiseUijValue(
-                convergence_tol = params.optimisation.simplex_optimisation.simplex_convergence,
-                tolerances = params.optimisation.tolerances,
-                eps_values = params.optimisation.eps,
                 simplex_params = group_args(
                     uij_delta = params.optimisation.simplex_optimisation.uij_delta,
                     ),
+                convergence_tolerance = params.optimisation.simplex_optimisation.simplex_convergence,
+                uij_eps = params.model.adp_values.uij_eps,
+                uij_tolerance = params.model.adp_values.uij_tolerance,
                 verbose = params.settings.verbose,
                 log = log,
                 )
         else:
             optimise_adp_function = None
 
+        level_optimisation_weights = weights.scale_weights(
+            weights = params.optimisation.gradient_optimisation.optimisation_weights,
+            scale = params.optimisation.gradient_optimisation.global_weight_scale,
+            )
+
         optimise_level_amplitudes_function = echt.optimise.inter_level.OptimiseInterLevelAmplitudes(
             convergence_tolerance = params.optimisation.gradient_optimisation.gradient_convergence,
-            optimisation_weights =  weights.scale_weights(
-                weights = params.optimisation.gradient_optimisation.optimisation_weights,
-                scale = params.optimisation.gradient_optimisation.global_weight_scale,
-                ),
-            optimise_atomic_adp_amplitudes = params.model.atomic_adp_level,
+            optimisation_weights =  level_optimisation_weights,
             verbose = params.settings.verbose,
             log=log,
             )
@@ -545,9 +557,11 @@ def run(params, args=None):
             )
 
         update_optimisation_object = echt.optimise.UpdateOptimisationFunction(
-            gradient_optimisation_decay_factor = params.optimisation.gradient_optimisation.global_weight_decay_factor,
-            optimisation_weights_to_update = params.optimisation.gradient_optimisation.weights_to_decay,
-            model_optimisation_function = optimise_model_main,
+            initial_weights = level_optimisation_weights,
+            weight_decay_factor = params.optimisation.gradient_optimisation.global_weight_decay_factor,
+            weights_to_update = params.optimisation.gradient_optimisation.weights_to_decay,
+            minimum_weight = params.optimisation.gradient_optimisation.minimum_weight,
+            output_directory = file_system.optimisation_directory,
             plotting_object = plots.PandemicAdpPlotter(),
             verbose = params.settings.verbose,
             log = log,
@@ -556,7 +570,7 @@ def run(params, args=None):
         ModelTrackingClass = echt.tracking.EchtTracking
 
         validate_model = echt.validate.ValidateEchtModel(
-            uij_tolerance = params.optimisation.tolerances.uij_tolerance,
+            uij_tolerance = params.model.adp_values.uij_tolerance,
             warnings = warnings,
             verbose = params.settings.verbose,
             log = log,
@@ -670,7 +684,8 @@ def run(params, args=None):
     #
     main_tracking_object = tracking.PandemicTrackingObject(
         output_directory = file_system.optimisation_directory,
-        plotting_object = tracking.TrackingPlotter(n_levels=model_object.n_levels), # Move internally
+        plotting_object = plotting_object,
+        structure_factory = hierarchy_info.masked_structure_factory,
         dataset_names = model_object.dataset_labels,
         level_names = model_object.all_level_names,
         convergence_args = dict(
@@ -685,7 +700,7 @@ def run(params, args=None):
 
     model_tracking_object = ModelTrackingClass(
         output_directory = file_system.optimisation_directory,
-        plotting_object = tracking.TrackingPlotter(n_levels=model_object.n_levels), # Move internally
+        plotting_object = plotting_object,
         model_object = model_object,
         verbose = params.settings.verbose,
         log = log,
@@ -841,6 +856,11 @@ def run(params, args=None):
 
     log.heading('Optimising Hierarchical Disorder Model', spacer=True)
 
+    main_tracking_object.set_target(
+        uij_target = extract_uijs_task.result.model_uij,
+        uij_target_weights = uij_weights_task.result.total_weight_array,
+        )
+
     main_tracking_object.n_cycle = 0
 
     for _ in xrange(params.optimisation.max_macro_cycles):
@@ -865,9 +885,15 @@ def run(params, args=None):
             )
 
         model_tracking_object.update(
-            model_object = model_object,
+            model_object = model_object, # TODO REMOVE
             n_cycle = main_tracking_object.n_cycle,
             )
+
+        # Write graphs
+        log.heading('Writing tracking output')
+        main_tracking_object.write_output()
+        model_tracking_object.write_output()
+        update_optimisation_object.write_output()
 
         if main_tracking_object.is_converged():
             if (main_tracking_object.n_cycle >= params.optimisation.min_macro_cycles):
@@ -890,11 +916,6 @@ def run(params, args=None):
                     uij_target = extract_uijs_task.result.model_uij,
                     plotting_object = plotting_object,
                     )
-
-    # Write graphs of the optimsation parameters and return file dict
-    update_optimisation_object.write(
-        output_directory = file_system.optimisation_directory,
-        )
 
     log.heading('Optimisation finished', spacer=True)
 
@@ -1023,7 +1044,7 @@ def run(params, args=None):
     # Write output csvs/graphs
     #
     results_object.write()
-    model_tracking_object.write_graphs()
+    model_tracking_object.write_output()
 
     #
     # Write HTML
@@ -1044,7 +1065,6 @@ def run(params, args=None):
                         ),
                     ),
                 ModelHtmlSummary(
-                    hierarchy_info = None,
                     hierarchy_files = write_hierarchy_summary_task.result.output_files,
                     model_files = model_files,
                     model_object = model_object,

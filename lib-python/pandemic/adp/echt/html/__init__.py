@@ -13,7 +13,6 @@ class EchtModelHtmlSummary(HtmlSummary):
 
 
     def __init__(self,
-        hierarchy_info,
         hierarchy_files,
         model_files,
         model_object,
@@ -35,9 +34,19 @@ class EchtModelHtmlSummary(HtmlSummary):
 
         output = {
             'type'     : 'panel',
-            'title'    : 'Chain-by-Chain Disorder Summaries',
+            'title'    : 'Output: Chain-by-Chain Disorder Summaries',
             'contents' : [],
-            }
+        }
+
+        ###
+
+        block = {
+            'width' : 12,
+            'contents' : self.format_summary('Visualise in pymol by running: "pymol {}"'.format(mf.get("pymol_script")), type='none'),
+        }
+        output['contents'].append(block)
+
+        ###
 
         for c_id in chain_ids:
             block = {
@@ -192,6 +201,16 @@ class EchtModelHtmlSummary(HtmlSummary):
                         'fancy_title' : True,
                         'contents'  : [],
                        }
+
+        ###
+
+        block = {
+            'width' : 12,
+            'contents' : self.format_summary('Visualise in pymol by running: "pymol {}"'.format(mf.get("pymol_script")), type='none'),
+        }
+        overview_tab['contents'].append(block)
+
+        ###
 
         tabs = {
             'type' : 'tabs',
@@ -490,7 +509,7 @@ class EchtModelHtmlSummary(HtmlSummary):
                         tls_matrices = mats,
                         tls_origin = None,
                         tls_amplitude = mode_amp_av,
-                        tolerance = self.parameters.optimisation.tolerances.tls_matrix_tolerance,
+                        tolerance = self.parameters.model.echt.tolerances.tls_matrix_tolerance,
                         )
                     d.update({
                         'width' : 12,
@@ -542,7 +561,7 @@ class EchtModelHtmlSummary(HtmlSummary):
                             tls_matrices = mats,
                             tls_origin = orgn,
                             tls_amplitude = dst_amps.values[i_mode],
-                            tolerance = self.parameters.optimisation.tolerances.tls_matrix_tolerance,
+                            tolerance = self.parameters.model.echt.tolerances.tls_matrix_tolerance,
                             )
                         d.update({
                             'width' : 12,
@@ -789,7 +808,7 @@ class EchtModelHtmlSummary(HtmlSummary):
             )
         html_table = html_table \
             .replace('<th>', '<th class="text-center">') \
-            .replace('border="1" ', '') 
+            .replace('border="1" ', '')
         return {'table': html_table}
 
     @classmethod

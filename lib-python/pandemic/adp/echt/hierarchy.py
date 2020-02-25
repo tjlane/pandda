@@ -9,10 +9,11 @@ class CreateEchtModelTask:
     adp_level_name = 'atomic'
 
     def __init__(self,
-        n_tls_modes = 1,
-        tls_matrix_decimals = 6,
-        tls_amplitude_decimals = 6,
-        tls_matrix_tolerance = 1e-6,
+        n_tls_modes,
+        matrix_decimals,
+        amplitude_decimals,
+        matrix_tolerance,
+        amplitude_tolerance,
         verbose = False,
         log = None,
         ):
@@ -22,9 +23,10 @@ class CreateEchtModelTask:
         from pandemic.adp.echt.hierarchy import CreateMultiDatasetTLSGroupHierarchyTask
         self.tls_objects_constructor = CreateMultiDatasetTLSGroupHierarchyTask(
             n_tls_modes = self.n_tls_modes,
-            tls_matrix_decimals = self.tls_matrix_decimals,
-            tls_amplitude_decimals = self.tls_amplitude_decimals,
-            tls_matrix_tolerance = self.tls_matrix_tolerance,
+            matrix_decimals = self.matrix_decimals,
+            amplitude_decimals = self.amplitude_decimals,
+            matrix_tolerance = self.matrix_tolerance,
+            amplitude_tolerance = self.amplitude_tolerance,
             verbose = self.verbose,
             log = self.log,
             )
@@ -65,19 +67,21 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
 
 
     def __init__(self,
-            n_tls_modes = 1,
-            tls_matrix_decimals = 3,
-            tls_amplitude_decimals = 6,
-            tls_matrix_tolerance = 1e-6,
+            n_tls_modes,
+            matrix_decimals,
+            amplitude_decimals,
+            matrix_tolerance,
+            amplitude_tolerance,
             verbose=False,
             log=None):
         if log is None: log = Log()
         adopt_init_args(self, locals())
         # Set precisions and tolerances
         from mmtbx.tls.utils import TLSMatrices, TLSAmplitudes
-        TLSMatrices.set_precision(tls_matrix_decimals)
-        TLSMatrices.set_tolerance(tls_matrix_tolerance)
-        TLSAmplitudes.set_precision(tls_amplitude_decimals)
+        TLSMatrices.set_precision(matrix_decimals)
+        TLSAmplitudes.set_precision(amplitude_decimals)
+        TLSMatrices.set_tolerance(matrix_tolerance)
+        TLSAmplitudes.set_tolerance(amplitude_tolerance)
 
     def run(self,
             models,
@@ -334,7 +338,7 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
                 # Initalise to isotropic
                 for mode in tls_parameters:
                     mode.amplitudes.set([0.,]*mode.amplitudes.size())
-                    # mode.matrices.set(values=(1.,1.,1.,0.,0.,0.), component_string='T')
+                    mode.matrices.set(values=(1.,1.,1.,0.,0.,0.), component_string='T')
                 # Create convenience class for generating uijs from parameters
                 group = MultiDatasetTLSGroup(
                     index = group_number,

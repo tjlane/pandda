@@ -10,7 +10,7 @@ class UijSimplexGenerator:
 
 
     def __init__(self,
-            uij_delta = 1e-3,
+            uij_delta,
             ):
         adopt_init_args(self, locals())
 
@@ -39,22 +39,7 @@ class UijSimplexGenerator:
         return s
 
 
-class ValidateUijValues:
-
-
-    def __init__(self,
-            uij_tol = -1,
-            ):
-        adopt_init_args(self, locals())
-
-    def __call__(self,
-            u,
-            ):
-        from giant.structure.uij import sym_mat3_eigenvalues
-        eigenvalues = sym_mat3_eigenvalues(tuple(u))
-        return (eigenvalues < -self.uij_tol).all_eq(False)
-
-
+from pandemic.adp.echt.validate.uij import ValidateUijValues
 class OptimiseUijValue_TargetEvaluator:
 
 
@@ -84,10 +69,8 @@ class OptimiseUijValue_TargetEvaluator:
             parameters,
             ):
         self.n_call += 1
-        if self.verbose and (self.n_call%20==1): self.print_header_line(parameters)
         if not self.validate(u=parameters):
-            if self.verbose: self.print_invalid_line(parameters)
-            return 1.1 * self.best_target
+            return 1.1 * abs(self.best_target)
         # Apply multipliers to each mode
         uij_fitted = flex.sym_mat3_double(self.uij_target.size(), tuple(parameters))
         uij_deltas = uij_fitted - self.uij_target
@@ -99,7 +82,6 @@ class OptimiseUijValue_TargetEvaluator:
         if target < self.best_target:
             self.best_target = target
             self.best_target_terms = target_terms
-        if self.verbose: self.print_current_line(parameters, target)
         return target
 
 
@@ -110,11 +92,10 @@ class OptimiseUijValue:
     evaluator_class = OptimiseUijValue_TargetEvaluator
 
     def __init__(self,
-            convergence_tol,
-            tolerances,
-            eps_values,
             simplex_params,
-            n_micro_cycles = 1,
+            convergence_tolerance,
+            uij_eps,
+            uij_tolerance,
             verbose = False,
             log = None,
             ):
@@ -150,10 +131,14 @@ class OptimiseUijValue:
                 uij_target = uij_target,
                 target_function = target_function,
                 other_target_functions = other_target_functions,
-                uij_tol = self.tolerances.uij_tolerance,
+                uij_tol = self.uij_tolerance,
                 verbose = self.verbose,
                 log = self.log,
                 )
+
+        # Check if uij is valid, else start from zero
+        if not evaluator.validate(u=uij_value):
+            uij_value = (0.,)*6
 
         # Generate simplex
         starting_simplex = self.simplex_generator(uij_value)
@@ -163,7 +148,9 @@ class OptimiseUijValue:
         optimised = simplex.simplex_opt(dimension = 6, # len(starting_simplex[0]),
                                         matrix    = map(flex.double, starting_simplex),
                                         evaluator = evaluator,
-                                        tolerance = self.convergence_tol)
+                                        tolerance = self.convergence_tolerance)
+
+        #print evaluator.best_target
 
         # # Create results object
         # results = group_args(
@@ -188,6 +175,7 @@ class OptimiseUijLevel:
         run_parallel = RunParallelWithProgressBarUnordered(
             function = optimisation_function,
             n_cpus = n_cpus,
+            max_chunksize = 100,
         )
         adopt_init_args(self, locals())
 

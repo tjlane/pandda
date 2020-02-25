@@ -45,6 +45,21 @@ class StructureFactory:
         return m_h
 
 
+class MaskedStructureFactory:
+
+
+    def __init__(self,
+        master_h, 
+        mask,
+        ):
+        mask = flex.bool(mask)
+        sf = StructureFactory(master_h=master_h.select(mask))
+        adopt_init_args(self, locals())
+
+    def custom_copy(self, uij=None, iso=None, blank_copy=False):
+        return self.sf.custom_copy(uij=uij, iso=iso, mask=None, blank_copy=blank_copy)
+
+
 class PartitionBordersFactory(StructureFactory):
 
 

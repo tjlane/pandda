@@ -5,10 +5,10 @@ from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
 
 from bamboo.common.logs import Log
-from bamboo.maths.functions import rms
 
 from pandemic.adp import constants
 from pandemic.adp.utils import show_file_dict
+from pandemic.functions import rms
 
 #################################
 
@@ -69,15 +69,15 @@ class AnalyseResidualsTask:
             reference_hierarchy = reference_hierarchy,
             )
 
-        from pandemic.adp.output.structures import StructureFactory
+        from pandemic.adp.hierarchy.utils import StructureFactory
         structure_factory = StructureFactory(master_h=reference_hierarchy)
 
         self.log.subheading('Assessing model fit and calculating summary statistics')
 
         self.rmsd_statistics(
             results_table = results_table,
-            uij_target = uij_target,
             uij_fitted = uij_fitted.sum(axis=0),
+            uij_target = uij_target,
             )
 
         self.b_factor_statistics(
@@ -155,14 +155,13 @@ class AnalyseResidualsTask:
 
     def rmsd_statistics(self,
         results_table,
-        uij_target,
         uij_fitted,
+        uij_target,
         ):
 
         log = self.log
 
         # Calculate rmsd between input and fitted uijs
-        from bamboo.maths.functions import rms
         uij_rmsd = rms(uij_target-uij_fitted, axis=2)
 
         # Extract mean/median dataset-by-dataset RMSDs
@@ -226,6 +225,7 @@ class AnalyseResidualsTask:
         ):
 
         uij_diff = (uij_target-uij_fitted)
+
         atom_rmsds = rms(uij_diff, axis=-1)
 
         output_files = collections.OrderedDict()

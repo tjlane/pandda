@@ -1,4 +1,5 @@
 import time, tqdm, signal
+import numpy
 from libtbx import adopt_init_args
 
 import traceback, multiprocessing, multiprocessing.pool
@@ -17,17 +18,21 @@ class MultiProcessWrapper:
             done_queue,
             ):
 
-        for i, arg_dict in iter(task_queue.get, 'STOP'):
+        # Get `chunksize` objects from the queue
+        for arg_dicts in iter(task_queue.get, 'STOP'):
 
-            try:
-                output = (i, self.function(**arg_dict))
-            except:
-                tr = traceback.format_exc()
-                if hasattr(self.function, 'log'):
-                    self.function.log(tr)
-                output = (i, tr)
+            done_list = []
 
-            done_queue.put(output)
+            # Iterate through the arguments (tuples of (i,args))
+            for i, arg_dict in arg_dicts:
+
+                try:
+                    output = (i, self.function(**arg_dict))
+                except:
+                    output = (i, traceback.format_exc())
+                done_list.append(output)
+
+            done_queue.put(done_list)
 
 
 class RunParallelWithProgressBarUnordered:
@@ -36,13 +41,20 @@ class RunParallelWithProgressBarUnordered:
     def __init__(self,
             function,
             n_cpus,
-            chunksize = 10,
+            max_chunksize = 10,
             ):
+        assert max_chunksize >= 1
         adopt_init_args(self, locals())
 
     def __call__(self,
             arg_dicts,
             ):
+
+        n_tasks = len(arg_dicts)
+
+        # Calculate actual chunksize (to efficiently use multi-CPUs)
+        cpu_chunksize = numpy.ceil( n_tasks / self.n_cpus )
+        chunksize = int(max(1, min(self.max_chunksize, cpu_chunksize)))
 
         from multiprocessing import Process, Queue
 
@@ -52,25 +64,32 @@ class RunParallelWithProgressBarUnordered:
         function = MultiProcessWrapper(self.function)
 
         # Redirect termination signal while processes are spawned
-        sigint = signal.signal(signal.SIGINT, signal.SIG_IGN) # set the signal handler to ignore
+        # v Set the signal handler to ignore v
+        sigint = signal.signal(signal.SIGINT, signal.SIG_IGN)
         processes = []
         for i in range(self.n_cpus):
             p = Process(target=function, args=(task_queue, done_queue))
             p.start()
             processes.append(p)
-        signal.signal(signal.SIGINT, sigint) # Replace the original signal handler
+        # v Replace the original signal handler v
+        signal.signal(signal.SIGINT, sigint)
 
-        for i, task in enumerate(arg_dicts):
-            task_queue.put((i, task))
+        # Number the tasks for sorting later and split into chunks
+        task_list = list(enumerate(arg_dicts))
+        n_chunks = 0
+        for i in range(0, n_tasks, chunksize):
+            chunk = task_list[i:i+chunksize]
+            task_queue.put(chunk)
+            n_chunks += 1
 
-        pbar = tqdm.tqdm(total=len(arg_dicts), ncols=100)
+        pbar = tqdm.tqdm(total=n_tasks, ncols=100)
 
         try:
             results = []
-            for i in range(len(arg_dicts)):
+            for i in range(n_chunks):
                 complete = done_queue.get()
-                pbar.update(1)
-                results.append(complete)
+                pbar.update(len(complete))
+                results.extend(complete)
             pbar.close()
         except KeyboardInterrupt:
             for p in processes:

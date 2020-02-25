@@ -145,7 +145,7 @@ class AssessHierarchyGroupsTask:
         reference_hierarchy = reference_hierarchy.deep_copy()
         reference_hierarchy.atoms().set_b(flex.double(reference_hierarchy.atoms_size(), -1))
         # Create structure factory
-        from pandemic.adp.output.structures import StructureFactory
+        from pandemic.adp.hierarchy.utils import StructureFactory
         structure_factory = StructureFactory(master_h=reference_hierarchy)
 
         # Create hierarchies of the groups for each level

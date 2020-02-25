@@ -8,9 +8,6 @@ def uij_modulus(uij_array):
     assert sh[-1] == 6
     sh_ = sh[:-1]
     uij_mods = uij_array[...,0:3].mean(axis=len(sh_))
-    #uijs_flex = flex.sym_mat3_double(uij_array.reshape((numpy.product(sh_),6)))
-    #uijs_eigs = numpy.array(uij_eigenvalues(uijs_flex)).reshape(sh_+(3,))
-    #uijs_mods = numpy.mean(uijs_eigs, axis=len(sh_))
     assert uij_mods.shape == sh_
     return uij_mods
 
@@ -71,12 +68,18 @@ class OptimisationSetGenerator:
 
     def __call__(self,
         i_datasets,
-        max_recursions = None,
-        optimise_atomic_adp_amplitudes = True):
+        max_recursions,
+        recursion_direction = 'ascending',
+        optimise_atomic_adp_amplitudes = True,
+        ):
 
         optimisation_sets = self.generate_optimisation_sets(
             max_recursions = max_recursions,
             )
+
+        assert recursion_direction in ['ascending', 'descending']
+        if recursion_direction == 'descending':
+            optimisation_sets.reverse()
 
         optimisation_jobs = self.generate_optimisation_jobs_from_sets(
             set_list = optimisation_sets,
@@ -114,13 +117,16 @@ class OptimiseInterLevelAmplitudes:
 
     def __init__(self,
         convergence_tolerance,
-        optimise_atomic_adp_amplitudes = True,
         optimisation_weights = None,
         verbose = False,
         log = None,
         ):
         if optimisation_weights is not None:
+            # Create default optimisation weights and then transfer the input weights
             optimisation_weights = ReplaceableOptimisationWeights.defaults().transfer_from_other(optimisation_weights)
+        else:
+            # Just use the defaults
+            optimisation_weights = ReplaceableOptimisationWeights.defaults()
 
         adopt_init_args(self, locals())
 
@@ -130,41 +136,81 @@ class OptimiseInterLevelAmplitudes:
         uij_isotropic_mask,
         model_object,
         level_group_tree,
-        adp_optimisation_dataset_mask = None, # TODO
+        adp_optimisation_dataset_mask = None,
+        optimise_atomic_adp_amplitudes = True,
         max_recursions = None,
+        recursion_direction = 'ascending',
         ):
 
+        #
         # Extract all groups and amplitudes from the input model object
+        #
+        # Group values
+        #
         group_amplitudes, group_uij_values = self.extract_group_values_for_optimisation(
             model_object = model_object,
-            uij_isotropic_mask = uij_isotropic_mask,
             )
-
-        if self.optimise_atomic_adp_amplitudes is True:
+        #
+        # ADP values
+        #
+        if optimise_atomic_adp_amplitudes is True:
             adp_amplitudes, adp_uij_values = self.extract_adp_values_for_optimisation(
                 adp_values = model_object.adp_values,
-                uij_isotropic_mask = uij_isotropic_mask,
                 )
         else:
             # Subtract the adp values from the target as they will not be optimised
             uij_target = uij_target - numpy.array(model_object.adp_values)
             adp_amplitudes, adp_uij_values = None, None
 
+        #
+        # Process extracted values
+        #
+        # Initialise to the input values so they can be overridden as necessary
+        opt_group_uij_values = group_uij_values
+        opt_adp_uij_values = adp_uij_values
+        #
+        if uij_isotropic_mask is not None:
+            #
+            # Target values
+            #
+            uij_target = uij_isotropic_mask(uij_target)
+            #
+            # Group values
+            #
+            opt_group_uij_values = numpy.zeros_like(group_uij_values)
+            sh_ = group_uij_values.shape
+            for i_level in xrange(sh_[0]):
+                for i_mode in xrange(sh_[1]):
+                    opt_group_uij_values[i_level, i_mode] = uij_isotropic_mask(group_uij_values[i_level, i_mode])
+            #
+            # ADP values
+            #
+            if adp_uij_values is not None:
+                opt_adp_uij_values = uij_isotropic_mask(adp_uij_values)
+
+        #
         # Initialise this always, even if not used
+        #
         if adp_optimisation_dataset_mask is None:
             adp_optimisation_dataset_mask = flex.bool(model_object.n_datasets, True)
         assert adp_optimisation_dataset_mask.size() == model_object.n_datasets
 
+        #
+        # Get the optimisation sets (sets of indices which define which groups are optimised)
+        #
+        # Function that generates selections for which groups to optimise together, based on which groups overlap
         get_optimisation_indices_sets = OptimisationSetGenerator(level_group_tree=level_group_tree)
-
+        # Get the sets
         optimisation_sets = get_optimisation_indices_sets(
             i_datasets = range(model_object.n_datasets),
             max_recursions = max_recursions,
-            optimise_atomic_adp_amplitudes = self.optimise_atomic_adp_amplitudes,
+            recursion_direction = recursion_direction,
+            optimise_atomic_adp_amplitudes = optimise_atomic_adp_amplitudes,
             )
 
         ##############
         # Report
+        #
         if self.verbose:
             from itertools import groupby
             log = self.log
@@ -180,6 +226,7 @@ class OptimiseInterLevelAmplitudes:
                     group_str = ', '.join([padding*(int(i)%20==19)+str(i_g+1) for i, i_g in enumerate(zip(*g)[1])])
                     log('\t'+start_str+group_str)
             log.bar()
+        #
         # Report
         ##############
 
@@ -195,9 +242,9 @@ class OptimiseInterLevelAmplitudes:
                 uij_target = uij_target,
                 uij_weights = uij_target_weights,
                 group_amplitudes = group_amplitudes,
-                group_uij_values = group_uij_values,
+                group_uij_values = opt_group_uij_values, # Possibly with isotropic mask applied
                 group_selections = model_object.tls_selections,
-                adp_uij_values = adp_uij_values,
+                adp_uij_values = opt_adp_uij_values, # Possibly with isotropic mask applied
                 adp_amplitudes = adp_amplitudes,
                 )
 
@@ -233,20 +280,19 @@ class OptimiseInterLevelAmplitudes:
             group_multipliers = group_amplitudes,
             )
 
-        if self.optimise_atomic_adp_amplitudes:
+        if optimise_atomic_adp_amplitudes:
             self.apply_adp_multipliers(
                 model_object = model_object,
                 adp_multipliers = adp_amplitudes,
-                adp_uij_values = adp_uij_values,
+                adp_uij_values = adp_uij_values, # Use the original values (without isotropic mask applied)
                 )
 
+        # Objects modified in place
         return None
-        #return (model_object, adp_uij_values)
 
     @staticmethod
     def extract_group_values_for_optimisation(
         model_object,
-        uij_isotropic_mask = None,
         ):
 
         # One array of uij values
@@ -276,22 +322,12 @@ class OptimiseInterLevelAmplitudes:
                     # Extract the amplitudes for this mode/group
                     group_multipliers[i_level][i_group, i_mode, :] = amps
 
-        # Apply isotropic mask if provided
-        if uij_isotropic_mask is not None:
-            for i_level in xrange(model_object.n_tls_levels):
-                for i_mode in xrange(model_object.n_modes):
-                    group_uij_values[i_level, i_mode] = uij_isotropic_mask(group_uij_values[i_level, i_mode])
-
         return (group_multipliers, group_uij_values)
 
     @staticmethod
     def extract_adp_values_for_optimisation(
         adp_values,
-        uij_isotropic_mask = None,
         ):
-        # Apply isotropic mask if provided
-        if uij_isotropic_mask is not None:
-            adp_values = uij_isotropic_mask(adp_values)
 
         # Convert to numpy array and calculate modulus (size) of each uij
         adp_values = numpy.array(adp_values).reshape((adp_values.all()+(6,)))
@@ -535,7 +571,7 @@ class OptimiseInterLevelAmplitudes:
 
         i = 0
         for (i_l, i_g) in level_group_indices:
-            for i_m in xrange(n_modes):
+            for i_m in range(n_modes):
                 for i_d in dataset_indices:
                     group_amplitudes_all[i_l][i_g,i_m,i_d] = group_amplitudes_new[i]
                     i += 1

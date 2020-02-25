@@ -1,7 +1,7 @@
 import itertools, collections
 import numpy
 
-from libtbx import adopt_init_args
+from libtbx import adopt_init_args, group_args
 
 from bamboo.common.logs import Log
 from giant.structure.formatting import ShortLabeller
@@ -18,30 +18,54 @@ except Exception as e:
     import matplotlib
     from matplotlib import pyplot
 
-def dendrogram(fname, link_mat, labels=None, ylab=None, xlab=None, ylim=None, annotate_y_min=0.25, num_nodes=20):
-    from matplotlib import pyplot
-    fig = pyplot.figure()
-    ax1 = pyplot.subplot(1,1,1)
-    dend = scipy.cluster.hierarchy.dendrogram(link_mat, p=num_nodes, truncate_mode='lastp', labels=labels)
-    # Change labels if requested
-    if xlab:   ax1.set_xlabel(xlab)
-    if ylab:   ax1.set_ylabel(ylab)
-    if ylim:   ax1.set_ylim(ylim)
-    # Make sure the labels are rotated
-    xlocs, xlabels = pyplot.xticks()
-    pyplot.setp(xlabels, rotation=90)
-    for i, d in zip(dend['icoord'], dend['dcoord']):
-        x = 0.5 * sum(i[1:3])
-        y = d[1]
-        if y < annotate_y_min: continue
-        pyplot.plot(x, y, 'ro')
-        pyplot.annotate("%.3g" % y, (x, y), xytext=(0, -8), textcoords='offset points', va='top', ha='center')
-    pyplot.tight_layout()
-    fig.savefig(fname)
-    return fig
+# def dendrogram(fname, link_mat, labels=None, ylab=None, xlab=None, ylim=None, annotate_y_min=0.25, num_nodes=20):
+#     from matplotlib import pyplot
+#     fig = pyplot.figure()
+#     ax1 = pyplot.subplot(1,1,1)
+#     dend = scipy.cluster.hierarchy.dendrogram(link_mat, p=num_nodes, truncate_mode='lastp', labels=labels)
+#     # Change labels if requested
+#     if xlab:   ax1.set_xlabel(xlab)
+#     if ylab:   ax1.set_ylabel(ylab)
+#     if ylim:   ax1.set_ylim(ylim)
+#     # Make sure the labels are rotated
+#     xlocs, xlabels = pyplot.xticks()
+#     pyplot.setp(xlabels, rotation=90)
+#     for i, d in zip(dend['icoord'], dend['dcoord']):
+#         x = 0.5 * sum(i[1:3])
+#         y = d[1]
+#         if y < annotate_y_min: continue
+#         pyplot.plot(x, y, 'ro')
+#         pyplot.annotate("%.3g" % y, (x, y), xytext=(0, -8), textcoords='offset points', va='top', ha='center')
+#     pyplot.tight_layout()
+#     fig.savefig(fname)
+#     return fig
+
+
+class PiecewiseLinearFunction:
+
+    def __init__(self, v_min, v_max, m, c):
+        adopt_init_args(self, locals())
+
+    def __call__(self, x):
+        return max(self.v_min, min(self.v_max, self.m*x+self.c))
 
 
 class PlotHelper:
+
+    _ms_map = dict(
+        # (min, max, m, c)
+        narrow = PiecewiseLinearFunction(1.0, 2.0, -0.04, 2.8),        # (1, 3, -0.1, 5)
+        chunky = PiecewiseLinearFunction(2.0, 4.0, -0.08, 5.6),        # (3, 5, -0.1, 7)
+        )
+    _lw_map = dict(
+        narrow = PiecewiseLinearFunction(0.5, 1.0, -0.02, 1.4),     # (1,1,0,0)
+        chunky = PiecewiseLinearFunction(1.0, 2.0, -0.04, 2.8),     # (2,2,0,0)
+        )
+    _labelsize_map = PiecewiseLinearFunction(6, 10, -0.15, 14)
+
+    default = group_args(
+        marker = 'D',
+        )
 
     def __init__(self,
         colour_map_name = 'rainbow',
@@ -97,16 +121,49 @@ class PlotHelper:
         cm = self.get_colour_map()
         return cm(numpy.linspace(0., 1., n))
 
+    def ms(self, n_x_values, ms_type='narrow'):
+        return self._ms_map[ms_type](n_x_values)
+
+    def lw(self, n_x_values, lw_type='narrow'):
+        return self._lw_map[lw_type](n_x_values)
+
+    def labelsize(self, n_x_values):
+        return self._labelsize_map(n_x_values)
+
     def initialise_figure(self,
         title,
         x_label,
         y_label,
+        axis = None,
         ):
-        fig, axis = pyplot.subplots(nrows=1, ncols=1)
-        axis.set_title(title)
-        axis.set_xlabel(x_label)
-        axis.set_ylabel(y_label)
+
+        if axis is None:
+            fig, axis = pyplot.subplots(nrows=1, ncols=1)
+        else:
+            fig = axis.get_figure()
+
+        self.set_axis_labels(
+            axis = axis,
+            title = title,
+            x_label = x_label,
+            y_label = y_label,
+            )
         return fig, axis
+
+    def set_axis_labels(self,
+        axis,
+        title,
+        x_label,
+        y_label,
+        ):
+        # Set the font size to the "maximum" font size
+        fd = dict(fontsize=self.labelsize(0))
+        if title is not None:
+            axis.set_title(title, fontdict=fd)
+        if x_label is not None:
+            axis.set_xlabel(x_label, fontdict=fd)
+        if y_label is not None:
+            axis.set_ylabel(y_label, fontdict=fd)
 
     def make_x_ticks(self,
         axis,
@@ -118,10 +175,23 @@ class PlotHelper:
         if (x_tick_labels is None):
             x_tick_labels = map(str, x_ticks)
         i_x_ticks = numpy.arange(0, n_total, int(max(1.0, numpy.floor(n_total/n_labels))))
-        axis.set_xticks([x_ticks[i] for i in i_x_ticks])
-        axis.set_xticklabels([x_tick_labels[i] for i in i_x_ticks])
+        axis.set_xticks(
+            [x_ticks[i] for i in i_x_ticks],
+            )
+        axis.set_xticklabels(
+            [x_tick_labels[i] for i in i_x_ticks],
+            fontdict = dict(fontsize=self.labelsize(len(i_x_ticks))),
+            )
+
+    def rotate_x_tick_labels(self, axis, angle=90):
+        """Convenience function that doesn't require importing pyplot"""
+        pyplot.setp(axis.get_xticklabels(), rotation=angle)
+
+    def hide_x_labels(self, axis):
+        pyplot.setp(axis.get_xticklabels(), visible=False) # doesn't always work...
 
     def write_and_close_fig(self, fig, filename, **kw_args):
+        assert fig is not None
         fig.tight_layout()
         fig.savefig(filename, bbox_inches='tight', dpi=self.dpi, **kw_args)
         pyplot.close(fig)
@@ -173,6 +243,12 @@ class PandemicAdpPlotter:
     """
 
     helper = None
+
+    function_hash = {
+        'min' : (numpy.min, 'k:'),
+        'mean': (numpy.mean, 'k-'),
+        'max' : (numpy.max, 'k:'),
+    }
 
     def __init__(self,
         n_levels = None,
@@ -270,6 +346,7 @@ class PandemicAdpPlotter:
         return [new_values]
 
     def scatter(self,
+        axis = None,
         x_vals = None,
         x_vals_array = None,
         y_vals = None,
@@ -312,9 +389,9 @@ class PandemicAdpPlotter:
         handles = []
         for i, (x, y) in enumerate(zip(x_vals_array, y_vals_array)):
             kw_args = {
-                'marker' : 'D',
-                'color':colours[i],
-                'alpha':alphas[i],
+                'marker' : self.helper.default.marker,
+                'color' : colours[i],
+                'alpha' : alphas[i],
                 }
             kw_args.update(plot_kw_args)
             hdl = axis.scatter(
@@ -338,7 +415,11 @@ class PandemicAdpPlotter:
         if legends is not None:
             assert len(legends) == n
             assert len(handles) == n
-            axis.legend(handles, legends)
+            axis.legend(
+                handles = handles,
+                labels = legends,
+                fontsize = self.helper.labelsize(0),
+                )
 
         if filename is not None:
             self.helper.write_and_close_fig(fig=fig, filename=filename)
@@ -346,6 +427,7 @@ class PandemicAdpPlotter:
         return fig, axis
 
     def lineplot(self,
+        axis = None,
         x_vals = None,
         x_vals_array = None,
         y_vals = None,
@@ -360,7 +442,8 @@ class PandemicAdpPlotter:
         alphas = None,
         legends = None,
         filename = None,
-        legend_kw_args = {'bbox_to_anchor':(1.02, 0.95), 'loc':2, 'borderaxespad':0.},
+        background_line_type = None,
+        legend_kw_args = dict(bbox_to_anchor=(1.0, -0.15), loc=1, borderaxespad=0.),
         **plot_kw_args
         ):
 
@@ -368,6 +451,7 @@ class PandemicAdpPlotter:
             title = title,
             x_label = x_label,
             y_label = y_label,
+            axis = axis,
             )
 
         n, x_vals_array, y_vals_array = self.helper.resolve_value_arrays(
@@ -388,11 +472,25 @@ class PandemicAdpPlotter:
 
         handles = []
         for i, (x, y) in enumerate(zip(x_vals_array, y_vals_array)):
+            nx = len(x)
             kw_args = {
+                'marker' : self.helper.default.marker,
                 'color' : colours[i],
                 'alpha' : alphas[i],
+                'lw' : self.helper.lw(nx),
+                'ms' : self.helper.ms(nx),
                 }
-            kw_args.update(plot_kw_args)
+            kw_args.update(plot_kw_args) # allow overrides of defaults
+
+            # Plot a black line underneath the coloured lines
+            if background_line_type is not None:
+                bg_kw_args = dict(**kw_args)
+                # override any custom provided args
+                bg_kw_args['lw'] = self.helper.lw(nx, background_line_type)
+                bg_kw_args['ms'] = self.helper.ms(nx, background_line_type)
+                bg_kw_args['color'] = 'k'
+                hdl = axis.plot(x, y, **bg_kw_args)
+
             hdl = axis.plot(x, y, **kw_args)
             handles.extend(hdl)
 
@@ -412,7 +510,12 @@ class PandemicAdpPlotter:
         if legends is not None:
             assert len(legends) == n
             assert len(handles) == n
-            lgd = axis.legend(handles, legends, **legend_kw_args)
+            lgd = axis.legend(
+                handles = handles,
+                labels = legends,
+                fontsize = self.helper.labelsize(0),
+                **legend_kw_args
+                )
             artists.append(lgd)
 
         if rotate_x_labels:
@@ -476,7 +579,10 @@ class PandemicAdpPlotter:
 
         for i, (x, y) in enumerate(zip(x_vals_array, y_vals_array)):
             kw_args = {
-                'meanprops' : {'marker' : '*', 'markersize' : 1}
+                'meanprops' : {
+                    'marker' : self.helper.default.marker,
+                    'markersize' : self.helper.ms(len(x)),
+                    },
                 }
             kw_args.update(plot_kw_args)
             axis.boxplot(
@@ -612,7 +718,14 @@ class PandemicAdpPlotter:
                     xs = [x]*len(ys)
                     jitter = numpy.random.randn(len(ys)) * 0.5 * bar_width / 3.0 # Normalise to be approx width of bar
                     jitter = jitter - jitter.mean()
-                    axis.scatter(x=xs+jitter, y=ys, s=10, facecolor=c, edgecolor='k', zorder=10)
+                    axis.scatter(
+                        x = xs+jitter,
+                        y = ys,
+                        s = self.helper.ms(len(positions)*len(xs)),
+                        facecolor = c,
+                        edgecolor = 'k',
+                        zorder = 10,
+                        )
 
         # Make labels
         bin_centres = numpy.arange(n_bins)+1
@@ -786,6 +899,7 @@ class PandemicAdpPlotter:
         legends,
         reference_hierarchy=None,
         reference_legend=None,
+        reference_functions=['mean'],
         title=None,
         y_lab='Isotropic B ($\AA^2$)',
         y_lim=None,
@@ -795,6 +909,7 @@ class PandemicAdpPlotter:
         colour_space=(0,1),
         colour_indices=None,
         colours=None,
+        legend_kw_args = dict(bbox_to_anchor=(1.0, 0.0), loc=1, borderaxespad=0.),
         ):
         """Plot stacked bar plots for a series of hierarchies (plotted values are the average B-factors of each residue of the hierarchies)"""
 
@@ -883,17 +998,23 @@ class PandemicAdpPlotter:
                     line_h_sel = reference_hierarchy.select(sel)
                 else:
                     line_h_sel = sel_hs[0]
-                # Extract y-values
-                y_vals = numpy.array([numpy.mean(rg.atoms().extract_b()) for rg in line_h_sel.residue_groups()])
-                # Duplicate the x-vals and y-vals and shift x-vals apart by half a unit
-                x_vals_dup = numpy.concatenate([(x_vals-0.5),(x_vals+0.5)]).reshape((2,x_vals.size)).T.reshape(2*x_vals.size).tolist()
-                y_vals_dup = numpy.concatenate([y_vals,y_vals]).reshape((2,y_vals.size)).T.reshape(2*y_vals.size).tolist()
-                # Add another point at the beginning and end so starts and ends on the baseline
-                x_vals_dup = numpy.concatenate([[x_vals_dup[0]], x_vals_dup, [x_vals_dup[-1]]])
-                y_vals_dup = numpy.concatenate([[0.0], y_vals_dup, [0.0]])
-                hdl = axis.plot(x_vals_dup, y_vals_dup, 'k-', label=reference_legend, lw=0.5, zorder=5)
-                if reference_hierarchy is not None:
-                    handles.extend(hdl)
+                # Plot one line for each function
+                for ref_func in reference_functions:
+                    # Extract the function from the hash
+                    func, ls = self.function_hash[ref_func]
+                    # Extract y-values
+                    y_vals = numpy.array([func(rg.atoms().extract_b()) for rg in line_h_sel.residue_groups()])
+                    # Duplicate the x-vals and y-vals and shift x-vals apart by half a unit
+                    x_vals_dup = numpy.concatenate([(x_vals-0.5),(x_vals+0.5)]).reshape((2,x_vals.size)).T.reshape(2*x_vals.size).tolist()
+                    y_vals_dup = numpy.concatenate([y_vals,y_vals]).reshape((2,y_vals.size)).T.reshape(2*y_vals.size).tolist()
+                    # Add another point at the beginning and end so starts and ends on the baseline
+                    x_vals_dup = numpy.concatenate([[x_vals_dup[0]], x_vals_dup, [x_vals_dup[-1]]])
+                    y_vals_dup = numpy.concatenate([[0.0], y_vals_dup, [0.0]])
+                    # Legend for line
+                    ref_leg_label = reference_legend
+                    hdl = axis.plot(x_vals_dup, y_vals_dup, ls, label=ref_leg_label, lw=0.5, zorder=5)
+                    if reference_hierarchy is not None:
+                        handles.extend(hdl)
 
             # Legends (reverse the plot legends!)
             if reverse_legend_order is True:
@@ -913,7 +1034,13 @@ class PandemicAdpPlotter:
                 handles.append(h)
 
             # Plot legend
-            lgd = axis.legend(handles=handles, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+            lgd = fig.legend(
+                handles = handles,
+                fontsize = self.helper.labelsize(0),
+                bbox_transform=fig.transFigure,
+                **legend_kw_args
+                )
+
             # Axis ticks & labels
             x_ticks = numpy.arange(1, len(x_labels)+1, int(max(1.0, numpy.floor(len(x_labels)/20))))
             #x_ticks = numpy.unique(numpy.floor(numpy.linspace(1,len(x_labels)+1,20)))

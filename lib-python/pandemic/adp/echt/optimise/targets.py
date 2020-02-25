@@ -22,4 +22,5 @@ class TargetTerm_UijLeastSquares:
     def set_uij_weights(self, uij_weights):
         self.uij_weights = uij_weights.as_1d().matrix_outer_product(flex.double(6, 1)).as_1d()
         # Divide through by total number of atoms
-        self.scale = 1.0 / float(reduce(operator.mul, uij_weights.all()))
+        self.scale = 1.0
+        #self.scale = 1.0 / float(reduce(operator.mul, uij_weights.all()))

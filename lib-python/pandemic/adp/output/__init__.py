@@ -6,7 +6,7 @@ from bamboo.common.path import easy_directory
 import numpy
 from scitbx.array_family import flex
 
-from pandemic.adp.output.structures import StructureFactory
+from pandemic.adp.hierarchy.utils import StructureFactory
 
 
 class MultiModelStructureWriter:

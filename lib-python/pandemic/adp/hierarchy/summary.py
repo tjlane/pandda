@@ -93,7 +93,7 @@ class WriteHierarchicalModelSummaryTask:
         log.subheading('Writing summary of hierarchical model')
 
         # Object to generate structures with different b-factors etc.
-        from pandemic.adp.output.structures import StructureFactory
+        from pandemic.adp.hierarchy.utils import StructureFactory
         s_fac = StructureFactory(master_h=reference_hierarchy)
 
         output_files = collections.OrderedDict()

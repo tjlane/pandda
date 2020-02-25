@@ -34,8 +34,8 @@ class TLSSimplexGenerator:
                 ]
 
     def __init__(self,
-            vibration_delta = 1e-3,
-            libration_delta = 1e-3,
+            vibration_delta,
+            libration_delta,
             ):
         adopt_init_args(self, locals())
 
@@ -105,7 +105,7 @@ class TLSSimplexGenerator:
     def _validate(self, components):
         assert set('TLS').intersection(components), 'components must contain T, L or S'
 
-    def _sym_mat3_deltas(self, mat, delta=1e-6, rot=None, base_set=0):
+    def _sym_mat3_deltas(self, mat, delta, rot=None, base_set=0):
         """Get deltas caused by changes to a symmetric matrix in a rotated frame"""
 
         # Extract types of deltas
@@ -141,7 +141,7 @@ class TLSSimplexGenerator:
         assert deltas.shape == (n,n)
         return deltas
 
-    def _mat3_deltas(self, mat, delta=1e-6, rot=None):
+    def _mat3_deltas(self, mat, delta, rot=None):
         """Get deltas caused by changes to a non-symmetric matrix in a rotated frame"""
 
         # Calculate transformation to reference frame
@@ -179,21 +179,6 @@ class TLSSimplexGenerator:
         return s
 
 
-class ValidateTLSGroup_Matrices:
-
-
-    def __init__(self,
-            tls_matrix_tol,
-            ):
-        assert tls_matrix_tol >= 0.0
-        adopt_init_args(self, locals())
-
-    def __call__(self,
-            tls_mode,
-            ):
-        return tls_mode.matrices.is_valid(self.tls_matrix_tol)
-
-
 class OptimiseTLSGroup_Matrices_AdoptValues:
 
 
@@ -218,6 +203,7 @@ class OptimiseTLSGroup_Matrices_AdoptValues:
                 )
 
 
+from pandemic.adp.echt.validate.tls import ValidateTLSMode
 class OptimiseTLSGroup_Matrices_TargetEvaluator:
 
 
@@ -230,8 +216,7 @@ class OptimiseTLSGroup_Matrices_TargetEvaluator:
             multi_dataset_tls_group,
             optimise_components,
             optimise_i_mode,
-            tls_matrix_tol,
-            isotropic_mask = None,
+            uij_isotropic_mask = None,
             verbose = False,
             log = None,
             ):
@@ -249,11 +234,9 @@ class OptimiseTLSGroup_Matrices_TargetEvaluator:
                 )
 
         # Function to check e.g. validity of TLS matrices
-        validate = ValidateTLSGroup_Matrices(
-                tls_matrix_tol = tls_matrix_tol,
-                )
+        validate = ValidateTLSMode()
 
-        adopt_init_args(self, locals(), exclude=['tls_matrix_tol'])
+        adopt_init_args(self, locals())
 
     def target(self,
             parameters,
@@ -275,8 +258,8 @@ class OptimiseTLSGroup_Matrices_TargetEvaluator:
                 origins = self.multi_dataset_tls_group.origins,
                 )
         # Make selected atoms isotropic
-        if self.isotropic_mask is not None:
-            uij_fitted = self.isotropic_mask(uij_fitted)
+        if self.uij_isotropic_mask is not None:
+            uij_fitted = self.uij_isotropic_mask(uij_fitted)
         # Calculate difference between fitted and target
         uij_deltas = uij_fitted - self.uij_target
         # Calculate target function
@@ -315,10 +298,8 @@ class OptimiseTLSGroup_Matrices:
             simplex_generator,
             target_function,
             other_target_functions,
-            convergence_tol,
-            tls_matrix_tol,
-            tls_matrix_eps,
-            isotropic_mask = None,
+            convergence_tolerance,
+            uij_isotropic_mask = None,
             verbose = False,
             log = None,
             ):
@@ -352,8 +333,7 @@ class OptimiseTLSGroup_Matrices:
                 multi_dataset_tls_group = multi_dataset_tls_group,
                 optimise_components = optimise_components,
                 optimise_i_mode = optimise_i_mode,
-                tls_matrix_tol = self.tls_matrix_tol,
-                isotropic_mask = self.isotropic_mask,
+                uij_isotropic_mask = self.uij_isotropic_mask,
                 verbose = self.verbose,
                 log = self.log,
                 )
@@ -367,7 +347,7 @@ class OptimiseTLSGroup_Matrices:
         optimised = simplex.simplex_opt(dimension = len(starting_simplex[0]),
                                         matrix    = map(flex.double, starting_simplex),
                                         evaluator = evaluator,
-                                        tolerance = self.convergence_tol)
+                                        tolerance = self.convergence_tolerance)
 
         # Adopt the solution!
         evaluator.adopt_values(
@@ -381,6 +361,8 @@ class OptimiseTLSGroup_Matrices:
             target_function_value = evaluator.best_target,
             target_function_values = evaluator.best_target_terms,
             )
+
+        # print evaluator.best_target
 
         return (multi_dataset_tls_group, results)
 

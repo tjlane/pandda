@@ -4,6 +4,7 @@ from libtbx.utils import Sorry, Failure
 from bamboo.common.logs import Log
 
 from pandemic.adp.hierarchy.summary import WriteHierarchicalModelSummaryTask
+from pandemic.adp.hierarchy.utils import StructureFactory, MaskedStructureFactory
 
 
 class CreateHierarchicalModelTask:
@@ -17,6 +18,7 @@ class CreateHierarchicalModelTask:
         remove_duplicate_groups = None,
         warnings = None,
         verbose = False,
+        n_cpus = 1,
         log = None,
         ):
         if log is None: log = Log()
@@ -38,6 +40,7 @@ class CreateHierarchicalModelTask:
             overall_selection = self.overall_selection,
             remove_duplicate_groups = self.remove_duplicate_groups,
             warnings = self.warnings,
+            n_cpus = n_cpus,
             log = self.log,
             )
 
@@ -71,6 +74,9 @@ class CreateHierarchicalModelTask:
             level_group_selection_strings   = arrays.level_group_selection_strings,
             level_group_tree                = array_tree.tree,
             overall_atom_mask               = arrays.overall_atom_mask,
+            # Convenience outputs
+            structure_factory               = StructureFactory(master_h=hierarchy),
+            masked_structure_factory        = MaskedStructureFactory(master_h=hierarchy, mask=arrays.overall_atom_mask),
             )
 
         return self.result

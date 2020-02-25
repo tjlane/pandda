@@ -9,7 +9,7 @@ def test_uij_isotropic_mask():
     from iotbx.pdb import hierarchy
     pdb_h = hierarchy.input(pdb_string=pdb_str).hierarchy
 
-    from pandemic.adp.masks import UijIsotropicMask
+    from pandemic.adp.uijs.masks import UijIsotropicMask
 
     sel = pdb_h.atom_selection_cache().selection('resseq 12')
     mask = UijIsotropicMask(sel)

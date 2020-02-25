@@ -112,7 +112,7 @@ class ExtractAndProcessModelUijsTask:
                 )
 
         # Create a mask object for isotropic atoms
-        from pandemic.adp.masks import UijIsotropicMask
+        from pandemic.adp.uijs.masks import UijIsotropicMask
         isotropic_mask = UijIsotropicMask.from_uij_array(model_uij, axis=(0,2))
 
         # Determine the disorder model

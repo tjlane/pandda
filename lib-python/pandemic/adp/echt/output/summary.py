@@ -8,20 +8,19 @@ from bamboo.common.path import easy_directory
 from giant.structure.pymol import auto_chain_images
 from giant.structure.uij import \
         uij_to_b, \
-        calculate_uij_anisotropy_ratio, \
-        scale_uij_to_target_by_selection
+        calculate_uij_anisotropy_ratio
 from pandemic.adp.utils import show_file_dict
-from pandemic.adp.output.structures import PartitionBordersFactory
+from pandemic.adp.hierarchy.utils import PartitionBordersFactory
 
 
 class WriteEchtModelSummary:
 
 
-    all_levels_uijs_profiles_png   = 'all-levels-uij-profile-chain_{}.png'
-    all_levels_uijs_anisotropy_png = 'all-levels-uij-anisotropy-chain_{}.png'
+    all_levels_uijs_profiles_png_prefix   = 'all-levels-uij-profile'
+    all_levels_uijs_anisotropy_png_prefix = 'all-levels-uij-anisotropy'
 
-    level_uijs_profile_png    = 'uij-profile-level_{}-chain_{}.png'
-    level_uijs_anisotropy_png = 'uij-anisotropy-level_{}-chain_{}.png'
+    level_uijs_profile_png_prefix    = 'uij-profile-level_{}'
+    level_uijs_anisotropy_png_prefix = 'uij-anisotropy-level_{}'
 
     target_uijs_pdb         = 'average_uijs_input.pdb'
     output_uijs_pdb         = 'average_uijs_output.pdb'
@@ -55,7 +54,7 @@ class WriteEchtModelSummary:
 
     def check_and_create_output_folders(self):
         """
-        Checks output folders exist and creates if necessary. 
+        Checks output folders exist and creates if necessary.
         Run at beginning of calling function so that folders are updated relative to output_directory.
         """
         easy_directory(self.output_directory)
@@ -65,7 +64,7 @@ class WriteEchtModelSummary:
             self.pymol_directory = easy_directory(os.path.join(self.output_directory, 'pymol_images'))
 
     def filepath(self, filename, directory=None):
-        if directory is None: 
+        if directory is None:
             directory = self.output_directory
         return os.path.join(directory, filename)
 
@@ -237,15 +236,6 @@ class WriteEchtModelSummary:
             m_f = self.filepath(self.level_uijs_pdb.format(i_level+1), self.pdb_directory)
             m_h.write_pdb_file(m_f)
             file_dict.setdefault('level_uijs_pdb',collections.OrderedDict())[level_name] = m_f
-            # Write a normalised version for each level
-            m_h_scl = scale_uij_to_target_by_selection(
-                    hierarchy   = m_h,
-                    selections  = model_object.tls_selection_strings[i_level],
-                    target      = 0.1,
-                    )
-            m_f = self.filepath(self.level_uijs_rescaled_pdb.format(i_level+1), self.pdb_directory)
-            m_h_scl.write_pdb_file(m_f)
-            file_dict.setdefault('level_uijs_rescaled_pdb',collections.OrderedDict())[level_name] = m_f
         # Write atomic level
         uij = atomic_level_uijs
         m_h = structure_factory.custom_copy(
@@ -295,44 +285,40 @@ class WriteEchtModelSummary:
             # Write stacked bar plot of TLS for this level
             # ------------------------
             uijs = average_mode_uijs[i_level]
-            filenames_glob   = self.filepath(self.level_uijs_profile_png.format(i_level+1, '*'))
-            filenames_prefix = filenames_glob.replace('-chain_*.png','')
-            self.plot.stacked_bar(prefix        = filenames_prefix,
-                                  hierarchies   = [structure_factory.custom_copy(iso=uij_to_b(u), mask=atom_sel).select(atom_sel) for u in uijs],
-                                  legends       = ['TLS (Mode {})'.format(i+1) for i in xrange(n_modes)],
-                                  title         = 'TLS contributions - Level {} ({})'.format(i_level+1, level_name),
-                                  v_line_hierarchy = boundaries,
-                                  colour_indices = [float(i_level)+(float(i_mode)/float(n_modes)) for i_mode in range(n_modes)])
-            output_images = glob.glob(filenames_glob)
-            if not output_images:
-                self.warnings.append('no plots have been generated! ({})'.format(filenames_glob))
+            filenames_prefix = self.filepath(self.level_uijs_profile_png_prefix.format(i_level+1))
+            output_hash = self.plot.stacked_bar(
+                prefix        = filenames_prefix,
+                hierarchies   = [structure_factory.custom_copy(iso=uij_to_b(u), mask=atom_sel).select(atom_sel) for u in uijs],
+                legends       = ['TLS (Mode {})'.format(i+1) for i in xrange(n_modes)],
+                title         = 'TLS contributions - Level {} ({})'.format(i_level+1, level_name),
+                v_line_hierarchy = boundaries,
+                colour_indices = [float(i_level)+(float(i_mode)/float(n_modes)) for i_mode in range(n_modes)],
+                )
+            if not output_hash:
+                self.warnings.append('no plots have been generated! ({})'.format(filenames_prefix+'*'))
             else:
-                # Identify the chain for each image
-                output_hash = collections.OrderedDict(sorted([(s.split('_')[-1].replace('.png',''), s) for s in output_images]))
                 # Store in output dictionary
                 file_dict.setdefault('level_uijs_profiles_png',collections.OrderedDict())[level_name] = output_hash
             # ------------------------
             # Write graph of anisotropy
             # ------------------------
             ani = 1.0 - calculate_uij_anisotropy_ratio(uij=average_level_uijs[i_level])
-            filenames_glob   = self.filepath(self.level_uijs_anisotropy_png.format(i_level+1, '*'))
-            filenames_prefix = filenames_glob.replace('-chain_*.png','')
+            filenames_prefix = self.filepath(self.level_uijs_anisotropy_png_prefix.format(i_level+1))
             graph_title = ('Anisotropy of Level {} ({})'+ \
             '\nfully isotropic -> 0 (spheres) ' + \
             '\nfully anisotropic -> 1 (lines/disks)').format(i_level+1, level_name)
-            self.plot.stacked_bar(prefix        = filenames_prefix,
-                                  hierarchies   = [structure_factory.custom_copy(iso=ani, mask=atom_sel).select(atom_sel)],
-                                  legends       = ['Anisotropy  '],
-                                  title         = graph_title,
-                                  y_lim         = (0.0,1.05),
-                                  y_lab         = 'Anisotropy of Uij ($1 - \\frac{E_{min}}{E_{max}}$)',
-                                  colours       = ['grey'])
-            output_images = glob.glob(filenames_glob)
-            if not output_images:
-                self.warnings.append('no plots have been generated! ({})'.format(filenames_glob))
+            output_hash = self.plot.stacked_bar(
+                prefix        = filenames_prefix,
+                hierarchies   = [structure_factory.custom_copy(iso=ani, mask=atom_sel).select(atom_sel)],
+                legends       = ['Anisotropy'],
+                title         = graph_title,
+                y_lim         = (0.0,1.05),
+                y_lab         = 'Anisotropy of Uij ($1 - \\frac{E_{min}}{E_{max}}$)',
+                colours       = ['grey'],
+                )
+            if not output_hash:
+                self.warnings.append('no plots have been generated! ({})'.format(filenames_prefix+'*'))
             else:
-                # Identify the chain for each image
-                output_hash = collections.OrderedDict(sorted([(s.split('_')[-1].replace('.png',''), s) for s in output_images]))
                 # Store in output dictionary
                 file_dict.setdefault('level_uijs_anisotropy_png',collections.OrderedDict())[level_name] = output_hash
 
@@ -344,19 +330,17 @@ class WriteEchtModelSummary:
         # Write profiles for atomic level
         # ------------------------
         uijs = atomic_level_uijs
-        filenames_glob   = self.filepath(self.level_uijs_profile_png.format(model_object.n_levels, '*'))
-        filenames_prefix = filenames_glob.replace('-chain_*.png','')
-        self.plot.stacked_bar(prefix         = filenames_prefix,
-                              hierarchies    = [structure_factory.custom_copy(iso=uij_to_b(uijs), mask=atom_sel).select(atom_sel)],
-                              legends        = ['{!s:12}'.format(model_object.adp_level_name)],
-                              title          = 'Uij Profile of {} Level'.format(model_object.adp_level_name.title()),
-                              colour_indices = [model_object.n_levels-1])
-        output_images = glob.glob(filenames_glob)
-        if not output_images:
-            self.warnings.append('no plots have been generated! ({})'.format(filenames_glob))
+        filenames_prefix = self.filepath(self.level_uijs_profile_png_prefix.format(model_object.n_levels))
+        output_hash = self.plot.stacked_bar(
+            prefix         = filenames_prefix,
+            hierarchies    = [structure_factory.custom_copy(iso=uij_to_b(uijs), mask=atom_sel).select(atom_sel)],
+            legends        = ['{!s:12}'.format(model_object.adp_level_name)],
+            title          = 'Uij Profile of {} Level'.format(model_object.adp_level_name.title()),
+            colour_indices = [model_object.n_levels-1],
+            )
+        if not output_hash:
+            self.warnings.append('no plots have been generated! ({})'.format(filenames_prefix+'*'))
         else:
-            # Identify the chain for each image
-            output_hash = collections.OrderedDict(sorted([(s.split('_')[-1].replace('.png',''), s) for s in output_images]))
             # Store in output dictionary
             file_dict.setdefault('level_uijs_profiles_png',collections.OrderedDict())[model_object.adp_level_name] = output_hash
 
@@ -364,24 +348,22 @@ class WriteEchtModelSummary:
         # Write graph of anisotropy for atomic level
         # ------------------------
         ani = 1.0 - calculate_uij_anisotropy_ratio(uij=atomic_level_uijs)
-        filenames_glob   = self.filepath(self.level_uijs_anisotropy_png.format(model_object.n_levels, '*'))
-        filenames_prefix = filenames_glob.replace('-chain_*.png','')
+        filenames_prefix = self.filepath(self.level_uijs_anisotropy_png_prefix.format(model_object.n_levels))
         graph_title = ('Anisotropy of Level {} ({})'+ \
         '\nfully isotropic -> 0 (spheres) ' + \
         '\nfully anisotropic -> 1 (lines/disks)').format(model_object.n_levels, model_object.adp_level_name)
-        self.plot.stacked_bar(prefix        = filenames_prefix,
-                              hierarchies   = [structure_factory.custom_copy(iso=ani, mask=atom_sel).select(atom_sel)],
-                              legends       = ['Anisotropy  '],
-                              title         = graph_title,
-                              y_lim         = (0.0,1.05),
-                              y_lab         = 'Anisotropy of Uij ($1 - \\frac{E_{min}}{E_{max}}$)',
-                              colours       = ['grey'])
-        output_images = glob.glob(filenames_glob)
-        if not output_images:
-            self.warnings.append('no plots have been generated! ({})'.format(filenames_glob))
+        output_hash = self.plot.stacked_bar(
+            prefix        = filenames_prefix,
+            hierarchies   = [structure_factory.custom_copy(iso=ani, mask=atom_sel).select(atom_sel)],
+            legends       = ['Anisotropy'],
+            title         = graph_title,
+            y_lim         = (0.0,1.05),
+            y_lab         = 'Anisotropy of Uij ($1 - \\frac{E_{min}}{E_{max}}$)',
+            colours       = ['grey'],
+            )
+        if not output_hash:
+            self.warnings.append('no plots have been generated! ({})'.format(filenames_prefix+'*'))
         else:
-            # Identify the chain for each image
-            output_hash = collections.OrderedDict(sorted([(s.split('_')[-1].replace('.png',''), s) for s in output_images]))
             # Store in output dictionary
             file_dict.setdefault('level_uijs_anisotropy_png',collections.OrderedDict())[model_object.adp_level_name] = output_hash
 
@@ -394,23 +376,22 @@ class WriteEchtModelSummary:
         # ------------------------
         uijs = numpy.append(average_level_uijs, [atomic_level_uijs], axis=0)
         assert uijs.shape == (model_object.n_levels, model_object.n_atoms, 6)
-        filenames_glob =  self.filepath(self.all_levels_uijs_profiles_png.format('*'))
-        filenames_prefix = filenames_glob.replace('-chain_*.png','')
-        self.plot.stacked_bar(prefix        = filenames_prefix,
-                              hierarchies   = [structure_factory.custom_copy(iso=uij_to_b(u), mask=atom_sel).select(atom_sel) for u in uijs],
-                              legends       = model_object.all_level_names,
-                              reference_hierarchy = structure_factory.custom_copy(iso=uij_to_b(average_target_uijs), mask=atom_sel).select(atom_sel),
-                              reference_legend    = 'Target',
-                              title         = 'All Level contributions',
-                              reverse_legend_order = True,
-                              colour_indices = range(model_object.n_levels),
-                              )
-        output_images = glob.glob(filenames_glob)
-        if not output_images:
-            self.warnings.append('no plots have been generated! ({})'.format(filenames_glob))
+        filenames_prefix = self.filepath(self.all_levels_uijs_profiles_png_prefix)
+        output_hash = self.plot.stacked_bar(
+            prefix        = filenames_prefix,
+            hierarchies   = [structure_factory.custom_copy(iso=uij_to_b(u), mask=atom_sel).select(atom_sel) for u in uijs],
+            legends       = model_object.all_level_names,
+            reference_hierarchy = structure_factory.custom_copy(iso=uij_to_b(average_target_uijs), mask=atom_sel).select(atom_sel),
+            reference_legend    = 'Target',
+            reference_functions = ['mean'],
+            title         = 'All Level contributions',
+            reverse_legend_order = False,
+            colour_indices = range(model_object.n_levels),
+            legend_kw_args = dict(ncol=3, bbox_to_anchor=(0.5, 0.0), loc=9, borderaxespad=0.),
+            )
+        if not output_hash:
+            self.warnings.append('no plots have been generated! ({})'.format(filenames_prefix+'*'))
         else:
-            # Identify the chain for each image
-            output_hash = collections.OrderedDict(sorted([(s.split('_')[-1].replace('.png',''), s) for s in output_images]))
             # Store in output dictionary
             file_dict['all_levels_uijs_profiles_png'] = output_hash
 
@@ -418,24 +399,22 @@ class WriteEchtModelSummary:
         # Write graph of anisotropy
         # ------------------------
         ani = 1.0 - calculate_uij_anisotropy_ratio(uij=uijs.sum(axis=0))
-        filenames_glob   = self.filepath(self.all_levels_uijs_anisotropy_png.format('*'))
-        filenames_prefix = filenames_glob.replace('-chain_*.png','')
+        filenames_prefix = self.filepath(self.all_levels_uijs_anisotropy_png_prefix)
         graph_title = ('Anisotropy of complete model'+ \
         '\nfully isotropic -> 0 (spheres) ' + \
         '\nfully anisotropic -> 1 (lines/disks)')
-        self.plot.stacked_bar(prefix        = filenames_prefix,
-                              hierarchies   = [structure_factory.custom_copy(iso=ani, mask=atom_sel).select(atom_sel)],
-                              legends       = ['Anisotropy  '],
-                              title         = graph_title,
-                              y_lim         = (0.0,1.05),
-                              y_lab         = 'Anisotropy of Uij ($1 - \\frac{E_{min}}{E_{max}}$)',
-                              colours       = ['grey'])
-        output_images = glob.glob(filenames_glob)
-        if not output_images:
-            self.warnings.append('no plots have been generated! ({})'.format(filenames_glob))
+        output_hash = self.plot.stacked_bar(
+            prefix        = filenames_prefix,
+            hierarchies   = [structure_factory.custom_copy(iso=ani, mask=atom_sel).select(atom_sel)],
+            legends       = ['Anisotropy  '],
+            title         = graph_title,
+            y_lim         = (0.0,1.05),
+            y_lab         = 'Anisotropy of Uij ($1 - \\frac{E_{min}}{E_{max}}$)',
+            colours       = ['grey'],
+            )
+        if not output_hash:
+            self.warnings.append('no plots have been generated! ({})'.format(filenames_prefix+'*'))
         else:
-            # Identify the chain for each image
-            output_hash = collections.OrderedDict(sorted([(s.split('_')[-1].replace('.png',''), s) for s in output_images]))
             # Store in output dictionary
             file_dict['all_levels_uijs_anisotropy_png'] = output_hash
 
@@ -529,12 +508,12 @@ class WriteEchtModelSummary:
                     colours = 'bfactor',
                     width=1000, height=750,
                     )
-                # Check output 
-                if (not of): 
+                # Check output
+                if (not of):
                     self.warnings.append('no images have been generated: {}...'.format(f_prefix))
-                else: 
+                else:
                     for v in of.values():
-                        if not os.path.exists(v): 
+                        if not os.path.exists(v):
                             self.warnings.append('image does not exist: {}'.format(v))
                 # Store in output dictionary
                 file_dict[level_name] = of

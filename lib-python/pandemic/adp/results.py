@@ -5,7 +5,6 @@ import numpy, pandas
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
 
-from bamboo.maths.functions import rms
 from giant.structure.uij import uij_to_b
 
 

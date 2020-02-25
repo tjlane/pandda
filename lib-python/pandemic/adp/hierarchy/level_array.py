@@ -1,8 +1,30 @@
 from libtbx import adopt_init_args, group_args
+from libtbx import easy_mp
 from libtbx.utils import Sorry
 from bamboo.common.logs import Log
 
 import numpy
+
+
+class SelectionStringConverter:
+
+
+    def __init__(self, 
+        atom_cache,
+        global_selection,
+        ):
+        adopt_init_args(self, locals())
+
+    def __call__(self, selection_string):
+        # Create boolean selection
+        sel_bool = numpy.array(self.atom_cache.selection(selection_string), dtype=bool)
+        # Print warning if there are no atoms selected
+        if sum(sel_bool) == 0:
+            return (1, '"{}" selects no atoms ({} atoms)'.format(selection_string, sum(group_sel_bool)))
+        elif sum(sel_bool[self.global_selection]) == 0:
+            return (2, '"{}" is omitted by the global overall mask'.format(selection_string))
+
+        return sel_bool
 
 
 class BuildLevelArrayTask:
@@ -12,6 +34,7 @@ class BuildLevelArrayTask:
         overall_selection = None,
         remove_duplicate_groups = None,
         warnings = None,
+        n_cpus = 1,
         log = None,
         ):
         """Create the selection array for the supplied levels"""
@@ -107,11 +130,11 @@ class BuildLevelArrayTask:
         log = self.log
         log.subheading('Converting selections to array')
 
-        # Extract the atoms for each tls group
-        atom_cache = hierarchy.atom_selection_cache()
-
         # Array of which atoms are in which group at which level
         idx_array = -1 * numpy.ones((len(selection_strings), hierarchy.atoms_size()), dtype=int)
+
+        # Extract the atoms for each tls group
+        atom_cache = hierarchy.atom_selection_cache()
 
         # Apply the overall filter if provided
         if self.overall_selection is not None:
@@ -119,37 +142,62 @@ class BuildLevelArrayTask:
         else:
             global_selection = numpy.ones(hierarchy.atoms().size(), dtype=bool)
 
-        # List of any selections that result in no atoms
-        warnings = []
-        errors = []
+        # Function for converting selection strings to boolean selections
+        extract_selections = SelectionStringConverter(
+            atom_cache = atom_cache,
+            global_selection = global_selection,
+            )
 
-        # Convert selection strings to boolean selections
+        # Extract selection strings
+        arg_list = []
         for i_level, group_selections in enumerate(selection_strings):
-            # Groups with no atoms
-            no_atoms = 0
             # Iterate through selections and create array
             for i_group, group_sel_str in enumerate(group_selections):
-                # Create boolean selection
-                group_sel_bool = numpy.array(atom_cache.selection(group_sel_str), dtype=bool)
-                # Print warning if there are no atoms selected
-                if sum(group_sel_bool) == 0:
-                    warnings.append('Level {}, Group "{}": selects no atoms ({} atoms)'.format(i_level+1, group_sel_str, sum(group_sel_bool)))
-                    no_atoms += 1
-                    continue
-                elif sum(group_sel_bool[global_selection]) == 0:
-                    warnings.append('Level {}, Group "{}" is omitted by the global overall mask'.format(i_level+1, group_sel_str))
-                    no_atoms += 1
+                arg_list.append(group_sel_str)
+
+        # Convert selection strings to boolean selections
+        results = easy_mp.pool_map(func=extract_selections, args=arg_list, processes=self.n_cpus)
+
+        # List of any selections that result in no atoms
+        errors = []; warnings = []
+
+        # Extract results and place in overall array
+        for i_level, group_selections in enumerate(selection_strings):
+            # Groups with no atoms/other error
+            no_sel = 0
+            # Iterate through selections and create array
+            for i_group, group_sel_str in enumerate(group_selections):
+                # Extract from mp -- results should be in order
+                group_sel_bool = results.pop(0)
+                # Check if error extracting selection
+                if isinstance(group_sel_bool, str):
+                    # warning message is the result
+                    warning_msg = 'Level {level}, Group {group}: '.format(
+                        level = i_level+1, 
+                        group = i_group+1,
+                        ) + group_sel_bool
+                    warnings.append(warning_msg)
+                    # mark this group as not selecting anything
+                    no_sel += 1
                     continue
                 # Check that atoms are not already allocated to another group
                 if (idx_array[i_level, group_sel_bool] != -1).any():
+                    # Check if these atoms already assigned to another group
                     for i_other in numpy.unique(idx_array[i_level, group_sel_bool]):
-                        if i_other == -1: continue
-                        errors.append('Selection {} and {} overlap in Level {} (atoms can only be in one group per level)'.format(group_selections[i_other], group_sel_str))
+                        # If == -1, not overlapping
+                        if i_other == -1: 
+                            continue
+                        error_msg = 'Selection "{selection1}" and "{selection2}" overlap in Level {level} (atoms can only be in one group per level)'.format(
+                            selection1 = group_selections[i_other], 
+                            selection2 = group_sel_str, 
+                            level = i_level+1,
+                            )
+                        errors.append(error_msg)
                 # Set level to this group
                 idx_array[i_level, group_sel_bool] = i_group
             # Sanity check that the expected number of groups have been produced
             n_groups = len(set(idx_array[i_level]).difference({-1}))
-            assert n_groups+no_atoms == len(group_selections)
+            assert n_groups+no_sel == len(group_selections)
 
         # Apply the global mask (as technically not restrictive above)
         if self.overall_selection is not None:
@@ -157,12 +205,13 @@ class BuildLevelArrayTask:
             idx_array[:,ivt_selection] = -1
 
         # Raise errors
-        if errors:
-            for e in errors: log(e)
+        if len(errors) > 0:
+            for e in errors: 
+                log(e)
             raise Sorry('Errors raised during level generation. See above messages.')
 
         # List warnings
-        if warnings:
+        if len(warnings) > 0:
             msg = 'WARNING: One or more group selections do not select any atoms: \n\t{}'.format('\n\t'.join(warnings))
             if self.warnings is not None:
                 self.warnings.append(msg)
