@@ -231,10 +231,18 @@ class CheckPandemicOutputFiles(_CheckPandemicOutputFiles):
             "optimisation/level_amplitudes_weights-sum_of_amplitudes_squared.png",
             "optimisation/level_amplitudes_weights-sum_of_squared_amplitudes.png",
             "optimisation/tracking_amplitudes.png",
-            "optimisation/tracking_levels_1.png",
-            "optimisation/tracking_levels_2.png",
-            "optimisation/tracking_rmsds_1.png",
+            "optimisation/tracking_convergence.png",
+            "optimisation/tracking_snapshots.png",
+            "optimisation/tracking_rmsds.png",
+            "optimisation/tracking_echt.csv",
+            "optimisation/tracking_levels.csv",
+            "optimisation/tracking_rmsds.csv",
         ]
+        for chain in self.chains:
+            for f in [
+                "optimisation/tracking_atoms-chain_{chain}.png",
+                ]:
+                self.optimisation_files.append(f.format(chain=chain))
 
         ###################################################
 

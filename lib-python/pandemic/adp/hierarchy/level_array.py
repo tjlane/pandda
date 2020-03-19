@@ -22,9 +22,9 @@ class SelectionStringConverter:
         sel_bool = numpy.array(self.atom_cache.selection(selection_string), dtype=bool)
         # Print warning if there are no atoms selected
         if sum(sel_bool) == 0:
-            return (1, '"{}" selects no atoms ({} atoms)'.format(selection_string, sum(group_sel_bool)))
+            return '"{}" selects no atoms ({} atoms)'.format(selection_string, sum(sel_bool))
         elif sum(sel_bool[self.global_selection]) == 0:
-            return (2, '"{}" is omitted by the global overall mask'.format(selection_string))
+            return '"{}" is omitted by the global overall mask'.format(selection_string)
 
         return sel_bool
 
@@ -173,7 +173,7 @@ class BuildLevelArrayTask:
                     warning_msg = 'Level {level}, Group {group}: '.format(
                         level = i_level+1,
                         group = i_group+1,
-                        ) + group_sel_bool
+                        ) + str(group_sel_bool)
                     warnings.append(warning_msg)
                     # mark this group as not selecting anything
                     no_sel += 1
