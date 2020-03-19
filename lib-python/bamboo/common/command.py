@@ -1,8 +1,9 @@
+import logging as lg
+logger = lg.getLogger(__name__)
 
 import os, sys, subprocess, threading, shlex, time
 from distutils.spawn import find_executable
 
-from bamboo.common.logs import Log
 from libtbx.utils import Sorry, Failure
 
 
@@ -19,10 +20,7 @@ class CommandManager(object):
         Modified by Nicholas Pearce: added code inspired by code from the CCP4 dispatcher project
     '''
 
-    def __init__(self, program, cmd_line_args=None, std_inp_lines=None, log=None):
-        # Control output
-        if log is None: log = Log()
-        self.log = log
+    def __init__(self, program, cmd_line_args=None, std_inp_lines=None):
         # Name of program
         self.program = shlex.split(program)
         # Check the program exists
@@ -79,7 +77,7 @@ class CommandManager(object):
 
     def print_settings(self):
         """Print out the current settings of the object"""
-        self.log(str(self))
+        logger(str(self))
 
     def _prepare_inputs_and_outputs(self):
         """Prepare the Input Pipes"""
@@ -147,8 +145,6 @@ class CommandManager(object):
             fh.write('============================>'+'\n')
             fh.write(self.error+'\n')
             fh.write('============================>'+'\n')
-
-        #self.log('Log file for {} written to {}'.format(self.program[0], log_file))
 
 
 def not_installed(programs):

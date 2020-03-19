@@ -131,7 +131,6 @@ class ClusterTLSGroups_HelligerDistance:
         comparison = 'helliger_distance',
         linkage = 'average',
         verbose = False,
-        log = None,
         ):
         adopt_init_args(self, locals())
 
@@ -245,8 +244,7 @@ class ClusterTLSGroups_HelligerDistance:
             if min_pair is None:
                 break
 
-            if self.verbose:
-                self.log('Merge {} and {} into {} with linkage {:.3f}'.format(min_pair[0], min_pair[1], k_clust, min_linkage))
+            logger.debug('Merge {} and {} into {} with linkage {:.3f}'.format(min_pair[0], min_pair[1], k_clust, min_linkage))
 
             merging_steps.append((min_linkage, min_pair))
 
@@ -333,12 +331,9 @@ class ClusterTLSGroups_HelligerDistance:
                 clusters = clusters,
                 )
 
-            if self.verbose or (i_step % n_delta == 0):
-                self.log.bar()
-                self.log('Clusters at step {} (linkage {:.3f})'.format(i_step, max_linkage))
-                self.log.bar()
-                for s in strings:
-                    self.log(s)
+            logger.debug('Clusters at step {} (linkage {:.3f})'.format(i_step, max_linkage))
+            for s in strings:
+                logger.debug(s)
 
             output_linkages.append(max_linkage)
             output_clusters.append(clusters)

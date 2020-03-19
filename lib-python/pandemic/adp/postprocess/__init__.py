@@ -1,3 +1,6 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os, copy, collections
 import numpy
 
@@ -55,9 +58,7 @@ class PostProcessTask:
         plotting_object = None,
         n_cpus = 1,
         verbose = 1,
-        log = None,
         ):
-        if log is None: log = Log()
 
         if refine_structures is True:
             refine_structures = self.RefineStructuresClass(
@@ -65,7 +66,6 @@ class PostProcessTask:
                 refinement_program = refinement_program,
                 n_cpus = n_cpus,
                 verbose = verbose,
-                log = log,
                 )
 
         if calculate_r_factors is True:
@@ -74,7 +74,6 @@ class PostProcessTask:
                     table_one_options = table_one_options,
                     n_cpus = n_cpus,
                     verbose = verbose,
-                    log = log,
                     )
 
         adopt_init_args(self, locals())
@@ -87,8 +86,6 @@ class PostProcessTask:
         cif_files = None,
         results_object = None,
         ):
-
-        log = self.log
 
         # Extract ordered variables from dicts
         input_structures      = [input_structures_dict[l] for l in dataset_labels]
@@ -128,7 +125,7 @@ class PostProcessTask:
 
         if self.refine_structures is not False:
 
-            self.log.subheading('Refining fitted structures')
+            logger.subheading('Refining fitted structures')
 
             refined_structures_dict = self.refine_structures(
                     input_structures = input_structures,
@@ -153,7 +150,7 @@ class PostProcessTask:
 
         if self.calculate_r_factors is not False:
 
-            self.log.subheading('Running phenix.table_one to calculate R-factors')
+            logger.subheading('Running phenix.table_one to calculate R-factors')
 
             # Input Structures
             inp_csv = self.calculate_r_factors(
@@ -257,7 +254,7 @@ class PostProcessTask:
                 comparison_triplets.append((refined_suffix, reference_suffix, refined_reference_suffix))
 
         if all_suffixes:
-            self.log('Calculated R-factors for these models: \n\t{}'.format('\n\t'.join(all_suffixes)))
+            logger('Calculated R-factors for these models: \n\t{}'.format('\n\t'.join(all_suffixes)))
 
         ###########################################
 
@@ -265,7 +262,7 @@ class PostProcessTask:
 
         if self.calculate_r_factors is not False:
 
-            self.log.subheading('R-factor statistics for structures', spacer=True)
+            logger.subheading('R-factor statistics for structures', spacer=True)
 
             results_object.show_average_statistics_summary(
                 single_column_labels_dict = self.reflection_data_columns,
@@ -275,7 +272,7 @@ class PostProcessTask:
                 label_hash = {s[2]:'Difference' for s in comparison_triplets},
                 )
 
-            self.log.subheading('Making R-factor summary graphs')
+            logger.subheading('Making R-factor summary graphs')
 
             for key in self.r_factor_keys:
 
@@ -384,4 +381,4 @@ class PostProcessTask:
 
         return filename
 
-    
+

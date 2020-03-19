@@ -1,6 +1,8 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os, glob, collections
 from libtbx import adopt_init_args, group_args
-from bamboo.common.logs import Log
 from giant.structure.pymol import auto_chain_images
 from pandemic.adp.utils import show_file_dict
 import numpy
@@ -17,9 +19,6 @@ def translate_phenix_selections_to_pymol_selections_simple(selections, verbose=F
                 ),
                     ]
 
-    from bamboo.common.logs import ScreenLogger
-    log = ScreenLogger(stdout=verbose)
-
     import re
     output_selections = []
     for s in selections:
@@ -29,19 +28,19 @@ def translate_phenix_selections_to_pymol_selections_simple(selections, verbose=F
         while '  ' in s:
             s = s.replace('  ',' ')
         s = s.strip(' ')
-        log('Phenix Selection String: {}'.format(s))
+        logger.debug('Phenix Selection String: {}'.format(s))
         for rgx_s, trans_func in easy_regexes:
             rgx = re.compile(rgx_s)
             mat = rgx.findall(s)
             # No matches or too many matches
             if len(mat) != 1:
-                log('> No matches or multiple matches to {}'.format(rgx_s))
+                logger.debug('> No matches or multiple matches to {}'.format(rgx_s))
                 continue
             # If the match is the same as input string, then process
             if mat[0] == s:
-                log('Exact match for {}'.format(rgx_s))
                 o = trans_func(s)
-                log('Translating to pymol: \n\t{} -> {}'.format(s, o))
+                logger.debug('Exact match for {}'.format(rgx_s))
+                logger.debug('Translating to pymol: \n\t{} -> {}'.format(s, o))
                 break
         # Append processed selection or none
         output_selections.append(o)
@@ -68,11 +67,8 @@ class WriteHierarchicalModelSummaryTask:
         output_directory,
         master_phil,
         pymol_images = None,
-        warnings = None,
         verbose = False,
-        log = None,
         ):
-        if log is None: log = Log()
         adopt_init_args(self, locals())
 
     def filepath(self, filename):
@@ -88,9 +84,7 @@ class WriteHierarchicalModelSummaryTask:
         ):
         """Write out the composition of the hierarchical model"""
 
-        log = self.log
-
-        log.subheading('Writing summary of hierarchical model')
+        logger.subheading('Writing summary of hierarchical model')
 
         # Object to generate structures with different b-factors etc.
         from pandemic.adp.hierarchy.utils import StructureFactory
@@ -262,13 +256,13 @@ class WriteHierarchicalModelSummaryTask:
                     ],
                 width=1000, height=750,
                 delete_script = (not self.debug))
-            # Check output 
-            if (not of): 
-                self.warnings.append('no images have been generated: {}...'.format(f_prefix))
-            else: 
+            # Check output
+            if (not of):
+                logger.warning('no images have been generated: {}...'.format(f_prefix))
+            else:
                 for v in of.values():
-                    if not os.path.exists(v): 
-                        self.warnings.append('image does not exist: {}'.format(v))
+                    if not os.path.exists(v):
+                        logger.warning('image does not exist: {}'.format(v))
 
                 # Store in output dictionary
                 file_dict[level_lab] = of

@@ -1,3 +1,6 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import copy, math
 import numpy
 from libtbx import adopt_init_args, group_args
@@ -218,9 +221,7 @@ class OptimiseTLSGroup_Matrices_TargetEvaluator:
             optimise_i_mode,
             uij_isotropic_mask = None,
             verbose = False,
-            log = None,
             ):
-        if log is None: log = Log()
 
         # Init values
         n_call = 0
@@ -276,15 +277,15 @@ class OptimiseTLSGroup_Matrices_TargetEvaluator:
     def print_header_line(self, values):
         header = '[{}] -> ({:^12}, {:^10})'.format(', '.join(['{:>10}'.format('param') for r in values]), 'target', '(best)')
         line = '-'*len(header)
-        self.log(line)
-        self.log(header)
-        self.log(line)
+        logger(line)
+        logger(header)
+        logger(line)
 
     def print_current_line(self, values, target):
-        self.log('[{}] -> ({:12.9f}, {:10.7f})'.format(', '.join(['{:+10.7f}'.format(r) for r in values]), target, self.best_target))
+        logger('[{}] -> ({:12.9f}, {:10.7f})'.format(', '.join(['{:+10.7f}'.format(r) for r in values]), target, self.best_target))
 
     def print_invalid_line(self, values):
-        self.log('[{}] -> ({:>12}, {:>10})'.format(', '.join(['{:+10.7f}'.format(r) for r in values]), 'UNPHYSICAL', ''))
+        logger('[{}] -> ({:>12}, {:>10})'.format(', '.join(['{:+10.7f}'.format(r) for r in values]), 'UNPHYSICAL', ''))
 
 
 class OptimiseTLSGroup_Matrices:
@@ -301,10 +302,7 @@ class OptimiseTLSGroup_Matrices:
             convergence_tolerance,
             uij_isotropic_mask = None,
             verbose = False,
-            log = None,
             ):
-
-        if log is None: log = Log()
 
         # Convert to flex
         uij_target = flex.sym_mat3_double(uij_target.reshape((uij_target.shape[0]*uij_target.shape[1],6)))
@@ -335,7 +333,6 @@ class OptimiseTLSGroup_Matrices:
                 optimise_i_mode = optimise_i_mode,
                 uij_isotropic_mask = self.uij_isotropic_mask,
                 verbose = self.verbose,
-                log = self.log,
                 )
 
         # Generate simplex

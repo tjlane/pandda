@@ -1,6 +1,8 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 from libtbx import adopt_init_args
 from scitbx.array_family import flex
-from bamboo.common.logs import Log
 
 import numpy
 
@@ -11,9 +13,7 @@ class SanitiseEchtModel:
         tls_parameters_dict,
         uij_parameters_dict,
         verbose = False,
-        log = None,
         ):
-        if log is None: log = Log()
 
         # Initialise sub-classes
         sanitise_tls_group = sanitise_uij_value = None

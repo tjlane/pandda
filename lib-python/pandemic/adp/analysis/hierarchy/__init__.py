@@ -1,10 +1,11 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os, math, copy, collections
 import numpy, pandas
 
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
-
-from bamboo.common.logs import Log
 
 from pandemic.adp import constants
 from pandemic.adp.utils import show_file_dict
@@ -20,9 +21,7 @@ class AssessHierarchyGroupsTask:
         plotting_object,
         min_b_factor = 1.0,
         verbose = False,
-        log = None,
         ):
-        if log is None: log = Log()
 
         adopt_init_args(self, locals())
 
@@ -49,7 +48,7 @@ class AssessHierarchyGroupsTask:
 
         # Get/plot images of the input hierarchy
         input_hierarchy_images = model_hierarchy_files.get('level_partitions_png')
-        if (input_hierarchy_images is None): 
+        if (input_hierarchy_images is None):
             input_hierarchy_images = self.plot_level_group_array(
                 level_group_array = level_group_array,
                 level_labels = level_labels,
@@ -58,7 +57,7 @@ class AssessHierarchyGroupsTask:
                 template_filename = 'input-level-partitions-chain-{}.png',
                 )
         output_files['input_partitions_png'] = input_hierarchy_images
-            
+
         # Plot images of output hierarchy
         output_hierarchy_images = self.plot_level_group_array(
             level_group_array = level_group_array_filt,
@@ -105,7 +104,7 @@ class AssessHierarchyGroupsTask:
         b_factor_threshold,
         ):
 
-        self.log('Filtering groups with a B-factor less than {}A^2.'.format(b_factor_threshold))
+        logger('Filtering groups with a B-factor less than {}A^2.'.format(b_factor_threshold))
 
         level_group_array = copy.deepcopy(level_group_array)
         u_threshold = float(b_factor_threshold) / constants.EIGHTPISQ

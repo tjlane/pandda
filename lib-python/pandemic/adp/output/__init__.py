@@ -1,6 +1,8 @@
-import os, collections, traceback
+import logging as lg
+logger = lg.getLogger(__name__)
+
+import os, collections
 from libtbx import adopt_init_args
-from bamboo.common.logs import Log
 from bamboo.common.path import easy_directory
 
 import numpy
@@ -17,9 +19,7 @@ class MultiModelStructureWriter:
         models,
         atom_mask,
         isotropic_mask,
-        log = None,
         ):
-        if log is None: log = Log()
 
         # Make sure output directory exists
         output_directory = easy_directory(output_directory)
@@ -99,11 +99,9 @@ class MultiModelStructureWriter:
                         )
 
             except Exception as e:
-                log = self.log
-                log.bar()
-                log('ERROR: Failed to write structure for dataset {}: ({})'.format(mdl.tag, mdl_f))
-                log(traceback.format_exc())
-                log.bar()
+                import traceback
+                msg = 'Failed to write structure for dataset {}: ({})\n\n{}'.format(mdl.tag, mdl_f, traceback.format_exc())
+                logger.warning(msg)
                 continue
 
         return pdbs

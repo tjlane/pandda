@@ -1,9 +1,11 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import itertools, collections
 import numpy
 
 from libtbx import adopt_init_args, group_args
 
-from bamboo.common.logs import Log
 from giant.structure.formatting import ShortLabeller
 
 try:
@@ -73,33 +75,30 @@ class PlotHelper:
         font_family = 'monospace',
         font_name = None,
         dpi = 300,
-        log = None,
         ):
-        if log is None:
-            log = Log()
 
         adopt_init_args(self, locals())
 
         if (plot_style is not None) and (plot_style not in ['xkcd']):
             try:
-                self.log('Setting plot_style to "{}"'.format(plot_style))
+                logger('Setting plot_style to "{}"'.format(plot_style))
                 pyplot.style.use(plot_style)
             except Exception as e:
-                self.log('Failed to set plot style to {}.\n\t{}'.format(plot_style, str(e)))
+                logger.warning('Failed to set plot style to {}.\n\t{}'.format(plot_style, str(e)))
 
         if (plot_style == 'xkcd'):
             try:
                 pyplot.xkcd()
-                self.log('Theme set to "xkcd".')
+                logger('Theme set to "xkcd".')
             except:
-                self.log('Failed to set plot style "xkcd".')
+                logger.warning('Failed to set plot style "xkcd".')
 
         if (font_family is not None):
             try:
-                self.log('Setting font_family to "{}"'.format(font_family))
+                logger('Setting font_family to "{}"'.format(font_family))
                 pyplot.rc('font', family=font_family)
             except Exception as e:
-                self.log('Failed to set font family to {}.\n\t{}'.format(font_family, str(e)))
+                logger.warning('Failed to set font family to {}.\n\t{}'.format(font_family, str(e)))
 
         if (font_name is not None):
             try:
@@ -108,11 +107,11 @@ class PlotHelper:
                 assert font_family_str in pyplot.rcParams.keys(), 'Cannot set font: invalid font family provided "{}".'.format(font_family)
                 family_fonts = pyplot.rcParams[font_family_str]
                 if (font_name not in family_fonts):
-                    self.log('WARNING: font "{}" does not exist in font family "{}". Setting the font may not work... (valid options: {})'.format(font_name, font_family, ', '.join(family_fonts)))
-                self.log('Setting font_name to "{}"'.format(font_name))
+                    logger.warning('WARNING: font "{}" does not exist in font family "{}". Setting the font may not work... (valid options: {})'.format(font_name, font_family, ', '.join(family_fonts)))
+                logger('Setting font_name to "{}"'.format(font_name))
                 pyplot.rcParams[font_family_str].insert(0, font_name)
             except Exception as e:
-                self.log('Failed to set font to {}.\n\t{}'.format(font_name, str(e)))
+                logger.warning('Failed to set font to {}.\n\t{}'.format(font_name, str(e)))
 
     def get_colour_map(self):
         return matplotlib.cm.get_cmap(self.colour_map_name)

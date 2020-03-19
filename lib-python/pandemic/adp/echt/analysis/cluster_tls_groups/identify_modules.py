@@ -1,9 +1,10 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 from libtbx import adopt_init_args, group_args
 
 import copy, collections
 import numpy
-
-from bamboo.common.logs import Log
 
 from sklearn.cluster import dbscan
 
@@ -16,11 +17,10 @@ class IdentifyModules:
         threshold_delta = 1.0,
         comparison_metric = 'similarity',
         verbose = False,
-        log = None,
         ):
 
         """
-        Identify groups of indices that cluster together by a certain "comparison" metric. 
+        Identify groups of indices that cluster together by a certain "comparison" metric.
 
         comparions_metric: 'similarity' or 'distance'
         similarity -> modules are identified from low similarity (low thresholds) -> high similarity (high thresholds)
@@ -28,7 +28,6 @@ class IdentifyModules:
         The order of output modules is therefore the same for both in terms of similiarity,
         even though in one case the thresholds increase and in the other they decrease.
         """
-        if log is None: log = Log()
 
         assert comparison_metric in ['similarity','distance'], 'Invalid comparison_metric ({}) provided'.format(comparison_metric)
         if comparison_metric == 'similarity':
@@ -55,8 +54,7 @@ class IdentifyModules:
         threshold = self.threshold_start
         delta = self.threshold_delta
 
-        if self.verbose:
-            self.log('Threshold jumps: {} (start), {} (delta)'.format(threshold, delta))
+        logger.debug('Threshold jumps: {} (start), {} (delta)'.format(threshold, delta))
 
         # "raw" modules identified at each threshold
         threshold_modules = collections.OrderedDict()
@@ -72,7 +70,7 @@ class IdentifyModules:
             modules = self.filter_subsets(modules)
 
             # Remove trivial sets of all
-            if (filter_complete_sets is True): 
+            if (filter_complete_sets is True):
                 modules = self.filter_complete_sets(modules, n_total=n)
                 # Skip to next if still finding everything to avoid breaking below
                 if not modules: continue
@@ -83,7 +81,7 @@ class IdentifyModules:
             # Store output modules
             threshold_modules[threshold] = modules
 
-            # Update threshold 
+            # Update threshold
             threshold += delta
 
         ##############################################
@@ -104,7 +102,7 @@ class IdentifyModules:
         threshold_keys.reverse()
         # Create output levels for each threshold -- REMEMBER NOW USING REVERSED ORDER
         for threshold in threshold_keys:
-            
+
             # Extract modules for this threshold
             modules = threshold_modules[threshold]
 
@@ -159,9 +157,9 @@ class IdentifyModules:
         return (matrix <= threshold_value)
 
     def show(self, message, item_list):
-        self.log.subheading(message)
+        logger.subheading(message)
         for i in item_list:
-            self.log(i)
+            logger(i)
 
     def filter_modules_by_reference(self, filter_modules, reference_modules):
 
@@ -235,14 +233,14 @@ class IdentifyModules:
                 # Extract nodes for pruning
                 prune_nodes = list(numpy.where(prune_bool)[0])
 
-                if prune_nodes: 
+                if prune_nodes:
                     # Remove connections from pruned nodes
                     connectivity_copy[prune_nodes] = 0
                     # Remove from module nodes
                     module_nodes = module_nodes.difference(prune_nodes)
                     #module_nodes.add(i)
 
-                if not module_nodes: 
+                if not module_nodes:
                     break
                 # Check convergence
                 if not prev_module_nodes.symmetric_difference(module_nodes):

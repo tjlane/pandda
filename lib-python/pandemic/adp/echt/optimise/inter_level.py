@@ -1,3 +1,6 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 from libtbx import adopt_init_args, group_args
 from scitbx.array_family import flex
 
@@ -119,7 +122,6 @@ class OptimiseInterLevelAmplitudes:
         convergence_tolerance,
         optimisation_weights = None,
         verbose = False,
-        log = None,
         ):
         if optimisation_weights is not None:
             # Create default optimisation weights and then transfer the input weights
@@ -213,19 +215,18 @@ class OptimiseInterLevelAmplitudes:
         #
         if self.verbose:
             from itertools import groupby
-            log = self.log
-            log.bar()
-            log('Inter-level optimisations:')
+            logger.bar()
+            logger('Inter-level optimisations:')
             for i_j, (i_ds, l_g_pairs) in enumerate(optimisation_sets):
-                log.bar()
-                log('Optimising amplitudes for datasets:\n\t{}'.format(', '.join(map(str,[i+1 for i in i_ds]))))
-                log('Optimising amplitudes for groups:')
+                logger.bar()
+                logger('Optimising amplitudes for datasets:\n\t{}'.format(', '.join(map(str,[i+1 for i in i_ds]))))
+                logger('Optimising amplitudes for groups:')
                 for l, g in groupby(sorted(l_g_pairs), lambda x: x[0]):
                     start_str = "Level {}, Groups ".format(l+1)
                     padding = '\n\t'+(' '*len(start_str))
                     group_str = ', '.join([padding*(int(i)%20==19)+str(i_g+1) for i, i_g in enumerate(zip(*g)[1])])
-                    log('\t'+start_str+group_str)
-            log.bar()
+                    logger('\t'+start_str+group_str)
+            logger.bar()
         #
         # Report
         ##############

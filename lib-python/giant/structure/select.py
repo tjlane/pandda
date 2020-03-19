@@ -1,6 +1,7 @@
-import re
+import logging as lg
+logger = lg.getLogger(__name__)
 
-from bamboo.common.logs import ScreenLogger
+import re
 
 import numpy
 import scipy.spatial
@@ -56,17 +57,17 @@ def default_secondary_structure_selections(hierarchy):
         raise Sorry('No secondary structure elements were identified by dssp')
     return result
 
-def default_secondary_structure_selections_filled(hierarchy, verbose=False):
+def default_secondary_structure_selections_filled(hierarchy):
     """Return secondary structure selections and fill gaps with new selections"""
+
     hierarchy = protein(hierarchy, copy=True)
 
-    log = ScreenLogger(stdout=verbose)
-
-    log('>>> Creating secondary structure selections for input hierarchy <<<')
+    logger.debug('>>> Creating secondary structure selections for input hierarchy <<<')
 
     # Get automatic secondary structure elements
     auto_sel = default_secondary_structure_selections(hierarchy=hierarchy)
-    log('>> Default Selections (from dssp):\n\t{}'.format('\n\t'.join(auto_sel)))
+
+    logger.debug('\n>> Default Selections (from dssp):\n\t{}'.format('\n\t'.join(auto_sel)))
 
     # Extract chain and residue numbers
     sel_regex = re.compile("chain '(.*?)' and resid (.*?). through (.*)")
@@ -80,12 +81,9 @@ def default_secondary_structure_selections_filled(hierarchy, verbose=False):
 
     # Iterate through chains
     for c_id in chain_ids:
-        log('>> Processing chain {}'.format(c_id))
 
         # Extract residue start and end numbers
         c_sels = sorted([map(int, s[1:]) for s in auto_sel_proc if s[0]==c_id])
-        log('>> Sorted selections for chain {}:\n\t{}'.format(c_id, '\n\t'.join(['{:>4d} -> {:>4d}'.format(*s) for s in c_sels])))
-        log.bar()
         # Extract chain
         c_obj  = [c for c in hierarchy.chains() if (c.is_protein() and c.id==c_id)]
         assert len(c_obj) == 1
@@ -93,39 +91,51 @@ def default_secondary_structure_selections_filled(hierarchy, verbose=False):
         # Get the first and last residues of the chain
         c_start = min([r.resseq_as_int() for r in c_obj.residue_groups()])
         c_end   = max([r.resseq_as_int() for r in c_obj.residue_groups()])
-        log('> Chain start: {}\n> Chain end: {}'.format(c_start, c_end))
         # Create boolean selection for residues in the chain
         n_res = c_end-c_start+1
         # Create residue mask with group numbers; mark missing residues with -1
         t_sel = -1*numpy.ones(n_res, dtype=int)
         t_sel[[r.resseq_as_int()-c_start for r in c_obj.residue_groups()]] = 0
-        log('> {} missing residues in chain {}'.format(sum(t_sel==-1), c_id))
-        log.bar()
-        log('>> Removing overlapping groups:')
+
+        # log strings
+        logger.debug('\n'.join((
+            '>> Processing chain {}'.format(c_id),
+            '>> Sorted selections for chain {}:\n\t{}'.format(c_id, '\n\t'.join(['{:>4d} -> {:>4d}'.format(*s) for s in c_sels])),
+            '> Chain start: {}\n> Chain end: {}'.format(c_start, c_end),
+            '> {} missing residues in chain {}'.format(sum(t_sel==-1), c_id),
+            '\n>> Removing overlapping groups:',
+        )))
 
         # First pass: Iterate through and place group numbers into mask
         for i,g in enumerate(c_sels):
+
+            # Convert to selections
             n = i+1
             g_sel = numpy.zeros_like(t_sel, dtype=bool)
             g_sel[range(g[0]-c_start,g[1]-c_start+1)] = True
-            log.bar()
-            log('Group: {}'.format(str(g)))
-            log('Group selection: {} residues'.format(sum(g_sel)))
             # Multiply the unassigned atoms with this group mask
             new_g_sel = (t_sel==0)*g_sel
-            log('Filtered Group selection: {} residues'.format(sum(new_g_sel)))
-            log('(after removing residues that are already in other groups)')
+
+            # log strings
+            logger.debug('\n'.join((
+                'Group: {}'.format(str(g)),
+                'Group selection: {} residues'.format(sum(g_sel)),
+                'Filtered Group selection: {} residues'.format(sum(new_g_sel)),
+                '(after removing residues that are already in other groups)',
+            )))
+
+            # Skip if no residues left
             if sum(new_g_sel) == 0:
-                log('No residues for this group that are not already in another group')
+                logger.debug('No residues for this group that are not already in another group')
                 continue
+
             # Store as this group
             t_sel[new_g_sel] = n
-        log.bar()
 
         # Second pass: Process groups & create new groups for gaps
         g_start = 0
         f_sels = []
-        log('>> Creating new non-overlapping groups:')
+        logger.debug('>> Creating new non-overlapping groups:')
         for i_this, v_this in enumerate(t_sel):
             # Skip missing residues
             if v_this == -1:
@@ -138,17 +148,15 @@ def default_secondary_structure_selections_filled(hierarchy, verbose=False):
             if v_this != v_next:
                 f_sels.append([g_start+c_start, i_this+c_start])
                 g_start = None
-        log('Filtered & Filled selections for chain {}:\n\t{}'.format(c_id, '\n\t'.join(['{:>4d} -> {:>4d}'.format(*s) for s in f_sels])))
-        log.bar()
+        logger.debug('Filtered & Filled selections for chain {}:\n\t{}'.format(c_id, '\n\t'.join(['{:>4d} -> {:>4d}'.format(*s) for s in f_sels])))
 
         # Third pass: Merge small groups
         o_sels = []
-        log('>> Merging small groups with neighbours where possible:')
+        logger.debug('>> Merging small groups with neighbours where possible:')
         for i, (start, end) in enumerate(f_sels):
             g_size = end - start + 1
             if g_size < 3:
-                log.bar()
-                log('Group ({},{}) is less than three residues ({} residues)'.format(start,end,g_size))
+                logger.debug('Group ({},{}) is less than three residues ({} residues)'.format(start,end,g_size))
                 g_before = int((not i==0)
                         and (f_sels[i-1] is not None)
                         and (f_sels[i-1][1]==(start-1)))
@@ -157,30 +165,28 @@ def default_secondary_structure_selections_filled(hierarchy, verbose=False):
                         and (f_sels[i+1][0]==(end+1)))
                 # Decide how/if to split group between neighbours
                 if (g_before or g_after):
-                    log('Splitting group between neighbouring groups')
+                    logger.debug('Splitting group between neighbouring groups')
                     n_after = g_after * int(float(g_size)/float(g_before+g_after))
                     n_before = g_size - n_after
                     assert n_before + n_after == g_size
                     if n_before:
-                        log('Adding {} residues to previous group'.format(n_before))
+                        logger.debug('Adding {} residues to previous group'.format(n_before))
                         f_sels[i-1][1] += n_before
                     if n_after:
-                        log('Adding {} residues to next group'.format(n_after))
+                        logger.debug('Adding {} residues to next group'.format(n_after))
                         f_sels[i+1][0] -= n_after
                     # Remove the group
                     f_sels[i] = None
                 elif g_size == 1:
-                    log('Group of one residue with no neighbours -- removing group')
+                    logger.debug('Group of one residue with no neighbours -- removing group')
                     # Remove the group
                     f_sels[i] = None
                 else:
-                    log('No neighbouring groups -- leaving as group of two residues')
-        log.bar()
+                    logger.debug('No neighbouring groups -- leaving as group of two residues')
 
         # Remove the none groups
         o_sels = [(c_id, v[0], v[1]) for v in f_sels if v is not None]
-        log('Merged selections for chain {}:\n\t{}'.format(c_id, '\n\t'.join(['{:>4d} -> {:>4d}'.format(*s[1:]) for s in o_sels])))
-        log.bar()
+        logger.debug('Merged selections for chain {}:\n\t{}'.format(c_id, '\n\t'.join(['{:>4d} -> {:>4d}'.format(*s[1:]) for s in o_sels])))
 
         # Append to overall list
         output_sel_all.extend(o_sels)
@@ -189,8 +195,7 @@ def default_secondary_structure_selections_filled(hierarchy, verbose=False):
     sel_template = "chain '{}' and resid {:d}  through {:d}"
     output_sel_all = sorted(output_sel_all)
     output_sel = [sel_template.format(*v) for v in output_sel_all]
-    log('Processed Selections:\n\t{}'.format('\n\t'.join(output_sel)))
-    log.bar()
+    logger.debug('Processed Selections:\n\t{}'.format('\n\t'.join(output_sel)))
 
     return output_sel
 

@@ -1,3 +1,6 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os, copy, collections
 import numpy, pandas
 
@@ -27,9 +30,7 @@ class PandemicTrackingObject:
             level_names,
             convergence_args = {},
             verbose = False,
-            log = None,
             ):
-        if log is None: log = Log()
 
         # Create table for tracking progress over cycles
         table = pandas.DataFrame(
@@ -63,7 +64,6 @@ class PandemicTrackingObject:
         # Class to check when the model has converged
         convergence_checker = self._ConvergenceCheckerClass(
             parent = self,
-            log=log,
             **convergence_args
             )
 
@@ -82,8 +82,7 @@ class PandemicTrackingObject:
         ):
         """Update the tracking table"""
 
-        log = self.log
-        log.subheading('Updating tracking...')
+        logger.subheading('Updating tracking...')
 
         # Must be list, if only one given
         if not isinstance(i_level, list):
@@ -91,7 +90,7 @@ class PandemicTrackingObject:
 
         self._update_average_table(uijs=uijs, step=step, i_level=i_level)
 
-        log(self.table.loc[len(self.table)-len(i_level):].to_string())
+        logger(self.table.loc[len(self.table)-len(i_level):].to_string())
 
         if (step == 'end'):
 
@@ -188,7 +187,7 @@ class PandemicTrackingObject:
         self.output_files.update(of)
 
     def is_converged(self):
-        self.log.subheading('Checking convergence')
+        logger.subheading('Checking convergence')
         self.convergence_checker.show()
         cvgd = self.convergence_checker.is_converged()
         return cvgd

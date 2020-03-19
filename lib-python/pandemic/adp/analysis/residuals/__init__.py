@@ -1,10 +1,11 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os, math, collections
 import numpy, pandas
 
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
-
-from bamboo.common.logs import Log
 
 from pandemic.adp import constants
 from pandemic.adp.utils import show_file_dict
@@ -41,9 +42,7 @@ class AnalyseResidualsTask:
         output_directory,
         plotting_object,
         verbose = False,
-        log = None,
         ):
-        if log is None: log = Log()
 
         adopt_init_args(self, locals())
 
@@ -72,7 +71,7 @@ class AnalyseResidualsTask:
         from pandemic.adp.hierarchy.utils import StructureFactory
         structure_factory = StructureFactory(master_h=reference_hierarchy)
 
-        self.log.subheading('Assessing model fit and calculating summary statistics')
+        logger.subheading('Assessing model fit and calculating summary statistics')
 
         self.rmsd_statistics(
             results_table = results_table,
@@ -159,8 +158,6 @@ class AnalyseResidualsTask:
         uij_target,
         ):
 
-        log = self.log
-
         # Calculate rmsd between input and fitted uijs
         uij_rmsd = rms(uij_target-uij_fitted, axis=2)
 
@@ -171,26 +168,24 @@ class AnalyseResidualsTask:
         results_table[self.mean_model_fit_rmsd] = mean_rmsds
         results_table[self.median_model_fit_rmsd] = median_rmsds
 
-        log('\nMean and Median RMSDs to input Uijs:')
+        logger('\nMean and Median RMSDs to input Uijs:')
         for i_r, (tag, data) in enumerate(results_table.iterrows()):
             if i_r == 10:
-                log('...')
+                logger('...')
                 break
-            log('> Dataset {:10}: {:6.3f} (mean), {:6.3f} (median)'.format(
+            logger('> Dataset {:10}: {:6.3f} (mean), {:6.3f} (median)'.format(
                 tag,
                 data[self.mean_model_fit_rmsd],
                 data[self.median_model_fit_rmsd],
                 ))
 
-        log('')
+        logger('')
 
     def b_factor_statistics(self,
         results_table,
         uij_target,
         uij_fitted,
         ):
-
-        log = self.log
 
         # Calculate isotropic ADPs for input and fitted uijs
         from giant.structure.uij import uij_to_b
@@ -204,18 +199,18 @@ class AnalyseResidualsTask:
         results_table[self.average_b_factor_column+self.target_suffix] = mean_b_target
         results_table[self.average_b_factor_column+self.fitted_suffix] = mean_b_fitted
 
-        log('\nAverage B-factors for models (fitted atoms only)')
+        logger('\nAverage B-factors for models (fitted atoms only)')
         for i_r, (tag, data) in enumerate(results_table.iterrows()):
             if i_r == 10:
-                log('...')
+                logger('...')
                 break
-            log('> Dataset {:10}: {:6.3f} (input) -> {:6.3f} (fitted)'.format(
+            logger('> Dataset {:10}: {:6.3f} (input) -> {:6.3f} (fitted)'.format(
                 tag,
                 data[self.average_b_factor_column+self.target_suffix],
                 data[self.average_b_factor_column+self.fitted_suffix],
                 ))
 
-        log('')
+        logger('')
 
     def residual_plots(self,
         uij_target,
@@ -285,7 +280,7 @@ class AnalyseResidualsTask:
         dataset_labels,
         structure_factory,
         ):
-        
+
         output_files = collections.OrderedDict()
 
         atom_rmsds = rms(uij_target-uij_fitted, axis=-1)
@@ -342,10 +337,10 @@ class AnalyseResidualsTask:
         ):
 
         flierprops = dict(marker='D', markersize=2., markerfacecolor='g')
-        
+
         # Extract identifiers for atom types (resname - atomname)
         atom_labels = [((a.parent().resname, a.name)) for a in reference_hierarchy.atoms()]
-        
+
         # Extract atom rmsds
         atom_rmsds = constants.EIGHTPISQ * rms(uij_target-uij_fitted, axis=-1)
         # transport tables to sort by atoms
@@ -361,7 +356,7 @@ class AnalyseResidualsTask:
 
         # Extract as lists for plotting
         sort_func = lambda (resname, atomname): (RES_ORDER_DICT.get(resname.strip(),''), ATOM_ORDER_DICT.get(atomname.strip(),''))
-        plot_labels = sorted(atom_rmsds_dict.keys(), key=sort_func) 
+        plot_labels = sorted(atom_rmsds_dict.keys(), key=sort_func)
         plot_rmsds = [atom_rmsds_dict[l] for l in plot_labels]
 
         n = len(plot_labels)
@@ -385,7 +380,7 @@ class AnalyseResidualsTask:
                 filename = filename,
                 )
             of['{}-{}'.format(i_min+1,i_max)] = filename
-        
+
         return {'residuals_by_atom_type' : of}
 
     def correlation_plots(self,

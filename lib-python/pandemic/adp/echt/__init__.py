@@ -9,5 +9,5 @@ import pandemic.adp.echt.output
 import pandemic.adp.echt.tracking
 import pandemic.adp.echt.validate
 
-def validate_parameters(params, log=None):
+def validate_parameters(params):
     pass

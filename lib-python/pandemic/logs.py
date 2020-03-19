@@ -1,31 +1,6 @@
 import sys
 import logging as lg
 
-def get_handler_recursive(logger, handler_name='warnings', recurse_parents=True):
-    """
-    Looks for warning handlers in logger, and optionally parent loggers,
-    until one is found or root is reached
-    """
-
-    handler_names = [h.name for h in logger.handlers]
-    if handler_name in handler_names:
-        index = handler_names.index(handler_name)
-        return logger.handlers[index]
-
-    # None found and is root: return none
-    if (logger is logger.root) or (logger.name == 'root'):
-        return None
-
-    # Check parents of logger
-    if (recurse_parents is True):
-        return get_handler_recursive(
-            logger = logger.parent,
-            handler_name = handler_name,
-            recurse_parents = recurse_parents,
-        )
-
-    return None
-
 
 class Bar:
 
@@ -117,8 +92,8 @@ class ListHandler(lg.Handler): # Inherit from logging.Handler
     def size(self):
         return len(self.log_list)
 
-    def list(self):
-        return iter(self.log_list)
+    def list(self, start_i=0):
+        return iter(self.log_list[start_i:])
 
 
 class WarningListHandler(ListHandler):
@@ -130,14 +105,69 @@ class WarningListHandler(ListHandler):
         self.set_name(name)
         self.counter = 0
 
-    def flush(self, logger_name=None):
-        logger = lg.getLogger(logger_name)
-        pass
+    def report_new(self, logger_name):
+        assert logger_name is not None
+        l = lg.getLogger(logger_name)
+        # Get counter for next unreported message
+        i = self.counter
+        # Check if there are no new messages
+        if i == self.size():
+            return
+        # Iterate through messages and report
+        n = self.size() - i
+        l.subheading('{} new warnings generated'.format(n))
+        for w in self.list(start_i=i):
+            l.bar(True, True)
+            l(w)
+        l.bar(True, True)
+        # Set to the next value (currently beyond length of list)
+        self.counter = self.size()
 
-    def report(self, logger_name=None):
-        logger = lg.getLogger(logger_name)
-        pass
+    def report_all(self, logger_name):
+        assert logger_name is not None
+        l = lg.getLogger(logger_name)
+        # Get total number of warnings
+        n = self.size()
+        # No warnings? Great!
+        if n == 0:
+            l.subheading('Reported warnings')
+            l('> No warnings!')
+            return
+        # Report warnings
+        banner = '{} warnings/non-fatal errors (see below)'.format(n)
+        l.subheading(banner)
+        for i, e in enumerate(self.list()):
+            l.bar()
+            l('Warnings {} of {}'.format(i+1, n))
+            l.bar()
+            l(e)
+        l.subheading(banner.replace('below','above'))
 
+
+def get_handler_recursive(logger, handler_name, recurse_parents=True):
+    """
+    Looks for warning handlers in logger, and optionally parent loggers,
+    until one is found or root is reached
+    """
+
+    handler_names = [h.name for h in logger.handlers]
+    if handler_name in handler_names:
+        index = handler_names.index(handler_name)
+        return logger.handlers[index]
+
+    # None found and is root: return none
+    if (logger is logger.root) or (logger.name == 'root'):
+        return None
+
+    # Check parents of logger
+    if (recurse_parents is True):
+        return get_handler_recursive(
+            logger = logger.parent,
+            handler_name = handler_name,
+            recurse_parents = recurse_parents,
+        )
+
+    return None
 
 def setup_root_logging(formatter=None, level=lg.INFO):
 
@@ -153,16 +183,16 @@ def setup_root_logging(formatter=None, level=lg.INFO):
     ch.setLevel(level)
     logger.addHandler(ch)
 
-    # Override base class to allow headings
-    lg.setLoggerClass(PandemicLogger)
-
     return logger
 
-def setup_logging(name, log_file=None, debug=False):
+def setup_logging(name, log_file=None, warning_handler_name='warnings', debug=False):
     """
     Setup logging for a named scope.
     if name == '__main__' will set up the root logger.
     """
+
+    # Override base class to allow headings
+    lg.setLoggerClass(PandemicLogger)
 
     # Plain formatter
     fmt = lg.Formatter(fmt='%(message)s')
@@ -192,7 +222,7 @@ def setup_logging(name, log_file=None, debug=False):
         logger.addHandler(fh)
 
     # Custom warning collector
-    wh = WarningListHandler()
+    wh = WarningListHandler(name=warning_handler_name)
     # Special warning formatter
     wfmt = lg.Formatter(fmt='%(levelname)s -- %(message)s')
     wh.setFormatter(wfmt)

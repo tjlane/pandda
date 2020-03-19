@@ -149,14 +149,13 @@ class MultiDatasetTLSGroup:
                 ) for i in xrange(self.n_datasets)],
                 ) for m in self.tls_parameters]
 
-    def summary(self, show=True):
+    def summary(self):
         """Print the number of parameters/input data"""
-        l = Log()
-        s = l._bar()+'\nTLS Group Fit Summary: {}\n'.format(self.label)+l._bar()
+        bar = '=========>'
+        s = bar+'\nTLS Group Fit Summary: {}\n'.format(self.label)+bar
         for i_tls in xrange(self.n_models):
             s += '\n> TLS model {}'.format(i_tls+1)
             mode = self.tls_parameters.get(index=i_tls)
             s += '\n\t' + mode.matrices.summary().replace('\n','\n\t')
             s += '\n\t' + mode.amplitudes.summary().replace('\n','\n\t')
-        if show: l(s)
         return s

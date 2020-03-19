@@ -1,3 +1,6 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os
 from libtbx import adopt_init_args
 from libtbx.utils import Sorry, Failure
@@ -195,9 +198,7 @@ class WriteHtmlSummaryTask:
     def __init__(self,
         output_directory,
         verbose = False,
-        log = None
         ):
-        if log is None: log = Log()
         output_filename_path = os.path.join(output_directory, self.output_filename)
         adopt_init_args(self, locals())
 
@@ -233,8 +234,7 @@ class WriteHtmlSummaryTask:
         json_plots = [],
         ):
 
-        log = self.log
-        log.subheading('Writing output HTML')
+        logger.subheading('Writing output HTML')
 
         # Get the html template
         from pandemic.html import PANDEMIC_HTML_ENV
@@ -272,7 +272,7 @@ class WriteHtmlSummaryTask:
         with open(self.output_filename_path, 'w') as out_html:
             out_html.write(template.render(output_data).encode( "utf-8" ))
 
-        log('Output HTML written to {}'.format(self.output_filename_path))
+        logger('Output HTML written to {}'.format(self.output_filename_path))
 
     def get_body_header(self):
         d = {

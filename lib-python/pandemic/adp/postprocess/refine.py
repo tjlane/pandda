@@ -1,7 +1,9 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os, collections
 from libtbx import adopt_init_args
 from libtbx.utils import Sorry, Failure
-from bamboo.common.logs import Log
 from bamboo.common.path import easy_directory
 
 from pandemic.adp.parallel import RunParallelWithProgressBarUnordered
@@ -25,10 +27,7 @@ class RefineStructures:
             #refinement_params = None,
             n_cpus = 1,
             verbose = False,
-            log = None,
             ):
-
-        if log is None: log = Log()
 
         from giant.xray.refine import refine_phenix, refine_refmac
         if  refinement_program == 'refmac':
@@ -76,7 +75,6 @@ class RefineStructures:
                     mtz_file = i_mtz,
                     cif_files = (cif_files if cif_files else None),
                     out_prefix = output_prefixes[i],
-                    log = self.log,
                     ) \
             .set_refine_coordinates_only() \
             .set_n_cycles(5)
@@ -89,18 +87,17 @@ class RefineStructures:
             arg_list.append(obj)
 
         for o in arg_list:
-            o.log('')
             o.print_settings()
 
         # Refine all of the models
-        self.log.subheading('Running {} refinements'.format(len(arg_list)))
+        logger.subheading('Running {} refinements'.format(len(arg_list)))
         results = self.run_parallel(arg_dicts=arg_list)
 
         output_structures = collections.OrderedDict()
         for r in results:
             if isinstance(r, str):
-                self.log.subheading('Failed to refine structure -- continuing anyway')
-                self.log(r)
+                logger.subheading('Failed to refine structure -- continuing anyway')
+                logger(r)
                 continue
 
             output_structures[r.tag] = (r.out_pdb_file, r.out_mtz_file)

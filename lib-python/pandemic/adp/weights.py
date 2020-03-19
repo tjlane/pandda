@@ -1,8 +1,9 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 from libtbx import adopt_init_args, group_args
 import copy
 import numpy
-
-from bamboo.common.logs import Log
 
 def scale_weights(weights, scale):
 
@@ -39,11 +40,8 @@ class AtomWeightCalculator:
     def __init__(self,
             weighting,
             renormalise_by_dataset = True,
-            warnings = None,
             verbose = False,
-            log = None,
             ):
-        if log is None: log = Log()
         assert weighting in self._power_hash.keys()
         power = self._power_hash[weighting]
         adopt_init_args(self, locals())
@@ -65,13 +63,9 @@ class AtomWeightCalculator:
             message = 'Some atoms have zero-value b-factors!'
             message += '\n\t'+'\n\t'.join(['atom {} in dataset {}'.format(i_a,dataset_labels[i_d]) for i_a,i_d in zero_b_atoms])
             if (self.weighting == 'one'):
-                if self.warnings is not None:
-                    self.warnings.append(message)
+                logger.warning(message)
             else:
                 raise Sorry('Cannot calculate atom weights: '+message)
-
-        if self.warnings is not None:
-            self.warnings.flush()
 
         # Calculate weights
         weights = numpy.power(uij_modulus, self.power)
@@ -102,9 +96,7 @@ class DatasetWeightCalculator:
     def __init__(self,
             weighting,
             verbose = False,
-            log = None,
             ):
-        if log is None: log = Log()
         assert weighting in self._power_hash.keys()
         power = self._power_hash[weighting]
         adopt_init_args(self, locals())
@@ -144,21 +136,17 @@ class UijArrayWeightsTask:
             atom_weighting = 'one',
             renormalise_by_dataset = False,
             verbose = False,
-            log = None,
             ):
-        if log is None: log = Log()
 
         calculate_dataset_weights = DatasetWeightCalculator(
             weighting = dataset_weighting,
             verbose = verbose,
-            log = log,
             )
 
         calculate_atom_weights = AtomWeightCalculator(
             weighting = atom_weighting,
             renormalise_by_dataset = renormalise_by_dataset,
             verbose = verbose,
-            log = log,
             )
 
         adopt_init_args(self, locals())
@@ -169,12 +157,12 @@ class UijArrayWeightsTask:
             dataset_labels = None,
             ):
 
-        if dataset_labels is None: 
+        if dataset_labels is None:
             dataset_labels = range(1, len(uij_values)+1)
 
         assert len(dataset_labels) == len(uij_values)
 
-        if resolutions is not None: 
+        if resolutions is not None:
             assert len(resolutions) == len(uij_values)
 
             if resolutions.count(None):

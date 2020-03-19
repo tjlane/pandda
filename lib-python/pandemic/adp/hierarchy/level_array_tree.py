@@ -1,5 +1,7 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 from libtbx import adopt_init_args, group_args
-from bamboo.common.logs import Log
 
 
 class LevelGroupTree:
@@ -196,10 +198,8 @@ class BuildLevelArrayAsTreeTask:
 
 
     def __init__(self,
-            log = None,
             ):
         """Create the selection array for the supplied levels"""
-        if log is None: log = Log()
         adopt_init_args(self, locals())
 
     def run(self,
@@ -207,7 +207,7 @@ class BuildLevelArrayAsTreeTask:
             ):
         """Identify the tree of groups that form each atom"""
 
-        self.log.subheading('Converting selections into hierarchy')
+        logger.subheading('Converting selections into hierarchy')
 
         import numpy
 
@@ -265,15 +265,14 @@ class BuildLevelArrayAsTreeTask:
 
         graph = self.result.tree.links
 
-        log = self.log
-        log.subheading('Tree summary of hierarchy:')
+        logger.subheading('Tree summary of hierarchy:')
         for i in sorted(graph.keys()):
-            log.bar()
-            log('Ownership of level {} (Related groups that will be co-optimised)'.format(i))
-            log.bar()
+            logger.bar()
+            logger('Ownership of level {} (Related groups that will be co-optimised)'.format(i))
+            logger.bar()
             for g, vals in graph[i].items():
                 groups = ['(Level {}, Groups {})'.format(l, ', '.join(map(str,vs))) for l, vs in vals.items()]
                 if not groups: groups = ['none']
-                log('Group {} -> {}'.format(g, ', '.join(groups)))
+                logger('Group {} -> {}'.format(g, ', '.join(groups)))
 
 

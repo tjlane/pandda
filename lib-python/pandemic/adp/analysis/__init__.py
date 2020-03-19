@@ -1,3 +1,6 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os, collections
 
 from libtbx import adopt_init_args, group_args
@@ -5,7 +8,6 @@ from libtbx.utils import Sorry, Failure
 
 from scitbx.array_family import flex
 
-from bamboo.common.logs import Log
 from bamboo.common.path import easy_directory
 
 
@@ -19,9 +21,7 @@ class HierarchicalModelAnalysisTask:
         analyse_residuals = True,
         assess_hierarchy_groups = True,
         verbose = False,
-        log = None,
         ):
-        if log is None: log = Log()
 
         output_directory = easy_directory(output_directory)
 
@@ -31,7 +31,6 @@ class HierarchicalModelAnalysisTask:
                 output_directory = easy_directory(os.path.join(output_directory, 'residuals')),
                 plotting_object = plotting_object,
                 verbose = verbose,
-                log = log,
                 )
 
         if assess_hierarchy_groups is True:
@@ -40,7 +39,6 @@ class HierarchicalModelAnalysisTask:
                 output_directory = easy_directory(os.path.join(output_directory, 'hierarchy_groups')),
                 plotting_object = plotting_object,
                 verbose = verbose,
-                log = log,
                 )
 
         # Calculate fit to electron density - TODO
@@ -58,7 +56,7 @@ class HierarchicalModelAnalysisTask:
         reference_hierarchy,
         ):
 
-        self.log.heading('Analysing Fitted Hierarchical Model')
+        logger.heading('Analysing Fitted Hierarchical Model')
 
         dataset_labels = model_object.dataset_labels
         level_names = model_object.all_level_names
@@ -75,7 +73,7 @@ class HierarchicalModelAnalysisTask:
         overall_atom_selection = flex.bool(model_hierarchy_info.overall_atom_mask)
 
         if self.analyse_residuals is not False:
-            self.log.subheading('Analysing Model-Target Residuals', spacer=True)
+            logger.subheading('Analysing Model-Target Residuals', spacer=True)
             residuals_out = self.analyse_residuals.run(
                 uij_fitted = uij_isotropic_mask(uij_fitted),
                 uij_target = uij_target,
@@ -88,7 +86,7 @@ class HierarchicalModelAnalysisTask:
             residuals_out = None
 
         if self.assess_hierarchy_groups is not False:
-            self.log.subheading('Assessing Hierarchical Group Partitions', spacer=True)
+            logger.subheading('Assessing Hierarchical Group Partitions', spacer=True)
             assess_hierarchy_out = self.assess_hierarchy_groups.run(
                 model_object = model_object,
                 model_hierarchy_info = model_hierarchy_info,

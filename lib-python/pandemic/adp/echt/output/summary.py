@@ -1,3 +1,6 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os, glob, collections
 from libtbx import adopt_init_args
 
@@ -45,9 +48,7 @@ class WriteEchtModelSummary:
         output_directory,
         pymol_images = None,
         distribution_images = False,
-        warnings = None,
         verbose = False,
-        log = None,
         ):
         adopt_init_args(self, locals())
         self.check_and_create_output_folders()
@@ -154,9 +155,6 @@ class WriteEchtModelSummary:
 
         self.plot = None
 
-        # Show warnings
-        self.warnings.flush()
-
         return output_files
 
     def extract_average_uij_values(self,
@@ -260,8 +258,6 @@ class WriteEchtModelSummary:
         model_object,
         ):
 
-        log = self.log
-
         atom_sel = overall_atom_mask
         n_modes = model_object.n_modes
 
@@ -295,7 +291,7 @@ class WriteEchtModelSummary:
                 colour_indices = [float(i_level)+(float(i_mode)/float(n_modes)) for i_mode in range(n_modes)],
                 )
             if not output_hash:
-                self.warnings.append('no plots have been generated! ({})'.format(filenames_prefix+'*'))
+                logger.warning('no plots have been generated! ({})'.format(filenames_prefix+'*'))
             else:
                 # Store in output dictionary
                 file_dict.setdefault('level_uijs_profiles_png',collections.OrderedDict())[level_name] = output_hash
@@ -317,7 +313,7 @@ class WriteEchtModelSummary:
                 colours       = ['grey'],
                 )
             if not output_hash:
-                self.warnings.append('no plots have been generated! ({})'.format(filenames_prefix+'*'))
+                logger.warning('no plots have been generated! ({})'.format(filenames_prefix+'*'))
             else:
                 # Store in output dictionary
                 file_dict.setdefault('level_uijs_anisotropy_png',collections.OrderedDict())[level_name] = output_hash
@@ -339,7 +335,7 @@ class WriteEchtModelSummary:
             colour_indices = [model_object.n_levels-1],
             )
         if not output_hash:
-            self.warnings.append('no plots have been generated! ({})'.format(filenames_prefix+'*'))
+            logger.warning('no plots have been generated! ({})'.format(filenames_prefix+'*'))
         else:
             # Store in output dictionary
             file_dict.setdefault('level_uijs_profiles_png',collections.OrderedDict())[model_object.adp_level_name] = output_hash
@@ -362,7 +358,7 @@ class WriteEchtModelSummary:
             colours       = ['grey'],
             )
         if not output_hash:
-            self.warnings.append('no plots have been generated! ({})'.format(filenames_prefix+'*'))
+            logger.warning('no plots have been generated! ({})'.format(filenames_prefix+'*'))
         else:
             # Store in output dictionary
             file_dict.setdefault('level_uijs_anisotropy_png',collections.OrderedDict())[model_object.adp_level_name] = output_hash
@@ -390,7 +386,7 @@ class WriteEchtModelSummary:
             legend_kw_args = dict(ncol=3, bbox_to_anchor=(0.5, 0.0), loc=9, borderaxespad=0.),
             )
         if not output_hash:
-            self.warnings.append('no plots have been generated! ({})'.format(filenames_prefix+'*'))
+            logger.warning('no plots have been generated! ({})'.format(filenames_prefix+'*'))
         else:
             # Store in output dictionary
             file_dict['all_levels_uijs_profiles_png'] = output_hash
@@ -413,7 +409,7 @@ class WriteEchtModelSummary:
             colours       = ['grey'],
             )
         if not output_hash:
-            self.warnings.append('no plots have been generated! ({})'.format(filenames_prefix+'*'))
+            logger.warning('no plots have been generated! ({})'.format(filenames_prefix+'*'))
         else:
             # Store in output dictionary
             file_dict['all_levels_uijs_anisotropy_png'] = output_hash
@@ -492,7 +488,7 @@ class WriteEchtModelSummary:
         overall_atom_mask,
         ):
 
-        self.log.subheading('Generating pymol images for levels in ECHT model')
+        logger.subheading('Generating pymol images for levels in ECHT model')
 
         file_dict = collections.OrderedDict()
 
@@ -510,11 +506,11 @@ class WriteEchtModelSummary:
                     )
                 # Check output
                 if (not of):
-                    self.warnings.append('no images have been generated: {}...'.format(f_prefix))
+                    logger.warning('no images have been generated: {}...'.format(f_prefix))
                 else:
                     for v in of.values():
                         if not os.path.exists(v):
-                            self.warnings.append('image does not exist: {}'.format(v))
+                            logger.warning('image does not exist: {}'.format(v))
                 # Store in output dictionary
                 file_dict[level_name] = of
 

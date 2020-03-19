@@ -1,3 +1,6 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 from libtbx import adopt_init_args, group_args
 import numpy
 from scitbx.array_family import flex
@@ -15,7 +18,6 @@ class CreateEchtModelTask:
         matrix_tolerance,
         amplitude_tolerance,
         verbose = False,
-        log = None,
         ):
         adopt_init_args(self, locals())
 
@@ -28,7 +30,6 @@ class CreateEchtModelTask:
             matrix_tolerance = self.matrix_tolerance,
             amplitude_tolerance = self.amplitude_tolerance,
             verbose = self.verbose,
-            log = self.log,
             )
 
         self.model_object = None
@@ -73,8 +74,7 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
             matrix_tolerance,
             amplitude_tolerance,
             verbose=False,
-            log=None):
-        if log is None: log = Log()
+            ):
         adopt_init_args(self, locals())
         # Set precisions and tolerances
         from mmtbx.tls.utils import TLSMatrices, TLSAmplitudes
@@ -114,7 +114,6 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
                 level_group_array = level_group_array,
                 level_labels = level_labels,
                 atom_xyzs = coordinates,
-                log = self.log,
                 )
 
         level_group_objects, level_group_selections = self.get_tls_objects(
@@ -157,11 +156,9 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
         level_group_array,
         level_labels,
         atom_xyzs,
-        log=None,
         ):
-        if log is None: log=Log()
 
-        log.subheading('Identifying partitioning of atoms that does not split any TLS groups')
+        logger.subheading('Identifying partitioning of atoms that does not split any TLS groups')
 
         array = level_group_array
         labels = level_labels
@@ -170,28 +167,28 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
         atom_coms = []
 
         # Find the levels with the largest coverage (number of atoms in groups in this level)
-        log('Calculating the number of atoms that are in groups for each level:')
+        logger('Calculating the number of atoms that are in groups for each level:')
         n_atoms = array.shape[1]
         n_atoms_per_level = [(l>=0).sum() for l in array]
-        log('Atoms covered per level: \n\t{}'.format('\n\t'.join(['Level {} -> {} atoms'.format(i+1, n) for i,n in enumerate(n_atoms_per_level)])))
+        logger('Atoms covered per level: \n\t{}'.format('\n\t'.join(['Level {} -> {} atoms'.format(i+1, n) for i,n in enumerate(n_atoms_per_level)])))
         levels_with_max_coverage = [i_l for i_l, n in enumerate(n_atoms_per_level) if n==n_atoms]
 
         if levels_with_max_coverage:
-            log('Only considering partitionings that cover all atoms ({} atoms).'.format(n_atoms))
-            log('Considering partitionings from levels: \n\t{}'.format('\n\t'.join(['{} ({})'.format(l+1, labels[l]) for l in levels_with_max_coverage])))
+            logger('Only considering partitionings that cover all atoms ({} atoms).'.format(n_atoms))
+            logger('Considering partitionings from levels: \n\t{}'.format('\n\t'.join(['{} ({})'.format(l+1, labels[l]) for l in levels_with_max_coverage])))
             # Find how many groups per level, and find level indices with fewest groups
-            log('Looking for which of these levels has the smallest number of groups')
+            logger('Looking for which of these levels has the smallest number of groups')
             n_groups_per_level = [len(numpy.unique(l[l>=0])) for l in array[levels_with_max_coverage]]
-            log('Groups per level: \n\t{}'.format('\n\t'.join(['Level {} -> {}'.format(levels_with_max_coverage[i]+1, n) for i,n in enumerate(n_groups_per_level)])))
+            logger('Groups per level: \n\t{}'.format('\n\t'.join(['Level {} -> {}'.format(levels_with_max_coverage[i]+1, n) for i,n in enumerate(n_groups_per_level)])))
             levels_with_min_ngroups = [levels_with_max_coverage[i] for i, n in enumerate(n_groups_per_level) if n==min(n_groups_per_level)]
-            log('Only considering partitionings with the smallest number of groups ({} groups).'.format(min(n_groups_per_level)))
-            log('Considering partitionings from levels: \n\t{}'.format('\n\t'.join(['{} ({})'.format(i_l+1, labels[i_l]) for i_l in levels_with_min_ngroups])))
+            logger('Only considering partitionings with the smallest number of groups ({} groups).'.format(min(n_groups_per_level)))
+            logger('Considering partitionings from levels: \n\t{}'.format('\n\t'.join(['{} ({})'.format(i_l+1, labels[i_l]) for i_l in levels_with_min_ngroups])))
             # Set to False just because (even though it is immediately overwritten)
             found_valid_level = False
             # Test each level to see if it splits tls groups in other levels
             for i_l in levels_with_min_ngroups:
-                log.bar()
-                log('Checking to see if the partitioning on level {} ({}) cuts any TLS groups on other levels'.format(i_l+1, labels[i_l]))
+                logger.bar()
+                logger('Checking to see if the partitioning on level {} ({}) cuts any TLS groups on other levels'.format(i_l+1, labels[i_l]))
                 # Assume level is valid until proven otherwise
                 found_valid_level = True
                 # Extract groups for this level
@@ -203,18 +200,18 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
                 # group members outside selection
                 if have_group_other_levels.sum():
                     found_valid_level = False
-                    log('> There are atoms in groups on other levels that do not have a group on this level.')
-                    log('> This partitioning is not appropriate.')
+                    logger('> There are atoms in groups on other levels that do not have a group on this level.')
+                    logger('> This partitioning is not appropriate.')
                     continue
                 else:
-                    log('> All atoms in other levels are contained by groups on this level.')
+                    logger('> All atoms in other levels are contained by groups on this level.')
                 # Get the group idxs (labels/names) for this level
                 g_idxs = numpy.unique(level_groups)
                 # Iterate through groups and get selection for each
-                log('> Checking that every TLS group on other levels is contained within only one group on this level')
+                logger('> Checking that every TLS group on other levels is contained within only one group on this level')
                 for g in g_idxs:
                     if g < 0: continue
-                    log('  ...checking this condition for atoms in group {} of this level'.format(g))
+                    logger('  ...checking this condition for atoms in group {} of this level'.format(g))
                     # Get the selection for this group
                     g_sel = (level_groups==g)
                     # Get the chunk of values for other levels -- for this selection, and NOT this selection
@@ -224,13 +221,13 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
                     for i_l_test in range(len(array)):
                         # Skip checking against itself
                         if i_l==i_l_test: continue
-                        log('     ...checking this condition for the partitioning on level {}.'.format(i_l_test+1))
+                        logger('     ...checking this condition for the partitioning on level {}.'.format(i_l_test+1))
                         # Check if groups in this selection in this level are present in the level outside this selection
                         overlap = set(g_this[i_l_test]).intersection(set(g_other[i_l_test])).difference({-1})
                         if overlap:
-                            log('      ...there is a group on level {} whose atoms are split between this group and another'.format(i_l_test+1))
-                            log('      ...(groups: {})'.format(', '.join(map(str,sorted(overlap)))))
-                            log('> This partitioning is not appropriate.')
+                            logger('      ...there is a group on level {} whose atoms are split between this group and another'.format(i_l_test+1))
+                            logger('      ...(groups: {})'.format(', '.join(map(str,sorted(overlap)))))
+                            logger('> This partitioning is not appropriate.')
                             found_valid_level = False
                             break
                     # If invalid it's not necessary to check the rest
@@ -238,19 +235,19 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
                         break
                 # All checks passed - return this
                 if found_valid_level is True:
-                    log.bar()
-                    log('This level -- level {} ({}) -- has a partitioning that is compatible with all other levels.'.format(i_l+1,labels[i_l]))
-                    log('Using this partitioning.')
+                    logger.bar()
+                    logger('This level -- level {} ({}) -- has a partitioning that is compatible with all other levels.'.format(i_l+1,labels[i_l]))
+                    logger('Using this partitioning.')
                     import copy
                     atom_hash = copy.copy(array[i_l])
                     break
         else:
-            log('No levels that cover all atoms')
+            logger('No levels that cover all atoms')
             found_valid_level = False
 
         # No valid levels -- create over-arching partition
         if found_valid_level is False:
-            log('No suitable level found -- using one partition containing all atoms.')
+            logger('No suitable level found -- using one partition containing all atoms.')
             atom_hash = numpy.ones(array.shape[1], dtype=int)
         # Renumber the array to start from 0
         for i,v in enumerate(sorted(numpy.unique(atom_hash))):
@@ -258,7 +255,7 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
             atom_hash[atom_hash==v] = i
 
         # Iterate through and calculate origins for each dataset for each group
-        log.subheading('Calculating Centres-of-mass for each partition')
+        logger.subheading('Calculating Centres-of-mass for each partition')
         for i in sorted(numpy.unique(atom_hash)):
             if i<0: continue
             # Get the selection for this group
@@ -273,11 +270,11 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
 
         # Report
         for i_p, coms in enumerate(atom_coms):
-            log.bar()
-            log('Centres-of-mass for atoms in Partition {}'.format(i_p+1))
+            logger.bar()
+            logger('Centres-of-mass for atoms in Partition {}'.format(i_p+1))
             for j, c in enumerate(coms):
-                log('\tDataset {:>3d}: {}'.format(j+1, c))
-        log.bar()
+                logger('\tDataset {:>3d}: {}'.format(j+1, c))
+        logger.bar()
 
         assert atom_hash.shape == (atom_xyzs.shape[1],)            # n_atoms
         assert atom_coms.shape[0] == len(numpy.unique(atom_hash))  # n_partitions

@@ -1,7 +1,9 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 from libtbx import adopt_init_args, group_args
 from libtbx import easy_mp
 from libtbx.utils import Sorry
-from bamboo.common.logs import Log
 
 import numpy
 
@@ -9,7 +11,7 @@ import numpy
 class SelectionStringConverter:
 
 
-    def __init__(self, 
+    def __init__(self,
         atom_cache,
         global_selection,
         ):
@@ -33,12 +35,9 @@ class BuildLevelArrayTask:
     def __init__(self,
         overall_selection = None,
         remove_duplicate_groups = None,
-        warnings = None,
         n_cpus = 1,
-        log = None,
         ):
         """Create the selection array for the supplied levels"""
-        if log is None: log = Log()
         adopt_init_args(self, locals())
 
     def run(self,
@@ -127,8 +126,7 @@ class BuildLevelArrayTask:
         selection_strings,
         ):
 
-        log = self.log
-        log.subheading('Converting selections to array')
+        logger.subheading('Converting selections to array')
 
         # Array of which atoms are in which group at which level
         idx_array = -1 * numpy.ones((len(selection_strings), hierarchy.atoms_size()), dtype=int)
@@ -173,7 +171,7 @@ class BuildLevelArrayTask:
                 if isinstance(group_sel_bool, str):
                     # warning message is the result
                     warning_msg = 'Level {level}, Group {group}: '.format(
-                        level = i_level+1, 
+                        level = i_level+1,
                         group = i_group+1,
                         ) + group_sel_bool
                     warnings.append(warning_msg)
@@ -185,11 +183,11 @@ class BuildLevelArrayTask:
                     # Check if these atoms already assigned to another group
                     for i_other in numpy.unique(idx_array[i_level, group_sel_bool]):
                         # If == -1, not overlapping
-                        if i_other == -1: 
+                        if i_other == -1:
                             continue
                         error_msg = 'Selection "{selection1}" and "{selection2}" overlap in Level {level} (atoms can only be in one group per level)'.format(
-                            selection1 = group_selections[i_other], 
-                            selection2 = group_sel_str, 
+                            selection1 = group_selections[i_other],
+                            selection2 = group_sel_str,
                             level = i_level+1,
                             )
                         errors.append(error_msg)
@@ -204,20 +202,15 @@ class BuildLevelArrayTask:
             ivt_selection = numpy.logical_not(global_selection)
             idx_array[:,ivt_selection] = -1
 
-        # Raise errors
-        if len(errors) > 0:
-            for e in errors: 
-                log(e)
-            raise Sorry('Errors raised during level generation. See above messages.')
-
         # List warnings
         if len(warnings) > 0:
-            msg = 'WARNING: One or more group selections do not select any atoms: \n\t{}'.format('\n\t'.join(warnings))
-            if self.warnings is not None:
-                self.warnings.append(msg)
-                self.warnings.flush()
-            else:
-                log(msg)
+            msg = 'One or more group selections do not select any atoms: \n\t{}'.format('\n\t'.join(warnings))
+            logger.warning(msg)
+
+        # Raise errors
+        if len(errors) > 0:
+            msg = 'Errors raised during level generation: \n\t{}'.format('\n\t'.join(errors))
+            raise Sorry(msg)
 
         return idx_array
 
@@ -276,13 +269,9 @@ class BuildLevelArrayTask:
                         # Don't need to check any further for this group
                         break
 
-        if report_strings:
+        if len(report_strings) > 0:
             msg = 'Removed {} duplicated groups from hierarchy: \n\t{}'.format(len(report_strings), '\n\t'.join(report_strings))
-            if self.warnings is not None:
-                self.warnings.append(msg)
-                self.warnings.flush()
-            else:
-                self.log(msg)
+            logger.warning(msg)
 
         return level_group_array
 
@@ -329,17 +318,16 @@ class BuildLevelArrayTask:
 
     def show_summary(self):
 
-        log = self.log
         n_levels, n_atoms = self.result.level_group_array.shape
-        log('> Constructed {} levels containing {} atoms'.format(n_levels, n_atoms))
+        logger('> Constructed {} levels containing {} atoms'.format(n_levels, n_atoms))
         for i_level, level_values in enumerate(self.result.level_group_array):
             group_nums, group_counts = numpy.unique(level_values, return_counts=True)
-            log.bar(True, True)
-            log('> Level {} - covers {}/{} atoms -- partitioned into {} groups\n'.format(i_level+1, sum(level_values!=-1), n_atoms, len(group_nums)))
+            logger.bar(True, True)
+            logger('> Level {} - covers {}/{} atoms -- partitioned into {} groups\n'.format(i_level+1, sum(level_values!=-1), n_atoms, len(group_nums)))
             for i_grp, count in zip(group_nums, group_counts):
                 if i_grp == -1: continue
                 label = self.result.level_group_selection_strings[i_level][i_grp]
-                log('> Group {:>5d}: {:>5d} atoms ({})'.format(i_grp+1, count, label))
-        log.bar(True, False)
+                logger('> Group {:>5d}: {:>5d} atoms ({})'.format(i_grp+1, count, label))
+        logger.bar(True, False)
 
 

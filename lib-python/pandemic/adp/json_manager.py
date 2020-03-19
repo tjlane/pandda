@@ -1,9 +1,9 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import json, collections
 from libtbx import adopt_init_args
 from libtbx.utils import Sorry, Failure
-
-from bamboo.common.logs import Log
-from pandemic.adp.warnings import WarningLogger
 
 
 class JsonDataManager:
@@ -11,23 +11,15 @@ class JsonDataManager:
 
     def __init__(self,
         model_data,
-        warnings = None,
         verbose = False,
-        log = None,
         ):
-        if log is None: 
-            log = Log()
-        if warnings is None: 
-            warnings = WarningLogger(log)
         adopt_init_args(self, locals())
         self.validate()
 
     @classmethod
-    def from_model_object(cls, 
+    def from_model_object(cls,
         model_object,
-        warnings = None,
         verbose = False,
-        log = None,
         ):
         """Extract json data from model object"""
 
@@ -42,43 +34,33 @@ class JsonDataManager:
 
         # TLS data
         tls_data = collections.OrderedDict()
-        model_data['tls_level_data'] = cls.extract_tls_level_data(mo) 
+        model_data['tls_level_data'] = cls.extract_tls_level_data(mo)
 
         return cls(
             model_data = model_data,
-            warnings = warnings,
             verbose = verbose,
-            log = log,
             )
 
     @classmethod
-    def from_json_file(cls, 
+    def from_json_file(cls,
         filename,
-        warnings = None,
         verbose = False,
-        log = None,
         ):
         json_string = open(filename, 'r').read()
         return cls.from_json(
-            json_string = json_string, 
-            warnings = warnings,
+            json_string = json_string,
             verbose = verbose,
-            log = log,
-            ) 
+            )
 
     @classmethod
-    def from_json(cls, 
+    def from_json(cls,
         json_string,
-        warnings = None,
         verbose = False,
-        log = None,
         ):
         model_data = json.loads(json_string)
         return cls(
             model_data = model_data,
-            warnings = warnings,
             verbose = verbose,
-            log = log,
             )
 
     def validate(self):
@@ -101,7 +83,7 @@ class JsonDataManager:
                 self.validate_tls_level(level_data)
             elif level_type == 'adp':
                 pass
-            else: 
+            else:
                 raise Exception('not implemented')
 
         # Check that all tls levels are included in the global list
@@ -113,7 +95,7 @@ class JsonDataManager:
                 if level_desc.get('level_name') == tls_name:
                     found = True
                     break
-            if found is False: 
+            if found is False:
                 raise Sorry('TLS Level "{}" is not found in the level_descriptions data'.format(tls_name))
 
         return
@@ -128,7 +110,7 @@ class JsonDataManager:
             assert r_field in data.keys()
             assert isinstance(data.get(r_field), r_type)
 
-        for group_data in data.get('tls_group_data'): 
+        for group_data in data.get('tls_group_data'):
             self.validate_tls_group(group_data)
 
     def validate_tls_group(self, data):
@@ -157,14 +139,14 @@ class JsonDataManager:
         assert len(data.get('S')) == 9
 
     @staticmethod
-    def extract_level_meta(model_object): 
-        
+    def extract_level_meta(model_object):
+
         mo = model_object
 
         all_level_meta = []
 
         for i_l in xrange(len(mo.all_level_names)):
-            
+
             level_meta = collections.OrderedDict()
             all_level_meta.append(level_meta)
 
@@ -252,8 +234,8 @@ class JsonDataManager:
         # Apply the tls levels
         for level_name, level_data in self.model_data.get('tls_level_data').iteritems():
 
-            if level_name not in mo.tls_level_names: 
-                self.warnings.append(msg.format('Level "{}" not found in model'.format(level_name)))
+            if level_name not in mo.tls_level_names:
+                logger.warning(msg.format('Level "{}" not found in model'.format(level_name)))
                 continue
 
             # Find the index of this level
@@ -268,8 +250,8 @@ class JsonDataManager:
                 # Selection string from json
                 sel_string = source_info.get('selection')
 
-                if sel_string not in tls_selection_strings: 
-                    self.warnings.append(msg.format('Group "{}" not found in selection strings for level "{}"'.format(sel_string, level_name)))
+                if sel_string not in tls_selection_strings:
+                    logger.warning(msg.format('Group "{}" not found in selection strings for level "{}"'.format(sel_string, level_name)))
                     continue
 
                 # Find the index of the tls group
@@ -297,7 +279,7 @@ class JsonDataManager:
                     # Apply tls amplitudes values
                     for dataset_label, amplitude in mode_info.get('amplitudes').iteritems():
                         # Check that this dataset exists in the new model
-                        if (dataset_label not in model_object.dataset_labels): 
+                        if (dataset_label not in model_object.dataset_labels):
                             skip_datasets.add(dataset_label)
                             continue
                         # Extract index of this dataset in the new model
@@ -308,16 +290,14 @@ class JsonDataManager:
                 # Apply origins
                 for dataset_label, origin in source_info.get('tls_origins').iteritems():
                     # Check that this dataset exists in the new model
-                    if (dataset_label not in model_object.dataset_labels): 
+                    if (dataset_label not in model_object.dataset_labels):
                         skip_datasets.add(dataset_label)
                         continue
                     # Extract index of this dataset in the new model
                     i_dst = mo.dataset_labels.index(dataset_label)
                     # Apply origin
                     tls_g.origins[i_dst] = origin
-                        
-        if len(missing_datasets) > 0: 
-            txt = "The following datasets are present in the JSON data but not in the new model: \n\t\t{}".format('\n\t\t'.join(missing_datasets))
-            self.warnings.append(msg.format(txt))
 
-        self.warnings.flush()
+        if len(missing_datasets) > 0:
+            txt = "The following datasets are present in the JSON data but not in the new model: \n\t\t{}".format('\n\t\t'.join(missing_datasets))
+            logger.warning(msg.format(txt))

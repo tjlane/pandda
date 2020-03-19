@@ -1,3 +1,6 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import copy, collections
 import numpy
 from libtbx import adopt_init_args, group_args
@@ -14,7 +17,6 @@ class PandemicConvergenceChecker:
         delta_b_window_frac = 0.05,
         delta_b_window_min = 5,
         eps_b = 0.01,
-        log = None,
         ):
         """
         Applies multiple checks to find if the model has converged.
@@ -144,7 +146,7 @@ class PandemicConvergenceChecker:
             self.max_rmsd_b,
         )
 
-        self.log(s)
+        logger(s)
 
     def is_converged(self):
 
@@ -162,16 +164,16 @@ class PandemicConvergenceChecker:
 
         # Check if model is still zero
         if (bool(non_zero) is False):
-            self.log('Model is zero -- not converged')
+            logger('Model is zero -- not converged')
             converged = False
 
         if (self.max_rmsd_b is not None) and (rmsd_b > self.max_rmsd_b):
-            self.log('RMSD is above threshold -- not converged')
+            logger('RMSD is above threshold -- not converged')
             converged = False
 
         # Check if the change in B is less than tolerance
         if (self.max_delta_b is not None) and (delta_b > self.max_delta_b):
-            self.log('Delta B is above threshold -- not converged')
+            logger('Delta B is above threshold -- not converged')
             converged = False
 
         return converged

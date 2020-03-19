@@ -1,3 +1,6 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import textwrap
 
 from libtbx import adopt_init_args, group_args
@@ -19,17 +22,17 @@ def update_parameter(params, attribute, value):
     setattr(params, attribute, value)
     return update_string
 
-def validate_parameters(params, log=None):
+def validate_parameters(params):
 
-    log.heading('Processing input parameters')
+    logger.heading('Processing input parameters')
 
-    validate_input_phil(params, log)
-    validate_settings_phil(params, log)
-    validate_optimisation_phil(params, log)
-    validate_output_phil(params, log)
-    validate_available_programs(params, log)
+    validate_input_phil(params)
+    validate_settings_phil(params)
+    validate_optimisation_phil(params)
+    validate_output_phil(params)
+    validate_available_programs(params)
 
-def validate_input_phil(params, log=None):
+def validate_input_phil(params):
 
     if len(params.input.pdb) == 0:
         raise Sorry('No structures have been provided for analysis (input.pdb=[...])')
@@ -37,26 +40,26 @@ def validate_input_phil(params, log=None):
     # Special settings if only one model is loaded
     if (len(params.input.pdb) == 1):
         update_string = update_parameter(params.optimisation.weights, 'dataset_weights', 'one')
-        log("\nOne file provided for analysis: {update_string}.".format(update_string=update_string))
+        logger("\nOne file provided for analysis: {update_string}.".format(update_string=update_string))
 
-def validate_settings_phil(params, log=None):
+def validate_settings_phil(params):
 
     if params.settings.debug:
         update_string = update_parameter(params.settings, 'verbose', True)
-        log('\nDEBUG is turned on: {update_string}.'.format(update_string=update_string))
+        logger('\nDEBUG is turned on: {update_string}.'.format(update_string=update_string))
 
-def validate_optimisation_phil(params, log=None):
+def validate_optimisation_phil(params):
 
     # Simple checks
     if params.optimisation.min_macro_cycles > params.optimisation.max_macro_cycles:
         current_string = textwrap.dedent("""
             min_macro_cycles is greater than max_macro_cycles ({min_macro_cycles} > {max_macro_cycles}).
             """).strip().format(
-                min_macro_cycles=params.optimisation.min_macro_cycles, 
+                min_macro_cycles=params.optimisation.min_macro_cycles,
                 max_macro_cycles=params.optimisation.max_macro_cycles,
                 )
         update_string = update_parameter(params.optimisation, 'min_macro_cycles', params.optimisation.max_macro_cycles)
-        log('\n'+textwrap.dedent("""
+        logger('\n'+textwrap.dedent("""
             {current_string}.
             {update_string}.
             """).strip().format(
@@ -65,23 +68,23 @@ def validate_optimisation_phil(params, log=None):
                 )
             )
 
-    if params.optimisation.min_macro_cycles < 1: 
+    if params.optimisation.min_macro_cycles < 1:
         raise Sorry('min_macro_cycles must be greater than 0 ({current_params})'.format(phil_value(params.optimisation, 'min_macro_cycles')))
 
-    if params.optimisation.max_macro_cycles < 1: 
+    if params.optimisation.max_macro_cycles < 1:
         raise Sorry('max_macro_cycles must be greater than 0 ({current_params})'.format(phil_value(params.optimisation, 'max_macro_cycles')))
 
-def validate_output_phil(params, log=None):
+def validate_output_phil(params):
 
     # Output images
     if params.output.images.all:
-        
-        log('\n'+phil_value(params.output.images, 'all'))
+
+        logger('\n'+phil_value(params.output.images, 'all'))
 
         update_string = update_parameter(params.output.images, 'pymol', 'chain')
-        log(update_string.capitalize())
+        logger(update_string.capitalize())
 
-def validate_available_programs(params, log=None):
+def validate_available_programs(params):
 
     try:
         # Initalise variable to blank string (overwritten at each check)
@@ -158,7 +161,7 @@ def validate_available_programs(params, log=None):
                 )
             check_programs_are_available(['pymol'])
     except Exception as e:
-        log(message)
+        logger(message)
         raise
 
     return True

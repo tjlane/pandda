@@ -1,3 +1,6 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os, copy, shutil, collections
 from bamboo.common.path import easy_directory
 from libtbx import adopt_init_args
@@ -7,7 +10,7 @@ class TaskMultipleRunWrapper:
     """Class for calling a task multiple times with different output directories"""
 
     def __init__(self,
-        output_directory, 
+        output_directory,
         task,
         task_output_directory_prefix,
         ):
@@ -20,14 +23,14 @@ class TaskMultipleRunWrapper:
         self.previous_runs = collections.OrderedDict()
         self.counter = 1
 
-    def __call__(self, 
-        output_directory_suffix = '', 
+    def __call__(self,
+        output_directory_suffix = '',
         remove_previous = False,
         **task_args
         ):
 
         # Remove previous output
-        if remove_previous is True: 
+        if remove_previous is True:
             self.delete_output()
 
         # Create new output directory
@@ -54,18 +57,17 @@ class TaskMultipleRunWrapper:
 
 
 def show_file_dict(self, file_dict, indent=0):
-    log = self.log
     s = '  '
     for k, v in file_dict.iteritems():
         if isinstance(v, dict):
-            log(s*indent + '> {}'.format(k))
+            logger(s*indent + '> {}'.format(k))
             show_file_dict(self, v, indent+1)
         elif isinstance(v, str):
-            log(s*indent + '> {}: {}'.format(k, v))
+            logger(s*indent + '> {}: {}'.format(k, v))
         else:
-            log(s*indent + '> {}'.format(k))
+            logger(s*indent + '> {}'.format(k))
             try:
                 for vv in v:
-                    log(s*(indent+1)+str(vv))
+                    logger(s*(indent+1)+str(vv))
             except:
-                log(s*(indent+1)+str(v))
+                logger(s*(indent+1)+str(v))

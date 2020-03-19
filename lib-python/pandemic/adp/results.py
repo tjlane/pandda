@@ -1,3 +1,6 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os
 import math, collections
 import numpy, pandas
@@ -31,8 +34,8 @@ class PandemicResultsObject:
         ]
 
     output_column_labels_base = {
-        'r_free' : 'R-free', 
-        'r_work' : 'R-work', 
+        'r_free' : 'R-free',
+        'r_work' : 'R-work',
         'r_gap'  : 'R-gap',
         }
 
@@ -43,9 +46,7 @@ class PandemicResultsObject:
             plotting_object,
             models = [],
             verbose = False,
-            log = None,
             ):
-        if log is None: log = Log()
 
         reference_r_values = None
         reference_suffix = None
@@ -61,15 +62,14 @@ class PandemicResultsObject:
     def add_reference_r_values(self,
         filename,
         input_column_labels = {
-            'r_free' : 'R-free', 
-            'r_work' : 'R-work', 
+            'r_free' : 'R-free',
+            'r_work' : 'R-work',
             'r_gap'  : 'R-gap',
             },
         output_suffix = ' (Reference)',
         ):
 
         table = self.table
-        log = self.log
 
         # Internal keys for dicts
         column_keys = self.r_factor_keys
@@ -77,11 +77,11 @@ class PandemicResultsObject:
         # Store suffix for reference
         self.reference_suffix = output_suffix
 
-        # Form input and output label dictionaries 
+        # Form input and output label dictionaries
         i_labs = input_column_labels
         o_labs = {k:v+output_suffix for k,v in self.output_column_labels_base.iteritems()}
-        
-        # Check keys 
+
+        # Check keys
         assert not set(column_keys).difference(i_labs.keys())
         assert not set(column_keys).difference(o_labs.keys())
 
@@ -94,9 +94,9 @@ class PandemicResultsObject:
         o_rw_s = o_labs['r_work']
         o_rg_s = o_labs['r_gap']
 
-        log.subheading('Adding reference values to results table')
-        
-        log('Reading Reference R-values from {}'.format(filename))
+        logger.subheading('Adding reference values to results table')
+
+        logger('Reading Reference R-values from {}'.format(filename))
 
         # Prepare an error string
         err_str = 'A table of reference R-values has been provided ({}) '.format(filename)
@@ -120,10 +120,10 @@ class PandemicResultsObject:
 
         # Transfer R-values
         if (i_rg_s not in self.reference_r_values.columns):
-            log('\nCalculating R-gap column for reference R-free & R-work values')
+            logger('\nCalculating R-gap column for reference R-free & R-work values')
             self.reference_r_values.loc[:,i_rg_s] = self.reference_r_values.loc[:,i_rf_s] - self.reference_r_values.loc[:,i_rw_s]
         else:
-            self.log('\nR-gap column already present in reference table -- using this column.')
+            logger('\nR-gap column already present in reference table -- using this column.')
 
         # Validate columns
         missing_cols = set(input_column_labels.values()).difference(self.reference_r_values.columns)
@@ -134,7 +134,7 @@ class PandemicResultsObject:
 
             i_l = i_labs[key]
             o_l = o_labs[key]
-            
+
             if o_l in table.index:
                 raise Failure('Column already exists in results table: {}'.format(o_l))
 
@@ -150,10 +150,10 @@ class PandemicResultsObject:
         #           Report          #
         #############################
 
-        self.log('\n> Processed Reference Values\n')
+        logger('\n> Processed Reference Values\n')
         for i, v in table[[o_labs[k] for k in column_keys]].iterrows():
-            log(i)
-            log('\t'+v.to_string().replace('\n','\n\t'))
+            logger(i)
+            logger('\t'+v.to_string().replace('\n','\n\t'))
 
     def add_table_one(self,
         csv_file,
@@ -187,7 +187,7 @@ class PandemicResultsObject:
             raise Sorry('Requested labels are not present in supplied csv file ({}): \n{}'.format(csv_file, ', '.join(missing_cols)))
 
         # Add suffix
-        if output_suffix is not None: 
+        if output_suffix is not None:
             table_one.columns = table_one.columns + output_suffix
 
         # Create blank columns
@@ -199,7 +199,7 @@ class PandemicResultsObject:
         return self.table
 
     def calculate_column_differences(self,
-        column_labels, 
+        column_labels,
         input_suffixes,
         output_suffix,
         ):
@@ -230,33 +230,32 @@ class PandemicResultsObject:
         """Display overall statistics of columns and compare sets of related columns"""
 
         table = self.table
-        log = self.log
 
         # Extract Column averages (means and medians)
         table_means = table.mean().round(3)
         shrt_str = '{:>35s} | {:>15} |'
         long_str = '{:>35s} | {:>15} | {:>15} | {:>15}'
 
-        log.subheading('Average statistics')
+        logger.subheading('Average statistics')
 
         # Columns without old/new prefix
         for col_key, col in single_column_labels_dict.items():
-            log(shrt_str.format(col, table_means[col]))
+            logger(shrt_str.format(col, table_means[col]))
 
-        log.subheading('Average difference between different models')
+        logger.subheading('Average difference between different models')
 
         for triplet in comparison_column_suffix_triplets:
 
-            log(long_str.format(
-                    '', 
-                    label_hash.get(triplet[0],triplet[0]).strip(print_strip_chars), 
-                    label_hash.get(triplet[1],triplet[1]).strip(print_strip_chars), 
+            logger(long_str.format(
+                    '',
+                    label_hash.get(triplet[0],triplet[0]).strip(print_strip_chars),
+                    label_hash.get(triplet[1],triplet[1]).strip(print_strip_chars),
                     label_hash.get(triplet[2],triplet[2]).strip(print_strip_chars))
                 )
 
             for col_prefix_key, col_prefix in comparison_column_prefixes_dict.items():
 
-                if col_prefix_key in self.r_factor_keys: 
+                if col_prefix_key in self.r_factor_keys:
                     multiplier = 100.0
                     col_print_suffix = ' (%)'
                     str_format = '{:.1f}'
@@ -267,12 +266,12 @@ class PandemicResultsObject:
 
                 col1, col2, col3 = [col_prefix+suff for suff in triplet]
 
-                log(long_str.format(col_prefix+col_print_suffix,
+                logger(long_str.format(col_prefix+col_print_suffix,
                     str_format.format(multiplier*table_means[col1]),
                     str_format.format(multiplier*table_means[col2]),
                     str_format.format(multiplier*table_means[col3])))
-            
-            log.bar()
+
+            logger.bar()
 
         return
 

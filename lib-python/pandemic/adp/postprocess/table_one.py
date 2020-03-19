@@ -1,7 +1,9 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os, copy
 from libtbx import adopt_init_args
 from libtbx.utils import Sorry, Failure
-from bamboo.common.logs import Log
 
 from giant.jiffies import multi_table_ones
 
@@ -14,10 +16,7 @@ class CalculateTableOnes:
         table_one_options,
         n_cpus = 1,
         verbose = False,
-        log = None,
         ):
-
-        if log is None: log = Log()
 
         # Populate table one phil
         base_phil = multi_table_ones.master_phil.extract()
@@ -53,9 +52,11 @@ class CalculateTableOnes:
 
         cmd = CommandManager('phenix.table_one')
         cmd.add_command_line_arguments([output_eff])
-        self.log.bar()
-        self.log("Table One Command:")
-        self.log.bar()
+
+        logger.bar()
+        logger("Table One Command:")
+        logger.bar()
+
         cmd.print_settings()
         cmd.run()
         cmd.write_output(output_eff.replace('.eff','.log'))

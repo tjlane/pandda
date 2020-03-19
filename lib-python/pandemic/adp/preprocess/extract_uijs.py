@@ -1,6 +1,8 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
-from bamboo.common.logs import Log
 
 import numpy
 from pandemic.adp import constants
@@ -12,9 +14,7 @@ class ExtractAndProcessModelUijsTask:
     def __init__(self,
             expected_disorder_model,
             verbose = False,
-            log = None,
             ):
-        if log is None: log = Log()
         actual_disorder_model = expected_disorder_model
         adopt_init_args(self, locals())
 
@@ -45,16 +45,16 @@ class ExtractAndProcessModelUijsTask:
                         '\n   1) Re-refine structures with anisotropic ADPs.' + \
                         '\n   2) Set input.input_uij_model=isotropic to allow use of isotropic ADPs.')
             if (self.expected_disorder_model == 'mixed'):
-                self.log('Input disorder model is set to "{}", but all input atoms have isotropic Uij.'.format(self.expected_disorder_model))
+                logger('Input disorder model is set to "{}", but all input atoms have isotropic Uij.'.format(self.expected_disorder_model))
                 actual_disorder_model = 'isotropic'
-                self.log('Updated disorder_model to "{}"'.format(actual_disorder_model))
+                logger('Updated disorder_model to "{}"'.format(actual_disorder_model))
         elif isotropic_mask.selection.all_eq(False):
             if (self.expected_disorder_model == 'isotropic'):
                 raise Sorry('input.input_uij_model is set to "{}" but all atoms selected have anisotropic Uij.'.format(self.expected_disorder_model))
             if (self.expected_disorder_model == 'mixed'):
-                self.log('Input disorder model is set to "{}", but all input atoms have anisotropic Uij.'.format(self.expected_disorder_model))
+                logger('Input disorder model is set to "{}", but all input atoms have anisotropic Uij.'.format(self.expected_disorder_model))
                 actual_disorder_model = 'anisotropic'
-                self.log('Updated disorder_model to "{}"'.format(actual_disorder_model))
+                logger('Updated disorder_model to "{}"'.format(actual_disorder_model))
         else:
             if (self.expected_disorder_model != 'mixed'):
                 raise Sorry('Some atoms for fitting (but not all) have anisotropically-refined ADPs and input.input_uij_model is currently set to "{}".\nOptions:'.format(self.expected_disorder_model) + \
@@ -99,9 +99,7 @@ class ExtractAndProcessModelUijsTask:
             overall_atom_mask = None,
             ):
 
-        log = self.log
-
-        log.subheading('Extracting Uijs from models')
+        logger.subheading('Extracting Uijs from models')
 
         # Extract atoms from models
         models_atoms = [m.hierarchy.atoms() for m in models]
@@ -137,18 +135,17 @@ class ExtractAndProcessModelUijsTask:
                 )
 
         self.show_summary()
-        
+
         return self.result
 
     def show_summary(self):
-        log = self.log
         r = self.result
 
-        log.bar()
-        log('Expected disorder model was {}'.format(self.expected_disorder_model))
-        log('Actual disorder model is {}'.format(r.disorder_model))
-        log.bar()
-        log('Anisotropic atoms: {}'.format(r.isotropic_mask.n_anisotropic))
-        log('Isotropic atoms: {}'.format(r.isotropic_mask.n_isotropic))
-        log.bar()
+        logger.bar()
+        logger('Expected disorder model was {}'.format(self.expected_disorder_model))
+        logger('Actual disorder model is {}'.format(r.disorder_model))
+        logger.bar()
+        logger('Anisotropic atoms: {}'.format(r.isotropic_mask.n_anisotropic))
+        logger('Isotropic atoms: {}'.format(r.isotropic_mask.n_isotropic))
+        logger.bar()
 

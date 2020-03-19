@@ -1,6 +1,8 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os, collections
 from libtbx import adopt_init_args
-from bamboo.common.logs import Log
 from bamboo.common.path import easy_directory
 
 from scitbx.array_family import flex
@@ -16,16 +18,13 @@ class WriteEchtStructures:
     def __init__(self,
         output_directory,
         verbose = False,
-        log = None
         ):
-        if log is None: log = Log()
         adopt_init_args(self, locals())
 
     def show(self, label, pdbs, max=5):
-        log = self.log
-        log(label)
+        logger(label)
         for l, p in list(pdbs.iteritems())[:max]+[('', '...')]*(len(pdbs)>max):
-            log('> {}: {}'.format(l, p))
+            logger('> {}: {}'.format(l, p))
 
     def __call__(self,
         level_group_array,
@@ -36,8 +35,6 @@ class WriteEchtStructures:
         overall_selection_bool = None,
         ):
         """Extract output and generate summaries"""
-
-        log = self.log
 
         from pandemic.adp.echt.output.tls_headers import MultiModelTLSHeaderFactory
         make_tls_headers = MultiModelTLSHeaderFactory(
@@ -53,7 +50,6 @@ class WriteEchtStructures:
             models = models,
             atom_mask = overall_selection_bool,
             isotropic_mask = isotropic_mask,
-            log = log,
             )
 
         #------------------------------------------------------------------------------#
@@ -74,7 +70,7 @@ class WriteEchtStructures:
         tls_headers = make_tls_headers(i_levels=None)
 
         # Fully parameterised structures
-        log.subheading('Writing full uij models')
+        logger.subheading('Writing full uij models')
         # Full models (with original values for non-fitted atoms)
         pdbs = output_structures(
             uij = uij_all,
@@ -96,7 +92,7 @@ class WriteEchtStructures:
         output_dict['all_components'] = pdbs
 
         # TLS-parameterised structures (total TLS)
-        log.subheading('Writing all TLS contributions')
+        logger.subheading('Writing all TLS contributions')
         pdbs = output_structures(
             uij = uij_tls,
             iso = map(uij_to_b, uij_tls),
@@ -107,7 +103,7 @@ class WriteEchtStructures:
         output_dict['all_tls_levels'] = pdbs
 
         # Atomic level contributions
-        log.subheading('Writing atomic level')
+        logger.subheading('Writing atomic level')
         uij_atom = uij_lvl[-1]
         pdbs = output_structures(
             uij = uij_atom,
@@ -119,7 +115,7 @@ class WriteEchtStructures:
         output_dict['atomic_level'] = pdbs
 
         # Level by level TLS-parameterised structures (single level contribution)
-        log.subheading('Writing individual TLS levels')
+        logger.subheading('Writing individual TLS levels')
         for i_level in xrange(model_object.n_tls_levels):
             uij_this = uij_lvl[i_level]
             pdbs = output_structures(
@@ -132,7 +128,7 @@ class WriteEchtStructures:
             output_dict.setdefault('tls_levels', collections.OrderedDict())[i_level] = pdbs
 
         # Level by level TLS-parameterised structures (cumulative level contributions)
-        log.subheading('Writing different combinations of TLS levels')
+        logger.subheading('Writing different combinations of TLS levels')
         for i_level, j_level in flex.nested_loop((model_object.n_tls_levels, model_object.n_tls_levels)):
             if i_level >= j_level: continue
             cuml_uij = uij_lvl[i_level:j_level+1].sum(axis=0)
@@ -145,9 +141,9 @@ class WriteEchtStructures:
             self.show('Levels {}-{}'.format(i_level+1, j_level+1), pdbs)
             output_dict.setdefault('tls_levels', collections.OrderedDict())[(i_level,j_level)] = pdbs
 
-        log.subheading('Writing convenience pymol scripts')
+        logger.subheading('Writing convenience pymol scripts')
         pymol_scripts = self.write_pymol_scripts(
-            model_keys = [m.tag for m in models], 
+            model_keys = [m.tag for m in models],
             file_dict = output_dict,
             )
         self.show('Pymol scripts for viewing each structure', pymol_scripts)
@@ -161,7 +157,7 @@ class WriteEchtStructures:
 
         output_files = collections.OrderedDict()
 
-        for key in model_keys: 
+        for key in model_keys:
 
             # Output directory and filename
             py_d = easy_directory(os.path.join(self.output_directory, key))
@@ -178,13 +174,13 @@ class WriteEchtStructures:
 
             for i_l, f_dict in file_dict.get('tls_levels',{}).iteritems():
                 f = f_dict.get(key)
-                if (f is not None): 
+                if (f is not None):
                     f_list.append(f)
 
             f = file_dict.get('atomic_level',{}).get(key)
             if (f is not None): f_list.append(f)
 
-            for f in f_list: 
+            for f in f_list:
                 obj = os.path.basename(f)
                 s.load_pdb(f_name=os.path.relpath(os.path.abspath(f), start=py_d), obj=obj)
 

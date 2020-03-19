@@ -13,9 +13,7 @@ class EchtTracking:
         plotting_object,
         model_object,
         verbose = False,
-        log = None,
         ):
-        if log is None: log = Log()
         # Create table for tracking progress over cycles
         table = pandas.DataFrame(
             columns=['cycle', 'type', 'average'] + model_object.dataset_labels,

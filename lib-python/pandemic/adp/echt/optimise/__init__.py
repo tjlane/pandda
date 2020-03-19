@@ -1,6 +1,8 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os, copy, collections, functools
 from libtbx import adopt_init_args, group_args
-from bamboo.common.logs import Log
 from pandemic.adp.utils import show_file_dict
 import numpy
 
@@ -9,20 +11,15 @@ import numpy
 #     te = target_evaluator
 
 #     """Print the optimisation values and weights"""
-#     s = te.log._bar()
 #     s += '\nOptimisation Summary: {}\n'.format(self.label)
-#     s += te.log._bar()
 #     s += '\nOptimisation Least Squares: {:5.3f}'.format(te.optimisation_lst_sqr)
 #     s += '\nOptimisation Penalty: {:5.3f}'.format(te.optimisation_penalty)
 #     s += '\nOptimisation Target: {:5.3f}'.format(te.optimisation_lst_sqr+te.optimisation_penalty)
-#     s += '\n'+self.log._bar()
 #     s += '\nModels used for optimisation (and total weights):'
 #     wts = self._op.wgts.mean(axis=1)
 #     assert len(wts) == len(self.get_dataset_mask())
 #     for i_rel, i_abs in enumerate(self.get_dataset_mask()):
 #         s += '\n\t{:>3d} -> {:.3f}'.format(i_abs,wts[i_rel])
-#     s += '\n'+te.log._bar()
-#     if show: te.log(s)
 #     return s
 
 
@@ -57,9 +54,7 @@ class OptimiseEchtModel:
             n_cycles = 1,
             n_cpus = 1,
             verbose = False,
-            log = None,
             ):
-        if log is None: log = Log()
         adopt_init_args(self, locals())
 
         from pandemic.adp.echt.optimise.tls import OptimiseTLSLevel
@@ -97,7 +92,6 @@ class OptimiseEchtModel:
             tls_parameters_dict = sanitise_tls_parameters,
             uij_parameters_dict = sanitise_uij_parameters,
             verbose = verbose,
-            log = log,
             )
 
     def __call__(self,
@@ -110,7 +104,7 @@ class OptimiseEchtModel:
             uij_optimisation_mask = None,
             ):
 
-        self.log('\nOptimising TLS models for {} levels'.format(model_object.n_tls_levels) \
+        logger('\nOptimising TLS models for {} levels'.format(model_object.n_tls_levels) \
             + ' (+ {} level)'.format(model_object.adp_level_name)*(self.optimise_adp_level is not None))
 
         if uij_isotropic_mask is None:
@@ -151,7 +145,7 @@ class OptimiseEchtModel:
         )
 
         # Initial amplitude optimisation
-        self.log.subheading('Macrocycle {}: '.format(tracking_object.n_cycle)+'Optimising inter-level amplitudes')
+        logger.subheading('Macrocycle {}: '.format(tracking_object.n_cycle)+'Optimising inter-level amplitudes')
         self.sanitise_model(model_object)
         optimise_amplitudes_iter(model_object=model_object)
         optimise_amplitudes_full(model_object=model_object)
@@ -168,13 +162,13 @@ class OptimiseEchtModel:
 
             # Break loop if model is zero
             if self.max_u_iso(model_object) == 0.0:
-                self.log.subheading('Macrocycle {}: '.format(tracking_object.n_cycle)+'All model amplitudes are zero. Not doing any optimisation...')
+                logger.subheading('Macrocycle {}: '.format(tracking_object.n_cycle)+'All model amplitudes are zero. Not doing any optimisation...')
                 break
 
             # Iterate through the TLS levels of the fitting
             for i_level in xrange(model_object.n_tls_levels):
 
-                self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Fitting TLS Groups (level {} - {})'.format(i_level+1, model_object.tls_level_names[i_level]))
+                logger.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Fitting TLS Groups (level {} - {})'.format(i_level+1, model_object.tls_level_names[i_level]))
 
                 # Optimise the groups for one level
                 model_object.tls_objects[i_level] = self.optimise_tls_level(
@@ -187,7 +181,7 @@ class OptimiseEchtModel:
                     )
 
                 # Optimise the amplitudes between levels
-                self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
+                logger.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
                 self.sanitise_model(model_object)
                 optimise_amplitudes_full(model_object=model_object)
 
@@ -202,7 +196,7 @@ class OptimiseEchtModel:
             if self.optimise_adp_level is not None:
 
                 # Fit the atomic level
-                self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising atomic Uijs')
+                logger.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising atomic Uijs')
 
                 # Update the target uij by subtracting contributions from other levels
                 model_object.adp_values = self.optimise_adp_level(
@@ -214,7 +208,7 @@ class OptimiseEchtModel:
                     )
 
                 # Optimise the amplitudes between levels
-                self.log.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
+                logger.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
                 self.sanitise_model(model_object)
                 optimise_amplitudes_full(model_object=model_object)
 
@@ -226,7 +220,7 @@ class OptimiseEchtModel:
                 )
 
         # Optimise the amplitudes again just to make sure...
-        self.log.subheading('Macrocycle {}: '.format(tracking_object.n_cycle)+'Optimising inter-level amplitudes')
+        logger.subheading('Macrocycle {}: '.format(tracking_object.n_cycle)+'Optimising inter-level amplitudes')
         self.sanitise_model(model_object)
         optimise_amplitudes_full(model_object=model_object)
 
@@ -258,9 +252,7 @@ class UpdateOptimisationFunction:
         output_directory,
         plotting_object = None,
         verbose = True,
-        log = None,
         ):
-        if log is None: log = Log()
         # Copy to be ensure detached object
         initial_weights = copy.deepcopy(initial_weights)
         history = collections.OrderedDict()
@@ -288,16 +280,16 @@ class UpdateOptimisationFunction:
         total_decay_factor = decay_factor ** (n_cycle-1)
 
         # Update parameters
-        self.log.subheading('Updating Level Amplitude Optimisation Weights')
-        self.log('> Cycle {}\n'.format(n_cycle))
-        self.log('> Total decay factor (relative to starting values): {}\n'.format(total_decay_factor))
+        logger.subheading('Updating Level Amplitude Optimisation Weights')
+        logger('> Cycle {}\n'.format(n_cycle))
+        logger('> Total decay factor (relative to starting values): {}\n'.format(total_decay_factor))
 
         new_weights_dict = {}
         # below_minimum = False
         for k in self.weights_to_update:
             sta_v = getattr(start_weights, k)
             new_v = sta_v * total_decay_factor
-            self.log('Updating {} = {} -> {}'.format(k, sta_v, new_v))
+            logger('Updating {} = {} -> {}'.format(k, sta_v, new_v))
             new_weights_dict[k] = new_v
             # Record whether weight below minimum but don't do anything for the moment
             # if (new_v > 0.0) and (new_v < minimum_weight):
@@ -305,7 +297,7 @@ class UpdateOptimisationFunction:
         # Update weights if above threshold
         weights_sum = sum(new_weights_dict.values())
         if weights_sum < minimum_weight: # below_minimum is True:
-            self.log('\n*** Sum of optimisation weights ({}) is below the minimum threshold ({}). Not updating weights. ***'.format(weights_sum, minimum_weight))
+            logger('\n*** Sum of optimisation weights ({}) is below the minimum threshold ({}). Not updating weights. ***'.format(weights_sum, minimum_weight))
         else:
             # Get current weight object
             current_weights = self.get_weights(model_optimisation_function)
@@ -318,16 +310,16 @@ class UpdateOptimisationFunction:
         current_weights = self.get_weights(model_optimisation_function)
 
         # Update history
-        self.log('\nCurrent values:')
+        logger('\nCurrent values:')
         for k, v in current_weights._asdict().items():
-            self.log('{} -> {}'.format(k, v))
+            logger('{} -> {}'.format(k, v))
             self.history \
                 .setdefault(self.level_amplitude_string, collections.OrderedDict()) \
                 .setdefault(k, []).append((n_cycle, v))
 
     def write_output(self):
 
-        self.log.subheading('Writing optimisation weights graphs')
+        logger.subheading('Writing optimisation weights graphs')
 
         output_files = collections.OrderedDict()
 

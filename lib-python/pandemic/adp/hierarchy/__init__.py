@@ -1,7 +1,8 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
-
-from bamboo.common.logs import Log
 
 from pandemic.adp.hierarchy.summary import WriteHierarchicalModelSummaryTask
 from pandemic.adp.hierarchy.utils import StructureFactory, MaskedStructureFactory
@@ -16,12 +17,9 @@ class CreateHierarchicalModelTask:
         overall_selection,
         cbeta_in_backbone,
         remove_duplicate_groups = None,
-        warnings = None,
         verbose = False,
         n_cpus = 1,
-        log = None,
         ):
-        if log is None: log = Log()
         adopt_init_args(self, locals())
 
         # Selection strings for each group for each level
@@ -31,7 +29,6 @@ class CreateHierarchicalModelTask:
             custom_levels = self.custom_levels,
             overall_selection = self.overall_selection,
             cbeta_in_backbone = self.cbeta_in_backbone,
-            log = self.log,
             )
 
         # Construct 2-d integer array of group indices for each atom on each level
@@ -39,21 +36,18 @@ class CreateHierarchicalModelTask:
         self.array_constructor = BuildLevelArrayTask(
             overall_selection = self.overall_selection,
             remove_duplicate_groups = self.remove_duplicate_groups,
-            warnings = self.warnings,
             n_cpus = n_cpus,
-            log = self.log,
             )
 
         from pandemic.adp.hierarchy.level_array_tree import BuildLevelArrayAsTreeTask
         self.array_as_tree = BuildLevelArrayAsTreeTask(
-            log = self.log,
             )
 
     def run(self,
         hierarchy,
         ):
 
-        self.log.heading('Generating hierarchical model')
+        logger.heading('Generating hierarchical model')
 
         selections = self.selections_constructor.run(
             hierarchy = hierarchy,

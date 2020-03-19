@@ -1,8 +1,10 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import tqdm
 from libtbx import adopt_init_args
 from libtbx.utils import Sorry, Failure
 from scitbx.array_family import flex
-from bamboo.common.logs import Log
 from pandemic.adp.echt.optimise.targets import TargetTerm_UijLeastSquares
 
 
@@ -18,7 +20,6 @@ class OptimiseTLSGroup:
         convergence_tolerance,
         eps_values,
         verbose = False,
-        log = None,
         ):
 
         # if eps_values is None:
@@ -73,7 +74,6 @@ class OptimiseTLSGroup:
             convergence_tolerance = self.convergence_tolerance,
             uij_isotropic_mask = uij_isotropic_mask,
             verbose = self.verbose,
-            log = self.log,
             )
 
         # Do cycles of alternating optimisation
@@ -201,9 +201,7 @@ class OptimiseTLSLevel:
     def __init__(self,
             optimisation_function,
             n_cpus = 1,
-            log = None,
             ):
-        if log is None: log = Log()
         from pandemic.adp.parallel import RunParallelWithProgressBarUnordered
         run_parallel = RunParallelWithProgressBarUnordered(
             function = optimisation_function,
@@ -246,12 +244,12 @@ class OptimiseTLSLevel:
         errors = []
         for r in results:
             if isinstance(r, str):
-                self.log.bar()
-                self.log(r)
+                logger.bar()
+                logger(r)
                 errors.append(r)
 
         if errors:
-            self.log.bar()
+            logger.bar()
             raise Failure('{} errors raised during optimisation (above)'.format(len(errors)))
 
         new_tls_groups = results

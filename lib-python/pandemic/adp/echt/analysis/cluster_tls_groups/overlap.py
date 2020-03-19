@@ -1,3 +1,6 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os, itertools, collections
 import math, numpy
 from scitbx.matrix import sym, diag
@@ -129,9 +132,9 @@ def make_pymol_script(
                     )
                     group_shapes.append(cyl)
 
-        s.add_shapes(group_shapes, obj='new_groups', state=i_l+1)  
+        s.add_shapes(group_shapes, obj='new_groups', state=i_l+1)
     #s.disable(obj='new_groups')
-    
+
     sc.write()
 
     return
@@ -149,9 +152,7 @@ class ClusterTLSGroups_OverlapMass:
         xyz_cutoff_distance = 4.0,
         comparison = 'weighted_average',
         verbose = False,
-        log = None,
         ):
-        if log is None: log = Log()
         adopt_init_args(self, locals())
 
         self.metric_type = 'similarity'
@@ -163,7 +164,6 @@ class ClusterTLSGroups_OverlapMass:
         self.identify_modules = IdentifyModules(
             comparison_metric = 'similarity',
             verbose = self.verbose,
-            log = self.log,
             )
 
     def __call__(self,
@@ -197,7 +197,7 @@ class ClusterTLSGroups_OverlapMass:
             reduced_hierarchy = module_output.reduced_hierarchy,
             )
 
-        self.log(self.summary(result))
+        logger(self.summary(result))
 
         return result
 
@@ -208,10 +208,10 @@ class ClusterTLSGroups_OverlapMass:
         Connectivity cutoff: {xyz_threshold}
 
         > Clustering Metric Description
-        The overlap between TLS Group 1 and TLS Group 2 is the amount of B-factor of TLS Group 2 that is reproduced by using the TLS matrices from TLS Group 1 on the coordinates of TLS Group 2. 
+        The overlap between TLS Group 1 and TLS Group 2 is the amount of B-factor of TLS Group 2 that is reproduced by using the TLS matrices from TLS Group 1 on the coordinates of TLS Group 2.
         This can be thought of as the amount of B-factor of TLS Group 2 that would be the same if we replaced TLS Group 2 with TLS Group 1.
         NOTE! This metric is not symmetric: The overlap of Group1 -> Group2 is not the same as Group2 -> Group1.
-        Using this metric, clustering is at different thresholds to identify groups that could be merged into a larger group. 
+        Using this metric, clustering is at different thresholds to identify groups that could be merged into a larger group.
         During clustering, connections are only considered to neighbouring groups with {xyz_threshold} Angstrom.""".format(
             comparison = self.comparison,
             xyz_threshold = self.xyz_cutoff_distance,
@@ -228,15 +228,15 @@ class ClusterTLSGroups_OverlapMass:
         s = ""
         s += "Overlap between groups: {:.3f} - {:.3f} A^2.\n".format(off_diagonal_values.min(), off_diagonal_values.max())
         s += "\n"
-        if thresholds: 
+        if thresholds:
             s += "Modules identified at thresholds from {:.3f} - {:.3f} A^2.\n".format(min(thresholds),max(thresholds))
             s += "\n"
             s += "Thresholds & Modules:"
-            for thresh, modules in r.module_info.threshold_unique_modules.iteritems(): 
+            for thresh, modules in r.module_info.threshold_unique_modules.iteritems():
                 s += "\n\n"
                 s += "> Threshold: {}\n".format(thresh)
                 s += "  New potential groupings: {}".format(", ".join(['+'.join(map(str,[i+1 for i in sorted(m)])) for m in modules]))
-        else: 
+        else:
             s += "No modules identified"
 
         return s
@@ -254,14 +254,14 @@ class ClusterTLSGroups_OverlapMass:
         y_width = self.identify_modules.threshold_delta
 
         ###############################################
-        
+
         # What is the range in the thresholds?
-        if result.module_info.threshold_unique_hierarchies: 
+        if result.module_info.threshold_unique_hierarchies:
             y_lim = (
                 min(result.module_info.threshold_unique_hierarchies.keys()),
                 max(result.module_info.threshold_unique_hierarchies.keys()),
                 )
-        else: 
+        else:
             y_lim = None
 
         # Sort hierarchies in ascending order
@@ -287,12 +287,12 @@ class ClusterTLSGroups_OverlapMass:
         # Add levels to plot
         last_threshold = None
         for i_block, (threshold, unique_hierarchy) in enumerate(threshold_unique_hierarchies):
-            #if i_block > 0: 
+            #if i_block > 0:
                 #output_plot.add_line(y_value = threshold - y_width/2. , linestyle='--', color='r')
             #for i, indices_groups in enumerate(unique_hierarchy):
             label = str(threshold)
             output_plot.add_level(
-                list_of_lists_of_indices_tuples=unique_hierarchy, #sorted(map(sorted,unique_hierarchy)), 
+                list_of_lists_of_indices_tuples=unique_hierarchy, #sorted(map(sorted,unique_hierarchy)),
                 y_value = threshold,
                 label = label,
                 )

@@ -336,28 +336,36 @@ def run(params, args=None):
     from pandemic.adp import file_system
     file_system = file_system.PandemicAdpFileSystem(output_directory=params.output.out_dir)
 
-    from bamboo.common.logs import Log
-    log = Log(log_file=os.path.join(file_system.output_directory, 'pandemic.log'))
+    from pandemic.logs import setup_logging
+    logger = setup_logging(
+        name = __name__, # setup root logging for __name__ == __main__
+        log_file = os.path.join(file_system.output_directory, 'pandemic.log'),
+        warning_handler_name = 'warnings',
+        debug = False,
+    )
 
-    #
-    # Warning message accumulator
-    #
-    from pandemic.adp.warnings import WarningLogger
-    warnings = WarningLogger(log)
+    # Get new logger (using __package__ to overcome __name__==__main__)
+    import logging as lg
+    logger = lg.getLogger(__name__)
+
+    # Extract warning handler from logging objects
+    from pandemic.logs import get_handler_recursive
+    warning_handler = get_handler_recursive(logger=logger, handler_name='warnings')
+    assert warning_handler is not None
 
     #
     # Report parameters
     #
     if args is not None:
-        log.heading('Input command')
+        logger.heading('Input command')
         input_command = ' \\\n\t'.join([PROGRAM] + args)
-        log(input_command)
+        logger(input_command)
     else:
         input_command = None
-    log.heading('Non-default parameters')
-    log(master_phil.fetch_diff(source=master_phil.format(params)).as_str())
-    log.heading('Input parameters')
-    log(master_phil.format(params).as_str())
+    logger.heading('Non-default parameters')
+    logger(master_phil.fetch_diff(source=master_phil.format(params)).as_str())
+    logger.heading('Input parameters')
+    logger(master_phil.format(params).as_str())
     with open(os.path.join(file_system.output_directory, 'params-input.eff'), 'w') as fh:
         fh.write(master_phil.format(params).as_str())
 
@@ -375,7 +383,7 @@ def run(params, args=None):
     #
     # Validate input parameters
     #
-    preprocess.validate.validate_parameters(params=params, log=log)
+    preprocess.validate.validate_parameters(params=params)
 
     ##################################################
     #                                                #
@@ -387,7 +395,6 @@ def run(params, args=None):
         model_type = params.input.model_type,
         labelling = params.input.labelling,
         verbose = params.settings.verbose,
-        log = log,
         )
 
     process_input_models_task = preprocess.process_models.ProcessInputModelsTask(
@@ -400,7 +407,6 @@ def run(params, args=None):
         copy_reflection_data_to_output_folder = params.output.copy_reflection_data_to_output_folder,
         check_column_labels = params.analysis.calculate_r_factors,
         verbose = params.settings.verbose,
-        log = log,
         )
 
     select_optimisation_datasets = preprocess.select_datasets.SelectOptimisationDatasetsTask(
@@ -409,13 +415,11 @@ def run(params, args=None):
         sort_datasets_by = params.optimisation.dataset_selection.sort_datasets_by,
         random_seed = params.optimisation.dataset_selection.random_seed,
         verbose = params.settings.verbose,
-        log = log,
         )
 
     extract_uijs_task = preprocess.extract_uijs.ExtractAndProcessModelUijsTask(
         expected_disorder_model = params.input.input_adp_model,
         verbose = params.settings.verbose,
-        log = log,
         )
 
     uij_weights_task = weights.UijArrayWeightsTask(
@@ -423,7 +427,6 @@ def run(params, args=None):
         atom_weighting = params.optimisation.weights.atom_weights,
         renormalise_by_dataset = params.optimisation.weights.renormalise_atom_weights_by_dataset,
         verbose = params.settings.verbose,
-        log = log,
         )
 
     create_hierarchy_task = hierarchy.CreateHierarchicalModelTask(
@@ -432,10 +435,8 @@ def run(params, args=None):
         overall_selection = params.model.overall_selection,
         cbeta_in_backbone = params.model.cbeta_in_backbone,
         remove_duplicate_groups = params.model.remove_duplicate_groups,
-        warnings = warnings,
         verbose = params.settings.verbose,
         n_cpus = params.settings.cpus,
-        log = log,
         )
 
     ##################################################
@@ -501,7 +502,6 @@ def run(params, args=None):
             matrix_tolerance = params.model.echt.tolerances.tls_matrix_tolerance,
             amplitude_tolerance = params.model.echt.tolerances.tls_amplitude_tolerance,
             verbose = params.settings.verbose,
-            log = log,
             )
 
         # Optimisation functions
@@ -517,7 +517,6 @@ def run(params, args=None):
                 amplitude_eps = params.model.echt.eps.tls_amplitude_eps,
                 ),
             verbose = params.settings.verbose,
-            log = log,
             )
 
         if params.model.atomic_adp_level is True:
@@ -529,7 +528,6 @@ def run(params, args=None):
                 uij_eps = params.model.adp_values.uij_eps,
                 uij_tolerance = params.model.adp_values.uij_tolerance,
                 verbose = params.settings.verbose,
-                log = log,
                 )
         else:
             optimise_adp_function = None
@@ -543,7 +541,6 @@ def run(params, args=None):
             convergence_tolerance = params.optimisation.gradient_optimisation.gradient_convergence,
             optimisation_weights =  level_optimisation_weights,
             verbose = params.settings.verbose,
-            log=log,
             )
 
         optimise_model_main = echt.optimise.OptimiseEchtModel(
@@ -553,7 +550,6 @@ def run(params, args=None):
             n_cycles = params.optimisation.number_of_micro_cycles,
             n_cpus = params.settings.cpus,
             verbose = params.settings.verbose,
-            log = log,
             )
 
         update_optimisation_object = echt.optimise.UpdateOptimisationFunction(
@@ -564,16 +560,13 @@ def run(params, args=None):
             output_directory = file_system.optimisation_directory,
             plotting_object = plots.PandemicAdpPlotter(),
             verbose = params.settings.verbose,
-            log = log,
             )
 
         ModelTrackingClass = echt.tracking.EchtTracking
 
         validate_model = echt.validate.ValidateEchtModel(
             uij_tolerance = params.model.adp_values.uij_tolerance,
-            warnings = warnings,
             verbose = params.settings.verbose,
-            log = log,
             )
 
         model_specific_analysis_task = echt.analysis.AnalyseEchtModelTask(
@@ -581,7 +574,6 @@ def run(params, args=None):
             master_phil = master_phil,
             analysis_parameters = params.analysis,
             verbose = params.settings.verbose,
-            log = log,
             )
 
         # Define / override summary classes (these take standard inputs wherever possible)
@@ -625,9 +617,7 @@ def run(params, args=None):
     if params.input.json is not None:
         input_json_manager = json_manager.JsonDataManager.from_json_file(
             filename = params.input.json,
-            warnings = warnings,
             verbose = params.settings.verbose,
-            log = log,
             )
         input_json_manager.apply_to_model_object(model_object=model_object)
 
@@ -638,9 +628,7 @@ def run(params, args=None):
         output_json_filename = os.path.join(file_system.output_directory, 'starting_model.json')
         output_json_manager = json_manager.JsonDataManager.from_model_object(
             model_object = model_object,
-            warnings = warnings,
             verbose = params.settings.verbose,
-            log = log,
             )
         output_json_manager.write_json(
             filename = output_json_filename,
@@ -659,12 +647,15 @@ def run(params, args=None):
         )
 
     # Write parameters being used (may have been updated by program)
-    log.heading('Updated non-default parameters')
-    log(master_phil.fetch_diff(source=master_phil.format(params)).as_str())
+    logger.heading('Updated non-default parameters')
+    logger(master_phil.fetch_diff(source=master_phil.format(params)).as_str())
     params_file = os.path.join(file_system.output_directory, 'params-running.eff')
-    log('Writing all running parameters to output folder: {}'.format(os.path.basename(params_file)))
+    logger('Writing all running parameters to output folder: {}'.format(os.path.basename(params_file)))
     with open(params_file, 'w') as fh:
         fh.write(master_phil.format(params).as_str())
+
+    # Report warnings
+    warning_handler.report_new(logger_name=__package__)
 
     #############################################################
     #                                                           #
@@ -695,7 +686,6 @@ def run(params, args=None):
             delta_b_window_min = params.optimisation.termination.max_b_change_window_min,
             ),
         verbose = params.settings.verbose,
-        log = log,
         )
 
     model_tracking_object = ModelTrackingClass(
@@ -703,7 +693,6 @@ def run(params, args=None):
         plotting_object = plotting_object,
         model_object = model_object,
         verbose = params.settings.verbose,
-        log = log,
         )
 
     #
@@ -714,7 +703,6 @@ def run(params, args=None):
         plotting_object = plotting_object,
         models = models,
         verbose = params.settings.verbose,
-        log = log,
         )
 
     # Add reference values to results object
@@ -743,7 +731,6 @@ def run(params, args=None):
         plotting_object = plotting_object,
         n_cpus = params.settings.cpus,
         verbose = params.settings.verbose,
-        log = log,
         )
 
     #
@@ -755,9 +742,7 @@ def run(params, args=None):
         output_directory = file_system.partition_directory,
         master_phil = master_phil,
         pymol_images = params.output.images.pymol,
-        warnings = warnings,
         verbose = params.settings.verbose,
-        log = log,
         )
 
     # Summary of the model fit (error distribution, etc)
@@ -767,16 +752,13 @@ def run(params, args=None):
         plotting_object = plotting_object,
         master_phil = master_phil,
         verbose = params.settings.verbose,
-        log = log,
         )
 
     # Write output graphs (distributions, profiles, etc) across datasets
     write_fitted_model_summary = WriteModelSummary(
         output_directory = file_system.hierarchy_directory,
         pymol_images = params.output.images.pymol,
-        warnings = warnings,
         verbose = params.settings.verbose,
-        log = log,
         )
 
     # Copy of this task for writing out during optimisation
@@ -793,14 +775,12 @@ def run(params, args=None):
     write_output_structures = WriteStructures(
         output_directory = file_system.structure_directory,
         verbose = params.settings.verbose,
-        log = log,
         )
 
     # HTML Accumulator -- takes in above tasks and collates data
     write_html_summary_task = pandemic.adp.html.WriteHtmlSummaryTask(
         output_directory = file_system.output_directory,
         verbose = params.settings.verbose,
-        log = log,
         )
 
     ################################
@@ -819,6 +799,9 @@ def run(params, args=None):
         plotting_object               = plotting_object,
         )
 
+    # Report warnings
+    warning_handler.report_new(logger_name=__package__)
+
     ################################
     #                              #
     #         End of setup         #
@@ -829,7 +812,7 @@ def run(params, args=None):
     # Exit if requested
     #
     if params.settings.dry_run:
-        log.heading('Exiting after initialisation: dry_run=True')
+        logger.heading('Exiting after initialisation: dry_run=True')
         raise SystemExit('Program exited normally')
 
     ####################################
@@ -854,7 +837,7 @@ def run(params, args=None):
     #                              #
     ################################
 
-    log.heading('Optimising Hierarchical Disorder Model', spacer=True)
+    logger.heading('Optimising Hierarchical Disorder Model', spacer=True)
 
     main_tracking_object.set_target(
         uij_target = extract_uijs_task.result.model_uij,
@@ -868,7 +851,7 @@ def run(params, args=None):
         # Increment before each cycle -- ensures new counter for this cycle.
         main_tracking_object.n_cycle += 1
 
-        log.subheading('Macrocycle {}'.format(main_tracking_object.n_cycle), spacer=True)
+        logger.subheading('Macrocycle {}'.format(main_tracking_object.n_cycle), spacer=True)
 
         update_optimisation_object.update(
             model_optimisation_function = optimise_model_main,
@@ -890,19 +873,19 @@ def run(params, args=None):
             )
 
         # Write graphs
-        log.heading('Writing tracking output')
+        logger.heading('Writing tracking output')
         main_tracking_object.write_output()
         model_tracking_object.write_output()
         update_optimisation_object.write_output()
 
         if main_tracking_object.is_converged():
             if (main_tracking_object.n_cycle >= params.optimisation.min_macro_cycles):
-                log.heading('Terminating optimisation -- model has converged', spacer=True)
+                logger.heading('Terminating optimisation -- model has converged', spacer=True)
                 break
 
         if params.optimisation.intermediate_output.write_model_every:
             if (main_tracking_object.n_cycle % params.optimisation.intermediate_output.write_model_every) == 0:
-                log.subheading('Macrocycle {}'.format(main_tracking_object.n_cycle) + ' - Writing intermediate model summary')
+                logger.subheading('Macrocycle {}'.format(main_tracking_object.n_cycle) + ' - Writing intermediate model summary')
                 # Write out the model during optimisation
                 model_files = write_fitted_model_summary_intermediate(
                     output_directory_suffix = '{:03d}'.format(main_tracking_object.n_cycle),
@@ -917,17 +900,20 @@ def run(params, args=None):
                     plotting_object = plotting_object,
                     )
 
-    log.heading('Optimisation finished', spacer=True)
+    logger.heading('Optimisation finished', spacer=True)
 
     #
     # Validate output model
     #
-    log.heading('Validating output ADPs')
+    logger.heading('Validating output ADPs')
     validate_model(
         model_object = model_object,
         reference_hierarchy = models[0].hierarchy,
         overall_atom_mask = hierarchy_info.overall_atom_mask,
         )
+
+    # Report warnings
+    warning_handler.report_new(logger_name=__package__)
 
     ################################
     #                              #
@@ -938,7 +924,7 @@ def run(params, args=None):
     #
     # Output graphs/csvs
     #
-    log.heading('Writing disorder model summary')
+    logger.heading('Writing disorder model summary')
     model_files = write_fitted_model_summary(
         overall_atom_mask = hierarchy_info.overall_atom_mask,
         level_group_array = hierarchy_info.level_group_array,
@@ -955,7 +941,7 @@ def run(params, args=None):
     #
     # Write fitted structures for each of the datasets
     #
-    log.heading('Writing output structures for each dataset')
+    logger.heading('Writing output structures for each dataset')
     fitted_structures = write_output_structures(
         level_group_array = hierarchy_info.level_group_array,
         model_object = model_object,
@@ -979,9 +965,7 @@ def run(params, args=None):
         output_json_filename = os.path.join(file_system.output_directory, 'optimised_model.json')
         output_json_manager = json_manager.JsonDataManager.from_model_object(
             model_object = model_object,
-            warnings = warnings,
             verbose = params.settings.verbose,
-            log = log,
             )
         output_json_manager.write_json(
             filename = output_json_filename,
@@ -1024,7 +1008,7 @@ def run(params, args=None):
     #
     # Post-process: Refine fitted structures / Calculate R-factors / etc.
     #
-    log.heading('Post-processing fitted structures')
+    logger.heading('Post-processing fitted structures')
     post_process_task.run(
         dataset_labels = model_object.dataset_labels,
         input_structures_dict = process_input_models_task.input_structures,
@@ -1097,17 +1081,20 @@ def run(params, args=None):
         tidy = file_system.TidyOutputFolder(
             compress_pdbs = ('compress_pdbs' in params.output.clean_up_files),
             delete_mtzs   = ('delete_mtzs'   in params.output.clean_up_files),
-            log = log,
             )
         tidy(output_directory=params.output.out_dir)
 
-    warnings.report()
+    warning_handler.report_all(logger_name=__package__)
 
     return None
 
 ############################################################################
 
 def run_pandemic_adp(args):
+
+    from pandemic.logs import setup_root_logging
+    setup_root_logging()
+
     from functools import partial
     from giant.jiffies import run_default
     from pandemic import module_info

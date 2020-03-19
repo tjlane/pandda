@@ -1,7 +1,9 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os, shutil, collections
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
-from bamboo.common.logs import Log
 from bamboo.common.path import easy_directory
 
 from giant.xray.crystal import CrystalSummary
@@ -28,9 +30,7 @@ class ProcessInputModelsTask:
             copy_reflection_data_to_output_folder,
             check_column_labels,
             verbose = False,
-            log = None,
             ):
-        if log is None: log = Log()
         has_reflection_data = False
         need_res_info = (dataset_selection_params.max_resolution is not None) or (weights_params.dataset_weights != 'one')
         table_one_cols = set(table_one_options.column_labels.split(',') + [table_one_options.r_free_label])
@@ -41,7 +41,7 @@ class ProcessInputModelsTask:
             models,
             ):
 
-        self.log.subheading('Processing input models')
+        logger.subheading('Processing input models')
 
         # Use the first hierarchy as the reference
         self.reference_model = models[0]
@@ -126,32 +126,32 @@ class ProcessInputModelsTask:
 
         # Check for errors
         if errors:
-            self.log.heading('Errors found while processing input files')
+            logger.heading('Errors found while processing input files')
             for e in errors:
-                self.log(str(e))
-                self.log('')
-            self.log.bar(False, True)
+                logger(str(e))
+                logger('')
+            logger.bar(False, True)
             raise Sorry("Some structures are invalid or missing information.")
 
         # Report dataset resolutions
-        self.log('\nDataset resolutions (extracted from {} files):'.format('MTZ' if self.has_reflection_data else 'PDB'))
+        logger('\nDataset resolutions (extracted from {} files):'.format('MTZ' if self.has_reflection_data else 'PDB'))
         for m in models:
-            self.log('> {}: {}'.format(m.tag, m.resolution))
+            logger('> {}: {}'.format(m.tag, m.resolution))
 
         # Get and print optimisation
         # Update parameter flags
         if not self.has_reflection_data:
-            self.log.bar(True, False)
-            self.log('Reflection data has not been found in the input folder(s) -- updating settings.')
-            self.log('(Added reflection data must have the same filename as input structures')
-            self.log('but with different extension, e.g. <filename>.pdb & <filename>.mtz)')
-            self.log('Without reflection data, it is not possible to refine the fitted model or recalculate R-factors.')
-            self.log('Setting analysis.refine_output_structures = False')
+            logger.bar(True, False)
+            logger('Reflection data has not been found in the input folder(s) -- updating settings.')
+            logger('(Added reflection data must have the same filename as input structures')
+            logger('but with different extension, e.g. <filename>.pdb & <filename>.mtz)')
+            logger('Without reflection data, it is not possible to refine the fitted model or recalculate R-factors.')
+            logger('Setting analysis.refine_output_structures = False')
             self.analysis_params.refine_output_structures = False
-            self.log('Setting analysis.calculate_r_factors = False')
+            logger('Setting analysis.calculate_r_factors = False')
             self.analysis_params.calculate_r_factors = False
-            #self.log('Setting analysis.calculate_electron_density_metrics = False')
+            #logger('Setting analysis.calculate_electron_density_metrics = False')
             #self.analysis_params.calculate_electron_density_metrics = False
-            self.log.bar()
+            logger.bar()
 
 
