@@ -18,7 +18,7 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
         > Analysis of the difference between the target and the fitted ADPs/B-factors
         The fitting residual is the difference between target and fitted B-factors. The below tabs show the absolute size of this difference, as well as the correlation of the residuals to the different levels.
         """
-        output.extend(self.format_summary(txt, classes=['text-justify', "square-corners-top"]))
+        output.extend(self.format_summary(txt, classes=["square-corners-top"]))
 
         tab_set = output.append(divs.TabSet())
         tab_set.append(self.make_residuals())
@@ -39,7 +39,7 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
         Large RMS values indicate that the fitted model fits poorly to the target B-factors.
         Graphs show the rms values by atom, but also grouped by dataset.
         """
-        output.extend(self.format_summary(txt, classes=['text-justify', "square-corners-top"]))
+        output.extend(self.format_summary(txt, classes=["square-corners-top"]))
 
         #
         # Chain tab set
@@ -54,7 +54,7 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
         """
         txt_block = divs.Block(
             width = 4,
-            contents = self.format_summary(txt, classes=['text-justify']),
+            contents = self.format_summary(txt),
         )
         chain_block.append(txt_block)
 
@@ -80,7 +80,7 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
         """
         txt_block = divs.Block(
             width = 4,
-            contents = self.format_summary(txt, classes=['text-justify']),
+            contents = self.format_summary(txt),
         )
         dataset_block.append(txt_block)
 
@@ -107,7 +107,7 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
         """
         txt_block = divs.Block(
             width = 4,
-            contents = self.format_summary(txt, classes=['text-justify']),
+            contents = self.format_summary(txt),
         )
         atom_type_block.append(txt_block)
 
@@ -135,7 +135,7 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
         """
         txt_block = divs.Block(
             width = 4,
-            contents = self.format_summary(txt, classes=['text-justify']),
+            contents = self.format_summary(txt),
         )
         b_factor_block.append(txt_block)
 
@@ -158,7 +158,7 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
         Large positive correlations between the model and the residual imply that the optimisation did not converge, or that the input model is incomplete.
         Random values across atoms indicate that the model had converged.
         """
-        output.extend(self.format_summary(txt, classes=['text-justify', "square-corners-top"]))
+        output.extend(self.format_summary(txt, classes=["square-corners-top"]))
 
         tab_set = output.append(divs.TabSet())
 

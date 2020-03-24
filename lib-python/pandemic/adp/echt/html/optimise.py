@@ -19,21 +19,33 @@ class EchtOptimisationParametersHtmlSummary(HtmlSummary):
 
         if output_files.get('level amplitudes weights'):
 
-            p = divs.Panel(title='Level amplitude optimisation weights')
-            tab.append(p)
+            wgt_block = tab.append(divs.Block())
 
-            scroll = divs.ScrollX()
-            p.append(scroll)
+            txt = """
+            > Level amplitude optimisation weights
+            Optimisation weights are decayed every cycle, causing an exponential decay in the weight value over cycles.
+            This leads to a straight line when plotted on a logarithmic scale.
+            When the weights reach a minimum value, they are no decayed any further and so will continue horizontally.
+            """
+            txt_block = divs.Block(
+                width = 4,
+                contents = self.format_summary(txt),
+            )
+            wgt_block.append(txt_block)
+
+            scroll_block = divs.ScrollX(
+                width = 8,
+            )
+            wgt_block.append(scroll_block)
 
             wgt_dict = output_files.get('level amplitudes weights')
-
             for variable, image_path in sorted(wgt_dict.iteritems()):
                 block = divs.Block(
                     title = 'Weight: {}'.format(variable),
                     image = self.image(image_path),
-                    width = 5,
+                    width = 8,
                 )
-                scroll.append(block)
+                scroll_block.append(block)
 
         return [tab]
 

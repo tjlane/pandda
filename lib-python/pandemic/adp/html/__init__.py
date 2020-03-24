@@ -154,27 +154,21 @@ class HtmlSummaryConcatenator:
             alt_title = None,
             summaries = [],
             ):
-        if alt_title is None:
-            alt_title = title
         adopt_init_args(self, locals())
 
     def main_summary(self):
-        collated = None
+        collated = divs.Tab(
+            title = self.title,
+            alt_title = self.alt_title,
+        )
         for s in self.summaries:
             s_summary = s.main_summary()
             if len(s_summary) == 0:
                 continue
-            if collated is None:
-                collated = s_summary.pop(0)
             for other_summary in s_summary:
                 collated.extend(other_summary.contents)
         if collated is None:
             return []
-        # Finally apply the title and alt_title
-        if self.title is not None:
-            collated.title = self.title
-        if self.alt_title is not None:
-            collated.alt_title = self.alt_title
         return [collated]
 
     def short_summary(self):
@@ -246,17 +240,15 @@ class WriteHtmlSummaryTask:
 
         # ===========================================================>
         # Construct the data object to populate the template
-        output_data = {}
-        output_data.update({
+        output_data = {
             'header_title' : header_title,
             'body_header' : body_header,
-            })
+            'contents' : [],
+            }
         # Jsons
         if json_plots:
             output_data['json_plots'] = json_plots
         # ===========================================================>
-        # Construct the tabs
-        output_data.setdefault('contents', [])
 
         # Create overview tab
         tab_set = divs.TabSet()

@@ -35,7 +35,10 @@ class EchtModelHtmlSummary(HtmlSummary):
 
         block = divs.Block(
             contents = self.format_summary(
-                'Visualise in pymol by running: "pymol {}"'.format(mf.get("pymol_script")),
+                (
+                    'Visualise in pymol by running: ' +
+                    self.wrap_string('pymol {}', 'pre')
+                ).format(mf.get("pymol_script")),
                 type = 'none',
             ),
         )
@@ -333,9 +336,7 @@ class EchtModelHtmlSummary(HtmlSummary):
                             width = 6,
                             title = 'Level ADPs' + ' (average size over all datasets)'*(mo.n_datasets>1),
                             image = self.image(img2.get(l,{}).get(c_id)),
-                            contents = [
-                                divs.Block(text='<strong>Please note</strong>: highly anisotropic atoms may not be visible in the above image.'),
-                            ],
+                            footnote = '<strong>Please note</strong>: highly anisotropic atoms may not be visible in the above image.',
                         ),
                         divs.Block(
                             width = 6,
@@ -644,9 +645,7 @@ class EchtModelHtmlSummary(HtmlSummary):
                             width = 6,
                             title = 'Level ADPs',
                             image = self.image(img1.get(c_id)),
-                            contents = [
-                                divs.Block(text='<strong>Please note</strong>: highly anisotropic atoms may not be visible in the above image.'),
-                            ],
+                            footnote = '<strong>Please note</strong>: highly anisotropic atoms may not be visible in the above image.',
                         ),
                     ],
                 )

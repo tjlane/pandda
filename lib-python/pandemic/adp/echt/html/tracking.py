@@ -22,10 +22,14 @@ class EchtTrackingHtmlSummary(HtmlSummary):
 
         txt = """
         > ECHT model properties during optimisation
+        These graphs show how the model characteristics of the hierarchical model change during optimisation.
+        At the beginning of optimisation, the number of model parameters and/or the B-factors of each groups are heavilily restrained.
+        As these restraints are relaxed over subsequent cycles, the complexity of the model increases, and so the sum of amplitudes increases.
+        Towards the end of optimisation, these lines should plateau as the model converges.
         """
         txt_block = divs.Block(
             width = 4,
-            contents = self.format_summary(txt, classes=['text-justify']),
+            contents = self.format_summary(txt),
         )
         block.append(txt_block)
 

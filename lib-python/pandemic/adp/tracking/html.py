@@ -22,27 +22,17 @@ class TrackingHtmlSummary(HtmlSummary):
 
         ###
 
-        block = divs.Block(
-            width = 8,
-            title = 'Model fit during optimisation',
-            image = self.image(of['rmsds_convergence']),
-        )
-        output.append(block)
-
-        ###
-
-        chain_block = divs.Block(width=12)
-        output.append(chain_block)
+        chain_block = output.append(divs.Block(width=12))
 
         txt = """
         > Model changes during last cycle
+        The change in the B-factors of each level over the last cycle of optimisation.
+        The B-factor changes are averaged over each residue.
         """
-        txt_block = divs.Block(width=4, contents=self.format_summary(txt, classes=['text-justify']))
+        txt_block = divs.Block(width=4, contents=self.format_summary(txt))
         chain_block.append(txt_block)
 
-        tab_set = divs.TabSet(width=8)
-        chain_block.append(tab_set)
-
+        tab_set = chain_block.append(divs.TabSet(width=8))
         for c, p in of.get('model_changes',{}).iteritems():
             tab = divs.Tab(
                 alt_title = 'Chain {}'.format(c),
@@ -50,6 +40,26 @@ class TrackingHtmlSummary(HtmlSummary):
             )
             tab_set.append(tab)
         tab_set.set_active()
+
+        ###
+
+        rmsd_block = output.append(divs.Block(width=12))
+
+        txt = """
+        > Fit to input ADPs during optimisation
+        The root-mean-squared difference between the input ADPs and the hierarchical model ADPs, on the scale of the B-factor.
+        At the beginning of optimisation the number of model parameters is limited, so the fit will be poor (high rmsd).
+        As the restriction on the number of model parameters is relaxed, the model fit should improve (lower rmsd).
+        For a well-fitting model, a final RMSD of ~1 B-factor or less would be expected.
+        """
+        txt_block = divs.Block(width=4, contents=self.format_summary(txt))
+        rmsd_block.append(txt_block)
+
+        img_block = divs.Block(
+            width = 8,
+            image = self.image(of['rmsds_convergence']),
+        )
+        rmsd_block.append(img_block)
 
         ### TODO ADD OTHER FILES
 
