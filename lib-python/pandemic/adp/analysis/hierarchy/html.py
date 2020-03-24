@@ -1,7 +1,7 @@
 import os, collections
 import numpy, pandas
 from libtbx import adopt_init_args
-from pandemic.adp.html import HtmlSummary
+from pandemic.adp.html import HtmlSummary, divs
 
 
 class AssessHierarchyGroupsHtmlSummary(HtmlSummary):
@@ -12,40 +12,31 @@ class AssessHierarchyGroupsHtmlSummary(HtmlSummary):
 
     def main_summary(self):
 
-        output = {
-            'alt_title' : 'Hierarchy Analysis',
-            'title' : 'Analysis of the Hierarchical Partitioning',
-            'fancy_title' : True,
-            'contents' : [],
-        }
+        output = divs.Tab(
+            title = 'Analysis of the Hierarchical Partitioning',
+            alt_title = 'Hierarchy Analysis',
+        )
 
-        tab_set = {'type':'tabs', 'contents':[]}
-        output['contents'].append(tab_set)
+        tab_set = output.append(divs.TabSet())
+        tab_set.append(self.input_vs_output_partitions())
+        tab_set.set_active()
 
-        tab_set['contents'].append(self.input_vs_output_partitions())
-
-        if tab_set['contents']:
-            tab_set['contents'][0]['active'] = True
-        
         return [output]
 
     def input_vs_output_partitions(self):
 
         of = self.task.result.output_files
 
-        output = {
-            'alt_title' : 'Filtering of Input Hierarchy',
-            'contents' : [],
-        } 
+        output = divs.Tab(alt_title='Filtering of Input Hierarchy')
 
         txt = """
         > Filtering of hierarchy definitions (input vs optimised)
-        Any group that is assigned no disorder in the optimised model is removed from the hierarchy definitions. 
-        These new eff files are written to the output folder and can be used for further runs and may speed model optimisation. 
+        Any group that is assigned no disorder in the optimised model is removed from the hierarchy definitions.
+        These new eff files are written to the output folder and can be used for further runs and may speed model optimisation.
         """
-        output['contents'] += self.format_summary(txt, classes=["square-corners-top"])
+        output.extend(self.format_summary(txt, classes=["square-corners-top"]))
 
-        # 
+        #
         # .eff files
         #
 
@@ -55,24 +46,19 @@ class AssessHierarchyGroupsHtmlSummary(HtmlSummary):
         Filtered Definitions: {out_eff}
         """.format(
             min_b = self.task.min_b_factor,
-            in_eff = of.get('input_eff_file'), 
+            in_eff = of.get('input_eff_file'),
             out_eff = of.get('output_eff_file'),
             )
-        output['contents'] += self.format_summary(txt)
+        output.extend(self.format_summary(txt))
 
-        #        
+        #
         # Input Partitions
         #
 
-        output_block = {
-            'contents' : [],
-        }
-        output['contents'].append(output_block)
-
-        output_block
-
-        tab_set = {'type':'tabs', 'contents':[]}
-        output_block['contents'].append(tab_set)
+        # Create output block for this section
+        output_block = output.append(divs.Block())
+        # Add tab set to the block
+        tab_set = output_block.append(divs.TabSet())
 
         # Add tab for each chain
         input_partitions = of.get('input_partitions_png',{})
@@ -83,27 +69,14 @@ class AssessHierarchyGroupsHtmlSummary(HtmlSummary):
 
             p_in = input_partitions.get(c)
             p_out = output_partitions.get(c)
-            tab = {
-                'alt_title': 'Chain {}'.format(c),
-                'contents' : [
-                    {
-                        'width':6,
-                        'contents' : [{
-                            'title':'Input Hierarchy',
-                            'image':self.image(p_in),
-                            }],
-                        },
-                    {
-                        'width':6,
-                        'contents' : [{
-                            'title':'Filtered Hierarchy',
-                            'image':self.image(p_out),
-                            }],
-                        },
-                    ],
-                }
-            tab_set['contents'].append(tab)
-        if tab_set['contents']:
-            tab_set['contents'][0]['active'] = True
+            tab = divs.Tab(
+                alt_title = 'Chain {}'.format(c),
+                contents = [
+                    divs.Block(width=6, title='Input Hierarchy', image=self.image(p_in)),
+                    divs.Block(width=6, title='Filtered Hierarchy', image=self.image(p_out)),
+                ],
+            )
+            tab_set.append(tab)
+        tab_set.set_active()
 
         return output

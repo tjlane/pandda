@@ -1,6 +1,6 @@
 import os
 from libtbx import adopt_init_args
-from pandemic.adp.html import HtmlSummary
+from pandemic.adp.html import HtmlSummary, divs
 
 
 class PostProcessingHtmlSummary(HtmlSummary):
@@ -20,78 +20,84 @@ class PostProcessingHtmlSummary(HtmlSummary):
 
     def main_summary(self):
 
-        tab = {'id'        : 'statistics',
-               'alt_title' : 'R-factor Statistics',
-               'title' : 'Model R-factor Summary',
-               'fancy_title' : True,
-               'contents'  : [],
-               }
+        tab = divs.Tab(
+            id = 'statistics',
+            title = 'Model R-factor Summary',
+            alt_title = 'R-factor Statistics',
+        )
 
-        tab['contents'].extend(self.get_interactive_results_plot_panels())
-        tab['contents'].extend(self.get_dataset_statistics_table_panels())
-        tab['contents'].extend(self.get_rfactor_panels())
+        tab.extend(self.get_interactive_results_plot_panels())
+        tab.extend(self.get_dataset_statistics_table_panels())
+        tab.extend(self.get_rfactor_panels())
 
-        if len(tab['contents']) > 0:
-            return [tab]
-        else:
+        if len(tab.contents) == 0:
             return []
+
+        return [tab]
 
     def get_rfactor_panels(self):
 
-        panels = []
+        output = []
 
         f = self.analysis_files.get('r_values')
         if f is not None:
-            images = []
-            images.append({
-                'width' : 6,
-                'title' : 'R-Free Comparison',
-                'image' : self.image(f.get('r_free')),
-                'footnote': "Comparison of R-free values for the different input and output structures (and optionally reference R-values).",
-                })
-            images.append({
-                'width' : 6,
-                'title' : 'R-Work Comparison',
-                'image' : self.image(f.get('r_work')),
-                'footnote': "Comparison of R-work values for the different input and output structures (and optionally reference R-values).",
-                })
-            images.append({
-                'width' : 6,
-                'title' : 'R-Gap Comparison',
-                'image' : self.image(f.get('r_gap')),
-                'footnote' : "Comparison of R-work values for the different input and output structures (and optionally reference R-values).",
-                })
-            panels.append({
-                'type' : 'panel',
-                'title' : 'R-factor comparisons across structures',
-                'contents' : images,
-                })
+            panel = divs.Panel(
+                title = 'R-factor comparisons across structures',
+                contents = [
+                    divs.Block(
+                        width = 6,
+                        title = 'R-Free Comparison',
+                        image = self.image(f.get('r_free')),
+                        footnote = "Comparison of R-free values for the different input and output structures (and optionally reference R-values).",
+                    ),
+                    divs.Block(
+                        width = 6,
+                        title = 'R-Work Comparison',
+                        image = self.image(f.get('r_work')),
+                        footnote = "Comparison of R-work values for the different input and output structures (and optionally reference R-values).",
+                    ),
+                    divs.Block(
+                        width = 6,
+                        title = 'R-Gap Comparison',
+                        image = self.image(f.get('r_gap')),
+                        footnote = "Comparison of R-work values for the different input and output structures (and optionally reference R-values).",
+                    ),
+                ],
+            )
+            output.append(panel)
 
         f = self.analysis_files.get('r_value_differences')
         if f is not None:
-            images = []
+            panel = divs.Panel(
+                title = 'R-factor differences between structures',
+            )
+            output.append(panel)
             for (s1, s2), img in f.iteritems():
-                images.append({
-                    'width' : 6,
-                    'title' : 'R-factor differences between {} and {} structures'.format(s1.lower(), s2.lower()),
-                    'image' : self.image(img),
-                    'footnote' : "Changes in the R-factors from the {} model to the {} model (negative values mean lower values for the {} model).".format(s2.lower(), s1.lower(), s1.lower()),
-                    })
-            panels.append({
-                'type' : 'panel',
-                'title' : 'R-factor differences between structures',
-                'contents' : images,
-                })
+                panel.append(
+                    divs.Block(
+                        width = 6,
+                        title = 'R-factor differences between {} and {} structures'.format(
+                            s1.lower(),
+                            s2.lower(),
+                        ),
+                        image = self.image(img),
+                        footnote = "Changes in the R-factors from the {} model to the {} model (negative values mean lower values for the {} model).".format(
+                            s2.lower(),
+                            s1.lower(),
+                            s1.lower(),
+                        ),
+                    )
+                )
 
         # Only add title if some data added
-        if len(panels) > 0:
-            panels.insert(0, {'title' : 'R-factor statistics'})
+        if len(output) > 0:
+            output.insert(0, divs.Block(title='R-factor statistics'))
 
-        return panels
+        return output
 
     def get_interactive_results_plot_panels(self):
 
-        panels = []
+        output = []
 
         # Extract data for plotting
         table = self.results_object.table.dropna(axis='columns', how='all')
@@ -105,33 +111,38 @@ class PostProcessingHtmlSummary(HtmlSummary):
                 }
             self._json_plots.append(json_plot)
             # Panel for the interactive plots to be loaded into
-            panels.append({
-                'type' : 'panel',
-                'title' : 'Interactive Summary Graphs',
-                'contents' : [{'id': json_plot['id']}],
-                })
+            output.append(
+                divs.Panel(
+                    title = 'Interactive Summary Graphs',
+                    contents = [divs.Div(id=json_plot['id'])],
+                )
+            )
 
-        return panels
+        return output
 
     def get_dataset_statistics_table_panels(self):
 
-        panels = []
+        output = []
 
         # Extract table columns with data
         table = self.results_object.table.dropna(axis='columns', how='all')
         if len(table.columns) > 0:
-            panels.append({
-                'type'  : 'panel',
-                'title' : 'Individual Dataset Statistics Table (click to expand/collapse)',
-                'show'  : False,
-                'contents'  : [
-                    {
-                        'text': 'Data from output CSV',
-                        'table': table.to_html(bold_rows=False, classes=['table table-striped table-hover datatable nowrap'])\
-                                   .replace('<th></th>','<th>Dataset</th>')\
-                                   .replace('border="1" ', ''),
-                        },
+            output.append(
+                divs.Panel(
+                    title = 'Individual Dataset Statistics Table (click to expand/collapse)',
+                    show = False,
+                    contents = [
+                        divs.Block(
+                            text = 'Data from output CSV',
+                            table = table.to_html(
+                                bold_rows = False,
+                                classes = ['table table-striped table-hover datatable nowrap'],
+                            ) \
+                            .replace('<th></th>','<th>Dataset</th>') \
+                            .replace('border="1" ', ''),
+                        ),
                     ],
-                })
+                )
+            )
 
-        return panels
+        return output

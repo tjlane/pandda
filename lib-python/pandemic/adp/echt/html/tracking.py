@@ -1,5 +1,5 @@
 from libtbx import adopt_init_args
-from pandemic.adp.html import HtmlSummary
+from pandemic.adp.html import HtmlSummary, divs
 
 
 class EchtTrackingHtmlSummary(HtmlSummary):
@@ -14,34 +14,30 @@ class EchtTrackingHtmlSummary(HtmlSummary):
 
         of = self.tracking_object.output_files
 
-        output = {
-            'alt_title' : 'Optimisation Summary',
-            'title' : 'Optimisation Summary',
-            'fancy_title' : True,
-            'contents' : [],
-            }
+        tab = divs.Tab(title = 'Optimisation Summary')
 
         ###
 
-        block = {'width':12, 'contents' : []}
-        output['contents'].append(block)
+        block = tab.append(divs.Block())
 
         txt = """
         > ECHT model properties during optimisation
         """
-        txt_block = {
-            'width':4,
-            'contents' : self.format_summary(txt, classes=['text-justify']),
-            }
-        block['contents'].append(txt_block)
+        txt_block = divs.Block(
+            width = 4,
+            contents = self.format_summary(txt, classes=['text-justify']),
+        )
+        block.append(txt_block)
 
-        img_block = {
-            'width' : 8,
-            'image' : self.image(of.get('amplitudes_lineplot')),
-            }
-        block['contents'].append(img_block)
+        img_block = divs.Block(
+            width = 8,
+            image = self.image(of.get('amplitudes_lineplot')),
+        )
+        block.append(img_block)
 
-        return [output]
+        ###
+
+        return [tab]
 
     def short_summary(self):
 
@@ -53,18 +49,13 @@ class EchtTrackingHtmlSummary(HtmlSummary):
         table = table[table['cycle'] == max_cycle]
         table = table.set_index('cycle')
 
-        panel = {
-            'type'  : 'alert',
-            'title' : 'ECHT statistics at end of optimisation',
-            'width' : 6,
-            'show'  : True,
-            'contents'  : [
-                {
-                    'text': 'Data from {}'.format(of['tracking_csv']),
-                    'table': table.round(1).to_html(index=False, bold_rows=False, classes=['table table-hover nowrap'])\
-                               .replace('border="1" ', ''),
-                    },
-                ],
-            }
+        block = divs.Alert(
+            title = 'ECHT statistics at end of optimisation',
+            width = 6,
+            text = 'Data from {}'.format(of['tracking_csv']),
+            table = table.round(1)\
+                .to_html(index=False, bold_rows=False, classes=['table table-hover nowrap'])\
+                .replace('border="1" ', ''),
+        )
 
-        return [panel]
+        return [block]

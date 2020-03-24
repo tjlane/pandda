@@ -3,10 +3,7 @@ from libtbx import adopt_init_args
 import numpy, pandas
 
 from pandemic.adp import constants
-from pandemic.adp.html import HtmlSummary
-
-# debugging flags
-DEBUG = False
+from pandemic.adp.html import HtmlSummary, divs
 
 
 class EchtModelHtmlSummary(HtmlSummary):
@@ -32,78 +29,78 @@ class EchtModelHtmlSummary(HtmlSummary):
 
         chain_ids = sorted(set(img1.keys()+img2.keys()+img3.keys()))
 
-        output = {
-            'type'     : 'panel',
-            'title'    : 'Output: Chain-by-Chain Disorder Summaries',
-            'contents' : [],
-        }
+        output = divs.Panel(title='Output: Chain-by-Chain Disorder Summaries')
 
         ###
 
-        block = {
-            'width' : 12,
-            'contents' : self.format_summary('Visualise in pymol by running: "pymol {}"'.format(mf.get("pymol_script")), type='none'),
-        }
-        output['contents'].append(block)
+        block = divs.Block(
+            contents = self.format_summary(
+                'Visualise in pymol by running: "pymol {}"'.format(mf.get("pymol_script")),
+                type = 'none',
+            ),
+        )
+        output.append(block)
 
         ###
 
         for c_id in chain_ids:
-            block = {
-                'width' : 12,
-                'title' : 'Chain {}'.format(c_id),
-                'contents' : [
-                    {
-                        'width' : 4,
-                        'text'  : 'Level-by-level ADP Profile',
-                        'image' : self.image(img1.get(c_id)),
-                        },
-                    {
-                        'width' : 4,
-                        'text'  : 'Total model anisotropy',
-                        'image' : self.image(img2.get(c_id)),
-                        },
-                    {
-                        'width' : 4,
-                        'text'  : 'Partition Schematic',
-                        'image' : self.image(img3.get(c_id)),
-                        },
-                ]
-                }
-            output['contents'].append(block)
+            block = divs.Block(
+                title = 'Chain {}'.format(c_id),
+                contents = [
+                    divs.Block(
+                        width = 4,
+                        text = 'Level-by-level ADP Profile',
+                        image = self.image(img1.get(c_id)),
+                    ),
+                    divs.Block(
+                        width = 4,
+                        text = 'Total model anisotropy',
+                        image = self.image(img2.get(c_id)),
+                    ),
+                    divs.Block(
+                        width = 4,
+                        text = 'Partition Schematic',
+                        image = self.image(img3.get(c_id)),
+                    ),
+                ],
+            )
+            output.append(block)
 
         return [output]
 
     def main_summary(self):
 
-        tab = {'id'        : 'levels',
-               'alt_title' : 'Hierarchical Model Summary',
-               'title'     : 'ECHT level-by-level TLS parameterisation',
-               'fancy_title' : True,
-               'contents': [],
-              }
+        output = divs.Tab(
+            id = 'levels',
+            title = 'ECHT level-by-level TLS parameterisation',
+            alt_title = 'Hierarchical Model Summary',
+        )
 
-        tab['contents'] += self.model_hierarchy_summary_string_list(
-            model_object = self.model_object,
-            isotropic_mask = self.isotropic_mask,
+        output.extend(
+            self.model_hierarchy_summary_string_list(
+                model_object = self.model_object,
+                isotropic_mask = self.isotropic_mask,
             )
-        tab['contents'] += self.model_parameter_summary_string_list(
-            model_object = self.model_object,
-            isotropic_mask = self.isotropic_mask,
+        )
+        output.extend(
+            self.model_parameter_summary_string_list(
+                model_object = self.model_object,
+                isotropic_mask = self.isotropic_mask,
             )
+        )
 
-        overview_tab = self.overview_tab(parent_tab_id=tab['id'])
-        tls_level_tabs = self.create_tls_level_tabs(parent_tab_id=tab['id'])
-        adp_level_tab = self.create_adp_level_tab(parent_tab_id=tab['id'])
+        overview_tab = self.overview_tab(parent_tab_id=output.id)
+        tls_level_tabs = self.create_tls_level_tabs(parent_tab_id=output.id)
+        adp_level_tab = self.create_adp_level_tab(parent_tab_id=output.id)
 
-        tab_set = {
-            'type' : 'tabs',
-            'contents' : [overview_tab] + tls_level_tabs + [adp_level_tab],
-        }
+        tab_set = divs.TabSet(
+            contents = [overview_tab] + tls_level_tabs + [adp_level_tab],
+        )
+        tab_set.set_active()
 
-        tab.setdefault('contents', []).append(tab_set)
+        output.append(tab_set)
 
-        return [tab]
+        return [output]
 
     def model_hierarchy_summary_string_list(self,
         model_object,
@@ -194,83 +191,75 @@ class EchtModelHtmlSummary(HtmlSummary):
         # -------------------------------->
         # Create overview sub-tab
         # -------------------------------->
-        overview_tab = {'id'        : parent_tab_id+'overview',
-                        'active'    : True,
-                        'alt_title' : 'Overview',
-                        'title'     : 'Overview of the parameterised hierarchical ADP model',
-                        'fancy_title' : True,
-                        'contents'  : [],
-                       }
+        overview_tab = divs.Tab(
+            id = parent_tab_id+'overview',
+            title = 'Overview of the parameterised hierarchical ADP model',
+            alt_title = 'Overview',
+        )
 
         ###
 
-        block = {
-            'width' : 12,
-            'contents' : self.format_summary('Visualise in pymol by running: "pymol {}"'.format(mf.get("pymol_script")), type='none'),
-        }
-        overview_tab['contents'].append(block)
+        block = divs.Block(
+            contents = self.format_summary(
+                'Visualise in pymol by running: "pymol {}"'.format(mf.get("pymol_script")),
+                type='none',
+            ),
+        )
+        overview_tab.append(block)
 
         ###
 
-        tabs = {
-            'type' : 'tabs',
-            'contents' : [],
-            }
-        overview_tab.setdefault('contents', []).append(tabs)
+        tab_set = overview_tab.append(divs.TabSet())
 
         # Split the panels up by chain
         for c_id in chain_ids:
 
             # Split up the chains with divider panels
-            tab = {
-                'alt_title' : 'Chain {}'.format(c_id),
-                'title'     : 'Levels for Chain {}'.format(c_id),
-                'fancy_title' : True,
-                'contents'  : [],
-                }
-            tabs['contents'].append(tab)
+            tab = divs.Tab(
+                title = 'Levels for Chain {}'.format(c_id),
+                alt_title = 'Chain {}'.format(c_id),
+            )
+            tab_set.append(tab)
 
-            summary_dict = {
-                'type' : 'alert',
-                'contents' : [
-                    {
-                        'width' : 6,
-                        'title' : 'Level-by-level Disorder Profile',
-                        'image' : self.image(img1.get(c_id)),
-                        },
-                    {
-                        'width' : 6,
-                        'title' : 'Anisotropy of Total Disorder',
-                        'image' : self.image(img2.get(c_id)),
-                        },
-                    ],
-                }
-            tab['contents'].append(summary_dict)
+            block = divs.Alert(
+                contents = [
+                    divs.Block(
+                        width = 6,
+                        title = 'Level-by-level Disorder Profile',
+                        image = self.image(img1.get(c_id)),
+                    ),
+                    divs.Block(
+                        width = 6,
+                        title = 'Anisotropy of Total Disorder',
+                        image = self.image(img2.get(c_id)),
+                    ),
+                ],
+            )
+            tab.append(block)
 
             n_levels = self.model_object.n_levels
             for i_l, l in enumerate(self.model_object.all_level_names):
 
-                d = {
-                        'title' : 'Level {} of {} ({})'.format(i_l+1, n_levels, l),
-                        'type'  : 'alert',
-                        'contents'  : [
-                            {
-                                'width' : 4,
-                                'image' : self.image(img3.get(l, {}).get(c_id)),
-                                },
-                            {
-                                'width' : 4,
-                                'image' : self.image(img4.get(l, {}).get(c_id)),
-                                },
-                            {
-                                'width' : 4,
-                                'image' : self.image(img5.get(l, {}).get(c_id)),
-                                },
-                            ],
-                        }
-                tab.setdefault('contents', []).append(d)
+                block = divs.Alert(
+                    title = 'Level {} of {} ({})'.format(i_l+1, n_levels, l),
+                    contents = [
+                        divs.Block(
+                            width = 4,
+                            image = self.image(img3.get(l, {}).get(c_id)),
+                        ),
+                        divs.Block(
+                            width = 4,
+                            image = self.image(img4.get(l, {}).get(c_id)),
+                        ),
+                        divs.Block(
+                            width = 4,
+                            image = self.image(img5.get(l, {}).get(c_id)),
+                        ),
+                    ],
+                )
+                tab.append(block)
 
-        tabs['contents'][0].setdefault('active', True)
+        tab_set.set_active()
 
         return overview_tab
 
@@ -300,72 +289,68 @@ class EchtModelHtmlSummary(HtmlSummary):
         # -------------------------------->
         # Create tab for each level
         # -------------------------------->
-        tabs = []
+        tab_list = []
         for i_l, l in enumerate(mo.tls_level_names):
 
             # Create dictionary for this tab and add to tab_list
-            level_tab = {
-                'id'        : parent_tab_id+'lvl{}'.format(i_l),
-                'alt_title' : 'Level {} ({})'.format(i_l+1, l),
-                'contents'  : [],
-                }
-            tabs.append(level_tab)
+            level_tab = divs.Tab(
+                id = parent_tab_id+'lvl{}'.format(i_l),
+                alt_title = 'Level {} ({})'.format(i_l+1, l),
+            )
+            tab_list.append(level_tab)
 
             txt = """
             > Level {l_num} ({l_name})
             Level {l_num} of {n_levels}. Composed of {n_groups} groups.
-            """.format(l_num=i_l+1, l_name=l, n_levels=mo.n_levels, n_groups=len(mo.tls_objects[i_l]))
-            level_tab['contents'] += self.format_summary(txt, classes=['square-corners-top'])
+            """.format(
+                l_num = i_l+1,
+                l_name = l,
+                n_levels = mo.n_levels,
+                n_groups = len(mo.tls_objects[i_l]),
+            )
+            level_tab.extend(self.format_summary(txt, classes=['square-corners-top']))
 
             ########################################################
 
             # Add overview at the top of the tab
-            tab_set = {
-                'type'  : 'tabs',
-                'title' : "Chain-by-Chain Summaries",
-                'contents'  : [],
-            }
-            level_tab['contents'].append(tab_set)
+            tab_set = divs.TabSet(title="Chain-by-Chain Summaries")
+            level_tab.append(tab_set)
 
             # Make tabs
             for c_id in chain_ids:
 
-                chain_tab = {
-                    'id'        : level_tab['id']+'chain{}'.format(self.counter.next()),
-                    'alt_title' : 'Chain {}'.format(c_id),
-                    'title' : 'Disorder Summary for Chain {}'.format(c_id),
-                    'fancy_title' : True,
-                    'contents'  : [],
-                    }
-
-                chain_tab['contents'] += [
-                    {
-                        'width' : 6,
-                        'title' : 'Image of chain, coloured by group',
-                        'image' : self.image(img1.get(l,{}).get(c_id)),
-                        },
-                    {
-                        'width' : 6,
-                        'title' : 'Level ADPs' + ' (average size over all datasets)'*(mo.n_datasets>1),
-                        'image' : self.image(img2.get(l,{}).get(c_id)),
-                        'body'  : [{'text' :'<strong>Please note</strong>: highly anisotropic atoms may not be visible in the above image.'}],
-                        },
-                    {
-                        'width' : 6,
-                        'title' : 'Level ADPs by mode' + ' (average size over all datasets)'*(mo.n_datasets>1),
-                        'image' : self.image(img3.get(l,{}).get(c_id)),
-                        },
-                    {
-                        'width' : 6,
-                        'title' : 'ADP Anisotropy' + ' (from average over all datasets)'*(mo.n_datasets>1),
-                        'image' : self.image(img4.get(l,{}).get(c_id)),
-                        },
-                    ]
-
-                tab_set['contents'].append(chain_tab)
-
-            if tab_set['contents']:
-                tab_set['contents'][0].setdefault('active', True)
+                chain_tab = divs.Tab(
+                    id = level_tab['id']+'chain{}'.format(self.counter.next()),
+                    title = 'Disorder Summary for Chain {}'.format(c_id),
+                    alt_title = 'Chain {}'.format(c_id),
+                    contents = [
+                        divs.Block(
+                            width = 6,
+                            title = 'Image of chain, coloured by group',
+                            image = self.image(img1.get(l,{}).get(c_id)),
+                        ),
+                        divs.Block(
+                            width = 6,
+                            title = 'Level ADPs' + ' (average size over all datasets)'*(mo.n_datasets>1),
+                            image = self.image(img2.get(l,{}).get(c_id)),
+                            contents = [
+                                divs.Block(text='<strong>Please note</strong>: highly anisotropic atoms may not be visible in the above image.'),
+                            ],
+                        ),
+                        divs.Block(
+                            width = 6,
+                            title = 'Level ADPs by mode' + ' (average size over all datasets)'*(mo.n_datasets>1),
+                            image = self.image(img3.get(l,{}).get(c_id)),
+                        ),
+                        divs.Block(
+                            width = 6,
+                            title = 'ADP Anisotropy' + ' (from average over all datasets)'*(mo.n_datasets>1),
+                            image = self.image(img4.get(l,{}).get(c_id)),
+                        ),
+                    ],
+                )
+                tab_set.append(chain_tab)
+            tab_set.set_active()
 
             ########################################################
 
@@ -376,89 +361,97 @@ class EchtModelHtmlSummary(HtmlSummary):
             ########################################################
 
             # Amplitude summaries
-            tls_amp_dict = {
-                'type' : 'panel',
-                'width' : 12,
-                'title' : 'Group Amplitudes',
-                'contents' : [],
-                }
-            level_tab['contents'].append(tls_amp_dict)
-            # Note about the scaling of the amplitudes in the table
-            tls_amp_dict['contents'] += [{'text':'Amplitudes are in the scale of B-factors'}]
+            tls_amp_panel = divs.Panel(
+                title = 'Group Amplitudes',
+                contents = [
+                    # Note about the scaling of the amplitudes in the table
+                    divs.Block(text='Amplitudes are in the scale of B-factors'),
+                ],
+            )
+            level_tab.append(tls_amp_panel)
+
             # Get TLS amplitude summaries
             tls_amplitudes_table_data = tls_amplitudes.copy()
-            tls_amplitudes_table_data['average'] = tls_amplitudes_table_data[mo.dataset_labels].mean(axis=1)
+            av_label = 'average'
+            tls_amplitudes_table_data[av_label] = tls_amplitudes_table_data[mo.dataset_labels].mean(axis=1)
             # Reorder columns & multiply all of the flot columns by EIGHTPISQ
             cols = tls_amplitudes_table_data.columns.tolist()
-            for c in ['average'] + mo.dataset_labels:
+            for c in [av_label] + mo.dataset_labels:
                 # remove from list so can be reordered later
                 cols.remove(c)
                 # scale column in table
                 tls_amplitudes_table_data[c] *= constants.EIGHTPISQ
-            tls_amplitudes_table_data = tls_amplitudes_table_data[cols+['average']+mo.dataset_labels]
+            # resort columns
+            tls_amplitudes_table_data = tls_amplitudes_table_data[cols+[av_label]+mo.dataset_labels]
+
+            # Create html object
             tls_amp_data = self.create_tls_amplitude_summary(tls_amplitudes=tls_amplitudes_table_data)
-            tls_amp_dict['contents'] += [tls_amp_data]
+            tls_amp_panel.append(tls_amp_data)
 
             ########################################################
 
-            tab_set = {
-                'type'  : 'tabs',
-                'title' : "Group-by-Group Summaries",
-                'classes' : ['nav-hover'],
-                'contents'  : [],
-            }
-            level_tab['contents'].append(tab_set)
+            tab_set = divs.TabSet(
+                title = "Group-by-Group Summaries",
+                classes = ['nav-hover'],
+            )
+            level_tab.append(tab_set)
 
             # Extract groups for each level
             for i_g, tls_obj in enumerate(mo.tls_objects[i_l]):
                 n_g = i_g + 1
 
                 # Create panel dictionary
-                group_tab = {
-                    'id'        : level_tab['id']+'group{}'.format(self.counter.next()),
-                    'alt_title' : 'Group {}'.format(n_g),
-                    'contents'  : [],
-                    }
-                tab_set['contents'].append(group_tab)
+                group_tab = divs.Tab(
+                    id = level_tab['id']+'group{}'.format(self.counter.next()),
+                    alt_title = 'Group {}'.format(n_g),
+                )
+                tab_set.append(group_tab)
 
                 txt = """
                 > Group {g_num} - {g_name}
                 Number of atoms: {n_atoms}
-                """.format(g_num=n_g, g_name=tls_obj.label, n_atoms=tls_obj.n_atoms)
-                group_tab['contents'] += self.format_summary(txt, classes=['square-corners-top'])
+                """.format(
+                    g_num = n_g,
+                    g_name = tls_obj.label,
+                    n_atoms = tls_obj.n_atoms,
+                )
+                group_tab.extend(self.format_summary(txt, classes=['square-corners-top']))
 
                 # Get images and format values
-                image_block = {
-                    'width' : 12,
-                    'contents' : [],
-                    }
+                image_block = divs.Block()
 
                 img = mf.get('level_uijs_pymol_by_group_png', {}).get(i_l+1, {}).get(n_g)
                 if img:
-                    image_block['contents'].append({
-                        'width' : 4,
-                        'title' : 'Average size (all datasets)',
-                        'image' : self.image(img),
-                        })
+                    image_block.append(
+                        divs.Block(
+                            width = 4,
+                            title = 'Average size (all datasets)',
+                            image = self.image(img),
+                        )
+                    )
 
                 img = mf.get('level_tls_amplitudes_png', {}).get(i_l+1, {}).get(n_g)
                 if img:
-                    image_block['contents'].append({
-                        'width' : 4,
-                        'title' : 'Amplitude distribution',
-                        'image' : self.image(img),
-                        })
+                    image_block.append(
+                        divs.Block(
+                            width = 4,
+                            title = 'Amplitude distribution',
+                            image = self.image(img),
+                        )
+                    )
 
                 img = mf.get('level_uijs_pymol_by_group_rescaled_png', {}).get(i_l+1, {}).get(n_g)
                 if img:
-                    image_block['contents'].append({
-                        'width' : 4,
-                        'title' : 'Normalised (arbitrary scale)',
-                        'image' : self.image(img),
-                        })
+                    image_block.append(
+                        divs.Block(
+                            width = 4,
+                            title = 'Normalised (arbitrary scale)',
+                            image = self.image(img),
+                        )
+                    )
 
-                if image_block['contents']:
-                    tab_set['contents'].append(image_block)
+                if image_block.contents:
+                    group_tab.append(image_block)
 
                 # Extract TLS values for this group
                 tls_mats = tls_matrices.loc[n_g].drop(columns=['label'])
@@ -466,129 +459,135 @@ class EchtModelHtmlSummary(HtmlSummary):
                 tls_amps_av = tls_amps.mean(axis=1).values # average over datasets
                 tls_coms = pandas.DataFrame(index=tls_amps.T.index, data=numpy.array(tls_obj.origins))
 
-                # All tls dicts for the scroll div
-                tls_mat_dicts = []
+                # Div for the TLS matrices summary
+                tls_mat_block = divs.ScrollX(classes=['bordered'])
+                group_tab.append(tls_mat_block)
 
-                # Get TLS matrix summaries for core model
-                dicts = []
-                dicts += [{
-                    'title' : 'TLS matrices averaged over all datasets',
-                    'classes' : ['text-center'],
-                    'text' :
-                            ' <strong>scroll for individual datasets</strong> ' + \
-                            '<i class="fa fa-angle-double-right fa-2x" style="vertical-align: middle;"></i>' + \
-                            '<br>',
-                    }]
-
+                # Div for the average over all the datasets
+                core_block = divs.Block()
+                tls_mat_block.append(core_block)
+                # Header
+                core_block.append(
+                    divs.Block(
+                        title = 'TLS matrices averaged over all datasets',
+                        classes = ['text-center'],
+                        text = (
+                            ' <strong>scroll for individual datasets</strong> '
+                            '<i class="fa fa-angle-double-right fa-2x" style="vertical-align: middle;"></i>'
+                            '<br>'
+                        ),
+                    )
+                )
                 # Average amplitudes for each of the modes
-                d = {
-                    'type' : 'alert', 'width' : 6,
-                    'title' : 'TLS amplitudes',
-                    'text' : '<br>'.join(['<samp>Mode {}: <strong>{:>.5f} &#8491;&#178; ({:>.3f} B-factor)</strong></samp>'.format(i+1, v, constants.EIGHTPISQ*v) for i,v in enumerate(tls_amps_av)]),
-                    }
-                dicts.append(d)
-                # Origin - NONE HERE
-                d = {
-                    'type' : 'alert', 'width' : 6,
-                    'title' : 'TLS Group Origin',
-                    'text' : 'No origin has been applied to the libration axes',
-                    }
-                dicts.append(d)
+                core_block.append(
+                    divs.Alert(
+                        width = 6,
+                        title = 'TLS amplitudes',
+                        text = '<br>'.join([
+                            '<samp>Mode {}: <strong>{:>.5f} &#8491;&#178; ({:>.3f} B-factor)</strong></samp>'.format(
+                                i+1,
+                                v,
+                                constants.EIGHTPISQ*v,
+                            ) for i,v in enumerate(tls_amps_av)
+                        ]),
+                    )
+                )
+                # TLS Origin - NONE HERE
+                core_block.append(
+                    divs.Alert(
+                        width = 6,
+                        title = 'TLS Group Origin',
+                        text = 'No origin has been applied to the libration axes',
+                    )
+                )
+                # Matrices & Decompositions
                 for i_mode, (idx, mats) in enumerate(tls_mats.iterrows()):
                     # Average amplitude for the mode
                     mode_amp_av = tls_amps_av[i_mode]
                     # Matrix summary
-                    d = self.create_tls_matrix_summary(tls_matrices=mode_amp_av*mats)
-                    d.update({
-                        'width' : 12,
-                        'title' : 'Mode {} (average over all datasets)'.format(idx),
-                        })
-                    dicts.append(d)
+                    block = self.create_tls_matrix_summary(tls_matrices=mode_amp_av*mats)
+                    block.width = 12
+                    block.title = 'Mode {} (average over all datasets)'.format(idx)
+                    core_block.append(block)
                     # TLS decomposition summary
-                    d = self.create_tls_decomposition_summary(
+                    block = self.create_tls_decomposition_summary(
                         tls_matrices = mats,
                         tls_origin = None,
                         tls_amplitude = mode_amp_av,
                         tolerance = self.parameters.model.echt.tolerances.tls_matrix_tolerance,
                         )
-                    d.update({
-                        'width' : 12,
-                        'title' : 'Average TLS decomposition of mode {}:'.format(i_mode+1),
-                        })
-                    dicts.append(d)
-                # Append to parent
-                tls_mat_dicts.append({'contents':dicts})
+                    block.width = 12
+                    block.title = 'Average TLS decomposition of mode {}:'.format(i_mode+1)
+                    core_block.append(block)
 
                 # Now add the dicts for the datasets
                 for i_dst, (dst_lab, dst_amps) in enumerate(tls_amps.T.iterrows()):
 
                     orgn = tuple(tls_coms.loc[dst_lab].values)
 
-                    dicts = []
-                    d = {
-                        'title' : 'TLS matrices for dataset {}'.format(dst_lab),
-                        'classes' : ['text-center'],
-                        'text' :
-                            '<i class="fa fa-angle-double-left fa-2x" style="vertical-align: middle;"></i>' + \
-                            ' <strong>scroll for other datasets</strong> ' + \
-                            '<i class="fa fa-angle-double-right fa-2x" style="vertical-align: middle;"></i>' + \
-                            '<br>',
-                        }
-                    dicts.append(d)
-                    d = {
-                        'type' : 'alert', 'width' : 6,
-                        'title' : 'TLS amplitudes',
-                        'text' : '<br>'.join(['<samp>Mode {}: <strong>{:>.5f} &#8491;&#178; ({:>.3f} B-factor)</strong></samp>'.format(i+1, v, constants.EIGHTPISQ*v) for i,v in enumerate(dst_amps.values)]),
-                        }
-                    dicts.append(d)
-                    d = {
-                        'type' : 'alert', 'width' : 6,
-                        'title' : 'TLS Group Origin',
-                        'text' : '<samp>({:>.3f}, {:>.3f}, {:>.3f})</samp>'.format(*orgn),
-                        }
-                    dicts.append(d)
-
+                    # Div for the each dataset
+                    dset_block = divs.Block()
+                    tls_mat_block.append(dset_block)
+                    # Header
+                    dset_block.append(
+                        divs.Block(
+                            title = 'TLS matrices for dataset "{}"'.format(dst_lab),
+                            classes = ['text-center'],
+                            text = (
+                                '<i class="fa fa-angle-double-left fa-2x" style="vertical-align: middle;"></i>'
+                                ' <strong>scroll for other datasets</strong> '
+                                '<i class="fa fa-angle-double-right fa-2x" style="vertical-align: middle;"></i>'
+                                '<br>'
+                            ),
+                        )
+                    )
+                    # Amplitudes for each of the modes
+                    dset_block.append(
+                        divs.Alert(
+                            width = 6,
+                            title = 'TLS amplitudes',
+                            text = '<br>'.join([
+                                '<samp>Mode {}: <strong>{:>.5f} &#8491;&#178; ({:>.3f} B-factor)</strong></samp>'.format(
+                                    i+1,
+                                    v,
+                                    constants.EIGHTPISQ*v,
+                                ) for i,v in enumerate(dst_amps.values)
+                            ]),
+                        )
+                    )
+                    # TLS Origin
+                    dset_block.append(
+                        divs.Alert(
+                            width = 6,
+                            title = 'TLS Group Origin',
+                            text = '<samp>({:>.3f}, {:>.3f}, {:>.3f})</samp>'.format(*orgn),
+                        )
+                    )
+                    # Matrices & Decompositions
                     for i_mode, (idx, mats) in enumerate(tls_mats.iterrows()):
                         # TLS matrix summary
-                        d = self.create_tls_matrix_summary(tls_matrices=dst_amps.values[i_mode]*mats)
-                        d.update({
-                            'width' : 12,
-                            'title' : 'Mode {} (with amplitudes):'.format(i_mode+1),
-                            })
-                        dicts.append(d)
+                        block = self.create_tls_matrix_summary(tls_matrices=dst_amps.values[i_mode]*mats)
+                        block.width = 12
+                        block.title = 'Mode {} (with amplitudes):'.format(i_mode+1)
+                        dset_block.append(block)
                         # TLS decomposition summary
-                        d = self.create_tls_decomposition_summary(
+                        block = self.create_tls_decomposition_summary(
                             tls_matrices = mats,
                             tls_origin = orgn,
                             tls_amplitude = dst_amps.values[i_mode],
                             tolerance = self.parameters.model.echt.tolerances.tls_matrix_tolerance,
                             )
-                        d.update({
-                            'width' : 12,
-                            'title' : 'TLS decomposition of mode {}:'.format(i_mode+1),
-                            })
-                        dicts.append(d)
+                        block.width = 12
+                        block.title = 'TLS decomposition of mode {}:'.format(i_mode+1)
+                        dset_block.append(block)
 
-                    # Append to parent
-                    tls_mat_dicts.append({'contents':dicts})
+                # Update the last block
+                last_block_top = tls_mat_block.contents[-1].contents[0]
+                last_block_top.text = last_block_top.text.replace('<i class="fa fa-angle-double-right fa-2x" style="vertical-align: middle;"></i>','')
 
-                # Update the last dictionary
-                if tls_mat_dicts:
-                    d = tls_mat_dicts[-1]['contents'][0]
-                    d['text'] = d['text'].replace('<i class="fa fa-angle-double-right fa-2x" style="vertical-align: middle;"></i>','')
+            tab_set.set_active()
 
-                # Div for the TLS summary
-                tls_mat_block = {
-                    'type' : 'scroll',
-                    'classes' : ['bordered'],
-                    'contents': tls_mat_dicts,
-                    }
-                group_tab['contents'].append(tls_mat_block)
-
-            if tab_set['contents']:
-                tab_set['contents'][0].setdefault('active', True)
-
-        return tabs
+        return tab_list
 
     def create_adp_level_tab(self, parent_tab_id):
         """Create tab for residual level"""
@@ -608,90 +607,96 @@ class EchtModelHtmlSummary(HtmlSummary):
         chain_ids = img1.keys()+img2.keys()+img3.keys()
         chain_ids = sorted(set(chain_ids))
 
-        atomic_tab = {
-            'id'        : parent_tab_id+'lvlatm',
-            'alt_title' : 'Level {} ({})'.format(i_l+1, l),
-            'contents'  : [],
-            }
+        atomic_tab = divs.Tab(
+            id = parent_tab_id+'lvlatm',
+            alt_title = 'Level {} ({})'.format(i_l+1, l),
+        )
 
         txt = """
         > Level {l_num} ({l_name})
         Level {l_num} of {n_levels}. Composed of {n_atoms} atoms.
-        """.format(l_num=i_l+1, l_name=l, n_levels=mo.n_levels, n_atoms=mo.n_atoms)
-        atomic_tab['contents'] += self.format_summary(txt, classes=['square-corners-top'])
+        """.format(
+            l_num = i_l+1,
+            l_name = l,
+            n_levels = mo.n_levels,
+            n_atoms = mo.n_atoms,
+        )
+        atomic_tab.extend(self.format_summary(txt, classes=['square-corners-top']))
 
         # Add overview at the top of the tab
-        tab_set = {
-            'type'  : 'tabs',
-            'title' : "Chain-by-Chain Summaries",
-            'contents'  : [],
-        }
-        atomic_tab.setdefault('contents',[]).append(tab_set)
+        tab_set = divs.TabSet(title="Chain-by-Chain Summaries")
+        atomic_tab.append(tab_set)
 
         for c_id in chain_ids:
 
-            chain_tab = {
-                'id'        : atomic_tab['id']+'chain{}'.format(self.counter.next()),
-                'alt_title' : 'Chain {}'.format(c_id),
-                'title'     : 'Summary for Chain {}'.format(c_id),
-                'fancy_title' : True,
-                'contents'  : [],
-                }
+            chain_tab = divs.Tab(
+                id = atomic_tab['id']+'chain{}'.format(self.counter.next()),
+                title = 'Summary for Chain {}'.format(c_id),
+                alt_title = 'Chain {}'.format(c_id),
+            )
+            tab_set.append(chain_tab)
 
-            chain_tab['contents'] += [
-                {
-                    'contents' : [
-                        {
-                            'width' : 3,
-                            },
-                        {
-                            'width' : 6,
-                            'title' : 'Level ADPs',
-                            'image' : self.image(img1.get(c_id)),
-                            'body'  : [{'text' :'<strong>Please note</strong>: highly anisotropic atoms may not be visible in the above image.'}],
-                            },
-                        ],
-                    },
-                {
-                    'contents' : [
-                        {
-                            'width' : 6,
-                            'title' : 'Level ADPs Profile',
-                            'image' : self.image(img2.get(c_id)),
-                            },
-                        {
-                            'width' : 6,
-                            'title' : 'ADP Anisotropy Profile',
-                            'image' : self.image(img3.get(c_id)),
-                            },
-                        ],
-                    },
-                ]
+            chain_tab.append(
+                divs.Block(
+                    contents = [
+                        divs.Block(width=3),
+                        divs.Block(
+                            width = 6,
+                            title = 'Level ADPs',
+                            image = self.image(img1.get(c_id)),
+                            contents = [
+                                divs.Block(text='<strong>Please note</strong>: highly anisotropic atoms may not be visible in the above image.'),
+                            ],
+                        ),
+                    ],
+                )
+            )
 
-            tab_set['contents'].append(chain_tab)
+            chain_tab.append(
+                divs.Block(
+                    contents = [
+                        divs.Block(
+                            width = 6,
+                            title = 'Level ADPs Profile',
+                            image = self.image(img2.get(c_id)),
+                        ),
+                        divs.Block(
+                            width = 6,
+                            title = 'ADP Anisotropy Profile',
+                            image = self.image(img3.get(c_id)),
+                        ),
+                    ],
+                )
+            )
 
-        if tab_set['contents']:
-            tab_set['contents'][0].setdefault('active', True)
+        tab_set.set_active()
 
         return atomic_tab
 
     @classmethod
-    def create_tls_matrix_summary(cls, tls_matrices):
+    def create_tls_matrix_summary(cls,
+        tls_matrices,
+        ):
+
         if tls_matrices.any():
 
-            tls_mdl_str = ('<strong>T Matrix:</strong><br><br>' + \
-                           '{T11:>7.3f}, {T12:>7.3f}, {T13:>7.3f},<br>' + \
-                           '{BLANKSP:^8} {T22:>7.3f}, {T23:>7.3f},<br>' + \
-                           '{BLANKSP:^8} {BLANKSP:^8} {T33:>7.3f},<br><br><br>' + \
-                           '<strong>L Matrix:</strong><br><br>' + \
-                           '{L11:>7.3f}, {L12:>7.3f}, {L13:>7.3f},<br>' + \
-                           '{BLANKSP:^8} {L22:>7.3f}, {L23:>7.3f},<br>' + \
-                           '{BLANKSP:^8} {BLANKSP:^8} {L33:>7.3f},<br><br><br>' + \
-                           '<strong>S Matrix:</strong><br><br>' + \
-                           '{S11:>7.3f}, {S12:>7.3f}, {S13:>7.3f},<br>' + \
-                           '{S21:>7.3f}, {S22:>7.3f}, {S23:>7.3f},<br>' + \
-                           '{S31:>7.3f}, {S32:>7.3f}, {S33:>7.3f}'
-                           ).format(BLANKSP='-', **tls_matrices.round(3)).replace(' ','&nbsp;').split('<br><br><br>')
+            tls_mdl_str = (
+                '<strong>T Matrix:</strong><br><br>' + \
+                '{T11:>7.3f}, {T12:>7.3f}, {T13:>7.3f},<br>' + \
+                '{BLANKSP:^8} {T22:>7.3f}, {T23:>7.3f},<br>' + \
+                '{BLANKSP:^8} {BLANKSP:^8} {T33:>7.3f},<br><br><br>' + \
+                '<strong>L Matrix:</strong><br><br>' + \
+                '{L11:>7.3f}, {L12:>7.3f}, {L13:>7.3f},<br>' + \
+                '{BLANKSP:^8} {L22:>7.3f}, {L23:>7.3f},<br>' + \
+                '{BLANKSP:^8} {BLANKSP:^8} {L33:>7.3f},<br><br><br>' + \
+                '<strong>S Matrix:</strong><br><br>' + \
+                '{S11:>7.3f}, {S12:>7.3f}, {S13:>7.3f},<br>' + \
+                '{S21:>7.3f}, {S22:>7.3f}, {S23:>7.3f},<br>' + \
+                '{S31:>7.3f}, {S32:>7.3f}, {S33:>7.3f}'
+            ).format(
+                BLANKSP='-',
+                **tls_matrices.round(3)
+            ).replace(' ','&nbsp;').split('<br><br><br>')
             block_width = 4
 
         else:
@@ -700,23 +705,26 @@ class EchtModelHtmlSummary(HtmlSummary):
             block_width = 12
 
         # Format output dictionary
-        out_dict = {
-            'type' : 'alert',
-            'width' : 12,
-            'contents' : [],
-            }
+        out_block = divs.Alert(width=12)
 
         for b in tls_mdl_str:
-            out_dict['contents'].append({
-                'classes' : ['bordered'],
-                'width' : block_width,
-                'text' : '<samp><strong>'+b+'</strong></samp>',
-                })
+            out_block.append(
+                divs.Block(
+                    width = block_width,
+                    text = '<samp><strong>'+b+'</strong></samp>',
+                    classes = ['bordered'],
+                )
+            )
 
-        return out_dict
+        return out_block
 
     @classmethod
-    def create_tls_decomposition_summary(cls, tls_matrices, tls_origin=None, tls_amplitude=1.0, tolerance=1e-6):
+    def create_tls_decomposition_summary(cls,
+        tls_matrices,
+        tls_origin = None,
+        tls_amplitude = 1.0,
+        tolerance = None,
+        ):
 
         T = tuple(tls_matrices[['T11','T22','T33','T12','T13','T23']])
         L = tuple(tls_matrices[['L11','L22','L33','L12','L13','L23']])
@@ -772,29 +780,37 @@ class EchtModelHtmlSummary(HtmlSummary):
             libration_block = ("<samp>\n" + libration_block + "\n</samp>").replace(' ','&nbsp;')
 
             dcm_blocks = [
-                {'width' : 6, 'title' : "Vibrational Modes", 'text' : vibration_block},
-                {'width' : 6, 'title' : "Librational &amp; Screw Modes", 'text' : libration_block},
-                ]
+                divs.Block(
+                    width = 6,
+                    title = "Vibrational Modes",
+                    text = vibration_block,
+                ),
+                divs.Block(
+                    width = 6,
+                    title = "Librational &amp; Screw Modes",
+                    text = libration_block,
+                ),
+            ]
             colour = None
 
         else:
 
             dcm_blocks = [
-                {'width' : 12, 'text' : 'Unable to decompose TLS matrices: <br>&nbsp;&nbsp;&nbsp;&nbsp;{}'.format(dcm.error()).replace(' ','&nbsp;')},
-                ]
+                divs.Block(
+                    text = 'Unable to decompose TLS matrices: <br>&nbsp;&nbsp;&nbsp;&nbsp;{}'.format(dcm.error()).replace(' ','&nbsp;'),
+                ),
+            ]
             colour = 'danger'
 
         # Format output dictionary
-        out_dict = {
-            'type' : 'alert',
-            'title' : 'Descriptions of TLS Motions',
-            'contents' : dcm_blocks,
-            'width' : 12,
-            }
+        out_block = divs.Alert(
+            title = 'Descriptions of TLS Motions',
+            contents = dcm_blocks,
+        )
         if colour is not None:
-            out_dict['colour'] = colour
+            out_block.colour = colour
 
-        return out_dict
+        return out_block
 
     @classmethod
     def create_tls_amplitude_summary(cls, tls_amplitudes):
@@ -809,7 +825,7 @@ class EchtModelHtmlSummary(HtmlSummary):
         html_table = html_table \
             .replace('<th>', '<th class="text-center">') \
             .replace('border="1" ', '')
-        return {'table': html_table}
+        return divs.Block(table=html_table)
 
     @classmethod
     def create_tls_origins_summary(cls, tls_origins):
@@ -827,6 +843,6 @@ class EchtModelHtmlSummary(HtmlSummary):
         html_table = html_table \
             .replace('<th>', '<th class="text-center">') \
             .replace('border="1" ', '')
-        return {'table': html_table}
+        return divs.Block(table=html_table)
 
 

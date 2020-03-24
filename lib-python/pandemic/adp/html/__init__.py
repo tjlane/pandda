@@ -6,7 +6,15 @@ from libtbx import adopt_init_args
 from libtbx.utils import Sorry, Failure
 from bamboo.html import png2base64src_maybe
 
+from . import divs
 import pandemic.resources
+
+div_class_hash = dict(
+    none = divs.Block,
+    block = divs.Block,
+    alert = divs.Alert,
+    panel = divs.Panel,
+)
 
 def as_html_summary_maybe(obj):
     if obj is None:
@@ -23,6 +31,7 @@ def as_html_summaries_maybe(tasks):
             out.append(s)
     return out
 
+
 class Counter(object):
     def __init__(self, start=0):
         self.i = start
@@ -33,7 +42,6 @@ class Counter(object):
 
 # Base class for html outputs
 class HtmlSummary:
-
 
     # Permanent counter than links all subclasses!
     # Ensures all divs are uniquely numbered
@@ -48,6 +56,7 @@ class HtmlSummary:
 
     @staticmethod
     def format_summary(text, width=12, type='alert', colour=None, classes=None):
+        div_obj_class = div_class_hash[type]
         paragraphs = text.split('\n\n')
         output = []
         for p in paragraphs:
@@ -62,18 +71,17 @@ class HtmlSummary:
                     l = ':<strong>'.join(l.split(':')) + "</strong>"
                 l = l.replace('\t','&emsp;')
                 fmt_lines.append(l)
-            p_dict = {'type'   : type,
-                      'width'  : width,
-                      }
+            obj = div_obj_class(
+                width = width,
+                contents = [divs.Block(text=l) for l in fmt_lines],
+            )
             if title is not None:
-                p_dict['title'] = title
-            if fmt_lines:
-                p_dict['contents'] = [{'text':l} for l in fmt_lines]
+                obj.title = title
             if colour is not None:
-                p_dict['colour'] = colour
+                obj.colour = colour
             if classes is not None:
-                p_dict['classes'] = classes
-            output.append(p_dict)
+                obj.classes = classes
+            output.append(obj)
         return output
 
     def short_summary(self):
@@ -101,29 +109,27 @@ class HtmlSummaryCollator(HtmlSummary):
         alt_title = None,
         summaries = [],
         ):
-        if alt_title is None:
-            alt_title = title
         adopt_init_args(self, locals())
 
     def main_summary(self):
 
         content_list = []
         for s in self.summaries:
-            content_list += s.main_summary()
+            content_list.extend(s.main_summary())
         for t in content_list:
-            assert t.get('alt_title')
+            assert isinstance(t, divs.Tab)
+            assert (t.alt_title is not None)
 
-        if len(content_list) > 0:
-            content_list[0]['active'] = True
+        contents = divs.TabSet(
+            contents = content_list,
+        )
+        contents.set_active()
 
-        contents = [{'type' : 'tabs', 'contents' : content_list}]
-
-        output = {
-            'alt_title' : self.alt_title,
-            'title' : self.title,
-            'fancy_title' : True,
-            'contents' : contents,
-        }
+        output = divs.Tab(
+            title = self.title,
+            alt_title = self.alt_title,
+            contents = [contents],
+        )
 
         return [output]
 
@@ -144,7 +150,7 @@ class HtmlSummaryConcatenator:
 
 
     def __init__(self,
-            title = None,
+            title,
             alt_title = None,
             summaries = [],
             ):
@@ -160,21 +166,15 @@ class HtmlSummaryConcatenator:
                 continue
             if collated is None:
                 collated = s_summary.pop(0)
-                if self.title is None:
-                    self.title = collated.get('title')
-                if self.alt_title is None:
-                    self.alt_title = collated.get('alt_title')
             for other_summary in s_summary:
-                collated['contents'].extend(other_summary['contents'])
-                if self.title is None:
-                    self.title = other_summary.get('title')
-                if self.alt_title is None:
-                    self.alt_title = other_summary.get('alt_title')
+                collated.extend(other_summary.contents)
         if collated is None:
             return []
         # Finally apply the title and alt_title
-        collated['title'] = self.title
-        collated['alt_title'] = self.alt_title
+        if self.title is not None:
+            collated.title = self.title
+        if self.alt_title is not None:
+            collated.alt_title = self.alt_title
         return [collated]
 
     def short_summary(self):
@@ -259,12 +259,12 @@ class WriteHtmlSummaryTask:
         output_data.setdefault('contents', [])
 
         # Create overview tab
-        tab_set = {'type':'tabs', 'contents':[]}
-        tab_set['contents'].append(self.create_overview_tab(objects=overview_objects))
-        tab_set['contents'][-1]['active'] = True
+        tab_set = divs.TabSet()
+        tab_set.append(self.create_overview_tab(objects=overview_objects))
+        tab_set.set_active()
 
         # Create other tabs
-        tab_set['contents'].extend(tab_objects)
+        tab_set.extend(tab_objects)
 
         output_data['contents'].append(tab_set)
 
@@ -286,15 +286,12 @@ class WriteHtmlSummaryTask:
 
     def create_overview_tab(self, objects):
 
-        tab = {
-            'id'        : 'overview',
-            'alt_title' : 'Overview',
-            'title'     : 'Hierarchical Disorder Parameterisation Overview',
-            'fancy_title' : True,
-            'contents'  : [],
-            }
-
-        tab['contents'] += objects
+        tab = divs.Tab(
+            id = 'overview',
+            title = 'Hierarchical Disorder Parameterisation Overview',
+            alt_title = 'Overview',
+            contents = objects,
+        )
 
         return tab
 

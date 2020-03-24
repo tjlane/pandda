@@ -1,7 +1,7 @@
 import os, collections
 import numpy, pandas
 from libtbx import adopt_init_args
-from pandemic.adp.html import HtmlSummary
+from pandemic.adp.html import HtmlSummary, divs
 
 
 class AnalyseResidualHtmlSummary(HtmlSummary):
@@ -12,25 +12,18 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
 
     def main_summary(self):
 
-        output = {
-            'alt_title' : 'Residual Analysis',
-            'contents' : [],
-        }
+        output = divs.Tab(alt_title='Residual Analysis')
 
         txt = """
         > Analysis of the difference between the target and the fitted ADPs/B-factors
         The fitting residual is the difference between target and fitted B-factors. The below tabs show the absolute size of this difference, as well as the correlation of the residuals to the different levels.
         """
-        output['contents'] += self.format_summary(txt, classes=['text-justify', "square-corners-top"])
+        output.extend(self.format_summary(txt, classes=['text-justify', "square-corners-top"]))
 
-        tab_set = {'type':'tabs', 'contents':[]}
-        output['contents'].append(tab_set)
-
-        tab_set['contents'].append(self.make_residuals())
-        tab_set['contents'].append(self.make_correlations())
-
-        if tab_set['contents']:
-            tab_set['contents'][0]['active'] = True
+        tab_set = output.append(divs.TabSet())
+        tab_set.append(self.make_residuals())
+        tab_set.append(self.make_correlations())
+        tab_set.set_active()
 
         return [output]
 
@@ -38,10 +31,7 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
 
         of = self.task.result.output_files
 
-        output = {
-            'alt_title' : 'Fitting Residual Size',
-            'contents' : [],
-        }
+        output = divs.Tab(alt_title='Fitting Residual Size')
 
         txt = """
         > Magnitude of the residuals.
@@ -49,129 +39,111 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
         Large RMS values indicate that the fitted model fits poorly to the target B-factors.
         Graphs show the rms values by atom, but also grouped by dataset.
         """
-        output['contents'] += self.format_summary(txt, classes=['text-justify', "square-corners-top"])
+        output.extend(self.format_summary(txt, classes=['text-justify', "square-corners-top"]))
 
         #
         # Chain tab set
         #
 
-        chain_block = {'width':12, 'contents' : []}
-        output['contents'].append(chain_block)
+        chain_block = output.append(divs.Block())
 
         txt = """
         > Fitting residual by chain
         Large values for a particular atom may be due to a poorly resolved/modelled atom that has a non-physical B-factor.
         It can be expected that atoms at the end of sidechains (e.g. Lysine) will have larger RMSD values.
         """
-        txt_block = {
-            'width':4, 
-            'contents' : self.format_summary(txt, classes=['text-justify']),
-            }
-        chain_block['contents'].append(txt_block)
+        txt_block = divs.Block(
+            width = 4,
+            contents = self.format_summary(txt, classes=['text-justify']),
+        )
+        chain_block.append(txt_block)
 
-        tab_set = {
-            'type':'tabs',
-            'width' : 8,
-            'contents':[],
-            }
-        chain_block['contents'].append(tab_set)
+        tab_set = chain_block.append(divs.TabSet(width=8))
 
         for c, p in of.get('residuals_by_residue',{}).iteritems():
-            tab = {
-                'alt_title': 'Chain {}'.format(c),
-                'contents' : [{'image':self.image(p)}],
-                }
-            tab_set['contents'].append(tab)
-        if tab_set['contents']:
-            tab_set['contents'][0]['active'] = True
+            tab = divs.Tab(
+                alt_title = 'Chain {}'.format(c),
+                contents = [divs.Block(image=self.image(p))],
+            )
+            tab_set.append(tab)
+        tab_set.set_active()
 
         #
         # Dataset tab set
         #
 
-        dataset_block = {'width':12, 'contents' : []}
-        output['contents'].append(dataset_block)
+        dataset_block = output.append(divs.Block())
 
         txt = """
         > Fitting residuals by dataset
         Large values for a particular dataset may be due to low dataset weights during optimisaton, e.g. for low resolution datasets.
         """
-        txt_block = {
-            'width':4, 
-            'contents' : self.format_summary(txt, classes=['text-justify']),
-            }
-        dataset_block['contents'].append(txt_block)
+        txt_block = divs.Block(
+            width = 4,
+            contents = self.format_summary(txt, classes=['text-justify']),
+        )
+        dataset_block.append(txt_block)
 
-        tab_set = {
-            'type' : 'tabs',
-            'width' : 8,
-            'contents':[],
-            }
-        dataset_block['contents'].append(tab_set)
+        tab_set = dataset_block.append(divs.TabSet(width=8))
 
         for l, p in of.get('residuals_by_dataset',{}).iteritems():
-            tab = {
-                'alt_title': l,
-                'contents' : [{'image':self.image(p)}],
-                }
-            tab_set['contents'].append(tab)
-        if tab_set['contents']:
-            tab_set['contents'][0]['active'] = True
+            tab = divs.Tab(
+                alt_title = l,
+                contents = [divs.Block(image=self.image(p))],
+            )
+            tab_set.append(tab)
+        tab_set.set_active()
 
         #
-        # Atom tab set 
+        # Atom tab set
         #
 
-        atom_type_block = {'width':12, 'contents' : []}
-        output['contents'].append(atom_type_block)
+        atom_type_block = output.append(divs.Block())
 
         txt = """
         > Fitting residuals by atom type
-        Different atom types are better defined in the density that others, on average, and thus likely to give more physically-meaningful ADPs and therefore be fitted better. 
+        Different atom types are better defined in the density that others, on average, and thus likely to give more physically-meaningful ADPs and therefore be fitted better.
         Due to this, comparison of each atom to others of the same type may more meaningfully indicate interesting outliers.
         """
-        txt_block = {
-            'width':4, 
-            'contents' : self.format_summary(txt, classes=['text-justify']),
-            }
-        atom_type_block['contents'].append(txt_block)
+        txt_block = divs.Block(
+            width = 4,
+            contents = self.format_summary(txt, classes=['text-justify']),
+        )
+        atom_type_block.append(txt_block)
 
-        tab_set = {
-            'type' : 'tabs',
-            'width' : 8,
-            'contents':[],
-            }
-        atom_type_block['contents'].append(tab_set)
+        tab_set = divs.TabSet(width=8)
+        atom_type_block.append(tab_set)
 
         for l, p in of.get('residuals_by_atom_type',{}).iteritems():
-            tab = {
-                'alt_title': l,
-                'contents' : [{'image':self.image(p)}],
-                }
-            tab_set['contents'].append(tab)
-        if tab_set['contents']:
-            tab_set['contents'][0]['active'] = True
+            tab = divs.Tab(
+                alt_title = l,
+                contents = [divs.Block(image=self.image(p))],
+            )
+            tab_set.append(tab)
+        tab_set.set_active()
 
         #
         # Overall
         #
 
-        b_factor_block = {'width':12, 'contents' : []}
-        output['contents'].append(b_factor_block)
+        b_factor_block = output.append(divs.Block())
 
         txt = """
         > Fitting Residual vs Target B-factor
         The size of the residual plotted against the target B-factor of the input atoms.
         Generally, areas with larger B-factors are not significantly different to areas with smaller B-factors.
         """
-        txt_block = {'width':4, 'contents' : self.format_summary(txt, classes=['text-justify'])}
-        b_factor_block['contents'].append(txt_block)
+        txt_block = divs.Block(
+            width = 4,
+            contents = self.format_summary(txt, classes=['text-justify']),
+        )
+        b_factor_block.append(txt_block)
 
-        img_block = {
-            'width' : 8,
-            'image' : self.image(of.get('residuals_vs_bfactor')),
-            }
-        b_factor_block['contents'].append(img_block)
+        img_block = divs.Block(
+            width = 8,
+            image = self.image(of.get('residuals_vs_bfactor')),
+        )
+        b_factor_block.append(img_block)
 
         return output
 
@@ -179,20 +151,16 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
 
         of = self.task.result.output_files
 
-        output = {
-            'alt_title' : 'Fitting Residual Correlations',
-            'contents' : [],
-        }
+        output = divs.Tab(alt_title = 'Fitting Residual Correlations')
 
         txt = """
         > Correlations between residual and model
         Large positive correlations between the model and the residual imply that the optimisation did not converge, or that the input model is incomplete.
         Random values across atoms indicate that the model had converged.
         """
-        output['contents'] += self.format_summary(txt, classes=['text-justify', "square-corners-top"])
+        output.extend(self.format_summary(txt, classes=['text-justify', "square-corners-top"]))
 
-        tab_set = {'type':'tabs', 'contents':[]}
-        output['contents'].append(tab_set)
+        tab_set = output.append(divs.TabSet())
 
         tab_hash = collections.OrderedDict()
 
@@ -202,33 +170,29 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
 
                 # Changing the order of levels -> chains to chains -> levels
                 if c not in tab_hash:
-                    c_dict = {
-                        'alt_title' : 'Chain {}'.format(c),
-                        'contents' : [],
-                        }
-                    tab_hash[c] = c_dict
-                    
+                    # Create new tab for this chain
+                    c_tab = divs.Tab(alt_title = 'Chain {}'.format(c))
+                    tab_hash[c] = c_tab
+                    # Add text at top of tab
                     txt = """
                     > Correlations with residuals by level for chain {}
                     """.format(c)
-                    c_dict['contents'] += self.format_summary(txt, ['square-corners-top'])
+                    c_tab.extend(self.format_summary(txt, ['square-corners-top']))
 
                 # Extract for this chain
-                c_dict = tab_hash[c]
+                c_tab = tab_hash[c]
 
-                l_block = {'contents':[]}
-                c_dict['contents'].append(l_block)
+                # Create block for this level
+                l_block = c_tab.append(divs.Block())
 
                 txt = """
                 > Correlations for {} level
                 """.format(l.title())
-                l_block['contents'] += self.format_summary(txt, width=4)
-                l_block['contents'] += [{'image' : self.image(p), 'width':8}]
+                l_block.extend(self.format_summary(txt, width=4))
+                l_block.append(divs.Block(width=8, image=self.image(p)))
 
-        tab_set['contents'].extend(tab_hash.values())
-
-        if tab_set['contents']:
-            tab_set['contents'][0]['active'] = True
+        tab_set.extend(tab_hash.values())
+        tab_set.set_active()
 
         return output
 
