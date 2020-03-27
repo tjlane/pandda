@@ -45,6 +45,7 @@ class Block(Div):
         'type',
         'title',
         'text',
+        'html',
         'image',
         'table',
         'footnote',

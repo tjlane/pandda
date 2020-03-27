@@ -51,6 +51,9 @@
       {{ obj.table }}
     </div>
   {% endif %}
+  {% if obj.html is defined %}
+    {{ obj.html }}
+  {% endif %}
 {%- endmacro %}
 
 {% macro fancy_title(obj) %}
