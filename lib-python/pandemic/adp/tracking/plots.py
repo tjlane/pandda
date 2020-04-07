@@ -525,13 +525,12 @@ class PandemicTrackingPlotter:
             hierarchies = hierarchies,
             plot_function = self.plotting_object.lineplot,
             plot_kw_args = dict(
-                title   = 'Fitting Residuals by Residue\n residual = $8\pi^2$rms($U_{model} - U_{target}$)',
+                title   = 'Changes over last cycle',
                 x_label = 'Residue',
                 y_label = 'B-factor Changes ($\AA^2$)',
-                legends = None,
+                legends = self.parent.level_names,
                 marker  = 'o',
-                ms = helper.ms(999),
-                lw = helper.ms(999),
+                legend_kw_args = dict(bbox_to_anchor=(1.0, 1.05), loc=4, borderaxespad=0.),
                 ),
             prefix = prefix,
             residue_values_function = numpy.mean, #max?
