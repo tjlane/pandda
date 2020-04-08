@@ -13,6 +13,7 @@ class GenerateLevelSelectionsTask:
             custom_levels = None,
             overall_selection = None,
             cbeta_in_backbone = True,
+            assign_het_residues_to_nearest_ss_groups = True,
             ):
         adopt_init_args(self, locals())
 
@@ -55,32 +56,48 @@ class GenerateLevelSelectionsTask:
             groups = [PhenixSelection.format(c) for c in filter_h.chains()]
             levels.append(sorted(set(groups))) # Chains can be present multiple times
             labels.append('chain')
-        if 'auto_group' in self.auto_levels:
+
+        if 'phenix_find_tls_groups' in self.auto_levels:
             from giant.structure.tls import phenix_find_tls_groups
             logger('Level {}: Creating level with groups determined by phenix.find_tls_groups'.format(len(levels)+1))
-            groups = [s.strip('"') for s in phenix_find_tls_groups(hierarchy=hierarchy)]
-            levels.append([g for g in groups if not cache.selection(g).all_eq(False)])
+            unfiltered_groups = [s.strip('"') for s in phenix_find_tls_groups(hierarchy=filter_h)]
+            groups = [g for g in unfiltered_groups if not cache.selection(g).all_eq(False)]
+            levels.append(groups)
             labels.append('groups')
+
         if ('secondary_structure' in self.auto_levels) or ('ss' in self.auto_levels):
             logger('Level {}: Creating level with groups based on secondary structure'.format(len(levels)+1))
-            groups = [s.strip('"') for s in default_secondary_structure_selections_filled(hierarchy=filter_h)]
-            levels.append([g for g in groups if not cache.selection(g).all_eq(False)])
+            unfiltered_groups = [s.strip('"') for s in default_secondary_structure_selections_filled(hierarchy=filter_h)]
+            groups = [g for g in unfiltered_groups if not cache.selection(g).all_eq(False)]
+            # Assign het molecules to each ss group?
+            if (self.assign_het_residues_to_nearest_ss_groups is True):
+                groups = self.assign_unselected_molecules_to_nearest_group(
+                    hierarchy = filter_h,
+                    selections = groups,
+                )
+            levels.append(groups)
             labels.append('sec. struct.')
+
         if 'residue' in self.auto_levels:
             logger('Level {}: Creating level with groups for each residue'.format(len(levels)+1))
-            levels.append([PhenixSelection.format(r) for r in filter_h.residue_groups()])
+            groups = [PhenixSelection.format(r) for r in filter_h.residue_groups()]
+            levels.append(groups)
             labels.append('residue')
+
         if 'backbone_sidechain' in self.auto_levels:
             logger('Level {}: Creating level with groups for each residue backbone/sidechain'.format(len(levels)+1))
             b_gps = backbone(filter_h, cbeta=cbeta_flag).atom_groups()
             b_sels = [PhenixSelection.format(r)+back_sel for r in b_gps if (r.resname not in ['ALA','GLY','PRO'])]
             s_gps = sidechains(filter_h, cbeta=(not cbeta_flag)).atom_groups()
             s_sels = [PhenixSelection.format(r)+side_sel for r in s_gps if (r.resname not in ['ALA','GLY','PRO'])]
-            levels.append(sorted(b_sels+s_sels))
+            groups = sorted(b_sels+s_sels)
+            levels.append(groups)
             labels.append('backbone/sidechain')
+
         if 'atom' in self.auto_levels:
             logger('Level {}: Creating level with groups for each atom'.format(len(levels)+1))
-            levels.append([PhenixSelection.format(a) for a in filter_h.atoms()])
+            groups = [PhenixSelection.format(a) for a in filter_h.atoms()]
+            levels.append(groups)
             labels.append('atom')
         logger.bar()
 
@@ -176,4 +193,57 @@ class GenerateLevelSelectionsTask:
             )
         return self.result
 
+    def assign_unselected_molecules_to_nearest_group(self,
+        hierarchy,
+        selections,
+        ):
+
+        h = hierarchy
+        a = hierarchy.atoms()
+        cache = h.atom_selection_cache()
+
+        # Extract bool selections
+        sel_bool = [cache.selection(s) for s in selections]
+        # Extract atoms and coordinates for each selection
+        group_atoms = [a.select(s_b) for s_b in sel_bool]
+        group_xyz = [a.extract_xyz() for a in group_atoms]
+
+        # Calculate total selection from the groups
+        cum_sel = sel_bool[0]
+        for s_b in sel_bool[1:]:
+            cum_sel = (cum_sel | s_b)
+
+        # Invert the total selection and extract atoms
+        rest_sel = (cum_sel == False)
+        rest_h = h.select(rest_sel)
+
+        from giant.structure.formatting import PhenixSelection
+        formatter = PhenixSelection()
+
+        import numpy
+
+        # Hash to map groups to the selections to be added
+        assigned_groups_hash = {}
+        # Iterate through unclaimed groups
+        for ag in rest_h.atom_groups():
+            # Create selection for atom group and extract coordinates
+            ag_sel = formatter.format(ag)
+            xyz = ag.atoms().extract_xyz()
+            # Find the minimum distance to another group
+            dists = [xyz.min_distance_between_any_pair(xyz2) for xyz2 in group_xyz]
+            min_dist = numpy.min(dists)
+            idx = numpy.where(numpy.array(dists)==min_dist)[0][0]
+            # Add to hash
+            assigned_groups_hash.setdefault(idx, []).append(ag_sel)
+
+        # Start with copy of input
+        import copy
+        out_selections = copy.deepcopy(selections)
+
+        for i, ag_sels in assigned_groups_hash.iteritems():
+            orig_sel = selections[i]
+            new_sel = '(' + ') or ('.join([orig_sel]+ag_sels) + ')'
+            out_selections[i] = new_sel
+
+        return out_selections
 

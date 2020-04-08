@@ -201,7 +201,7 @@ def test_GenerateLevelSelectionsTask_auto_levels_2():
 
     for input_levels, level_labels, correct_groups in [
         [
-            ['auto_group'],
+            ['phenix_find_tls_groups'],
             ['groups'],
             {
                 'groups' : [

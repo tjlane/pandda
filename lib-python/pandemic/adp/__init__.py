@@ -99,8 +99,11 @@ model {
         .type = choice(multi=False)
     overall_selection = "(not water) and (not element H)"
         .type = str
-    auto_levels = *chain auto_group ss *secondary_structure *residue *backbone_sidechain atom
+    auto_levels = *chain phenix_find_tls_groups ss *secondary_structure *residue *backbone_sidechain atom
         .type = choice(multi=True)
+    assign_het_residues_to_nearest_ss_groups = True
+        .help = "Include het residues in secondary structure groups. A residue will be placed in the nearest SS group."
+        .type = bool
     cbeta_in_backbone = True
         .help = "Flag to control whether the c-beta atom is considered part of the backbone or the sidechain"
         .type = bool
@@ -434,6 +437,7 @@ def run(params, args=None):
         custom_levels = params.model.custom_level,
         overall_selection = params.model.overall_selection,
         cbeta_in_backbone = params.model.cbeta_in_backbone,
+        assign_het_residues_to_nearest_ss_groups = params.model.assign_het_residues_to_nearest_ss_groups,
         remove_duplicate_groups = params.model.remove_duplicate_groups,
         verbose = params.settings.verbose,
         n_cpus = params.settings.cpus,

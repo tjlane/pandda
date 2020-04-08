@@ -16,6 +16,7 @@ class CreateHierarchicalModelTask:
         custom_levels,
         overall_selection,
         cbeta_in_backbone,
+        assign_het_residues_to_nearest_ss_groups,
         remove_duplicate_groups = None,
         verbose = False,
         n_cpus = 1,
@@ -29,6 +30,7 @@ class CreateHierarchicalModelTask:
             custom_levels = self.custom_levels,
             overall_selection = self.overall_selection,
             cbeta_in_backbone = self.cbeta_in_backbone,
+            assign_het_residues_to_nearest_ss_groups = self.assign_het_residues_to_nearest_ss_groups,
             )
 
         # Construct 2-d integer array of group indices for each atom on each level
