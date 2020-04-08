@@ -38,6 +38,7 @@ class ModelLoader:
 
         # Load input structures
         logger.subheading('Building model list -- {} files'.format(len(pdb_files)))
+        logger('Labelling function: {}'.format(self.labelling))
         models = []
         for f in pdb_files:
             # Read pdb file to model object
@@ -48,16 +49,20 @@ class ModelLoader:
                 raise Sorry('Failed to load pdb file -- have you selected the correct model_type? Current model_type is {}.'.format(self.model_type))
             # Generate label from filename
             l = self.label_func(f)
-            if not l:
-                if len(pdb_files) == 1:
-                    logger('No label created for label function: {}'.format(self.labelling))
+            # do not allow labels beginning with "."
+            if isinstance(l, str) and l.startswith('.'):
+                logger('Generated label ({}) begins with "." -- labels beginning with "." are not allowed.'.format(l))
+                l = None
+            if (not l):
+                if (len(pdb_files) == 1) and (self.labelling != 'filename'):
+                    logger('No (valid) label created for label function: {}'.format(self.labelling))
                     logger('Trying to label by filename instead')
                     self.labelling = 'filename'
                     from bamboo.common.path import filename
                     self.label_func = filename
                     l = self.label_func(f)
-                if not l:
-                    raise Sorry('No label generated using labelling function "{}"\n\tLabel {}\n\tFile {}'.format(self.labelling, l, f))
+                if not self.is_valid_label(l):
+                    raise Sorry('No label/invalid label generated using labelling function "{}"\n\tLabel {}\n\tFile {}\nRename input files or use a different labelling function.'.format(self.labelling, l, f))
             m.label(tag=l)
             models.append(m)
 
@@ -65,14 +70,39 @@ class ModelLoader:
         all_labels = [m.tag for m in models]
         unq_labels = sorted(set(all_labels))
         if len(unq_labels) != len(models):
+            # Count the duplicates and report
             counts = [(l, all_labels.count(l)) for l in unq_labels]
-            dups = ['{} (found {} times)'.format(l,c) for l,c in counts if c>1]
-            raise Sorry('Duplicate labels generated for models: \n\t{}'.format('\n\t'.join(dups)))
+            dup_labels = [l for l,c in counts if (c > 1)]
+            dup_strs = ['{} (found {} times)'.format(l,c) for l,c in counts if (l in dup_labels)]
+            # First report labels and filenames
+            label_strs = []
+            for m in models:
+                if (m.tag not in dup_labels):
+                    continue
+                label_strs.append('got label "{}" from file "{}"'.format(m.tag, m.filename))
+            logger('Duplicate labels found:\n\t{}'.format('\n\t'.join(sorted(label_strs))))
+            # Report how many duplicates
+            logger('Duplicates:\n\t{}'.format('\n\t'.join(dup_strs)))
+            # Raise error
+            raise Sorry('Duplicate labels generated for current labelling function. Either rename input files or use different dataset-labelling function.')
 
         # Sort models for convenience
         models = sorted(models, key=lambda m: m.tag)
-        logger('{} models loaded'.format(len(models)))
+        logger('\n{} model(s) loaded:'.format(len(models)))
+        for m in models:
+            logger('\t"{}" from {}'.format(m.tag, m.filename))
 
         return models
 
+    def is_valid_label(self, label):
 
+        if (label is None):
+            return False
+
+        if not isinstance(label, str):
+            return False
+
+        if label.startswith('.'):
+            return False
+
+        return True
