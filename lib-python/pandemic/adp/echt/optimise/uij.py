@@ -52,7 +52,6 @@ class OptimiseUijValue_TargetEvaluator:
             target_function,
             other_target_functions,
             uij_tol,
-            verbose = False,
             ):
 
         # Init values
@@ -96,7 +95,6 @@ class OptimiseUijValue:
             convergence_tolerance,
             uij_eps,
             uij_tolerance,
-            verbose = False,
             ):
 
         # Create target terms
@@ -130,7 +128,6 @@ class OptimiseUijValue:
                 target_function = target_function,
                 other_target_functions = other_target_functions,
                 uij_tol = self.uij_tolerance,
-                verbose = self.verbose,
                 )
 
         # Check if uij is valid, else start from zero

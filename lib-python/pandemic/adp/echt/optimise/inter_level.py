@@ -335,7 +335,7 @@ class OptimiseInterLevelAmplitudes:
         adp_multipliers = uij_modulus(adp_values)
 
         # Prevent dividing by zero
-        mask = (adp_multipliers != 0.0)
+        mask = (adp_multipliers > 0.0)
         # Calculate normalised adps
         adp_uij_values = numpy.zeros_like(adp_values)
         adp_uij_values[mask] = adp_values[mask] / adp_multipliers.reshape(adp_multipliers.shape+(1,))[mask]

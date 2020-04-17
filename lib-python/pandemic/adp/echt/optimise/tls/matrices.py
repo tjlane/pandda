@@ -9,6 +9,8 @@ from scitbx.array_family import flex
 from scitbx import matrix
 from giant.structure.tls import tls_str_to_n_params
 
+_DEBUG = False
+
 
 class TLSSimplexGenerator:
 
@@ -220,7 +222,6 @@ class OptimiseTLSGroup_Matrices_TargetEvaluator:
             optimise_components,
             optimise_i_mode,
             uij_isotropic_mask = None,
-            verbose = False,
             ):
 
         # Init values
@@ -248,10 +249,10 @@ class OptimiseTLSGroup_Matrices_TargetEvaluator:
                 values = parameters,
                 tls_parameters = self.multi_dataset_tls_group.tls_parameters,
                 )
-        if self.verbose and (self.n_call%20==1): self.print_header_line(parameters)
+        if _DEBUG and (self.n_call%20==1): self.print_header_line(parameters)
         # Validate the new combination of parameters and return poor score if invalid
         if not self.validate(tls_mode=self.multi_dataset_tls_group.tls_parameters[self.optimise_i_mode]):
-            if self.verbose: self.print_invalid_line(parameters)
+            if _DEBUG: self.print_invalid_line(parameters)
             return 1.1 * self.best_target
         # Extract new uijs
         uij_fitted = self.multi_dataset_tls_group.tls_parameters.uijs(
@@ -271,7 +272,7 @@ class OptimiseTLSGroup_Matrices_TargetEvaluator:
         if target < self.best_target:
             self.best_target = target
             self.best_target_terms = target_terms
-        if self.verbose: self.print_current_line(parameters, target)
+        if _DEBUG: self.print_current_line(parameters, target)
         return target
 
     def print_header_line(self, values):
@@ -301,7 +302,6 @@ class OptimiseTLSGroup_Matrices:
             other_target_functions,
             convergence_tolerance,
             uij_isotropic_mask = None,
-            verbose = False,
             ):
 
         # Convert to flex
@@ -332,7 +332,6 @@ class OptimiseTLSGroup_Matrices:
                 optimise_components = optimise_components,
                 optimise_i_mode = optimise_i_mode,
                 uij_isotropic_mask = self.uij_isotropic_mask,
-                verbose = self.verbose,
                 )
 
         # Generate simplex

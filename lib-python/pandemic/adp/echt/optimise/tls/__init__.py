@@ -19,7 +19,6 @@ class OptimiseTLSGroup:
         simplex_params,
         convergence_tolerance,
         eps_values,
-        verbose = False,
         ):
 
         # if eps_values is None:
@@ -73,7 +72,6 @@ class OptimiseTLSGroup:
             other_target_functions = self.other_target_functions,
             convergence_tolerance = self.convergence_tolerance,
             uij_isotropic_mask = uij_isotropic_mask,
-            verbose = self.verbose,
             )
 
         # Do cycles of alternating optimisation

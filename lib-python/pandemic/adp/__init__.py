@@ -25,7 +25,7 @@ input {
         .help = "input pdb files - with isotropic/anisotropic b-factors"
         .multiple = True
         .type = str
-    labelling = filename *foldername
+    labelling = *filename foldername
         .type = choice(multi=False)
         .multiple = False
     input_adp_model = isotropic anisotropic *mixed
@@ -59,7 +59,7 @@ output {
     pickle = False
         .type = bool
         .multiple = False
-    write_isotropic_output_for_isotropic_atoms = False
+    write_isotropic_output_for_isotropic_atoms = True
         .type = bool
         .help = "Will make the output ADPs isotropic for atoms where the input atoms contained isotropic B-factors."
     html {
@@ -89,7 +89,7 @@ output {
         font_name = None
             .help = "Specify a specific font to use for making graphs (must be available in the font family defined by font_family)."
             .type = str
-        dpi = 200
+        dpi = 100
             .help = "dpi of output images"
             .type = int
     }
@@ -107,7 +107,7 @@ model {
     cbeta_in_backbone = True
         .help = "Flag to control whether the c-beta atom is considered part of the backbone or the sidechain"
         .type = bool
-    remove_duplicate_groups = none keep_highest_group *keep_lowest_group
+    remove_duplicate_groups = none *keep_highest_group keep_lowest_group
         .help = "Flag to control whether identical groups that are present in multiple levels are removed (by default, the group in the lowest level will be kept)."
         .type = choice(multi=False)
     atomic_adp_level = True
@@ -158,7 +158,7 @@ model {
             tls_matrix_eps = 1e-6
                 .help = "define non-zero values for matrix elements"
                 .type = float
-            tls_amplitude_eps = 1e-3
+            tls_amplitude_eps = 1e-6
                 .help = "define non-zero values for amplitudes"
                 .type = float
         }
@@ -172,7 +172,7 @@ model {
         }
     }
     adp_values {
-        uij_eps = 1e-3
+        uij_eps = 1e-6
             .help = "define non-zero values for uij elements"
             .type = float
         uij_tolerance = 1e-6
@@ -194,7 +194,7 @@ optimisation {
         .type = bool
         .help = "Only use the magnitude of isotropic B-factors (True) or treat them as spherical anisotropic ADPs (False)?"
     intermediate_output {
-        write_model_every = 5
+        write_model_every = 10
             .help = 'output summary of hierarchical model every <n> cycles'
             .type = int
         remove_previous = True
@@ -243,14 +243,14 @@ optimisation {
             .type = float
     }
     gradient_optimisation {
-        gradient_convergence = 1e-16
+        gradient_convergence = 1e-8
             .help = "cutoff for which the least-squares gradient optimisation is considered converged."
             .type = float
         optimisation_weights {
-            sum_of_amplitudes = 1.0
+            sum_of_amplitudes = 0.5
                 .help = "weight for sum(amplitudes). minimises the number of TLS components in the optimisation. equivalent to a lasso weighting term."
                 .type = float
-            sum_of_squared_amplitudes = 1.0
+            sum_of_squared_amplitudes = 0.5
                 .help = "weight for sum(amplitudes^2). minimises the variance in the sizes of the TLS components in the optimisation. equivalent to a ridge regression term."
                 .type = float
             sum_of_amplitudes_squared = 0.0
@@ -275,7 +275,7 @@ optimisation {
             .help = "Stop optimisation when the rmsd between the input and the output is changing less than this."
             .type = float
         max_b_change = 1.0
-            .help = "Stop optimisation when all atoms are changing less that this value every cycle."
+            .help = "Stop optimisation when all atoms are changing less that this value over recent cycles (determined by max_b_change_window_frac)."
             .type = float
         max_b_change_window_frac = 0.05
             .help = "Fraction of cycles over which these changes are measured."
@@ -288,7 +288,7 @@ analysis {
     refine_output_structures = False
         .help = "Refine the structures after fitting (coordinates and occupancies)"
         .type = bool
-    calculate_r_factors = False
+    calculate_r_factors = True
         .help = "Recalculate r-factors for the input, output (and refined) models"
         .type = bool
     table_one_options {
@@ -520,7 +520,6 @@ def run(params, args=None):
                 matrix_eps = params.model.echt.eps.tls_matrix_eps,
                 amplitude_eps = params.model.echt.eps.tls_amplitude_eps,
                 ),
-            verbose = params.settings.verbose,
             )
 
         if params.model.atomic_adp_level is True:
@@ -531,7 +530,6 @@ def run(params, args=None):
                 convergence_tolerance = params.optimisation.simplex_optimisation.simplex_convergence,
                 uij_eps = params.model.adp_values.uij_eps,
                 uij_tolerance = params.model.adp_values.uij_tolerance,
-                verbose = params.settings.verbose,
                 )
         else:
             optimise_adp_function = None

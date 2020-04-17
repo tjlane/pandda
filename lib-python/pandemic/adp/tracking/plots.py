@@ -530,7 +530,7 @@ class PandemicTrackingPlotter:
                 y_label = 'B-factor Changes ($\AA^2$)',
                 legends = self.parent.level_names,
                 marker  = 'o',
-                legend_kw_args = dict(bbox_to_anchor=(1.0, 1.05), loc=4, borderaxespad=0.),
+                legend_kw_args = dict(ncol=3, bbox_to_anchor=(0.5, 1.1), loc=8, borderaxespad=0.),
                 ),
             prefix = prefix,
             residue_values_function = numpy.mean, #max?

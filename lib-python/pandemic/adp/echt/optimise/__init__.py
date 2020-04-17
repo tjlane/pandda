@@ -210,6 +210,7 @@ class OptimiseEchtModel:
                 # Optimise the amplitudes between levels
                 logger.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
                 self.sanitise_model(model_object)
+                optimise_amplitudes_iter(model_object=model_object)
                 optimise_amplitudes_full(model_object=model_object)
 
             # Update tracking
