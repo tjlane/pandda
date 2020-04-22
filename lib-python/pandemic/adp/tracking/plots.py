@@ -358,7 +358,7 @@ class PandemicTrackingPlotter:
             # Extract plot vals
             x_vals = l_table['cycle'].values
             plot_vals = l_table['b_avg'].values
-            y_vals = numpy.concatenate(([0.0], plot_vals[1:]-plot_vals[:-1]))
+            y_vals = numpy.concatenate(([plot_vals[0]], plot_vals[1:]-plot_vals[:-1]))
             nx = len(x_vals)
 
             hdl_ = ax.plot(
@@ -448,7 +448,7 @@ class PandemicTrackingPlotter:
         x_vals = tmp_table['cycle'].values
         y_vals = tmp_table['overall'].values
         # Calculate the differences between the values
-        y_vals_delta = numpy.concatenate(([y_vals[0]], y_vals[1:]-y_vals[:-1]))
+        y_vals_delta = numpy.concatenate(([0.0], y_vals[1:]-y_vals[:-1]))
         # Convert to list?
 
         nx = len(x_vals)

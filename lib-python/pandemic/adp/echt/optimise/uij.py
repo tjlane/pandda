@@ -101,7 +101,11 @@ class OptimiseUijValue:
         target_function = self.target_function_class()
         other_target_functions = []
 
+        # Generate simplexes for optimisation
         simplex_generator = UijSimplexGenerator(uij_delta = simplex_params.uij_delta)
+
+        # Default return value for small values
+        eps_sphere = (uij_eps, uij_eps, uij_eps, 0., 0., 0.)
 
         adopt_init_args(self, locals())
 
@@ -134,6 +138,10 @@ class OptimiseUijValue:
         if not evaluator.validate(u=uij_value):
             uij_value = (0.,)*6
 
+        # If small values, don't optimise and return spherical uij of size eps
+        if (flex.abs(flex.double(uij_value)) < self.uij_eps).all_eq(True):
+            return self.eps_sphere
+
         # Generate simplex
         starting_simplex = self.simplex_generator(uij_value)
 
@@ -143,8 +151,6 @@ class OptimiseUijValue:
                                         matrix    = map(flex.double, starting_simplex),
                                         evaluator = evaluator,
                                         tolerance = self.convergence_tolerance)
-
-        #print evaluator.best_target
 
         # # Create results object
         # results = group_args(

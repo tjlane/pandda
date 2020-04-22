@@ -32,7 +32,7 @@ class SanitiseUijValue:
 
         # If the Uij is "null" then return the eps value
         if (eigenvalues < self.eps).all_eq(True):
-            return self.null_value
+            return self.eps_value
 
         # If the eigenvalues are too negative, then return only the valid component
         if flex.min(eigenvalues) < self.tolerance:

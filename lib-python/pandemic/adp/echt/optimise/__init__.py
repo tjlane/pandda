@@ -132,22 +132,22 @@ class OptimiseEchtModel:
         #
         # Iterative recursions -- TLS only
         #
-        optimise_amplitudes_iter = functools.partial(
-            self.optimise_level_amplitudes,
-            uij_target = uij_target,
-            uij_target_weights = uij_target_weights,
-            uij_isotropic_mask = uij_isotropic_mask,
-            level_group_tree = level_group_tree,
-            optimise_atomic_adp_amplitudes = (self.optimise_adp_level is not None),
-            max_recursions = 1,
-            recursion_direction = 'descending',
-            # dataset mask TODO
-        )
+        #optimise_amplitudes_iter = functools.partial(
+        #    self.optimise_level_amplitudes,
+        #    uij_target = uij_target,
+        #    uij_target_weights = uij_target_weights,
+        #    uij_isotropic_mask = uij_isotropic_mask,
+        #    level_group_tree = level_group_tree,
+        #    optimise_atomic_adp_amplitudes = (self.optimise_adp_level is not None),
+        #    max_recursions = 1,
+        #    recursion_direction = 'descending',
+        #    # dataset mask TODO
+        #)
 
         # Initial amplitude optimisation
         logger.subheading('Macrocycle {}: '.format(tracking_object.n_cycle)+'Optimising inter-level amplitudes')
         self.sanitise_model(model_object)
-        optimise_amplitudes_iter(model_object=model_object)
+        #optimise_amplitudes_iter(model_object=model_object)
         optimise_amplitudes_full(model_object=model_object)
 
         # Record the object before optimisation
@@ -210,7 +210,7 @@ class OptimiseEchtModel:
                 # Optimise the amplitudes between levels
                 logger.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
                 self.sanitise_model(model_object)
-                optimise_amplitudes_iter(model_object=model_object)
+                #optimise_amplitudes_iter(model_object=model_object)
                 optimise_amplitudes_full(model_object=model_object)
 
             # Update tracking

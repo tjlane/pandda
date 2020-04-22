@@ -107,7 +107,7 @@ model {
     cbeta_in_backbone = True
         .help = "Flag to control whether the c-beta atom is considered part of the backbone or the sidechain"
         .type = bool
-    remove_duplicate_groups = none *keep_highest_group keep_lowest_group
+    remove_duplicate_groups = none keep_highest_group *keep_lowest_group
         .help = "Flag to control whether identical groups that are present in multiple levels are removed (by default, the group in the lowest level will be kept)."
         .type = choice(multi=False)
     atomic_adp_level = True
@@ -229,7 +229,7 @@ optimisation {
     simplex_optimisation
         .help = 'set the various step sizes taken during simplex optimisation'
     {
-        simplex_convergence = 1e-8
+        simplex_convergence = 1e-4
             .help = "cutoff for which the least-squares simplex is considered converged"
             .type = float
         vibration_delta = 1e-2
@@ -247,10 +247,10 @@ optimisation {
             .help = "cutoff for which the least-squares gradient optimisation is considered converged."
             .type = float
         optimisation_weights {
-            sum_of_amplitudes = 0.5
+            sum_of_amplitudes = 0.1
                 .help = "weight for sum(amplitudes). minimises the number of TLS components in the optimisation. equivalent to a lasso weighting term."
                 .type = float
-            sum_of_squared_amplitudes = 0.5
+            sum_of_squared_amplitudes = 0.9
                 .help = "weight for sum(amplitudes^2). minimises the variance in the sizes of the TLS components in the optimisation. equivalent to a ridge regression term."
                 .type = float
             sum_of_amplitudes_squared = 0.0
@@ -260,7 +260,7 @@ optimisation {
         global_weight_scale = 1e3
             .help = "global scale applied to all optimisation_weights."
             .type = float
-        global_weight_decay_factor = 0.7
+        global_weight_decay_factor = 0.5
             .help = "amount by which optimisation_weights is scaled every cycle. must be less than 1."
             .type = float
         minimum_weight = 1e-16
@@ -271,7 +271,7 @@ optimisation {
             .type = choice(multi=True)
     }
     termination {
-        max_b_rmsd = None
+        max_b_rmsd = 1.0
             .help = "Stop optimisation when the rmsd between the input and the output is changing less than this."
             .type = float
         max_b_change = 1.0
