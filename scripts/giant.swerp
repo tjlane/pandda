@@ -6,7 +6,9 @@ import logging as lg
 import numpy as np
 import pandas as pd
 
-from matplotlib import pyplot as plt
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
 
 import libtbx.phil
 from libtbx.utils import Sorry, Failure
@@ -337,7 +339,11 @@ def read_er_sweep(params):
         o_log = os.path.join(d, 'input_ensemble.log')
         if not os.path.exists(o_log):
             raise Sorry('no log file in {}'.format(d))
-        final_rfactors = extract_final_rfactors(o_log)
+
+        try:
+            final_rfactors = extract_final_rfactors(o_log)
+        except: 
+            continue
 
         # Extract meta from the json
         o_json = json_filename(d)
