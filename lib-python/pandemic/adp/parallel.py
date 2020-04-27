@@ -1,9 +1,8 @@
-import time, tqdm, signal
+import tqdm
 import numpy
 from libtbx import adopt_init_args
 
-import traceback, multiprocessing, multiprocessing.pool
-
+import traceback
 
 class MultiProcessWrapper:
 
@@ -43,64 +42,113 @@ class RunParallelWithProgressBarUnordered:
             n_cpus,
             max_chunksize = 10,
             ):
+
         assert max_chunksize >= 1
         adopt_init_args(self, locals())
+
+        # Initialise processes
+        self._init_processes()
+
+    def __del__(self):
+        self.terminate_processes()
+
+    def _init_processes(self):
+
+        from multiprocessing import Process, Queue
+
+        # Create input/output queues
+        self.task_queue = Queue()
+        self.done_queue = Queue()
+
+        # Redirect termination signal while processes are spawned
+        import signal
+        sigint = signal.signal(signal.SIGINT, signal.SIG_IGN) # <- Set the signal handler to ignore
+        self.processes = []
+        for i in range(self.n_cpus):
+            p = Process(
+                target = MultiProcessWrapper(self.function),
+                args = (self.task_queue, self.done_queue),
+            )
+            p.start()
+            self.processes.append(p)
+        signal.signal(signal.SIGINT, sigint) # <- Replace the original signal handler
 
     def __call__(self,
             arg_dicts,
             ):
 
+        # Number of actual jobs
         n_tasks = len(arg_dicts)
 
-        # Calculate actual chunksize (to efficiently use multi-CPUs)
+        # Calculate used chunksize (to efficiently use multi-CPUs)
         cpu_chunksize = numpy.ceil( n_tasks / self.n_cpus )
         chunksize = int(max(1, min(self.max_chunksize, cpu_chunksize)))
 
-        from multiprocessing import Process, Queue
-
-        task_queue = Queue()
-        done_queue = Queue()
-
-        function = MultiProcessWrapper(self.function)
-
-        # Redirect termination signal while processes are spawned
-        # v Set the signal handler to ignore v
-        sigint = signal.signal(signal.SIGINT, signal.SIG_IGN)
-        processes = []
-        for i in range(self.n_cpus):
-            p = Process(target=function, args=(task_queue, done_queue))
-            p.start()
-            processes.append(p)
-        # v Replace the original signal handler v
-        signal.signal(signal.SIGINT, sigint)
+        # Check that task queue and done queues are empty
+        self.check_queues_empty()
+        self.check_processes_alive()
 
         # Number the tasks for sorting later and split into chunks
-        task_list = list(enumerate(arg_dicts))
+        task_list = list(enumerate(arg_dicts)) # <- TASKS NUMBERED HERE
         n_chunks = 0
         for i in range(0, n_tasks, chunksize):
             chunk = task_list[i:i+chunksize]
-            task_queue.put(chunk)
+            self.task_queue.put(chunk)
             n_chunks += 1
 
+        # Progress bar
         pbar = tqdm.tqdm(total=n_tasks, ncols=100)
 
         try:
+            # Get the results as they're ready
             results = []
             for i in range(n_chunks):
-                complete = done_queue.get()
-                pbar.update(len(complete))
+                complete = self.done_queue.get()
                 results.extend(complete)
+                pbar.update(len(complete))
             pbar.close()
+
+            # Check that queues are empty
+            self.check_queues_empty()
+
         except KeyboardInterrupt:
-            for p in processes:
-                p.terminate()
+            self.terminate_processes()
             raise
         finally:
             pbar.close()
-            for p in processes:
-                task_queue.put('STOP')
 
         # Sort output results
         results = [r[1] for r in sorted(results, key=lambda x: x[0])]
 
         return results
+
+    def terminate_processes(self):
+        # Pass flag to stop the processes
+        for p in self.processes:
+            if p.is_alive():
+                self.task_queue.put('STOP')
+        # Give tasks a chance to respond
+        import time
+        time.sleep(0.1)
+        # Terminate the processes
+        for p in self.processes:
+            p.terminate()
+
+    def check_queues_empty(self):
+        try:
+            if self.task_queue.empty() is False:
+                raise Failure('Task queue is not empty')
+            if self.done_queue.empty() is False:
+                raise Failure('Done queue is not empty')
+        except Exception as e:
+            self.terminate_processes()
+            raise e
+
+    def check_processes_alive(self):
+        try:
+            for p in self.processes:
+                if not p.is_alive():
+                    raise Failure('One or more processes has been terminated prematurely.')
+        except Exception as e:
+            self.terminate_processes()
+            raise e

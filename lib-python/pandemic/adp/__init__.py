@@ -260,7 +260,7 @@ optimisation {
         global_weight_scale = 1e3
             .help = "global scale applied to all optimisation_weights."
             .type = float
-        global_weight_decay_factor = 0.5
+        global_weight_decay_factor = 0.7
             .help = "amount by which optimisation_weights is scaled every cycle. must be less than 1."
             .type = float
         minimum_weight = 1e-16

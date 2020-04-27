@@ -141,20 +141,29 @@ class BuildLevelArrayTask:
             global_selection = numpy.ones(hierarchy.atoms().size(), dtype=bool)
 
         # Function for converting selection strings to boolean selections
-        extract_selections = SelectionStringConverter(
+        extract_selection = SelectionStringConverter(
             atom_cache = atom_cache,
             global_selection = global_selection,
             )
 
+        # Create multi-process wrapper
+        from pandemic.adp.parallel import RunParallelWithProgressBarUnordered
+        extract_selections_parallel = RunParallelWithProgressBarUnordered(
+            function = extract_selection,
+            n_cpus = self.n_cpus,
+            max_chunksize = 100,
+        )
+
         # Extract selection strings
-        arg_list = []
+        arg_dicts = []
         for i_level, group_selections in enumerate(selection_strings):
             # Iterate through selections and create array
             for i_group, group_sel_str in enumerate(group_selections):
-                arg_list.append(group_sel_str)
+                arg_dicts.append(dict(selection_string=group_sel_str))
 
         # Convert selection strings to boolean selections
-        results = easy_mp.pool_map(func=extract_selections, args=arg_list, processes=self.n_cpus)
+        logger('Converting selection strings to boolean selections')
+        results = extract_selections_parallel(arg_dicts=arg_dicts)
 
         # List of any selections that result in no atoms
         errors = []; warnings = []
