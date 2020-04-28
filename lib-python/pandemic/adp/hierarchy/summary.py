@@ -243,7 +243,8 @@ class WriteHierarchicalModelSummaryTask:
             cache_h = blank_h.atom_selection_cache()
             selections = [s1 if (s1 is not None) else PymolSelection.join_or([PymolSelection.format(a) for a in blank_h.atoms().select(cache_h.selection(s2))]) for s1,s2 in zip(pymol_selections, level_group_selection_strings[i_level])]
             # Create image of different selections
-            of = auto_chain_images(structure_filename = structure_filename,
+            of = auto_chain_images(
+                structure_filename = structure_filename,
                 output_prefix = f_prefix,
                 style = styles,
                 het_style = 'lines+spheres',
@@ -255,7 +256,7 @@ class WriteHierarchicalModelSummaryTask:
                     ('sphere_scale', 0.25),
                     ],
                 width=1000, height=750,
-                delete_script = (not self.debug))
+            )
             # Check output
             if (not of):
                 logger.warning('no images have been generated: {}...'.format(f_prefix))

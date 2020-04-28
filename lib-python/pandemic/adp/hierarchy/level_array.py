@@ -164,6 +164,8 @@ class BuildLevelArrayTask:
         # Convert selection strings to boolean selections
         logger('Converting selection strings to boolean selections')
         results = extract_selections_parallel(arg_dicts=arg_dicts)
+        # Tidy up parallel
+        extract_selections_parallel.terminate_processes()
 
         # List of any selections that result in no atoms
         errors = []; warnings = []

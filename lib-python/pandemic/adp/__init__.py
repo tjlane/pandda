@@ -333,6 +333,10 @@ settings {
 
 def run(params, args=None):
 
+    # Start program timer
+    from pandemic.timer import Timer
+    timer = Timer().start()
+
     if os.path.exists(params.output.out_dir):
         raise Sorry('Output directory already exists: {}\nPlease delete the directory or provide a new output directory'.format(params.output.out_dir))
 
@@ -355,6 +359,9 @@ def run(params, args=None):
     from pandemic.logs import get_handler_recursive
     warning_handler = get_handler_recursive(logger=logger, handler_name='warnings')
     assert warning_handler is not None
+
+    # Report program start time
+    logger('Program started at {}'.format(timer.format_time(timer.get_start_time())))
 
     #
     # Report parameters
@@ -902,6 +909,9 @@ def run(params, args=None):
                     plotting_object = plotting_object,
                     )
 
+    # Terminate processes used for optimisation
+    optimise_model_main.terminate_processes()
+
     logger.heading('Optimisation finished', spacer=True)
 
     #
@@ -1086,7 +1096,10 @@ def run(params, args=None):
             )
         tidy(output_directory=params.output.out_dir)
 
+    # Report all errors accumulated over the lifetime of the program
     warning_handler.report_all(logger_name=__package__)
+
+    logger(timer.report_str())
 
     return None
 

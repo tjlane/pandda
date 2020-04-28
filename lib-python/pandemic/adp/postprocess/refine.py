@@ -37,11 +37,6 @@ class RefineStructures:
         else:
             raise Failure('Invalid refinement program selected: {}'.format(refinement_program))
 
-        run_parallel = RunParallelWithProgressBarUnordered(
-            function = wrapper_run,
-            n_cpus = n_cpus,
-        )
-
         adopt_init_args(self, locals())
 
     def __call__(self,
@@ -60,7 +55,7 @@ class RefineStructures:
         output_directories = [easy_directory(os.path.join(self.output_directory, l)) for l in labels]
         output_prefixes = [os.path.join(d, l+output_suffix) for d,l in zip(output_directories, labels)]
 
-        arg_list = []
+        arg_dicts = []
         for i in xrange(n):
 
             i_pdb = input_structures[i]
@@ -84,14 +79,22 @@ class RefineStructures:
             if os.path.exists(obj.out_pdb_file):
                 raise Failure('Refined PDB already exists! (model {})'.format(obj.tag))
 
-            arg_list.append(obj)
+            obj.print_settings()
 
-        for o in arg_list:
-            o.print_settings()
+            # Args must be dicts for wrapper function
+            arg_dicts.append(dict(obj=obj))
 
         # Refine all of the models
-        logger.subheading('Running {} refinements'.format(len(arg_list)))
-        results = self.run_parallel(arg_dicts=arg_list)
+        logger.subheading('Running {} refinements'.format(len(arg_dicts)))
+        # Initialise multiprocessing
+        run_parallel = RunParallelWithProgressBarUnordered(
+            function = wrapper_run,
+            n_cpus = self.n_cpus,
+        )
+        # Run jobs
+        results = run_parallel(arg_dicts=arg_dicts)
+        # Tidy up
+        run_parallel.terminate_processes()
 
         output_structures = collections.OrderedDict()
         for r in results:

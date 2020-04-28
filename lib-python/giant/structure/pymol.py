@@ -1,3 +1,6 @@
+import logging as lg
+logger = lg.getLogger(__name__)
+
 import os, itertools, collections
 
 from iotbx.pdb.hierarchy import input as ih
@@ -13,11 +16,11 @@ def _load_and_filter(structure_filename, selection):
     return s_h.select(s)
 
 def auto_chain_images(
-        structure_filename, 
-        output_prefix, 
-        selection = 'not water', 
-        style = 'cartoon', 
-        het_style = None, 
+        structure_filename,
+        output_prefix,
+        selection = 'not water',
+        style = 'cartoon',
+        het_style = None,
         **kw_args
         ):
     h = _load_and_filter(structure_filename, selection)
@@ -30,11 +33,11 @@ def auto_chain_images(
     return collections.OrderedDict(zip([c.id for c in h.chains()], output_files))
 
 def auto_residue_images(
-        structure_filename, 
-        output_prefix, 
-        selection = 'not water', 
-        style = 'sticks', 
-        het_style = None, 
+        structure_filename,
+        output_prefix,
+        selection = 'not water',
+        style = 'sticks',
+        het_style = None,
         **kw_args
         ):
     h = _load_and_filter(structure_filename, selection)
@@ -57,7 +60,7 @@ def selection_images(
         ray_trace = True,
         settings = [],
         run_script = True,
-        delete_script = True,
+        delete_script = False,
         width = 800,
         height = 600,
         colour_selections = None,
@@ -134,7 +137,9 @@ def selection_images(
     assert not os.path.exists(l_name)
 
     if run_script is True:
-        s.run(f_name)
+        o = s.run(f_name)
+        logger.debug(o.output)
+        logger.debug(o.error)
 
     if delete_script is True:
         if os.path.exists(f_name):
