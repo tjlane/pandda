@@ -343,20 +343,16 @@ def run(params, args=None):
     from pandemic.adp import file_system
     file_system = file_system.PandemicAdpFileSystem(output_directory=params.output.out_dir)
 
-    from pandemic.logs import setup_logging
+    from giant.logs import setup_logging
     logger = setup_logging(
-        name = __name__, # setup root logging for __name__ == __main__
+        name = __name__,
         log_file = os.path.join(file_system.output_directory, 'pandemic.log'),
         warning_handler_name = 'warnings',
         debug = False,
     )
 
-    # Get new logger (using __package__ to overcome __name__==__main__)
-    import logging as lg
-    logger = lg.getLogger(__name__)
-
     # Extract warning handler from logging objects
-    from pandemic.logs import get_handler_recursive
+    from giant.logs import get_handler_recursive
     warning_handler = get_handler_recursive(logger=logger, handler_name='warnings')
     assert warning_handler is not None
 
@@ -664,7 +660,7 @@ def run(params, args=None):
         fh.write(master_phil.format(params).as_str())
 
     # Report warnings
-    warning_handler.report_new(logger_name=__package__)
+    warning_handler.report_new(logger_name=__name__)
 
     #############################################################
     #                                                           #
@@ -809,7 +805,7 @@ def run(params, args=None):
         )
 
     # Report warnings
-    warning_handler.report_new(logger_name=__package__)
+    warning_handler.report_new(logger_name=__name__)
 
     ################################
     #                              #
@@ -925,7 +921,7 @@ def run(params, args=None):
         )
 
     # Report warnings
-    warning_handler.report_new(logger_name=__package__)
+    warning_handler.report_new(logger_name=__name__)
 
     ################################
     #                              #
@@ -1097,7 +1093,7 @@ def run(params, args=None):
         tidy(output_directory=params.output.out_dir)
 
     # Report all errors accumulated over the lifetime of the program
-    warning_handler.report_all(logger_name=__package__)
+    warning_handler.report_all(logger_name=__name__)
 
     logger(timer.report_str())
 
@@ -1106,9 +1102,6 @@ def run(params, args=None):
 ############################################################################
 
 def run_pandemic_adp(args):
-
-    from pandemic.logs import setup_root_logging
-    setup_root_logging()
 
     from functools import partial
     from giant.jiffies import run_default
@@ -1132,5 +1125,5 @@ if __name__=='__main__':
         run_pandemic_adp(args=sys.argv[1:])
         #a.stop()
     except KeyboardInterrupt:
-        print '\nProgram terminated by user'
+        print('\nProgram terminated by user')
 

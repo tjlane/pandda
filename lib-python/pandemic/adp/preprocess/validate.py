@@ -1,4 +1,4 @@
-import logging as lg
+import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 import textwrap

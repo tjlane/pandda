@@ -1,4 +1,4 @@
-import logging as lg
+import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 from libtbx import adopt_init_args, group_args

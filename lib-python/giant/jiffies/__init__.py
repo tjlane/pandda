@@ -17,14 +17,10 @@ def process_exception_default(exception):
                             '\nYou may need to contact the developer -- for contact info please visit https://pandda.bitbucket.io .)\n',) + \
                 e.args[1:]
         raise
-        #print(e)
-        #sys.exit(1)
     except Sorry as e:
         e.args = (e.args[0]+'\n\n(This type of error normally indicates that something is wrong with the input provided to the program that is fixable.)\n',) + \
                 e.args[1:]
         raise
-        #print(e)
-        #sys.exit(1)
     else:
         raise
 
@@ -34,7 +30,9 @@ class run_default(object):
 
     def __init__(self, run, master_phil, args, blank_arg_prepend=None, program='', description=''):
         """Run a program via a standard setup of functions and objects"""
-        print(self._module_info.header_text.format(program=program, description=description))
+        from giant.logs import setup_logging_basic
+        logger = setup_logging_basic(__name__)
+        logger(self._module_info.header_text.format(program=program, description=description))
         working_phil = extract_params_default(master_phil=master_phil, args=args, blank_arg_prepend=blank_arg_prepend, module_info=self._module_info)
         try:
             out = run(params=working_phil.extract())
@@ -49,7 +47,8 @@ def extract_params_default(master_phil, args, blank_arg_prepend=None, home_scope
     return working_phil
 
 def show_version_and_exit_maybe(module_info, args):
-    if '--version' not in args: return
+    if '--version' not in args:
+        return
     if module_info is None:
         print('no version information available')
     else:

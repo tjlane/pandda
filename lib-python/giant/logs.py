@@ -58,7 +58,7 @@ class SubHeading(Heading):
     side_width = 3
 
 
-class PandemicLogger(lg.Logger):
+class LoggerWithHeadings(lg.Logger):
 
     _bar = Bar()
     _heading = Heading()
@@ -177,22 +177,51 @@ def setup_root_logging(formatter=None, level=lg.INFO):
     # Get root logger
     logger = lg.getLogger()
 
+    # Set logger to info by default
+    logger.setLevel(lg.INFO)
+
     # Add standard output to root logger
-    ch = lg.StreamHandler(stream=sys.stdout)
-    ch.setFormatter(formatter)
-    ch.setLevel(level)
-    logger.addHandler(ch)
+    if not logger.handlers:
+        ch = lg.StreamHandler(stream=sys.stdout)
+        ch.setFormatter(formatter)
+        ch.setLevel(level)
+        logger.addHandler(ch)
 
     return logger
 
+def get_logger_with_headings_maybe(name):
+    """
+    Returns LoggerWithHeadings named `name` if it hasn't been created,
+    otherwise returns existing logger named `name`.
+    """
+    # Get the current class
+    prevClass = lg.getLoggerClass()
+    # Set the desired class
+    lg.setLoggerClass(LoggerWithHeadings)
+    # Get named logger
+    logger = lg.getLogger(name)
+    # Return logger class to previous
+    lg.setLoggerClass(prevClass)
+
+    return logger
+
+# Shortcut for compatibility with python logging module
+getLogger = get_logger_with_headings_maybe
+
+def setup_logging_basic(name):
+    """One liner to setup stdout logging (if not already done) and return a functioning Logger"""
+
+    setup_root_logging()
+
+    return get_logger_with_headings_maybe(name)
+
 def setup_logging(name, log_file=None, warning_handler_name='warnings', debug=False):
     """
-    Setup logging for a named scope.
+    One liner to setup logging for a named scope with log file and warnings tracker.
     if name == '__main__' will set up the root logger.
     """
 
-    # Override base class to allow headings
-    lg.setLoggerClass(PandemicLogger)
+    setup_root_logging()
 
     # Plain formatter
     fmt = lg.Formatter(fmt='%(message)s')
@@ -208,8 +237,7 @@ def setup_logging(name, log_file=None, warning_handler_name='warnings', debug=Fa
         # Get the root logger
         logger = lg.getLogger()
     else:
-        # Get a named logger
-        logger = lg.getLogger(name)
+        logger = get_logger_with_headings_maybe(name)
 
     # Set level of logger
     logger.setLevel(level)
@@ -221,12 +249,13 @@ def setup_logging(name, log_file=None, warning_handler_name='warnings', debug=Fa
         fh.setLevel(level)
         logger.addHandler(fh)
 
-    # Custom warning collector
-    wh = WarningListHandler(name=warning_handler_name)
-    # Special warning formatter
-    wfmt = lg.Formatter(fmt='%(levelname)s -- %(message)s')
-    wh.setFormatter(wfmt)
-    wh.setLevel(lg.WARNING)
-    logger.addHandler(wh)
+    if (warning_handler_name is not None):
+        # Custom warning collector
+        wh = WarningListHandler(name=warning_handler_name)
+        # Special warning formatter
+        wfmt = lg.Formatter(fmt='%(levelname)s -- %(message)s')
+        wh.setFormatter(wfmt)
+        wh.setLevel(lg.WARNING)
+        logger.addHandler(wh)
 
-    return logger
+    return get_logger_with_headings_maybe(name)

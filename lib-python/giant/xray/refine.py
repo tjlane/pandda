@@ -1,20 +1,24 @@
-import os,sys,re,glob,copy,shutil,tempfile
+import giant.logs as lg
+logger = lg.getLogger(__name__)
 
-from libtbx.utils import Sorry, Failure
+import os
 
-from bamboo.common.command import CommandManager
 from bamboo.common.path import easy_directory
-from bamboo.common.logs import Log
 
-from giant.xray.tls import phenix_find_tls_groups
+from giant.exceptions import Sorry, Failure
+from giant.dispatcher import Dispatcher
+from giant.structure.tls import phenix_find_tls_groups
+
+
+class RefinementError(Exception):
+    pass
 
 
 class _refiner(object):
 
-
     program = None
 
-    def __init__(self, pdb_file, mtz_file=None, cif_files=None, out_prefix=None, log=None):
+    def __init__(self, pdb_file, mtz_file=None, cif_files=None, out_prefix=None):
 
         # Set defaults if not given
         if mtz_file is None:
@@ -22,138 +26,189 @@ class _refiner(object):
         if out_prefix is None:
             out_prefix = os.path.splitext(pdb_file)[0] + '-refined'
 
-        if log is None: log=Log()
-        self.log = log
+        # Convert cif files to list
+        if isinstance(cif_files, str):
+            cif_files = [cif_files]
 
         # Main files
-        self.pdb_file = pdb_file
-        self.mtz_file = mtz_file
-        self.cif_files = cif_files
+        self.input_files = dict(
+            pdb = pdb_file,
+            mtz = mtz_file,
+            cif = cif_files,
+        )
 
-        # Eventual output prefix
+        # Eventual output prefix and output files
         self.out_prefix = out_prefix
-        self.out_pdb_file = self.out_prefix+'.pdb'
-        self.out_mtz_file = self.out_prefix+'.mtz'
-        self.out_log_file = self.out_prefix+'.log'
+        self.output_files = dict(
+            pdb = self.out_prefix+'.pdb',
+            mtz = self.out_prefix+'.mtz',
+            log = self.out_prefix+'.log',
+        )
 
         # Validate input
-        assert os.path.exists(self.pdb_file)
-        assert os.path.exists(self.mtz_file)
-        assert not os.path.exists(self.out_pdb_file), 'Output file already exists: {}'.format(self.out_pdb_file)
-        assert not os.path.exists(self.out_mtz_file), 'Output file already exists: {}'.format(self.out_mtz_file)
+        if not os.path.exists(self.input_files['pdb']):
+            raise Sorry('File does not exist: {}'.format(self.input_files['pdb']))
+        if not os.path.exists(self.input_files['mtz']):
+            raise Sorry('File does not exist: {}'.format(self.input_files['mtz']))
+        if os.path.exists(self.output_files['pdb']):
+            raise Sorry('Output file already exists: {}'.format(self.output_files['pdb']))
+        if os.path.exists(self.output_files['mtz']):
+            raise Sorry('Output file already exists: {}'.format(self.output_files['mtz']))
 
         # Create temporary folder for refinement
+        import tempfile
         self.tmp_dir = tempfile.mkdtemp(prefix='refine-model-')
         self.tmp_pre = os.path.join(self.tmp_dir, 'refine')
 
         # Command object for refinement
-        self.cmd = CommandManager(self.program, log=self.log)
+        self.dispatcher = Dispatcher(self.program)
 
         self.setup()
 
-    def print_settings(self):
-        self.log.bar()
-        self.log("Refinement Command:")
-        self.log.bar()
-        self.cmd.print_settings()
-        self.log.bar()
-        self.log('Writing output to:\n\t{}\n\t{}'.format(self.out_pdb_file,self.out_mtz_file))
-        self.log.bar()
+    def __str__(self):
+        out_str = (
+            "* Refinement Parameters *\n\n" +
+            self.dispatcher.as_string() + '\n' +
+            'Writing output to:\n\t{}\n\t{}\n'.format(
+                self.output_files['pdb'],
+                self.output_files['mtz'],
+            ) +
+            "\n* Refinement Command *\n\n" +
+            self.dispatcher.as_command()
+        )
+        return out_str
+
+    def as_string(self):
+        return str(self)
 
     def run(self):
         """...run refinement amd export files"""
-        ret = self.refine()
+        result = self.refine()
         self.export()
-        return ret
+        return result
+
+    def add_parameter_file(self):
+        raise NotImplementedError('Dummy class -- not implemented')
 
     def setup(self):
-        raise Exception('Dummy class -- not implemented')
+        raise NotImplementedError('Dummy class -- not implemented')
 
     def finalise(self):
-        raise Exception('Dummy class -- not implemented')
+        raise NotImplementedError('Dummy class -- not implemented')
 
     def refine(self):
         """...run the refinement"""
         self.finalise()
-        return self.cmd.run()
+        self.dispatcher.run()
+        return self.dispatcher.result
 
     def export(self):
         """Copy files to output destination"""
 
-        try:
-            # Find pdb file in the output folder
-            tmp_pdb = glob.glob(self.tmp_pre+'*.pdb')
-            assert tmp_pdb, 'No refined files found: {}'.format(self.tmp_dir)
-            tmp_pdb = tmp_pdb[0]
-            tmp_mtz = tmp_pdb.replace('.pdb', '.mtz')
-            assert os.path.exists(tmp_pdb)
-            assert os.path.exists(tmp_mtz)
-            # Copy to output folder
-            shutil.copy(tmp_pdb, self.out_pdb_file)
-            shutil.copy(tmp_mtz, self.out_mtz_file)
-            assert os.path.exists(self.out_pdb_file)
-            assert os.path.exists(self.out_mtz_file)
-            # Write the log to the output log file
-            self.cmd.write_output(self.out_log_file)
-        except Exception as e:
-            print '------------>'
-            print self.cmd.output
-            print '------------>'
-            print self.cmd.error
-            print '------------>'
-            print e
-            print '------------>'
-            raise Failure('No files available for export after refinement with {}'.format(self.program))
-        finally:
-            # Delete temporary directory
-            shutil.rmtree(self.tmp_dir)
+        import glob, shutil
+
+        # Find pdb file in the output folder
+        tmp_pdbs = glob.glob(self.tmp_pre+'*.pdb')
+        if not tmp_pdbs:
+            raise RefinementError('No refined files found: {}'.format(self.tmp_dir))
+        tmp_pdb = tmp_pdbs[0]
+        tmp_mtz = tmp_pdb.replace('.pdb', '.mtz')
+
+        if not os.path.exists(tmp_pdb):
+            raise RefinementError('Output PDB file does not exist: {}'.format(tmp_pdb))
+        if not os.path.exists(tmp_mtz):
+            raise RefinementError('Output MTZ file does not exist: {}'.format(tmp_mtz))
+
+        # Copy to output folder
+        shutil.copy(tmp_pdb, self.output_files['pdb'])
+        shutil.copy(tmp_mtz, self.output_files['mtz'])
+
+        # Write the log to the output log file
+        self.dispatcher.write_output(self.output_files['log'])
+
+        if not (
+            os.path.exists(self.output_files['pdb']) and
+            os.path.exists(self.output_files['mtz'])
+            ):
+            raise RefinementError(
+                'Output PDB & MTZ files do not exist: {} / {}'.format(
+                    self.output_files['pdb'],
+                    self.output_files['mtz'],
+                )
+            )
+
+        if not os.path.exists(self.output_files['log']):
+            raise RefinementError(
+                'Output log file does not exist: {}'.format(
+                    self.output_files['log'],
+                )
+            )
+
+        # Delete temporary directory
+        shutil.rmtree(self.tmp_dir)
 
 
 class refine_phenix(_refiner):
-
 
     program = 'phenix.refine'
 
     def setup(self):
         """Prepare command object"""
 
-        self.cmd.add_command_line_arguments(self.pdb_file, self.mtz_file)
+        self.dispatcher.extend_args([
+            self.input_files['pdb'],
+            self.input_files['mtz'],
+        ])
 
-        if self.cif_files is not None:
-            self.cmd.add_command_line_arguments(self.cif_files)
+        if self.input_files['cif'] is not None:
+            self.dispatcher.extend_args(
+                self.input_files['cif'],
+            )
 
-        self.cmd.add_command_line_arguments('output.prefix={}'.format(self.tmp_pre))
+        self.dispatcher.append_arg(
+            'output.prefix={}'.format(self.tmp_pre),
+        )
 
         return self
 
     def finalise(self):
         return self
 
-    def add_custom_args(self, args):
-        self.cmd.add_command_line_arguments(args)
-        return self
-
     def add_parameter_file(self, parameter_file):
-        if not (parameter_file.endswith('.eff') or parameter_file.endswith('.def')):
-            raise Sorry('Parameter files must end with .eff or .def')
-        self.cmd.add_command_line_arguments(parameter_file)
+
+        # Suffixes recognised by phenix
+        if not (
+            parameter_file.endswith('.eff') or
+            parameter_file.endswith('.def') or
+            parameter_file.endswith('.params')
+        ):
+            raise Sorry('Parameter files must end with .eff or .def or .params')
+
+        # Files can just be passed straight to the program
+        self.dispatcher.append_arg(parameter_file)
+
         return self
 
     def set_n_cycles(self, n):
-        self.cmd.add_command_line_arguments('main.number_of_macro_cycles={:d}'.format(n))
+        self.dispatchers.append_arg(
+            'main.number_of_macro_cycles={:d}'.format(n)
+        )
         return self
 
     def set_refine_coordinates_only(self):
-        self.cmd.add_command_line_arguments('refine.strategy=individual_sites')
+        self.dispatcher.append_arg(
+            'refine.strategy=individual_sites'
+        )
         return self
 
     def set_refine_b_factors_only(self):
-        self.cmd.add_command_line_arguments('refine.strategy=individual_adp')
+        self.dispatcher.append_arg(
+            'refine.strategy=individual_adp'
+        )
         return self
 
 
 class refine_refmac(_refiner):
-
 
     program = 'refmac5'
 
@@ -161,20 +216,29 @@ class refine_refmac(_refiner):
         """Prepare command object"""
 
         # Input files
-        self.cmd.add_command_line_arguments('XYZIN', self.pdb_file)
-        self.cmd.add_command_line_arguments('HKLIN', self.mtz_file)
+        self.dispatcher.extend_args([
+            'XYZIN', self.input_files['pdb'],
+            'HKLIN', self.input_files['mtz'],
+            'XYZOUT', self.tmp_pre+'.pdb',
+            'HKLOUT', self.tmp_pre+'.mtz',
+        ])
 
-        # Output files
-        self.cmd.add_command_line_arguments('XYZOUT', self.tmp_pre+'.pdb')
-        self.cmd.add_command_line_arguments('HKLOUT', self.tmp_pre+'.mtz')
+        cif_files = self.input_files['cif']
 
-        if self.cif_files is not None:
-            if len(self.cif_files) > 1:
-                cif_file = merge_cif_libraries(self.cif_files, outcif=os.path.join(self.tmp_dir, 'combined.cif'))
+        if (cif_files is not None) and (len(cif_files) > 0):
+
+            # Refmac can only take one cif file -- merge
+            if len(cif_files) > 1:
+                from bamboo.ccp4_utils import merge_cif_libraries
+                cif_file = os.path.splitext(self.output_files['pdb'])[0] + '-combined-restraints.cif'
+                merge_cif_libraries(cif_files, outcif=cif_file)
             else:
-                cif_file = self.cif_files[0]
+                cif_file = cif_files[0]
             assert os.path.exists(cif_file)
-            self.cmd.add_command_line_arguments('LIBIN', cif_file)
+
+            self.dispatcher.extend_args(
+                ['LIBIN', cif_file]
+            )
 
         return self
 
@@ -182,31 +246,37 @@ class refine_refmac(_refiner):
 
         ###################################
         #          MUST BE AT END         #
-        self.cmd.add_standard_input('END')
+        self.dispatcher.append_stdin('END')
         #          MUST BE AT END         #
         ###################################
 
         return self
 
-    def add_custom_args(self, args):
-        self.cmd.add_standard_input(args)
-        return self
-
     def add_parameter_file(self, parameter_file):
         with open(parameter_file, 'r') as fh:
-            self.cmd.add_standard_input(fh.readlines())
+            for line in fh.readlines():
+                if line.strip() == 'END':
+                    logger('END line found in parameter file -- ignoring lines from this point on')
+                    break
+                self.dispatcher.append_stdin(line)
         return self
 
     def set_n_cycles(self, n):
-        self.cmd.add_standard_input('NCYC {:d}'.format(n))
+        self.dispatcher.append_stdin(
+            'NCYC {:d}'.format(n)
+        )
         return self
 
     def set_refine_coordinates_only(self):
-        self.cmd.add_standard_input("BREF OVER")
+        self.dispatcher.append_stdin(
+            "BREF OVER"
+        )
         return self
 
     def set_refine_b_factors_only(self):
-        self.cmd.add_standard_input("REFI BONLY")
+        self.dispatcher.append_stdin(
+            "REFI BONLY"
+        )
         return self
 
     ################# just refmac ##################
@@ -216,15 +286,28 @@ class refine_refmac(_refiner):
         return self
 
     def complete_model(self):
-        self.cmd.add_standard_input("BUIL Y")
+        self.dispatcher.append_stdin(
+            "BUIL Y"
+        )
         return self
 
     ################# just refmac ##################
 
+refiners = {
+    'refmac' : refine_refmac,
+    'phenix' : refine_phenix,
+}
+
+def get_refiner(name):
+
+    try:
+        return refiners[name]
+    except KeyError:
+        raise Failure('Invalid refinement program selected: {}'.format(name))
+    raise Failure('Invalid refinement program selected: {}'.format(name))
+
 
 class BFactorRefinementFactory(object):
-
-    _refine = refine_phenix
 
     def __init__(self, pdb_file, mtz_file, out_dir, cif_files=[], tag=None, tls_selections=None, prefix='refined'):
 
@@ -239,9 +322,8 @@ class BFactorRefinementFactory(object):
         self.initial_pdb = os.path.join(self.out_dir, 'initial.pdb')
         self.out_template = os.path.join(self.out_dir, prefix)
 
+        import shutil
         shutil.copy(self.pdb_file, self.initial_pdb)
-
-        self.log = Log()
 
         if not tls_selections:
             tls_selections = self.determine_tls_groups(pdb_file=pdb_file)
@@ -255,13 +337,13 @@ class BFactorRefinementFactory(object):
 
     def determine_tls_groups(self, pdb_file):
         """Use phenix.find_tls_groups to generate tls groups for the structure"""
-        self.log.subheading('Determining TLS groups for: {}'.format(pdb_file))
+        logger.subheading('Determining TLS groups for: {}'.format(pdb_file))
 
         tls_selections = phenix_find_tls_groups(pdb_file)
 
-        self.log.subheading('Identified TLS Selections:')
+        logger.subheading('Identified TLS Selections:')
         for s in tls_selections:
-            self.log(s)
+            logger(s)
 
         return tls_selections
 
@@ -284,10 +366,20 @@ class BFactorRefinementFactory(object):
             strategy += ''
             args = [r'refinement.refine.adp.individual.anisotropic="{}"'.format(' or '.join(['('+t+')' for t in self.tls_selections]))]
 
-        self.log.subheading('Refining B-factor model with {}'.format(self._refine.program))
-        obj = self._refine(pdb_file=self.pdb_file, mtz_file=self.mtz_file, cif_files=self.cif_files,
-                           out_prefix=self.out_template+'-'+suffix,
-                           strategy=strategy, n_cycles=3, cmd_line_args=args).run()
+        # Strategy command line arg
+        args.append('refine.strategy={}'.format(strategy))
+
+        logger.subheading('Refining B-factor model')
+        obj = refine_phenix(
+            pdb_file=self.pdb_file,
+            mtz_file=self.mtz_file,
+            cif_files=self.cif_files,
+            out_prefix=self.out_template+'-'+suffix,
+        )
+        obj.set_n_cycles(3)
+        obj.dispatcher.extend_args(args)
+
+        obj.run()
 
         return obj.out_pdb_file, obj.out_mtz_file
 
@@ -312,5 +404,5 @@ class BFactorRefinementFactory(object):
             o += 'L: '+str(tls.l)+'\n'
             o += 'S: '+str(tls.s)+'\n'
         o += '\n'
-        self.log(o)
+        logger(o)
 

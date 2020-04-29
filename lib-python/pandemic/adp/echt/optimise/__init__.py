@@ -1,4 +1,4 @@
-import logging as lg
+import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 import os, copy, collections, functools
@@ -241,8 +241,8 @@ class OptimiseEchtModel:
         """Terminate processes after optimisation is complete"""
         if self.optimise_tls_level is not None:
             self.optimise_tls_level.run_parallel.terminate_processes()
-        if self.optimise_uij_level is not None:
-            self.optimise_uij_level.run_parallel.terminate_processes()
+        if self.optimise_adp_level is not None:
+            self.optimise_adp_level.run_parallel.terminate_processes()
 
 
 class UpdateOptimisationFunction:

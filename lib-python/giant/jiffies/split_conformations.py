@@ -5,7 +5,7 @@ import numpy
 import iotbx.pdb
 import libtbx.phil
 
-from bamboo.common.logs import Log
+import giant.logs as lg
 
 from giant.io.pdb import strip_pdb_to_input, get_pdb_header
 from giant.structure.occupancy import calculate_residue_group_occupancy, sanitise_occupancies
@@ -91,9 +91,9 @@ settings {
 
 ############################################################################
 
-def split_conformations(filename, params, log=None):
+def split_conformations(filename, params):
 
-    if log is None: log = Log(verbose=True)
+    logger = lg.getLogger(__name__)
 
     # Read the pdb header - for writing later...
     header_contents = get_pdb_header(filename)
@@ -133,12 +133,12 @@ def split_conformations(filename, params, log=None):
     assert len(out_confs) == len(out_suffs), '{} not same length as {}'.format(str(out_confs), str(out_suffs))
 
     for confs, suffix in zip(out_confs, out_suffs):
-        log('Conformers {} -> {}'.format(str(confs), suffix))
+        logger('Conformers {} -> {}'.format(str(confs), suffix))
 
     # Create paths from the suffixes
     out_paths = ['.'.join([os.path.splitext(filename)[0],params.output.suffix_prefix,suff,'pdb']) for suff in out_suffs]
 
-    log.subheading('Processing {}'.format(filename[-70:]))
+    logger.subheading('Processing {}'.format(filename[-70:]))
 
     for this_confs, this_path in zip(out_confs, out_paths):
 
@@ -149,15 +149,15 @@ def split_conformations(filename, params, log=None):
         # Extract selection from the hierarchy
         sel_hiery = new_ens.select(new_ens.atom_selection_cache().selection(sel_string), copy_atoms=True)
 
-        log.bar(True, False)
-        log('Outputting conformer(s) {} to {}'.format(''.join(this_confs), this_path))
-        log.bar()
-        log('Keeping ANY atom with conformer id: {}'.format(' or '.join(['" "']+this_confs)))
-        log('Selection: \n\t'+sel_string)
+        logger.bar(True, False)
+        logger('Outputting conformer(s) {} to {}'.format(''.join(this_confs), this_path))
+        logger.bar()
+        logger('Keeping ANY atom with conformer id: {}'.format(' or '.join(['" "']+this_confs)))
+        logger('Selection: \n\t'+sel_string)
 
         if params.options.pruning.prune_duplicates:
-            log.bar()
-            log('Pruning redundant conformers')
+            logger.bar()
+            logger('Pruning redundant conformers')
             # Remove an alternate conformers than are duplicated after selection
             prune_redundant_alternate_conformations(
                 hierarchy           = sel_hiery,
@@ -167,34 +167,34 @@ def split_conformations(filename, params, log=None):
                 verbose             = params.settings.verbose)
 
         if params.options.reset_altlocs:
-            log.bar()
+            logger.bar()
             # Change the altlocs so that they start from "A"
             if len(this_confs) == 1:
                 conf_hash = {this_confs[0]: ' '}
             else:
                 conf_hash = dict(zip(this_confs, iotbx.pdb.systematic_chain_ids()))
-            log('Resetting structure altlocs:')
+            logger('Resetting structure altlocs:')
             for k in sorted(conf_hash.keys()):
-                log('\t{} -> "{}"'.format(k, conf_hash[k]))
-            if params.settings.verbose: log.bar()
+                logger('\t{} -> "{}"'.format(k, conf_hash[k]))
+            if params.settings.verbose: logger.bar()
             for ag in sel_hiery.atom_groups():
                 if ag.altloc in this_confs:
                     if params.settings.verbose:
-                        log('{} -> alt {}'.format(Labeller.format(ag), conf_hash[ag.altloc]))
+                        logger('{} -> alt {}'.format(Labeller.format(ag), conf_hash[ag.altloc]))
                     ag.altloc = conf_hash[ag.altloc]
 
         if params.options.reset_occupancies:
-            log.bar()
-            log('Resetting output occupancies (maximum occupancy of 1.0, etc.)')
+            logger.bar()
+            logger('Resetting output occupancies (maximum occupancy of 1.0, etc.)')
             # Divide through by the smallest occupancy of any complete residues groups with occupancies of less than one
             rg_occs = [calculate_residue_group_occupancy(rg) for rg in residue_groups_with_complete_set_of_conformers(sel_hiery)]
             non_uni = [v for v in numpy.unique(rg_occs) if 0.0 < v < 1.0]
             if non_uni:
                 div_occ = min(non_uni)
-                log('Dividing all occupancies by {}'.format(div_occ))
+                logger('Dividing all occupancies by {}'.format(div_occ))
                 sel_hiery.atoms().set_occ(sel_hiery.atoms().extract_occ() / div_occ)
             # Normalise the occupancies of any residue groups with more than unitary occupancy
-            log('Fixing any residues that have greater than unitary occupancy')
+            logger('Fixing any residues that have greater than unitary occupancy')
             sanitise_occupancies(hierarchy = sel_hiery,
                                  min_occ   = 0.0,
                                  max_occ   = 1.0,
@@ -202,13 +202,13 @@ def split_conformations(filename, params, log=None):
                                  verbose   = params.settings.verbose)
             # Perform checks
             max_occ = max([calculate_residue_group_occupancy(rg) for rg in sel_hiery.residue_groups()])
-            log('Maximum occupancy of output structue: {}'.format(max_occ))
+            logger('Maximum occupancy of output structue: {}'.format(max_occ))
             assert max_occ >= 0.0, 'maximum occupancy is less than 0.0?!?!'
             assert max_occ <= 1.0, 'maximum occupancy is greater than 1.0?!?!'
 
-        log.bar()
-        log('Writing structure: {}'.format(this_path))
-        log.bar(False, True)
+        logger.bar()
+        logger('Writing structure: {}'.format(this_path))
+        logger.bar(False, True)
 
         # Write header contents
         with open(this_path, 'w') as fh: fh.write(header_contents)
@@ -221,20 +221,26 @@ def split_conformations(filename, params, log=None):
 
 def run(params):
 
-    # Create log file
-    log = Log(log_file=params.output.log, verbose=True)
+    if (not params.output.log):
+        params.output.log = 'split_conformations.log'
 
-    log.heading('Validating input parameters')
+    from giant.logs import setup_logging
+    logger = setup_logging(
+        name = __name__,
+        log_file = params.output.log,
+    )
+
+    logger.heading('Validating input parameters')
 
     assert params.input.pdb, 'No PDB files given'
 
-    log.heading('Splitting multi-state structures')
+    logger.heading('Splitting multi-state structures')
 
     # Iterate through the input structures and extract the conformation
     for pdb in params.input.pdb:
-        split_conformations(filename=pdb, params=params, log=log)
+        split_conformations(filename=pdb, params=params)
 
-    log.heading('FINISHED')
+    logger.heading('finished normally')
 
 #######################################
 
@@ -246,4 +252,5 @@ if __name__=='__main__':
         args                = sys.argv[1:],
         blank_arg_prepend   = blank_arg_prepend,
         program             = PROGRAM,
-        description         = DESCRIPTION)
+        description         = DESCRIPTION,
+    )
