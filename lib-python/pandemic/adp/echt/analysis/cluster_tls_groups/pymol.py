@@ -1,6 +1,6 @@
 import os
 import numpy
-from bamboo.pymol_utils import PythonScript, shapes
+from giant.pymol_utils import PythonScript, shapes
 
 
 class base_pymol_script:

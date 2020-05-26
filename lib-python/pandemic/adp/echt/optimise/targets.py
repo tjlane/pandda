@@ -3,11 +3,8 @@ from libtbx import adopt_init_args
 from scitbx.array_family import flex
 from mmtbx.tls.utils import uij_eigenvalues
 
-from bamboo.maths.functions import Sigmoid
-
 
 class TargetTerm_UijLeastSquares:
-
 
     def __init__(self):
         adopt_init_args(self, locals())

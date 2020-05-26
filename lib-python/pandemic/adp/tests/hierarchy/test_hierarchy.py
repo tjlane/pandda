@@ -19,6 +19,7 @@ def test_CreateHierarchicalModelTask():
         custom_levels = None,
         overall_selection = 'resseq 1900:1920',
         cbeta_in_backbone = True,
+        assign_het_residues_to_nearest_ss_groups = False,
         )
 
     hm.run(hierarchy)

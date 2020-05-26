@@ -9,7 +9,7 @@ from libtbx.utils import Sorry, Failure
 from pandemic.adp.echt.analysis.cluster_tls_groups import ClusterTLSGroupsTask
 from pandemic.adp.echt.analysis.amplitudes import AnalyseTLSAmplitudesTask
 
-from bamboo.common.path import easy_directory
+from giant.paths import easy_directory
 
 
 class AnalyseEchtModelTask:

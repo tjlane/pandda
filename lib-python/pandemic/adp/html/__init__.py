@@ -4,7 +4,7 @@ logger = lg.getLogger(__name__)
 import os
 from libtbx import adopt_init_args
 from libtbx.utils import Sorry, Failure
-from bamboo.html import png2base64src_maybe
+from giant.html import png2base64src_maybe
 
 from . import divs
 import pandemic.resources

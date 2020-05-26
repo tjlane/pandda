@@ -35,7 +35,7 @@ def make_pymol_script(
     ):
     """Make pymol script to show results of helliger distance clustering"""
 
-    from bamboo.pymol_utils import shapes
+    from giant.pymol_utils import shapes
 
     minimum = 0.
     maximum = 1.

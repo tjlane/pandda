@@ -1,8 +1,9 @@
 import os, sys
 import pkg_resources
 
-import bamboo
-__version__ = bamboo.__version__
+__version__ = '0.2.12'
+
+from libtbx import group_args, adopt_init_args
 
 HEADER_TEXT = """
 ------------------------------------------------------------------>
@@ -23,7 +24,9 @@ HEADER_TEXT = """
 ------------------------------------------------------------------>
 """
 
+
 class module_info:
     name        = 'giant'
     version     = __version__
     header_text = HEADER_TEXT
+

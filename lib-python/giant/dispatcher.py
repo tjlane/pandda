@@ -2,16 +2,17 @@ import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 import procrunner
-from distutils.spawn import find_executable
+from giant.paths import is_available
 
 
 class Dispatcher:
 
     def __init__(self, program):
 
-        if not find_executable(program):
+        if not is_available(program):
             raise ValueError("Can't find the program '{!s}'. Is it available?".format(program))
 
+        self.program = program
         self.command = [program]
         self.stdin = None
         self.working_directory = None

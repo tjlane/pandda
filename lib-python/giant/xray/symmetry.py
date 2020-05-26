@@ -7,8 +7,6 @@ from scitbx.array_family import flex
 import iotbx.pdb
 from cctbx import crystal, sgtbx
 
-from bamboo.stats.cluster import find_connected_groups
-
 def match_sites_by_symmetry(ref_sites, query_sites, unit_cell, space_group, cutoff=5):
     """Pair sites in query_sites to sites in ref_sites, allowing for symmetry"""
 
@@ -69,7 +67,9 @@ def find_symmetry_equivalent_groups(points_frac, sym_ops, unit_cell, cutoff_cart
                     equiv_sites[(i_sym_op, i_group_1, i_group_2)] = 1
 
     # Condense the cluster equivalence - take max over the symmetry operations and group by connected paths
+    from giant.stats.cluster import find_connected_groups
     sym_groups = find_connected_groups(connection_matrix=equiv_sites.max(axis=0))
+
     return sym_groups
 
 def get_crystal_contact_operators(hierarchy, crystal_symmetry, distance_cutoff):

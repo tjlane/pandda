@@ -1,2 +1,0 @@
-#!/bin/sh
-cctbx.python -Qnew -m giant.jiffies.score_model_multiple "$@"

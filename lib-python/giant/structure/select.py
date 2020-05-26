@@ -31,8 +31,8 @@ def calphas(hierarchy, cache=None, copy=True):
 
 def backbone(hierarchy, cache=None, copy=True, cbeta=False):
     if not cache: cache=hierarchy.atom_selection_cache()
-    if cbeta:   sel = cache.selection('(not element H) and pepnames and (name C or name CA or name N or name O or name CB)')
-    else:       sel = cache.selection('(not element H) and pepnames and (name C or name CA or name N or name O)')
+    if cbeta:   sel = cache.selection('pepnames and (name C or name CA or name N or name O or name CB)')
+    else:       sel = cache.selection('pepnames and (name C or name CA or name N or name O)')
     return hierarchy.select(sel, copy_atoms=copy)
 
 def sidechains(hierarchy, cache=None, copy=True, cbeta=True):
@@ -311,51 +311,4 @@ def find_closest_points(points, query):
     nn_dists, nn_groups = tree.query(query)
     return nn_groups
 
-####################################################################################
-###                           DEPRECATED FUNCTIONS                               ###
-####################################################################################
-
-# Deprecated
-def get_calpha_sites(input_hierarchy):
-    """Gets the coordinates of alpha carbons from the structure"""
-    print 'This function is deprecated and will be deleted'
-    return flex.vec3_double([a.xyz for a in get_atom_selection(input_hierarchy, atom_names=[' CA '], atom=True, hetero=False)])
-# Deprecated
-def get_backbone_sites(input_hierarchy, cbeta=True):
-    """Gets the coordinates of backbone atoms"""
-    print 'This function is deprecated and will be deleted'
-    if cbeta: atoms = [' C  ',' N  ',' CA ',' O  ',' CB ']
-    else:     atoms = [' C  ',' N  ',' CA ',' O  ']
-    return flex.vec3_double([a.xyz for a in get_atom_selection(input_hierarchy, atom_names=[' C  ',' N  ',' CA ',' O  '], atom=True, hetero=False)])
-# Deprecated
-def get_atom_selection(input_hierarchy, chain_names=None, res_names=None, atom_names=None, atom=True, hetero=False, proteinonly=True):
-    """Iterate through atoms in input_hierarchy and select atoms matching the criteria"""
-    print 'This function is deprecated and will be deleted'
-    if chain_names is None: chain_names = []
-    if res_names   is None: res_names   = []
-    if atom_names  is None: atom_names  = []
-    filt_atoms = input_hierarchy.atoms_with_labels()
-    # Select Hetero
-    if (atom == True) and (hetero == True):
-        filt_atoms = filt_atoms
-    elif (atom == True) and (hetero == False):
-        filt_atoms = [a for a in filt_atoms if a.hetero == False]
-    elif (atom == False) and (hetero == True):
-        filt_atoms = [a for a in filt_atoms if a.hetero == True]
-    else:
-        raise Exception('No Atoms Selected')
-    # Get protein chains
-    if proteinonly:
-        prot_chains = [ch.id for ch in input_hierarchy.chains() if ch.is_protein()]
-        filt_atoms = [a for a in filt_atoms if a.chain_id in prot_chains]
-    # Get selected chains
-    if chain_names:
-        filt_atoms = [a for a in filt_atoms if a.chain_id in chain_names]
-    # Get selected residues
-    if res_names:
-        filt_atoms = [a for a in filt_atoms if a.resname in res_names]
-    # Get particular atoms
-    if atom_names:
-        filt_atoms = [a for a in filt_atoms if a.name in atom_names]
-    return filt_atoms
 

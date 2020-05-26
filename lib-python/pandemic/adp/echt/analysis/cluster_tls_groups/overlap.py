@@ -62,7 +62,7 @@ def make_pymol_script(
     ):
     """Make pymol script to show results of overlap analysis"""
 
-    from bamboo.pymol_utils import shapes
+    from giant.pymol_utils import shapes
 
     minimum = 0.
     maximum = 1e-16 + similarity_matrix[~numpy.eye(similarity_matrix.shape[0], dtype=bool)].max()

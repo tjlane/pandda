@@ -368,10 +368,14 @@ def run(params, args=None):
         logger(input_command)
     else:
         input_command = None
-    logger.heading('Non-default parameters')
-    logger(master_phil.fetch_diff(source=master_phil.format(params)).as_str())
-    logger.heading('Input parameters')
-    logger(master_phil.format(params).as_str())
+
+    from giant.phil import log_running_parameters
+    log_running_parameters(
+        params = params,
+        master_phil = master_phil,
+        logger = logger,
+    )
+
     with open(os.path.join(file_system.output_directory, 'params-input.eff'), 'w') as fh:
         fh.write(master_phil.format(params).as_str())
 
@@ -1119,7 +1123,7 @@ def run_pandemic_adp(args):
 
 if __name__=='__main__':
 
-    from bamboo.common.profile import profile_code
+    from giant.profile import profile_code
     try:
         #a = profile_code()
         run_pandemic_adp(args=sys.argv[1:])

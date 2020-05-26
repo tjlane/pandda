@@ -5,7 +5,7 @@ import os, itertools, collections
 
 from iotbx.pdb.hierarchy import input as ih
 
-from bamboo.pymol_utils import PythonScript
+from giant.pymol_utils import PythonScript
 from giant.structure.select import get_select_function
 from giant.structure.formatting import PymolSelection, ShortLabeller
 

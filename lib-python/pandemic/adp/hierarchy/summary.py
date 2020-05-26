@@ -272,7 +272,7 @@ class WriteHierarchicalModelSummaryTask:
 
     def make_pymol_script(self, file_dict):
 
-        from bamboo.pymol_utils import PythonScript
+        from giant.pymol_utils import PythonScript
 
         s = PythonScript(pretty_models=False, pretty_maps=False)
 

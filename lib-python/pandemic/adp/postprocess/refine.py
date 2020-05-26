@@ -4,7 +4,7 @@ logger = lg.getLogger(__name__)
 import os, collections
 from libtbx import adopt_init_args
 from libtbx.utils import Sorry, Failure
-from bamboo.common.path import easy_directory
+from giant.paths import easy_directory
 
 from pandemic.adp.parallel import RunParallelWithProgressBarUnordered
 

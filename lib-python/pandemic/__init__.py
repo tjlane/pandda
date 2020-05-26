@@ -1,6 +1,6 @@
 import os, sys
 import pandemic.resources
-import bamboo
+import giant
 
 __version__ = "0.1.0"
 
@@ -8,7 +8,7 @@ HEADER_TEXT = """
 ------------------------------------------------------------------>
 -
 -  PanDEMIC Version {!s}""".format(__version__)+"""
--  Package Version {!s}""".format(bamboo.__version__)+"""
+-  Package Version {!s}""".format(giant.__version__)+"""
 -
 -  __________                    .___             .__
 -  \\______   \\_____    ____    __| _/____   _____ |__| ____

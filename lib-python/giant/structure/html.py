@@ -2,8 +2,7 @@ import os
 
 from scitbx.array_family import flex
 
-from giant.html import GIANT_HTML_ENV
-from bamboo.html import path2url
+from giant.html import GIANT_HTML_ENV, path2url
 
 def write_html_summary(fname, atom_group_summaries):
 

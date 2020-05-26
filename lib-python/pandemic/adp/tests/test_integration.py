@@ -5,9 +5,10 @@ import itertools
 
 from pandemic.adp import run_pandemic_adp
 
-from bamboo.common.path import filename, foldername
-from bamboo.common.command import not_installed
-MISSING_PROGRAMS = tuple(not_installed(['pymol']))
+from giant.paths import filename, foldername, not_available
+
+# Programs required for tests that are not available
+MISSING_PROGRAMS = tuple(not_available(['pymol']))
 
 def fmt_option(option_name, option_value):
     return "{!s}={!s}".format(option_name, option_value)
@@ -51,7 +52,6 @@ def setup_input_structures(output_directory, number_of_structures, include_cryst
 
 
 class _CheckPandemicOutputFiles:
-
 
     chains = None
 
@@ -164,7 +164,6 @@ class _CheckPandemicOutputFiles:
 
 
 class CheckPandemicOutputFiles(_CheckPandemicOutputFiles):
-
 
     chains = ['A']
 
@@ -375,7 +374,7 @@ class TestPandemicIntegrationSingleStructure:
 
         checker = CheckPandemicOutputFiles(
             tls_level_names=['chain','ss'],
-            labelling='foldername',
+            labelling='filename',
             pymol_images=True,
             )
 
@@ -417,8 +416,8 @@ class TestPandemicIntegrationSingleStructure:
 
     def test_model_type_failures(self, tmpdir):
 
-        # Should error
-        with raises(Exception) as e:
+        # Should not error (automatically identifies non-crystallographic models)
+        with raises(SystemExit) as e:
             self.run_simple_option_check(
                 tmpdir=tmpdir.mkdir('check1'),
                 option_name='model_type',
@@ -426,8 +425,9 @@ class TestPandemicIntegrationSingleStructure:
                 cryst_line=False,
                 dry_run=True,
                 )
-        msg = "Failed to load pdb file -- have you selected the correct model_type? Current model_type is crystallographic."
-        assert str(e.value).startswith(msg)
+        assert str(e.value) == 'Program exited normally'
+        #msg = "Failed to load pdb file -- have you selected the correct model_type? Current model_type is crystallographic."
+        #assert str(e.value).startswith(msg)
 
         # Shouldn't care.
         with raises(SystemExit) as e:
@@ -485,61 +485,3 @@ class TestPandemicIntegrationSingleStructure:
                     output_directory=d,
                     )
 
-
-
-#     options = []
-#     options.append(make_options('input.labelling', choices=['filename','foldername']))
-#     options.append(make_options('output.write_isotropic_output_for_isotropic_atoms', choices=[True, False]))
-#     options.append(make_options('', choices=[]))
-#     options.append(make_options('', choices=[]))
-#     options.append(make_options('', choices=[]))
-#     options.append(make_options('', choices=[]))
-#     options.append(make_options('', choices=[]))
-#     options.append(make_options('', choices=[]))
-#     options.append(make_options('', choices=[]))
-#     options.append(make_options('', choices=[]))
-#     options.append(make_options('', choices=[]))
-#     options.append(make_options('', choices=[]))
-#     options.append(make_options('', choices=[]))
-#     options.append(make_options('', choices=[]))
-
-
-#     option_dict = {}
-
-#     for model_type in ['crystallographic', 'noncrystallographic']:
-#         option_dict['model_type'] = model_type
-
-#         ######
-
-#         run_directory = tmpdir.make_numbered_dir(prefix='test-', rootdir=tmpdir)
-
-#         structure_directory = run_directory.mkdir('structures')
-
-#         input_structures = setup_input_structures(
-#             structure_directory,
-#             1,
-#             include_cryst_lines=(model_type=='crystallographic'),
-#             )
-
-#         for option_set in options:
-
-#             output_directory = run_directory.make_numbered_dir(prefix='run-', rootdir=run_directory)
-#             print output_directory
-
-#             option_dict['output.out_dir'] = str(output_directory)
-
-#             this_options = [format_option(k,v) for k,v in option_dict.items()]
-
-#             run_pandemic_adp(option_set+this_options+input_structures)
-
-# def test_pandemic_integration_multiple_structures(tmpdir):
-
-#     from pandda.resources.test_data import TEST_DATA
-
-#     tmp_dir = TEST_DATA('baz2ba_test_data')
-
-#     try:
-#         pass
-
-#     finally:
-#         os.rmdir(tmp_dir)

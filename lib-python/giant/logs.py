@@ -1,6 +1,10 @@
 import sys
 import logging as lg
 
+INFO = lg.INFO
+WARNING = lg.WARNING
+DEBUG = lg.DEBUG
+
 
 class Bar:
 
@@ -56,6 +60,44 @@ class SubHeading(Heading):
     spacer = '-'
     decorator = ' ** '
     side_width = 3
+
+
+class ListStream(object):
+    """Replaces a file object for functions that print to screen - writes to list of lines instead"""
+
+    _bar = Bar()
+    _heading = Heading()
+    _subheading = SubHeading()
+
+    def __init__(self):
+        self.data = []
+
+    def __call__(self, s):
+        self.write(s)
+
+    def __str__(self):
+        return self.format()
+
+    def __repr__(self):
+        return self.format()
+
+    def __iter__(self):
+        return iter(self.data)
+
+    def format(self):
+        return ''.join(self.data)
+
+    def write(self, s):
+        self.data.append(s)
+
+    def heading(self, message, spacer=False, blank=True):
+        self.write(self._heading(text=message, spacer=spacer, blank=blank))
+
+    def subheading(self, message, spacer=False, blank=True):
+        self.write(self._subheading(text=message, spacer=spacer, blank=blank))
+
+    def bar(self, blank_before=False, blank_after=False):
+        self.write(self._bar(blank_before=blank_before, blank_after=blank_after))
 
 
 class LoggerWithHeadings(lg.Logger):

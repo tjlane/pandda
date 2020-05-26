@@ -1,15 +1,9 @@
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
 import os, sys, copy
 
-import iotbx.pdb
-import libtbx.phil
-from libtbx.utils import Sorry
-
-from bamboo.common.logs import Log
-
-from giant.io.pdb import strip_pdb_to_input
-from giant.structure.altlocs import expand_alternate_conformations, prune_redundant_alternate_conformations
-
-from giant.jiffies import make_restraints
+from giant.exceptions import Sorry, Failure
 
 ############################################################################
 
@@ -26,6 +20,7 @@ DESCRIPTION = """
 
 blank_arg_prepend = {'.pdb': 'input.pdb='}
 
+import libtbx.phil
 master_phil = libtbx.phil.parse("""
 input {
     pdb = None
@@ -56,34 +51,34 @@ settings {
 
 ############################################################################
 
-def standardise_multiconformer_model(hierarchy, pruning_rmsd=0.1, in_place=False, verbose=False, log=None):
+from giant.structure.altlocs import expand_alternate_conformations, prune_redundant_alternate_conformations
+
+def standardise_multiconformer_model(hierarchy, pruning_rmsd=0.1, in_place=False, verbose=False):
     """Standardise hierarchies by expanding alternate model conformations, and then trimming alternate conformations where possible"""
 
-    if log is None: log = Log(verbose=True)
-
     # Alter the original files?
-    if not in_place:
+    if (in_place is False):
         # Copy the hierarchies
         hierarchy = hierarchy.deep_copy()
 
     # Sort the atoms
     hierarchy.sort_atoms_in_place()
 
-    log.heading('Preparing to standardise structure')
-
-    log.subheading('Explicitly expanding model to all conformations of the crystal')
+    logger.subheading('Explicitly expanding model to all conformations of the crystal')
     expand_alternate_conformations(
-        hierarchy   = hierarchy,
-        in_place    = True,
-        verbose     = verbose)
+        hierarchy = hierarchy,
+        in_place = True,
+        verbose = verbose,
+    )
 
-    log.subheading('Pruning unneccessary multi-conformer residues in the expanded structure')
+    logger.subheading('Pruning unneccessary multi-conformer residues in the expanded structure')
     prune_redundant_alternate_conformations(
-        hierarchy           = hierarchy,
-        required_altlocs    = hierarchy.altloc_indices(),
-        rmsd_cutoff         = pruning_rmsd,
-        in_place            = True,
-        verbose             = verbose)
+        hierarchy = hierarchy,
+        required_altlocs = hierarchy.altloc_indices(),
+        rmsd_cutoff = pruning_rmsd,
+        in_place = True,
+        verbose = verbose,
+    )
 
     return hierarchy
 
@@ -91,44 +86,50 @@ def standardise_multiconformer_model(hierarchy, pruning_rmsd=0.1, in_place=False
 
 def run(params):
 
-    # Create log file
-    log = Log(log_file=params.output.log, verbose=True)
+    logger = lg.setup_logging(
+        name = __name__,
+        log_file = params.output.log,
+    )
+
+    logger('Input Parameters:')
+    logger(master_phil.format(params).as_str())
 
     # Report
-    log.heading('Validating input parameters and input files')
+    logger.heading('Validating input parameters and input files')
 
     # Check one or other have been provided
-    assert params.input.pdb, 'No pdb files have been provided'
+    if not params.input.pdb:
+        raise IOError('No pdb files have been provided')
     for pdb in params.input.pdb:
-        if not os.path.exists(pdb): raise Sorry('pdb does not exist: {}'.format(pdb))
+        if not os.path.exists(pdb):
+            raise IOError('pdb does not exist: {}'.format(pdb))
 
     for pdb in params.input.pdb:
 
-        log.subheading('Reading pdb: {}'.format(pdb))
+        logger.heading('Standardising {}'.format(pdb))
+
+        from giant.io.pdb import strip_pdb_to_input
         obj = strip_pdb_to_input(pdb, remove_ter=True)
-        try:
-            obj.hierarchy.only_model()
-        except:
-            raise Sorry('Input structures may only have one model')
+        if obj.hierarchy.models_size() > 1:
+            raise Sorry('Input structures may only have one model (current structure has {})'.format(obj.hierarchy.models_size()))
 
         # Merge the hierarchies
         final =  standardise_multiconformer_model(
-            hierarchy    = obj.hierarchy,
+            hierarchy = obj.hierarchy,
             pruning_rmsd = params.options.pruning_rmsd,
-            in_place     = True,
-            verbose      = params.settings.verbose)
+            in_place = True,
+            verbose = params.settings.verbose,
+        )
 
         # Update the atoms numbering
         final.sort_atoms_in_place()
 
         # Write output file
         filename = os.path.splitext(pdb)[0]+params.output.suffix+'.pdb'
-        log('Writing output structure to {}'.format(filename))
+        logger('Writing output structure to {}'.format(filename))
         final.write_pdb_file(file_name=filename, crystal_symmetry=obj.crystal_symmetry())
 
-    log.heading('FINISHED')
-    log.heading('Final Parameters')
-    log(master_phil.format(params).as_str().strip())
+    logger.heading('finished')
 
     return
 
@@ -142,4 +143,5 @@ if __name__=='__main__':
         args                = sys.argv[1:],
         blank_arg_prepend   = blank_arg_prepend,
         program             = PROGRAM,
-        description         = DESCRIPTION)
+        description         = DESCRIPTION,
+    )

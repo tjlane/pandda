@@ -6,8 +6,6 @@ import textwrap
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
 
-from bamboo.common.command import check_programs_are_available
-
 def phil_path(params, attribute):
     return params.__phil_path__(attribute)
 
@@ -86,82 +84,84 @@ def validate_output_phil(params):
 
 def validate_available_programs(params):
 
-    try:
-        # Initalise variable to blank string (overwritten at each check)
-        message = ''
-        # Standard string for missing programs
-        missing_program_info_string = textwrap.dedent("""
-        The program is not currently available in any of the PATH directories.
-        [ It must be available as an executable script/link -- not as an alias.  ]
-        """)
+    from giant.paths import is_available
 
-        if params.analysis.refine_output_structures is True:
+    # Initalise variable to blank string (overwritten at each check)
+    message = ''
+    # Standard string for missing programs
+    missing_program_info_string = textwrap.dedent("""
+    The program is not currently available in any of the PATH directories.
+    [ It must be available as an executable script/link -- not as an alias.  ]
+    """)
 
-            # Format string showing the relevant current parameters
-            current_params_string = ' and '.format([
-                phil_value(params.analysis, 'refine_output_structures'),
-                phil_value(params.refinement, 'program'),
-                ])
+    if params.analysis.refine_output_structures is True:
 
-            if params.refinement.program == 'phenix':
-                message = """
-                phenix.refine is required when {current_params}.
-                {missing_program_info_string}
-                """.format(
-                    current_params=current_params_string,
-                    missing_program_info_string=missing_program_info_string,
-                    )
-                check_programs_are_available(['phenix.refine'])
-            elif params.refinement.program == 'refmac':
-                message = """
-                refmac5 is required when {current_params}.
-                {missing_program_info_string}
-                """.format(
-                    current_params=current_params_string,
-                    missing_program_info_string=missing_program_info_string,
-                    )
-                check_programs_are_available(['refmac5'])
-            else:
-                raise Sorry("""
-                    Must select refinement.program when {requirement}.
-                    """.format(
-                        requirement=phil_value(params.analysis, 'refine_output_structures'),
-                        )
-                    )
+        # Format string showing the relevant current parameters
+        current_params_string = ' and '.format([
+            phil_value(params.analysis, 'refine_output_structures'),
+            phil_value(params.refinement, 'program'),
+            ])
 
-        if params.analysis.calculate_r_factors is True:
-            message = textwrap.dedent("""
-            phenix.table_one is required when {current_params}.
+        if params.refinement.program == 'phenix':
+            message = """
+            phenix.refine is required when {current_params}.
             {missing_program_info_string}
-            To turn off this function add {fix_params} to command line options.
-            """).format(
-                current_params=' and '.format([
-                    phil_value(params.analysis, 'calculate_r_factors'),
-                    ]),
+            """.format(
+                current_params=current_params_string,
                 missing_program_info_string=missing_program_info_string,
-                fix_params=phil_new_value(params.analysis, 'calculate_r_factors', False),
                 )
-            check_programs_are_available(['phenix.table_one'])
-
-        #if params.analysis.calculate_electron_density_metrics:
-        #    message = 'edstats (script name "edstats.pl") is required when analysis.calculate_electron_density_metrics is True'
-        #    check_programs_are_available(['edstats.pl'])
-
-        if params.output.images.pymol is not None:
-            message = textwrap.dedent("""
-            pymol is required when {current_params}.
+            if not is_available('phenix.refine'):
+                raise Sorry(message)
+        elif params.refinement.program == 'refmac':
+            message = """
+            refmac5 is required when {current_params}.
             {missing_program_info_string}
-            To turn off pymol add {fix_params} to the command line options.
-            """).format(
-                current_params=' and '.format([
-                    phil_value(params.output.images, 'pymol'),
-                    ]),
+            """.format(
+                current_params=current_params_string,
                 missing_program_info_string=missing_program_info_string,
-                fix_params=phil_new_value(params.output.images, 'pymol', 'none'),
                 )
-            check_programs_are_available(['pymol'])
-    except Exception as e:
-        logger(message)
-        raise
+            if not is_available('refmac5'):
+                raise Sorry(message)
+        else:
+            raise Sorry("""
+                Must select refinement.program when {requirement}.
+                """.format(
+                    requirement=phil_value(params.analysis, 'refine_output_structures'),
+                    )
+                )
+
+    if params.analysis.calculate_r_factors is True:
+        message = textwrap.dedent("""
+        phenix.table_one is required when {current_params}.
+        {missing_program_info_string}
+        To turn off this function add {fix_params} to command line options.
+        """).format(
+            current_params=' and '.format([
+                phil_value(params.analysis, 'calculate_r_factors'),
+                ]),
+            missing_program_info_string=missing_program_info_string,
+            fix_params=phil_new_value(params.analysis, 'calculate_r_factors', False),
+            )
+        if not is_available('phenix.table_one'):
+            raise Sorry(message)
+
+    #if params.analysis.calculate_electron_density_metrics:
+    #    message = 'edstats (script name "edstats.pl") is required when analysis.calculate_electron_density_metrics is True'
+    #    check_programs_are_available(['edstats.pl'])
+
+    if params.output.images.pymol is not None:
+        message = textwrap.dedent("""
+        pymol is required when {current_params}.
+        {missing_program_info_string}
+        To turn off pymol add {fix_params} to the command line options.
+        """).format(
+            current_params=' and '.format([
+                phil_value(params.output.images, 'pymol'),
+                ]),
+            missing_program_info_string=missing_program_info_string,
+            fix_params=phil_new_value(params.output.images, 'pymol', 'none'),
+            )
+        if not is_available('pymol'):
+            raise Sorry(message)
 
     return True

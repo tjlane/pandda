@@ -1,7 +1,6 @@
 import unittest
 
 from scitbx.array_family import flex
-from giant.stats.optimisation import LinearScaling
 
 class TestLinearFitting(unittest.TestCase):
 
@@ -17,6 +16,7 @@ class TestLinearFitting(unittest.TestCase):
         t1_ref_values = self.v1*self.t1_x_values + self.v0
         t1_mov_values = flex.double(self.t1_x_values)
 
+        from giant.stats.optimisation import LinearScaling
         ls = LinearScaling(x_values     = self.t1_x_values,
                            ref_values = t1_ref_values,
                            scl_values = t1_mov_values)

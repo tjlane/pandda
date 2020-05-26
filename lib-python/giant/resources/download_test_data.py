@@ -1,8 +1,7 @@
 
 import os, sys, time
 
-from bamboo.common.path import easy_directory
-from bamboo.common.logs import Log
+from giant.paths import easy_directory
 
 # Adapted from https://blog.shichao.io/2012/10/04/progress_speed_indicator_for_urlretrieve_in_python.html
 class _ReportHook(object):

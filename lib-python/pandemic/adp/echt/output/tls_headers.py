@@ -18,8 +18,6 @@ class MultiModelTLSHeaderFactory:
         ):
 
         import mmtbx.tls.tools
-        from bamboo.common import ListStream
-
         if i_levels is None: i_levels = range(len(self.tls_objects))
 
         assert isinstance(i_levels, list)
@@ -69,6 +67,7 @@ class MultiModelTLSHeaderFactory:
             group_strings.append(combined_selection_string)
 
         # Create header for each dataset
+        from giant.logs import ListStream
         dataset_headers = []
         for tlsos in zip(*group_tlsos):
             # Store output in list stream

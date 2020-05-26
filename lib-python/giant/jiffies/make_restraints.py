@@ -1,17 +1,14 @@
-import os, sys, copy
+import giant.logs as lg
+logger = lg.getLogger(__name__)
 
-import numpy
+import os, sys
 
 import iotbx.pdb
 
-import libtbx.phil
-
-from bamboo.common.logs import Log
-
-from giant.structure.restraints.peptides import generate_set_of_alternate_conformer_peptide_links, format_link_record
-from giant.structure.restraints.conformers import find_duplicated_conformers_and_generate_atom_pairs
-from giant.structure.restraints.external import find_atoms_around_alternate_conformers
-from giant.structure.restraints.occupancy import overlapping_occupancy_groups, simple_occupancy_groups
+from giant.refinement.restraints.peptides import generate_set_of_alternate_conformer_peptide_links, format_link_record
+from giant.refinement.restraints.conformers import find_duplicated_conformers_and_generate_atom_pairs
+from giant.refinement.restraints.external import find_atoms_around_alternate_conformers
+from giant.refinement.restraints.occupancy import overlapping_occupancy_groups, simple_occupancy_groups
 from giant.structure.formatting import RefmacFormatter, PhenixFormatter
 
 ############################################################################
@@ -32,7 +29,9 @@ DESCRIPTION = """
 
 ############################################################################
 
-blank_arg_prepend = {'.pdb' : 'pdb='}
+blank_arg_prepend = {
+    '.pdb' : 'pdb=',
+}
 
 input_phil = """
     pdb = None
@@ -74,10 +73,9 @@ modes {
         .type = bool
 }
 duplicates {
-    make_for = *all protein het
-        .help = "Generate only restraints for protein residues?"
-        .type = choice
-        .multiple = False
+    make_for = *protein *dna *het
+        .help = "Which types of atom to generate residues for?"
+        .type = choice(multi=True)
     rmsd_cutoff = 0.1
         .help = "Cutoff at which two conformers are considered to be duplicated"
         .type = float
@@ -104,6 +102,9 @@ local_restraints {
         .type = float
 }
 occupancy {
+    generate = *overlapping_groups simple_groups
+        .help = 'What types of occupancy group constraints should be generated?'
+        .type = choice(multi=True)
     resname = DRG,FRG,LIG,UNK,UNL
         .help = 'Residues to generate constraint groups around for occupancy refinement (comma separated list of residue identifiers, i.e. resname=LIG or resname=LIG,UNL)'
         .type = str
@@ -115,9 +116,6 @@ occupancy {
         .help = 'Distance to use when clustering atoms that should have occupancies that SUM TO LESS THAN ONE'
     complete_groups = True
         .help = 'Generate a set of fully constrained groups (that sum to unitary occupancy) when True. Generate a set of weaker constraints for overlapping atoms when False.'
-        .type = bool
-    simple_groups = False
-        .help = 'Generate the set of default occupancy groups (conformers of the same residue, connected sets of residues)'
         .type = bool
     exclude_altlocs = None
         .help = 'Exclude certain altlocs from occupancy groups (e.g. A or A,B)'
@@ -138,6 +136,7 @@ b_factors
 }
 """
 
+import libtbx.phil
 master_phil = libtbx.phil.parse("""
 input {{input_phil}}
 output {{output_phil}}
@@ -148,216 +147,307 @@ settings {
     verbose = True
         .type = bool
 }
-""".replace('{input_phil}',input_phil).replace('{output_phil}',output_phil).replace('{options_phil}',options_phil))
+""".replace(
+    '{input_phil}',
+    input_phil,
+).replace(
+    '{output_phil}',
+    output_phil,
+).replace(
+    '{options_phil}',
+    options_phil,
+))
 
 ############################################################################
 
-def make_link_records(params, input_hierarchy, link_file, log=None):
+def make_link_records(params, input_hierarchy, link_file):
     """Create link records to make a continuous peptide chain"""
 
-    if log is None: log = Log(verbose=True)
-
-    log.subheading('Checking the continuity of the protein backbone')
-
-    links, warnings = generate_set_of_alternate_conformer_peptide_links(hierarchy=input_hierarchy.hierarchy)
+    logger.heading('Checking the continuity of the protein backbone')
+    links, warnings = generate_set_of_alternate_conformer_peptide_links(
+        hierarchy = input_hierarchy.hierarchy,
+    )
 
     if warnings:
-        log.bar()
-        log('WARNINGS:')
-        log.bar()
+        logger('Warnings:')
         for w in warnings:
-            log(w)
-        log.bar()
-        log('')
+            logger.warning(w)
+        logger('')
 
     if (not links) and (not warnings):
-        log('No breaks in the backbone - hooray! (nothing needs to be done here)')
+        logger('No breaks in the backbone - hooray! (nothing needs to be done here)')
         return
     elif (not links):
-        log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        log("!!! >>> There are breaks in the backbone but I'm not able to do anything to fix them    <<< !!!")
-        log("!!! >>> You'll need to check them manually to see if these are going to be a problem... <<< !!!")
-        log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        logger(
+            "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n" +
+            "!!! >>> There are breaks in the backbone but I'm not able to do anything to fix them    <<< !!!\n" +
+            "!!! >>> You'll need to check them manually to see if these are going to be a problem... <<< !!!\n" +
+            "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+           )
         return
 
-    link_block = '\n'.join([format_link_record(atom_1=a1,atom_2=a2,chain_id_1=c1,chain_id_2=c2,link_type=lt) for a1,a2,c1,c2,lt in links])
+    link_block = '\n'.join([
+        format_link_record(
+            atom_1 = a1,
+            atom_2 = a2,
+            chain_id_1 = c1,
+            chain_id_2 = c2,
+            link_type = lt,
+        )
+        for a1,a2,c1,c2,lt in links
+    ])
 
-    log('Need to apply {} links to make the backbone continuous:'.format(len(links)))
-    log('')
-    log(link_block)
-    log('')
+    logger('Need to apply {} links to make the backbone continuous:\n'.format(len(links)))
+    logger(link_block)
 
-    log('Writing hierarchy with new link records to {}'.format(link_file))
-    log('(This file can only be used for refinement with REFMAC)')
-    log('')
-    log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-    log('!!! ALTHOUGH THE FILE WITH BACKBONE LINKS HAS BEEN OUTPUT, IT SHOULD BE USED WITH CAUTION !!!')
-    log('!!!   THE CONNECTION OF ALTERNATE CONFORMATIONS OF THE BACKBONE IS GENERALLY "INCORRECT"  !!!')
-    log('!!!          THERE SHOULD BE A VERY GOOD REASON FOR THESE RESTRAINTS TO BE USED           !!!')
-    log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+    logger('Writing hierarchy with new link records to {}'.format(link_file))
 
-    input_hierarchy.hierarchy.write_pdb_file(file_name          = link_file,
-                                             crystal_symmetry   = input_hierarchy.crystal_symmetry(),
-                                             link_records       = link_block)
+    logger(
+        '(This file can only be used for refinement with REFMAC)\n\n' +
+        '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n' +
+        '!!! ALTHOUGH THE FILE WITH BACKBONE LINKS HAS BEEN OUTPUT, IT SHOULD BE USED WITH CAUTION !!!\n' +
+        '!!!   THE CONNECTION OF ALTERNATE CONFORMATIONS OF THE BACKBONE IS GENERALLY "INCORRECT"  !!!\n' +
+        '!!!          THERE SHOULD BE A VERY GOOD REASON FOR THESE RESTRAINTS TO BE USED           !!!\n' +
+        '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+    )
 
-def make_duplication_restraints(params, input_hierarchy, log=None):
+    input_hierarchy.hierarchy.write_pdb_file(
+        file_name = link_file,
+        crystal_symmetry = input_hierarchy.crystal_symmetry(),
+        link_records = link_block,
+    )
+
+def make_duplication_restraints(params, input_hierarchy):
     """Create coordinate and b-factor restraints for duplicated conformers"""
 
-    if log is None: log = Log(verbose=True)
-
-    log.subheading('Generating restraints for duplicated conformers')
+    logger.heading('Generating restraints for duplicated conformers')
 
     dup_groups = []
 
     for chn in input_hierarchy.hierarchy.chains():
 
-        if (params.duplicates.make_for == 'protein') and not chn.is_protein():
-            continue
-        elif (params.duplicates.make_for == 'het') and chn.is_protein():
-            continue
+        if chn.is_protein():
+            if ('protein' not in params.duplicates.make_for):
+                continue
+        elif chn.is_na():
+            if ('dna' not in params.duplicates.make_for):
+                continue
+        else:
+            if ('het' not in params.duplicates.make_for):
+                continue
 
         for rg in chn.residue_groups():
-            dup_groups += find_duplicated_conformers_and_generate_atom_pairs(residue_group=rg, rmsd_cutoff=params.duplicates.rmsd_cutoff)
+            dup_groups += find_duplicated_conformers_and_generate_atom_pairs(
+                residue_group = rg,
+                rmsd_cutoff = params.duplicates.rmsd_cutoff,
+            )
 
-    if not dup_groups:
-        log('No duplicated conformers (no restraints created)')
+    if (not dup_groups):
+        logger('No duplicated conformers (no restraints created)')
         return
 
     # Concatenate atoms into one list
     atom_pairs = []; [atom_pairs.extend(l) for l in dup_groups]
 
-    log('Found {} duplicated conformers consisting of {} atoms'.format(len(dup_groups), len(atom_pairs)))
-    log('')
+    logger('Found {} duplicated conformers consisting of {} atoms\n'.format(
+        len(dup_groups),
+        len(atom_pairs),
+    ))
 
     if params.output.refmac:
-        restraint_list = [RefmacFormatter.make_distance_restraint(atm_1=a1, atm_2=a2, value=0.0, sigma=params.duplicates.sigma_xyz) for a1,a2 in atom_pairs]
-        rest_block = RefmacFormatter.format_distance_restraints(restraint_list=restraint_list)
-        with open(params.output.refmac, 'a') as fh: fh.write(rest_block+'\n')
+        restraint_list = [
+            RefmacFormatter.make_distance_restraint(
+                atm_1 = a1,
+                atm_2 = a2,
+                value = 0.0,
+                sigma = params.duplicates.sigma_xyz,
+            )
+            for a1,a2 in atom_pairs
+        ]
+        rest_block = RefmacFormatter.format_distance_restraints(
+            restraint_list = restraint_list,
+        )
+        with open(params.output.refmac, 'a') as fh:
+            fh.write(rest_block+'\n')
         if params.settings.verbose:
-            log.subheading('refmac duplicate conformer restraints')
-            log(rest_block[:1000]+'...'*(len(rest_block)>1000))
-            log('')
+            logger.subheading('refmac duplicate conformer restraints')
+            logger(rest_block[:1000]+'...'*(len(rest_block)>1000)+'\n')
 
     if params.output.phenix:
-        restraint_list = [PhenixFormatter.make_distance_restraint(atm_1=a1, atm_2=a2, value=0.0, sigma=params.duplicates.sigma_xyz) for a1,a2 in atom_pairs]
-        rest_block = PhenixFormatter.format_distance_restraints(restraint_list=restraint_list)
-        with open(params.output.phenix, 'a') as fh: fh.write(rest_block+'\n')
+        restraint_list = [
+            PhenixFormatter.make_distance_restraint(
+                atm_1 = a1,
+                atm_2 = a2,
+                value = 0.0,
+                sigma = params.duplicates.sigma_xyz,
+            )
+            for a1,a2 in atom_pairs
+        ]
+        rest_block = PhenixFormatter.format_distance_restraints(
+            restraint_list = restraint_list,
+        )
+        with open(params.output.phenix, 'a') as fh:
+            fh.write(rest_block+'\n')
         if params.settings.verbose:
-            log.subheading('phenix duplicate conformer restraints')
-            log(rest_block[:1000]+'...'*(len(rest_block)>1000))
-            log('')
+            logger.subheading('phenix duplicate conformer restraints')
+            logger(rest_block[:1000]+'...'*(len(rest_block)>1000)+'\n')
 
-def make_local_restraints(params, input_hierarchy, log=None):
+def make_local_restraints(params, input_hierarchy):
     """Create local restraints for a hierarchy"""
 
-    if log is None: log = Log(verbose=True)
+    logger.subheading('Generating local structure restraints')
 
-    log.subheading('Generating local structure restraints')
+    atom_d_pairs = find_atoms_around_alternate_conformers(
+        hierarchy = input_hierarchy.hierarchy,
+        altlocs = params.local_restraints.altlocs.split(',') if params.local_restraints.altlocs else None,
+        dist_cutoff = params.local_restraints.max_distance,
+    )
 
-    atom_d_pairs = find_atoms_around_alternate_conformers(hierarchy     = input_hierarchy.hierarchy,
-                                                          altlocs       = params.local_restraints.altlocs.split(',') if params.local_restraints.altlocs else None,
-                                                          dist_cutoff   = params.local_restraints.max_distance)
     # Filter the 0-distance restraints
-    atom_d_pairs = [(a1,a2,d) for a1,a2,d in atom_d_pairs if d>params.local_restraints.min_distance]
+    atom_d_pairs = [
+        (a1,a2,d)
+        for a1,a2,d in atom_d_pairs
+        if (d > params.local_restraints.min_distance)
+    ]
 
-    log('Created {} local restraints for {} conformers with distance cutoff of {}-{}A'.format(len(atom_d_pairs),
-                                                                                              params.local_restraints.altlocs if params.local_restraints.altlocs else 'all',
-                                                                                              params.local_restraints.min_distance,
-                                                                                              params.local_restraints.max_distance))
-    log('')
+    logger('Created {} local restraints for {} conformers with distance cutoff of {}-{}A\n'.format(
+        len(atom_d_pairs),
+        params.local_restraints.altlocs if params.local_restraints.altlocs else 'all',
+        params.local_restraints.min_distance,
+        params.local_restraints.max_distance,
+    ))
 
     if params.output.refmac:
-        restraint_list = [RefmacFormatter.make_distance_restraint(atm_1=a1, atm_2=a2, value=d, sigma=params.local_restraints.sigma_xyz) for a1,a2,d in atom_d_pairs]
-        rest_block = RefmacFormatter.format_distance_restraints(restraint_list=restraint_list)
-        with open(params.output.refmac, 'a') as fh: fh.write(rest_block+'\n')
+        restraint_list = [
+            RefmacFormatter.make_distance_restraint(
+                atm_1 = a1,
+                atm_2 = a2,
+                value = d,
+                sigma = params.local_restraints.sigma_xyz,
+            )
+            for a1,a2,d in atom_d_pairs
+        ]
+        rest_block = RefmacFormatter.format_distance_restraints(
+            restraint_list = restraint_list,
+        )
+        with open(params.output.refmac, 'a') as fh:
+            fh.write(rest_block+'\n')
         if params.settings.verbose:
-            log.subheading('refmac local structural restraints')
-            log(rest_block[:1000]+'...'*(len(rest_block)>1000))
-            log('')
+            logger.subheading('refmac local structural restraints')
+            logger(rest_block[:1000]+'...'*(len(rest_block)>1000)+'\n')
 
     if params.output.phenix:
-        restraint_list = [PhenixFormatter.make_distance_restraint(atm_1=a1, atm_2=a2, value=d, sigma=params.local_restraints.sigma_xyz) for a1,a2,d in atom_d_pairs]
-        rest_block = PhenixFormatter.format_distance_restraints(restraint_list=restraint_list)
-        with open(params.output.phenix, 'a') as fh: fh.write(rest_block+'\n')
+        restraint_list = [
+            PhenixFormatter.make_distance_restraint(
+                atm_1 = a1,
+                atm_2 = a2,
+                value = d,
+                sigma = params.local_restraints.sigma_xyz,
+            )
+            for a1,a2,d in atom_d_pairs
+        ]
+        rest_block = PhenixFormatter.format_distance_restraints(
+            restraint_list = restraint_list
+        )
+        with open(params.output.phenix, 'a') as fh:
+            fh.write(rest_block+'\n')
         if params.settings.verbose:
-            log.subheading('phenix duplicate conformer restraints')
-            log(rest_block[:1000]+'...'*(len(rest_block)>1000))
-            log('')
+            logger.subheading('phenix duplicate conformer restraints')
+            logger(rest_block[:1000]+'...'*(len(rest_block)>1000)+'\n')
 
-def make_occupancy_constraints(params, input_hierarchy, log=None):
+def make_occupancy_constraints(params, input_hierarchy):
     """Create occupancy groups for a hierarchy"""
 
-    if log is None: log = Log(verbose=True)
+    logger.heading('Generating occupancy-constrained groups')
 
-    log.subheading('Generating occupancy-constrained groups')
+    occupancy_groups = []
+    occupancy_complete = []
 
-    # Ligand resname identifiers
-    resnames = params.occupancy.resname.split(',')
-    if params.settings.verbose:
-        log('Looking for ligands with resname {!s}'.format(' or '.join(resnames)))
-        log('')
+    if 'overlapping_groups' in params.occupancy.generate:
 
-    # Make occupancy groups
-    occupancy_groups = overlapping_occupancy_groups(hierarchy       = input_hierarchy.hierarchy,
-                                                    resnames        = resnames,
-                                                    group_dist      = params.occupancy.group_dist,
-                                                    overlap_dist    = params.occupancy.overlap_dist,
-                                                    complete_groups = params.occupancy.complete_groups,
-                                                    exclude_altlocs = params.occupancy.exclude_altlocs.split(',') if params.occupancy.exclude_altlocs else [],
-                                                    verbose         = params.settings.verbose)
-    # Record whether the occupancy groups are complete (occs sum to 1)
-    if params.occupancy.complete_groups:
-        occupancy_complete = [True]*len(occupancy_groups)
-    else:
-        occupancy_complete = [False]*len(occupancy_groups)
+        resnames = params.occupancy.resname.split(',')
+        logger('\n> Looking for sets of alternate conformers around ligands with resname {!s}\n'.format(' or '.join(resnames)))
 
-    if not occupancy_groups:
-        log('No matching residues were found (no occupancy constraints created)')
-        return
+        # Make occupancy groups
+        new_occupancy_groups = overlapping_occupancy_groups(
+            hierarchy       = input_hierarchy.hierarchy,
+            resnames        = resnames,
+            group_dist      = params.occupancy.group_dist,
+            overlap_dist    = params.occupancy.overlap_dist,
+            complete_groups = params.occupancy.complete_groups,
+            exclude_altlocs = params.occupancy.exclude_altlocs.split(',') if params.occupancy.exclude_altlocs else [],
+            verbose         = params.settings.verbose,
+        )
+        # Record whether the occupancy groups are complete (occs sum to 1)
+        if params.occupancy.complete_groups:
+            new_occupancy_complete = [True]*len(new_occupancy_groups)
+        else:
+            new_occupancy_complete = [False]*len(new_occupancy_groups)
+        assert len(new_occupancy_groups) == len(new_occupancy_complete)
 
-    log.bar()
-    log('')
-    log('Created {} occupancy groups for overlapping conformers'.format(len(occupancy_groups)))
-    log('')
+        logger('\nCreated {} occupancy groups for overlapping conformers'.format(len(occupancy_groups)))
 
-    # Ref-make the default occupancy groups?
-    if params.occupancy.simple_groups:
-        log('simple_groups=={}: Remaking default occupancy restraints for residues'.format(params.occupancy.simple_groups))
-        if params.settings.verbose: log('')
-        simple_groups = simple_occupancy_groups(hierarchy   = input_hierarchy.hierarchy,
-                                                verbose     = params.settings.verbose)
+        # Append to global groups
+        occupancy_groups.extend(new_occupancy_groups)
+        occupancy_complete.extend(new_occupancy_complete)
+        assert len(occupancy_groups) == len(occupancy_complete)
+
+    # Re-make the default occupancy groups? (needed for refmac)
+    if 'simple_groups' in params.occupancy.generate:
+
+        logger('\n> Remaking default occupancy restraints for residues')
+
+        # Make occupancy groups
+        simple_occupancy_groups = simple_occupancy_groups(
+            hierarchy = input_hierarchy.hierarchy,
+            verbose = params.settings.verbose,
+        )
+        # Make complete groups where all conformers are present
         num_alts = len([a for a in input_hierarchy.hierarchy.altloc_indices() if a!=''])
-        occupancy_complete += [True if len(g)==num_alts else False for g in simple_groups]
-        occupancy_groups += simple_groups
-        if params.settings.verbose: log('')
-        log('Increased number of occupancy groups to {}'.format(len(occupancy_groups)))
-        log('')
+        simple_groups_complete = [True if len(g)==num_alts else False for g in simple_occupancy_groups]
+        assert len(simple_occupancy_groups) == len(simple_groups_complete)
 
-    if params.output.refmac:
-        restraint_list = RefmacFormatter.make_occupancy_restraints(list_of_lists_of_groups  = occupancy_groups,
-                                                                   group_completeness       = occupancy_complete)
-        rest_block = RefmacFormatter.format_occupancy_restraints(restraint_list=restraint_list)
-        with open(params.output.refmac, 'a') as fh: fh.write(rest_block+'\n')
+        logger('\nCreated {} simple occupancy groups'.format(len(simple_occupancy_groups)))
+
+        occupancy_groups.extend(simple_occupancy_groups)
+        occupancy_complex.extend(simple_groups_complete)
+
+    # Filter out groups with repeated atoms
+    # TODO
+
+    if (params.output.refmac is not None):
+        restraint_list = RefmacFormatter.make_occupancy_restraints(
+            list_of_lists_of_groups = occupancy_groups,
+            group_completeness = occupancy_complete,
+        )
+        rest_block = RefmacFormatter.format_occupancy_restraints(
+            restraint_list = restraint_list,
+        )
+        with open(params.output.refmac, 'a') as fh:
+            fh.write(rest_block+'\n')
         if params.settings.verbose:
-            log.subheading('refmac occupancy restraints')
-            log(rest_block[:1000]+'...'*(len(rest_block)>1000))
-            log('')
+            logger.subheading('refmac occupancy restraints')
+            logger(rest_block[:1000]+'...'*(len(rest_block)>1000))
+            logger('')
 
-    if params.output.phenix:
-        restraint_list = PhenixFormatter.make_occupancy_restraints(list_of_lists_of_groups  = occupancy_groups,
-                                                                   group_completeness       = occupancy_complete)
-        rest_block = PhenixFormatter.format_occupancy_restraints(restraint_list=restraint_list)
-        with open(params.output.phenix, 'a') as fh: fh.write(rest_block+'\n')
+    if (params.output.phenix is not None):
+        restraint_list = PhenixFormatter.make_occupancy_restraints(
+            list_of_lists_of_groups = occupancy_groups,
+            group_completeness = occupancy_complete,
+        )
+        rest_block = PhenixFormatter.format_occupancy_restraints(
+            restraint_list = restraint_list,
+        )
+        with open(params.output.phenix, 'a') as fh:
+            fh.write(rest_block+'\n')
         if params.settings.verbose:
-            log.subheading('phenix occupancy restraints')
-            log(rest_block[:1000]+'...'*(len(rest_block)>1000))
-            log('')
+            logger.subheading('phenix occupancy restraints')
+            logger(rest_block[:1000]+'...'*(len(rest_block)>1000))
+            logger('')
 
-def make_b_factor_restraints(params, input_hierarchy, log=None):
+def make_b_factor_restraints(params, input_hierarchy):
 
-    if log is None: log = Log(verbose=True)
-
-    pass
+    raise NotImplementedError('not implemented')
 
 ############################################################################
 
@@ -367,7 +457,8 @@ def run(params):
     # Validate input
     ######################################################################
 
-    assert params.input.pdb, 'No PDB File Provided'
+    if not params.input.pdb:
+        raise IOError('No PDB File Provided')
 
     if params.modes.all:
         params.modes.peptide_bond_links         = True
@@ -391,19 +482,25 @@ def run(params):
     # Prepare output and input
     ######################################################################
     if params.output.phenix and os.path.exists(params.output.phenix):
-        if params.settings.overwrite: os.remove(params.output.phenix)
-        else: raise Exception('File already exists: {}'.format(params.output.phenix))
+        if params.settings.overwrite:
+            os.remove(params.output.phenix)
+        else:
+            raise IOError('File already exists: {}'.format(params.output.phenix))
     if params.output.refmac and os.path.exists(params.output.refmac):
-        if params.settings.overwrite: os.remove(params.output.refmac)
-        else: raise Exception('File already exists: {}'.format(params.output.refmac))
+        if params.settings.overwrite:
+            os.remove(params.output.refmac)
+        else:
+            raise IOError('File already exists: {}'.format(params.output.refmac))
 
     # Open log file
     if params.output.log:
-        log = Log(log_file=params.output.log, verbose=params.settings.verbose)
-    else:
-        log = Log(verbose=params.settings.overwrite)
+        logger = lg.setup_logging(
+            name = __name__,
+            log_file = params.output.log,
+        )
 
     # Read input files
+    import iotbx.pdb
     pdb_obj = iotbx.pdb.hierarchy.input(params.input.pdb)
     pdb_obj.hierarchy.sort_atoms_in_place()
 
@@ -412,19 +509,35 @@ def run(params):
     ######################################################################
 
     if params.modes.peptide_bond_links:
-        make_link_records(params=params, input_hierarchy=pdb_obj, link_file=link_file, log=log)
+        make_link_records(
+            params = params,
+            input_hierarchy = pdb_obj,
+            link_file = link_file,
+        )
 
     if params.modes.duplicated_atom_restraints:
-        make_duplication_restraints(params=params, input_hierarchy=pdb_obj, log=log)
+        make_duplication_restraints(
+            params = params,
+            input_hierarchy = pdb_obj,
+        )
 
     if params.modes.local_structure_restraints:
-        make_local_restraints(params=params, input_hierarchy=pdb_obj, log=log)
+        make_local_restraints(
+            params = params,
+            input_hierarchy = pdb_obj,
+        )
 
     if params.modes.occupancy_groups:
-        make_occupancy_constraints(params=params, input_hierarchy=pdb_obj, log=log)
+        make_occupancy_constraints(
+            params = params,
+            input_hierarchy = pdb_obj,
+        )
 
     if params.modes.b_factor_restraints:
-        make_b_factor_restraints(params=params, input_hierarchy=pdb_obj, log=log)
+        make_b_factor_restraints(
+            params = params,
+            input_hierarchy = pdb_obj,
+        )
 
 ############################################################################
 
@@ -436,4 +549,5 @@ if __name__=='__main__':
         args                = sys.argv[1:],
         blank_arg_prepend   = blank_arg_prepend,
         program             = PROGRAM,
-        description         = DESCRIPTION)
+        description         = DESCRIPTION,
+    )

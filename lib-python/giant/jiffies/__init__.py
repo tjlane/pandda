@@ -1,9 +1,9 @@
-from __future__ import print_function
+import giant.logs as lg
+logger = lg.getLogger(__name__)
 
-import os, sys, copy
+import os, sys
 
-import libtbx.phil
-from libtbx.utils import Sorry, Failure
+from giant.exceptions import Sorry, Failure
 
 from giant import module_info
 
@@ -30,8 +30,9 @@ class run_default(object):
 
     def __init__(self, run, master_phil, args, blank_arg_prepend=None, program='', description=''):
         """Run a program via a standard setup of functions and objects"""
-        from giant.logs import setup_logging_basic
-        logger = setup_logging_basic(__name__)
+        logger = lg.setup_logging_basic(
+            name = '__main__', # setup root logging when using run_default
+        )
         logger(self._module_info.header_text.format(program=program, description=description))
         working_phil = extract_params_default(master_phil=master_phil, args=args, blank_arg_prepend=blank_arg_prepend, module_info=self._module_info)
         try:
@@ -76,6 +77,9 @@ def show_defaults_and_exit_maybe(master_phil, args):
     raise SystemExit('\n============================= Now Exiting =============================\n')
 
 def parse_phil_args(master_phil, args, blank_arg_prepend=None, home_scope=None):
+
+    import copy
+    import libtbx.phil
 
     if blank_arg_prepend is None:
         pass

@@ -2,8 +2,8 @@ import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 import os, copy, shutil, collections
-from bamboo.common.path import easy_directory
 from libtbx import adopt_init_args
+from giant.paths import easy_directory
 
 
 class TaskMultipleRunWrapper:

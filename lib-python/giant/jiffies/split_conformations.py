@@ -1,11 +1,7 @@
-import os, sys, copy
-
-import numpy
-
-import iotbx.pdb
-import libtbx.phil
-
 import giant.logs as lg
+logger = lg.getLogger(__name__)
+
+import os, sys, copy
 
 from giant.io.pdb import strip_pdb_to_input, get_pdb_header
 from giant.structure.occupancy import calculate_residue_group_occupancy, sanitise_occupancies
@@ -28,8 +24,11 @@ DESCRIPTION = """
 
 ############################################################################
 
-blank_arg_prepend = {'.pdb':'pdb='}
+blank_arg_prepend = {
+    '.pdb':'pdb=',
+}
 
+import libtbx.phil
 master_phil = libtbx.phil.parse("""
 input  {
     pdb = None
@@ -93,8 +92,6 @@ settings {
 
 def split_conformations(filename, params):
 
-    logger = lg.getLogger(__name__)
-
     # Read the pdb header - for writing later...
     header_contents = get_pdb_header(filename)
 
@@ -128,7 +125,7 @@ def split_conformations(filename, params):
         out_confs = [s.split(',') for s in params.options.by_conformer_group.conformers]
         out_suffs = [''.join(c) for c in out_confs]
     else:
-        raise Exception('Invalid selection for options.mode: {}'.format(params.options.mode))
+        raise ValueError('Invalid selection for options.mode: {}'.format(params.options.mode))
 
     assert len(out_confs) == len(out_suffs), '{} not same length as {}'.format(str(out_confs), str(out_suffs))
 
@@ -172,6 +169,7 @@ def split_conformations(filename, params):
             if len(this_confs) == 1:
                 conf_hash = {this_confs[0]: ' '}
             else:
+                import iotbx.pdb
                 conf_hash = dict(zip(this_confs, iotbx.pdb.systematic_chain_ids()))
             logger('Resetting structure altlocs:')
             for k in sorted(conf_hash.keys()):
@@ -188,6 +186,7 @@ def split_conformations(filename, params):
             logger('Resetting output occupancies (maximum occupancy of 1.0, etc.)')
             # Divide through by the smallest occupancy of any complete residues groups with occupancies of less than one
             rg_occs = [calculate_residue_group_occupancy(rg) for rg in residue_groups_with_complete_set_of_conformers(sel_hiery)]
+            import numpy
             non_uni = [v for v in numpy.unique(rg_occs) if 0.0 < v < 1.0]
             if non_uni:
                 div_occ = min(non_uni)
@@ -224,19 +223,18 @@ def run(params):
     if (not params.output.log):
         params.output.log = 'split_conformations.log'
 
-    from giant.logs import setup_logging
-    logger = setup_logging(
+    logger = lg.setup_logging(
         name = __name__,
         log_file = params.output.log,
     )
 
     logger.heading('Validating input parameters')
 
-    assert params.input.pdb, 'No PDB files given'
-
-    logger.heading('Splitting multi-state structures')
+    if not params.input.pdb:
+        raise IOError('No PDB files given')
 
     # Iterate through the input structures and extract the conformation
+    logger.heading('Splitting multi-state structures')
     for pdb in params.input.pdb:
         split_conformations(filename=pdb, params=params)
 

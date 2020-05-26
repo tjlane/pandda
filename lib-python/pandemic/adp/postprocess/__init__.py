@@ -6,7 +6,7 @@ import numpy
 
 from libtbx import adopt_init_args, group_args
 
-from bamboo.common.path import rel_symlink, easy_directory
+from giant.paths import rel_symlink, easy_directory
 
 from pandemic.adp.utils import show_file_dict
 

@@ -2,7 +2,7 @@ import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 from libtbx import adopt_init_args, group_args
-from bamboo.common.path import easy_directory
+from giant.paths import easy_directory
 
 
 class AnalyseTLSAmplitudesTask:

@@ -1,15 +1,16 @@
 
 import numpy
-import pandas
 from math import cos, pi, sqrt
 from scitbx.array_family import flex
 
-from bamboo.common import Info
 
+class UnitCellVariation:
 
-class UnitCellVariation(Info):
     def __init__(self, unit_cells):
+
+        # Extract params from unit cells
         unit_cell_params = numpy.array([uc.parameters() for uc in unit_cells])
+        # Extract statistics
         self.mean  = tuple(unit_cell_params.mean(axis=0))
         self.std   = tuple(unit_cell_params.std(axis=0))
         self.max   = tuple(unit_cell_params.max(axis=0))
@@ -18,11 +19,13 @@ class UnitCellVariation(Info):
         self.std_perc = tuple(100.0*numpy.array(self.std)/numpy.array(self.mean))
         self.max_perc = tuple(100.0*numpy.array(self.min)/numpy.array(self.mean))
         self.min_perc = tuple(100.0*numpy.array(self.max)/numpy.array(self.mean))
-        self._initialized = True
+
     def as_pandas_table(self):
         """Return the variation as a pandas table"""
+
         import pandas
         pd = pandas.DataFrame(index=['a','b','c','alpha','beta','gamma'])
+
         pd['min']   = self.min
         pd['mean']  = self.mean
         pd['max']   = self.max
@@ -31,6 +34,7 @@ class UnitCellVariation(Info):
         pd['%std']  = self.std_perc
         pd['%min']  = self.min_perc
         pd['%max']  = self.max_perc
+
         return pd
 
 

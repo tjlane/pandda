@@ -3,7 +3,7 @@ logger = lg.getLogger(__name__)
 
 import os, collections
 from libtbx import adopt_init_args
-from bamboo.common.path import easy_directory
+from giant.paths import easy_directory
 
 import numpy
 from scitbx.array_family import flex

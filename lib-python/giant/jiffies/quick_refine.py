@@ -1,6 +1,8 @@
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
 import os, sys, glob, shutil
 
-import giant.logs as lg
 from giant.exceptions import Sorry, Failure
 
 from giant.jiffies import split_conformations
@@ -91,18 +93,17 @@ def get_new_output_directory(dir_prefix):
 
 def validate_params(params):
 
-    logger = lg.getLogger(__name__)
     logger.subheading('Validating input parameters')
 
     if (params.input.pdb is None):
-        raise Sorry('No PDB provided as input (input.pdb=...)')
+        raise IOError('No PDB provided as input (input.pdb=...)')
     if (params.input.mtz is None):
-        raise Sorry('No MTZ provided as input (input.mtz=...)')
+        raise IOError('No MTZ provided as input (input.mtz=...)')
 
     if not os.path.exists(params.input.pdb):
-        raise Sorry('Input PDB file does not exist: {}'.format(params.input.pdb))
+        raise IOError('Input PDB file does not exist: {}'.format(params.input.pdb))
     if not os.path.exists(params.input.mtz):
-        raise Sorry('Input MTZ file does not exist: {}'.format(params.input.mtz))
+        raise IOError('Input MTZ file does not exist: {}'.format(params.input.mtz))
 
     if os.path.islink(params.input.mtz):
         logger('Input mtz is symbolic link: resolving to real path.')
@@ -112,7 +113,6 @@ def validate_params(params):
 
 def copy_input_files_to_output_folder(out_dir, params):
 
-    logger = lg.getLogger(__name__)
     logger.subheading('Copying/linking files to refinement folder')
 
     # Output filenames for "input" files
@@ -145,7 +145,6 @@ def copy_input_files_to_output_folder(out_dir, params):
 
 def create_link(real_file, link_file):
 
-    logger = lg.getLogger(__name__)
     logger('Linking {} -> {}'.format(link_file, real_file))
 
     if os.path.islink(link_file):
@@ -188,9 +187,8 @@ def run(params):
     out_dir, previous_dirs = get_new_output_directory(dir_prefix=params.output.dir_prefix)
 
     # Create log object
-    from giant.logs import setup_logging
     log_file = os.path.join(out_dir, params.output.out_prefix+'.quick-refine.log')
-    logger = setup_logging(
+    logger = lg.setup_logging(
         name = __name__,
         log_file = log_file,
     )
@@ -216,7 +214,7 @@ def run(params):
     # Create command objects
     logger.subheading('Preparing command line input for refinement program')
 
-    from giant.xray.refine import get_refiner
+    from giant.refinement import get_refiner
     Refinement = get_refiner( params.options.program )
 
     refinement = Refinement(
@@ -261,4 +259,5 @@ if __name__=='__main__':
         args                = sys.argv[1:],
         blank_arg_prepend   = blank_arg_prepend,
         program             = PROGRAM,
-        description         = DESCRIPTION)
+        description         = DESCRIPTION,
+    )

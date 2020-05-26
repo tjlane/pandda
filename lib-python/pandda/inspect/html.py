@@ -1,6 +1,6 @@
 import os, glob
 
-from bamboo.html import png2base64str
+from giant.html import png2base64str
 from pandda.html import PANDDA_HTML_ENV
 from pandda.constants import PanddaHtmlFilenames
 

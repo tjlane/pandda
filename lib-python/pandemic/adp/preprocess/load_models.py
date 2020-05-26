@@ -18,7 +18,7 @@ class ModelLoader:
         adopt_init_args(self, locals())
 
         # Store appropriate model labelling function
-        from bamboo.common.path import foldername, filename
+        from giant.paths import foldername, filename
         if labelling == 'foldername':
             self.label_func = foldername
         elif labelling == 'filename':
@@ -58,7 +58,7 @@ class ModelLoader:
                     logger('No (valid) label created for label function: {}'.format(self.labelling))
                     logger('Trying to label by filename instead')
                     self.labelling = 'filename'
-                    from bamboo.common.path import filename
+                    from giant.paths import filename
                     self.label_func = filename
                     l = self.label_func(f)
                 if not self.is_valid_label(l):

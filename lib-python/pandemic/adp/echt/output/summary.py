@@ -7,7 +7,7 @@ from libtbx import adopt_init_args
 import numpy
 from scitbx.array_family import flex
 
-from bamboo.common.path import easy_directory
+from giant.paths import easy_directory
 from giant.structure.pymol import auto_chain_images
 from giant.structure.uij import \
         uij_to_b, \
@@ -520,7 +520,7 @@ class WriteEchtModelSummary:
         file_dict,
         ):
 
-        from bamboo.pymol_utils import PythonScript
+        from giant.pymol_utils import PythonScript
 
         s = PythonScript(pretty_models=False, pretty_maps=False)
 

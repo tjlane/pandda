@@ -33,8 +33,6 @@ class CalculateTableOnes:
         structures,
         ):
 
-        from bamboo.common.command import CommandManager
-
         output_prefix = os.path.join(self.output_directory, output_prefix)
         output_csv = output_prefix + '.csv'
         output_eff = output_prefix + '.eff'
@@ -50,20 +48,18 @@ class CalculateTableOnes:
         # Generate parameter file!
         multi_table_ones.run(params=phil)
 
-        cmd = CommandManager('phenix.table_one')
-        cmd.add_command_line_arguments([output_eff])
+        from giant.dispatcher import Dispatcher
+        prog = Dispatcher('phenix.table_one')
+        prog.append_arg(output_eff)
 
-        logger.bar()
-        logger("Table One Command:")
-        logger.bar()
+        logger.subheading("Making Table One")
+        logger(prog.as_string())
 
-        cmd.print_settings()
-        cmd.run()
-        cmd.write_output(output_eff.replace('.eff','.log'))
+        prog.run()
+        prog.write_output(output_eff.replace('.eff','.log'))
 
         if not os.path.exists(output_csv):
             raise Failure('Failed to make table one: {}'.format(output_csv))
 
         return output_csv
-
 

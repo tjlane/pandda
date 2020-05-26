@@ -8,7 +8,7 @@ from libtbx.utils import Sorry, Failure
 
 from scitbx.array_family import flex
 
-from bamboo.common.path import easy_directory
+from giant.paths import easy_directory
 
 
 class HierarchicalModelAnalysisTask:

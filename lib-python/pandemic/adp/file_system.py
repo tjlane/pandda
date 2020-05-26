@@ -4,8 +4,7 @@ logger = lg.getLogger(__name__)
 import os
 
 from libtbx import adopt_init_args
-from bamboo.common.path import easy_directory
-from bamboo.common.file import compress_file
+from giant.paths import easy_directory, compress_file
 
 
 class PandemicAdpFileSystem:

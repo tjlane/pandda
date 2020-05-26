@@ -4,15 +4,15 @@ logger = lg.getLogger(__name__)
 import os, shutil, collections
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
-from bamboo.common.path import easy_directory
+from giant.paths import easy_directory
 
-from giant.xray.crystal import CrystalSummary
+from giant.xray.crystal import CrystalInfo
 
 def get_resolution_from_model_pdb_input(model=None, mtz_filename=None):
     return model.input.resolution()
 
 def get_resolution_from_model_mtz(model=None, mtz_filename=None):
-    return CrystalSummary.from_mtz(mtz_filename).high_res
+    return CrystalInfo.from_mtz(mtz_filename).high_resolution
 
 
 class ProcessInputModelsTask:
@@ -102,7 +102,7 @@ class ProcessInputModelsTask:
             # Check we have resolution information, and/or that correct columns are present in the MTZ file
             if self.has_reflection_data:
                 # Extract crystal information from the MTZ
-                cs = CrystalSummary.from_mtz(m_mtz)
+                cs = CrystalInfo.from_mtz(m_mtz)
                 # Check for columns
                 if self.check_column_labels and self.table_one_cols.difference(cs.column_labels):
                     errors.append(Failure("MTZ {} does not contain the correct columns.".format(m.filename) + \

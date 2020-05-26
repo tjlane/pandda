@@ -4,10 +4,8 @@ import numpy, pandas
 
 import iotbx.mtz
 import scipy.cluster.hierarchy
+import scipy.spatial.distance
 
-from bamboo.stats.cluster import generate_group_idxs
-
-from giant.xray.crystal import CrystalSummary
 from giant.xray.unit_cell import UnitCellVariation, lcv_from_unit_cells, pairwise_lcv, pairwise_ecv
 
 class CrystalGroup(object):
@@ -26,7 +24,7 @@ class CrystalGroup(object):
         return unit_cell_dendrogram(fname      = fname,
                                     unit_cells = [c.unit_cell for c in self.crystals],
                                     link_func  = link_func,
-                                    labels     = [c.id for c in self.crystals],
+                                    labels     = [c.name for c in self.crystals],
                                     **kwargs)
     ######################################################
     @classmethod
@@ -39,16 +37,13 @@ class CrystalGroup(object):
         """Cluster crystals by unit cell and return CrystalGroup for each cluster"""
         if len(crystals) == 1: return [cls(crystals)]
         assert method in ['lcv'], 'method not recognised'
-#        # Method 1
-#        if   method == 'lcv': link_func = lambda a,b: lcv_from_unit_cells(a.unit_cell, b.unit_cell)
-#        hierarchy = libtbx.cluster.HierarchicalClustering(crystals, link_func)
-#        clusters = hierarchy.getlevel(cutoff)
-#        return [cls(c) for c in clusters]
-        # Method 2
-        if   method == 'lcv': link_func = pairwise_lcv
+        if method == 'lcv':
+            link_func = pairwise_lcv
         dist_mat = link_func(unit_cells=[c.unit_cell for c in crystals])
-        link_mat = scipy.cluster.hierarchy.linkage(dist_mat, method='single', metric='euclidean')
+        dist_mat_con = scipy.spatial.distance.squareform(dist_mat)
+        link_mat = scipy.cluster.hierarchy.linkage(dist_mat_con, method='single', metric='euclidean')
         clusters = scipy.cluster.hierarchy.fcluster(link_mat, t=cutoff, criterion='distance')
+        from giant.stats.cluster import generate_group_idxs
         return [cls([crystals[idx] for idx in g]) for i_g,g in generate_group_idxs(clusters)]
 
 def dendrogram(fname, link_mat, labels=None, ylab=None, xlab=None, ylim=None, annotate_y_min=0.25, num_nodes=20):
@@ -77,7 +72,8 @@ def dendrogram(fname, link_mat, labels=None, ylab=None, xlab=None, ylim=None, an
 def unit_cell_dendrogram(fname, unit_cells, link_func, labels=None, **kwargs):
     """Calculate a dendrogram for a set of mtz files/object, clustering by unit_cell parameters"""
     dist_mat = link_func(unit_cells=unit_cells)
-    link_mat = scipy.cluster.hierarchy.linkage(dist_mat, method='single', metric='euclidean')
+    dist_mat_con = scipy.spatial.distance.squareform(dist_mat)
+    link_mat = scipy.cluster.hierarchy.linkage(dist_mat_con, method='single', metric='euclidean')
     dendrogram(fname=fname, link_mat=link_mat, labels=labels, **kwargs)
 
 def sort_pdbs_by_space_group(pdb_files=None, pdb_inputs=None, labels=None):
@@ -89,7 +85,8 @@ def sort_pdbs_by_space_group(pdb_files=None, pdb_inputs=None, labels=None):
     if labels: assert len(labels) == len(pdb_files), 'labels must be the same length as pdb_files/pdb_objects'
     else:      labels = range(len(pdb_files))
     # Create summary objects
-    pdb_summaries = [CrystalSummary.from_pdb(pdb_file=p_f, pdb_input=p_o, id=lab) for p_f,p_o,lab in zip(pdb_files, pdb_inputs, labels)]
+    from giant.xray.crystal import CrystalInfo
+    pdb_summaries = [CrystalInfo.from_pdb(pdb_file=p_f, pdb_input=p_o, name=lab) for p_f,p_o,lab in zip(pdb_files, pdb_inputs, labels)]
     # Group by SpaceGroup
     return CrystalGroup.by_space_group(pdb_summaries)
 
@@ -102,7 +99,8 @@ def sort_mtzs_by_spacegroup(mtz_files=None, mtz_objects=None, labels=None):
     if labels: assert len(labels) == len(mtz_files), 'labels must be the same length as mtz_files/mtz_objects'
     else:      labels = range(len(mtz_files))
     # Create summary objects
-    mtz_summaries = [CrystalSummary.from_mtz(mtz_file=m_f, mtz_object=m_o, id=lab) for m_f,m_o,lab in zip(mtz_files, mtz_objects, labels)]
+    from giant.xray.crystal import CrystalInfo
+    mtz_summaries = [CrystalInfo.from_mtz(mtz_file=m_f, mtz_object=m_o, name=lab) for m_f,m_o,lab in zip(mtz_files, mtz_objects, labels)]
     # Group by SpaceGroup
     return CrystalGroup.by_space_group(mtz_summaries)
 

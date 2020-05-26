@@ -6,7 +6,7 @@ import os, collections
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry
 
-from bamboo.common.path import easy_directory
+from giant.paths import easy_directory
 
 from pandemic.adp.utils import show_file_dict
 from pandemic.adp.echt.analysis.cluster_tls_groups.helliger import ClusterTLSGroups_HelligerDistance
