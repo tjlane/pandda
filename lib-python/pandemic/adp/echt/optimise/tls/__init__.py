@@ -205,6 +205,7 @@ class OptimiseTLSLevel:
             function = optimisation_function,
             n_cpus = n_cpus,
             max_chunksize = 10,
+            keep_processes_open = True,
         )
         adopt_init_args(self, locals())
 

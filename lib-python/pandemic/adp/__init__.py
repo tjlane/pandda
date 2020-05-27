@@ -910,7 +910,7 @@ def run(params, args=None):
                     )
 
     # Terminate processes used for optimisation
-    optimise_model_main.terminate_processes()
+    optimise_model_main.close_processes()
 
     logger.heading('Optimisation finished', spacer=True)
 

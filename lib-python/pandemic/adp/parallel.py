@@ -6,7 +6,6 @@ import traceback
 
 class MultiProcessWrapper:
 
-
     def __init__(self,
             function,
             ):
@@ -36,46 +35,31 @@ class MultiProcessWrapper:
 
 class RunParallelWithProgressBarUnordered:
 
-
     def __init__(self,
             function,
             n_cpus,
             max_chunksize = 10,
+            keep_processes_open = False,
             ):
 
+        processes = None
+        task_queue = None
+        done_queue = None
+
         assert max_chunksize >= 1
+
         adopt_init_args(self, locals())
 
-        # Initialise processes
-        self._init_processes()
-
     def __del__(self):
-        self.terminate_processes()
-
-    def _init_processes(self):
-
-        from multiprocessing import Process, Queue
-
-        # Create input/output queues
-        self.task_queue = Queue()
-        self.done_queue = Queue()
-
-        # Redirect termination signal while processes are spawned
-        import signal
-        sigint = signal.signal(signal.SIGINT, signal.SIG_IGN) # <- Set the signal handler to ignore
-        self.processes = []
-        for i in range(self.n_cpus):
-            p = Process(
-                target = MultiProcessWrapper(self.function),
-                args = (self.task_queue, self.done_queue),
-            )
-            p.start()
-            self.processes.append(p)
-        signal.signal(signal.SIGINT, sigint) # <- Replace the original signal handler
+        self.close_processes()
 
     def __call__(self,
             arg_dicts,
             ):
+
+        # Initialise processes
+        if (not self.processes):
+            self.initialise_processes()
 
         # Number of actual jobs
         n_tasks = len(arg_dicts)
@@ -112,27 +96,66 @@ class RunParallelWithProgressBarUnordered:
             self.check_queues_empty()
 
         except KeyboardInterrupt:
-            self.terminate_processes()
+            self.close_processes()
             raise
+        except Exception as e:
+            self.close_processes()
+            raise e
         finally:
             pbar.close()
 
         # Sort output results
         results = [r[1] for r in sorted(results, key=lambda x: x[0])]
 
+        # Close processes unless keep_open
+        if (self.keep_processes_open is False):
+            self.close_processes()
+
         return results
 
-    def terminate_processes(self):
+    def initialise_processes(self):
+
+        from multiprocessing import Process, Queue
+
+        # Create input/output queues
+        self.task_queue = Queue()
+        self.done_queue = Queue()
+
+        # Redirect termination signal while processes are spawned
+        import signal
+        sigint = signal.signal(signal.SIGINT, signal.SIG_IGN) # <- Set the signal handler to ignore
+        self.processes = []
+        for i in range(self.n_cpus):
+            p = Process(
+                target = MultiProcessWrapper(self.function),
+                args = (self.task_queue, self.done_queue),
+            )
+            p.start()
+            self.processes.append(p)
+        signal.signal(signal.SIGINT, sigint) # <- Replace the original signal handler
+
+    def close_processes(self):
+
+        if (self.processes is None):
+            return
+
         # Pass flag to stop the processes
         for p in self.processes:
             if p.is_alive():
                 self.task_queue.put('STOP')
-        # Give tasks a chance to respond
-        import time
-        time.sleep(0.1)
-        # Terminate the processes
+
+        # Join all processes
         for p in self.processes:
-            p.terminate()
+            p.join(timeout=60)
+
+        # Terminate the processes if still alive
+        for p in self.processes:
+            if p.is_alive():
+                p.terminate()
+
+        self.processes = None
+        self.task_queue = None
+        self.done_queue = None
 
     def check_queues_empty(self):
         try:
@@ -141,7 +164,7 @@ class RunParallelWithProgressBarUnordered:
             if self.done_queue.empty() is False:
                 raise Failure('Done queue is not empty')
         except Exception as e:
-            self.terminate_processes()
+            self.close_processes()
             raise e
 
     def check_processes_alive(self):
@@ -150,5 +173,5 @@ class RunParallelWithProgressBarUnordered:
                 if not p.is_alive():
                     raise Failure('One or more processes has been terminated prematurely.')
         except Exception as e:
-            self.terminate_processes()
+            self.close_processes()
             raise e

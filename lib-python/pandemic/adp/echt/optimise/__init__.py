@@ -237,12 +237,12 @@ class OptimiseEchtModel:
     def max_u_iso(self, model_object):
         return model_object.uijs()[..., 0:3].mean(axis=-1).max()
 
-    def terminate_processes(self):
+    def close_processes(self):
         """Terminate processes after optimisation is complete"""
         if self.optimise_tls_level is not None:
-            self.optimise_tls_level.run_parallel.terminate_processes()
+            self.optimise_tls_level.run_parallel.close_processes()
         if self.optimise_adp_level is not None:
-            self.optimise_adp_level.run_parallel.terminate_processes()
+            self.optimise_adp_level.run_parallel.close_processes()
 
 
 class UpdateOptimisationFunction:
