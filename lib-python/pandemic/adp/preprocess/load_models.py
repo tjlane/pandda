@@ -1,6 +1,8 @@
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
+import os
+
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
 
@@ -41,6 +43,9 @@ class ModelLoader:
         logger('Labelling function: {}'.format(self.labelling))
         models = []
         for f in pdb_files:
+            # Check file exists!
+            if not os.path.exists(f):
+                raise IOError('Input file "{}" does not exist!'.format(f))
             # Read pdb file to model object
             try:
                 m = self.model_class.from_file(f)

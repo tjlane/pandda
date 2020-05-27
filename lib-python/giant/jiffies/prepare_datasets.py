@@ -163,8 +163,8 @@ def fill_missing_reflections(in_mtz, out_mtz, fill_resolution_low, fill_resoluti
     run_program(prog)
 
     if not os.path.exists(tmp_mtz_2):
-        logger(prog.results.stdout)
-        logger(prog.results.stderr)
+        logger(prog.result.stdout)
+        logger(prog.result.stderr)
         raise Failure('filling of missing reflections has failed -- {} does not exist'.format(tmp_mtz_2))
 
     # Stage 3 - remerge the two files
@@ -185,8 +185,8 @@ def fill_missing_reflections(in_mtz, out_mtz, fill_resolution_low, fill_resoluti
     run_program(prog)
 
     if not os.path.exists(tmp_mtz_3):
-        logger(prog.results.stdout)
-        logger(prog.results.stderr)
+        logger(prog.result.stdout)
+        logger(prog.result.stderr)
         raise Failure('filling of missing reflections has failed -- {} does not exist'.format(tmp_mtz_3))
 
     # Stage 4 - remove the dummy column
@@ -205,8 +205,8 @@ def fill_missing_reflections(in_mtz, out_mtz, fill_resolution_low, fill_resoluti
     run_program(prog)
 
     if not os.path.exists(tmp_mtz_3):
-        logger(prog.results.stdout)
-        logger(prog.results.stderr)
+        logger(prog.result.stdout)
+        logger(prog.result.stderr)
         raise Failure('filling of missing reflections has failed -- {} does not exist'.format(out_mtz))
 
     if (delete_tmp_files is True):
@@ -237,8 +237,8 @@ def transfer_rfree_flags(in_mtz, out_mtz, reference_mtz, input_free_r_flag, outp
     run_program(prog)
 
     if not os.path.exists(tmp_mtz):
-        logger(prog.results.stdout)
-        logger(prog.results.stderr)
+        logger(prog.result.stdout)
+        logger(prog.result.stderr)
         raise Failure('transfer of R-free flags has failed -- {} does not exist'.format(tmp_mtz))
 
     # Stage 2 - populate missing R-free values

@@ -175,7 +175,7 @@ class _PymolScript(object):
 
     def add_shapes(self, cgo_shapes, obj, state=0):
         cgo_str = ''
-        for c in cgo_shapes: 
+        for c in cgo_shapes:
             c_str = c.as_string().strip('[]')
             cgo_str += c_str + ', '
         cgo_str = '[' + cgo_str + ']'
@@ -278,7 +278,7 @@ class PythonScript(_PymolScript):
         assert script.endswith(cls._file_type)
         from giant.dispatcher import Dispatcher
         prog = Dispatcher('pymol')
-        prog.append_arg(['-k', '-q', '-c', '-Q', '-s', script[:-len(cls._file_type)]+'.log', '-r', script])
+        prog.extend_args(['-k', '-q', '-c', '-Q', '-s', script[:-len(cls._file_type)]+'.log', '-r', script])
         prog.run()
         return prog
 

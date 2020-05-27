@@ -299,7 +299,9 @@ class refine_refmac(_refiner):
 
 refiners = {
     'refmac' : refine_refmac,
+    'refmac5' : refine_refmac,
     'phenix' : refine_phenix,
+    'phenix.refine' : refine_phenix,
 }
 
 def get_refiner(name):
@@ -307,8 +309,8 @@ def get_refiner(name):
     try:
         return refiners[name]
     except KeyError:
-        raise Failure('Invalid refinement program selected: {}'.format(name))
-    raise Failure('Invalid refinement program selected: {}'.format(name))
+        raise Failure('Invalid refinement program selected: {} (options {})'.format(name, refiners.keys()))
+    raise Failure('Invalid refinement program selected: {} (options {})'.format(name, refiners.keys()))
 
 
 class BFactorRefinementFactory(object):

@@ -136,12 +136,14 @@ def selection_images(
     l_name = f_name.replace('.py', '.log')
     assert not os.path.exists(l_name)
 
-    if run_script is True:
+    if (run_script is True):
         o = s.run(f_name)
-        logger.debug(o.output)
-        logger.debug(o.error)
+        o.write_output(l_name)
+        for f in png_filenames:
+            if not os.path.exists(f):
+                delete_script = False
 
-    if delete_script is True:
+    if (delete_script is True):
         if os.path.exists(f_name):
             os.remove(f_name)
         if os.path.exists(l_name):

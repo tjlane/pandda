@@ -5,6 +5,7 @@ import os, collections
 from libtbx import adopt_init_args
 from libtbx.utils import Sorry, Failure
 from giant.paths import easy_directory
+from giant.refinement import get_refiner
 
 from pandemic.adp.parallel import RunParallelWithProgressBarUnordered
 
@@ -29,13 +30,7 @@ class RefineStructures:
             verbose = False,
             ):
 
-        from giant.xray.refine import refine_phenix, refine_refmac
-        if  refinement_program == 'refmac':
-            refine = refine_refmac
-        elif refinement_program == 'phenix':
-            refine = refine_phenix
-        else:
-            raise Failure('Invalid refinement program selected: {}'.format(refinement_program))
+        refine = get_refiner(refinement_program)
 
         adopt_init_args(self, locals())
 
@@ -76,10 +71,10 @@ class RefineStructures:
 
             obj.tag = labels[i]
 
-            if os.path.exists(obj.out_pdb_file):
-                raise Failure('Refined PDB already exists! (model {})'.format(obj.tag))
+            if os.path.exists(obj.output_files['pdb']):
+                raise IOError('Refined PDB already exists! (model {})'.format(obj.tag))
 
-            obj.print_settings()
+            logger(obj.as_string())
 
             # Args must be dicts for wrapper function
             arg_dicts.append(dict(obj=obj))
@@ -93,8 +88,6 @@ class RefineStructures:
         )
         # Run jobs
         results = run_parallel(arg_dicts=arg_dicts)
-        # Tidy up
-        run_parallel.terminate_processes()
 
         output_structures = collections.OrderedDict()
         for r in results:
@@ -103,7 +96,7 @@ class RefineStructures:
                 logger(r)
                 continue
 
-            output_structures[r.tag] = (r.out_pdb_file, r.out_mtz_file)
+            output_structures[r.tag] = (r.output_files['pdb'], r.output_files['mtz'])
 
         return output_structures
 

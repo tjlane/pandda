@@ -12,7 +12,7 @@ def get_resolution_from_model_pdb_input(model=None, mtz_filename=None):
     return model.input.resolution()
 
 def get_resolution_from_model_mtz(model=None, mtz_filename=None):
-    return CrystalInfo.from_mtz(mtz_filename).high_resolution
+    return CrystalInfo.from_mtz(mtz_filename).resolution_high
 
 
 class ProcessInputModelsTask:
