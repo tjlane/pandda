@@ -41,7 +41,11 @@ input {
     tls_selection = None
         .type = str
         .multiple = True
-
+    tls_pdb = None
+        .type = path
+    custom_arg = None
+        .type = str
+        .multiple = True
 }
 output {
     out_dir = 'ensemble_refinement_sweep'
@@ -114,7 +118,11 @@ def set_defaults_and_validate(params):
     if (not params.sweep.tx):
         params.sweep.tx = (0.25, 0.75, 1.00)
 
-    if params.options.require_tls is True: 
+    if (params.input.tls_pdb is not None):
+        if not os.path.exists(params.input.tls_pdb):
+            raise IOError('tls_pdb does not exist: {}'.format(params.input.tls_pdb))
+        params.sweep.pTLS = [-1]
+    elif (params.options.require_tls is True): 
         if len(params.input.tls_selection) == 0:
             raise Sorry('No TLS selections provided (tls_selection=...).')
 
@@ -281,8 +289,14 @@ def make_er_sweep(params):
         o_json = json_filename(o_dir) 
 
         # Format cmd for writing
-        other_args = [] 
-        other_args += ['tls_group_selections="{}"'.format(s) for s in params.input.tls_selection]
+        other_args = []
+        if (params.input.tls_pdb is not None): 
+            other_args.append('import_tls_pdb="{}"'.format(os.path.relpath(params.input.tls_pdb, start=o_dir)))
+        elif (params.input.tls_selection):
+            other_args.extend(['tls_group_selections="{}"'.format(s) for s in params.input.tls_selection])
+        # Add custom args
+        if (params.input.custom_arg):
+            other_args.extend(params.input.custom_arg)
         # Output command
         cmd = cmd_template.format(
             path = os.path.abspath(o_dir),
@@ -342,7 +356,7 @@ def read_er_sweep(params):
 
         try:
             final_rfactors = extract_final_rfactors(o_log)
-        except: 
+        except:
             continue
 
         # Extract meta from the json
