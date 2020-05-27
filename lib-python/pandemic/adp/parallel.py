@@ -61,29 +61,30 @@ class RunParallelWithProgressBarUnordered:
         if (not self.processes):
             self.initialise_processes()
 
-        # Number of actual jobs
-        n_tasks = len(arg_dicts)
-
-        # Calculate used chunksize (to efficiently use multi-CPUs)
-        cpu_chunksize = numpy.ceil( n_tasks / self.n_cpus )
-        chunksize = int(max(1, min(self.max_chunksize, cpu_chunksize)))
-
-        # Check that task queue and done queues are empty
-        self.check_queues_empty()
-        self.check_processes_alive()
-
-        # Number the tasks for sorting later and split into chunks
-        task_list = list(enumerate(arg_dicts)) # <- TASKS NUMBERED HERE
-        n_chunks = 0
-        for i in range(0, n_tasks, chunksize):
-            chunk = task_list[i:i+chunksize]
-            self.task_queue.put(chunk)
-            n_chunks += 1
-
-        # Progress bar
-        pbar = tqdm.tqdm(total=n_tasks, ncols=100)
-
         try:
+
+            # Number of actual jobs
+            n_tasks = len(arg_dicts)
+
+            # Calculate used chunksize (to efficiently use multi-CPUs)
+            cpu_chunksize = numpy.ceil( n_tasks / self.n_cpus )
+            chunksize = int(max(1, min(self.max_chunksize, cpu_chunksize)))
+
+            # Check that task queue and done queues are empty
+            self.check_queues_empty()
+            self.check_processes_alive()
+
+            # Number the tasks for sorting later and split into chunks
+            task_list = list(enumerate(arg_dicts)) # <- TASKS NUMBERED HERE
+            n_chunks = 0
+            for i in range(0, n_tasks, chunksize):
+                chunk = task_list[i:i+chunksize]
+                self.task_queue.put(chunk)
+                n_chunks += 1
+
+            # Progress bar
+            pbar = tqdm.tqdm(total=n_tasks, ncols=100)
+
             # Get the results as they're ready
             results = []
             for i in range(n_chunks):
@@ -95,17 +96,14 @@ class RunParallelWithProgressBarUnordered:
             # Check that queues are empty
             self.check_queues_empty()
 
-        except KeyboardInterrupt:
+            # Sort output results
+            results = [r[1] for r in sorted(results, key=lambda x: x[0])]
+
+        except (Exception, KeyboardInterrupt) as e:
             self.close_processes()
             raise
-        except Exception as e:
-            self.close_processes()
-            raise e
         finally:
             pbar.close()
-
-        # Sort output results
-        results = [r[1] for r in sorted(results, key=lambda x: x[0])]
 
         # Close processes unless keep_open
         if (self.keep_processes_open is False):

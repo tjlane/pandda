@@ -74,6 +74,8 @@ class RefineStructures:
             if os.path.exists(obj.output_files['pdb']):
                 raise IOError('Refined PDB already exists! (model {})'.format(obj.tag))
 
+            # Report
+            logger('\n\n> {}\n'.format(obj.tag))
             logger(obj.as_string())
 
             # Args must be dicts for wrapper function

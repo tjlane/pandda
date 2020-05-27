@@ -45,6 +45,8 @@ class CalculateTableOnes:
         phil.output.parameter_file = output_eff
         phil.output.output_basename = output_prefix
 
+        logger.subheading("Making Table One parameter file")
+
         # Generate parameter file!
         multi_table_ones.run(params=phil)
 
@@ -53,7 +55,7 @@ class CalculateTableOnes:
         prog.append_arg(output_eff)
 
         logger.subheading("Making Table One")
-        logger(prog.as_string())
+        logger(prog.as_string()+'\n')
 
         prog.run()
         prog.write_output(output_eff.replace('.eff','.log'))

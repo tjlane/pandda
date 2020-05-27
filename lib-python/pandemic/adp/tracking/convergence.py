@@ -150,8 +150,8 @@ class PandemicConvergenceChecker:
 
     def is_converged(self):
 
-        # Initalise to true -- any failed test will set to false
-        converged = True
+        # Initalise to false -- require only one success to set to true
+        converged = False
 
         ci = self.convergence_info
         n_cyc = self.parent.n_cycle
@@ -162,18 +162,19 @@ class PandemicConvergenceChecker:
         delta_b       = ci['delta_b'][n_cyc]
         rmsd_b        = ci['rmsd_b'][n_cyc]
 
-        # Check if model is still zero
+        # Check if model is still zero -- never converged if this is the case
         if (bool(non_zero) is False):
             logger('Model is zero -- not converged')
             converged = False
+            return converged
 
-        if (self.max_rmsd_b is not None) and (rmsd_b > self.max_rmsd_b):
-            logger('RMSD is above threshold -- not converged')
-            converged = False
+        if (self.max_rmsd_b is not None) and (rmsd_b < self.max_rmsd_b):
+            logger('RMSD is below threshold -- converged')
+            converged = True
 
         # Check if the change in B is less than tolerance
-        if (self.max_delta_b is not None) and (delta_b > self.max_delta_b):
-            logger('Delta B is above threshold -- not converged')
-            converged = False
+        if (self.max_delta_b is not None) and (delta_b < self.max_delta_b):
+            logger('Delta B is below threshold -- converged')
+            converged = True
 
         return converged

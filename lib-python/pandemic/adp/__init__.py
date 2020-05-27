@@ -197,7 +197,7 @@ optimisation {
         write_model_every = 10
             .help = 'output summary of hierarchical model every <n> cycles'
             .type = int
-        remove_previous = True
+        remove_previous = False
             .help = 'remove previous intermediate files at each update or at end of program.'
             .type = bool
     }
@@ -271,7 +271,7 @@ optimisation {
             .type = choice(multi=True)
     }
     termination {
-        max_b_rmsd = 1.0
+        max_b_rmsd = None
             .help = "Stop optimisation when the rmsd between the input and the output is changing less than this."
             .type = float
         max_b_change = 1.0
@@ -855,62 +855,65 @@ def run(params, args=None):
 
     main_tracking_object.n_cycle = 0
 
-    for _ in xrange(params.optimisation.max_macro_cycles):
+    try:
 
-        # Increment before each cycle -- ensures new counter for this cycle.
-        main_tracking_object.n_cycle += 1
+        for _ in xrange(params.optimisation.max_macro_cycles):
 
-        logger.subheading('Macrocycle {}'.format(main_tracking_object.n_cycle), spacer=True)
+            # Increment before each cycle -- ensures new counter for this cycle.
+            main_tracking_object.n_cycle += 1
 
-        update_optimisation_object.update(
-            model_optimisation_function = optimise_model_main,
-            n_cycle = main_tracking_object.n_cycle,
-            )
+            logger.subheading('Macrocycle {}'.format(main_tracking_object.n_cycle), spacer=True)
 
-        model_object = optimise_model_main(
-            model_object        = model_object,
-            level_group_tree    = hierarchy_info.level_group_tree,
-            uij_target          = extract_uijs_task.result.model_uij,
-            uij_target_weights  = uij_weights_task.result.total_weight_array,
-            uij_isotropic_mask  = optimise_isotropic_mask,
-            tracking_object     = main_tracking_object,
-            )
+            update_optimisation_object.update(
+                model_optimisation_function = optimise_model_main,
+                n_cycle = main_tracking_object.n_cycle,
+                )
 
-        model_tracking_object.update(
-            model_object = model_object, # TODO REMOVE
-            n_cycle = main_tracking_object.n_cycle,
-            )
+            model_object = optimise_model_main(
+                model_object        = model_object,
+                level_group_tree    = hierarchy_info.level_group_tree,
+                uij_target          = extract_uijs_task.result.model_uij,
+                uij_target_weights  = uij_weights_task.result.total_weight_array,
+                uij_isotropic_mask  = optimise_isotropic_mask,
+                tracking_object     = main_tracking_object,
+                )
 
-        # Write graphs
-        logger.heading('Writing tracking output')
-        main_tracking_object.write_output()
-        model_tracking_object.write_output()
-        update_optimisation_object.write_output()
+            model_tracking_object.update(
+                model_object = model_object, # TODO REMOVE
+                n_cycle = main_tracking_object.n_cycle,
+                )
 
-        if main_tracking_object.is_converged():
-            if (main_tracking_object.n_cycle >= params.optimisation.min_macro_cycles):
-                logger.heading('Terminating optimisation -- model has converged', spacer=True)
-                break
+            # Write graphs
+            logger.heading('Writing tracking output')
+            main_tracking_object.write_output()
+            model_tracking_object.write_output()
+            update_optimisation_object.write_output()
 
-        if params.optimisation.intermediate_output.write_model_every:
-            if (main_tracking_object.n_cycle % params.optimisation.intermediate_output.write_model_every) == 0:
-                logger.subheading('Macrocycle {}'.format(main_tracking_object.n_cycle) + ' - Writing intermediate model summary')
-                # Write out the model during optimisation
-                model_files = write_fitted_model_summary_intermediate(
-                    output_directory_suffix = '{:03d}'.format(main_tracking_object.n_cycle),
-                    remove_previous = params.optimisation.intermediate_output.remove_previous,
-                    # Normal arguments (passed to task)
-                    overall_atom_mask = hierarchy_info.overall_atom_mask,
-                    level_group_array = hierarchy_info.level_group_array,
-                    model_object = model_object,
-                    isotropic_mask = output_isotropic_mask,
-                    reference_model = models[0],
-                    uij_target = extract_uijs_task.result.model_uij,
-                    plotting_object = plotting_object,
-                    )
+            if main_tracking_object.is_converged():
+                if (main_tracking_object.n_cycle >= params.optimisation.min_macro_cycles):
+                    logger.heading('Terminating optimisation -- model has converged', spacer=True)
+                    break
 
-    # Terminate processes used for optimisation
-    optimise_model_main.close_processes()
+            if params.optimisation.intermediate_output.write_model_every:
+                if (main_tracking_object.n_cycle % params.optimisation.intermediate_output.write_model_every) == 0:
+                    logger.subheading('Macrocycle {}'.format(main_tracking_object.n_cycle) + ' - Writing intermediate model summary')
+                    # Write out the model during optimisation
+                    model_files = write_fitted_model_summary_intermediate(
+                        output_directory_suffix = '{:03d}'.format(main_tracking_object.n_cycle),
+                        remove_previous = params.optimisation.intermediate_output.remove_previous,
+                        # Normal arguments (passed to task)
+                        overall_atom_mask = hierarchy_info.overall_atom_mask,
+                        level_group_array = hierarchy_info.level_group_array,
+                        model_object = model_object,
+                        isotropic_mask = output_isotropic_mask,
+                        reference_model = models[0],
+                        uij_target = extract_uijs_task.result.model_uij,
+                        plotting_object = plotting_object,
+                        )
+
+    finally:
+        # Terminate processes used for optimisation
+        optimise_model_main.close_processes()
 
     logger.heading('Optimisation finished', spacer=True)
 
