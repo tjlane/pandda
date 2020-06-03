@@ -32,6 +32,7 @@ class Heading:
         self.side_padding = self.side_width * self.spacer
 
     def __call__(self, text, spacer=False, blank=False):
+        text = str(text)
         actual_width = max(len(text)+2, self.content_width)
 
         lines = [

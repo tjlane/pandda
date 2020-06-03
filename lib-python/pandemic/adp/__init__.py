@@ -897,6 +897,8 @@ def run(params, args=None):
             if params.optimisation.intermediate_output.write_model_every:
                 if (main_tracking_object.n_cycle % params.optimisation.intermediate_output.write_model_every) == 0:
                     logger.subheading('Macrocycle {}'.format(main_tracking_object.n_cycle) + ' - Writing intermediate model summary')
+                    # Close processes to clear memory, and to make KeyboardInterrupts during this easier to handle (processes are automatically reopened)
+                    optimise_model_main.close_processes()
                     # Write out the model during optimisation
                     model_files = write_fitted_model_summary_intermediate(
                         output_directory_suffix = '{:03d}'.format(main_tracking_object.n_cycle),

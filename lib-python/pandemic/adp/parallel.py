@@ -1,10 +1,14 @@
-import tqdm
-import numpy
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
 from libtbx import adopt_init_args
 
-import traceback
 
 class MultiProcessWrapper:
+
+    get_timeout = 0.05
+    gc_interval = 60
+    exit_flag = "STOP"
 
     def __init__(self,
             function,
@@ -14,23 +18,48 @@ class MultiProcessWrapper:
     def __call__(self,
             task_queue,
             done_queue,
+            shutdown_event,
             ):
 
-        # Get `chunksize` objects from the queue
-        for arg_dicts in iter(task_queue.get, 'STOP'):
+        import gc, time, traceback
+        from multiprocessing.queues import Empty
 
-            done_list = []
+        # Collect gc every gc_interval
+        next_gc_time = time.time() + self.gc_interval
+
+        while not shutdown_event.is_set():
+
+            # Run GC if required (run at top of loop)
+            if time.time() > next_gc_time:
+                gc.collect()
+                next_gc_time = time.time() + self.gc_interval
+
+            # Get item or continue loop
+            try:
+                item = task_queue.get(block=True, timeout=self.get_timeout)
+            except Empty:
+                continue
+
+            # Exit command has been issued
+            if (item == self.exit_flag):
+                break
 
             # Iterate through the arguments (tuples of (i,args))
-            for i, arg_dict in arg_dicts:
+            done_list = []
+            for i, arg_dict in item:
 
                 try:
                     output = (i, self.function(**arg_dict))
-                except:
+                except Exception:
                     output = (i, traceback.format_exc())
+
                 done_list.append(output)
 
+            # Append to output list
             done_queue.put(done_list)
+
+            # Delete just in case helps gc
+            del done_list
 
 
 class RunParallelWithProgressBarUnordered:
@@ -45,6 +74,7 @@ class RunParallelWithProgressBarUnordered:
         processes = None
         task_queue = None
         done_queue = None
+        shutdown_event = None
 
         assert max_chunksize >= 1
 
@@ -56,6 +86,9 @@ class RunParallelWithProgressBarUnordered:
     def __call__(self,
             arg_dicts,
             ):
+
+        import tqdm
+        import numpy
 
         # Initialise processes
         if (not self.processes):
@@ -113,11 +146,12 @@ class RunParallelWithProgressBarUnordered:
 
     def initialise_processes(self):
 
-        from multiprocessing import Process, Queue
+        from multiprocessing import Process, Queue, Event
 
         # Create input/output queues
         self.task_queue = Queue()
         self.done_queue = Queue()
+        self.shutdown_event = Event()
 
         # Redirect termination signal while processes are spawned
         import signal
@@ -126,7 +160,7 @@ class RunParallelWithProgressBarUnordered:
         for i in range(self.n_cpus):
             p = Process(
                 target = MultiProcessWrapper(self.function),
-                args = (self.task_queue, self.done_queue),
+                args = (self.task_queue, self.done_queue, self.shutdown_event),
             )
             p.start()
             self.processes.append(p)
@@ -151,9 +185,16 @@ class RunParallelWithProgressBarUnordered:
             if p.is_alive():
                 p.terminate()
 
+        self.task_queue.close()
+        self.task_queue.join_thread()
+
+        self.done_queue.close()
+        self.done_queue.join_thread()
+
         self.processes = None
         self.task_queue = None
         self.done_queue = None
+        self.shutdown_event = None
 
     def check_queues_empty(self):
         try:
