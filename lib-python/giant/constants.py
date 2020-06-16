@@ -1,42 +1,5 @@
 
 # =================== #
-# Peptide Constants   #
-# =================== #
-
-LONGEST_PEPTIDE = 30
-LONGEST_OLIGO = 6
-
-# =================== #
-# Compound Constants  #
-# =================== #
-
-COMMON_COMPOUNDS = (
-    '[Zn]',
-    '[Ni]',
-    'K',
-    '[K]',
-    '[KH]',
-    'Mg',
-    '[Mg]',
-    '[MgH2]',
-    '[Na]',
-    '[NaH]',
-    'I',
-    'Cl',
-    'NCS',
-    'CC(C)O',
-    'CS(C)O',
-    'OCCO',
-    'CC(O)O',
-    'OS(O)(O)O',
-    'O',
-    'O=CC(O)CO',
-    'OCC(O)CO',
-    'OP(O)(O)O',
-    'OCO',
-)
-
-# =================== #
 # Ion Constants       #
 # =================== #
 
@@ -84,10 +47,66 @@ WATER_NAMES = (
     'WAT',
 )
 
-SOLVENT_NAMES = (
+# =================== #
+# Compound Constants  #
+# =================== #
+
+COMMON_SMALL_MOLECULES = (
     'ACT',
     'EDO',
+    'GOL',
+    'DMS',
+    'SO4',
+    'PO4'
+    'PEG',
+    'PGE',
+    'PG4',
+    'P6G',
+    'POP', # pyrophosphate
 )
+
+# =================== #
+# Common Molcules etc #
+# =================== #
+
+COMMON_MOLECULES = (
+    WATER_NAMES +
+    SOLVENT_NAMES +
+    CRYO_NAMES
+)
+
+COMMON_COMPOUNDS_SMILES = (
+    '[Zn]',
+    '[Ni]',
+    'K',
+    '[K]',
+    '[KH]',
+    'Mg',
+    '[Mg]',
+    '[MgH2]',
+    '[Na]',
+    '[NaH]',
+    'I',
+    'Cl',
+    'NCS',
+    'CC(C)O',
+    'CS(C)O',
+    'OCCO',
+    'CC(O)O',
+    'OS(O)(O)O',
+    'O',
+    'O=CC(O)CO',
+    'OCC(O)CO',
+    'OP(O)(O)O',
+    'OCO',
+)
+
+# =================== #
+# Peptide Constants   #
+# =================== #
+
+LONGEST_PEPTIDE = 30
+LONGEST_OLIGO = 6
 
 # =================== #
 # Protein Constants   #

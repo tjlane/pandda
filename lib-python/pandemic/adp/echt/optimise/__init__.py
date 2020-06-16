@@ -220,6 +220,9 @@ class OptimiseEchtModel:
                 i_level = range(model_object.n_levels),
                 )
 
+        # Close processes to clear memory, and to make KeyboardInterrupts during this easier to handle (processes are automatically reopened)
+        self.close_processes()
+
         # Optimise the amplitudes again just to make sure...
         logger.subheading('Macrocycle {}: '.format(tracking_object.n_cycle)+'Optimising inter-level amplitudes')
         self.sanitise_model(model_object)
@@ -293,18 +296,14 @@ class UpdateOptimisationFunction:
         logger('> Total decay factor (relative to starting values): {}\n'.format(total_decay_factor))
 
         new_weights_dict = {}
-        # below_minimum = False
         for k in self.weights_to_update:
             sta_v = getattr(start_weights, k)
             new_v = sta_v * total_decay_factor
             logger('Updating {} = {} -> {}'.format(k, sta_v, new_v))
             new_weights_dict[k] = new_v
-            # Record whether weight below minimum but don't do anything for the moment
-            # if (new_v > 0.0) and (new_v < minimum_weight):
-            #     below_minimum = True
         # Update weights if above threshold
         weights_sum = sum(new_weights_dict.values())
-        if weights_sum < minimum_weight: # below_minimum is True:
+        if (minimum_weight is not None) and (weights_sum < minimum_weight):
             logger('\n*** Sum of optimisation weights ({}) is below the minimum threshold ({}). Not updating weights. ***'.format(weights_sum, minimum_weight))
         else:
             # Get current weight object

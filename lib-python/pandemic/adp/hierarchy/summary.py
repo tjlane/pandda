@@ -227,7 +227,11 @@ class WriteHierarchicalModelSummaryTask:
         structure_factory,
         ):
 
+        # Output file dict
         file_dict = collections.OrderedDict()
+
+        # Record any failed/missing files
+        missing_files = []
 
         from giant.structure.formatting import PymolSelection
         for level_lab, structure_filename in level_atoms_pdb.iteritems():
@@ -261,12 +265,13 @@ class WriteHierarchicalModelSummaryTask:
             if (not of):
                 logger.warning('no images have been generated: {}...'.format(f_prefix))
             else:
-                for v in of.values():
-                    if not os.path.exists(v):
-                        logger.warning('image does not exist: {}'.format(v))
-
+                # Append missing files
+                [missing_files.append(v) for v in of.values() if not os.path.exists(v)]
                 # Store in output dictionary
                 file_dict[level_lab] = of
+
+        if missing_files:
+            logger.warning('\n'.join(['image does not exist: {}'.format(v) for v in missing_files]))
 
         return {'level_atoms_pymol_png' : file_dict}
 

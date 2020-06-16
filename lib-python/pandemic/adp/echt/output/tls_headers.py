@@ -11,7 +11,17 @@ class MultiModelTLSHeaderFactory:
         tls_objects,
         overall_selection,
         ):
+
         adopt_init_args(self, locals())
+
+        # Create selection strings for everything not in a tls group
+        null_selection_strings = []
+        for level_strings in tls_selection_strings:
+            null_selection = "not ({})".format(
+                " or ".join(["({})".format(s) for s in level_strings])
+            )
+            null_selection_strings.append(null_selection)
+        self.null_selection_strings = null_selection_strings
 
     def __call__(self,
         i_levels = None,
@@ -34,20 +44,30 @@ class MultiModelTLSHeaderFactory:
         # Iterate through the different UNIQUE grouping combinations
         for i_groups in unique_tls_combinations:
 
-            i_level_groups = [(i_l, i_g) for (i_l, i_g) in zip(i_levels, i_groups) if (i_g != -1)]
+            # Ignore null groups
+            if i_groups.count(-1) == len(i_groups):
+                continue
 
-            if not i_level_groups: continue
+            # Level-group pairs
+            i_level_groups = zip(i_levels, i_groups)
 
             # Combine the selection strings for this combination
-            group_selection_strings = [self.overall_selection]*(self.overall_selection is not None) + \
-                                      [self.tls_selection_strings[i_l][i_g] for i_l, i_g in i_level_groups]
+            group_selection_strings = []
+            # Overall selection string
+            if (self.overall_selection is not None):
+                group_selection_strings.append(self.overall_selection)
+            # For each group, or the null string
+            for i_l, i_g in i_level_groups:
+                if (i_g != -1):
+                    group_selection_strings.append(self.tls_selection_strings[i_l][i_g])
+                else:
+                    group_selection_strings.append(self.null_selection_strings[i_l])
             combined_selection_string = '('+') and ('.join(group_selection_strings)+')'
 
             # Extract the tls parameters for each level
-            tls_objects = [self.tls_objects[i_l][i_g] for i_l, i_g in i_level_groups]
+            tls_objects = [self.tls_objects[i_l][i_g] for i_l, i_g in i_level_groups if (i_g != -1)]
             # Expand out the tls objects for each level
             tls_parameters_exp = [[ma.expand() for ma in obj.tls_parameters] for obj in tls_objects]
-            #assert set(map(len,tls_parameters_exp)) ==
             # Calculate the total for each dataset for each level
             tls_matrices_levels = [[reduce(operator.add, ml) for ml in zip(*mll)] for mll in tls_parameters_exp]
             # Sum matrices over levels

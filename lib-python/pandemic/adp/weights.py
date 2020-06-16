@@ -2,11 +2,12 @@ import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 from libtbx import adopt_init_args, group_args
-import copy
+from giant.exceptions import Sorry, Failure
 import numpy
 
 def scale_weights(weights, scale):
 
+    import copy
     new_weights = copy.deepcopy(weights)
 
     for k in new_weights.__dict__.keys():
@@ -61,7 +62,7 @@ class AtomWeightCalculator:
         if (uij_modulus == 0.0).any():
             zero_b_atoms = zip(*numpy.where((uij_modulus == 0.0)))
             message = 'Some atoms have zero-value b-factors!'
-            message += '\n\t'+'\n\t'.join(['atom {} in dataset {}'.format(i_a,dataset_labels[i_d]) for i_a,i_d in zero_b_atoms])
+            message += '\n\t'+'\n\t'.join(['atom {} in dataset {}'.format(i_a,dataset_labels[i_d]) for i_d,i_a in zero_b_atoms])
             if (self.weighting == 'one'):
                 logger.warning(message)
             else:

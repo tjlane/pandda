@@ -1,0 +1,608 @@
+#!/usr/bin/env cctbx.python
+
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
+import os, sys, glob, copy
+
+from giant.exceptions import Sorry, Failure
+
+from pandemic.adp.plots import PlotHelper
+helper = PlotHelper()
+
+from giant.maths import EIGHTPISQ
+
+from scitbx.array_family import flex
+
+#######################################
+
+blank_arg_prepend = {
+    None : 'pandemic_folder=',
+}
+
+import libtbx.phil
+master_phil = libtbx.phil.parse("""
+input {
+    pandemic_folder = None
+        .multiple = True
+        .type = str
+        .help = "output pandemic folder"
+    overall_selection = None
+        .type = str
+}
+analysis {
+    statistics = *by_atom by_residue
+        .type = choice(multi=False)
+}
+output {
+    out_dir = pandemic-adp-plots
+        .type = path
+        .help = "output directory"
+}
+""")
+
+#######################################
+
+PYMOL_HELP_SCRIPT = """
+as lines
+show ellipsoids
+color white
+color blue, (q < 0.25)
+color red, (q > 0.75)
+"""
+
+#######################################
+
+def validate_params(params):
+    pass
+
+##
+
+def sanitise_atom_label(label):
+    return ( label[:9] + ' ' + label[10:] )
+
+def unsanitise_atom_label(label, chain_id):
+    return ( label[:9] + chain_id + label[10:] )
+
+##
+
+def get_atom_values(chain):
+    import collections
+    labels_b = collections.OrderedDict(
+        (sanitise_atom_label(a.pdb_label_columns()), a.b)
+        for a in chain.atoms()
+    )
+    return labels_b
+
+def set_atom_values(bdict, hierarchy):
+
+    atom_hash = {
+        sanitise_atom_label(a.pdb_label_columns()) : a
+        for a in hierarchy.atoms()
+        }
+
+    for k, v in bdict.iteritems():
+        a = atom_hash.get(k)
+        if a is None:
+            continue
+        if (v > 0):
+            a.set_b(v)
+            a.set_uij(
+                (
+                    v/EIGHTPISQ,
+                    v/EIGHTPISQ,
+                    v/EIGHTPISQ,
+                    0,0,0
+                    )
+                )
+            a.set_occ(1)
+        elif (v < 0):
+            a.set_b(-v)
+            a.set_uij(
+                (
+                    -v/EIGHTPISQ,
+                    -v/EIGHTPISQ,
+                    -v/EIGHTPISQ,
+                    0,0,0
+                    )
+                )
+            a.set_occ(0)
+
+    return hierarchy
+
+##
+
+def get_residue_values(chain):
+    import collections
+    labels_b = collections.OrderedDict(
+        (rg.resid(), flex.mean(rg.atoms().extract_b()))
+        for rg in chain.residue_groups()
+    )
+    return labels_b
+
+def set_residue_values(bdict, hierarchy):
+
+    res_hash = {
+        rg.resid() : rg
+        for rg in hierarchy.residue_groups()
+    }
+
+    for k, v in bdict.iteritems():
+        rg = res_hash.get(k)
+        if rg is None:
+            continue
+        if (v > 0):
+            for a in rg.atoms():
+                a.set_b(v)
+                a.set_uij(
+                    (
+                        v/EIGHTPISQ,
+                        v/EIGHTPISQ,
+                        v/EIGHTPISQ,
+                        0,0,0
+                        )
+                    )
+                a.set_occ(1)
+        elif (v < 0):
+            for a in rg.atoms():
+                a.set_b(-v)
+                a.set_uij(
+                    (
+                        -v/EIGHTPISQ,
+                        -v/EIGHTPISQ,
+                        -v/EIGHTPISQ,
+                        0,0,0
+                        )
+                    )
+                a.set_occ(0)
+
+    return hierarchy
+
+##
+
+class StructureComparer:
+
+    get_b_values = None
+    set_b_values = None
+
+    def __init__(self,
+        selection = None,
+        ):
+        self.selection = selection
+
+    def __call__(self,
+        hierarchy1,
+        hierarchy2,
+        prefix1,
+        prefix2,
+        label,
+        output_directory,
+        ):
+
+        h1 = hierarchy1
+        h2 = hierarchy2
+
+        if (self.selection is not None):
+            h1 = self.filter_structure(h1)
+            h2 = self.filter_structure(h2)
+
+        values1 = self.extract_b_values(hierarchy=h1)
+        values2 = self.extract_b_values(hierarchy=h2)
+
+        # Concatenate for each structure
+        import collections
+        all_s1_values = collections.OrderedDict()
+        for k, v in values1.iteritems():
+            all_s1_values.update(collections.OrderedDict([(k+kk,vv) for kk,vv in v.items()]))
+        all_s2_values = collections.OrderedDict()
+        for k, v in values2.iteritems():
+            all_s2_values.update(collections.OrderedDict([(k+kk,vv) for kk,vv in v.items()]))
+
+        # from IPython import embed; embed()
+
+        self.scatter_grid(
+            value_dicts_x = values1.values(),
+            value_dicts_y = values2.values(),
+            title = label+'\n\n',
+            labels_x = ['{} - {}'.format(prefix1, k) for k in values1.keys()],
+            labels_y = ['{} - {}'.format(prefix2, k) for k in values2.keys()],
+            filename = os.path.join(output_directory, 'scatter-{}.png'.format(label)),
+            )
+
+        self.histogram_grid(
+            value_dicts_x = values1.values(),
+            value_dicts_y = values2.values(),
+            title = label+'\n\n',
+            labels_x = ['{} - {}'.format(prefix1, k) for k in values1.keys()],
+            labels_y = ['{} - {}'.format(prefix2, k) for k in values2.keys()],
+            filename = os.path.join(output_directory, 'histograms-{}.png'.format(label)),
+            )
+
+        self.scatter_grid(
+            value_dicts_x = [all_s1_values],
+            value_dicts_y = [all_s2_values],
+            title = label+'\n\n',
+            labels_x = [prefix1],
+            labels_y = [prefix2],
+            filename = os.path.join(output_directory, 'scatter-{}-all.png'.format(label)),
+            )
+
+        self.histogram_grid(
+            value_dicts_x = [all_s1_values],
+            value_dicts_y = [all_s2_values],
+            title = label+'\n\n',
+            labels_x = [prefix1],
+            labels_y = [prefix2],
+            filename = os.path.join(output_directory, 'histograms-{}-all.png'.format(label)),
+            )
+
+        # Calculate differences between each chain in the second structure iteratively
+        for c2, vals2 in values2.iteritems():
+
+            diff_values = self.calculate_differences(
+                values_dict_1 = values1,
+                values_2 = vals2,
+                )
+
+            hout = self.embed_b_values(
+                hierarchy = h1,
+                b_values_dict = diff_values,
+                )
+
+            hout.write_pdb_file(
+                os.path.join(output_directory, 'differences-{}-s2-c{}.pdb'.format(label, c2)),
+                )
+
+    def filter_structure(self, hierarchy):
+        c = hierarchy.atom_selection_cache()
+        return hierarchy.select(c.selection(self.selection))
+
+    def extract_b_values(self, hierarchy):
+        import collections
+        output_dict = {}
+        for c in hierarchy.chains():
+            if not (c.is_protein() or c.is_na()):
+                continue
+            labels_b = self.get_b_values(c)
+            output_dict.setdefault(
+                c.id, collections.OrderedDict()
+            ).update(
+                labels_b
+            )
+        return output_dict
+
+    def embed_b_values(self,
+        hierarchy,
+        b_values_dict,
+        ):
+
+        h = hierarchy.deep_copy()
+        h.atoms().set_uij(flex.sym_mat3_double(h.atoms().size(), [0.0]*6))
+        h.atoms().set_b(flex.double(h.atoms().size(), 0.0))
+        h.atoms().set_occ(flex.double(h.atoms().size(), 0.5))
+
+        cache = h.atom_selection_cache()
+
+        for ch_id, ch_values in b_values_dict.iteritems():
+
+            # Select the chain
+            chain_h = h.select(
+                cache.selection(
+                    'chain {}'.format(ch_id)
+                    )
+                )
+
+            # Set the B-values for this chain
+            self.set_b_values(
+                bdict = ch_values,
+                hierarchy = chain_h,
+                )
+
+        return h
+
+    def histogram_grid(self,
+        value_dicts_x,
+        value_dicts_y,
+        title,
+        labels_x,
+        labels_y,
+        filename,
+        ):
+
+        nx, ny = len(value_dicts_x), len(value_dicts_y)
+
+        from matplotlib import pyplot
+        fig, axes = pyplot.subplots(
+            nrows = ny,
+            ncols = nx,
+            sharex = 'all',
+            sharey = 'all',
+        )
+
+        fig.suptitle(title, y=1.08)
+
+        if (nx + ny) == 2:
+            axes = [[axes]]
+        elif (nx == 1):
+            axes = [[a] for a in axes]
+        elif (ny == 1):
+            axes = [axes]
+
+        for icol, x_vals_dict in enumerate(value_dicts_x):
+            for irow, y_vals_dict in enumerate(value_dicts_y):
+
+                axis = axes[irow][icol] # invert y ordering
+                #axis.set_aspect('equal')
+
+                self.histogram_axis(
+                    axis = axis,
+                    values = [x_vals_dict.values(), y_vals_dict.values()],
+                    labels = [labels_x[icol], labels_y[irow]],
+                )
+
+        for icol in range(nx):
+            axis = axes[0][icol]
+            axis.set_xlabel(labels_x[icol])
+            axis.xaxis.set_label_position('top')
+
+        for irow in range(ny):
+            axis = axes[irow][0]
+            axis.set_ylabel(labels_y[irow])
+
+        helper.write_and_close_fig(
+            fig = fig,
+            filename = filename,
+        )
+
+    def histogram_axis(self,
+        axis,
+        values,
+        labels,
+        ):
+
+        import seaborn as sns
+
+        for l, v in zip(labels, values):
+            sns.distplot(
+                a = v,
+                label = l,
+                bins = 20,
+                hist = True,
+                norm_hist = True,
+                kde = False,
+                kde_kws = {
+                    'shade': True,
+                    'linewidth': 3,
+                },
+                hist_kws = {
+                    "histtype": "step",
+                    "linewidth": 3,
+                },
+                ax = axis,
+                )
+
+        axis.legend()
+
+    def scatter_grid(self,
+        value_dicts_x,
+        value_dicts_y,
+        title,
+        labels_x,
+        labels_y,
+        filename,
+        ):
+
+        #    |
+        #    |
+        # ny |
+        #    |
+        #    +-----
+        #       nx
+
+        import numpy as np
+
+        nx, ny = len(value_dicts_x), len(value_dicts_y)
+        #assert nx == ny
+
+        from matplotlib import pyplot
+        fig, axes = pyplot.subplots(
+            nrows = ny,
+            ncols = nx,
+            sharex = 'all',
+            sharey = 'all',
+        )
+
+        fig.suptitle(title, y=1.08)
+
+        if (nx + ny) == 2:
+            axes = [[axes]]
+        elif (nx == 1):
+            axes = [[a] for a in axes]
+        elif (ny == 1):
+            axes = [axes]
+
+        max_v = 0
+        for icol, x_vals_dict in enumerate(value_dicts_x):
+            for irow, y_vals_dict in enumerate(value_dicts_y):
+                max_v = max(max_v, np.max(x_vals_dict.values()))
+                max_v = max(max_v, np.max(y_vals_dict.values()))
+        axis = axes[0][0]
+        axis.set_xlim(left=0, right=max_v)
+        axis.set_ylim(bottom=0, top=max_v)
+
+        for icol, x_vals_dict in enumerate(value_dicts_x):
+            for irow, y_vals_dict in enumerate(value_dicts_y):
+
+                axis = axes[irow][icol] # invert y ordering
+                axis.set_aspect('equal')
+
+                self.scatter_axis(
+                    axis = axis,
+                    x_vals_dict = x_vals_dict,
+                    y_vals_dict = y_vals_dict,
+                )
+
+        for icol in range(nx):
+            axis = axes[0][icol]
+            axis.set_xlabel(labels_x[icol])
+            #axis.xaxis.set_ticks_position('top')
+            axis.xaxis.set_label_position('top')
+
+        for irow in range(ny):
+            axis = axes[irow][0]
+            axis.set_ylabel(labels_y[irow])
+
+        helper.write_and_close_fig(
+            fig = fig,
+            filename = filename,
+        )
+
+    def scatter_axis(self,
+        axis,
+        x_vals_dict,
+        y_vals_dict,
+        ):
+
+        from scipy.stats import kde
+        import numpy as np
+        import matplotlib.pyplot as plt
+
+        x = []
+        y = []
+        for k in x_vals_dict.keys():
+            if y_vals_dict.get(k) is not None:
+                x.append(x_vals_dict[k])
+                y.append(y_vals_dict[k])
+
+        x = np.array(x)
+        y = np.array(y)
+
+        max_v = np.max([axis.get_xlim(), axis.get_ylim()])
+        axis.plot([0,max_v],[0,max_v], 'k-')
+
+        try:
+            nbins = 20
+            k = kde.gaussian_kde([x, y])
+            xi, yi = np.mgrid[0:max_v:nbins*1j, 0:max_v:nbins*1j]
+            zi = k(np.vstack([xi.flatten(), yi.flatten()]))
+            axis.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
+            axis.contour(xi, yi, zi.reshape(xi.shape) )
+        except Exception:
+            pass
+
+        axis.scatter(x=x, y=y, s=0.5, color='w')
+
+        non_zero_bool = np.logical_not((x==0) | (y==0))
+        corr = round(np.corrcoef(x[non_zero_bool],y[non_zero_bool])[0][1], 3)
+        axis.text(
+            x=0.05*max_v, y=0.95*max_v, s=corr,
+            horizontalalignment='left',
+            verticalalignment='top',
+        )
+
+    def calculate_differences(self,
+        values_dict_1,
+        values_2,
+        ):
+
+        import collections
+
+        diff_dict = collections.OrderedDict()
+
+        for c, values_1 in values_dict_1.iteritems():
+
+            cdict = diff_dict.setdefault(c, collections.OrderedDict())
+
+            for k, v1 in values_1.items():
+                v2 = values_2.get(k)
+                if v2 is not None:
+                    cdict[k] = (v2-v1)
+
+        return diff_dict
+
+def run(params):
+
+    from giant.paths import filename, foldername, easy_directory
+    from giant.colours import pretty_string as ps
+
+    logger = lg.setup_logging(
+        name = __name__,
+    )
+
+    logger(ps('pandemic.plot\n').bold().blue())
+
+    validate_params(params)
+
+    if len(params.input.pandemic_folder) == 1:
+        dir1 = dir2 = params.input.pandemic_folder[0]
+    elif len(params.input.pandemic_folder) == 2:
+        dir1, dir2 = params.input.pandemic_folder
+    else:
+        raise Exception()
+
+    from giant.paths import foldername
+    label1 = foldername(dir1)
+    label2 = foldername(dir2)
+
+    base_filenames = sorted(
+        set(
+            [os.path.basename(f) for f in glob.glob(os.path.join(dir1, 'hierarchical_model', 'structures', '*.pdb'))]
+        ).intersection(
+            [os.path.basename(f) for f in glob.glob(os.path.join(dir2, 'hierarchical_model', 'structures', '*.pdb'))]
+        )
+    )
+
+    #############
+
+    out_dir = easy_directory(params.output.out_dir)
+
+    plotter = StructureComparer()
+
+    if params.analysis.statistics == 'by_atom':
+        plotter.get_b_values = get_atom_values
+        plotter.set_b_values = set_atom_values
+    else:
+        plotter.get_b_values = get_residue_values
+        plotter.set_b_values = set_residue_values
+
+    #############
+
+    import iotbx.pdb
+
+    for i, base_f in enumerate(base_filenames):
+
+        if 'mode' in base_f:
+            continue
+
+        logger(base_f)
+
+        filename1 = os.path.join(dir1, 'hierarchical_model', 'structures', base_f)
+        filename2 = os.path.join(dir2, 'hierarchical_model', 'structures', base_f)
+
+        h1 = iotbx.pdb.hierarchy.input(filename1).hierarchy
+        h2 = iotbx.pdb.hierarchy.input(filename2).hierarchy
+
+        plotter(
+            hierarchy1 = h1,
+            hierarchy2 = h2,
+            prefix1 = label1,
+            prefix2 = label2,
+            label = base_f,
+            output_directory = out_dir,
+        )
+
+    with open(os.path.join(out_dir, 'helper_script.pml'), 'w') as fh:
+        fh.write(PYMOL_HELP_SCRIPT)
+
+    logger.subheading(ps('Finished normally!').green())
+
+#######################################
+
+if __name__ == '__main__':
+    from giant.jiffies import run_default
+    run_default(
+        run = run,
+        master_phil = master_phil,
+        args = sys.argv[1:],
+        blank_arg_prepend = blank_arg_prepend,
+    )

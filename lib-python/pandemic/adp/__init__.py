@@ -1,3 +1,6 @@
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
 import os, sys
 
 from libtbx import group_args
@@ -181,13 +184,13 @@ model {
     }
 }
 optimisation {
-    min_macro_cycles = 10
+    min_macro_cycles = 30
         .help = 'minimum number of fitting cycles to run (over all levels) -- must be at least 1'
         .type = int
     max_macro_cycles = 999
         .help = 'maximum number of fitting cycles to run (over all levels) -- must be at least 1'
         .type = int
-    number_of_micro_cycles = 1
+    number_of_micro_cycles = 3
         .help = 'how many fitting cycles to run (for each level) -- must be at least 1'
         .type = int
     fit_tls_for_isotropic_atoms_by_magnitude_only = False
@@ -196,6 +199,9 @@ optimisation {
     intermediate_output {
         write_model_every = 10
             .help = 'output summary of hierarchical model every <n> cycles'
+            .type = int
+        stop_writing_after = 50
+            .help = 'stop outputting graphs past this cycle'
             .type = int
         remove_previous = False
             .help = 'remove previous intermediate files at each update or at end of program.'
@@ -263,7 +269,7 @@ optimisation {
         global_weight_decay_factor = 0.7
             .help = "amount by which optimisation_weights is scaled every cycle. must be less than 1."
             .type = float
-        minimum_weight = 1e-16
+        minimum_weight = None
             .help = "minimum weight value. weight decay will not continue once one of the weights reaches this value. The proportions between the different weights will be kept."
             .type = float
         weights_to_decay = *sum_of_amplitudes *sum_of_amplitudes_squared *sum_of_squared_amplitudes
@@ -895,10 +901,10 @@ def run(params, args=None):
                     break
 
             if params.optimisation.intermediate_output.write_model_every:
-                if (main_tracking_object.n_cycle % params.optimisation.intermediate_output.write_model_every) == 0:
+                if (params.optimisation.intermediate_output.stop_writing_after is not None) and (main_tracking_object.n_cycle > params.optimisation.intermediate_output.stop_writing_after):
+                    pass
+                elif (main_tracking_object.n_cycle % params.optimisation.intermediate_output.write_model_every) == 0:
                     logger.subheading('Macrocycle {}'.format(main_tracking_object.n_cycle) + ' - Writing intermediate model summary')
-                    # Close processes to clear memory, and to make KeyboardInterrupts during this easier to handle (processes are automatically reopened)
-                    optimise_model_main.close_processes()
                     # Write out the model during optimisation
                     model_files = write_fitted_model_summary_intermediate(
                         output_directory_suffix = '{:03d}'.format(main_tracking_object.n_cycle),
@@ -914,7 +920,7 @@ def run(params, args=None):
                         )
 
     finally:
-        # Terminate processes used for optimisation
+        # Ensure processes used for optimisation are closed
         optimise_model_main.close_processes()
 
     logger.heading('Optimisation finished', spacer=True)
@@ -1129,10 +1135,15 @@ def run_pandemic_adp(args):
 if __name__=='__main__':
 
     from giant.profile import profile_code
+    #a = profile_code()
     try:
-        #a = profile_code()
         run_pandemic_adp(args=sys.argv[1:])
-        #a.stop()
+    except Exception as e:
+        import traceback
+        logger(traceback.format_exc())
+        raise e
     except KeyboardInterrupt:
-        print('\nProgram terminated by user')
+        logger('\nProgram terminated by user')
+    #finally:
+    #    a.stop()
 

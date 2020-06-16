@@ -490,7 +490,11 @@ class WriteEchtModelSummary:
 
         logger.subheading('Generating pymol images for levels in ECHT model')
 
+        # Output file dict
         file_dict = collections.OrderedDict()
+
+        # Record any failed/missing files
+        missing_files = []
 
         # Write images for each chain (average structures)
         if self.pymol_images is not None:
@@ -508,11 +512,13 @@ class WriteEchtModelSummary:
                 if (not of):
                     logger.warning('no images have been generated: {}...'.format(f_prefix))
                 else:
-                    for v in of.values():
-                        if not os.path.exists(v):
-                            logger.warning('image does not exist: {}'.format(v))
-                # Store in output dictionary
-                file_dict[level_name] = of
+                    # Append missing files
+                    [missing_files.append(v) for v in of.values() if not os.path.exists(v)]
+                    # Store in output dictionary
+                    file_dict[level_name] = of
+
+        if missing_files:
+            logger.warning('\n'.join(['image does not exist: {}'.format(v) for v in missing_files]))
 
         return {'level_uijs_pymol_by_chain_png' : file_dict}
 
@@ -524,7 +530,7 @@ class WriteEchtModelSummary:
 
         s = PythonScript(pretty_models=False, pretty_maps=False)
 
-        s.change_into_directory(path=os.path.abspath(self.pdb_directory))
+        s.change_into_directory_maybe(path=os.path.abspath(self.pdb_directory))
 
         for f in [file_dict.get('target_uijs_pdb',None)] + file_dict.get('level_uijs_pdb',{}).values():
             if f is None: continue

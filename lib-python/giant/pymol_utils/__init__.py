@@ -273,6 +273,10 @@ class PythonScript(_PymolScript):
         self._append('import os')
         self._append('os.chdir({})'.format(repr(path)))
 
+    def change_into_directory_maybe(self, path):
+        self._append('import os')
+        self._append('if os.path.exists({d}):\n    os.chdir({d})'.format(d=repr(path)))
+
     @classmethod
     def run(cls, script):
         assert script.endswith(cls._file_type)

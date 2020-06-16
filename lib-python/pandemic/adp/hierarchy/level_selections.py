@@ -67,7 +67,13 @@ class GenerateLevelSelectionsTask:
 
         if ('secondary_structure' in self.auto_levels) or ('ss' in self.auto_levels):
             logger('Level {}: Creating level with groups based on secondary structure'.format(len(levels)+1))
-            unfiltered_groups = [s.strip('"') for s in default_secondary_structure_selections_filled(hierarchy=filter_h)]
+            try:
+                unfiltered_groups = [s.strip('"') for s in default_secondary_structure_selections_filled(hierarchy=filter_h)]
+            except Exception as e:
+                import traceback
+                logger.debug(traceback.format_exc())
+                logger.warning('\nError during secondary structure identification: {}\n'.format(str(e)))
+                raise Sorry('DSSP algorithm failed to identify secondary structure elements -- you will have to provide secondary structure selections manually as a custom level')
             groups = [g for g in unfiltered_groups if not cache.selection(g).all_eq(False)]
             # Assign het molecules to each ss group?
             if (self.assign_het_residues_to_nearest_ss_groups is True):
