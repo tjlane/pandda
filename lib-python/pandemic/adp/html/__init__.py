@@ -50,6 +50,9 @@ class HtmlSummary:
     debug = False
     embed_images = True
 
+    # Link files relative to this path
+    output_dir = None
+
     @staticmethod
     def wrap_string(string, tag='p'):
         return '<'+tag+'>'+str(string)+'</'+tag+'>'
@@ -93,12 +96,20 @@ class HtmlSummary:
 
     @classmethod
     def image(cls, path):
+
+        # Replace with NO_IMAGE if necessary
         if (path is None) or not os.path.exists(path):
-            path = pandemic.resources.NO_IMAGE_PATH
+            path = pandemic.resources.NO_IMAGE_PATH_ADP
+
+        # Read image and return as string
         if cls.embed_images is True:
             return png2base64src_maybe(path, print_on_missing=cls.debug)
-        else:
-            return path
+
+        # Create relative path if contained in output folder
+        if (cls.output_dir is not None) and path.startswith(cls.output_dir):
+            path = os.path.relpath(path=path, start=cls.output_dir)
+
+        return path
 
 
 class HtmlSummaryCollator(HtmlSummary):

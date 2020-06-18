@@ -489,6 +489,7 @@ def run(params, args=None):
 
     # Update class attributes
     pandemic.adp.html.HtmlSummary.embed_images = params.output.html.embed_images
+    pandemic.adp.html.HtmlSummary.output_dir = params.output.out_dir
 
     # Summary of the hierarchical model -- model specific
     ModelHtmlSummary = None
