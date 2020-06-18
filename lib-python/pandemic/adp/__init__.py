@@ -69,7 +69,7 @@ output {
         make_html = True
             .help = "Write all output data in an html file"
             .type = bool
-        embed_images = True
+        embed_images = False
             .help = "Embed images directly into HTML file?"
             .type = bool
     }
@@ -196,6 +196,33 @@ optimisation {
     fit_tls_for_isotropic_atoms_by_magnitude_only = False
         .type = bool
         .help = "Only use the magnitude of isotropic B-factors (True) or treat them as spherical anisotropic ADPs (False)?"
+    elastic_net {
+        weights {
+            sum_of_amplitudes = 0.1
+                .help = "weight for sum(amplitudes). minimises the number of TLS components in the optimisation. equivalent to a lasso weighting term."
+                .type = float
+            sum_of_squared_amplitudes = 0.9
+                .help = "weight for sum(amplitudes^2). minimises the variance in the sizes of the TLS components in the optimisation. equivalent to a ridge regression term."
+                .type = float
+            sum_of_amplitudes_squared = 0.0
+                .help = "weight for sum(amplitudes)^2. restrains the total amplitudes sum."
+                .type = float
+        }
+        weight_scale = 1e3
+            .help = "global scale applied to all optimisation_weights."
+            .type = float
+        weight_decay {
+            decay_factor = 0.7
+                .help = "amount by which optimisation_weights is scaled every cycle. must be less than 1."
+                .type = float
+            minimum_weight = None
+                .help = "minimum weight value. weight decay will not continue once one of the weights reaches this value. The proportions between the different weights will be kept."
+                .type = float
+            weights_to_decay = *sum_of_amplitudes *sum_of_amplitudes_squared *sum_of_squared_amplitudes
+                .help = "which optimisation_weights to decay every cycle."
+                .type = choice(multi=True)
+        }
+    }
     intermediate_output {
         write_model_every = 10
             .help = 'output summary of hierarchical model every <n> cycles'
@@ -252,29 +279,6 @@ optimisation {
         gradient_convergence = 1e-8
             .help = "cutoff for which the least-squares gradient optimisation is considered converged."
             .type = float
-        optimisation_weights {
-            sum_of_amplitudes = 0.1
-                .help = "weight for sum(amplitudes). minimises the number of TLS components in the optimisation. equivalent to a lasso weighting term."
-                .type = float
-            sum_of_squared_amplitudes = 0.9
-                .help = "weight for sum(amplitudes^2). minimises the variance in the sizes of the TLS components in the optimisation. equivalent to a ridge regression term."
-                .type = float
-            sum_of_amplitudes_squared = 0.0
-                .help = "weight for sum(amplitudes)^2. related to a lasso weighting term."
-                .type = float
-        }
-        global_weight_scale = 1e3
-            .help = "global scale applied to all optimisation_weights."
-            .type = float
-        global_weight_decay_factor = 0.7
-            .help = "amount by which optimisation_weights is scaled every cycle. must be less than 1."
-            .type = float
-        minimum_weight = None
-            .help = "minimum weight value. weight decay will not continue once one of the weights reaches this value. The proportions between the different weights will be kept."
-            .type = float
-        weights_to_decay = *sum_of_amplitudes *sum_of_amplitudes_squared *sum_of_squared_amplitudes
-            .help = "which optimisation_weights to decay every cycle."
-            .type = choice(multi=True)
     }
     termination {
         max_b_rmsd = None
@@ -548,8 +552,8 @@ def run(params, args=None):
             optimise_adp_function = None
 
         level_optimisation_weights = weights.scale_weights(
-            weights = params.optimisation.gradient_optimisation.optimisation_weights,
-            scale = params.optimisation.gradient_optimisation.global_weight_scale,
+            weights = params.optimisation.elastic_net.weights,
+            scale = params.optimisation.elastic_net.weight_scale,
             )
 
         optimise_level_amplitudes_function = echt.optimise.inter_level.OptimiseInterLevelAmplitudes(
@@ -569,9 +573,9 @@ def run(params, args=None):
 
         update_optimisation_object = echt.optimise.UpdateOptimisationFunction(
             initial_weights = level_optimisation_weights,
-            weight_decay_factor = params.optimisation.gradient_optimisation.global_weight_decay_factor,
-            weights_to_update = params.optimisation.gradient_optimisation.weights_to_decay,
-            minimum_weight = params.optimisation.gradient_optimisation.minimum_weight,
+            weight_decay_factor = params.optimisation.elastic_net.weight_decay.decay_factor,
+            weights_to_update = params.optimisation.elastic_net.weight_decay.weights_to_decay,
+            minimum_weight = params.optimisation.elastic_net.weight_decay.minimum_weight,
             output_directory = file_system.optimisation_directory,
             plotting_object = plots.PandemicAdpPlotter(),
             verbose = params.settings.verbose,

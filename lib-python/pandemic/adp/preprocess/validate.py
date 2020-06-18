@@ -6,6 +6,24 @@ import textwrap
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
 
+def elastic_net_weight_summary(params):
+
+    summary_lines = []
+    summary_lines.append('Overall weight scale: {}'.format(params.weight_scale))
+    for k, w in params.weights.__dict__.iteritems():
+        if k.startswith('_'):
+            continue
+        summary_lines.append('> {}: {}'.format(k, w))
+    summary_lines.append(
+        'sum_of_amplitudes + sum_of_squared_amplitudes = {}'.format(
+            params.weights.sum_of_amplitudes + params.weights.sum_of_squared_amplitudes
+        )
+    )
+
+    return '\n'.join(summary_lines)
+
+####
+
 def phil_path(params, attribute):
     return params.__phil_path__(attribute)
 
@@ -19,6 +37,8 @@ def update_parameter(params, attribute, value):
     update_string = 'setting {!s}'.format(phil_new_value(params, attribute, value))
     setattr(params, attribute, value)
     return update_string
+
+####
 
 def validate_parameters(params):
 
@@ -66,11 +86,64 @@ def validate_optimisation_phil(params):
                 )
             )
 
+    # Cycle checks
     if params.optimisation.min_macro_cycles < 1:
         raise Sorry('min_macro_cycles must be greater than 0 ({current_params})'.format(phil_value(params.optimisation, 'min_macro_cycles')))
-
     if params.optimisation.max_macro_cycles < 1:
         raise Sorry('max_macro_cycles must be greater than 0 ({current_params})'.format(phil_value(params.optimisation, 'max_macro_cycles')))
+
+    ##########################
+    # Elastic net parameters #
+    ##########################
+
+    e_net_params = params.optimisation.elastic_net
+
+    # Check weights are positive or zero
+    if e_net_params.weights.sum_of_amplitudes < 0.0:
+        raise Sorry(
+            '{param_name} must be greater than 0 ({current_params})'.format(
+                param_name = 'sum_of_amplitudes',
+                current_params = phil_value(e_net_params.weights, 'sum_of_amplitudes')
+            )
+        )
+    if e_net_params.weights.sum_of_squared_amplitudes < 0.0:
+        raise Sorry(
+            '{param_name} must be greater than 0 ({current_params})'.format(
+                param_name = 'sum_of_squared_amplitudes',
+                current_params = phil_value(e_net_params.weights, 'sum_of_squared_amplitudes')
+            )
+        )
+    if e_net_params.weights.sum_of_amplitudes_squared < 0.0:
+        raise Sorry(
+            '{param_name} must be greater than 0 ({current_params})'.format(
+                param_name = 'sum_of_amplitudes_squared',
+                current_params = phil_value(e_net_params.weights, 'sum_of_amplitudes_squared')
+            )
+        )
+
+    # Ensure that the sum of sum_of_amplitudes and sum_of_square_amplitudes is 1
+    wgt_sum = (e_net_params.weights.sum_of_amplitudes + e_net_params.weights.sum_of_squared_amplitudes)
+    if (wgt_sum > 0.0) and (wgt_sum != 1.0):
+
+        # Scale to apply to the weights
+        wgt_scale = 1.0 / wgt_sum
+
+        # Log current values
+        logger('\nElastic net weight normalisation')
+        logger('\nInput elastic net weights')
+        logger(elastic_net_weight_summary(e_net_params))
+
+        logger('\nScaling input weights sum_of_amplitudes and sum_of_squared_amplitudes to sum to 1.')
+        logger('Scaling weights internally by {}'.format(round(wgt_scale,6)))
+
+        # Scale weights
+        from pandemic.adp.weights import scale_weights
+        e_net_params.weights = scale_weights(weights=e_net_params.weights, scale=wgt_scale)
+        e_net_params.weight_scale = e_net_params.weight_scale / wgt_scale
+
+        # Log new values
+        logger('\nUpdated weights')
+        logger(elastic_net_weight_summary(e_net_params))
 
 def validate_output_phil(params):
 

@@ -5,7 +5,7 @@ TOP_DIR=$(pwd)
 for pdbid in $@; do
 
   # Ensure lower case
-  pdbid=$(echo $pdbid | tr '[:upper:]' '[:lower:]')
+  pdbid=$(echo $pdbid | tr '[:upper:]' '[:lower:]' | tr ',' ' ')
 
   # Output directory
   PDB_DIR=$TOP_DIR/$pdbid
