@@ -107,6 +107,9 @@ model {
     assign_het_residues_to_nearest_ss_groups = True
         .help = "Include het residues in secondary structure groups. A residue will be placed in the nearest SS group."
         .type = bool
+    assign_het_residues_to_nearest_custom_groups = True
+        .help = "Include het residues in nearby custom level groups. A residue will be placed in the nearest group. Useful for defining domains with bound ligands / sugars without having to add them individually."
+        .type = bool
     cbeta_in_backbone = True
         .help = "Flag to control whether the c-beta atom is considered part of the backbone or the sidechain"
         .type = bool
@@ -455,6 +458,7 @@ def run(params, args=None):
         overall_selection = params.model.overall_selection,
         cbeta_in_backbone = params.model.cbeta_in_backbone,
         assign_het_residues_to_nearest_ss_groups = params.model.assign_het_residues_to_nearest_ss_groups,
+        assign_het_residues_to_nearest_custom_groups = params.model.assign_het_residues_to_nearest_custom_groups,
         remove_duplicate_groups = params.model.remove_duplicate_groups,
         verbose = params.settings.verbose,
         n_cpus = params.settings.cpus,

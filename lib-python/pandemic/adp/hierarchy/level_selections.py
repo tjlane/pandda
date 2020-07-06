@@ -14,6 +14,8 @@ class GenerateLevelSelectionsTask:
             overall_selection = None,
             cbeta_in_backbone = True,
             assign_het_residues_to_nearest_ss_groups = True,
+            assign_het_residues_to_nearest_custom_groups = True,
+            assignment_distance_cutoff = 10,
             ):
         adopt_init_args(self, locals())
 
@@ -77,7 +79,7 @@ class GenerateLevelSelectionsTask:
             groups = [g for g in unfiltered_groups if not cache.selection(g).all_eq(False)]
             # Assign het molecules to each ss group?
             if (self.assign_het_residues_to_nearest_ss_groups is True):
-                groups = self.assign_unselected_molecules_to_nearest_group(
+                groups = self.assign_unselected_het_molecules_to_nearest_group(
                     hierarchy = filter_h,
                     selections = groups,
                 )
@@ -109,6 +111,7 @@ class GenerateLevelSelectionsTask:
 
         # Insert custom levels
         if self.custom_levels:
+
             # Print auto levels
             logger('> {} automatic levels created:'.format(len(levels)))
             for i_l, level in enumerate(levels):
@@ -116,35 +119,40 @@ class GenerateLevelSelectionsTask:
             logger.bar()
             # Insert custom levels
             logger.bar(True, False)
-            logger('Inserting custom levels:')
+            logger('Processing custom levels:')
+
             for l_params in self.custom_levels:
 
+                # Extract selections
+                label = l_params.label
+                groups = l_params.selection
+
                 # Skip blank levels that might be inserted
-                if (l_params.selection == []):
+                if (groups == []):
                     continue
 
                 # Only ONE can be given
                 if [l_params.depth, l_params.insert_before, l_params.insert_after].count(None) < 2:
                     msg = ""
                     msg += "For each custom level, you must define EITHER depth OR insert_before OR insert_after (OR none of them). "
-                    msg += "\nLevel {} is currently defined with:".format(l_params.label)
+                    msg += "\nLevel {} is currently defined with:".format(label)
                     msg += "\n\tdepth:         {}".format(l_params.depth)
                     msg += "\n\tinsert_before: {}".format(l_params.insert_before)
                     msg += "\n\tinsert_after:  {}".format(l_params.insert_after)
                     raise Sorry(msg)
 
                 # label MUST be given (?)
-                if l_params.label is None:
+                if label is None:
                     raise Sorry("Must provide label for each custom level")
 
                 # List index to insert level
                 if l_params.depth is not None:
                     if l_params.depth < 1:
-                        msg = 'Custom level depths cannot be less that 1! (input depth is {} for level with label {})'.format(l_params.depth, l_params.label)
+                        msg = 'Custom level depths cannot be less that 1! (input depth is {} for level with label {})'.format(l_params.depth, label)
                         raise Sorry(msg)
                     if l_params.depth > (len(levels) + 1):
                         msg = 'Trying to add group "{label}" at position {depth}, but only {length} levels currently exist!'.format(
-                            label=l_params.label,
+                            label=label,
                             depth=l_params.depth,
                             length=len(levels),
                             )
@@ -156,14 +164,14 @@ class GenerateLevelSelectionsTask:
                     idx = l_params.depth - 1
                 elif l_params.insert_before is not None:
                     if l_params.insert_before not in labels:
-                        msg = 'Trying to insert level "{new}" before level "{ref}" but "{ref}" does not exist yet!'.format(new=l_params.label, ref=l_params.insert_before)
+                        msg = 'Trying to insert level "{new}" before level "{ref}" but "{ref}" does not exist yet!'.format(new=label, ref=l_params.insert_before)
                         msg += '\nYou might try adding groups in a different order? (the reference group must be added before this group).'
                         raise Sorry(msg)
                     # insertion index is where the reference group is (will be inserted at this point, shifting reference down)
                     idx = labels.index(l_params.insert_before)
                 elif l_params.insert_after is not None:
                     if l_params.insert_after not in labels:
-                        msg = 'Trying to insert level "{new}" after level "{ref}" but "{ref}" does not exist yet!'.format(new=l_params.label, ref=l_params.insert_after)
+                        msg = 'Trying to insert level "{new}" after level "{ref}" but "{ref}" does not exist yet!'.format(new=label, ref=l_params.insert_after)
                         msg += '\nYou might try adding groups in a different order? (the reference group must be added before this group).'
                         raise Sorry(msg)
                     # insertion index is one after the reference group
@@ -173,16 +181,26 @@ class GenerateLevelSelectionsTask:
                     idx = len(levels)
 
                 logger('Inserting level: \n\tLabel: {label}\n\tPosition: {pos}\n\tNumber of groups: {n_groups}'.format(
-                    label = l_params.label,
+                    label = label,
                     pos = idx+1,
-                    n_groups = len(l_params.selection),
+                    n_groups = len(groups),
                     ))
-                assert len(l_params.selection) > 0, 'No selections provided for this group!'
-                for g in l_params.selection:
+
+                assert len(groups) > 0, 'No selections provided for this group!'
+
+                for g in groups:
                     if cache.selection(g).all_eq(False):
                         raise Sorry('Selection "{}" does not select any atoms'.format(g))
-                levels.insert(idx, l_params.selection)
-                labels.insert(idx, l_params.label)
+
+                if (self.assign_het_residues_to_nearest_custom_groups is True):
+                    groups = self.assign_unselected_het_molecules_to_nearest_group(
+                        hierarchy = filter_h,
+                        selections = groups,
+                    )
+
+                levels.insert(idx, groups)
+                labels.insert(idx, label)
+
             logger.bar()
 
         # Report
@@ -199,14 +217,20 @@ class GenerateLevelSelectionsTask:
             )
         return self.result
 
-    def assign_unselected_molecules_to_nearest_group(self,
+    def assign_unselected_het_molecules_to_nearest_group(self,
         hierarchy,
         selections,
         ):
 
         h = hierarchy
-        a = hierarchy.atoms()
+        a = h.atoms()
         cache = h.atom_selection_cache()
+
+        # Select HET atoms from the hierarchy
+        het_sel = cache.selection('hetero')
+        # Return selections if there are no het atoms
+        if sum(het_sel) == 0:
+            return selections
 
         # Extract bool selections
         sel_bool = [cache.selection(s) for s in selections]
@@ -219,8 +243,12 @@ class GenerateLevelSelectionsTask:
         for s_b in sel_bool[1:]:
             cum_sel = (cum_sel | s_b)
 
-        # Invert the total selection and extract atoms
-        rest_sel = (cum_sel == False)
+        # Invert the total selection and combine with het_sel
+        rest_sel = het_sel & (cum_sel == False)
+        if sum(rest_sel) == 0:
+            return selections
+
+        # Extract atoms
         rest_h = h.select(rest_sel)
 
         from giant.structure.formatting import PhenixSelection
@@ -238,6 +266,9 @@ class GenerateLevelSelectionsTask:
             # Find the minimum distance to another group
             dists = [xyz.min_distance_between_any_pair(xyz2) for xyz2 in group_xyz]
             min_dist = numpy.min(dists)
+            # If over minimum distance, do not assign
+            if min_dist > self.assignment_distance_cutoff:
+                continue
             idx = numpy.where(numpy.array(dists)==min_dist)[0][0]
             # Add to hash
             assigned_groups_hash.setdefault(idx, []).append(ag_sel)
