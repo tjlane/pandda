@@ -35,7 +35,7 @@ class SanitiseTLSGroup:
                 mode.matrices.set(values=(1.,1.,1.,0.,0.,0.), component_string='T')
 
             # Reset small amplitudes
-            if not (mode.amplitudes.get() > self.amplitude_eps).all_eq(True):
+            if not (mode.amplitudes.get() >= self.amplitude_eps).all_eq(True):
                 sel = (mode.amplitudes.get() < self.amplitude_eps).iselection()
                 mode.amplitudes.set(values=[self.amplitude_eps]*sel.size(), selection=sel)
 
