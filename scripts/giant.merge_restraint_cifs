@@ -1,0 +1,75 @@
+#!/usr/bin/env cctbx.python
+
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
+import os, sys
+
+from giant.exceptions import Sorry, Failure
+
+#######################################
+
+blank_arg_prepend = {
+    '.cif' : 'input.cif=',
+}
+
+import libtbx.phil
+master_phil = libtbx.phil.parse("""
+input {
+    cif = None
+        .type = path
+        .multiple = True
+}
+output {
+    cif = 'merged.cif'
+        .type = path
+        .multiple = False
+}
+""")
+
+#######################################
+
+def validate_params(params):
+
+    if not params.input.cif:
+        raise Sorry('No Input CIFs provided')
+
+    if not params.output.cif:
+        raise Sorry('No output CIF provided')
+
+    if os.path.exists(params.output.cif):
+        raise Sorry('Output file {} already exists'.format(params.output.cif))
+
+    for c in params.input.cif: 
+        if not os.path.exists(c):
+            raise Sorry('Input file {} doe not exist'.format(params.input.cif))
+
+def run(params):
+
+    from giant.paths import filename, foldername, easy_directory
+    from giant.colours import pretty_string as ps
+
+    logger = lg.setup_logging(
+        name = __name__,
+    )
+
+    validate_params(params)
+
+    from giant.refinement.restraints.merge_cifs import merge_cif_libraries
+    merge_cif_libraries(
+        incifs = params.input.cif, 
+        outcif = params.output.cif,
+    )
+
+    logger.subheading(ps('Finished normally!').green())
+
+#######################################
+
+if __name__ == '__main__':
+    from giant.jiffies import run_default
+    run_default(
+        run = run,
+        master_phil = master_phil,
+        args = sys.argv[1:],
+        blank_arg_prepend = blank_arg_prepend,
+    )
