@@ -290,7 +290,7 @@ class WriteHierarchicalModelSummaryTask:
 
         s = PythonScript(pretty_models=False, pretty_maps=False)
 
-        s.change_into_directory(path=os.path.abspath(self.output_directory))
+        s.change_into_directory_maybe(path=os.path.abspath(self.output_directory))
 
         for f in file_dict.get('level_atoms_pdb',{}).values():
             if f is None: continue

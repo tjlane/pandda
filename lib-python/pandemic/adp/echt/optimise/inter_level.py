@@ -4,6 +4,8 @@ logger = lg.getLogger(__name__)
 from libtbx import adopt_init_args, group_args
 from scitbx.array_family import flex
 
+from pandemic.adp.elastic_net import ReplaceableOptimisationWeights
+
 import numpy
 
 def uij_modulus(uij_array):
@@ -14,57 +16,7 @@ def uij_modulus(uij_array):
     assert uij_mods.shape == sh_
     return uij_mods
 
-
-from mmtbx.tls.optimise_amplitudes import OptimisationWeights
-class ReplaceableOptimisationWeights(OptimisationWeights):
-    """
-    Extended weights object for OptimiseAmplitudes class.
-
-    Parameters
-    ----------
-    sum_of_amplitudes : float
-      weight for the lasso-like term (constrains sum of amplitudes)
-    sum_of_squared_amplitudes : float
-      weight for the ridge-regression-like term (restrains each amplitude to zero)
-    sum_of_amplitudes_squared : float
-      weight for the square of the lasso-like term (restrains sum of amplitudes to zero)
-    """
-
-    @classmethod
-    def defaults(cls):
-        """Initialise class with default values for each of the fields"""
-        return cls(**{f:0.0 for f in cls._fields})
-
-    def transfer_from_other(self, other, require_all=False):
-        """
-        Transfer weights from an input object (with equivalent attributes or indexed)
-        Returns a new object using _replace function of namedtuple
-        """
-
-        update_dict = {}
-
-        for f in self._fields:
-
-            # Extract value for the field name (if available or required)
-            try:
-                v = getattr(other, f)
-            except AttributeError as e:
-                if require_all is True:
-                    raise ValueError('{}\n`other` does not have attribute or contain item: {}'.format(str(e), f))
-                else:
-                    continue
-
-            # store temporarily in dictionary
-            update_dict[f] = v
-
-        if len(update_dict) == 0:
-            raise ValueError('No overlapping attributes/items were found between self and `other`')
-
-        return self._replace(**update_dict)
-
-
 class OptimisationSetGenerator:
-
 
     def __init__(self, level_group_tree):
         adopt_init_args(self, locals())
@@ -116,7 +68,6 @@ class OptimisationSetGenerator:
 
 
 class OptimiseInterLevelAmplitudes:
-
 
     def __init__(self,
         convergence_tolerance,

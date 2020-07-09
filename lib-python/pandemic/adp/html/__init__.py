@@ -122,6 +122,9 @@ class HtmlSummaryCollator(HtmlSummary):
         ):
         adopt_init_args(self, locals())
 
+    def append(self, summary):
+        self.summaries.append(summary)
+
     def main_summary(self):
 
         content_list = []
@@ -166,6 +169,9 @@ class HtmlSummaryConcatenator:
             summaries = [],
             ):
         adopt_init_args(self, locals())
+
+    def append(self, summary):
+        self.summaries.append(summary)
 
     def main_summary(self):
         collated = divs.Tab(
@@ -261,6 +267,18 @@ class WriteHtmlSummaryTask:
             output_data['json_plots'] = json_plots
         # ===========================================================>
 
+        # Internal output objects
+        output_data['contents'].extend(
+            HtmlSummary.format_summary(
+                """
+                Output written to:
+                <pre>{output_directory}</pre>
+                If the output folder has been moved, scripts (e.g. pymol scripts) must be run from inside the folder containing the script.
+                """.format(
+                    output_directory = os.path.abspath(self.output_directory),
+                )
+            )
+        )
         # Create overview tab
         tab_set = divs.TabSet()
         tab_set.append(self.create_overview_tab(objects=overview_objects))

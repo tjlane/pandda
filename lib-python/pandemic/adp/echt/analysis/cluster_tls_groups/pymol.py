@@ -48,10 +48,10 @@ class base_pymol_script:
 
         s = PythonScript(pretty_models=False, pretty_maps=False)
 
-        # Create 
-        s.change_into_directory(path=self.output_directory)
+        # Create
+        s.change_into_directory_maybe(path=self.output_directory)
         s.load_pdb(
-            f_name = os.path.relpath(os.path.abspath(model_structure), start=self.output_directory), 
+            f_name = os.path.relpath(os.path.abspath(model_structure), start=self.output_directory),
             obj = self.structure_obj,
             )
 
@@ -178,9 +178,9 @@ class base_pymol_script:
         # Spacing of colour samples
         del_v = (max_v - min_v) / 10.0
 
-        if del_v > 0.0: 
+        if del_v > 0.0:
             color_range = numpy.arange(min_v, max_v+del_v, del_v)
-        else: 
+        else:
             color_range = [min_v, max_v]
 
         s.ramp_new(

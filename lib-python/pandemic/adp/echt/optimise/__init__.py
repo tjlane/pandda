@@ -1,10 +1,8 @@
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
-import os, copy, collections, functools
-from libtbx import adopt_init_args, group_args
-from pandemic.adp.utils import show_file_dict
-import numpy
+import os, copy, functools
+from libtbx import adopt_init_args
 
 # def optimisation_summary_from_target_evaluator(target_evaluator):
 
@@ -34,6 +32,7 @@ class LevelTargetUijCalculator:
             uij_fitted,
             ignore_level=None,
             ):
+        import numpy
         arr = uij_fitted.copy()
         # Zero the current level (as should not be included in target function!)
         if ignore_level is not None:
@@ -247,119 +246,3 @@ class OptimiseEchtModel:
         if self.optimise_adp_level is not None:
             self.optimise_adp_level.run_parallel.close_processes()
 
-
-class UpdateOptimisationFunction:
-
-
-    level_amplitude_string = 'level amplitudes weights'
-
-    show_file_dict = show_file_dict
-
-    def __init__(self,
-        initial_weights,
-        weight_decay_factor,
-        weights_to_update,
-        minimum_weight,
-        output_directory,
-        plotting_object = None,
-        verbose = True,
-        ):
-        # Copy to be ensure detached object
-        initial_weights = copy.deepcopy(initial_weights)
-        history = collections.OrderedDict()
-        result = group_args(
-            output_files = None,
-            )
-        adopt_init_args(self, locals())
-
-    def get_weights(self, model_optimisation_function):
-        return model_optimisation_function.optimise_level_amplitudes.optimisation_weights
-
-    def set_weights(self, model_optimisation_function, weights):
-        model_optimisation_function.optimise_level_amplitudes.optimisation_weights = weights
-
-    def update(self,
-        model_optimisation_function,
-        n_cycle,
-        ):
-
-        assert n_cycle >= 1
-
-        start_weights = self.initial_weights
-        minimum_weight = self.minimum_weight
-        decay_factor = self.weight_decay_factor
-        total_decay_factor = decay_factor ** (n_cycle-1)
-
-        # Update parameters
-        logger.subheading('Updating Level Amplitude Optimisation Weights')
-        logger('> Cycle {}\n'.format(n_cycle))
-        logger('> Total decay factor (relative to starting values): {}\n'.format(total_decay_factor))
-
-        new_weights_dict = {}
-        for k in self.weights_to_update:
-            sta_v = getattr(start_weights, k)
-            new_v = sta_v * total_decay_factor
-            logger('Updating {} = {} -> {}'.format(k, sta_v, new_v))
-            new_weights_dict[k] = new_v
-        # Update weights if above threshold
-        weights_sum = sum(new_weights_dict.values())
-        if (minimum_weight is not None) and (weights_sum < minimum_weight):
-            logger('\n*** Sum of optimisation weights ({}) is below the minimum threshold ({}). Not updating weights. ***'.format(weights_sum, minimum_weight))
-        else:
-            # Get current weight object
-            current_weights = self.get_weights(model_optimisation_function)
-            # Create new object, overriding the selected weights
-            new_weights = current_weights.transfer_from_other(group_args(**new_weights_dict))
-            # Replace the original weights object with the new weights object
-            self.set_weights(model_optimisation_function, new_weights)
-
-        # (re)extract current weights
-        current_weights = self.get_weights(model_optimisation_function)
-
-        # Update history
-        logger('\nCurrent values:')
-        for k, v in current_weights._asdict().items():
-            logger('{} -> {}'.format(k, v))
-            self.history \
-                .setdefault(self.level_amplitude_string, collections.OrderedDict()) \
-                .setdefault(k, []).append((n_cycle, v))
-
-    def write_output(self):
-
-        logger.subheading('Writing optimisation weights graphs')
-
-        output_files = collections.OrderedDict()
-
-        for s in [self.level_amplitude_string]:
-            prefix = os.path.join(self.output_directory, s.replace(' ', '_'))
-            for variable, values in self.history[s].iteritems():
-                x_vals, y_vals = zip(*values)
-                filename = prefix+'-{variable}.png'.format(variable=variable)
-                fig, axis = self.plotting_object.lineplot(
-                    x_vals = x_vals,
-                    y_vals = y_vals,
-                    title = 'Weight "{}" over cycles'.format(variable),
-                    x_label = 'cycle',
-                    y_label = 'weight',
-                    x_ticks = map(int,x_vals),
-                    filename = None, # returns fig and axis
-                    background_line_type = 'chunky',
-                    )
-                # Log scale if data has positive values
-                if max(y_vals) > 0.0:
-                    try:
-                        axis.set_yscale('log')
-                    except:
-                        pass
-                self.plotting_object.helper.write_and_close_fig(fig=fig, filename=filename)
-                output_files.setdefault(s,collections.OrderedDict())[variable] = filename
-
-        #self.show_file_dict(output_files)
-
-        self.result.output_files = output_files
-
-        return output_files
-
-    def as_html_summary(self):
-        from pandemic.adp.echt.html.optimise import EchtOptimisationParametersHtmlSummary
-        return EchtOptimisationParametersHtmlSummary(self)

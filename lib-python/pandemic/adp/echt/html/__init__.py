@@ -10,8 +10,8 @@ class EchtModelHtmlSummary(HtmlSummary):
 
 
     def __init__(self,
-        hierarchy_files,
-        model_summary_data,
+        hierarchy_summary_task,
+        model_summary_task,
         model_object,
         isotropic_mask,
         parameters,
@@ -20,8 +20,8 @@ class EchtModelHtmlSummary(HtmlSummary):
 
     def short_summary(self):
 
-        hf = self.hierarchy_files
-        mf = self.model_summary_data.model_files
+        hf = self.hierarchy_summary_task.result.output_files
+        mf = self.model_summary_task.result.output_files
 
         img1 = mf.get('all_levels_uijs_profiles_png', {})
         img2 = mf.get('all_levels_uijs_anisotropy_png', {})
@@ -185,8 +185,8 @@ class EchtModelHtmlSummary(HtmlSummary):
     def overview_tab(self, parent_tab_id):
         """Make overview tab for the hierarchical model"""
 
-        hf = self.hierarchy_files                   # definitions
-        mf = self.model_summary_data.model_files    # fitted
+        hf = self.hierarchy_summary_task.result.output_files
+        mf = self.model_summary_task.result.output_files
 
         img1 = mf.get('all_levels_uijs_profiles_png', {})
         img2 = mf.get('all_levels_uijs_anisotropy_png', {})
@@ -210,7 +210,10 @@ class EchtModelHtmlSummary(HtmlSummary):
 
         block = divs.Block(
             contents = self.format_summary(
-                'Visualise in pymol by running: "pymol {}"'.format(mf.get("pymol_script")),
+                (
+                    'Visualise in pymol by running: ' +
+                    self.wrap_string('pymol {}', 'pre')
+                ).format(mf.get("pymol_script")),
                 type='none',
             ),
         )
@@ -277,8 +280,8 @@ class EchtModelHtmlSummary(HtmlSummary):
 
     def create_tls_level_tabs(self, parent_tab_id):
 
-        hf = self.hierarchy_files
-        mf = self.model_summary_data.model_files
+        hf = self.hierarchy_summary_task.result.output_files
+        mf = self.model_summary_task.result.output_files
 
         mo = self.model_object
 
@@ -602,8 +605,8 @@ class EchtModelHtmlSummary(HtmlSummary):
     def create_adp_level_tab(self, parent_tab_id):
         """Create tab for residual level"""
 
-        hf = self.hierarchy_files
-        mf = self.model_summary_data.model_files
+        hf = self.hierarchy_summary_task.result.output_files
+        mf = self.model_summary_task.result.output_files
 
         mo = self.model_object
 
@@ -855,7 +858,7 @@ class EchtModelHtmlSummary(HtmlSummary):
 
     def format_b_factor_table(self, chains=None):
 
-        table = self.model_summary_data.level_b_factor_statistics_table
+        table = self.model_summary_task.result.level_b_factor_statistics_table
 
         levels_ordered = table[table['Chain'] == 'all']['Level'].tolist()
 

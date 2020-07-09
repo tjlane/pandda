@@ -10,7 +10,7 @@ class PostProcessingHtmlSummary(HtmlSummary):
 
     def __init__(self,
         results_object,
-        analysis_files,
+        analysis_task,
         ):
         _json_plots = []
         adopt_init_args(self, locals())
@@ -39,7 +39,9 @@ class PostProcessingHtmlSummary(HtmlSummary):
 
         output = []
 
-        f = self.analysis_files.get('r_values')
+        analysis_files = self.analysis_task.result.output_files
+
+        f = analysis_files.get('r_values')
         if f is not None:
             panel = divs.Panel(
                 title = 'R-factor comparisons across structures',
@@ -66,7 +68,7 @@ class PostProcessingHtmlSummary(HtmlSummary):
             )
             output.append(panel)
 
-        f = self.analysis_files.get('r_value_differences')
+        f = analysis_files.get('r_value_differences')
         if f is not None:
             panel = divs.Panel(
                 title = 'R-factor differences between structures',

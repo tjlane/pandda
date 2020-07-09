@@ -401,6 +401,7 @@ def run(params, args=None):
         plots, \
         preprocess, postprocess, \
         weights, tracking, results, \
+        elastic_net, \
         hierarchy, json_manager
 
     #
@@ -464,6 +465,21 @@ def run(params, args=None):
         n_cpus = params.settings.cpus,
         )
 
+    level_optimisation_weights = weights.scale_weights(
+        weights = params.optimisation.elastic_net.weights,
+        scale = params.optimisation.elastic_net.weight_scale,
+        )
+
+    update_optimisation_object = elastic_net.UpdateOptimisationFunction(
+        initial_weights = level_optimisation_weights,
+        weight_decay_factor = params.optimisation.elastic_net.weight_decay.decay_factor,
+        weights_to_update = params.optimisation.elastic_net.weight_decay.weights_to_decay,
+        minimum_weight = params.optimisation.elastic_net.weight_decay.minimum_weight,
+        output_directory = file_system.optimisation_directory,
+        plotting_object = plots.PandemicAdpPlotter(),
+        verbose = params.settings.verbose,
+        )
+
     ##################################################
     #                                                #
     #            Graphical/image settings            #
@@ -482,33 +498,18 @@ def run(params, args=None):
 
     ##################################################
     #                                                #
-    #            Define output HTML tasks            #
+    #            Modify core HTML objects            #
     #                                                #
     ##################################################
 
-    #
-    # Default classes -- override later if required / preferred
-    #
+    # Update class attributes - needed for loading relative image paths, etc.
     import pandemic.adp.html
-
-    # Update class attributes
     pandemic.adp.html.HtmlSummary.embed_images = params.output.html.embed_images
     pandemic.adp.html.HtmlSummary.output_dir = params.output.out_dir
 
-    # Summary of the hierarchical model -- model specific
-    ModelHtmlSummary = None
-
-    # R-factor analysis, etc
-    import pandemic.adp.postprocess.html as postprocesshtml
-    PostProcessingHtmlSummary = postprocesshtml.PostProcessingHtmlSummary
-
-    # Print input commands / input parameters / non-default parameters
-    import pandemic.adp.html.parameters
-    ParameterHtmlSummary = pandemic.adp.html.parameters.ParameterHtmlSummary
-
     ##################################################
     #                                                #
-    #      define / override non-generic tasks       #
+    #         Create model-specific objects          #
     #                                                #
     ##################################################
     #
@@ -556,11 +557,6 @@ def run(params, args=None):
         else:
             optimise_adp_function = None
 
-        level_optimisation_weights = weights.scale_weights(
-            weights = params.optimisation.elastic_net.weights,
-            scale = params.optimisation.elastic_net.weight_scale,
-            )
-
         optimise_level_amplitudes_function = echt.optimise.inter_level.OptimiseInterLevelAmplitudes(
             convergence_tolerance = params.optimisation.gradient_optimisation.gradient_convergence,
             optimisation_weights =  level_optimisation_weights,
@@ -576,24 +572,12 @@ def run(params, args=None):
             verbose = params.settings.verbose,
             )
 
-        update_optimisation_object = echt.optimise.UpdateOptimisationFunction(
-            initial_weights = level_optimisation_weights,
-            weight_decay_factor = params.optimisation.elastic_net.weight_decay.decay_factor,
-            weights_to_update = params.optimisation.elastic_net.weight_decay.weights_to_decay,
-            minimum_weight = params.optimisation.elastic_net.weight_decay.minimum_weight,
-            output_directory = file_system.optimisation_directory,
-            plotting_object = plots.PandemicAdpPlotter(),
-            verbose = params.settings.verbose,
-            )
-
-        ModelTrackingClass = echt.tracking.EchtTracking
-
         validate_model = echt.validate.ValidateEchtModel(
             uij_tolerance = params.model.adp_values.uij_tolerance,
             verbose = params.settings.verbose,
             )
 
-        model_specific_analysis_task = echt.analysis.AnalyseEchtModelTask(
+        model_analysis_task = echt.analysis.AnalyseEchtModelTask(
             output_directory = file_system.analysis_directory,
             master_phil = master_phil,
             analysis_parameters = params.analysis,
@@ -601,6 +585,8 @@ def run(params, args=None):
             )
 
         # Define / override summary classes (these take standard inputs wherever possible)
+
+        ModelTrackingClass = echt.tracking.EchtTracking
 
         WriteModelSummary = echt.output.WriteEchtModelSummary
         WriteStructures = echt.output.WriteEchtStructures
@@ -801,11 +787,58 @@ def run(params, args=None):
         verbose = params.settings.verbose,
         )
 
-    # HTML Accumulator -- takes in above tasks and collates data
-    write_html_summary_task = pandemic.adp.html.WriteHtmlSummaryTask(
+    ################################
+    #                              #
+    #  Create output HTML objects  #
+    #                              #
+    ################################
+
+    # Writes html from input summaries
+    write_html_task = pandemic.adp.html.WriteHtmlSummaryTask(
         output_directory = file_system.output_directory,
         verbose = params.settings.verbose,
         )
+
+    # Html objects that are added to iteratively and called at the end to generate HTML
+    html_tracking_summary = pandemic.adp.html.HtmlSummaryConcatenator(
+        title = 'Model Optimisation',
+        summaries = [
+            main_tracking_object.as_html_summary(),
+            model_tracking_object.as_html_summary(),
+            update_optimisation_object.as_html_summary(),
+        ],
+    )
+
+    # Main model summary -- defined as custom class with standard inputs for now -- could be changed
+    html_model_summary = ModelHtmlSummary(
+        hierarchy_summary_task = write_hierarchy_summary_task,
+        model_summary_task = write_fitted_model_summary,
+        model_object = model_object,
+        isotropic_mask = extract_uijs_task.result.isotropic_mask,
+        parameters = params,
+    )
+
+    import pandemic.adp.postprocess.html as postprocesshtml
+    html_postprocess_summary = postprocesshtml.PostProcessingHtmlSummary(
+        results_object = results_object,
+        analysis_task = post_process_task,
+    )
+
+    html_analysis_summary = pandemic.adp.html.HtmlSummaryCollator(
+        title = 'Model Analysis',
+        alt_title = 'Analysis',
+        summaries = [
+            generic_analysis_task.as_html_summary(),
+            model_analysis_task.as_html_summary(),
+        ],
+    )
+
+    import pandemic.adp.html.parameters as parametershtml
+    html_parameter_summary = parametershtml.ParameterHtmlSummary(
+        input_command = input_command,
+        master_phil = master_phil,
+        running_params = params,
+    )
 
     ################################
     #                              #
@@ -908,6 +941,8 @@ def run(params, args=None):
                 if (main_tracking_object.n_cycle >= params.optimisation.min_macro_cycles):
                     logger.heading('Terminating optimisation -- model has converged', spacer=True)
                     break
+            else:
+                logger.subheading('Model has not yet reached convergence criteria')
 
             if params.optimisation.intermediate_output.write_model_every:
                 if (params.optimisation.intermediate_output.stop_writing_after is not None) and (main_tracking_object.n_cycle > params.optimisation.intermediate_output.stop_writing_after):
@@ -915,7 +950,7 @@ def run(params, args=None):
                 elif (main_tracking_object.n_cycle % params.optimisation.intermediate_output.write_model_every) == 0:
                     logger.subheading('Macrocycle {}'.format(main_tracking_object.n_cycle) + ' - Writing intermediate model summary')
                     # Write out the model during optimisation
-                    model_summary_data = write_fitted_model_summary_intermediate(
+                    model_summary_output = write_fitted_model_summary_intermediate(
                         output_directory_suffix = '{:03d}'.format(main_tracking_object.n_cycle),
                         remove_previous = params.optimisation.intermediate_output.remove_previous,
                         # Normal arguments (passed to task)
@@ -957,7 +992,7 @@ def run(params, args=None):
     # Output graphs/csvs
     #
     logger.heading('Writing disorder model summary')
-    model_summary_data = write_fitted_model_summary(
+    model_summary_output = write_fitted_model_summary(
         overall_atom_mask = hierarchy_info.overall_atom_mask,
         level_group_array = hierarchy_info.level_group_array,
         model_object = model_object,
@@ -1026,9 +1061,9 @@ def run(params, args=None):
     #
     # Artisinal model analysis task
     #
-    model_specific_analysis_task.run(
+    model_analysis_task.run(
         model_object = model_object,
-        model_summary_data = model_summary_data,
+        model_summary_output = model_summary_output,
         )
 
     ################################
@@ -1068,44 +1103,15 @@ def run(params, args=None):
 
     if params.output.html.make_html is True:
 
-        write_html_summary_task.run(
+        write_html_task.run(
             html_objects = [
-                pandemic.adp.html.HtmlSummaryConcatenator(
-                    title = 'Model Optimisation',
-                    summaries = pandemic.adp.html.as_html_summaries_maybe(
-                        tasks = [
-                            main_tracking_object,
-                            model_tracking_object,
-                            update_optimisation_object,
-                            ],
-                        ),
-                    ),
-                ModelHtmlSummary(
-                    hierarchy_files = write_hierarchy_summary_task.result.output_files,
-                    model_summary_data = model_summary_data,
-                    model_object = model_object,
-                    isotropic_mask = extract_uijs_task.result.isotropic_mask,
-                    parameters = params,
-                    ),
-                PostProcessingHtmlSummary(
-                    results_object = results_object,
-                    analysis_files = post_process_task.result.output_files,
-                    ),
-                ] + \
-                pandemic.adp.html.as_html_summaries_maybe(
-                    tasks = [
-                        generic_analysis_task,
-                        model_specific_analysis_task,
-                        ],
-                    ) + \
-                [
-                ParameterHtmlSummary(
-                    input_command = input_command,
-                    master_phil = master_phil,
-                    running_params = params,
-                    ),
-                ],
-            )
+                html_tracking_summary,
+                html_model_summary,
+                html_postprocess_summary,
+                html_analysis_summary,
+                html_parameter_summary,
+            ],
+        )
 
     if params.output.clean_up_files:
 

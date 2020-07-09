@@ -165,7 +165,7 @@ class WriteEchtStructures:
 
             s = PythonScript(pretty_models=False, pretty_maps=False)
 
-            s.change_into_directory(path=os.path.abspath(py_d))
+            s.change_into_directory_maybe(path=os.path.abspath(py_d))
 
             f_list = []
 

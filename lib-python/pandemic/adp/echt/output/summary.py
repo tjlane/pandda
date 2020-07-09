@@ -19,7 +19,7 @@ from pandemic.adp.hierarchy.utils import PartitionBordersFactory
 class ModelSummaryOutput:
 
     def __init__(self,
-        model_files,
+        output_files,
         level_b_factor_statistics_table,
         ):
 
@@ -171,10 +171,12 @@ class WriteEchtModelSummary:
 
         self.plot = None
 
-        return ModelSummaryOutput(
-            model_files = output_files,
+        self.result = ModelSummaryOutput(
+            output_files = output_files,
             level_b_factor_statistics_table = level_b_factor_statistics_table,
         )
+
+        return self.result
 
     def extract_average_uij_values(self,
         model_object,
