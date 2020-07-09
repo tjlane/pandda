@@ -301,3 +301,15 @@ class JsonDataManager:
         if len(missing_datasets) > 0:
             txt = "The following datasets are present in the JSON data but not in the new model: \n\t\t{}".format('\n\t\t'.join(missing_datasets))
             logger.warning(msg.format(txt))
+
+
+def write_model_as_json(model_object, output_file):
+
+    output_json_manager = JsonDataManager.from_model_object(
+        model_object = model_object,
+        verbose = False,
+        )
+    output_json_manager.write_json(
+        filename = output_file,
+        mode = 'w',
+        )

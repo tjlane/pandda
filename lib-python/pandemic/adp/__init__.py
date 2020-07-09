@@ -635,15 +635,10 @@ def run(params, args=None):
     # Write output json for the starting model
     #
     if params.output.json is True:
-        output_json_filename = os.path.join(file_system.output_directory, 'starting_model.json')
-        output_json_manager = json_manager.JsonDataManager.from_model_object(
+        json_manager.write_model_as_json(
             model_object = model_object,
-            verbose = params.settings.verbose,
-            )
-        output_json_manager.write_json(
-            filename = output_json_filename,
-            mode = 'w',
-            )
+            output_file = os.path.join(file_system.output_directory, 'starting_model.json'),
+        )
 
     # Extract fitted uijs
     extract_uijs_task.run(
@@ -944,6 +939,13 @@ def run(params, args=None):
             else:
                 logger.subheading('Model has not yet reached convergence criteria')
 
+            # Output intermediate model
+            if params.output.json is True:
+                json_manager.write_model_as_json(
+                    model_object = model_object,
+                    output_file = os.path.join(file_system.output_directory, 'optimised_model.json'),
+                )
+
             if params.optimisation.intermediate_output.write_model_every:
                 if (params.optimisation.intermediate_output.stop_writing_after is not None) and (main_tracking_object.n_cycle > params.optimisation.intermediate_output.stop_writing_after):
                     pass
@@ -1029,15 +1031,10 @@ def run(params, args=None):
     # Write model JSON
     #
     if params.output.json is True:
-        output_json_filename = os.path.join(file_system.output_directory, 'optimised_model.json')
-        output_json_manager = json_manager.JsonDataManager.from_model_object(
+        json_manager.write_model_as_json(
             model_object = model_object,
-            verbose = params.settings.verbose,
-            )
-        output_json_manager.write_json(
-            filename = output_json_filename,
-            mode = 'w',
-            )
+            output_file = os.path.join(file_system.output_directory, 'optimised_model.json'),
+        )
 
     ################################
     #                              #
