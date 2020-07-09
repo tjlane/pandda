@@ -38,8 +38,10 @@ class AnalyseEchtModelTask:
 
     def run(self,
         model_object,
-        model_files,
+        model_summary_data,
         ):
+
+        model_files = model_summary_data.model_files
 
         # Add function to clustering to allow writing of levels
         # (requires model object which is not available at initialisation)

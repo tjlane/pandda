@@ -49,6 +49,15 @@ def translate_phenix_selections_to_pymol_selections_simple(selections, verbose=F
     return output_selections
 
 
+class HierarchySummaryOutput:
+
+    def __init__(self,
+        output_files,
+        ):
+
+        adopt_init_args(self, locals())
+
+
 class WriteHierarchicalModelSummaryTask:
 
 
@@ -132,7 +141,7 @@ class WriteHierarchicalModelSummaryTask:
         self.show_file_dict(of)
         output_files.update(of)
 
-        self.result = group_args(
+        self.result = HierarchySummaryOutput(
             output_files = output_files,
             )
 

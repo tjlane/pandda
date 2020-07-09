@@ -16,8 +16,17 @@ from pandemic.adp.utils import show_file_dict
 from pandemic.adp.hierarchy.utils import PartitionBordersFactory
 
 
-class WriteEchtModelSummary:
+class ModelSummaryOutput:
 
+    def __init__(self,
+        model_files,
+        level_b_factor_statistics_table,
+        ):
+
+        adopt_init_args(self, locals())
+
+
+class WriteEchtModelSummary:
 
     all_levels_uijs_profiles_png_prefix   = 'all-levels-uij-profile'
     all_levels_uijs_anisotropy_png_prefix = 'all-levels-uij-anisotropy'
@@ -153,9 +162,19 @@ class WriteEchtModelSummary:
         self.show_file_dict(of)
         output_files.update(of)
 
+        level_b_factor_statistics_table = self.calculate_various_average_b_statistics(
+            level_b_values = [uij_to_b(u) for u in list(average_uijs_by_level)+[atomic_uijs] ],
+            level_names = model_object.all_level_names,
+            structure_factory = structure_factory,
+            overall_atom_mask = overall_atom_mask,
+        )
+
         self.plot = None
 
-        return output_files
+        return ModelSummaryOutput(
+            model_files = output_files,
+            level_b_factor_statistics_table = level_b_factor_statistics_table,
+        )
 
     def extract_average_uij_values(self,
         model_object,
@@ -559,3 +578,78 @@ class WriteEchtModelSummary:
         s.write_script(filename)
 
         return filename
+
+    def calculate_various_average_b_statistics(self,
+        level_b_values,
+        level_names,
+        structure_factory,
+        overall_atom_mask,
+        ):
+
+        total_table_dicts = []
+        chain_table_dicts = []
+
+        level_b_values = [flex.double(b) for b in level_b_values]
+
+        assert len(level_names) == len(level_b_values)
+
+        total_b_mean = sum([flex.mean(b) for b in level_b_values])
+        chain_b_means = {}
+
+        for l_name, l_bvals in zip(level_names, level_b_values):
+
+            hierarchy = structure_factory.custom_copy(
+                iso = l_bvals,
+                mask = overall_atom_mask,
+            ).select(
+                overall_atom_mask,
+            )
+
+            level_b_mean = flex.mean(hierarchy.atoms().extract_b())
+
+            if (total_b_mean > 0.0):
+                level_b_mean_perc = 100.0 * level_b_mean / total_b_mean
+            else:
+                level_b_mean_perc = 0.0
+
+            total_table_dicts.append({
+                'Level' : l_name,
+                'Chain' : 'all',
+                'Average B' : level_b_mean,
+                'Average B (%)' : level_b_mean_perc,
+            })
+
+            for chain in sorted(hierarchy.chains(), key=lambda c: c.id):
+
+                chain_level_b_mean = flex.mean(chain.atoms().extract_b())
+
+                chain_b_means[chain.id] = chain_level_b_mean + chain_b_means.get(chain.id, 0)
+
+                chain_table_dicts.append({
+                    'Level' : l_name,
+                    'Chain' : chain.id,
+                    'Average B' : chain_level_b_mean,
+                })
+
+        for d in chain_table_dicts:
+
+            chain_id = d['Chain']
+            chain_b_mean = chain_b_means[chain_id]
+
+            if chain_b_mean > 0.0:
+                chain_level_b_mean_perc = 100.0 * d['Average B'] / chain_b_mean
+            else:
+                chain_level_b_mean_perc = 0.0
+
+            d['Average B (%)'] = chain_level_b_mean_perc
+
+        # Sort in place
+        chain_table_dicts.sort(key=lambda d: d['Chain'])
+
+        import pandas
+        b_factor_statistics = pandas.DataFrame(
+            data = (total_table_dicts + chain_table_dicts),
+            columns = ['Level', 'Chain', 'Average B', 'Average B (%)'],
+        )
+
+        return b_factor_statistics

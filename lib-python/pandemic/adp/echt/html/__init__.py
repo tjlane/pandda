@@ -11,7 +11,7 @@ class EchtModelHtmlSummary(HtmlSummary):
 
     def __init__(self,
         hierarchy_files,
-        model_files,
+        model_summary_data,
         model_object,
         isotropic_mask,
         parameters,
@@ -21,13 +21,15 @@ class EchtModelHtmlSummary(HtmlSummary):
     def short_summary(self):
 
         hf = self.hierarchy_files
-        mf = self.model_files
+        mf = self.model_summary_data.model_files
 
         img1 = mf.get('all_levels_uijs_profiles_png', {})
         img2 = mf.get('all_levels_uijs_anisotropy_png', {})
         img3 = hf.get('level_partitions_png', {})
 
         chain_ids = sorted(set(img1.keys()+img2.keys()+img3.keys()))
+
+        b_factor_table_block = self.format_b_factor_table(chains=None)
 
         output = divs.Panel(title='Output: Chain-by-Chain Disorder Summaries')
 
@@ -69,7 +71,7 @@ class EchtModelHtmlSummary(HtmlSummary):
             )
             output.append(block)
 
-        return [output]
+        return [b_factor_table_block, output]
 
     def main_summary(self):
 
@@ -90,6 +92,10 @@ class EchtModelHtmlSummary(HtmlSummary):
                 model_object = self.model_object,
                 isotropic_mask = self.isotropic_mask,
             )
+        )
+
+        output.append(
+            self.format_b_factor_table(chains='all')
         )
 
         overview_tab = self.overview_tab(parent_tab_id=output.id)
@@ -179,8 +185,8 @@ class EchtModelHtmlSummary(HtmlSummary):
     def overview_tab(self, parent_tab_id):
         """Make overview tab for the hierarchical model"""
 
-        hf = self.hierarchy_files   # definitions
-        mf = self.model_files       # fitted
+        hf = self.hierarchy_files                   # definitions
+        mf = self.model_summary_data.model_files    # fitted
 
         img1 = mf.get('all_levels_uijs_profiles_png', {})
         img2 = mf.get('all_levels_uijs_anisotropy_png', {})
@@ -223,6 +229,9 @@ class EchtModelHtmlSummary(HtmlSummary):
                 alt_title = 'Chain {}'.format(c_id),
             )
             tab_set.append(tab)
+
+            block = self.format_b_factor_table(chains=[c_id])
+            tab.append(block)
 
             block = divs.Alert(
                 contents = [
@@ -269,7 +278,7 @@ class EchtModelHtmlSummary(HtmlSummary):
     def create_tls_level_tabs(self, parent_tab_id):
 
         hf = self.hierarchy_files
-        mf = self.model_files
+        mf = self.model_summary_data.model_files
 
         mo = self.model_object
 
@@ -594,7 +603,7 @@ class EchtModelHtmlSummary(HtmlSummary):
         """Create tab for residual level"""
 
         hf = self.hierarchy_files
-        mf = self.model_files
+        mf = self.model_summary_data.model_files
 
         mo = self.model_object
 
@@ -844,4 +853,43 @@ class EchtModelHtmlSummary(HtmlSummary):
             .replace('border="1" ', '')
         return divs.Block(table=html_table)
 
+    def format_b_factor_table(self, chains=None):
 
+        table = self.model_summary_data.level_b_factor_statistics_table
+
+        levels_ordered = table[table['Chain'] == 'all']['Level'].tolist()
+
+        if (chains is not None):
+            if isinstance(chains, str):
+                chains = [chains]
+            table_sel = table['Chain'].isin(chains)
+            table = table[table_sel]
+
+        # Pivot table
+        table = table.pivot(index='Level', columns='Chain')
+
+        # Don't need chain level if only one chain
+        if (chains is not None) and (len(chains) == 1):
+            table = table.droplevel('Chain', axis=1)
+
+        # Return levels to correct order (sorted alphabetically after pivoting)
+        table = table.reindex(levels_ordered)
+
+        title = 'Average B-factors for Levels'
+        if chains == ['all']:
+            title += ' (all chains)'
+        elif (chains is not None):
+            title += ' (chain{s} {ids})'.format(
+                s = 's' if len(chains) > 1 else '',
+                ids = ' & '.join(chains),
+            )
+
+        table_block = divs.Alert(
+            title = title,
+            width = 12,
+            table = table.round(1)\
+                .to_html(index=True, bold_rows=False, classes=['table table-hover nowrap'])\
+                .replace('border="1" ', ''),
+        )
+
+        return table_block

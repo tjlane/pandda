@@ -915,7 +915,7 @@ def run(params, args=None):
                 elif (main_tracking_object.n_cycle % params.optimisation.intermediate_output.write_model_every) == 0:
                     logger.subheading('Macrocycle {}'.format(main_tracking_object.n_cycle) + ' - Writing intermediate model summary')
                     # Write out the model during optimisation
-                    model_files = write_fitted_model_summary_intermediate(
+                    model_summary_data = write_fitted_model_summary_intermediate(
                         output_directory_suffix = '{:03d}'.format(main_tracking_object.n_cycle),
                         remove_previous = params.optimisation.intermediate_output.remove_previous,
                         # Normal arguments (passed to task)
@@ -957,7 +957,7 @@ def run(params, args=None):
     # Output graphs/csvs
     #
     logger.heading('Writing disorder model summary')
-    model_files = write_fitted_model_summary(
+    model_summary_data = write_fitted_model_summary(
         overall_atom_mask = hierarchy_info.overall_atom_mask,
         level_group_array = hierarchy_info.level_group_array,
         model_object = model_object,
@@ -1028,7 +1028,7 @@ def run(params, args=None):
     #
     model_specific_analysis_task.run(
         model_object = model_object,
-        model_files = model_files,
+        model_summary_data = model_summary_data,
         )
 
     ################################
@@ -1082,7 +1082,7 @@ def run(params, args=None):
                     ),
                 ModelHtmlSummary(
                     hierarchy_files = write_hierarchy_summary_task.result.output_files,
-                    model_files = model_files,
+                    model_summary_data = model_summary_data,
                     model_object = model_object,
                     isotropic_mask = extract_uijs_task.result.isotropic_mask,
                     parameters = params,
