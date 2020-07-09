@@ -88,9 +88,19 @@ def validate_optimisation_phil(params):
 
     # Cycle checks
     if params.optimisation.min_macro_cycles < 1:
-        raise Sorry('min_macro_cycles must be greater than 0 ({current_params})'.format(phil_value(params.optimisation, 'min_macro_cycles')))
+        raise Sorry(
+            '{param_name} must be greater than 0 ({current_params})'.format(
+                param_name = 'min_macro_cycles',
+                current_params = phil_value(params.optimisation, 'min_macro_cycles'),
+            )
+        )
     if params.optimisation.max_macro_cycles < 1:
-        raise Sorry('max_macro_cycles must be greater than 0 ({current_params})'.format(phil_value(params.optimisation, 'max_macro_cycles')))
+        raise Sorry(
+            '{param_name} must be greater than 0 ({current_params})'.format(
+                param_name = 'max_macro_cycles',
+                current_params = phil_value(params.optimisation, 'max_macro_cycles'),
+            )
+        )
 
     ##########################
     # Elastic net parameters #
