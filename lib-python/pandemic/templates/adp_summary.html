@@ -59,17 +59,17 @@
 
     <div class="container">
 
-      {% if body_header is defined %}
-        {{ header_macros.format_header(body_header) }}
-      {% endif %}      
+      {%- if body_header is defined -%}
+        {{- header_macros.format_header(body_header) -}}
+      {%- endif -%}      
 
-      {% for c in contents %}
-        {{ section_macros.format_standard(c, div_namer=dn) }}
-      {% endfor %}
+      {%- for c in contents -%}
+        {{- section_macros.format_standard(c, div_namer=dn) -}}
+      {%- endfor -%}
 
-      {% if body_footer is defined %}
-        {{ section_macros.format_standard(body_footer, div_namer=dn) }}
-      {% endif %}
+      {%- if body_footer is defined -%}
+        {{- section_macros.format_standard(body_footer, div_namer=dn) -}}
+      {%- endif -%}
 
     </div>
   </body>
