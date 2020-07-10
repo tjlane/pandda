@@ -29,7 +29,7 @@ class EchtModelHtmlSummary(HtmlSummary):
 
         chain_ids = sorted(set(img1.keys()+img2.keys()+img3.keys()))
 
-        b_factor_table_block = self.format_b_factor_table(chains=None)
+        b_factor_table_blocks = self.format_b_factor_table_blocks(chains=None)
 
         output = divs.Panel(title='Output: Chain-by-Chain Disorder Summaries')
 
@@ -71,7 +71,7 @@ class EchtModelHtmlSummary(HtmlSummary):
             )
             output.append(block)
 
-        return [b_factor_table_block, output]
+        return b_factor_table_blocks + [output]
 
     def main_summary(self):
 
@@ -94,8 +94,8 @@ class EchtModelHtmlSummary(HtmlSummary):
             )
         )
 
-        output.append(
-            self.format_b_factor_table(chains='all')
+        output.extend(
+            self.format_b_factor_table_blocks(chains='all', split_tables=True)
         )
 
         overview_tab = self.overview_tab(parent_tab_id=output.id)
@@ -233,8 +233,8 @@ class EchtModelHtmlSummary(HtmlSummary):
             )
             tab_set.append(tab)
 
-            block = self.format_b_factor_table(chains=[c_id])
-            tab.append(block)
+            blocks = self.format_b_factor_table_blocks(chains=[c_id], split_tables=True)
+            tab.extend(blocks)
 
             block = divs.Alert(
                 contents = [
@@ -856,43 +856,57 @@ class EchtModelHtmlSummary(HtmlSummary):
             .replace('border="1" ', '')
         return divs.Block(table=html_table)
 
-    def format_b_factor_table(self, chains=None):
+    def format_b_factor_table_blocks(self, chains=None, split_tables=False):
 
-        table = self.model_summary_task.result.level_b_factor_statistics_table
+        b_table = self.model_summary_task.result.level_b_factor_statistics_table
 
-        levels_ordered = table[table['Chain'] == 'all']['Level'].tolist()
+        levels_ordered = b_table[b_table['Chain'] == 'all']['Level'].tolist()
+
+        # Which columns to use in the output table
+        output_cols = [c for c in b_table.columns if c not in ['Level', 'Chain']]
 
         if (chains is not None):
             if isinstance(chains, str):
                 chains = [chains]
-            table_sel = table['Chain'].isin(chains)
-            table = table[table_sel]
+            table_sel = b_table['Chain'].isin(chains)
+            b_table = b_table[table_sel]
 
-        # Pivot table
-        table = table.pivot(index='Level', columns='Chain')
+        output_blocks = []
 
-        # Don't need chain level if only one chain
-        if (chains is not None) and (len(chains) == 1):
-            table = table.droplevel('Chain', axis=1)
+        if (split_tables is False):
+            output_val_sets = [output_cols]
+        else:
+            output_val_sets = [[c] for c in output_cols]
 
-        # Return levels to correct order (sorted alphabetically after pivoting)
-        table = table.reindex(levels_ordered)
+        for val_set in output_val_sets:
 
-        title = 'Average B-factors for Levels'
-        if chains == ['all']:
-            title += ' (all chains)'
-        elif (chains is not None):
-            title += ' (chain{s} {ids})'.format(
-                s = 's' if len(chains) > 1 else '',
-                ids = ' & '.join(chains),
+            # Pivot table
+            table = b_table.pivot(index='Level', columns='Chain', values=val_set)
+
+            # Don't need chain level if only one chain
+            if (chains is not None) and (len(chains) == 1):
+                table = table.droplevel('Chain', axis=1)
+
+            # Return levels to correct order (sorted alphabetically after pivoting)
+            table = table.reindex(levels_ordered)
+
+            title = 'Average B-factors for Levels'
+            if chains == ['all']:
+                title += ' (all chains)'
+            elif (chains is not None):
+                title += ' (chain{s} {ids})'.format(
+                    s = 's' if len(chains) > 1 else '',
+                    ids = ' & '.join(chains),
+                )
+
+            table_block = divs.Alert(
+                title = title,
+                width = 12 if (split_tables is False) else 6,
+                table = table.round(1)\
+                    .to_html(index=True, bold_rows=False, classes=['table table-hover nowrap'])\
+                    .replace('border="1" ', ''),
             )
 
-        table_block = divs.Alert(
-            title = title,
-            width = 12,
-            table = table.round(1)\
-                .to_html(index=True, bold_rows=False, classes=['table table-hover nowrap'])\
-                .replace('border="1" ', ''),
-        )
+            output_blocks.append(table_block)
 
-        return table_block
+        return output_blocks
