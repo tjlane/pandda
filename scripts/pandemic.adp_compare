@@ -26,8 +26,12 @@ input {
     pandemic_folder = None
         .multiple = True
         .type = str
-        .help = "output pandemic folder"
+        .help = "input pandemic folder"
     overall_selection = None
+        .type = str
+    label1 = None
+        .type = str
+    label2 = None
         .type = str
 }
 analysis {
@@ -213,8 +217,9 @@ class StructureComparer:
             value_dicts_x = values1.values(),
             value_dicts_y = values2.values(),
             title = label+'\n\n',
-            labels_x = ['{} - {}'.format(prefix1, k) for k in values1.keys()],
-            labels_y = ['{} - {}'.format(prefix2, k) for k in values2.keys()],
+            axis_labels_x = ['{} - {}'.format(prefix1, k) for k in values1.keys()],
+            axis_labels_y = ['{} - {}'.format(prefix2, k) for k in values2.keys()],
+            series_labels = [prefix1, prefix2],
             filename = os.path.join(output_directory, 'histograms-{}.png'.format(label)),
             )
 
@@ -231,8 +236,9 @@ class StructureComparer:
             value_dicts_x = [all_s1_values],
             value_dicts_y = [all_s2_values],
             title = label+'\n\n',
-            labels_x = [prefix1],
-            labels_y = [prefix2],
+            axis_labels_x = [prefix1],
+            axis_labels_y = [prefix2],
+            series_labels = [prefix1, prefix2],
             filename = os.path.join(output_directory, 'histograms-{}-all.png'.format(label)),
             )
 
@@ -259,8 +265,8 @@ class StructureComparer:
 
     def extract_b_values(self, hierarchy):
         import collections
-        output_dict = {}
-        for c in hierarchy.chains():
+        output_dict = collections.OrderedDict()
+        for c in sorted(list(hierarchy.chains()), key=lambda x: x.id):
             if not (c.is_protein() or c.is_na()):
                 continue
             labels_b = self.get_b_values(c)
@@ -304,8 +310,9 @@ class StructureComparer:
         value_dicts_x,
         value_dicts_y,
         title,
-        labels_x,
-        labels_y,
+        axis_labels_x,
+        axis_labels_y,
+        series_labels,
         filename,
         ):
 
@@ -315,8 +322,8 @@ class StructureComparer:
         fig, axes = pyplot.subplots(
             nrows = ny,
             ncols = nx,
-            sharex = 'all',
-            sharey = 'all',
+            sharex = True,
+            sharey = False,
         )
 
         fig.suptitle(title, y=1.08)
@@ -331,23 +338,29 @@ class StructureComparer:
         for icol, x_vals_dict in enumerate(value_dicts_x):
             for irow, y_vals_dict in enumerate(value_dicts_y):
 
-                axis = axes[irow][icol] # invert y ordering
-                #axis.set_aspect('equal')
+                axis = axes[irow][icol] 
 
                 self.histogram_axis(
                     axis = axis,
                     values = [x_vals_dict.values(), y_vals_dict.values()],
-                    labels = [labels_x[icol], labels_y[irow]],
+                    labels = series_labels,
                 )
 
         for icol in range(nx):
             axis = axes[0][icol]
-            axis.set_xlabel(labels_x[icol])
+            axis.set_xlabel(axis_labels_x[icol])
             axis.xaxis.set_label_position('top')
 
         for irow in range(ny):
             axis = axes[irow][0]
-            axis.set_ylabel(labels_y[irow])
+            axis.set_ylabel(axis_labels_y[irow])
+
+        axis = axes[0][0]
+        axis.legend(
+            bbox_to_anchor = (1, 1), 
+            loc = 'upper left',
+            bbox_transform = fig.transFigure,
+        )
 
         helper.write_and_close_fig(
             fig = fig,
@@ -380,8 +393,6 @@ class StructureComparer:
                 },
                 ax = axis,
                 )
-
-        axis.legend()
 
     def scatter_grid(self,
         value_dicts_x,
@@ -533,6 +544,13 @@ def run(params):
 
     validate_params(params)
 
+    from giant.phil import log_running_parameters
+    log_running_parameters(
+        params = params,
+        master_phil = master_phil,
+        logger = logger,
+    )
+
     if len(params.input.pandemic_folder) == 1:
         dir1 = dir2 = params.input.pandemic_folder[0]
     elif len(params.input.pandemic_folder) == 2:
@@ -540,9 +558,17 @@ def run(params):
     else:
         raise Exception()
 
+    label1 = None
+    label2 = None
+    if params.input.label1:
+        label1 = params.input.label1
+    if params.input.label2:
+        label2 = params.input.label2
     from giant.paths import foldername
-    label1 = foldername(dir1)
-    label2 = foldername(dir2)
+    if not label1: 
+        label1 = foldername(dir1)
+    if not label2:
+        label2 = foldername(dir2)
 
     base_filenames = sorted(
         set(
