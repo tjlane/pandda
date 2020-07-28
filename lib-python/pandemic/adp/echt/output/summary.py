@@ -607,6 +607,8 @@ class WriteEchtModelSummary:
                 overall_atom_mask,
             )
 
+            atom_cache = hierarchy.atom_selection_cache()
+
             level_b_mean = flex.mean(hierarchy.atoms().extract_b())
 
             if (total_b_mean > 0.0):
@@ -621,15 +623,19 @@ class WriteEchtModelSummary:
                 'Average B (%)' : level_b_mean_perc,
             })
 
-            for chain in sorted(hierarchy.chains(), key=lambda c: c.id):
+            chain_ids = sorted(set([c.id for c in hierarchy.chains()]))
 
-                chain_level_b_mean = flex.mean(chain.atoms().extract_b())
+            for c_id in chain_ids:
 
-                chain_b_means[chain.id] = chain_level_b_mean + chain_b_means.get(chain.id, 0)
+                chain_sel = atom_cache.selection('chain {}'.format(c_id))
+                chain_atoms = hierarchy.atoms().select(chain_sel)
+                chain_level_b_mean = flex.mean(chain_atoms.extract_b())
+
+                chain_b_means[c_id] = chain_level_b_mean + chain_b_means.get(c_id, 0)
 
                 chain_table_dicts.append({
                     'Level' : l_name,
-                    'Chain' : chain.id,
+                    'Chain' : c_id,
                     'Average B' : chain_level_b_mean,
                 })
 
