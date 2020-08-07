@@ -164,8 +164,8 @@ model {
             tls_matrix_eps = 1e-6
                 .help = "define non-zero values for matrix elements"
                 .type = float
-            tls_amplitude_eps = 1e-6
-                .help = "define non-zero values for amplitudes"
+            tls_amplitude_eps = 1e-3
+                .help = "define non-zero values for amplitudes (0.01A^2 == 1A^2 B-factor approximately)"
                 .type = float
         }
         tolerances {
@@ -190,21 +190,21 @@ optimisation {
     min_macro_cycles = 30
         .help = 'minimum number of fitting cycles to run (over all levels) -- must be at least 1'
         .type = int
-    max_macro_cycles = 999
+    max_macro_cycles = 200
         .help = 'maximum number of fitting cycles to run (over all levels) -- must be at least 1'
         .type = int
     number_of_micro_cycles = 3
         .help = 'how many fitting cycles to run (for each level) -- must be at least 1'
         .type = int
-    fit_tls_for_isotropic_atoms_by_magnitude_only = False
+    fit_tls_for_isotropic_atoms_by_magnitude_only = True
         .type = bool
         .help = "Only use the magnitude of isotropic B-factors (True) or treat them as spherical anisotropic ADPs (False)?"
     elastic_net {
         weights {
-            sum_of_amplitudes = 0.1
+            sum_of_amplitudes = 0.5
                 .help = "weight for sum(amplitudes). minimises the number of TLS components in the optimisation. equivalent to a lasso weighting term."
                 .type = float
-            sum_of_squared_amplitudes = 0.9
+            sum_of_squared_amplitudes = 0.5
                 .help = "weight for sum(amplitudes^2). minimises the variance in the sizes of the TLS components in the optimisation. equivalent to a ridge regression term."
                 .type = float
             sum_of_amplitudes_squared = 0.0

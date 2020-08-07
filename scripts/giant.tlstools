@@ -1,16 +1,17 @@
 #!/usr/bin/env cctbx.python
+import giant.logs as lg
+logger = lg.getLogger(__name__)
 
-import os, sys, copy, re
-import time
+import os, sys, copy, re, time
 
 import libtbx.phil
 
 import iotbx.pdb
 
+from giant.maths import EIGHTPISQ
 from scitbx.array_family import flex
 from mmtbx.tls import uaniso_from_tls_one_group, tlso, tools
 
-from bamboo.common.logs import Log
 from giant.structure.uij import uij_to_b
 
 #######################################
@@ -24,7 +25,7 @@ input {
         .multiple = True
 }
 options {
-    mode = *subtract_tls write_tls
+    mode = *add_tls subtract_tls only_tls
         .type = choice(multi=False)
 }
 output {
@@ -38,60 +39,120 @@ verbose = True
 
 #######################################
 
+def extract_tls_for_hierarchy(hierarchy, tls_params):
+    
+    logger('...extracting uijs from header')
+    
+    # Atom selection cache
+    ac = hierarchy.atom_selection_cache()
+    # Create empty array for all atoms 
+    uij_values = flex.sym_mat3_double(hierarchy.atoms().size(), (0.,0.,0.,0.,0.,0.))
+    # Iterate through TLS groups
+    for tls_g in tls_params.tls_params:
+        logger('...calculating tls-uij for {}'.format(tls_g.selection_string))
+        # Create TLSO object
+        tls_o = tlso(tls_g.t, tls_g.l, tls_g.s, tls_g.origin)
+        # Extract atom selection
+        sel = ac.selection(tls_g.selection_string)
+        # Extract atoms
+        ats = hierarchy.atoms().select(sel)
+        # Calculate Uij from TLS
+        uij_tls = uaniso_from_tls_one_group(tls_o, ats.extract_xyz(), False)
+        # Set to output
+        uij_values.set_selected(sel, uij_tls)
+
+    return uij_values
+
+def add_tls(atoms, uij_values):
+    
+    logger('...adding tls-uij to input uij')
+    
+    # Extract b-values
+    b = atoms.extract_b()
+    # Convert B-factors to u-multipliers
+    u_iso = (b / EIGHTPISQ).matrix_outer_product(flex.double(6, 1)).as_1d()
+    # Generate unit-spheres
+    u_values = flex.sym_mat3_double(atoms.size(), (1.,1.,1.,0.,0.,0.)).as_double()
+    # Multiply to get sized spheres
+    u_values = flex.sym_mat3_double(u_iso * u_values)
+    # Add to input
+    total_uij = (u_values + uij_values)
+    # Apply
+    atoms.set_uij(total_uij)
+    atoms.set_b(flex.double(uij_to_b(atoms.extract_uij()).tolist()))
+
+def subtract_tls(atoms, uij_values):
+
+    logger('...subtracting tls-uij from input uij')
+
+    # Extract input uijs
+    uij_orig = atoms.extract_uij()
+    # Apply difference
+    atoms.set_uij(uij_orig - uij_values)
+    atoms.set_b(flex.double(uij_to_b(atoms.extract_uij()).tolist()))
+
+def only_tls(atoms, uij_values):
+
+    logger('...setting uij to tls-uij')
+
+    # Apply
+    atoms.set_uij(uij_values)
+    atoms.set_b(flex.double(uij_to_b(atoms.extract_uij()).tolist()))
+            
 def run(params):
 
+    apply_tls_func = None
+
     if params.output.suffix is None:
-        if params.options.mode == 'write_tls':
-            params.output.suffix = 'tls'
+        if params.options.mode == 'add_tls': 
+            params.output.suffix = 'tls-added'
+            apply_tls_func = add_tls
+        elif params.options.mode == 'only_tls':
+            params.output.suffix = 'tls-only'
+            apply_tls_func = only_tls
         elif params.options.mode == 'subtract_tls':
-            params.output.suffix = 'tls_subtracted'
+            params.output.suffix = 'tls-subtracted'
+            apply_tls_func = subtract_tls
         else:
             raise Sorry('Invalid option for params.options.mode: {}'.format(params.options.mode))
 
-    log = Log()
-
     for pdb in params.input.pdb:
-        log('Processing {}'.format(pdb))
+        logger('Processing {}'.format(pdb))
         # Read structure
         ih = iotbx.pdb.hierarchy.input(pdb)
-        # Atom selection cache
-        ac = ih.hierarchy.atom_selection_cache()
         # Extract TLS params from header
         tls_params = ih.input.extract_tls_params(ih.hierarchy)
-        # Iterate through TLS groups and perform function
-        for tls_g in tls_params.tls_params:
-            log('...calculating tls-uij for {}'.format(tls_g.selection_string))
-            # Create TLSO object
-            tls_o = tlso(tls_g.t, tls_g.l,tls_g.s,tls_g.origin)
-            # Extract atom selection
-            sel = ac.selection(tls_g.selection_string)
-            # Extract atoms
-            ats = ih.hierarchy.atoms().select(sel)
-            # Calculate Uij from TLS
-            tls_uij = uaniso_from_tls_one_group(tls_o, ats.extract_xyz(), False)
-            # Set or subtract Uij
-            if params.options.mode == 'write_tls':
-                log('...setting uij to tls-uij')
-                ats.set_uij(tls_uij)
-            elif params.options.mode == 'subtract_tls':
-                log('...subtracting tls-uij from input uij')
-                uij_orig = ats.extract_uij()
-                ats.set_uij(uij_orig - tls_uij)
-            # Update the B-iso column
-            ats.set_b(flex.double(uij_to_b(ats.extract_uij()).tolist()))
+        # Extract uijs for all tls groups 
+        uij_values = extract_tls_for_hierarchy(
+            hierarchy = ih.hierarchy, 
+            tls_params = tls_params,
+        )
+        # Add/subtract/replace the uijs         
+        apply_tls_func(
+            atoms = ih.hierarchy.atoms(),
+            uij_values = uij_values,
+        )
 
-        # Create filename and write strcuture
+        # Create filename and write structure
         fn = pdb.replace('.pdb', '.'+params.output.suffix+'.pdb')
-        with open(fn, 'w') as fh:
-            tools.remark_3_tls(tlsos = [tlso(tls_g.t, tls_g.l,tls_g.s,tls_g.origin) for tls_g in tls_params.tls_params], 
-                               selection_strings = [tls_g.selection_string for tls_g in tls_params.tls_params], 
-                               out=fh)
+        # Write header (if not subtract tls)
+        if params.options.mode != 'subtract_tls':
+            with open(fn, 'w') as fh:
+                tools.remark_3_tls(
+                    tlsos = [tlso(tls_g.t, tls_g.l,tls_g.s,tls_g.origin) for tls_g in tls_params.tls_params], 
+                    selection_strings = [tls_g.selection_string for tls_g in tls_params.tls_params], 
+                    out = fh,
+                )
+        logger('...writing new structure as {}'.format(fn))
         ih.hierarchy.write_pdb_file(fn, open_append=True)
-        log('...writing new structure as {}'.format(fn))
-         
 
 #######################################
 
 if __name__ == '__main__':
     from giant.jiffies import run_default
-    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
+    run_default(
+        run = run, 
+        master_phil = master_phil, 
+        args = sys.argv[1:], 
+        blank_arg_prepend = blank_arg_prepend,
+    )

@@ -30,11 +30,11 @@ class SanitiseTLSGroup:
         for i, mode in enumerate(tls_group.tls_parameters):
 
             # Reset the matrices of null modes
-            if (mode.amplitudes.get() < self.amplitude_eps).all_eq(True):
+            if not (mode.amplitudes.get() > self.amplitude_eps).all_eq(True):
                 mode.matrices.reset()
                 mode.matrices.set(values=(1.,1.,1.,0.,0.,0.), component_string='T')
 
-            # Reset small amplitudes
+            # Reset small amplitudes (leave larger ones alone - change this?)
             if not (mode.amplitudes.get() >= self.amplitude_eps).all_eq(True):
                 sel = (mode.amplitudes.get() < self.amplitude_eps).iselection()
                 mode.amplitudes.set(values=[self.amplitude_eps]*sel.size(), selection=sel)
