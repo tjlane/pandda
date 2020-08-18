@@ -11,6 +11,8 @@ import math
 import numpy as np
 import pandas as pd
 
+from giant import adopt_init_args
+
 from pandemic.adp.plots import PlotHelper
 helper = PlotHelper()
 
@@ -40,6 +42,10 @@ options {
         .type = bool
     split_json_data_by_chain = True
         .type = bool
+    y_min = 0
+        .type = float
+    y_max = None
+        .type = float
 }
 output {
     out_dir = json_plots
@@ -76,6 +82,33 @@ def sort_and_average(labels, values):
         uniq_y[i] = np.mean(vals)
     return uniq_x, uniq_y
 
+def make_dataframe_from_dicts(
+    data_dict_1,
+    data_dict_2,
+    splice_function = None,
+    ):
+
+    if (splice_function is None):
+        splice_function = lambda x: x
+
+    d2 = {splice_function(k):v for k,v in data_dict_2.iteritems()}
+
+    df_values = []
+    for lab1, val1 in data_dict_1.iteritems():
+        # Sanitise the label
+        lab_splice = splice_function(lab1)
+        # Check if the dictionary has the value
+        val2 = d2.get(lab_splice)
+        # Skip if not present in other values
+        if (val2 is None):
+            continue
+        df_values.append((lab1, val1, val2))
+
+    # Make and return dataframe
+    df = pd.DataFrame(data=df_values, columns=['key', 'val1', 'val2'])
+
+    return df
+
 class SplicePdbstr:
 
     def __init__(self,
@@ -108,132 +141,120 @@ class SplicePdbstr:
         assert len(residue_name) == 3
         return ( pdb_str[:5] + residue_name + pdb_str[8:] )
 
-def make_dataframe_from_dicts(
-    data_dict_1,
-    data_dict_2,
-    splice_function = None,
-    ):
+class Plotter:
 
-    if (splice_function is None):
-        splice_function = lambda x: x
+    def __init__(self, y_min=None, y_max=None):
+        adopt_init_args(self, locals())
+    
+    def make_plot_from_dataframe(self,
+        data_frame,
+        label1,
+        label2,
+        filename,
+        ):
 
-    d2 = {splice_function(k):v for k,v in data_dict_2.iteritems()}
+        import numpy as np
+        from matplotlib import pyplot
 
-    df_values = []
-    for lab1, val1 in data_dict_1.iteritems():
-        # Sanitise the label
-        lab_splice = splice_function(lab1)
-        # Check if the dictionary has the value
-        val2 = d2.get(lab_splice)
-        # Skip if not present in other values
-        if (val2 is None):
-            continue
-        df_values.append((lab1, val1, val2))
+        labs = data_frame['key']
+        vals1 = data_frame['val1']
+        vals2 = data_frame['val2']
 
-    # Make and return dataframe
-    df = pd.DataFrame(data=df_values, columns=['key', 'val1', 'val2'])
+        fig, axes = pyplot.subplots(nrows=1, ncols=2)
 
-    return df
+        ############
 
-def make_plot_from_dataframe(
-    data_frame,
-    filename,
-    ):
+        ax1 = axes[0]
 
-    import numpy as np
-    from matplotlib import pyplot
+        x = vals1
+        y = vals2
 
-    labs = data_frame['key']
-    vals1 = data_frame['val1']
-    vals2 = data_frame['val2']
+        ax1.scatter(
+            x = x,
+            y = y,
+            s = 1,
+        )
+        ax1.set_xlabel(label1)
+        ax1.set_ylabel(label2)
 
-    fig, axes = pyplot.subplots(nrows=1, ncols=2)
+        ax1.set_ylim(ymin=self.y_min, ymax=self.y_max)
 
-    ############
+        non_zero_bool = np.logical_not((x==0) | (y==0))
+        corr = round(np.corrcoef(x[non_zero_bool],y[non_zero_bool])[0][1], 3)
+        min_x, max_x = ax1.get_xlim()
+        min_y, max_y = ax1.get_ylim()
 
-    ax1 = axes[0]
+        ax1.text(
+            x = (0.05*min_x + 0.95*max_x),
+            y = (0.05*min_y + 0.95*max_y),
+            s = corr,
+            horizontalalignment = 'right',
+            verticalalignment = 'bottom',
+        )
 
-    x = vals1
-    y = vals2
+        ############
 
-    ax1.scatter(
-        x = x,
-        y = y,
-        s = 1,
-    )
+        ax2_1 = axes[1]
+        #ax2_2 = ax2_1.twinx()
+        ax2_2 = ax2_1
 
-    non_zero_bool = np.logical_not((x==0) | (y==0))
-    corr = round(np.corrcoef(x[non_zero_bool],y[non_zero_bool])[0][1], 3)
-    min_x, max_x = ax1.get_xlim()
-    min_y, max_y = ax1.get_ylim()
+        # New X-values
+        residue_numbers = map(get_residue_number_from_pdb_str, labs)
 
-    ax1.text(
-        x = (0.05*min_x + 0.95*max_x),
-        y = (0.05*min_y + 0.95*max_y),
-        s = corr,
-        horizontalalignment = 'right',
-        verticalalignment = 'bottom',
-    )
+        y1 = vals1
+        y2 = vals2
 
-    ############
+        new_x1, new_y1 = sort_and_average(
+            labels = residue_numbers,
+            values = vals1,
+        )
+        new_x2, new_y2 = sort_and_average(
+            labels = residue_numbers,
+            values = vals2,
+        )
 
-    ax2_1 = axes[1]
-    #ax2_2 = ax2_1.twinx()
-    ax2_2 = ax2_1
+        # Scatter plot the original values
+        ax2_1.scatter(
+            x = residue_numbers,
+            y = y1,
+            s = 1,
+            color = 'b',
+        )
+        ax2_2.scatter(
+            x = residue_numbers,
+            y = y2,
+            s = 1,
+            color = 'r',
+        )
+        
+        ax2_1.set_ylim(ymin=self.y_min, ymax=self.y_max)
 
-    # New X-values
-    residue_numbers = map(get_residue_number_from_pdb_str, labs)
+        # Line plots for the averaged values
+        handles = []
+        handles += ax2_1.plot(new_x1, new_y1, 'b-')
+        handles += ax2_2.plot(new_x2, new_y2, 'r-')
+        ax2_1.legend(handles=handles, labels=[label1, label2])
 
-    y1 = vals1
-    y2 = vals2
+        # Calculate the correlation coefficient per residue
+        non_zero_bool = np.logical_not((new_y1==0) | (new_y2==0))
+        corr = round(np.corrcoef(new_y1[non_zero_bool],new_y2[non_zero_bool])[0][1], 3)
+        min_x, max_x = ax2_1.get_xlim()
+        min_y, max_y = ax2_1.get_ylim()
 
-    new_x1, new_y1 = sort_and_average(
-        labels = residue_numbers,
-        values = vals1,
-    )
-    new_x2, new_y2 = sort_and_average(
-        labels = residue_numbers,
-        values = vals2,
-    )
+        ax2_1.text(
+            x = (0.95*min_x + 0.05*max_x),
+            y = (0.05*min_y + 0.95*max_y),
+            s = corr,
+            horizontalalignment = 'left',
+            verticalalignment = 'bottom',
+        )
 
-    # Scatter plot the original values
-    ax2_1.scatter(
-        x = residue_numbers,
-        y = y1,
-        s = 1,
-        color = 'b',
-    )
-    ax2_2.scatter(
-        x = residue_numbers,
-        y = y2,
-        s = 1,
-        color = 'r',
-    )
+        ############
 
-    # Line plots for the averaged values
-    ax2_1.plot(new_x1, new_y1, 'b-')
-    ax2_2.plot(new_x2, new_y2, 'r-')
-
-    # Calculate the correlation coefficient per residue
-    non_zero_bool = np.logical_not((new_y1==0) | (new_y2==0))
-    corr = round(np.corrcoef(new_y1[non_zero_bool],new_y2[non_zero_bool])[0][1], 3)
-    min_x, max_x = ax2_1.get_xlim()
-    min_y, max_y = ax2_1.get_ylim()
-
-    ax2_1.text(
-        x = (0.95*min_x + 0.05*max_x),
-        y = (0.05*min_y + 0.95*max_y),
-        s = corr,
-        horizontalalignment = 'left',
-        verticalalignment = 'bottom',
-    )
-
-    ############
-
-    helper.write_and_close_fig(
-        fig = fig,
-        filename = filename,
-    )
+        helper.write_and_close_fig(
+            fig = fig,
+            filename = filename,
+        )
 
 def run(params):
 
@@ -266,6 +287,11 @@ def run(params):
     splice_function = SplicePdbstr(
         keep_chain_id = params.options.keep_chain_ids,
         keep_residue_name = params.options.keep_residue_names,
+    )
+
+    plotter = Plotter(
+        y_min = params.options.y_min,
+        y_max = params.options.y_max,
     )
 
     all_json_data = []
@@ -314,8 +340,10 @@ def run(params):
             if len(data_frame) == 0:
                 continue
 
-            make_plot_from_dataframe(
+            plotter.make_plot_from_dataframe(
                 data_frame = data_frame,
+                label1 = json_lab_1,
+                label2 = json_lab_2,
                 filename = (output_prefix + '.png'),
             )
 
