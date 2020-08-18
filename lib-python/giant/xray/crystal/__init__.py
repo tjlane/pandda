@@ -1,72 +1,124 @@
 import numpy
 import iotbx.mtz, iotbx.pdb
 
-class CrystalSummary(object):
+class CrystalInfo(object):
 
-    def __init__(self, id=None):
-        self.id = id
-        # File-specific
-        self.mtz_file = None
-        self._mtz_object = None
-        self.pdb_file = None
-        self._pdb_input = None
-        # Crystal-specific
-        self.space_group = None
-        self.unit_cell = None
-        self.symmetry = None
-        # MTZ-Specific
-        self.column_labels = None
-        self.high_res = None
-        self.low_res = None
-        # PDB-Specific
+    def __init__(self,
+        crystal_symmetry = None,
+        space_group = None,
+        unit_cell = None,
+        resolution_high = None,
+        resolution_low = None,
+        r_free = None,
+        r_work = None,
+        column_labels = None,
+        name = None,
+        ):
 
-    def mtz_object(self):
-        if self._mtz_object:
-            return self._mtz_object
-        else:
-            return iotbx.mtz.object(self.mtz_file)
+        if (crystal_symmetry is not None):
+            assert space_group is None
+            assert unit_cell is None
+            space_group = crystal_symmetry.space_group()
+            unit_cell = crystal_symmetry.unit_cell()
 
-    def pdb_input(self):
-        if self._pdb_input:
-            return self._pdb_input
-        else:
-            return iotbx.pdb.input(self.pdb_file)
+        self.crystal_symmetry = crystal_symmetry
+        self.space_group = space_group
+        self.unit_cell = unit_cell
 
-    ######################################################
+        self.resolution_high = resolution_high
+        self.resolution_low = resolution_low
+
+        self.r_free = r_free
+        self.r_work = r_work
+
+        self.column_labels = column_labels
+
+        self.name = name
+
+    def __str__(self):
+        return self.summary()
+
+    def summary(self):
+
+        lines = []
+
+        if self.name:
+            lines.append('Name: {}'.format(self.name))
+
+        if self.space_group:
+            lines.append('Space group: {}'.format(self.space_group.type().lookup_symbol()))
+        if self.unit_cell:
+            lines.append('Unit Cell: {}'.format(tuple([round(p, 3) for p in self.unit_cell.parameters()])))
+
+        if self.resolution_high:
+            lines.append('Resolution (high): {}'.format(round(self.resolution_high,3)))
+        if self.resolution_low:
+            lines.append('Resolution (low): {}'.format(round(self.resolution_low,3)))
+
+        if self.r_free:
+            lines.append('R-free: {}'.format(round(self.r_free,3)))
+        if self.r_work:
+            lines.append('R-work: {}'.format(round(self.r_work,3)))
+
+        if self.column_labels:
+            lines.append('Columns: {}'.format(', '.join(self.column_labels)))
+
+        return '\n'.join(lines)
+
     @classmethod
-    def from_mtz(cls, mtz_file=None, mtz_object=None, id=None):
+    def from_mtz(cls, mtz_file=None, mtz_object=None, name=None):
+
         assert [mtz_file, mtz_object].count(None)==1,'Provide mtz_file OR mtz_object'
-        # Initialise class (populate manually)
-        new_cls = cls(id=id)
-        # Store filename
-        new_cls.mtz_file = mtz_file
-        new_cls._mtz_object = mtz_object
-        # Create mtz object of reflection data
-        refl_data = new_cls.mtz_object()
-        # Extract the resolution limits
-        new_cls.low_res, new_cls.high_res = refl_data.max_min_resolution()
-        new_cls.space_group = refl_data.space_group()
-        # Crystal Properties
-        crystal = refl_data.crystals()[0]
-        new_cls.unit_cell = crystal.unit_cell()
-        new_cls.symmetry = crystal.crystal_symmetry()
-        # Column information
-        new_cls.column_labels = refl_data.column_labels()
-        return new_cls
+
+        if (mtz_object is None):
+            mtz_object = iotbx.mtz.object(mtz_file)
+
+        # Use first crystal
+        crystal = mtz_object.crystals()[0]
+        crystal_symmetry = crystal.crystal_symmetry()
+        resolution_low, resolution_high = mtz_object.max_min_resolution()
+        column_labels = mtz_object.column_labels()
+
+        return cls(
+            crystal_symmetry = crystal_symmetry,
+            resolution_high = resolution_high,
+            resolution_low = resolution_low,
+            column_labels = column_labels,
+            name = name,
+        )
 
     @classmethod
-    def from_pdb(cls, pdb_file=None, pdb_input=None, id=None):
+    def from_pdb(cls, pdb_file=None, pdb_input=None, name=None):
+
         assert [pdb_file, pdb_input].count(None)==1,'Provide pdb_file OR pdb_input'
-        # Initialise class (populate manually)
-        new_cls = cls(id=id)
-        # Store filename
-        new_cls.pdb_file = pdb_file
-        new_cls._pdb_input = pdb_input
-        # Create pdb input of structure
-        pdb_input = new_cls.pdb_input()
-        # Crystal Properties
-        new_cls.symmetry = pdb_input.crystal_symmetry()
-        new_cls.space_group = new_cls.symmetry.space_group()
-        new_cls.unit_cell = new_cls.symmetry.unit_cell()
-        return new_cls
+
+        if (pdb_input is None):
+            pdb_input = iotbx.pdb.input(pdb_file)
+
+        info = pdb_input.get_r_rfree_sigma()
+
+        return cls(
+            crystal_symmetry = pdb_input.crystal_symmetry(),
+            resolution_high = info.high,
+            resolution_low = info.low,
+            r_free = info.r_free,
+            r_work = info.r_work,
+            name = name,
+        )
+
+    def as_cryst(self):
+
+        cell = self.unit_cell.parameters()
+        sg = self.space_group
+
+        return 'CRYST1{:9.3f}{:9.3f}{:9.3f}{:7.2f}{:7.2f}{:7.2f}{:>11}{:4}'.format(
+            cell[0],
+            cell[1],
+            cell[2],
+            cell[3],
+            cell[4],
+            cell[5],
+            sg.type().lookup_symbol(),
+            ' ',
+        )
 

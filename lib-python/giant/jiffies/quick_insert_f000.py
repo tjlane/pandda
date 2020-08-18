@@ -1,13 +1,19 @@
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
 import os, sys, copy, re, shutil
 
-import libtbx.phil
-import iotbx.mtz
-from bamboo.common.command import CommandManager
+from giant.exceptions import Sorry, Failure
 
 #######################################
 
-blank_arg_prepend = {'.mtz':'input.mtz=', '.pdb':'input.pdb=', None:'column.label='}
+blank_arg_prepend = {
+    '.mtz':'input.mtz=',
+    '.pdb':'input.pdb=',
+    None:'column.label=',
+}
 
+import libtbx.phil
 master_phil = libtbx.phil.parse("""
 input {
     mtz = None
@@ -45,43 +51,39 @@ def run(params):
     ###########################################
     # Load diffraction data
     ###########################################
+    import iotbx.mtz
     diff_data = iotbx.mtz.object(params.input.mtz)
 
     ###########################################
     # COMMAND LINE COMMANDS
     ###########################################
-    cm = CommandManager('phenix.f000')
-    cm.add_command_line_arguments(params.input.pdb)
+    prog = Dispatcher('phenix.f000')
+    prog.add_command_line_arguments(params.input.pdb)
 
     ###########################################
     # RUN
     ###########################################
-    print 'Running CAD:'
-    cm.print_settings()
-    ret_code = cm.run()
-    cm.write_output(log_file=out_log)
-    if 1 or (ret_code != 0):
-        print '============================>'
-        print 'phenix.f000 returned with an error'
-        print '============================>'
-        print cm.output
-        print '============================>'
-        print cm.error
-        print '============================>'
+    logger(prog.as_string())
+    result = prog.run()
+    prog.write_output(log_file=out_log)
+    if result['exitcode'] != 0:
+        logger.subheading('phenix.f000 returned with an error')
+        logger(prog.stdout)
+        logger(prog.stderr)
 
     f000_regex = re.compile('Estimate of F\(0,0,0\)=(.*?) given mean bulk-solvent density (.*?) and fraction (.*?)\n')
     f000_details = f000_regex.findall(cm.output)
 
     assert len(f000_details) == 1, 'Error extracting f000 from output of phenix.f000'
     f000, solvent_density, solvent_fraction = map(float,f000_details[0])
-    print 'F000 is {}'.format(f000)
+    logger('F000 is {}'.format(f000))
 
     ###########################################
     # Append to diffraction data
     ###########################################
 
     col_labs = params.options.column.label.split(',')
-    print 'Extracting column labels: {}'.format(col_labs)
+    logger.subheading('Extracting column labels: {}'.format(col_labs))
 
     miller_dict = diff_data.as_miller_arrays_dict()
     ampl_data = [d for l,d in miller_dict.items() if l[2] in col_labs]
@@ -98,8 +100,6 @@ def run(params):
     # Sort for kicks
     new_data = new_data.sort('packed_indices')
 
-#    from IPython import embed; embed(); assert 0;
-
     # Create new "dataset" from the miller array of the amplitudes
     mtz_dataset = new_data.as_mtz_dataset(column_root_label="2FOFCWT-ABS")
     # Convert "dataset" to an "object"
@@ -110,4 +110,9 @@ def run(params):
 
 if __name__=='__main__':
     from giant.jiffies import run_default
-    run_default(run=run, master_phil=master_phil, args=sys.argv[1:], blank_arg_prepend=blank_arg_prepend)
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+    )

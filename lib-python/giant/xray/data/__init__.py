@@ -4,8 +4,6 @@ import numpy
 
 from scitbx.array_family import flex
 
-from giant.stats.optimisation import LinearScaling
-
 def extract_structure_factors(mtz_object, ampl_label, phas_label):
     # Get the crystal symmetry from the amplitudes' crystal
     try:
@@ -40,18 +38,9 @@ def estimate_wilson_b_factor(miller_array, low_res_cutoff=4.0):
     # Select only those which are valid in both
     mask = numpy.logical_not(numpy.logical_or(numpy.isnan(x_values), numpy.isnan(y_values)))
     # Perform scaling
+    from giant.stats.optimisation import LinearScaling
     scl = LinearScaling(x_values   = flex.double(x_values[mask].tolist()),
                         ref_values = flex.double(y_values[mask].tolist()))
 
     return -0.5*scl.optimised_values[1]
 
-#def extract_structure_factors(mtz_object, ampl_label, phas_label):
-#
-#    # Extract matching miller arrays
-#    match_arrs = [a for a in mtz_object.as_miller_arrays() if a.info().labels==[ampl_label, phas_label]]
-#    if not match_arrs: raise Exception('Could not extract structure factors - Amplitudes:{}, Phases:{}. Have you specified the right columns?'.format(ampl_label, phas_label))
-#    assert len(match_arrs) == 1
-#    mill_arr = match_arrs[0]
-#    assert mill_arr.is_complex_array(), 'STRUCTURE FACTORS SHOULD BE COMPLEX?!'
-#    mill_arr = mill_arr.as_non_anomalous_array()
-#    return mill_arr

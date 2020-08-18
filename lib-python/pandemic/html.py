@@ -15,6 +15,10 @@ class _AutoDivNamer(object):
         self.index += 1
         return self.current()
 
-PANDEMIC_HTML_ENV = jinja2.Environment(loader=jinja2.PackageLoader('pandemic', 'templates'))
+PANDEMIC_HTML_ENV = jinja2.Environment(
+        loader=jinja2.PackageLoader('pandemic', 'templates'),
+        extensions=['jinja2.ext.do'],
+        trim_blocks=True,
+        lstrip_blocks=True)
 
 PANDEMIC_HTML_ENV.globals['divnamer'] = _AutoDivNamer

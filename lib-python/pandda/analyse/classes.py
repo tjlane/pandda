@@ -2850,7 +2850,7 @@ class PanddaMultiDatasetAnalyser(Program):
             self.log('Writing Event+Site Summary CSVs')
             # Sort the event data by z-peak and write out
             sort_eve = self.tables.event_info.sort_values(by=['site_idx',self.args.results.events.order_by], ascending=[1,0])
-            sort_eve = sort_eve.join(comb_tab, how='right')
+            sort_eve = sort_eve.join(comb_tab.reindex(sort_eve.index, level=0), how='right')
             self.log('\t'+self.file_manager.get_file('event_info'))
             sort_eve.to_csv(path_or_buf=self.file_manager.get_file('event_info'))
             # Sort the sites by number of events and write out

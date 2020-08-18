@@ -1,3 +1,5 @@
+import giant.logs as lg
+logger = lg.getLogger(__name__)
 
 settings_phil = """
 settings
@@ -5,7 +7,7 @@ settings
 {
     cpus = 1
         .type = int
-    verbose = True
+    verbose = False
         .type = bool
     plot_graphs = True
         .help = "Output graphs using matplotlib"
@@ -30,3 +32,24 @@ image
         .type = choice
 }
 """
+
+def log_running_parameters(params, master_phil, logger=None):
+
+    if logger is None:
+        logger = lg.getLogger(__name__)
+
+    logger.heading('Processed parameters')
+    logger(
+        master_phil.format(
+            python_object = params,
+        ).as_str()
+    )
+
+    logger.heading('Non-default parameters')
+    logger(
+        master_phil.fetch_diff(
+            source = master_phil.format(
+                python_object = params,
+            )
+        ).as_str()
+    )

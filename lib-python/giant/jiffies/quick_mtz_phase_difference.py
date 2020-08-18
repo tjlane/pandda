@@ -1,11 +1,9 @@
-import os, sys, glob
+import giant.logs as lg
+logger = lg.getLogger(__name__)
 
-import libtbx.phil
+import os, sys
 
-from libtbx.utils import Sorry, Failure
-
-from bamboo.common.command import CommandManager
-from bamboo.common.path import rel_symlink
+from giant.exceptions import Sorry, Failure
 
 ############################################################################
 
@@ -17,8 +15,11 @@ Calculate the average phase difference between sets of mtz files using cphasemat
 
 ############################################################################
 
-blank_arg_prepend = {   '.mtz':'mtz='   }
+blank_arg_prepend = {
+    '.mtz':'mtz=',
+}
 
+import libtbx.phil
 master_phil = libtbx.phil.parse("""
 input {
     mtz = 'refine.mtz'
@@ -51,19 +52,26 @@ def run(params):
 
     assert params.input.mtz, 'No MTZs given for comparison'
 
-    assert not os.path.exists(params.output.merged_mtz), 'The output file ({}) already exists. Please delete it before re-running.'.format(params.output.merged_mtz)
-    assert not os.path.exists(params.output.phasematch_mtz), 'The output file ({}) already exists. Please delete it before re-running.'.format(params.output.phasematch_mtz)
+    if os.path.exists(params.output.merged_mtz):
+        raise IOError('The output file ({}) already exists. Please delete it before re-running.'.format(params.output.merged_mtz))
+    if os.path.exists(params.output.phasematch_mtz):
+        raise IOError('The output file ({}) already exists. Please delete it before re-running.'.format(params.output.phasematch_mtz))
 
-    merge = CommandManager('giant.mtz.merge')
-    merge.add_command_line_arguments( 'label_suffix=incremental' )
-    merge.add_command_line_arguments( params.input.mtz )
-    merge.add_command_line_arguments( 'output.mtz='+params.output.merged_mtz )
-    merge.add_command_line_arguments( params.settings.f_obs.split(',') )
-    merge.add_command_line_arguments( params.settings.f_calc.split(',') )
+    from giant.dispatcher import Dispatcher
+    merge = Dispatcher('giant.mtz.merge')
+    merge.extend_args([
+        'label_suffix=incremental',
+         params.input.mtz,
+         'output.mtz='+params.output.merged_mtz,
+         params.settings.f_obs.split(','),
+         params.settings.f_calc.split(','),
+    ])
     merge.run()
     merge.write_output(params.output.merging_log)
 
     if not os.path.exists(params.output.merged_mtz):
+        logger(merge.result.stdout)
+        logger(merge.result.stderr)
         raise Failure('giant.mtz.merge has failed to merge the mtz files')
 
     fo1, fo2 = params.settings.f_obs.split(',')
@@ -73,14 +81,18 @@ def run(params):
         for i_1 in range(1, len(params.input.mtz)+1):
             if i_1 == i_2:
                 break
-            match = CommandManager('cphasematch')
-            match.add_command_line_arguments( ['-mtzin', params.output.merged_mtz] )
-            match.add_command_line_arguments( ['-mtzout', params.output.phasematch_mtz] )
-            match.add_command_line_arguments( ['-colin-fo',   '{}-{},{}-{}'.format(fo1,i_1,fo1,i_1)] )
-            match.add_command_line_arguments( ['-colin-fc-1', '{}-{},{}-{}'.format(fc1,i_1,fc1,i_1)] )
-            match.add_command_line_arguments( ['-colin-fc-2', '{}-{},{}-{}'.format(fc2,i_2,fc2,i_2)] )
+            match = Dispatcher('cphasematch')
+            match.extend_args([
+                '-mtzin', params.output.merged_mtz,
+                '-mtzout', params.output.phasematch_mtz,
+                '-colin-fo',   '{}-{},{}-{}'.format(fo1,i_1,fo1,i_1),
+                '-colin-fc-1', '{}-{},{}-{}'.format(fc1,i_1,fc1,i_1),
+                '-colin-fc-2', '{}-{},{}-{}'.format(fc2,i_2,fc2,i_2),
+            ])
             match.run()
             march.write_output(params.output.phase_log_template+'-{}-{}.log'.format(i_1.i_2))
+
+    logger.subheading('finished normally')
 
 #######################################
 
@@ -92,4 +104,5 @@ if __name__=='__main__':
         args                = sys.argv[1:],
         blank_arg_prepend   = blank_arg_prepend,
         program             = PROGRAM,
-        description         = DESCRIPTION)
+        description         = DESCRIPTION,
+    )

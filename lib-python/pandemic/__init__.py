@@ -1,13 +1,14 @@
 import os, sys
 import pandemic.resources
+import giant
 
-import bamboo
-__version__ = bamboo.__version__
+__version__ = "0.1.0"
 
 HEADER_TEXT = """
 ------------------------------------------------------------------>
 -
--  Package Version {!s}""".format(__version__)+"""
+-  PanDEMIC Version {!s}""".format(__version__)+"""
+-  Package Version {!s}""".format(giant.__version__)+"""
 -
 -  __________                    .___             .__
 -  \\______   \\_____    ____    __| _/____   _____ |__| ____
@@ -16,7 +17,7 @@ HEADER_TEXT = """
 -   |____|    (____  /___|  /\\____ |\\___  >__|_|  /__|\\___  >
 -                  \\/     \\/      \\/    \\/      \\/        \\/
 -
--  PAN-Dataset Ensemble Modelling of Isomorphous Crystals
+-  PAN-Dataset Ensemble Modelling of Iso-structural Crystals
 -
 ------------------------------------------------------------------>
 

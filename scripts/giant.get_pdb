@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+TOP_DIR=$(pwd)
+
+for pdbid in $@; do
+
+  # Ensure lower case
+  pdbid=$(echo $pdbid | tr '[:upper:]' '[:lower:]' | tr -d '[:punct:]')
+
+  echo " -- ${pdbid} -- "
+
+  # Output directory
+  PDB_DIR=$TOP_DIR/$pdbid
+  mkdir $PDB_DIR
+  cd $PDB_DIR
+
+  # Get the pdb from the pdb
+  if [ -x "$(command -v phenix.fetch_pdb)" ]; then
+    phenix.fetch_pdb $pdbid --mtz
+  fi
+
+  # Get the pdb from the pdb-redo
+  if [ -x "$(command -v wget)" ]; then
+    PDB_REDO_DIR=$PDB_DIR/pdb_redo
+    mkdir $PDB_REDO_DIR
+    cd $PDB_REDO_DIR
+    zip_file="${pdbid}.zip"
+    wget https://pdb-redo.eu/db/$zip_file
+    # unzip if possible
+    if [ -x "$(command -v unzip)" ]; then
+      unzip $zip_file 
+    fi
+    # Finally, go back to the PDB DIR
+    cd $PDB_DIR
+  fi
+
+  # Finally, return to top directory
+  cd $TOP_DIR
+
+done

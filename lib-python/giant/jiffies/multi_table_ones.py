@@ -1,10 +1,7 @@
-#!/usr/bin/env ccp4-python
+import giant.logs as lg
+logger = lg.getLogger(__name__)
 
-import os,sys,glob
-
-import libtbx.phil
-
-from bamboo.common.path import foldername, filename
+import os, sys
 
 ############################################################################
 
@@ -16,7 +13,10 @@ DESCRIPTION = """
 
 ############################################################################
 
-blank_arg_prepend = {'.pdb':'pdb=', None:'dir='}
+blank_arg_prepend = {
+    '.pdb' : 'pdb=',
+    None : 'dir=',
+}
 
 options_phil = """
     column_labels = 'F-obs,SIGF-obs'
@@ -27,6 +27,7 @@ options_phil = """
         .multiple = False
 """
 
+import libtbx.phil
 master_phil = libtbx.phil.parse("""
 input  {
     pdb = None
@@ -56,12 +57,15 @@ output {
         .multiple = False
 }
 settings {
-    cpus = 48
+    cpus = 1
         .type = int
     verbose = True
         .type = bool
 }
-""".replace('{options_phil}', options_phil))
+""".replace(
+    '{options_phil}',
+    options_phil,
+))
 
 ############################################################################
 
@@ -110,12 +114,20 @@ output_eff = """table_one {{
 
 def run(params):
 
-    assert params.input.pdb or params.input.dir, 'Need to supply input.pdb OR input.dir'
-    assert not (params.input.pdb and params.input.dir), 'Cannot supply input.pdb AND input.dir'
+    if (not params.input.pdb) and (not params.input.dir):
+        raise IOError('Need to supply input.pdb OR input.dir')
 
-    if params.input.pdb_style and not params.input.mtz_style:
+    if (params.input.pdb and params.input.dir):
+        raise IOError('Cannot supply input.pdb AND input.dir')
+
+    if (params.input.pdb_style) and (not params.input.mtz_style):
         params.input.mtz_style = params.input.pdb_style.replace('.pdb','')+'.mtz'
 
+    out_file = params.output.parameter_file
+    if os.path.exists(out_file):
+        raise IOError('Output file already exists: {}'.format(out_file))
+
+    from giant.paths import foldername, filename
     if params.input.labelling == 'foldername':
         lab_func = foldername
     else:
@@ -123,37 +135,53 @@ def run(params):
 
     # Build file list
     file_list = []
+
     # From PDB files directly
     for pdb in params.input.pdb:
-        if params.settings.verbose: print '>', pdb
+        logger('Processing {}'.format(pdb))
         mtz = pdb.replace('.pdb','.mtz')
-        if not os.path.exists(pdb): raise Exception('PDB does not exist: {}'.format(pdb))
-        if not os.path.exists(mtz): raise Exception('MTZ does not exist: {}\nMTZs must be named the same as the pdb files (except for .mtz extension) when using input.pdb option'.format(mtz))
+        if not os.path.exists(pdb):
+            raise IOError('PDB does not exist: {}'.format(pdb))
+        if not os.path.exists(mtz):
+            raise IOError('MTZ does not exist: {}\nMTZs must be named the same as the pdb files (except for .mtz extension) when using input.pdb option'.format(mtz))
         file_list.append((pdb,mtz))
+
     # From directories
+    from giant.paths import resolve_glob
     for d in sorted(params.input.dir):
-        if params.settings.verbose: print '>', d
-        pdb = glob.glob(os.path.join(d, params.input.pdb_style))[0]
-        mtz = glob.glob(os.path.join(d, params.input.mtz_style))[0]
+        logger('Processing directory: {}'.format(d))
+        try:
+            pdb = resolve_glob(os.path.join(d, params.input.pdb_style), n=1)
+            mtz = resolve_glob(os.path.join(d, params.input.mtz_style), n=1)
+        except ValueError:
+            logger('PDB style/MTZ style did not resolve to the correct number of files')
+            raise
         file_list.append((pdb,mtz))
 
     out_str = ''
     for pdb,mtz in file_list:
-        out_str += structure_block.format(label     = lab_func(pdb),
-                                          pdb       = os.path.abspath(pdb),
-                                          mtz       = os.path.abspath(mtz),
-                                          columns   = params.options.column_labels,
-                                          rfree     = params.options.r_free_label,
-                                          folder    = os.path.dirname(os.path.abspath(pdb)),
+        out_str += structure_block.format(
+            label = lab_func(pdb),
+            pdb = os.path.abspath(pdb),
+            mtz = os.path.abspath(mtz),
+            columns = params.options.column_labels,
+            rfree = params.options.r_free_label,
+            folder = os.path.dirname(os.path.abspath(pdb)),
         )
 
-    output = output_eff.format(structure_effs   = out_str,
-                               out_base         = params.output.output_basename,
-                               cpus             = params.settings.cpus).replace('{{','{').replace('}}','}')
-    if params.settings.verbose: print output
+    output = output_eff.format(
+        structure_effs = out_str,
+        out_base = params.output.output_basename,
+        cpus = params.settings.cpus,
+    ).replace(
+        '{{','{'
+    ).replace(
+        '}}','}'
+    )
 
-    out_file = params.output.parameter_file
-    assert not os.path.exists(out_file)
+    logger.subheading('Table One parameters')
+    logger(output)
+
     with open(out_file, 'w') as fh:
         fh.write(output)
 
@@ -167,4 +195,5 @@ if __name__=='__main__':
         args                = sys.argv[1:],
         blank_arg_prepend   = blank_arg_prepend,
         program             = PROGRAM,
-        description         = DESCRIPTION)
+        description         = DESCRIPTION,
+    )

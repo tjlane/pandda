@@ -1,0 +1,358 @@
+#!/usr/bin/env cctbx.python
+
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
+from giant.exceptions import Sorry, Failure
+from giant.paths import easy_directory
+
+import os, sys, json, collections
+import math
+import numpy as np
+import pandas as pd
+
+from giant import adopt_init_args
+
+from pandemic.adp.plots import PlotHelper
+helper = PlotHelper()
+
+#######################################
+
+blank_arg_prepend = {
+    '.json' : 'input.json=',
+}
+
+import libtbx.phil
+master_phil = libtbx.phil.parse("""
+input {
+    json = None
+        .type = path
+        .multiple = True
+    json_paths = None
+        .type = str
+        .multiple = False
+    json_label = None
+        .type = str
+        .multiple = True
+}
+options {
+    keep_chain_ids = False
+        .type = bool
+    keep_residue_names = False
+        .type = bool
+    split_json_data_by_chain = True
+        .type = bool
+    y_min = 0
+        .type = float
+    y_max = None
+        .type = float
+}
+output {
+    out_dir = json_plots
+        .type = path
+}
+""")
+
+#######################################
+
+def get_chain_from_pdb_str(pdb_str):
+    return pdb_str[9]
+
+def get_residue_number_from_pdb_str(pdb_str):
+    return int(pdb_str[10:14])
+
+def extract_path_from_json(json_data, json_path):
+
+    if (not json_path):
+        return json_data
+
+    keys = json_path.split('.')
+
+    for k in keys:
+        json_data = json_data[k]
+
+    return json_data
+
+def sort_and_average(labels, values):
+
+    uniq_x, y_arr = np.unique(labels, return_inverse=True)
+    uniq_y = np.zeros_like(uniq_x, dtype=float)
+    for i in range(len(uniq_y)):
+        vals = values[y_arr == i]
+        uniq_y[i] = np.mean(vals)
+    return uniq_x, uniq_y
+
+def make_dataframe_from_dicts(
+    data_dict_1,
+    data_dict_2,
+    splice_function = None,
+    ):
+
+    if (splice_function is None):
+        splice_function = lambda x: x
+
+    d2 = {splice_function(k):v for k,v in data_dict_2.iteritems()}
+
+    df_values = []
+    for lab1, val1 in data_dict_1.iteritems():
+        # Sanitise the label
+        lab_splice = splice_function(lab1)
+        # Check if the dictionary has the value
+        val2 = d2.get(lab_splice)
+        # Skip if not present in other values
+        if (val2 is None):
+            continue
+        df_values.append((lab1, val1, val2))
+
+    # Make and return dataframe
+    df = pd.DataFrame(data=df_values, columns=['key', 'val1', 'val2'])
+
+    return df
+
+class SplicePdbstr:
+
+    def __init__(self,
+        keep_chain_id = True,
+        keep_residue_name = True,
+        ):
+
+        self.keep_chain_id = keep_chain_id
+        self.keep_residue_name = keep_residue_name
+
+    def __call__(self, pdb_str):
+
+        if (self.keep_chain_id is False):
+            pdb_str = self.splice_chain_id(pdb_str, chain_id=' ')
+
+        if (self.keep_residue_name is False):
+            pdb_str = self.splice_residue_name(pdb_str, residue_name='   ')
+
+        return pdb_str
+
+    @staticmethod
+    def splice_chain_id(pdb_str, chain_id):
+        chain_id = str(chain_id)
+        assert len(chain_id) == 1
+        return ( pdb_str[:9] + chain_id + pdb_str[10:] )
+
+    @staticmethod
+    def splice_residue_name(pdb_str, residue_name):
+        residue_name = str(residue_name)
+        assert len(residue_name) == 3
+        return ( pdb_str[:5] + residue_name + pdb_str[8:] )
+
+class Plotter:
+
+    def __init__(self, y_min=None, y_max=None):
+        adopt_init_args(self, locals())
+    
+    def make_plot_from_dataframe(self,
+        data_frame,
+        label1,
+        label2,
+        filename,
+        ):
+
+        import numpy as np
+        from matplotlib import pyplot
+
+        labs = data_frame['key']
+        vals1 = data_frame['val1']
+        vals2 = data_frame['val2']
+
+        fig, axes = pyplot.subplots(nrows=1, ncols=2)
+
+        ############
+
+        ax1 = axes[0]
+
+        x = vals1
+        y = vals2
+
+        ax1.scatter(
+            x = x,
+            y = y,
+            s = 1,
+        )
+        ax1.set_xlabel(label1)
+        ax1.set_ylabel(label2)
+
+        ax1.set_ylim(ymin=self.y_min, ymax=self.y_max)
+
+        non_zero_bool = np.logical_not((x==0) | (y==0))
+        corr = round(np.corrcoef(x[non_zero_bool],y[non_zero_bool])[0][1], 3)
+        min_x, max_x = ax1.get_xlim()
+        min_y, max_y = ax1.get_ylim()
+
+        ax1.text(
+            x = (0.05*min_x + 0.95*max_x),
+            y = (0.05*min_y + 0.95*max_y),
+            s = corr,
+            horizontalalignment = 'right',
+            verticalalignment = 'bottom',
+        )
+
+        ############
+
+        ax2_1 = axes[1]
+        #ax2_2 = ax2_1.twinx()
+        ax2_2 = ax2_1
+
+        # New X-values
+        residue_numbers = map(get_residue_number_from_pdb_str, labs)
+
+        y1 = vals1
+        y2 = vals2
+
+        new_x1, new_y1 = sort_and_average(
+            labels = residue_numbers,
+            values = vals1,
+        )
+        new_x2, new_y2 = sort_and_average(
+            labels = residue_numbers,
+            values = vals2,
+        )
+
+        # Scatter plot the original values
+        ax2_1.scatter(
+            x = residue_numbers,
+            y = y1,
+            s = 1,
+            color = 'b',
+        )
+        ax2_2.scatter(
+            x = residue_numbers,
+            y = y2,
+            s = 1,
+            color = 'r',
+        )
+        
+        ax2_1.set_ylim(ymin=self.y_min, ymax=self.y_max)
+
+        # Line plots for the averaged values
+        handles = []
+        handles += ax2_1.plot(new_x1, new_y1, 'b-')
+        handles += ax2_2.plot(new_x2, new_y2, 'r-')
+        ax2_1.legend(handles=handles, labels=[label1, label2])
+
+        # Calculate the correlation coefficient per residue
+        non_zero_bool = np.logical_not((new_y1==0) | (new_y2==0))
+        corr = round(np.corrcoef(new_y1[non_zero_bool],new_y2[non_zero_bool])[0][1], 3)
+        min_x, max_x = ax2_1.get_xlim()
+        min_y, max_y = ax2_1.get_ylim()
+
+        ax2_1.text(
+            x = (0.95*min_x + 0.05*max_x),
+            y = (0.05*min_y + 0.95*max_y),
+            s = corr,
+            horizontalalignment = 'left',
+            verticalalignment = 'bottom',
+        )
+
+        ############
+
+        helper.write_and_close_fig(
+            fig = fig,
+            filename = filename,
+        )
+
+def run(params):
+
+    lg.setup_logging(
+        name = __name__,
+    )
+
+    json_files = params.input.json
+    json_paths = params.input.json_paths
+    json_labels = params.input.json_label
+
+    easy_directory(params.output.out_dir)
+
+    if (json_paths is not None):
+        json_paths = json_paths.split(',')
+        if len(json_paths) == 1:
+            # Use same path for all files
+            json_paths = json_paths * len(json_files)
+        else:
+            # Check same number of paths provided
+            assert len(json_paths) == len(json_files)
+    else:
+        json_paths = [None] * len(json_files)
+
+    if len(json_labels) > 0:
+        assert len(json_labels) == len(json_files)
+    else:
+        json_labels = [os.path.splitext(f)[0] for f in json_files]
+
+    splice_function = SplicePdbstr(
+        keep_chain_id = params.options.keep_chain_ids,
+        keep_residue_name = params.options.keep_residue_names,
+    )
+
+    plotter = Plotter(
+        y_min = params.options.y_min,
+        y_max = params.options.y_max,
+    )
+
+    all_json_data = []
+
+    for i, json_f in enumerate(json_files):
+
+        with open(json_f, 'r') as fh:
+            json_data = json.loads(fh.read())
+
+        json_p = json_paths[i]
+        json_data = extract_path_from_json(
+            json_data = json_data,
+            json_path = json_p,
+        )
+
+        if (params.options.split_json_data_by_chain is True):
+            chain_dict = {}
+            for k, v in json_data.iteritems():
+                c_id = get_chain_from_pdb_str(k)
+                chain_dict.setdefault(c_id,{}).setdefault(k,v)
+            for c_id, c_data in chain_dict.iteritems():
+                all_json_data.append(
+                    (json_labels[i]+'-chain_{}'.format(c_id), c_data)
+                )
+        else:
+            all_json_data.append(
+                (json_labels[i], json_data)
+            )
+
+    for i, (json_lab_1, json_1) in enumerate(all_json_data):
+        for j, (json_lab_2, json_2) in enumerate(all_json_data[i+1:]):
+
+            logger.heading('{} -- {}'.format(json_lab_1, json_lab_2))
+
+            output_prefix = os.path.join(
+                params.output.out_dir,
+                '{}-{}'.format(json_lab_1, json_lab_2),
+            )
+
+            data_frame = make_dataframe_from_dicts(
+                data_dict_1 = json_1,
+                data_dict_2 = json_2,
+                splice_function = splice_function,
+            )
+
+            if len(data_frame) == 0:
+                continue
+
+            plotter.make_plot_from_dataframe(
+                data_frame = data_frame,
+                label1 = json_lab_1,
+                label2 = json_lab_2,
+                filename = (output_prefix + '.png'),
+            )
+
+if __name__ == '__main__':
+    from giant.jiffies import run_default
+    run_default(
+        run = run,
+        master_phil = master_phil,
+        args = sys.argv[1:],
+        blank_arg_prepend = blank_arg_prepend,
+    )
+

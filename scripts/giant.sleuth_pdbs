@@ -1,0 +1,101 @@
+#!/usr/bin/env cctbx.python
+
+import os, sys
+import iotbx.pdb
+import pandas
+
+def realpath_and_filter(filenames):
+    filenames = [os.path.relpath(os.path.realpath(f)) for f in filenames]
+    filenames = sorted(set(filenames))
+    return filenames
+
+def sort_by_date(pdb_files):
+    return sorted(pdb_files, key=lambda x: os.path.getmtime(x))
+
+def get_r_values(pdb):
+    i = iotbx.pdb.input(pdb)
+    r = i.get_r_rfree_sigma()
+    return r
+
+def write_plots(
+    filename,
+    table,
+    ):
+
+    from matplotlib import pyplot as plt
+    try: 
+        plt.style.use('ggplot')
+    except Exception as e:
+        print(e)
+
+    fig, axis = plt.subplots()
+    axis_alt = axis.twinx()
+    
+    axis.set_xlabel('Filename')
+    axis.set_ylabel('R-values')
+
+    axis_alt.set_ylabel('R-free/R-work difference')
+    axis_alt.grid(False)
+
+    r_vals = 100. * table['r-free']
+    axis.plot(r_vals, 'r-D', label='r-free', zorder=5)
+    axis.axhline(min(r_vals), color='k', ls=':', zorder=4)
+
+    r_vals = 100. * table['r-work']
+    axis.plot(r_vals, 'g-D', label='r-work', zorder=5)
+    axis.axhline(min(r_vals), color='k', ls=':', zorder=4)
+
+    r_vals = 100. * table['r-gap']
+    axis_alt.plot(r_vals, 'b-D', label='r-gap', zorder=5)
+    #axis_alt.axhline(min(r_vals), color='k', ls=':', zorder=4)
+
+    axis.legend()
+
+    axis.set_xticks(range(len(table['file'])))
+    axis.set_xticklabels(table['file'])
+
+    xlabels = axis.get_xticklabels()
+    plt.setp(xlabels, rotation=90)
+
+    plt.tight_layout()
+
+    plt.show()
+    fig.savefig(filename)
+
+def run(args):
+
+    d_table = pandas.DataFrame(columns=['file', 'r-free', 'r-work', 'r-gap'])
+
+    pdb_files = [a for a in args if a.endswith('.pdb')]
+
+    pdb_files = realpath_and_filter(pdb_files)
+
+    pdb_files = sort_by_date(pdb_files)
+
+    print('\n'.join(pdb_files))
+
+    for p in pdb_files:
+
+        assert p.endswith('.pdb')
+
+        r_values = get_r_values(pdb=p)
+        if (r_values.r_free is None) or (r_values.r_work is None): 
+            continue
+
+        d_table.loc[len(d_table.index)] = {
+            'file' : p,
+            'r-free' : r_values.r_free,
+            'r-work' : r_values.r_work,
+            'r-gap' : r_values.r_free - r_values.r_work,
+        }
+
+    d_table.to_csv(os.path.join('r-values.csv'))
+
+    write_plots(
+        filename = os.path.join('r-values.png'),
+        table = d_table,
+    )
+
+if __name__ == '__main__':
+
+    run(args=sys.argv[1:])

@@ -1,0 +1,435 @@
+#!/usr/bin/env cctbx.python
+
+import os, sys, glob, shutil, itertools, json
+
+import logging as lg
+import numpy as np
+import pandas as pd
+
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+
+import libtbx.phil
+from libtbx.utils import Sorry, Failure
+
+############################################################################
+
+PROGRAM = 'giant.swerp'
+DESCRIPTION = """
+SWERP = SWeep Ensemble Refinement Parameters
+"""
+
+blank_arg_prepend = {
+  '.pdb':'input.pdb=',
+  '.mtz':'input.mtz=',
+  '.cif':'input.cif=',
+  '.sh':'sh_header=',
+}
+
+############################################################################
+
+master_phil = libtbx.phil.parse("""
+input {
+    pdb = None
+        .type = str
+    mtz = None
+        .type = str
+    cif = None
+        .type = str
+        .multiple = True
+    tls_selection = None
+        .type = str
+        .multiple = True
+    tls_pdb = None
+        .type = path
+    custom_arg = None
+        .type = str
+        .multiple = True
+}
+output {
+    out_dir = 'ensemble_refinement_sweep'
+        .type = str
+}
+sweep {
+    pTLS = None
+        .type = str
+        .multiple = True
+    wxray = None
+        .type = str
+        .multiple = True
+    tx = None
+        .type = str
+        .multiple = True
+}
+options {
+    require_tls = True
+        .type = bool
+    sh_header = None
+        .type = path 
+    queue_cmd = 'qsub'
+        .type = str
+}
+""", process_includes=True)
+
+############################################################################
+
+cmd_template = """
+cd {path}
+cp {input_pdb} input.pdb
+cp {input_mtz} input.mtz
+phenix.ensemble_refinement \\
+  input.pdb input.mtz {other_args} \\
+  ptls={pTLS} \\
+  tx={tx} \\
+  wxray_coupled_tbath_offset={wxray} \\
+>& er-{pTLS}-{wxray}-{tx}.log
+"""
+
+ER_LOG_COLUMNS = [
+    'step',
+    'time (s)',
+    'time (%)',
+    'Current R-work',
+    'Current R-free',
+    'Rolling R-work',
+    'Rolling R-free',
+    'Total R-work',
+    'Total R-free',
+    'Temperature (K)',
+    'WXRAY COL1',
+    'WXRAY COL2',
+]
+
+RFACTOR_TABLE_COLUMNS = [
+    'label', 
+    'R-work', 
+    'R-free', 
+    'Rf/Rw', 
+    'Rf-Rw', 
+]
+
+def set_defaults_and_validate(params):
+
+    if (not params.sweep.pTLS):
+        params.sweep.pTLS = (0.6, 0.7, 0.8, 0.9)
+    if (not params.sweep.wxray): 
+        params.sweep.wxray = (2.5, 5.0, 7.5)
+    if (not params.sweep.tx):
+        params.sweep.tx = (0.25, 0.75, 1.00)
+
+    if (params.input.tls_pdb is not None):
+        if not os.path.exists(params.input.tls_pdb):
+            raise IOError('tls_pdb does not exist: {}'.format(params.input.tls_pdb))
+        params.sweep.pTLS = [-1]
+    elif (params.options.require_tls is True): 
+        if len(params.input.tls_selection) == 0:
+            raise Sorry('No TLS selections provided (tls_selection=...).')
+
+def sh_filename(directory):
+    return os.path.join(directory, 'run.sh')
+
+def json_filename(directory):
+    return os.path.join(directory, 'run_info.json')
+
+#####
+
+def extract_final_rfactors(log_file):
+    log_string = open(log_file, 'r').read()
+    log_data = log_string[log_string.find('FINAL R'):].split('\n')[0].split()
+
+    label = os.path.basename(os.path.dirname(log_file))
+    rwork = float(log_data[3])
+    rfree = float(log_data[6])
+    ratio = float(log_data[9])
+    rdiff = (rfree - rwork)
+
+    return {
+        'label' : label, 
+        'R-work' : 100.*rwork, 
+        'R-free' : 100.*rfree, 
+        'Rf/Rw' : ratio, 
+        'Rf-Rw' : 100.*rdiff, 
+    }
+
+def extract_all_rfactors(log_file):
+    lines = open(log_file, 'r').readlines()
+    results = []
+    for line in lines:
+        if line[0] == '~':
+            line = line.replace('~', '').replace('|', '').split()
+            if len(line) == 12:
+                results.append(line)
+    # Convert to pandas
+    results_df = pd.DataFrame(
+        columns = ER_LOG_COLUMNS,
+        data = np.array(results, dtype=float),
+        )
+    return results_df
+
+def plot_run_rfactors(results, filename):
+
+    # Create plots with pre-defined labels.
+    time         = results['time (s)'].values
+    current_work = results['Current R-work'].values
+    current_free = results['Current R-free'].values
+    running_work = results['Rolling R-work'].values
+    running_free = results['Rolling R-free'].values
+    total_work   = results['Total R-work'].values
+    total_free   = results['Total R-free'].values
+    # Plot
+    plot_args = {
+        'markersize':5, 
+        'linewidth':1, 
+        'markevery':range(0,len(time),int(len(time)/10-1)),
+        'markerfacecolor':'k', 
+        'markeredgecolor':'k', 
+        }
+
+    fig, ax = plt.subplots()
+    ax.plot(time, current_free, 'b-', label='Current R-free',  alpha=0.5, **plot_args)
+    ax.plot(time, current_work, 'r-',  label='Current R-work', alpha=0.5, **plot_args)
+    ax.plot(time, running_free, 'b-', label='Rolling R-free',  marker='|', **plot_args)
+    ax.plot(time, running_work, 'r-',  label='Rolling R-work', marker='|', **plot_args)
+    ax.plot(time, total_free,   'b-', label='Total R-free',    marker='.', **plot_args)
+    ax.plot(time, total_work,   'r-',  label='Total R-work',   marker='.', **plot_args)
+    plt.title('Simulation R-values')
+    plt.xlabel('Time (ps)')
+    plt.ylabel('R-factor')
+    # Show variance, ignoring first 1000 macrocycles
+    plt.legend(
+        [
+        'Curr. R-free',
+        '{0} (RMS {1:.3f}%)'.format('Curr. R-work', np.var(current_work[1000:])**0.5),
+        'Roll. R-free',
+        '{0} (RMS {1:.3f}%)'.format('Roll. R-work', np.var(running_work[1000:])**0.5),
+        'Total R-free',
+        'Total R-work',
+        ], 
+        loc = 'upper left',
+        bbox_to_anchor = (1.0, 1.0),
+        )
+    plt.tight_layout()
+    plt.savefig(filename, dpi=200)
+    plt.close(fig)
+
+def show_r_factors_table(table):
+
+    logger = lg.getLogger(__name__)
+
+    logger.heading('Unsorted')
+    logger(table)
+
+    logger.heading('Sorted (R-work)')
+    logger(table.sort_values('R-work', ascending=False))
+
+    logger.heading('Sorted (R-free)')
+    logger(table.sort_values('R-free', ascending=False))
+
+    logger.heading('Summary statistics (all)')
+    filt_cols = ['R-work', 'R-free', 'Rf/Rw', 'Rf-Rw']
+    filt_rows = [ 'count', 'min', '25%', '50%', '75%', 'max', 'mean', 'std']
+    desc = table.describe()
+    desc = desc.loc[filt_rows]
+    desc = desc[filt_cols]
+    try: 
+        import tabulate
+        logger(tabulate.tabulate(desc.T, headers='keys', tablefmt='psql'))
+    except:
+        logger(str(desc))
+    logger('')
+
+    logger.heading('Summary statistics (some)')
+    filt_cols = ['R-work', 'R-free', 'Rf/Rw', 'Rf-Rw']
+    filt_rows = ['min', 'mean', 'max', 'std']
+    desc = table.describe()
+    desc = desc.loc[filt_rows]
+    desc = desc[filt_cols]
+    try: 
+        import tabulate
+        logger(tabulate.tabulate(desc.T, headers='keys', tablefmt='psql'))
+    except:
+        logger(str(desc.T))
+    logger('')
+
+#####
+
+def make_er_sweep(params): 
+    
+    logger = lg.getLogger(__name__)
+
+    assert os.path.exists(params.output.out_dir)
+
+    set_defaults_and_validate(params) 
+
+    # If provided, override default variable
+    if params.options.sh_header: 
+        sh_header = open(params.options.sh_header, 'r').read()
+    else: 
+        sh_header = "#!/usr/bin/env bash"
+
+    master_sh = os.path.join(params.output.out_dir, 'run_all_er.sh')
+    sweep_dir = os.path.join(params.output.out_dir, 'sweep_dirs')
+    os.mkdir(sweep_dir)
+
+    for i, (pTLS, wxray, tx) in enumerate(
+        itertools.product(
+            params.sweep.pTLS,
+            params.sweep.wxray,
+            params.sweep.tx,
+            )
+        ):
+
+        o_dir = os.path.join(sweep_dir, "pTLS-{}-WX-{}-TX-{}".format(pTLS,wxray,tx))
+        os.mkdir(o_dir)
+        logger('Processing '+o_dir)
+
+        # Output files
+        o_sh = sh_filename(o_dir)
+        o_json = json_filename(o_dir) 
+
+        # Format cmd for writing
+        other_args = []
+        if (params.input.tls_pdb is not None): 
+            other_args.append('import_tls_pdb="{}"'.format(os.path.relpath(params.input.tls_pdb, start=o_dir)))
+        elif (params.input.tls_selection):
+            other_args.extend(['tls_group_selections="{}"'.format(s) for s in params.input.tls_selection])
+        # Add custom args
+        if (params.input.custom_arg):
+            other_args.extend(params.input.custom_arg)
+        # Output command
+        cmd = cmd_template.format(
+            path = os.path.abspath(o_dir),
+            input_pdb = os.path.relpath(params.input.pdb, start=o_dir), 
+            input_mtz = os.path.relpath(params.input.mtz, start=o_dir), 
+            other_args = ('' if (not other_args) else ' \\\n  '.join(['']+other_args)),
+            pTLS = pTLS,
+            wxray = wxray,
+            tx = tx,
+        )
+
+        # Command for running ER
+        with open(o_sh, "w") as fh:
+            fh.write(sh_header + '\n')
+            fh.write(cmd + '\n')
+
+        # Data for this run
+        json_data = {
+                'pTLS' : pTLS, 
+                'wxray' : wxray,
+                'tx' : tx,
+            }
+
+        with open(o_json, "w") as fh:
+            fh.write(
+                json.dumps(json_data, indent=2),
+                )
+
+        # Add sh command to master file
+        os.system("chmod +x {}".format(o_sh))
+        with open(master_sh, 'a') as mfh:
+            mfh.write("{sub_cmd} ./{path}\n".format(
+                sub_cmd = params.options.queue_cmd,
+                path = os.path.relpath(o_sh, start=params.output.out_dir)),
+            )
+
+    return None
+
+def read_er_sweep(params):
+
+    logger = lg.getLogger(__name__)
+
+    assert os.path.exists(params.output.out_dir)
+
+    r_factors_table = None
+
+    for d in sorted(glob.glob(os.path.join(params.output.out_dir,'sweep_dirs/*'))):
+        if not os.path.isdir(d):
+            continue
+
+        logger('Parsing '+d)
+
+        # Extract data from the logfile
+        o_log = os.path.join(d, 'input_ensemble.log')
+        if not os.path.exists(o_log):
+            raise Sorry('no log file in {}'.format(d))
+
+        try:
+            final_rfactors = extract_final_rfactors(o_log)
+        except:
+            continue
+
+        # Extract meta from the json
+        o_json = json_filename(d)
+        if not os.path.exists(o_json):
+            raise Failure('No JSON file')
+        run_data = json.loads(open(o_json,'r').read())
+
+        # Create table if needed
+        if (r_factors_table is None):
+            r_factors_table = pd.DataFrame(
+                columns = RFACTOR_TABLE_COLUMNS + run_data.keys(),
+                )
+
+        # Add meta to result dict
+        final_rfactors.update(run_data)
+
+        # Add to table
+        r_factors_table.loc[len(r_factors_table)] = final_rfactors
+
+        # plot r-factors for directory
+        if (True):
+            all_r_factors = extract_all_rfactors(o_log)
+            plot_run_rfactors(
+                results = all_r_factors,
+                filename=o_log.replace('.log', '.png'),
+                )
+    
+    r_factors_table = r_factors_table.set_index('label')
+
+    show_r_factors_table(r_factors_table)
+    r_factors_table.to_csv(
+        os.path.join(params.output.out_dir, 'ensemble_sweep_results.csv'),
+        )
+
+def run(params):
+
+    new_sweep = False
+    if not os.path.exists(params.output.out_dir):
+        new_sweep = True
+
+    from pandemic.logs import setup_logging
+    if not os.path.exists(params.output.out_dir):
+        os.mkdir(params.output.out_dir)
+    logger = setup_logging(
+        name = __name__, # setup root logging for __name__ == __main__
+        log_file = os.path.join(params.output.out_dir, 'swerp.log'),
+        warning_handler_name = 'warnings',
+        debug = False,
+    )
+
+    import logging as lg
+    logger = lg.getLogger(__name__)
+
+    if (new_sweep is True):
+        make_er_sweep(params)
+    else: 
+        read_er_sweep(params)
+
+#######################################
+
+if __name__=='__main__':
+
+    from pandemic.logs import setup_root_logging
+    setup_root_logging()
+
+    from giant.jiffies import run_default
+
+    run_default(
+        run                 = run,
+        master_phil         = master_phil,
+        args                = sys.argv[1:],
+        blank_arg_prepend   = blank_arg_prepend,
+        program             = PROGRAM,
+        description         = DESCRIPTION,
+    )

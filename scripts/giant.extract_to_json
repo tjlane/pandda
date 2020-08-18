@@ -1,0 +1,154 @@
+#!/usr/bin/env cctbx.python
+
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
+from giant.exceptions import Sorry, Failure
+from giant.maths import EIGHTPISQ
+
+import os, sys, json, collections
+
+#######################################
+
+blank_arg_prepend = {
+    '.pdb' : 'input.pdb=',
+}
+
+import libtbx.phil
+master_phil = libtbx.phil.parse("""
+input {
+    pdb = None
+        .type = path
+        .multiple = True
+    selection_string = "not (resname HOH)"
+        .type = str
+}
+output {
+    write_output_pdbs = rmsf
+        .type = choice(multi=True)
+}
+""")
+
+#######################################
+
+def extract_rmsf_dict(hierarchy):
+
+    from scitbx.array_family import flex
+
+    h = hierarchy
+    atom_coords = collections.OrderedDict()
+    rmsf_dict = collections.OrderedDict()
+
+    if h.models_size() < 2:
+        return {}
+
+    for model in h.models():
+        for a in model.atoms():
+            lab = a.pdb_label_columns()
+            xyz = a.xyz
+            atom_coords.setdefault(lab, []).append(xyz)
+
+    logger('Calculating RMSFs')
+    for lab, coords in atom_coords.iteritems():
+        coords = flex.vec3_double(coords)
+        rmsf = (coords - coords.mean()).rms_length()
+        rmsf_dict[lab] = rmsf
+        logger('{}\t{:.1f}'.format(lab, rmsf))
+
+    return rmsf_dict
+
+def extract_bfac_dict(hierarchy):
+
+    h = hierarchy
+    bfac_dict = collections.OrderedDict()
+
+    if h.models_size() != 1:
+        return {}
+
+    logger('Extracting B-factors')
+    for a in h.atoms():
+        lab = a.pdb_label_columns()
+        b = a.b
+        bfac_dict[lab] = b
+        logger('{}\t{:.1f}'.format(lab, b))
+
+    return bfac_dict
+
+def write_structure_with_bvalues(
+    hierarchy,
+    b_value_dict,
+    filename,
+    zero_other_b=True,
+    ):
+
+    from scitbx.array_family import flex
+
+    h_copy = hierarchy.deep_copy()
+
+    if (zero_other_b is True):
+        h_copy.atoms().set_b(
+            flex.double(h_copy.atoms_size(), 0.0)
+        )
+
+    for a in h_copy.atoms():
+        a.b = b_value_dict.get(a.pdb_label_columns(), 0.0)
+
+    h_copy.write_pdb_file(filename)
+
+def run(params):
+
+    lg.setup_logging(
+        name = __name__,
+    )
+
+    for pdb_file in params.input.pdb:
+
+        logger.heading(pdb_file)
+
+        pdb_root = os.path.splitext(pdb_file)[0]
+
+        import iotbx.pdb
+        h = iotbx.pdb.hierarchy.input(pdb_file).hierarchy
+
+        if (params.input.selection_string is not None):
+            ac = h.atom_selection_cache()
+            h = h.select(
+                ac.selection(params.input.selection_string)
+            )
+
+        rmsf_data = extract_rmsf_dict(hierarchy=h)
+        bfac_data = extract_bfac_dict(hierarchy=h)
+        bfac_rmsf_data = collections.OrderedDict([(k, (v/EIGHTPISQ)**0.5) for k,v in bfac_data.iteritems()])
+
+        json_data = {
+            'rmsf'      : rmsf_data,
+            'bfactors'  : bfac_data,
+            'bfactors_as_rmsfs'  : bfac_rmsf_data,
+        }
+
+        json_file = (pdb_root + '.json')
+        logger('Writing json file: {}'.format(json_file))
+        with open(json_file, 'w') as fh:
+            fh.write(
+                json.dumps(json_data, indent=2)
+            )
+
+        if (rmsf_data is not None) and ('rmsf' in params.output.write_output_pdbs):
+
+            filename = (pdb_root + '-rmsf.pdb')
+            logger('Writing rmsfs to structure as B-factors: {}'.format(filename))
+            write_structure_with_bvalues(
+                hierarchy = h,
+                b_value_dict = rmsf_data,
+                filename = filename,
+                zero_other_b = True,
+            )
+
+if __name__ == '__main__':
+    from giant.jiffies import run_default
+    run_default(
+        run = run,
+        master_phil = master_phil,
+        args = sys.argv[1:],
+        blank_arg_prepend = blank_arg_prepend,
+    )

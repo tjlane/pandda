@@ -1,0 +1,2 @@
+#!/bin/sh
+cctbx.python -Qnew -m giant.jiffies.align_structures "$@"

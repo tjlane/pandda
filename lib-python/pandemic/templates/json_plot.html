@@ -1,0 +1,100 @@
+{% macro json_plot(plot) %}
+<script type="text/javascript" class="init">
+  $(document).ready(function() {
+    plot_data = {{ plot.json }}
+
+    function rescaleToInterval(data, tmin=1, tmax=20) {
+      var dmin = Math.min.apply(null, data),
+          dmax = Math.max.apply(null, data);
+      var normed = data.map(function(x) { return ((x-dmin)*(tmax-tmin)/(dmax-dmin))+tmin; });
+      return normed
+    }
+
+    function makeTrace(ix,iy) {
+      return {
+        x: plot_data['data'][ix],
+        y: plot_data['data'][iy],
+        mode: 'markers',
+        type: 'scatter',
+        line: {
+          shape: 'marker' ,
+          color: 'blue'
+        },
+        text: plot_data['columns'],
+      };
+    }
+    
+    function makeSelectAxisButtons(ax) {
+      var buttons = [];
+      buttons.push({
+        method: '',
+        args: [],
+        label: 'Select '+ax.toUpperCase()+' Axis'
+      });
+      for (i=0; i < plot_data['index'].length; i++) {
+        buttons.push({
+          method: 'update',
+          args: [{[ax]: [plot_data['data'][i]]},
+                 {[ax+'axis']: {'title': plot_data['index'][i]}}],
+          label: plot_data['index'][i]
+        });
+      }
+      return buttons;
+    }
+    
+    function makeSelectColourButtons() {
+      var buttons = [];
+      buttons.push({
+        method: '',
+        args: [],
+        label: 'Select Marker Size'
+      }); 
+      buttons.push({
+        method: 'restyle',
+        args: ['marker.size', 5],
+        label: 'Fixed (Default)'
+      }); 
+      for (i=0; i < plot_data['index'].length; i++) {
+        buttons.push({
+          method: 'restyle',
+          args: ['marker.size', [rescaleToInterval(plot_data['data'][i])]],
+          label: plot_data['index'][i]
+        });
+      }
+      return buttons; 
+    }
+  
+    function makeLayout(ix,iy) {
+      return {
+        xaxis: {title: plot_data['index'][ix]},
+        yaxis: {title: plot_data['index'][iy]},
+        autosize: false,
+        width: 0.95*$('.container').innerWidth(),
+        height: 500,
+        automargin: true,
+        hovermode: 'closest',
+        annotations: [
+          {text:'', x:1.0, y:-0.0, xanchor:'right', yanchor:'top', xref:'paper', yref:'paper', showarrow:false},
+          {text:'', x:1.0, y:-0.2, xanchor:'right', yanchor:'top', xref:'paper', yref:'paper', showarrow:false},
+          {text:'', x:1.0, y:-0.4, xanchor:'right', yanchor:'top', xref:'paper', yref:'paper', showarrow:false}
+        ],
+        updatemenus: [
+          {x: 0.0, y: 1.1, xanchor: 'left', yanchor: 'bottom', buttons: makeSelectAxisButtons('x')}, 
+          {x: 0.5, y: 1.1, xanchor: 'left', yanchor: 'bottom', buttons: makeSelectAxisButtons('y')}
+        ]
+      }
+    } 
+
+    function makePlot(ix, iy) {
+        trace = makeTrace(ix=ix, iy=iy);
+        layout = makeLayout(ix=ix, iy=iy);
+        Plotly.plot('{{ plot.id }}', [trace], layout);
+    }
+
+    var default_ix = {% if plot.default_x is defined %} plot_data['index'].indexOf("{{ plot.default_x }}") {% else %} 0 {% endif %};
+    var default_iy = {% if plot.default_y is defined %} plot_data['index'].indexOf("{{ plot.default_y }}") {% else %} 1 {% endif %};
+    makePlot(ix=default_ix, iy=default_iy);
+
+  });
+</script> 
+{%- endmacro %}

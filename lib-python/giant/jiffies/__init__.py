@@ -1,9 +1,28 @@
-import os, sys, copy
+import giant.logs as lg
+logger = lg.getLogger(__name__)
 
-import libtbx.phil
-from libtbx.utils import Sorry
+import os, sys
+
+from giant.exceptions import Sorry, Failure
 
 from giant import module_info
+
+def process_exception_default(exception):
+    """Append default informative messages to exception messages"""
+
+    try:
+        raise
+    except Failure as e:
+        e.args = (e.args[0]+'\n\n(This type of error normally indicates that something has gone wrong within the program that is not fixable by the user.'\
+                            '\nYou may need to contact the developer -- for contact info please visit https://pandda.bitbucket.io .)\n',) + \
+                e.args[1:]
+        raise
+    except Sorry as e:
+        e.args = (e.args[0]+'\n\n(This type of error normally indicates that something is wrong with the input provided to the program that is fixable.)\n',) + \
+                e.args[1:]
+        raise
+    else:
+        raise
 
 class run_default(object):
 
@@ -11,10 +30,15 @@ class run_default(object):
 
     def __init__(self, run, master_phil, args, blank_arg_prepend=None, program='', description=''):
         """Run a program via a standard setup of functions and objects"""
-        print(self._module_info.header_text.format(program=program, description=description))
+        logger = lg.setup_logging_basic(
+            name = '__main__', # setup root logging when using run_default
+        )
+        logger(self._module_info.header_text.format(program=program, description=description))
         working_phil = extract_params_default(master_phil=master_phil, args=args, blank_arg_prepend=blank_arg_prepend, module_info=self._module_info)
-        out = run(params=working_phil.extract())
-
+        try:
+            out = run(params=working_phil.extract())
+        except Exception as e:
+            process_exception_default(exception=e)
 
 def extract_params_default(master_phil, args, blank_arg_prepend=None, home_scope=None, module_info=None):
     """Extract the parameters by a default script"""
@@ -24,11 +48,12 @@ def extract_params_default(master_phil, args, blank_arg_prepend=None, home_scope
     return working_phil
 
 def show_version_and_exit_maybe(module_info, args):
-    if '--version' not in args: return
+    if '--version' not in args:
+        return
     if module_info is None:
-        print 'no version information available'
+        print('no version information available')
     else:
-        print '{} version: {}'.format(module_info.name, module_info.version)
+        print('{} version: {}'.format(module_info.name, module_info.version))
     sys.exit()
 
 def show_defaults_and_exit_maybe(master_phil, args):
@@ -53,6 +78,9 @@ def show_defaults_and_exit_maybe(master_phil, args):
 
 def parse_phil_args(master_phil, args, blank_arg_prepend=None, home_scope=None):
 
+    import copy
+    import libtbx.phil
+
     if blank_arg_prepend is None:
         pass
     elif isinstance(blank_arg_prepend, dict):
@@ -73,8 +101,8 @@ def parse_phil_args(master_phil, args, blank_arg_prepend=None, home_scope=None):
     # Remove them from the original lists
     [args.remove(f) for f in eff_files]
     # Parse the 'eff' files - these should contain phils
-    #eff_sources = [libtbx.phil.parse(open(f, 'r').read()) for f in eff_files]
-    eff_sources = [cmd_interpr.process(open(f, 'r').read()) for f in eff_files]
+    eff_sources = [libtbx.phil.parse(open(f, 'r').read()) for f in eff_files]
+    #eff_sources = [cmd_interpr.process(open(f, 'r').read()) for f in eff_files]
 
     # Process input arguments
     arg_sources = []

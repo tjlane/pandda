@@ -1,54 +1,247 @@
-# Adapted from Code by Sebastian Kelm
+import giant.logs as lg
+logger = lg.getLogger(__name__)
 
-import os, sys, tempfile
+import os, sys
 import pandas
 
-from libtbx.utils import Sorry, Failure
+from giant.exceptions import Sorry, Failure
 
-from bamboo.common.command import CommandManager
-from bamboo.ccp4_utils import MtzSummary
-
-class Edstats(object):
+from libtbx import adopt_init_args
 
 
-    def __init__(self, mtz_file, pdb_file, f_label=None):
-        scores, command = score_with_edstats_to_dict(mtz_file=mtz_file, pdb_file=pdb_file, f_label=f_label)
-        self.scores = pandas.DataFrame.from_dict(scores)
-        self._command = command
+class EdstatsFactory:
 
-        if self.scores.empty and self._command.error:
-            raise Failure('EDSTATS has failed to run (error message below)\n=========>\n{!s}\n=========>'.format(self._command.error))
+    # Output columns in order
+    edstats_columns = [
+        'RT', 'CI', 'RN',
+        'BAm', 'NPm', 'Rm', 'RGm', 'SRGm', 'CCSm', 'CCPm', 'ZCCPm', 'ZOm', 'ZDm', 'ZD-m', 'ZD+m',
+        'BAs', 'NPs', 'Rs', 'RGs', 'SRGs', 'CCSs', 'CCPs', 'ZCCPs', 'ZOs', 'ZDs', 'ZD-s', 'ZD+s',
+        'BAa', 'NPa', 'Ra', 'RGa', 'SRGa', 'CCSa', 'CCPa', 'ZCCPa', 'ZOa', 'ZDa', 'ZD-a', 'ZD+a',
+        'MN', 'CP', 'NR'
+    ]
 
-    def extract_residue_group_scores(self, residue_group, data_table=None, rg_label=None, column_suffix=''):
+    # Output datatypes
+    edstats_dtypes = {
+        'RT' : str, # Keep as string for use as labels
+        'CI' : str, # Keep as string for use as labels
+        'RN' : str, # Keep as string for use as labels
+        'MN' : str, # Keep as string for use as labels
+        'CP' : str, # Keep as string for use as labels
+        'NR' : str, # Keep as string for use as labels
+        'BAm' : float, 'NPm' : pandas.Int64Dtype(),
+        'BAs' : float, 'NPs' : pandas.Int64Dtype(),
+        'BAa' : float, 'NPa' : pandas.Int64Dtype(),
+        'Rm' : float, 'RGm' : float, 'SRGm' : float,
+        'Rs' : float, 'RGs' : float, 'SRGs' : float,
+        'Ra' : float, 'RGa' : float, 'SRGa' : float,
+        'CCSm' : float, 'CCPm' : float, 'ZCCPm' : float,
+        'CCSs' : float, 'CCPs' : float, 'ZCCPs' : float,
+        'CCSa' : float, 'CCPa' : float, 'ZCCPa' : float,
+        'ZOm' : float, 'ZDm' : float, 'ZD-m' : float, 'ZD+m' : float,
+        'ZOs' : float, 'ZDs' : float, 'ZD-s' : float, 'ZD+s' : float,
+        'ZOa' : float, 'ZDa' : float, 'ZD-a' : float, 'ZD+a' : float,
+    }
+
+    def __init__(self,
+        parse_logfile = False,
+        ):
+        adopt_init_args(self, locals())
+
+    def __call__(self,
+        pdb_file,
+        mtz_file,
+        f_label = None,
+        ):
+
+        scores_df, dispatcher = self.run_edstats_basic(
+            pdb_file = pdb_file,
+            mtz_file = mtz_file,
+            f_label = f_label,
+        )
+
+        log_data = None
+        if (self.parse_logfile is True):
+            log_data = EdstatsLogProcessor(logtext=dispatcher.result.stdout)
+
+        return EdstatsResults(
+            scores_df = scores_df,
+            log_data = log_data,
+        )
+
+    def run_edstats_basic(self,
+        pdb_file,
+        mtz_file,
+        f_label = None,
+        ):
+
+        import tempfile
+
+        if not os.path.exists(pdb_file):
+            raise IOError('PDB file for edstats does not exist! {!s}'.format(pdb_file))
+        if not os.path.exists(mtz_file):
+            raise IOError('MTZ file for edstats does not exist! {!s}'.format(mtz_file))
+
+        # Create a file handle and path for the output
+        temp_handle, temp_path = tempfile.mkstemp(suffix='.table', prefix='edstats_')
+
+        # Collate summary of MTZ file
+        from giant.io.mtz import MtzSummary
+        m_summ = MtzSummary(mtz_file)
+
+        # Use column labels if given
+        if (f_label is not None) and (f_label not in m_summ.summary_dict['colheadings']):
+            raise Sorry(
+                'Selected f_label ({}) not found in mtz file ({}) -- mtz contains columns {}'.format(
+                    f_label,
+                    mtz_file,
+                    m_summ.summary_dict['colheadings'],
+                )
+            )
+        # else guess the labels in the mtzfile
+        else:
+            f_label = m_summ.labels.f
+
+        # Check for f_label
+        if (not f_label):
+            raise Sorry(
+                'No F label selected/found in mtz file: {!s} -- mtz contains columns {}'.format(
+                    mtz_file,
+                    m_summ.summary_dict['colheadings'],
+                )
+            )
+
+        # Initialise Command Manager to run edstats
+        from giant.dispatcher import Dispatcher
+        prog = Dispatcher('edstats.pl')
+        prog.extend_args([
+            '-hklin', mtz_file,
+            '-xyzin', pdb_file,
+            '-output', temp_path,
+            '-flabel', f_label,
+            '-noerror',
+        ])
+
+        # Log command
+        logger(prog.as_string())
+
+        # Run!
+        prog.run()
+
+        # Read the output
+        with open(temp_path, 'r') as f:
+            table_str = f.read()
+        os.remove(temp_path)
+
+        # Convert to buffer for reading
+        import io
+        table_str_io = io.StringIO(unicode(table_str))
+
+        # 0   RT:   Residue type (3-letter code).
+        # 1   CI:   2 characters: chain ID (reset to underscore if blank) and alternate location indicator (if -usealt is specified).
+        # 2   RN:   Residue name (including insertion code if present).
+        # 39. MN:    Model number.
+        # 40. CP:    PDB chain ID.
+        # 41. NR:    PDB residue no.
+
+        # Convert to dataframe
+        df = pandas.read_csv(
+            table_str_io,
+            #index_col = (39, 40, 2),  # MODEL, CHAIN, RESID
+            delim_whitespace = True,
+            dtype = self.edstats_dtypes,
+        )
+
+        # Assign index (must be done separately to prevent conversion to float)
+        df = df.set_index(['MN', 'CP', 'RN'])
+
+        assert list(df.index.names) == ['MN', 'CP', 'RN']
+        assert list(df.columns) == (self.edstats_columns[0:2] + self.edstats_columns[3:39] + self.edstats_columns[41:])
+
+        return df, prog
+
+
+class EdstatsResults:
+
+    def __init__(self,
+        scores_df,
+        log_data = None,
+        ):
+
+        self.scores_df = scores_df
+        self.log_data = log_data
+
+    def get_label(self, residue_group):
+        rg = residue_group
+        model_no = rg.parent().parent().id.strip()
+        chain_id = rg.parent().id.strip()
+        res_id = rg.resid().strip()
+        if model_no == '':
+            model_no = '1'
+        if chain_id == '':
+            chain_id = '_'
+        return (model_no, chain_id, res_id)
+
+    def extract_residue_group_scores(self, residue_group=None, residue_group_label=None):
         """Extract density quality metrics for a residue group from precalculated edstats scores"""
 
+        if [residue_group, residue_group_label].count(None) != 1:
+            raise ValueError('Provide EITHER residue_group OR residue_group_label')
+
+        # Shortcuts
         rg = residue_group
-        # Set defaults
-        if rg_label is None:    rg_label = (rg.unique_resnames()[0]+'-'+rg.parent().id+'-'+rg.resseq+rg.icode).replace(' ','')
-        if data_table is None:  data_table = pandas.DataFrame(index=[rg_label], column=[])
-        # Check validity
-        if len(rg.unique_resnames()) != 1: raise Failure(rg_label+': More than one residue name associated with residue group -- cannot process')
+        rg_label = residue_group_label
+
+        if (rg_label is None):
+            rg_label = self.get_label(residue_group=rg)
+
+        # Check label associated with a record
+        if not self.scores_df.index.contains(rg_label):
+            raise KeyError('The given label does not have a corresponding result: {}'.format(rg_label))
 
         # Extract residue scores
-        ed_scores = self.scores[(rg.unique_resnames()[0], rg.parent().id, rg.resseq_as_int(), rg.icode)]
+        ed_scores = self.scores_df.loc[rg_label]
+
         # Append scores to data_table
-        data_table.set_value(index=rg_label, col='RSCC'+column_suffix, value=ed_scores['CCSa'])
-        data_table.set_value(index=rg_label, col='RSR' +column_suffix, value=ed_scores['Ra']  )
-        data_table.set_value(index=rg_label, col='B_AV'+column_suffix, value=ed_scores['BAa'] )
-        data_table.set_value(index=rg_label, col='RSZO'+column_suffix, value=ed_scores['ZOa'] )
-        data_table.set_value(index=rg_label, col='RSZD'+column_suffix, value=ed_scores['ZDa'] )
+        output_dict = {
+            'rscc' : ed_scores['CCSa'],
+            'rsr'  : ed_scores['Ra'],
+            'b_av' : ed_scores['BAa'],
+            'rszo' : ed_scores['ZOa'],
+            'rszd' : ed_scores['ZDa'],
+        }
 
-        return data_table
+        return output_dict
 
 
-class EdstatsLogSummary:
+class EdstatsLogProcessor:
     """Class to process, store and present the output from edstats.pl"""
 
-
     def __init__(self, logtext):
+
         self.logtext = logtext
+
         self.mean_biso = None
-        self.rms_scores = {'atm_all_ZD+':None,'atm_all_ZD-':None,'atm_all_ZO':None,'atm_main_ZD+':None,'atm_main_ZD-':None,'atm_main_ZO':None,'atm_side_ZD+':None,'atm_side_ZD-':None,'atm_side_ZO':None,'het_all_ZD+':None,'het_all_ZD-':None,'het_all_ZO':None,'het_main_ZD+':None,'het_main_ZD-':None,'het_main_ZO':None,'het_side_ZD+':None,'het_side_ZD-':None,'het_side_ZO':None}
+
+        self.rms_scores = {
+            'atm_all_ZD+' : None,
+            'atm_all_ZD-' : None,
+            'atm_all_ZO' : None,
+            'atm_main_ZD+' : None,
+            'atm_main_ZD-' : None,
+            'atm_main_ZO' : None,
+            'atm_side_ZD+' : None,
+            'atm_side_ZD-' : None,
+            'atm_side_ZO' : None,
+            'het_all_ZD+' : None,
+            'het_all_ZD-' : None,
+            'het_all_ZO' : None,
+            'het_main_ZD+' : None,
+            'het_main_ZD-' : None,
+            'het_main_ZO' : None,
+            'het_side_ZD+' : None,
+            'het_side_ZD-' : None,
+            'het_side_ZO' : None,
+        }
 
         # Populate fields
         self._parselogtext()
@@ -76,119 +269,4 @@ class EdstatsLogSummary:
                     self.rms_scores['_'.join(['het','all',score])] = float(all_val)
 
 ########################################################################################################
-
-def score_file_with_edstats(mtz_file, pdb_file):
-    """Score pdb file against electron density"""
-
-    # Score the complex with Edstats
-    edstats = Edstats(mtz_file=mtz_file, pdb_file=pdb_file)
-    # Process the std out of the program
-    summary = EdstatsLogSummary(edstats._command.output)
-
-    return edstats, summary
-
-def score_with_edstats_to_dict(mtz_file, pdb_file, f_label=None):
-    """Scores residues against density, then converts to dict"""
-
-    # Generate the list of the EDSTATS scores for each residue
-    scores, header, command = score_with_edstats_to_list(mtz_file, pdb_file, f_label=f_label)
-    # Create dict for the mapping between residue_id and scores
-    mapping = {}
-    for label, values in scores:
-        hash = {}
-        for k,v in zip(header,values):
-            hash[k] = v
-        mapping[label] = hash
-
-    return mapping, command
-
-def score_with_edstats_to_list(mtz_file, pdb_file, f_label=None):
-    """Scores residues against density, then returns list"""
-
-    assert os.path.exists(mtz_file), 'MTZ file for edstats does not exist! {!s}'.format(mtz_file)
-    assert os.path.exists(pdb_file), 'PDB file for edstats does not exist! {!s}'.format(mtz_file)
-
-    # Create a file handle and path for the output
-    temp_handle, temp_path = tempfile.mkstemp(suffix='.table', prefix='edstats_')
-
-    # Collate summary of MTZ file
-    m_summ = MtzSummary(mtz_file)
-
-    # Use column labels if given
-    if (f_label is not None) and (f_label not in m_summ.summary['colheadings']):
-        raise Sorry('Selected f_label ({}) not found in mtz file ({}) -- mtz contains columns {}'.format(f_label, mtz_file, m_summ.summary['colheadings']))
-    # else guess the labels in the mtzfile
-    else:
-        f_label = m_summ.label.f
-
-    # Check for f_label
-    if not f_label:
-        raise Sorry('No F label selected/found in mtz file: {!s} -- mtz contains columns {}'.format(mtz_file, m_summ.summary['colheadings']))
-
-    # Run EDSTATS on the files
-    try:
-        # Initialise Command Manager to run edstats
-        command = CommandManager('edstats.pl')
-        command.add_command_line_arguments(['-hklin',mtz_file,'-xyzin',pdb_file,'-output',temp_path,'-noerror','-flabel',f_label])
-        command.set_timeout(timeout=600)
-        command.run()
-        # Read the output
-        with os.fdopen(temp_handle) as f:
-            output = f.read().strip().replace('\r\n','\n').replace('\r','\n').splitlines()
-        command.file_output = output
-    finally:
-        os.remove(temp_path)
-
-    # Process the output header
-    if output:
-        # Check header and then remove the first three columns
-        header = output.pop(0).split()
-        assert header[:3] == ['RT', 'CI', 'RN'], 'edstats output headers are not as expected! {!s}'.format(output)
-        num_fields = len(header)
-        header = header[3:]
-    else:
-        header = []
-
-    # List to be returned
-    outputdata = []
-
-    # Process the rest of the data
-    for line in output:
-        line = line.strip()
-        if not line:
-            continue
-
-        fields = line.split()
-        if len(fields) != num_fields:
-            raise ValueError("Error Parsing EDSTATS output: Header & Data rows have different numbers of fields")
-
-        # Get and process the residue information - TODO CI column can include alternate conformer?! TODO
-        residue, chain, resnum = fields[:3]
-        try:
-            resnum = int(resnum)
-            inscode = ' '
-        except ValueError:
-            inscode = resnum[-1:]
-            resnum = int(resnum[:-1])
-
-        # Remove the processed columns
-        fields = fields[3:]
-
-        # Process the other columns (changing n/a to None and value to int)
-        for i, x in enumerate(fields):
-            if x == 'n/a':
-                fields[i] = None
-            else:
-                try:
-                    fields[i] = int(x)
-                except ValueError:
-                    try:
-                        fields[i] = float(x)
-                    except ValueError:
-                        pass
-
-        outputdata.append([(residue, chain, resnum, inscode),fields])
-
-    return outputdata, header, command
-
 
