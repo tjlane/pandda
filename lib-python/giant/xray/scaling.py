@@ -115,19 +115,20 @@ class IsotropicBfactorScalingFactory(object):
             )
 
             # Calculate scaling B-factor
-            lsc.scaling_b_factor = -0.5 * list(lsc.optimised_values)[0]
+            scaling_b_factor = -0.5 * list(lsc.optimised_values)[0]
+
 
             # Break if fitted to 0
-            if approx_equal_relatively(0.0, lsc.scaling_b_factor, 1e-6):
-                logger.debug('Scaling is approximately 0.0 ({}) - stopping'.format(lsc.scaling_b_factor))
+            if approx_equal_relatively(0.0, scaling_b_factor, 1e-6):
+                logger.debug('Scaling is approximately 0.0 ({}) - stopping'.format(scaling_b_factor))
                 break
 
             # Calculate percentage change
-            delta_perc = abs((curr_b-lsc.scaling_b_factor)/curr_b)
+            delta_perc = abs((curr_b-scaling_b_factor)/curr_b)
 
             logger.debug(
                 'Previous Scaling: {}\n'.format(curr_b) +
-                'Current Scaling: {}\n'.format(lsc.scaling_b_factor) +
+                'Current Scaling: {}\n'.format(scaling_b_factor) +
                 'Percentage Delta: {}\n'.format(delta_perc)
             )
 
@@ -153,14 +154,17 @@ class IsotropicBfactorScalingFactory(object):
             )
 
             # Update loop params
-            curr_b = lsc.scaling_b_factor
+            curr_b = scaling_b_factor
             n_iter += 1
 
-        lsc.unscaled_ln_rmsd = (flex.log(lsc.ref_values)-flex.log(lsc.scl_values)).norm()/(lsc.ref_values.size()**0.5)
-        lsc.scaled_ln_rmsd   = (flex.log(lsc.ref_values)-flex.log(lsc.out_values)).norm()/(lsc.ref_values.size()**0.5)
-
-        lsc.unscaled_ln_dev = flex.sum(flex.abs(flex.log(lsc.ref_values)-flex.log(lsc.scl_values)))
-        lsc.scaled_ln_dev   = flex.sum(flex.abs(flex.log(lsc.ref_values)-flex.log(lsc.out_values)))
+        import collections
+        lsc.info = collections.OrderedDict(
+            scaling_b_factor = scaling_b_factor,
+            unscaled_ln_rmsd = (flex.log(lsc.ref_values)-flex.log(lsc.scl_values)).norm()/(lsc.ref_values.size()**0.5),
+            scaled_ln_rmsd   = (flex.log(lsc.ref_values)-flex.log(lsc.out_values)).norm()/(lsc.ref_values.size()**0.5),
+            unscaled_ln_dev  = flex.sum(flex.abs(flex.log(lsc.ref_values)-flex.log(lsc.scl_values))),
+            scaled_ln_dev    = flex.sum(flex.abs(flex.log(lsc.ref_values)-flex.log(lsc.out_values))),
+            )
 
         return lsc
 

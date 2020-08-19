@@ -1,8 +1,8 @@
 import os, glob
 
-from giant.html import png2base64str
-from pandda.html import PANDDA_HTML_ENV
-from pandda.constants import PanddaHtmlFilenames
+from bamboo.html import png2base64str
+from pandda_inspect.resources.html import PANDDA_HTML_ENV
+from pandda_inspect.constants import PanddaHtmlFilenames
 
 def write_inspect_html(top_dir, inspector):
 
@@ -141,10 +141,10 @@ def write_inspect_html(top_dir, inspector):
 
         columns.append({'message':d_event})
         columns.append({'message':d_data['site_idx']})
-        columns.append({'message':round(float(d_data['1-BDC']),3)})
-        columns.append({'message':round(float(d_data['z_peak']),3)})
+        columns.append({'message':round(d_data['1-BDC'],3)})
+        columns.append({'message':round(d_data['z_peak'],3)})
         columns.append({'message':d_data['analysed_resolution']})
-        columns.append({'message':round(float(d_data['map_uncertainty']),3)})
+        columns.append({'message':round(d_data['map_uncertainty'],3)})
 
         columns.append({'message':d_data['Ligand Confidence']})
         columns.append({'message':d_data['Comment']})

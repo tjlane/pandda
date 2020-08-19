@@ -57,7 +57,6 @@ class WriteEchtModelSummary:
         output_directory,
         pymol_images = None,
         distribution_images = False,
-        verbose = False,
         ):
         adopt_init_args(self, locals())
         self.check_and_create_output_folders()

@@ -41,7 +41,6 @@ class AnalyseResidualsTask:
     def __init__(self,
         output_directory,
         plotting_object,
-        verbose = False,
         ):
 
         adopt_init_args(self, locals())

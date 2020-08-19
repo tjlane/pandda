@@ -42,26 +42,66 @@ class CrystalInfo(object):
 
         lines = []
 
-        if self.name:
-            lines.append('Name: {}'.format(self.name))
+        lines.append(
+            'Name: {}'.format(
+                str(self.name)
+                )
+            )
 
-        if self.space_group:
-            lines.append('Space group: {}'.format(self.space_group.type().lookup_symbol()))
-        if self.unit_cell:
-            lines.append('Unit Cell: {}'.format(tuple([round(p, 3) for p in self.unit_cell.parameters()])))
+        lines.append(
+            'Space group: {}'.format(
+                self.space_group.type().lookup_symbol()) 
+                if hasattr(self.space_group, "type") 
+                else str(self.space_group)
+            )
 
-        if self.resolution_high:
-            lines.append('Resolution (high): {}'.format(round(self.resolution_high,3)))
-        if self.resolution_low:
-            lines.append('Resolution (low): {}'.format(round(self.resolution_low,3)))
+        lines.append(
+            'Unit Cell: {}'.format(
+                tuple([round(p, 3) for p in self.unit_cell.parameters()])
+                if hasattr(self.unit_cell, "parameters")
+                else str(self.unit_cell)
+                )
+            )
 
-        if self.r_free:
-            lines.append('R-free: {}'.format(round(self.r_free,3)))
-        if self.r_work:
-            lines.append('R-work: {}'.format(round(self.r_work,3)))
+        lines.append(
+            'Resolution (high): {}'.format(
+                round(self.resolution_high, 3)
+                if (self.resolution_high is not None)
+                else str(resolution_high)
+                )
+            )
+        
+        lines.append(
+            'Resolution (low): {}'.format(
+                round(self.resolution_low, 3)
+                if (self.resolution_low is not None)
+                else str(self.resolution_low)
+                )
+            )
 
-        if self.column_labels:
-            lines.append('Columns: {}'.format(', '.join(self.column_labels)))
+        lines.append(
+            'R-free: {}'.format(
+                round(self.r_free, 3)
+                if (self.r_free is not None)
+                else str(self.r_free)
+                )
+            )
+        
+        lines.append(
+            'R-work: {}'.format(
+                round(self.r_work,3)
+                if (self.r_work is not None)
+                else str(self.r_work)
+                )
+            )
+    
+        lines.append(
+            'Columns: {}'.format(
+                ', '.join(self.column_labels)
+                if (self.column_labels is not None)
+                else str(self.column_labels)
+                )
+            )
 
         return '\n'.join(lines)
 

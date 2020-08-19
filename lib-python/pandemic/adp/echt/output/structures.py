@@ -17,7 +17,6 @@ class WriteEchtStructures:
 
     def __init__(self,
         output_directory,
-        verbose = False,
         ):
         adopt_init_args(self, locals())
 

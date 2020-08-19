@@ -63,7 +63,6 @@ class UpdateOptimisationFunction:
         minimum_weight,
         output_directory,
         plotting_object = None,
-        verbose = True,
         ):
         # Copy to be ensure detached object
         initial_weights = copy.deepcopy(initial_weights)

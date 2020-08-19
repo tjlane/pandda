@@ -45,7 +45,6 @@ class PandemicResultsObject:
             filename,
             plotting_object,
             models = [],
-            verbose = False,
             ):
 
         reference_r_values = None

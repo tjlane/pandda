@@ -41,7 +41,6 @@ class AtomWeightCalculator:
     def __init__(self,
             weighting,
             renormalise_by_dataset = True,
-            verbose = False,
             ):
         assert weighting in self._power_hash.keys()
         power = self._power_hash[weighting]
@@ -96,7 +95,6 @@ class DatasetWeightCalculator:
 
     def __init__(self,
             weighting,
-            verbose = False,
             ):
         assert weighting in self._power_hash.keys()
         power = self._power_hash[weighting]
@@ -136,18 +134,15 @@ class UijArrayWeightsTask:
             dataset_weighting = 'one',
             atom_weighting = 'one',
             renormalise_by_dataset = False,
-            verbose = False,
             ):
 
         calculate_dataset_weights = DatasetWeightCalculator(
             weighting = dataset_weighting,
-            verbose = verbose,
             )
 
         calculate_atom_weights = AtomWeightCalculator(
             weighting = atom_weighting,
             renormalise_by_dataset = renormalise_by_dataset,
-            verbose = verbose,
             )
 
         adopt_init_args(self, locals())

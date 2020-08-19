@@ -37,7 +37,6 @@ HEADER_TEXT = """
 ------------------------------------------------------------------>
 """
 
-LOGO_PATH = os.path.join(os.path.realpath(pandemic.resources.__path__[0]), 'pandemic-logo-small.png')
 
 class module_info:
     name        = 'pandemic'

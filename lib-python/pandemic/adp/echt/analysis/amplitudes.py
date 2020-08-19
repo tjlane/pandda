@@ -10,7 +10,6 @@ class AnalyseTLSAmplitudesTask:
 
     def __init__(self,
         output_directory,
-        verbose = False,
         ):
         #amplitude_directory = easy_directory(os.path.join(output_directory, 'group_amplitude_distributions'))
         adopt_init_args(self, locals())

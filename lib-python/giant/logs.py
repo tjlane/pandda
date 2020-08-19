@@ -79,8 +79,8 @@ class ListStream(object):
     def __str__(self):
         return self.format()
 
-    def __repr__(self):
-        return self.format()
+    # def __repr__(self):
+    #     return self.format()
 
     def __iter__(self):
         return iter(self.data)

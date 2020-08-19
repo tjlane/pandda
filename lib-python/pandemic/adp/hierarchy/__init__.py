@@ -19,7 +19,6 @@ class CreateHierarchicalModelTask:
         assign_het_residues_to_nearest_ss_groups,
         assign_het_residues_to_nearest_custom_groups,
         remove_duplicate_groups = None,
-        verbose = False,
         n_cpus = 1,
         ):
         adopt_init_args(self, locals())

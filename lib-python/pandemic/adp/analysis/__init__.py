@@ -20,7 +20,6 @@ class HierarchicalModelAnalysisTask:
         master_phil,
         analyse_residuals = True,
         assess_hierarchy_groups = True,
-        verbose = False,
         ):
 
         output_directory = easy_directory(output_directory)
@@ -30,7 +29,6 @@ class HierarchicalModelAnalysisTask:
             analyse_residuals = AnalyseResidualsTask(
                 output_directory = easy_directory(os.path.join(output_directory, 'residuals')),
                 plotting_object = plotting_object,
-                verbose = verbose,
                 )
 
         if assess_hierarchy_groups is True:
@@ -38,7 +36,6 @@ class HierarchicalModelAnalysisTask:
             assess_hierarchy_groups = AssessHierarchyGroupsTask(
                 output_directory = easy_directory(os.path.join(output_directory, 'hierarchy_groups')),
                 plotting_object = plotting_object,
-                verbose = verbose,
                 )
 
         # Calculate fit to electron density - TODO
@@ -106,7 +103,12 @@ class HierarchicalModelAnalysisTask:
         return self.result
 
     def as_html_summary(self):
-        from pandemic.adp.html import HtmlSummaryCollator, as_html_summaries_maybe
+
+        from pandemic.adp.html import (
+            HtmlSummaryCollator,
+            as_html_summaries_maybe,
+            )
+
         return HtmlSummaryCollator(
             title = 'Analysis of Hierarchical model ADPs',
             alt_title = 'Fitting Analysis',

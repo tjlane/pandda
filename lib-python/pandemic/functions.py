@@ -4,7 +4,6 @@ import numpy as np
 def rms(values, axis=None, weights=None):
     """Calculate the rms of an array with optional weights"""
 
-#    from IPython import embed; embed()
     if (weights is not None): 
         assert weights.shape == values.shape
 

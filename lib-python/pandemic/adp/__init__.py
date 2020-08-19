@@ -418,7 +418,6 @@ def run(params, args=None):
     load_models = preprocess.load_models.ModelLoader(
         model_type = params.input.model_type,
         labelling = params.input.labelling,
-        verbose = params.settings.verbose,
         )
 
     process_input_models_task = preprocess.process_models.ProcessInputModelsTask(
@@ -430,7 +429,6 @@ def run(params, args=None):
         look_for_reflection_data = params.input.look_for_reflection_data,
         copy_reflection_data_to_output_folder = params.output.copy_reflection_data_to_output_folder,
         check_column_labels = params.analysis.calculate_r_factors,
-        verbose = params.settings.verbose,
         )
 
     select_optimisation_datasets = preprocess.select_datasets.SelectOptimisationDatasetsTask(
@@ -438,19 +436,16 @@ def run(params, args=None):
         max_datasets = params.optimisation.dataset_selection.max_datasets,
         sort_datasets_by = params.optimisation.dataset_selection.sort_datasets_by,
         random_seed = params.optimisation.dataset_selection.random_seed,
-        verbose = params.settings.verbose,
         )
 
     extract_uijs_task = preprocess.extract_uijs.ExtractAndProcessModelUijsTask(
         expected_disorder_model = params.input.input_adp_model,
-        verbose = params.settings.verbose,
         )
 
     uij_weights_task = weights.UijArrayWeightsTask(
         dataset_weighting = params.optimisation.weights.dataset_weights,
         atom_weighting = params.optimisation.weights.atom_weights,
         renormalise_by_dataset = params.optimisation.weights.renormalise_atom_weights_by_dataset,
-        verbose = params.settings.verbose,
         )
 
     create_hierarchy_task = hierarchy.CreateHierarchicalModelTask(
@@ -461,7 +456,6 @@ def run(params, args=None):
         assign_het_residues_to_nearest_ss_groups = params.model.assign_het_residues_to_nearest_ss_groups,
         assign_het_residues_to_nearest_custom_groups = params.model.assign_het_residues_to_nearest_custom_groups,
         remove_duplicate_groups = params.model.remove_duplicate_groups,
-        verbose = params.settings.verbose,
         n_cpus = params.settings.cpus,
         )
 
@@ -477,7 +471,6 @@ def run(params, args=None):
         minimum_weight = params.optimisation.elastic_net.weight_decay.minimum_weight,
         output_directory = file_system.optimisation_directory,
         plotting_object = plots.PandemicAdpPlotter(),
-        verbose = params.settings.verbose,
         )
 
     ##################################################
@@ -528,7 +521,6 @@ def run(params, args=None):
             amplitude_decimals = params.model.echt.precision.tls_amplitude_decimals,
             matrix_tolerance = params.model.echt.tolerances.tls_matrix_tolerance,
             amplitude_tolerance = params.model.echt.tolerances.tls_amplitude_tolerance,
-            verbose = params.settings.verbose,
             )
 
         # Optimisation functions
@@ -560,7 +552,6 @@ def run(params, args=None):
         optimise_level_amplitudes_function = echt.optimise.inter_level.OptimiseInterLevelAmplitudes(
             convergence_tolerance = params.optimisation.gradient_optimisation.gradient_convergence,
             optimisation_weights =  level_optimisation_weights,
-            verbose = params.settings.verbose,
             )
 
         optimise_model_main = echt.optimise.OptimiseEchtModel(
@@ -569,19 +560,16 @@ def run(params, args=None):
             optimise_level_amplitudes_function = optimise_level_amplitudes_function,
             n_cycles = params.optimisation.number_of_micro_cycles,
             n_cpus = params.settings.cpus,
-            verbose = params.settings.verbose,
             )
 
         validate_model = echt.validate.ValidateEchtModel(
             uij_tolerance = params.model.adp_values.uij_tolerance,
-            verbose = params.settings.verbose,
             )
 
         model_analysis_task = echt.analysis.AnalyseEchtModelTask(
             output_directory = file_system.analysis_directory,
             master_phil = master_phil,
             analysis_parameters = params.analysis,
-            verbose = params.settings.verbose,
             )
 
         # Define / override summary classes (these take standard inputs wherever possible)
@@ -627,7 +615,6 @@ def run(params, args=None):
     if params.input.json is not None:
         input_json_manager = json_manager.JsonDataManager.from_json_file(
             filename = params.input.json,
-            verbose = params.settings.verbose,
             )
         input_json_manager.apply_to_model_object(model_object=model_object)
 
@@ -690,14 +677,12 @@ def run(params, args=None):
             delta_b_window_frac = params.optimisation.termination.max_b_change_window_frac,
             delta_b_window_min = params.optimisation.termination.max_b_change_window_min,
             ),
-        verbose = params.settings.verbose,
         )
 
     model_tracking_object = ModelTrackingClass(
         output_directory = file_system.optimisation_directory,
         plotting_object = plotting_object,
         model_object = model_object,
-        verbose = params.settings.verbose,
         )
 
     #
@@ -707,7 +692,6 @@ def run(params, args=None):
         filename = os.path.join(file_system.output_directory, 'output_data.csv'),
         plotting_object = plotting_object,
         models = models,
-        verbose = params.settings.verbose,
         )
 
     # Add reference values to results object
@@ -735,7 +719,6 @@ def run(params, args=None):
         table_one_options = params.analysis.table_one_options,
         plotting_object = plotting_object,
         n_cpus = params.settings.cpus,
-        verbose = params.settings.verbose,
         )
 
     #
@@ -747,7 +730,6 @@ def run(params, args=None):
         output_directory = file_system.partition_directory,
         master_phil = master_phil,
         pymol_images = params.output.images.pymol,
-        verbose = params.settings.verbose,
         )
 
     # Summary of the model fit (error distribution, etc)
@@ -756,14 +738,12 @@ def run(params, args=None):
         output_directory = file_system.analysis_directory,
         plotting_object = plotting_object,
         master_phil = master_phil,
-        verbose = params.settings.verbose,
         )
 
     # Write output graphs (distributions, profiles, etc) across datasets
     write_fitted_model_summary = WriteModelSummary(
         output_directory = file_system.hierarchy_directory,
         pymol_images = params.output.images.pymol,
-        verbose = params.settings.verbose,
         )
 
     # Copy of this task for writing out during optimisation
@@ -779,7 +759,6 @@ def run(params, args=None):
     # Write output structures for each dataset
     write_output_structures = WriteStructures(
         output_directory = file_system.structure_directory,
-        verbose = params.settings.verbose,
         )
 
     ################################
@@ -791,7 +770,6 @@ def run(params, args=None):
     # Writes html from input summaries
     write_html_task = pandemic.adp.html.WriteHtmlSummaryTask(
         output_directory = file_system.output_directory,
-        verbose = params.settings.verbose,
         )
 
     # Html objects that are added to iteratively and called at the end to generate HTML

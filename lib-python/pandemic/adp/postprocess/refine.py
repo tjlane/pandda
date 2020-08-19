@@ -27,7 +27,6 @@ class RefineStructures:
             refinement_program = 'phenix',
             #refinement_params = None,
             n_cpus = 1,
-            verbose = False,
             ):
 
         refine = get_refiner(refinement_program)

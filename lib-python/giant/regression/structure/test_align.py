@@ -29,8 +29,8 @@ def test_rigid_align(example_pdbs):
 
     from giant.structure.align import align_structures_rigid
     alignment = align_structures_rigid(
-        mov_hier = h_mov,
-        ref_hier = h_ref,
+        mov_hierarchy = h_mov,
+        ref_hierarchy = h_ref,
     )
 
     from scitbx.array_family import flex

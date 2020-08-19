@@ -12,7 +12,6 @@ class EchtTracking:
         output_directory,
         plotting_object,
         model_object,
-        verbose = False,
         ):
         # Create table for tracking progress over cycles
         table = pandas.DataFrame(

@@ -126,6 +126,17 @@ def set_defaults_and_validate(params):
         if len(params.input.tls_selection) == 0:
             raise Sorry('No TLS selections provided (tls_selection=...).')
 
+    if not os.path.exists(params.input.pdb):
+        raise IOError('File does not exist: {}'.format(params.input.pdb))
+
+    if not os.path.exists(params.input.mtz):
+        raise IOError('File does not exist: {}'.format(params.input.mtz))
+
+    if params.input.cif:
+        for f in params.input.cif:
+            if not os.path.exists(f):
+                raise IOError('File does not exist: {}'.format(f))
+
 def sh_filename(directory):
     return os.path.join(directory, 'run.sh')
 
@@ -290,13 +301,29 @@ def make_er_sweep(params):
 
         # Format cmd for writing
         other_args = []
+        # Any cifs?
+        if (params.input.cif):
+            for f in params.input.cif:
+                other_args.append(
+                    os.path.relpath(f, start=o_dir)
+                )
+        # Any tls inputs?
         if (params.input.tls_pdb is not None): 
-            other_args.append('import_tls_pdb="{}"'.format(os.path.relpath(params.input.tls_pdb, start=o_dir)))
+            other_args.append(
+                'import_tls_pdb="{}"'.format(
+                    os.path.relpath(params.input.tls_pdb, start=o_dir)
+                )
+            )
         elif (params.input.tls_selection):
-            other_args.extend(['tls_group_selections="{}"'.format(s) for s in params.input.tls_selection])
+            other_args.extend(
+                ['tls_group_selections="{}"'.format(s) for s in params.input.tls_selection]
+            )
         # Add custom args
         if (params.input.custom_arg):
-            other_args.extend(params.input.custom_arg)
+            other_args.extend(
+                params.input.custom_arg
+            )
+
         # Output command
         cmd = cmd_template.format(
             path = os.path.abspath(o_dir),

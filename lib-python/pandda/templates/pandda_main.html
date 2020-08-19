@@ -1,0 +1,128 @@
+{% import 'styles.html' as styles %}
+
+{% import 'header.html' as header_macros %}
+{% import 'sections.html' as section_macros %}
+
+{% import 'lightbox.html' as lightbox_macros %}
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.19/css/jquery.dataTables.min.css"/>
+    <script type="text/javascript" src="https://cdn.datatables.net/1.10.19/js/jquery.dataTables.min.js"></script>
+    
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+    {{ styles.pandda_styles() }}
+
+    {{ lightbox_macros.lightbox_setup(id="lightbox") }}
+
+    <title>{{ header_title }}</title>
+
+  </head>
+  <body>
+
+    <div class="container">
+
+      {%- if body_header is defined -%}
+        {{- header_macros.format_header(body_header) -}}
+      {%- endif -%}      
+
+      <div class="tab-set">
+
+        <div role="navigation">
+
+          <ul class="nav nav-tabs">
+
+            <li class="active" role="presentation">
+              <a data-toggle="tab" id="datasets-tab" href="#datasets">Input Datasets</a>
+            </li>
+            
+            <li role="presentation">
+              <a data-toggle="tab" id="analyse-tab" href="#analyse">Pandda Analyse</a>
+            </li>
+
+            <li role="presentation">
+              <a data-toggle="tab" id="inspect-tab" href="#inspect">Pandda Inspect</a>
+            </li>
+
+          </ul>
+
+          <div class="tab-content">
+
+            <div id="datasets" class="tab-pane fade in active">
+              <iframe 
+                id="datasets-contents" 
+                title="Dataset Summary" 
+                width="100%" height="1000"
+                >
+              </iframe>
+            </div>
+            <div id="analyse" class="tab-pane fade">
+              <iframe 
+                id="analyse-contents" 
+                title="Analysis Summary" 
+                width="100%" height="1000"
+                src="">
+              </iframe>
+            </div>
+            <div id="inspect" class="tab-pane fade">
+              <iframe 
+                id="inspect-contents" 
+                title="Inspection Summary" 
+                width="100%" height="1000"
+                src="">
+              </iframe>
+            </div>
+
+            <script>
+            $(document).ready( function() {
+              document.getElementById("datasets-contents").src = "{{ pandda_dataset_html }}";
+              // $("#datasets-contents").load("{{ pandda_dataset_html }}");
+            });
+            </script>
+
+            <script>
+            $(document).ready( function() {
+              $("#analyse-tab").on("click", function() {
+                document.getElementById("analyse-contents").src = "{{ pandda_analyse_html }}";
+                // $("#analyse-contents").load("{{ pandda_analyse_html }}");
+              });
+            });
+            </script>
+
+            <script>
+            $(document).ready( function() {
+              $("#inspect-tab").on("click", function() {
+                document.getElementById("inspect-contents").src = "{{ pandda_inspect_html }}";
+                // $("#inspect-contents").load("{{ pandda_inspect_html }}");
+              });
+            });
+            </script>
+
+          </div>
+
+        </div>
+
+        <div class="tab-close"></div>
+
+      </div>
+
+      {%- if body_footer is defined -%}
+        {{- section_macros.format_standard(body_footer, div_namer=dn) -}}
+      {%- endif -%}
+
+    </div>
+  </body>
+</html>
+

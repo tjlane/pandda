@@ -10,13 +10,12 @@ from libtbx import group_args
 _here = os.path.abspath(os.path.dirname(__file__))
 
 class _TestData:
-    __hash__ = {
+    datasets = {
         'BAZ2B' : os.path.join(_here, 'baz2b_test_data'),
     }
 
     def __init__(self):
-        keys = self.__hash__.keys()
-        self.keys = group_args(**dict(zip(map(str,keys), keys)))
+        pass
 
     def extract_to_temporary_directory(self, dataset, tmp_dir=None, n=None):
         """Copy a test dataset to a temporary directory -- return path of temporary directory"""
@@ -45,7 +44,7 @@ class _TestData:
         return tmp_dir
 
     def get_path(self, dataset):
-        return self.__hash__[dataset]
+        return self.datasets[dataset]
 
 TEST_DATA = _TestData()
 

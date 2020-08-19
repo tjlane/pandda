@@ -2,8 +2,12 @@ from libtbx import adopt_init_args
 
 import numpy, pandas
 
+from pandemic.adp.html import (
+    divs,
+    HtmlSummary,
+    )
+
 from pandemic.adp import constants
-from pandemic.adp.html import HtmlSummary, divs
 
 
 class EchtModelHtmlSummary(HtmlSummary):

@@ -28,16 +28,42 @@ class run_default(object):
 
     _module_info = module_info
 
-    def __init__(self, run, master_phil, args, blank_arg_prepend=None, program='', description=''):
+    def __init__(self, 
+        run, 
+        master_phil, 
+        args, 
+        blank_arg_prepend = None, 
+        program = '', 
+        description = '',
+        ):
         """Run a program via a standard setup of functions and objects"""
+        
         logger = lg.setup_logging_basic(
             name = '__main__', # setup root logging when using run_default
         )
-        logger(self._module_info.header_text.format(program=program, description=description))
-        working_phil = extract_params_default(master_phil=master_phil, args=args, blank_arg_prepend=blank_arg_prepend, module_info=self._module_info)
+
+        logger(
+            self._module_info.header_text.format(
+                program = program, 
+                description = description,
+                )
+            )
+
+        working_phil = extract_params_default(
+            master_phil = master_phil, 
+            args = args, 
+            blank_arg_prepend = blank_arg_prepend, 
+            module_info = self._module_info,
+            )
+
         try:
-            out = run(params=working_phil.extract())
+
+            out = run(
+                params = working_phil.extract(),
+                )
+
         except Exception as e:
+
             process_exception_default(exception=e)
 
 def extract_params_default(master_phil, args, blank_arg_prepend=None, home_scope=None, module_info=None):

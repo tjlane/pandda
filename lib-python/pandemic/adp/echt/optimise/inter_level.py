@@ -72,7 +72,6 @@ class OptimiseInterLevelAmplitudes:
     def __init__(self,
         convergence_tolerance,
         optimisation_weights = None,
-        verbose = False,
         ):
         if optimisation_weights is not None:
             # Create default optimisation weights and then transfer the input weights
@@ -164,7 +163,7 @@ class OptimiseInterLevelAmplitudes:
         ##############
         # Report
         #
-        if self.verbose:
+        if (logger.level < 20):
             from itertools import groupby
             logger.bar()
             logger('Inter-level optimisations:')

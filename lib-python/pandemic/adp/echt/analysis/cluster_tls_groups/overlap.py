@@ -151,7 +151,6 @@ class ClusterTLSGroups_OverlapMass:
     def __init__(self,
         xyz_cutoff_distance = 4.0,
         comparison = 'weighted_average',
-        verbose = False,
         ):
         adopt_init_args(self, locals())
 
@@ -163,7 +162,6 @@ class ClusterTLSGroups_OverlapMass:
         from pandemic.adp.echt.analysis.cluster_tls_groups.identify_modules import IdentifyModules
         self.identify_modules = IdentifyModules(
             comparison_metric = 'similarity',
-            verbose = self.verbose,
             )
 
     def __call__(self,

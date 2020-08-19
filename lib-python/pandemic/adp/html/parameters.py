@@ -1,6 +1,10 @@
 import os
 from libtbx import adopt_init_args
-from pandemic.adp.html import HtmlSummary, divs
+
+from . import (
+    divs,
+    HtmlSummary,
+    )
 
 
 class ParameterHtmlSummary(HtmlSummary):

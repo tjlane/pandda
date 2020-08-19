@@ -15,7 +15,6 @@ class CalculateTableOnes:
         output_directory,
         table_one_options,
         n_cpus = 1,
-        verbose = False,
         ):
 
         # Populate table one phil
@@ -24,7 +23,7 @@ class CalculateTableOnes:
         base_phil.input.labelling  = 'foldername'
         base_phil.options          = table_one_options
         base_phil.settings.cpus    = n_cpus
-        base_phil.settings.verbose = verbose
+        base_phil.settings.verbose = (logger.level < 20)
 
         adopt_init_args(self, locals())
 

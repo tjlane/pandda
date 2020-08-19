@@ -7,7 +7,7 @@ from giant.structure.pymol import auto_chain_images
 from pandemic.adp.utils import show_file_dict
 import numpy
 
-def translate_phenix_selections_to_pymol_selections_simple(selections, verbose=False):
+def translate_phenix_selections_to_pymol_selections_simple(selections):
     """Convert simplex phenix selections into simplex pymol selections"""
 
     easy_regexes = [
@@ -76,7 +76,6 @@ class WriteHierarchicalModelSummaryTask:
         output_directory,
         master_phil,
         pymol_images = None,
-        verbose = False,
         ):
         adopt_init_args(self, locals())
 

@@ -57,7 +57,6 @@ class PostProcessTask:
         table_one_options = None,
         plotting_object = None,
         n_cpus = 1,
-        verbose = 1,
         ):
 
         if refine_structures is True:
@@ -65,7 +64,6 @@ class PostProcessTask:
                 output_directory = structure_directory,
                 refinement_program = refinement_program,
                 n_cpus = n_cpus,
-                verbose = verbose,
                 )
 
         if calculate_r_factors is True:
@@ -73,7 +71,6 @@ class PostProcessTask:
                     output_directory = easy_directory(os.path.join(output_directory, 'table_ones')),
                     table_one_options = table_one_options,
                     n_cpus = n_cpus,
-                    verbose = verbose,
                     )
 
         adopt_init_args(self, locals())

@@ -130,7 +130,6 @@ class ClusterTLSGroups_HelligerDistance:
         xyz_cutoff_distance = 4.0,
         comparison = 'helliger_distance',
         linkage = 'average',
-        verbose = False,
         ):
         adopt_init_args(self, locals())
 

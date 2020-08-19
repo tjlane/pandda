@@ -19,19 +19,16 @@ class AnalyseEchtModelTask:
         output_directory,
         master_phil,
         analysis_parameters = None,
-        verbose = False,
         ):
 
         cluster_tls_groups_task = ClusterTLSGroupsTask(
             output_directory = easy_directory(os.path.join(output_directory, 'tls_group_clustering')),
             metric = analysis_parameters.tls_group_clustering.metric,
             parameters = analysis_parameters.tls_group_clustering,
-            verbose = verbose,
             )
 
         analyse_tls_amplitudes_task = AnalyseTLSAmplitudesTask(
             output_directory = easy_directory(os.path.join(output_directory, 'dataset_clustering')),
-            verbose = verbose,
             )
 
         adopt_init_args(self, locals())
@@ -77,7 +74,11 @@ class AnalyseEchtModelTask:
         return self.result
 
     def as_html_summary(self):
-        from pandemic.adp.html import HtmlSummaryCollator
+
+        from pandemic.adp.html import (
+            HtmlSummaryCollator,
+            )
+
         return HtmlSummaryCollator(
             title = 'Analysis of fitted ECHT model',
             alt_title = 'ECHT Analysis',

@@ -14,7 +14,6 @@ class ValidateEchtModel:
 
     def __init__(self,
             uij_tolerance = 0.01,
-            verbose = False,
             ):
 
         _uij_fmt_str = ', '.join(6*['{{:.{:d}f}}'.format(int(-1*numpy.log10(uij_tolerance)+1.0))])
@@ -77,7 +76,7 @@ class ValidateEchtModel:
                     err_msg += '\n\t\tUij -> ({})\n\t\tEigenvalues -> ({})'.format(uij_str, eig_str)
                     err_msgs.append(err_msg)
                 # Report, etc
-                if (len(err_msgs) > self.number_of_errors_to_print) and (not self.verbose):
+                if (len(err_msgs) > self.number_of_errors_to_print) and not (logger.level < 20):
                     n_hidden = len(err_msgs) - self.number_of_errors_to_print
                     err_msgs = err_msgs[:self.number_of_errors_to_print]
                     err_msgs.append('[...] ({} more similar warning{} not shown)'.format(n_hidden, 's' if n_hidden>1 else ''))

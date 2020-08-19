@@ -1,0 +1,14 @@
+numpy>=1.10.4
+matplotlib
+pandas
+jinja2
+markupsafe
+ascii_graph
+joblib
+luigi
+pathlib
+configparser
+constants
+dask
+cloudpickle
+biopandas==0.2.4

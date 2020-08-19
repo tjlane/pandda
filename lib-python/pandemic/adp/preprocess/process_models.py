@@ -29,7 +29,6 @@ class ProcessInputModelsTask:
             look_for_reflection_data,
             copy_reflection_data_to_output_folder,
             check_column_labels,
-            verbose = False,
             ):
         has_reflection_data = False
         need_res_info = (dataset_selection_params.max_resolution is not None) or (weights_params.dataset_weights != 'one')

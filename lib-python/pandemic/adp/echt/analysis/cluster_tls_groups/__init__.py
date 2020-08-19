@@ -31,7 +31,6 @@ class ClusterTLSGroupsTask:
         parameters,
         metric = 'overlap_mass',
         write_levels_function = None,
-        verbose = False,
         ):
         adopt_init_args(self, locals(), exclude=('parameters',))
 
@@ -55,7 +54,6 @@ class ClusterTLSGroupsTask:
 
         self.cluster = cluster_class(
             xyz_cutoff_distance = parameters['xyz_cutoff_distance'],
-            verbose = verbose,
             **metric_parameters
             )
 

@@ -1,24 +1,19 @@
 
 import jinja2
 
-class _AutoDivNamer(object):
-    def __init__(self, start_index=1):
-        self.index=start_index
+from giant.html import AutoDivNamer
 
-    def format(self, index):
-        return 'div{}'.format(index)
+class PandemicAutoDivNamer(AutoDivNamer):
+    pass
 
-    def current(self):
-        return self.format(self.index)
+HTML_ENV = jinja2.Environment(
+    loader=jinja2.ChoiceLoader([
+        jinja2.PackageLoader('pandemic', 'templates'),
+        jinja2.PackageLoader('giant', 'templates'),
+        ]),
+    extensions=['jinja2.ext.do'],
+    trim_blocks=True,
+    lstrip_blocks=True,
+    )
 
-    def next(self):
-        self.index += 1
-        return self.current()
-
-PANDEMIC_HTML_ENV = jinja2.Environment(
-        loader=jinja2.PackageLoader('pandemic', 'templates'),
-        extensions=['jinja2.ext.do'],
-        trim_blocks=True,
-        lstrip_blocks=True)
-
-PANDEMIC_HTML_ENV.globals['divnamer'] = _AutoDivNamer
+HTML_ENV.globals['divnamer'] = PandemicAutoDivNamer

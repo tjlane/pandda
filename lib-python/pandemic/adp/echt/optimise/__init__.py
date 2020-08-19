@@ -52,7 +52,6 @@ class OptimiseEchtModel:
             optimise_level_amplitudes_function,
             n_cycles = 1,
             n_cpus = 1,
-            verbose = False,
             ):
         adopt_init_args(self, locals())
 
@@ -90,7 +89,6 @@ class OptimiseEchtModel:
         self.sanitise_model = SanitiseEchtModel(
             tls_parameters_dict = sanitise_tls_parameters,
             uij_parameters_dict = sanitise_uij_parameters,
-            verbose = verbose,
             )
 
     def __call__(self,
@@ -184,7 +182,7 @@ class OptimiseEchtModel:
                 self.sanitise_model(model_object)
                 optimise_amplitudes_full(model_object=model_object)
 
-                if (self.verbose is True):
+                if (logger.level < 20): # change this to separate flag
                     # Update tracking
                     tracking_object.update(
                         uijs = uij_isotropic_mask_or_not(model_object.uijs()),

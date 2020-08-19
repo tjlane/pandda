@@ -1,0 +1,155 @@
+{%- macro format_standard(obj, div_namer=none, use_id=true) -%}
+  {%- if obj.type == 'panel' -%}
+    {{- format_panel(obj, div_namer=div_namer) -}}
+  {%- elif obj.type == 'tabs' -%}
+    {{- format_tabs(obj, div_namer=div_namer) -}}
+  {%- elif obj.type == 'scroll' -%}
+    <div class="{{format_classes(obj)}}" style="{{format_styles(obj)}}">
+    {{- format_block(obj) -}}
+    {{- format_contents_scroll(obj, div_namer=div_namer) -}}
+    {{- format_footnote(obj) -}}
+    </div>
+  {%- elif obj.type == 'progressbar' -%}
+    {{- format_block(obj) -}}
+    {{- format_progressbar(obj) -}}
+    {{- format_footnote(obj) -}}
+  {%- else -%}
+    <div {% if (obj.id is defined) and (use_id == true) %}id="{{- obj.id -}}" {% endif %} class="{{- format_classes(obj) -}}" style="{{- format_styles(obj) -}}">
+    {{- format_block(obj) -}}
+    {{- format_contents(obj, div_namer=div_namer) -}}
+    {{- format_footnote(obj) -}}
+    </div>
+  {%- endif -%}
+{%- endmacro -%}
+
+{%- macro format_classes(obj) -%}
+  {%- if obj.classes %}{% for c in obj.classes %} {{c}} {% endfor %}{% endif %}{% if obj.type %} {{obj.type}} {{obj.type}}-{{obj.colour | default('normal')}} {% endif -%}
+{%- endmacro -%}
+
+{%- macro format_styles(obj) -%}
+  {%- if obj.styles %} {% for s in obj.styles %} {{s}}; {% endfor %}{% endif -%}
+{%- endmacro -%}
+
+{%- macro format_list(item_list) -%}
+  {%- for c in item_list %} {{c}} {% endfor -%}
+{%- endmacro -%}
+
+{%- macro format_block(obj) -%}
+  {%- if obj.title is defined -%}
+    {%- if obj.fancy_title == true -%}
+    {{- fancy_title(obj) -}}
+    {%- else -%}
+    <h{{obj.title_size|default(4)}}>{{ obj.title }}</h{{obj.title_size|default(4)}}>
+    {%- endif -%}
+  {%- endif -%}
+  {%- if obj.text is defined -%}
+    <p>{{- obj.text -}}</p>
+  {%- endif -%}
+  {%- if obj.image is defined -%}
+    <a href="#" class="thumbnail" data-toggle="modal" data-target="#lightbox">
+      <img class="img-responsive" src="{{ obj.image }}" alt="No Image">
+    </a>
+  {%- endif -%}
+  {%- if obj.table is defined -%}
+    <div class="table-responsive">
+      {{- obj.table -}}
+    </div>
+  {%- endif -%}
+  {%- if obj.html is defined -%}
+    {{- obj.html -}}
+  {%- endif -%}
+{%- endmacro -%}
+
+{%- macro fancy_title(obj) -%}
+{{- format_standard({'title':obj.title, 'title_size':(obj.title_size|default(4)), 'type':'alert', 'classes':['square-corners-top']}) -}}
+{%- endmacro -%}
+  
+{%- macro format_footnote(obj) -%}
+  {%- if obj.footnote is defined -%}
+    <p>{{- obj.footnote -}}</p>
+  {%- endif -%}
+{%- endmacro -%}
+
+{%- macro format_contents(obj, div_namer=none) -%}
+{%- if obj.contents -%}
+<div class="row">
+  {%- for o in obj.contents -%}
+    <div class="col-xs-12 col-md-{{ o.width | default(12) }}">
+    {{- format_standard(o, div_namer=div_namer) -}}
+    </div>
+  {%- endfor -%} 
+</div>
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro format_contents_scroll(obj, div_namer=none) -%}
+<div class="row" style="white-space: nowrap; overflow-x: scroll;">
+  {%- for o in obj.contents -%}
+    <div class="col-xs-{{ o.max_width | default(12) }} col-md-{{ o.width | default(12) }} scroll-contents">
+      {{- format_standard(o, div_namer=div_namer) -}}
+    </div>
+  {%- endfor -%}
+</div>
+{%- endmacro -%}
+
+{%- macro format_panel(panel, div_namer=none) -%}
+{%- if panel.id is defined -%}
+  {%- set panel_id = panel.id -%}
+{%- elif div_namer -%}
+  {%- set panel_id = div_namer.next() -%}
+{%- endif -%}
+<div class="{{format_classes(panel)}}">
+  <div class="panel-heading">
+    <h{{panel.title_size|default(4)}}>
+      {%- if panel_id is defined -%}
+        <a data-toggle="collapse" href="#{{ panel_id }}">{{ panel.title }}</a>
+      {%- else -%}
+        {{- panel.title -}}
+      {%- endif -%}
+    </h{{panel.title_size|default(4)}}>
+  </div>
+  <div {% if panel_id is defined %}id="{{ panel_id }}" class="panel-collapse collapse {% if panel.show|default(true) %}in{% endif %}"{% endif %}>
+    <div class="panel-body">
+      {{- format_contents(panel, div_namer=div_namer) -}}
+    </div>
+  </div>
+</div>
+{%- endmacro -%}
+
+{%- macro format_tabs(tabs, div_namer=none) -%}
+<div class="tab-set">
+  {%- if tabs.title is defined %}<h{{tabs.title_size|default(3)}}>{{ tabs.title }}</h{{tabs.title_size|default(3)}}>{% endif -%}
+  <div role="navigation">
+    <ul class="nav nav-tabs {{format_classes(tabs)}}">
+      {%- for t in tabs.contents -%}
+      {%- if t.id is not defined -%}
+        {%- do t.update({'id':div_namer.next()}) -%}
+      {%- endif -%}
+      <li {% if t.active %}class="active"{% endif %} role="presentation"><a data-toggle="tab" href="#{{ t.id }}">{{ t.alt_title }}</a></li>
+      {%- endfor -%}
+    </ul>
+    <div class="tab-content">
+      {%- for t in tabs.contents -%}
+      <div id="{{ t.id }}" class="tab-pane fade {% if t.active %}in active{% endif %}">
+        {{- format_standard(t, div_namer=div_namer, use_id=false) -}}
+      </div>
+      {%- endfor -%}
+    </div>
+  </div>
+  <div class="tab-close">
+  </div>
+</div>
+{%- endmacro -%}
+
+{%- macro format_progressbar(obj) -%}
+<div class="progress">
+  {% for seg in obj.data -%}
+  <div class="progress-bar progress-bar-{{ seg.colour | default('default') }}" style="width:{{ seg.size }}%; {{ format_styles(seg) }}">
+    <span class="sr-only">{{ seg.text }}</span>
+    <strong>{{ seg.text }}</strong>
+  </div>
+  {% endfor -%}
+</div>
+{%- endmacro -%}
+
+

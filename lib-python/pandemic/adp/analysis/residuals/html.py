@@ -1,14 +1,17 @@
 import os, collections
 import numpy, pandas
-from libtbx import adopt_init_args
-from pandemic.adp.html import HtmlSummary, divs
+
+from pandemic.adp.html import (
+    HtmlSummary,
+    divs,
+    )
 
 
 class AnalyseResidualHtmlSummary(HtmlSummary):
 
 
     def __init__(self, task):
-        adopt_init_args(self, locals())
+        self.task = task
 
     def main_summary(self):
 

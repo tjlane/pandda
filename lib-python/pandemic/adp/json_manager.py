@@ -11,7 +11,6 @@ class JsonDataManager:
 
     def __init__(self,
         model_data,
-        verbose = False,
         ):
         adopt_init_args(self, locals())
         self.validate()
@@ -19,7 +18,6 @@ class JsonDataManager:
     @classmethod
     def from_model_object(cls,
         model_object,
-        verbose = False,
         ):
         """Extract json data from model object"""
 
@@ -38,29 +36,24 @@ class JsonDataManager:
 
         return cls(
             model_data = model_data,
-            verbose = verbose,
             )
 
     @classmethod
     def from_json_file(cls,
         filename,
-        verbose = False,
         ):
         json_string = open(filename, 'r').read()
         return cls.from_json(
             json_string = json_string,
-            verbose = verbose,
             )
 
     @classmethod
     def from_json(cls,
         json_string,
-        verbose = False,
         ):
         model_data = json.loads(json_string)
         return cls(
             model_data = model_data,
-            verbose = verbose,
             )
 
     def validate(self):
@@ -307,7 +300,6 @@ def write_model_as_json(model_object, output_file):
 
     output_json_manager = JsonDataManager.from_model_object(
         model_object = model_object,
-        verbose = False,
         )
     output_json_manager.write_json(
         filename = output_file,

@@ -1,0 +1,82 @@
+{% import 'styles.html' as styles %}
+
+{% import 'header.html' as header_macros %}
+{% import 'sections.html' as section_macros %}
+
+{% import 'lightbox.html' as lightbox_macros %}
+{% import 'json_plot.html' as json_plot_macros %}
+
+{% set dn=divnamer(1) %}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.19/css/jquery.dataTables.min.css"/>
+    <script type="text/javascript" src="https://cdn.datatables.net/1.10.19/js/jquery.dataTables.min.js"></script>
+    
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+    {{ styles.pandda_styles() }}
+
+    <script type="text/javascript" class="init">
+      $(document).ready(function() {
+          $(".nav-hover > li > a").on('mouseenter',function(){
+              $(this).click();
+          });
+      });
+    </script>  
+    
+    {{ lightbox_macros.lightbox_setup(id="lightbox") }}
+
+    <script type="text/javascript" class="init">
+      $(document).ready(function() {
+          $(".datatable").dataTable();
+      });
+    </script>  
+
+    {% for plot in json_plots %}
+    {{ json_plot_macros.json_plot(plot=plot) }}
+    {% endfor %}
+
+    <title>{{ header_title }}</title>
+
+  </head>
+  <body>
+
+    <div id="lightbox-holder">    
+      {{ lightbox_macros.lightbox_div(id="lightbox") }}
+    </div>
+
+    <div class="container container-fluid" style="max-width: 100%">
+
+      {%- if body_header is defined -%}
+        {{- header_macros.format_header(body_header) -}}
+      {%- endif -%}
+
+      {%- if contents is defined -%}
+        {{- section_macros.format_contents({"contents":contents}, div_namer=dn) -}}
+      {%- endif -%}
+
+      {%- if body_footer is defined -%}
+        {{- section_macros.format_standard(body_footer, div_namer=dn) -}}
+      {%- endif -%}
+      
+      <div class="alert alert-info" role="alert">
+        <p>PanDDAs. Written by Nicholas M Pearce in 2020.</p>
+      </div>
+
+    </div>
+
+  </body>
+  
+</html>
+

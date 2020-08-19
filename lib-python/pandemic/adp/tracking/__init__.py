@@ -29,7 +29,6 @@ class PandemicTrackingObject:
             dataset_names,
             level_names,
             convergence_args = {},
-            verbose = False,
             ):
 
         # Create table for tracking progress over cycles

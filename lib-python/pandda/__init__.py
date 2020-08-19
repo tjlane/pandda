@@ -1,13 +1,15 @@
 import os, sys
+import giant
 import pandda.resources
 
-import bamboo
-__version__ = bamboo.__version__
+__version_tuple__ = (1, 0, 0)
+__version__ = '.'.join(map(str,__version_tuple__))
 
 HEADER_TEXT = """
 ------------------------------------------------------------------>
 -
--  Package Version {!s}""".format(__version__)+"""
+-  Giant Package Version: {giant_version}
+-  Pandda Version: {module_version}
 -
 -  __________                    .___  .___
 -  \\______   \\_____    ____    __| _/__| _/____    ______
@@ -31,32 +33,23 @@ HEADER_TEXT = """
 
 ------------------------------------------------------------------>
 
-> {program}
+> Program: {program}
 {description}
 ------------------------------------------------------------------>
-"""
+""".format(
+    giant_version = str(giant.__version__),
+    module_version = "{module_version}",
+    program = "{program}",
+    description = "{description}",
+    )
 
-LOGO_PATH = os.path.join(os.path.realpath(pandda.resources.__path__[0]), 'pandda-logo-small.png')
 
-class module_info:
-    name        = 'pandda'
-    version     = __version__
-    header_text = HEADER_TEXT
+class ModuleBanner(giant.ModuleBanner):
+    
+    banner_string = HEADER_TEXT
 
-def welcome(user=None):
-    """Welcome message"""
+    module_name = 'pandda'
+    module_version = __version__
 
-    if user is None:
-        try:    user = os.getlogin()
-        except: user = "Unknown user"
 
-    try:
-        from greetings import get_greeting
-        print get_greeting(username=user)
-    except SystemExit: raise
-    except: pass
-
-    try:
-        print '\nHi {!s}. Welcome to Pandda.'.format(user.upper())
-    except: pass
-
+module_banner = ModuleBanner()

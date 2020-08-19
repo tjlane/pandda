@@ -17,7 +17,6 @@ class CreateEchtModelTask:
         amplitude_decimals,
         matrix_tolerance,
         amplitude_tolerance,
-        verbose = False,
         ):
         adopt_init_args(self, locals())
 
@@ -29,7 +28,6 @@ class CreateEchtModelTask:
             amplitude_decimals = self.amplitude_decimals,
             matrix_tolerance = self.matrix_tolerance,
             amplitude_tolerance = self.amplitude_tolerance,
-            verbose = self.verbose,
             )
 
         self.model_object = None
@@ -73,7 +71,6 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
             amplitude_decimals,
             matrix_tolerance,
             amplitude_tolerance,
-            verbose=False,
             ):
         adopt_init_args(self, locals())
         # Set precisions and tolerances

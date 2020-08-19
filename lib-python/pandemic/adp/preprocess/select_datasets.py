@@ -14,7 +14,6 @@ class SelectOptimisationDatasetsTask:
             max_datasets,
             sort_datasets_by = 'resolution',
             random_seed = 0,
-            verbose = False,
             ):
         adopt_init_args(self, locals())
 

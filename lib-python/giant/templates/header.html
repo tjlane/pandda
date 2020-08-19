@@ -1,0 +1,36 @@
+{% import 'sections.html' as section_macros %}
+
+{% macro format_logo_text(logo_text) -%}
+
+<h4 class="logo"><samp style="white-space: pre;">
+{{ logo_text }}
+</samp></h4>
+
+{%- endmacro %}
+
+{% macro format_header(obj, div_namer=none) -%}
+  
+<div class="" >
+  <div class="jumbotron">
+    <div class="media">
+
+      <div class="media-body">
+        {{ format_logo_text(obj.logo_text) }}    
+      </div>
+
+      <div class="media-right media-middle">
+        <img class="media-object img-circle" src="{{ obj.logo_image }}" alt="" style="height: 15em;">
+      </div>
+
+    </div>
+    
+    {%- if obj.citations is defined -%}
+      <h4>Please cite the following papers when you use this software:</h4>
+      {{- section_macros.format_contents({'contents':obj.citations}, div_namer=dn) -}}
+    {%- endif -%}
+
+  </div>
+</div>
+  
+{%- endmacro %}
+

@@ -20,7 +20,6 @@ class AssessHierarchyGroupsTask:
         output_directory,
         plotting_object,
         min_b_factor = 1.0,
-        verbose = False,
         ):
 
         adopt_init_args(self, locals())

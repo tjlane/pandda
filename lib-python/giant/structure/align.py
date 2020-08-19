@@ -6,8 +6,10 @@ from scitbx.array_family import flex
 from giant.exceptions import Sorry, Failure
 from giant.structure.select import protein, backbone, complete_backbone, common_residues, extract_atom
 
+
 class AlignmentError(Exception):
     pass
+
 
 class Alignment(object):
 
@@ -163,6 +165,10 @@ class LocalAlignment(CoordinateAlignment):
         # Therefore must be same length
         assert len(alignment_mxs) == self.n_sites
 
+        self._populate()
+
+    def _populate(self):
+
         assert (self.alignment_sites_nat is not None)
 
         # Transform alignment sites to reference frame
@@ -278,6 +284,7 @@ class MultipleLocalAlignment(LocalAlignment):
         # Add alignments to the class
         for l in local_alignments:
             self.add(l, update=False)
+
         # Update internal objects
         self._update()
 
@@ -290,8 +297,6 @@ class MultipleLocalAlignment(LocalAlignment):
         self.alignment_sites_ref = flex.vec3_double()
         self.reference_sites = flex.vec3_double()
 
-        # Class variables
-        self.n_alignments = len(self.local_alignments)
 
         # Add data from the alignments
         for l in self.local_alignments:
@@ -299,6 +304,10 @@ class MultipleLocalAlignment(LocalAlignment):
             self.alignment_sites_nat.extend(l.alignment_sites_nat)
             self.alignment_sites_ref.extend(l.alignment_sites_ref)
             self.reference_sites.extend(l.reference_sites)
+
+        # Class variables
+        self.n_alignments = len(self.local_alignments)            
+        self.n_sites = len(self.reference_sites)
 
         # Create new query trees
         self._tree_sites = {
@@ -551,8 +560,8 @@ def align_chains_flexible(
     c_ref = h_ref.only_chain()
 
     # Check that the chains contain the same atoms
-    c_mov.atoms().extract_element() == c_ref.atoms().extract_element(), 'chn_mov and chn_ref must contain the same atoms'
-    c_mov.atoms().extract_name()    == c_ref.atoms().extract_name(),    'chn_mov and chn_ref must contain the same atoms'
+    assert c_mov.atoms().extract_element() == c_ref.atoms().extract_element(), 'chn_mov and chn_ref must contain the same atoms'
+    assert c_mov.atoms().extract_name()    == c_ref.atoms().extract_name(),    'chn_mov and chn_ref must contain the same atoms'
 
     # List of output alignments and alignment sites
     o_rts = []; o_xyz = []; r_xyz = []
@@ -669,7 +678,7 @@ def extract_sites_for_alignment(chain_obj):
 
         for atom in resi.atoms():
 
-            if (atom.name == " CA "):
+            if (atom.name.strip() == "CA") and (atom.element.strip() == "C"):
               xyz = atom.xyz
               use = True
               break
@@ -680,12 +689,15 @@ def extract_sites_for_alignment(chain_obj):
 
     return ("".join(seq), sites, use_sites)
 
-def align_structures_rigid(mov_hier, ref_hier):
+def align_structures_rigid(
+    mov_hierarchy, 
+    ref_hierarchy,
+    ):
     """Extract c-alpha sites from the structures and align"""
 
     lsq_rt, alignment_sites, reference_sites = align_chains_rigid(
-        mov_chain = protein(mov_hier, copy=True).models()[0].only_chain(),
-        ref_chain = protein(ref_hier, copy=True).models()[0].only_chain(),
+        mov_chain = protein(mov_hierarchy, copy=True).models()[0].only_chain(),
+        ref_chain = protein(ref_hierarchy, copy=True).models()[0].only_chain(),
     )
 
     return GlobalAlignment(

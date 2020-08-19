@@ -12,7 +12,6 @@ class SanitiseEchtModel:
     def __init__(self,
         tls_parameters_dict,
         uij_parameters_dict,
-        verbose = False,
         ):
 
         # Initialise sub-classes

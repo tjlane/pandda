@@ -14,9 +14,6 @@ pandda
             .type = str
         lig_style = *.cif
             .type = str
-        max_new_datasets = 500
-            .help = "Maximum number of new datasets that can be processed for an analysis -- used to break the analysis into chunks when processing large numbers of datasets"
-            .type = int
         regex
             .help = "Advanced dataset labelling regexs"
         {
@@ -40,12 +37,16 @@ pandda
                 .type = path
             mtz = None
                 .type = path
-            structure_factors = None
-                .type = str
         }
         flags
             .help = "Flags for individual datasets"
         {
+            ignore_datasets = None
+                .help = "Reject these datasets, don't even load them - comma separated list of dataset tags"
+                .type = str
+            only_datasets = None
+                .help = "Only load these datasets, don't load any others - comma separated list of dataset tags"
+                .type = str
             ground_state_datasets = None
                 .help = "Define a set of known 'ground-state' (e.g. unbound) datasets. ONLY these datasets will be used for characterising the ground-state electron density."
                 .type = str
@@ -55,128 +56,53 @@ pandda
             exclude_from_characterisation = None
                 .help = "Don't use these datasets to characterise the ground-state electron density, only analyse them - comma separated list of dataset tags"
                 .type = str
-            only_datasets = None
-                .help = 'Only load these datasets, don\'t load any others - comma separated list of dataset tags'
+            test = None
+                .help = "Only load these datasets, don't load any others - comma separated list of dataset tags"
                 .type = str
-            ignore_datasets = None
-                .help = "Reject these datasets, don't even load them - comma separated list of dataset tags"
+            train = None
+                .help = "Only load these datasets, don't load any others - comma separated list of dataset tags"
                 .type = str
-            reprocess_datasets = None
-                .help = "Selection of existing datasets to reproces (treat as new datasets) - comma separated list of dataset tags. Setting this will set flags.existing_datasets=reload."
+            not_test = None
+                .help = "Only load these datasets, don't load any others - comma separated list of dataset tags"
+                .type = str
+            not_train = None
+                .help = "Only load these datasets, don't load any others - comma separated list of dataset tags"
                 .type = str
         }
     }
+
     output
         .help = "Output directory"
     {
         out_dir = './pandda'
             .type = path
-        new_analysis_dir = False
-            .help = "Create a new analysis directory to prevent overwriting previous results"
+        overwrite = False
             .type = bool
         dataset_prefix = ''
             .help = "Prefix to be attached to each dataset name"
             .type = str
-        maps
-            .help = "Control which maps are output by the program"
-        {
-            write_z_maps = none *interesting all
-                .help = "Output the z-maps in the native frame of datasets for selected datasets"
-                .type = choice
-            write_average_map = none *interesting all
-                .help = "Output the average map in the native frame of datasets for selected datasets"
-                .type = choice
-            write_dataset_map = *none interesting all
-                .help = "Output the analysed maps in the native frame of datasets for selected datasets"
-                .type = choice
-            write_statistical_maps = *none reference
-                .help = "Output statistical maps in the native frame of datasets"
-                .type = choice
-        }
-        pickling
-            .help = "Pickle Settings"
-            .expert_level = 1
-        {
-            pickle_complete_pandda = False
-                .help = "Pickle the entire PANDDA object for reloading - takes a lot of space"
-                .type = bool
-            pickle_map_analysers = False
-                .help = "Pickle map analysers"
-                .type = bool
-            pickle_dataset_maps = False
-                .help = "Pickle the dataset maps as part of the dataset pickle object"
-                .type = bool
-        }
-        developer
-            .help = "Development Settings (Not needed by most users)"
-            .expert_level = 3
-        {
-            write_all = False
-                .help = "Activate all developer flags"
-                .type = bool
-            write_reference_frame_maps = False
-                .help = "Output maps for datasets in the reference coordinate frame"
-                .type = bool
-            write_reference_frame_grid_masks = False
-                .help = "Output the grid masks which control which areas are analysed"
-                .type = bool
-            write_reference_frame_statistical_maps = False
-                .help = "Output the statistical maps in the reference coordinate frame"
-                .type = bool
-            write_reference_frame_all_z_map_types = False
-                .help = "Output all possible types of Z-maps"
-                .type = bool
-        }
     }
-    flags
-        .help = "control which datasets are loaded and processed, and when statistical maps are calculated"
-    {
-        stages = *variation_analysis *z_map_analysis
-            .help = "Which parts of the program should be turned on?
-                        variation_analysis:  perform statistical density variation analysis (analyse differences between datasets).
-                        z_map_analysis:      contrast datasets against characterised density (identify events in each dataset)."
-            .type = choice(multi=True)
-        existing_datasets = reprocess *reload ignore
-            .help = "What to do with previously-analysed datasets? reprocess: old datasets are treated as new and processed fully. reload: events identified in old datasets will be included in results. ignore: ..."
-            .type = choice
-        recalculate_statistical_maps = yes no *extend
-            .help = "Set whether statistical maps are re-used from previous runs. If No, it looks for existing statistical maps and uses those (reverts to Yes if none are found). If Extend is chosen, existing maps are used, but additional maps are calculated at high and low resolutions if the data extends beyond the current range."
-            .type = choice
-        density_analysis_for = all_resolutions *datasets
-            .help = "Select which resolutions density is analysed at - characterise the density always? or only when there is a dataset to be analysed?"
-            .type = choice
-    }
-    shortcuts
-        .help = "Shortcuts to set sets of parameters to defaults"
-    {
-        run_in_single_dataset_mode = False
-            .help = "Set the default parameters to allow the characterisation to be performed using a single dataset (no variation analysis)"
-            .type = bool
-    }
+
     params
         .help = "Algorithm Parameters"
     {
         analysis
             .help = "Settings to control the selection of datasets"
         {
-            dynamic_res_limits = True
-                .help = 'Allow the analysed resolution limits to change depending on the dataset resolution ranges'
-                .type = bool
+            high_res_increment = 0.05
+                .help = 'Increment of resolution shell for map analysis'
+                .type = float
             high_res_upper_limit = 0.0
                 .help = 'Highest resolution limit (maps are never calulcated above this limit)'
                 .type = float
             high_res_lower_limit = 4.0
                 .help = 'Lowest resolution limit (datasets below this are ignored)'
                 .type = float
-            high_res_increment = 0.05
-                .help = 'Increment of resolution shell for map analysis'
-                .type = float
         }
         diffraction_data
         {
-            structure_factors = None
-                .type = str
-                .multiple = True
+            structure_factors = FWT,PHWT 2FOFCWT_iso-fill,PH2FOFCWT_iso-fill 2FOFCWT_fill,PH2FOFCWT_fill 2FOFCWT,PH2FOFCWT
+                .type = strings
             checks
                 .help = "checks on the mtz file data provided for each dataset"
             {
@@ -187,9 +113,12 @@ pandda
                     .help = "check that diffraction data is 100% complete up to this resolution cutoff. missing reflections at low resolution may seriously degrade analysis quality. set to none to turn off this check."
                     .type = float
             }
-            apply_b_factor_scaling = True
-                .help = "Apply b-factor scaling to reflections? (reciprocal space)"
-                .type = bool
+            scaling 
+            {
+                apply_b_factor_scaling = True
+                    .help = "Apply b-factor scaling to reflections? (reciprocal space)"
+                    .type = bool
+            }
         }
         alignment
             .help = "Settings to control the alignment of the structures"
@@ -209,14 +138,12 @@ pandda
                 .help = 'Maximum allowed rfree for a structure (datasets above this are rejected)'
                 .type = float
                 .multiple = False
-            flags {
-                same_space_group_only = True
-                    .help = "Reject datasets that are a different spacegroup to the reference/filter dataset - NOT YET IMPLEMENTED - MUST BE SET TO TRUE"
-                    .type = bool
-                similar_models_only = False
-                    .help = "Reject datasets that have a different model composition to the reference/filter dataset. All models must have the same number and identity of atoms."
-                    .type = bool
-            }
+            same_space_group_only = True
+                .help = "Reject datasets that are a different spacegroup to the reference/filter dataset - NOT YET IMPLEMENTED - MUST BE SET TO TRUE"
+                .type = bool
+            similar_models_only = False
+                .help = "Reject datasets that have a different model composition to the reference/filter dataset. All models must have the same number and identity of atoms."
+                .type = bool
         }
         excluding
             .help = "Parameters to control when datasets are automatically excluded from characterisation"
@@ -235,9 +162,6 @@ pandda
             grid_spacing = 0.5
                 .help = 'Spacing of the grid points in the sampled maps (A) - fixed across resolutions'
                 .type = float
-            padding = 3
-                .help = "Padding around the edge of the maps (A)"
-                .type = float
             density_scaling = none *sigma volume
                 .help = "Apply scaling to electron density? (real-space)"
                 .type = choice
@@ -245,18 +169,18 @@ pandda
         masks
             .help = "Parameters to control the masking of grid points around the protein"
         {
-            pdb = None
+            mask_pdb = None
                 .help = "A PDB to mask the grid against (if none provided, use reference dataset)"
                 .type = str
                 .multiple = False
+            mask_selection_string = None
+                .help = "Define a custom region of the protein to load electron density for (selection + outer_mask - inner_mask). If not defined, uses all protein atoms."
+                .type = str
             align_mask_to_reference = False
                 .help = "If masks.pdb is supplied, does it require alignment to the reference structure?
                             If selecting a fragment of the structure, masks.pdb must already be aligned prior to running pandda (can't align fragments)."
                 .type = bool
-            selection_string = None
-                .help = "Define a custom region of the protein to load electron density for (selection + outer_mask - inner_mask). If not defined, uses all protein atoms."
-                .type = str
-            outer_mask = 6
+            outer_mask = 6.0
                 .help = 'include region within outer_mask of the atoms defined by selection_string (or protein if selection_string undefined)'
                 .type = float
             inner_mask = 1.8
@@ -275,12 +199,16 @@ pandda
             max_build_datasets = 60
                 .help = 'Maximum number of datasets used to build distributions'
                 .type = int
-            average_map = *mean_map medn_map
+            average_map_type = *mean_map medn_map
                 .help = 'Which statistical map should the uncertainties and Z-map be calculated from?
-                            mean_map: mean map      (simple averaging)
-                            medn_map: median map    (less sensitive to outliers)'
-                .type = choice
-            z_map_type = uncertainty *adjusted+uncertainty
+                    mean_map: mean map      (simple averaging)
+                    medn_map: median map    (less sensitive to outliers)'
+                .type = choice(multi=False)
+            fit_mu = True
+                .type = bool
+            fit_sigma_adjusted = True
+                .type = bool
+            z_map_type = uncertainty *adjusted+uncertainty quantile
                 .help = 'Type of Z-map to calculate'
                 .type = choice
         }
@@ -288,6 +216,9 @@ pandda
             .help = "Settings to control the finding of blobs"
             .expert_level = 1
         {
+            clustering_method = *agglomerative_hierarchical dbscan hdbscan
+                .help = "Method of clustering to use"
+                .type = choice(multi=False)
             contour_level = 2.5
                 .help = 'Contour level when looking for blobs'
                 .type = float
@@ -311,6 +242,11 @@ pandda
                     .help = 'exclude region within inner_mask of the atoms defined by selection_string'
                     .type = float
             }
+            agglomerative_hierarchical {
+                clustering_cutoff = 2.0
+                    .help = "cutoff range for agglomerative clustering"
+                    .type = float
+            }
         }
         background_correction
             .help = "Parameters to control the estimation of feature background corrections"
@@ -330,6 +266,7 @@ pandda
                 .help = 'Empirical multiplier to be applied to the contrast-estimated value of 1-BDC (truncated after multiplication to range 0-1)'
         }
     }
+
     results
         .help = "Change ordering/filtering of the output data"
     {
@@ -344,6 +281,15 @@ pandda
                 .type = choice
         }
     }
+
+    autobuilding
+        .help = "Autobuilding into PanDDA events"
+    {
+        autobuild = False
+            .help = "Whether or not to do autobuilding"
+            .type = bool
+    }
+
     exit_flags
         .help = "Flags for terminating the program early"
     {
@@ -357,7 +303,47 @@ pandda
            .help = "Will calculate the highest resolution average map and then exit - used for initial reference modelling."
             .type = bool
     }
+
+    processing
+        .help = "Change how the PanDDA is calculated"
+    {
+        cpus = 1
+            .help = "Number of local cpus to use"
+            .type = int
+        backend = serial *parallel_joblib 
+            .help = "What multiprocessing backend to use"
+            .type = choice
+        pandda_backend = *numpy dask
+            .help = "NOT IMPLEMENTED: What technology to use for calculating pandda statistics"
+        process_shells = *serial luigi 
+            .help = "How to process shells"
+            .type = choice
+        remote_workers = None
+            .help = "Number of remote nodes to use (e.g. with luigi)"
+        remote_cpus_per_worker = None
+            .help = "Number of cpus to use on a remote machine (e.g. with luigi)"
+        h_vmem = 100
+            .help = "How to process dicts"
+            .type = int
+        m_mem_free = 5
+            .help = "How to process dicts"
+            .type = int
+    }
+
 }
-include scope giant.phil.settings_phil
+settings
+    .help = "General Settings"
+{
+    verbose = False
+        .type = bool
+    plot_graphs = True
+        .help = "Output graphs using matplotlib"
+        .type = bool
+    plotting {
+        backend = 'agg'
+            .help = "Backend to use in matplotlib"
+            .type = str
+    }
+}
 """, process_includes=True)
 

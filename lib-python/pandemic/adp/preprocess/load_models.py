@@ -6,7 +6,7 @@ import os
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
 
-from giant.dataset import CrystallographicModel, AtomicModel
+from giant.mulch.dataset import CrystallographicModel, AtomicModel
 
 
 class ModelLoader:
@@ -15,7 +15,6 @@ class ModelLoader:
     def __init__(self,
             model_type = 'crystallographic',
             labelling = 'foldername',
-            verbose = False,
             ):
         adopt_init_args(self, locals())
 

@@ -16,7 +16,6 @@ class IdentifyModules:
         threshold_start = 1.0,
         threshold_delta = 1.0,
         comparison_metric = 'similarity',
-        verbose = False,
         ):
 
         """
@@ -134,7 +133,7 @@ class IdentifyModules:
         # Output hierarchy is the last module hierarchy
         reduced_hierarchy = self.create_hierarchy_from_modules(cumulative_modules, resort=True)
 
-        if self.verbose:
+        if logger.level < 20: # debug
             self.show('threshold_unique_modules', threshold_unique_modules.iteritems())
             self.show('threshold_cumulative_hierarchies', threshold_cumulative_hierarchies.iteritems())
             for threshold, r_hierarchy in threshold_reduced_hierarchies.iteritems():

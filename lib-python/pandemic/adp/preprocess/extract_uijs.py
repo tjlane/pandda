@@ -14,7 +14,6 @@ class ExtractAndProcessModelUijsTask:
 
     def __init__(self,
             expected_disorder_model,
-            verbose = False,
             ):
         actual_disorder_model = expected_disorder_model
         adopt_init_args(self, locals())
