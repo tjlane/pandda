@@ -83,29 +83,33 @@ def sort_and_average(labels, values):
     return uniq_x, uniq_y
 
 def make_dataframe_from_dicts(
-    data_dict_1,
-    data_dict_2,
+    data_dicts,
+    labels,
     splice_function = None,
     ):
+
+    assert len(data_dicts) == len(labels)
 
     if (splice_function is None):
         splice_function = lambda x: x
 
-    d2 = {splice_function(k):v for k,v in data_dict_2.iteritems()}
+    data_dicts_spliced = [{splice_function(k):v for k,v in d.iteritems()} for d in data_dicts]
+
+    all_keys = set()
+    for d in data_dicts_spliced:
+        all_keys.update(d.keys())
 
     df_values = []
-    for lab1, val1 in data_dict_1.iteritems():
-        # Sanitise the label
-        lab_splice = splice_function(lab1)
-        # Check if the dictionary has the value
-        val2 = d2.get(lab_splice)
-        # Skip if not present in other values
-        if (val2 is None):
-            continue
-        df_values.append((lab1, val1, val2))
+    for k in sorted(all_keys):
+        row = [k] + [d.get(k, None) for d in data_dicts_spliced]
+        df_values.append(tuple(row))
 
     # Make and return dataframe
-    df = pd.DataFrame(data=df_values, columns=['key', 'val1', 'val2'])
+    df = pd.DataFrame(
+        data = df_values, 
+        columns = ['key'] + list(labels),
+    )
+    df = df.set_index('key')
 
     return df
 
@@ -148,105 +152,46 @@ class Plotter:
     
     def make_plot_from_dataframe(self,
         data_frame,
-        label1,
-        label2,
         filename,
         ):
 
         import numpy as np
         from matplotlib import pyplot
 
-        labs = data_frame['key']
-        vals1 = data_frame['val1']
-        vals2 = data_frame['val2']
+        labs = list(data_frame.index.values)
 
-        fig, axes = pyplot.subplots(nrows=1, ncols=2)
+        fig, axis = pyplot.subplots(nrows=1, ncols=1)
 
         ############
-
-        ax1 = axes[0]
-
-        x = vals1
-        y = vals2
-
-        ax1.scatter(
-            x = x,
-            y = y,
-            s = 1,
-        )
-        ax1.set_xlabel(label1)
-        ax1.set_ylabel(label2)
-
-        ax1.set_ylim(ymin=self.y_min, ymax=self.y_max)
-
-        non_zero_bool = np.logical_not((x==0) | (y==0))
-        corr = round(np.corrcoef(x[non_zero_bool],y[non_zero_bool])[0][1], 3)
-        min_x, max_x = ax1.get_xlim()
-        min_y, max_y = ax1.get_ylim()
-
-        ax1.text(
-            x = (0.05*min_x + 0.95*max_x),
-            y = (0.05*min_y + 0.95*max_y),
-            s = corr,
-            horizontalalignment = 'right',
-            verticalalignment = 'bottom',
-        )
-
-        ############
-
-        ax2_1 = axes[1]
-        #ax2_2 = ax2_1.twinx()
-        ax2_2 = ax2_1
 
         # New X-values
         residue_numbers = map(get_residue_number_from_pdb_str, labs)
 
-        y1 = vals1
-        y2 = vals2
+        handles = []
 
-        new_x1, new_y1 = sort_and_average(
-            labels = residue_numbers,
-            values = vals1,
-        )
-        new_x2, new_y2 = sort_and_average(
-            labels = residue_numbers,
-            values = vals2,
-        )
+        for c in list(data_frame.columns.values): 
 
-        # Scatter plot the original values
-        ax2_1.scatter(
-            x = residue_numbers,
-            y = y1,
-            s = 1,
-            color = 'b',
-        )
-        ax2_2.scatter(
-            x = residue_numbers,
-            y = y2,
-            s = 1,
-            color = 'r',
-        )
+            vals = data_frame[c]
+
+            new_x, new_y = sort_and_average(
+                labels = residue_numbers,
+                values = vals,
+            )
+
+            axis.scatter(
+                x = residue_numbers,
+                y = vals,
+                s = 1,
+            )
         
-        ax2_1.set_ylim(ymin=self.y_min, ymax=self.y_max)
+            handles += axis.plot(new_x, new_y)
+        
+        axis.set_ylim(ymin=self.y_min, ymax=self.y_max)
 
         # Line plots for the averaged values
-        handles = []
-        handles += ax2_1.plot(new_x1, new_y1, 'b-')
-        handles += ax2_2.plot(new_x2, new_y2, 'r-')
-        ax2_1.legend(handles=handles, labels=[label1, label2])
-
-        # Calculate the correlation coefficient per residue
-        non_zero_bool = np.logical_not((new_y1==0) | (new_y2==0))
-        corr = round(np.corrcoef(new_y1[non_zero_bool],new_y2[non_zero_bool])[0][1], 3)
-        min_x, max_x = ax2_1.get_xlim()
-        min_y, max_y = ax2_1.get_ylim()
-
-        ax2_1.text(
-            x = (0.95*min_x + 0.05*max_x),
-            y = (0.05*min_y + 0.95*max_y),
-            s = corr,
-            horizontalalignment = 'left',
-            verticalalignment = 'bottom',
+        axis.legend(
+            handles = handles, 
+            labels = list(data_frame.columns.values),
         )
 
         ############
@@ -332,8 +277,8 @@ def run(params):
             )
 
             data_frame = make_dataframe_from_dicts(
-                data_dict_1 = json_1,
-                data_dict_2 = json_2,
+                data_dicts = [json_1, json_2],
+                labels = [json_lab_1, json_lab_2],
                 splice_function = splice_function,
             )
 
@@ -342,10 +287,29 @@ def run(params):
 
             plotter.make_plot_from_dataframe(
                 data_frame = data_frame,
-                label1 = json_lab_1,
-                label2 = json_lab_2,
                 filename = (output_prefix + '.png'),
             )
+
+    logger.heading('all vs all')
+
+    output_prefix = os.path.join(
+        params.output.out_dir,
+        'all-vs-all',
+    )
+
+    all_labels, all_jsons = zip(*all_json_data)
+    data_frame = make_dataframe_from_dicts(
+        data_dicts = all_jsons,
+        labels = all_labels,
+        splice_function = splice_function,
+    )
+
+    if len(data_frame) > 0:
+
+        plotter.make_plot_from_dataframe(
+            data_frame = data_frame,
+            filename = (output_prefix + '.png'),
+        )
 
 if __name__ == '__main__':
     from giant.jiffies import run_default
