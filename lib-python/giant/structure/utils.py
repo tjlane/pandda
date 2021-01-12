@@ -36,7 +36,20 @@ def resolve_residue_id_clashes(fixed_hierarchy, moving_hierarchy, in_place=False
         if len(rg_ref) == 0:
             continue
         elif len(rg_ref) > 1:
-            raise Exception('More than one matching residue group in the output hierarchy?')
+            err_str = (
+                "A residue is present more than once in the output hierarchy.\n"
+                "> Moving residue: \n\t{rg_mov_str}\n"
+                "> Target residues: \n\t{rg_ref_strs}\n"
+                "Each label combination can only be present once unless labelled with appropriate alternate conformations.\n"
+                ).format(
+                rg_mov_str = (
+                    '{} ({})'.format(Labeller.format(rg_mov), ', '.join(rg_mov.unique_resnames()))
+                    ),
+                rg_ref_strs = '\n\t'.join(
+                    ['{} ({})'.format(Labeller.format(r), ', '.join(r.unique_resnames())) for r in rg_ref]
+                    ),
+                )
+            raise Exception(err_str)
         rg_ref = rg_ref[0]
         # Check to see if the residue is the same type as in the reference structure
         if map(str.strip, rg_ref.unique_resnames()) == map(str.strip, rg_mov.unique_resnames()):
