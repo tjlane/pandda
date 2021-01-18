@@ -10,6 +10,7 @@ from giant.jiffies import multi_table_ones
 
 class CalculateTableOnes:
 
+    debug = False
 
     def __init__(self,
         output_directory,
@@ -23,7 +24,7 @@ class CalculateTableOnes:
         base_phil.input.labelling  = 'foldername'
         base_phil.options          = table_one_options
         base_phil.settings.cpus    = n_cpus
-        base_phil.settings.verbose = (logger.level < 20)
+        base_phil.settings.verbose = self.debug
 
         adopt_init_args(self, locals())
 

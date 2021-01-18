@@ -9,7 +9,7 @@ from giant.paths import easy_directory
 from giant.xray.crystal import CrystalInfo
 
 def get_resolution_from_model_pdb_input(model=None, mtz_filename=None):
-    return model.input.resolution()
+    return model.crystal.resolution_high
 
 def get_resolution_from_model_mtz(model=None, mtz_filename=None):
     return CrystalInfo.from_mtz(mtz_filename).resolution_high

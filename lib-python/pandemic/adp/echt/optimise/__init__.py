@@ -46,6 +46,8 @@ class LevelTargetUijCalculator:
 
 class OptimiseEchtModel:
 
+    debug = False
+    
     def __init__(self,
             optimise_tls_function,
             optimise_adp_function,
@@ -142,10 +144,14 @@ class OptimiseEchtModel:
         #)
 
         # Initial amplitude optimisation
-        logger.subheading('Macrocycle {}: '.format(tracking_object.n_cycle)+'Optimising inter-level amplitudes')
+        logger.subheading(
+            'Macrocycle {}: '.format(tracking_object.n_cycle)+'Optimising inter-level amplitudes'
+            )
         self.sanitise_model(model_object)
         #optimise_amplitudes_iter(model_object=model_object)
-        optimise_amplitudes_full(model_object=model_object)
+        optimise_amplitudes_full(
+            model_object = model_object,
+            )
 
         # Record the object before optimisation
         tracking_object.update(
@@ -159,17 +165,36 @@ class OptimiseEchtModel:
 
             # Break loop if model is zero
             if self.max_u_iso(model_object) == 0.0:
-                logger.subheading('Macrocycle {}: '.format(tracking_object.n_cycle)+'All model amplitudes are zero. Not doing any optimisation...')
+                logger.subheading(
+                    (
+                        'Macrocycle {n_cycle}: '
+                        'All model amplitudes are zero. Not doing any optimisation...'
+                        ).format(
+                        n_cycle = tracking_object.n_cycle,
+                        )
+                    )
                 break
 
             # Iterate through the TLS levels of the fitting
             for i_level in xrange(model_object.n_tls_levels):
 
-                logger.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Fitting TLS Groups (level {} - {})'.format(i_level+1, model_object.tls_level_names[i_level]))
+                logger.subheading(
+                    (
+                        'Macrocycle {n_cycle}-{n_sub_cycle}: '
+                        'Fitting TLS Groups (level {level_num} - {level_name})'
+                        ).format(
+                        n_cycle = tracking_object.n_cycle, 
+                        n_sub_cycle = i_sub_cycle+1,
+                        level_num = i_level+1,
+                        level_name = model_object.tls_level_names[i_level],
+                        )
+                    )
 
-                # Optimise the groups for one level
                 model_object.tls_objects[i_level] = self.optimise_tls_level(
-                    uij_target = calculate_uij_target(uij_fitted=uij_isotropic_mask_or_not(model_object.uijs()), ignore_level=i_level),
+                    uij_target = calculate_uij_target(
+                        uij_fitted = uij_isotropic_mask_or_not(model_object.uijs()), 
+                        ignore_level = i_level,
+                        ),
                     uij_target_weights = uij_target_weights,
                     uij_isotropic_mask = uij_isotropic_mask,
                     uij_optimisation_mask = uij_optimisation_mask,
@@ -178,42 +203,81 @@ class OptimiseEchtModel:
                     )
 
                 # Optimise the amplitudes between levels
-                logger.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
-                self.sanitise_model(model_object)
-                optimise_amplitudes_full(model_object=model_object)
+                logger.subheading(
+                    (
+                        'Macrocycle {n_cycle}-{n_sub_cycle}: '
+                        'Optimising inter-level amplitudes'
+                        ).format(
+                        n_cycle = tracking_object.n_cycle, 
+                        n_sub_cycle = i_sub_cycle+1,
+                        )
+                    )
 
-                if (logger.level < 20): # change this to separate flag
-                    # Update tracking
+                self.sanitise_model(model_object)
+
+                optimise_amplitudes_full(
+                    model_object = model_object,
+                    )
+
+                if (self.debug is True):
+                    
                     tracking_object.update(
                         uijs = uij_isotropic_mask_or_not(model_object.uijs()),
-                        step = '{}-{} (l{})'.format(tracking_object.n_cycle, i_sub_cycle+1, i_level+1),
+                        step = '{n_cycle}-{n_sub_cycle} (l{n_level})'.format(
+                            n_cycle = tracking_object.n_cycle, 
+                            n_sub_cycle = i_sub_cycle+1, 
+                            n_level = i_level+1,
+                            ),
                         i_level = range(model_object.n_levels),
                         )
 
             if self.optimise_adp_level is not None:
 
-                # Fit the atomic level
-                logger.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising atomic Uijs')
+                logger.subheading(
+                    (
+                        'Macrocycle {n_cycle}-{n_sub_cycle}: '
+                        'Optimising atomic uijs'
+                        ).format(
+                        n_cycle = tracking_object.n_cycle, 
+                        n_sub_cycle = i_sub_cycle+1,
+                        )
+                    )
 
-                # Update the target uij by subtracting contributions from other levels
                 model_object.adp_values = self.optimise_adp_level(
                     uij_values = model_object.adp_values,
-                    uij_target = calculate_uij_target(uij_fitted=model_object.uijs(), ignore_level=-1), # !!! This does not use the isotropic mask
+                    uij_target = calculate_uij_target(
+                        uij_fitted = uij_isotropic_mask_or_not(model_object.uijs()), 
+                        ignore_level = -1,
+                        ), # !!! Should this not use the isotropic mask?
                     uij_target_weights = uij_target_weights,
-                    uij_isotropic_mask = None, # !!! This does not use the isotropic mask
+                    uij_isotropic_mask = uij_isotropic_mask, # !!! Should this use the isotropic mask?
                     uij_optimisation_mask = uij_optimisation_mask,
                     )
 
                 # Optimise the amplitudes between levels
-                logger.subheading('Macrocycle {}-{}: '.format(tracking_object.n_cycle, i_sub_cycle+1)+'Optimising inter-level amplitudes')
+                logger.subheading(
+                    (
+                        'Macrocycle {n_cycle}-{n_sub_cycle}: '
+                        'Optimising inter-level amplitudes'
+                        ).format(
+                        n_cycle = tracking_object.n_cycle, 
+                        n_sub_cycle = i_sub_cycle+1,
+                        )
+                    )
+
                 self.sanitise_model(model_object)
-                #optimise_amplitudes_iter(model_object=model_object)
-                optimise_amplitudes_full(model_object=model_object)
+
+                optimise_amplitudes_full(
+                    model_object = model_object,
+                    )
 
             # Update tracking
             tracking_object.update(
                 uijs = uij_isotropic_mask_or_not(model_object.uijs()),
-                step = '{}-{}'.format(tracking_object.n_cycle, i_sub_cycle+1),
+                step = '{n_cycle}-{n_sub_cycle}'.format(
+                    n_cycle = tracking_object.n_cycle, 
+                    n_sub_cycle = i_sub_cycle+1,
+                    ),
                 i_level = range(model_object.n_levels),
                 )
 
@@ -221,9 +285,20 @@ class OptimiseEchtModel:
         self.close_processes()
 
         # Optimise the amplitudes again just to make sure...
-        logger.subheading('Macrocycle {}: '.format(tracking_object.n_cycle)+'Optimising inter-level amplitudes')
+        logger.subheading(
+            (
+                'Macrocycle {n_cycle}: '
+                'Optimising inter-level amplitudes'
+                ).format(
+                n_cycle = tracking_object.n_cycle,
+                )
+            )
+
         self.sanitise_model(model_object)
-        optimise_amplitudes_full(model_object=model_object)
+
+        optimise_amplitudes_full(
+            model_object = model_object,
+            )
 
         # Update tracking
         tracking_object.update(

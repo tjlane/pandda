@@ -1,7 +1,7 @@
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
-import os, copy, collections
+import copy, collections
 
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
@@ -9,7 +9,7 @@ from libtbx.utils import Sorry, Failure
 from pandemic.adp.echt.analysis.cluster_tls_groups import ClusterTLSGroupsTask
 from pandemic.adp.echt.analysis.amplitudes import AnalyseTLSAmplitudesTask
 
-from giant.paths import easy_directory
+import pathlib as pl
 
 
 class AnalyseEchtModelTask:
@@ -21,14 +21,16 @@ class AnalyseEchtModelTask:
         analysis_parameters = None,
         ):
 
+        output_directory = pl.Path(output_directory)
+
         cluster_tls_groups_task = ClusterTLSGroupsTask(
-            output_directory = easy_directory(os.path.join(output_directory, 'tls_group_clustering')),
+            output_directory = (output_directory / 'tls_group_clustering'),
             metric = analysis_parameters.tls_group_clustering.metric,
             parameters = analysis_parameters.tls_group_clustering,
             )
 
         analyse_tls_amplitudes_task = AnalyseTLSAmplitudesTask(
-            output_directory = easy_directory(os.path.join(output_directory, 'dataset_clustering')),
+            output_directory = (output_directory / 'dataset_clustering'),
             )
 
         adopt_init_args(self, locals())

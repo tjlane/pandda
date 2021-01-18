@@ -69,6 +69,8 @@ class OptimisationSetGenerator:
 
 class OptimiseInterLevelAmplitudes:
 
+    debug = False
+
     def __init__(self,
         convergence_tolerance,
         optimisation_weights = None,
@@ -163,7 +165,7 @@ class OptimiseInterLevelAmplitudes:
         ##############
         # Report
         #
-        if (logger.level < 20):
+        if (self.debug is True):
             from itertools import groupby
             logger.bar()
             logger('Inter-level optimisations:')

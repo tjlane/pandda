@@ -1,12 +1,10 @@
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
-import os, collections
+import collections
 
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry
-
-from giant.paths import easy_directory
 
 from pandemic.adp.utils import show_file_dict
 from pandemic.adp.echt.analysis.cluster_tls_groups.helliger import ClusterTLSGroups_HelligerDistance
@@ -67,6 +65,9 @@ class ClusterTLSGroupsTask:
         ):
 
         logger.subheading('Clustering TLS Groups to generate new levels & groupings', spacer=True)
+
+        if not self.output_directory.exists():
+            self.output_directory.mkdir(parents=True)
 
         # Extract structures here so that no knowledge of the dictionary key is required at higher levels
         model_structures = model_files['level_uijs_pdb']
@@ -136,7 +137,10 @@ class ClusterTLSGroupsTask:
 
         output_files = collections.OrderedDict()
 
-        out_directory = easy_directory(os.path.join(self.output_directory, 'new_groupings'))
+        out_directory = (self.output_directory / 'new_groupings')
+
+        if not out_directory.exists():
+            out_directory.mkdir(parents=True)
 
         logger.subheading('Outputting levels generated at each clustering threshold', spacer=True)
 
@@ -151,7 +155,7 @@ class ClusterTLSGroupsTask:
 
             for threshold, hierarchy in level_data.module_info.threshold_unique_hierarchies.iteritems():
 
-                filename = os.path.join(out_directory, 'level_{}_threshold_{}.eff'.format(i_l+1, threshold))
+                filename = str(out_directory / 'level_{}_threshold_{}.eff'.format(i_l+1, threshold))
 
                 label_template = '{} (groups {{}})'.format(level_name)
 

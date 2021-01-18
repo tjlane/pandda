@@ -186,7 +186,8 @@ class PandemicTrackingPlotter:
             y_label = 'Model fit\n($\AA^2$)',
             )
         helper.hide_x_labels(axis=ax)
-        ax.set_ylim(bottom=0.0)
+        #ax.set_ylim(bottom=0.0)
+        ax.set_yscale('log')
         #
         # 2
         ax = axes[1]

@@ -5,6 +5,8 @@ import os, copy, collections
 from libtbx import adopt_init_args, group_args
 
 from mmtbx.tls.optimise_amplitudes import OptimisationWeights
+
+
 class ReplaceableOptimisationWeights(OptimisationWeights):
     """
     Extended weights object for OptimiseAmplitudes class.
@@ -102,9 +104,17 @@ class UpdateOptimisationFunction:
             logger('Updating {} = {} -> {}'.format(k, sta_v, new_v))
             new_weights_dict[k] = new_v
         # Update weights if above threshold
-        weights_sum = sum(new_weights_dict.values())
-        if (minimum_weight is not None) and (weights_sum < minimum_weight):
-            logger('\n*** Sum of optimisation weights ({}) is below the minimum threshold ({}). Not updating weights. ***'.format(weights_sum, minimum_weight))
+        elastic_net_weight_total = (
+            new_weights_dict['sum_of_amplitudes'] + 
+            new_weights_dict['sum_of_squared_amplitudes']
+            )
+        if (minimum_weight is not None) and (elastic_net_weight_total < minimum_weight):
+            logger(
+                (
+                    '\n*** Sum of elastic-net optimisation weights ({}) '
+                    'is below the minimum threshold ({}). Not updating weights. ***'
+                    ).format(elastic_net_weight_total, minimum_weight)
+                )
         else:
             # Get current weight object
             current_weights = self.get_weights(model_optimisation_function)

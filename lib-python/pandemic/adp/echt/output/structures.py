@@ -1,24 +1,209 @@
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
+import collections
+import pathlib as pl
+
 import os, collections
 from libtbx import adopt_init_args
 from giant.paths import easy_directory
+from giant.utils import merge_dicts
 
 from scitbx.array_family import flex
 
 from giant.structure.uij import uij_to_b
 
 
-class WriteEchtStructures:
+class WriteStructure:
 
+    def __init__(self, structure_factory, atom_mask):
+        self.structure_factory = structure_factory
+        self.atom_mask = flex.bool(atom_mask)
+
+    def __call__(self,
+        uij,
+        filename,
+        b = None, 
+        ):
+
+        if (b is None): 
+            b = uij_to_b(uij)
+
+        m_h = self.structure_factory.custom_copy(
+                uij = uij,
+                iso = b,
+                mask = self.atom_mask,
+                blank_copy = True,
+                )
+
+        m_h.write_pdb_file(filename)
+
+        return filename
+
+
+class WriteEchtAverageStructures: 
+
+    target_uijs_path = 'average_uijs_input.pdb'
+    output_uijs_path = 'average_uijs_output.pdb'
+
+    tls_mode_uijs_path_template = 'level_{level_num}-tls_mode_{mode_num}.pdb'
+    all_level_uijs_path_template = 'level_{level_num}-all.pdb'
+
+    def __init__(self, 
+        output_directory,
+        ):
+
+        self.output_directory = pl.Path(output_directory)
+
+    def __call__(self,
+        model_values, 
+        target_values,
+        structure_factory,
+        atom_mask,
+        ):
+
+        if not self.output_directory.exists():
+            self.output_directory.mkdir(parents=True)
+
+        self.write_structure = WriteStructure(
+            structure_factory = structure_factory, 
+            atom_mask = atom_mask,
+            )
+
+        ###
+
+        output_files = collections.OrderedDict()
+
+        ###
+
+        of = self.write_target_structure(
+            target_values = target_values,
+            )
+
+        merge_dicts(master_dict=output_files, merge_dict=of)
+
+        ###
+
+        of = self.write_total_structure(
+            model_values = model_values,
+            )
+
+        merge_dicts(master_dict=output_files, merge_dict=of)
+
+        ###
+
+        of = self.write_mode_structures(
+            model_values = model_values,
+            )
+
+        merge_dicts(master_dict=output_files, merge_dict=of)
+
+        ###
+
+        of = self.write_level_structures(
+            model_values = model_values,
+            )
+
+        merge_dicts(master_dict=output_files, merge_dict=of)
+
+        ###
+
+        del self.write_structure
+
+        return output_files
+
+    def write_target_structure(self, target_values):
+
+        path = str(
+            self.output_directory / self.target_uijs_path
+            )
+
+        self.write_structure(
+            uij = target_values.total_uij,
+            b = target_values.total_b,
+            filename = path,
+            )
+
+        return {
+            'target_uijs_pdb' : path,
+            }
+
+    def write_total_structure(self, model_values):
+
+        path = str(
+            self.output_directory / self.output_uijs_path
+            )
+
+        self.write_structure(
+            uij = model_values.total_uij,
+            b = model_values.total_b,
+            filename = path,
+            )
+
+        return {
+            'output_uijs_pdb' : path,
+            }
+
+    def write_mode_structures(self, model_values):
+        
+        of = collections.OrderedDict()
+
+        for i_level, level_name in enumerate(model_values.tls_level_names):
+
+            for i_mode in xrange(model_values.n_tls_modes):
+
+                path = str(
+                    self.output_directory / self.tls_mode_uijs_path_template.format(
+                        level_num = i_level+1,
+                        mode_num = i_mode+1,
+                        )
+                    )
+
+                self.write_structure(
+                    uij = model_values.tls_levels_modes_uij[i_level][i_mode],
+                    b = model_values.tls_levels_modes_b[i_level][i_mode],
+                    filename = path,
+                    )
+
+                of[(level_name,i_mode)] = path
+
+        return {
+            'level_uijs_by_mode_pdb' : of,
+            }
+
+    def write_level_structures(self, model_values):
+
+        of = collections.OrderedDict()
+
+        for i_level, level_name in enumerate(model_values.all_level_names):
+
+            path = str(
+                self.output_directory / self.all_level_uijs_path_template.format(
+                    level_num = i_level+1,
+                    )
+                )
+
+            self.write_structure(
+                uij = model_values.all_levels_uij[i_level],
+                b = model_values.all_levels_b[i_level],
+                filename = path,
+                )
+
+            of[level_name] = path
+
+        return {
+            'level_uijs_pdb' : of,
+            }
+
+
+class WriteEchtDatasetStructures:
 
     pymol_script_py = 'pymol_script.py'
 
     def __init__(self,
         output_directory,
         ):
-        adopt_init_args(self, locals())
+        self.output_directory = output_directory
 
     def show(self, label, pdbs, max=5):
         logger(label)
@@ -182,10 +367,12 @@ class WriteEchtStructures:
             for f in f_list:
                 obj = os.path.basename(f)
                 s.load_pdb(f_name=os.path.relpath(os.path.abspath(f), start=py_d), obj=obj)
+                s.custom('spectrum', expression='b', selection=obj)
 
+            s.set('ellipsoid_probability', '0.95')
             s.show_as(obj='all', style='lines')
             s.show(obj='all', style='ellipsoids')
-            s.custom('spectrum', expression='b', selection='all')
+            # s.custom('spectrum', expression='b', selection='all')
             s.set('grid_mode', 1)
 
             s.orient(obj='all')

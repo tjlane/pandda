@@ -128,8 +128,8 @@ class WriteHtmlSummaryTask:
             'logo_text' : pandemic.resources.FORMAT_LOGO_TEXT.format('.adp'),
             'citations' : [
                 format_citation(
-                    title = '<< Paper Title Here >>',
-                    journal = 'an exciting journal',
+                    title = 'A method for the intuitive extraction of macromolecular dynamics from structural disorder.',
+                    journal = 'In submission',
                     authors = ['N. Pearce', 'P. Gros'],
                     year = "2021",
                     link = None,

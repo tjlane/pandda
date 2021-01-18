@@ -2,6 +2,7 @@ import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 import os, copy, shutil, collections
+import pathlib as pl
 from libtbx import adopt_init_args
 from giant.paths import easy_directory
 
@@ -39,7 +40,7 @@ class TaskMultipleRunWrapper:
 
         # Create copy of the task and change the output directory
         task_copy = copy.deepcopy(self.task)
-        task_copy.output_directory = new_o_dir
+        task_copy.setup(output_directory = pl.Path(new_o_dir))
 
         # Run the task
         task_copy(**task_args)

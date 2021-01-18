@@ -153,7 +153,7 @@ class PandemicTrackingObject:
                 'step'   : step,
                 'level#' : level_number,
                 'level'  : level_name,
-                'rmsd'   : round(b_rmsd,3),
+                'rmsd'   : round(b_rmsd,6),
                 'b_avg' : round(b_avg,3),
                 'b_min' : round(b_min,3),
                 'b_max' : round(b_max,3),

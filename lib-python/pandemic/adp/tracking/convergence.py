@@ -50,7 +50,7 @@ class PandemicConvergenceChecker:
 
         assert uij_current is not None
 
-        # Calculat iso-B (LEVEL, DATASET, ATOM)
+        # Calculate iso-B (LEVEL, DATASET, ATOM)
         b_current = constants.EIGHTPISQ * uij_current[..., 0:3].mean(axis=-1)
 
         # Check if model is still zero and record cycle number if not

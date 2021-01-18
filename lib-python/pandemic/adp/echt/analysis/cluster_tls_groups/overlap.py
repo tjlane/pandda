@@ -1,7 +1,7 @@
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
-import os, itertools, collections
+import itertools, collections
 import math, numpy
 from scitbx.matrix import sym, diag
 from scitbx.linalg import eigensystem_real_symmetric
@@ -267,7 +267,7 @@ class ClusterTLSGroups_OverlapMass:
 
         ###############################################
 
-        filename = os.path.join(output_directory, output_prefix+'-new_levels.png')
+        filename = str(output_directory / (output_prefix+'-new_levels.png'))
         output_files['modules_png'] = filename
 
         from pandemic.adp.echt.analysis.cluster_tls_groups.plots import LevelPlotAccumulator
@@ -300,7 +300,7 @@ class ClusterTLSGroups_OverlapMass:
 
         ###############################################
 
-        filename = os.path.join(output_directory, output_prefix+'-pymol.py')
+        filename = str(output_directory / (output_prefix+'-pymol.py'))
         output_files['pymol_script'] = filename
         make_pymol_script(
             tls_groups = tls_groups,

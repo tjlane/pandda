@@ -1,7 +1,7 @@
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
-import os, math, collections
+import math, collections
 import numpy, pandas
 
 from libtbx import adopt_init_args, group_args
@@ -53,6 +53,9 @@ class AnalyseResidualsTask:
         dataset_labels,
         reference_hierarchy,
         ):
+
+        if not self.output_directory.exists():
+            self.output_directory.mkdir(parents=True)
 
         results_table = pandas.DataFrame(index=dataset_labels)
 
@@ -243,7 +246,7 @@ class AnalyseResidualsTask:
                 'legends' : dataset_labels if (len(dataset_labels) < 10) else None,
                 'flierprops' : flierprops,
                 },
-            prefix = os.path.join(self.output_directory, 'residual_by_residue'),
+            prefix = str(self.output_directory / 'residual_by_residue'),
             residue_values_function = None,
             y_array_values_function = self.plotting_object.array_concatenate,
             )
@@ -257,7 +260,7 @@ class AnalyseResidualsTask:
         n_per_image = 10
         for i_min in range(0, len(dataset_labels), n_per_image):
             i_max = i_min + n_per_image
-            filename = os.path.join(self.output_directory, 'residual_by_dataset_{}-{}.png'.format(i_min+1, i_max))
+            filename = str(self.output_directory / 'residual_by_dataset_{}-{}.png'.format(i_min+1, i_max))
             self.plotting_object.boxplot(
                 y_vals = list(constants.EIGHTPISQ*atom_rmsds[i_min:i_max]),
                 title = 'Fitting Residuals by Dataset\n residual = $8\pi^2$rms($U_{model} - U_{target}$)',
@@ -292,7 +295,7 @@ class AnalyseResidualsTask:
 
         rmsd_h = structure_factory.custom_copy(iso=constants.EIGHTPISQ*mean_rmsds, uij=mean_rmsds_uij)
 
-        filename = os.path.join(self.output_directory, 'residuals.pdb')
+        filename = str(self.output_directory / 'residuals.pdb')
         rmsd_h.write_pdb_file(filename)
 
         output_files['residuals_pdb'] = filename
@@ -309,7 +312,7 @@ class AnalyseResidualsTask:
         atom_rmsds = constants.EIGHTPISQ * rms(uij_target-uij_fitted, axis=-1)
         iso_target = constants.EIGHTPISQ * uij_target[...,0:3].mean(axis=-1)
 
-        filename = os.path.join(self.output_directory, 'residual_vs_bfactor.png')
+        filename = str(self.output_directory / 'residual_vs_bfactor.png')
 
         n = len(iso_target)
 
@@ -366,7 +369,7 @@ class AnalyseResidualsTask:
         n_per_image = 30
         for i_min in range(0, len(plot_labels), n_per_image):
             i_max = i_min + n_per_image
-            filename = os.path.join(self.output_directory, 'residual_by_atom_type_{}-{}.png'.format(i_min+1, i_max))
+            filename = str(self.output_directory / 'residual_by_atom_type_{}-{}.png'.format(i_min+1, i_max))
             self.plotting_object.boxplot(
                 y_vals = list(plot_rmsds[i_min:i_max]),
                 title = 'Fitting Residuals by Atom Type\n residual = $8\pi^2$rms($U_{model} - U_{target}$)',
@@ -419,7 +422,7 @@ class AnalyseResidualsTask:
                     'markersize' : 1.5,
                     'linewidth' : 1.0,
                     },
-                prefix = os.path.join(self.output_directory, 'fitting_residual_correlations_level_{}'.format(i_l+1)),
+                prefix = str(self.output_directory / 'fitting_residual_correlations_level_{}'.format(i_l+1)),
                 residue_values_function = numpy.mean,
                 y_array_values_function = None,
                 )

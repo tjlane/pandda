@@ -12,3 +12,4 @@ constants
 dask
 cloudpickle
 biopandas==0.2.4
+pytest

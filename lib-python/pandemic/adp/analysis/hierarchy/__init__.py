@@ -1,7 +1,7 @@
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
-import os, math, copy, collections
+import math, copy, collections
 import numpy, pandas
 
 from libtbx import adopt_init_args, group_args
@@ -9,6 +9,8 @@ from libtbx.utils import Sorry, Failure
 
 from pandemic.adp import constants
 from pandemic.adp.utils import show_file_dict
+
+import pathlib as pl
 
 
 class AssessHierarchyGroupsTask:
@@ -32,6 +34,9 @@ class AssessHierarchyGroupsTask:
         overall_atom_selection,
         write_levels_function,
         ):
+
+        if not self.output_directory.exists():
+            self.output_directory.mkdir(parents=True)
 
         # Extract from hierarchy info (generic input object)
         level_labels = model_hierarchy_info.level_labels
@@ -67,7 +72,7 @@ class AssessHierarchyGroupsTask:
             )
         output_files['output_partitions_png'] = output_hierarchy_images
 
-        filename =  os.path.join(self.output_directory, 'input_hierarchy.eff')
+        filename =  str(self.output_directory / 'input_hierarchy.eff')
         write_levels_function(
             indices_hierarchy = self.array_to_indices(
                 level_group_array = level_group_array,
@@ -78,7 +83,7 @@ class AssessHierarchyGroupsTask:
             )
         output_files['input_eff_file'] = filename
 
-        filename =  os.path.join(self.output_directory, 'output_hierarchy.eff')
+        filename =  str(self.output_directory / 'output_hierarchy.eff')
         write_levels_function(
             indices_hierarchy = self.array_to_indices(
                 level_group_array = level_group_array_filt,
@@ -164,7 +169,7 @@ class AssessHierarchyGroupsTask:
             # Skip if no partitions in this chain
             #if (numpy.array([h.atoms().extract_b() for h in hierarchies]) == -1).all():
             #    continue
-            filename = os.path.join(self.output_directory, template_filename.format(c_id))
+            filename = str(self.output_directory / template_filename.format(c_id))
             self.plotting_object.level_plots(
                 filename=filename,
                 hierarchies=hierarchies,

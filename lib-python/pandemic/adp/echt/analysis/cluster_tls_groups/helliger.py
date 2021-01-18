@@ -1,4 +1,4 @@
-import os, collections
+import collections
 import numpy
 from scitbx.matrix import sym
 from libtbx import adopt_init_args, group_args
@@ -357,14 +357,14 @@ class ClusterTLSGroups_HelligerDistance:
 
         output_files = collections.OrderedDict()
 
-        filename = os.path.join(output_directory, output_prefix+'-clustering-process.png')
+        filename = str(output_directory / (output_prefix+'-clustering-process.png'))
         ret = make_linkage_graphs(
             cluster_info = cluster_info.clustering_info,
             output_filename = filename,
             )
         output_files['linkage_graph'] = filename
 
-        filename = os.path.join(output_directory, output_prefix+'-dendro.png')
+        filename = str(output_directory / (output_prefix+'-dendro.png'))
         dendro = Dendrogram(
             n_points = cluster_info.clustering_info.n_points,
             children_hash = cluster_info.clustering_info.children,
@@ -373,7 +373,7 @@ class ClusterTLSGroups_HelligerDistance:
         ret = dendro(output_filename = filename)
         output_files['dendrogram'] = filename
 
-        filename = os.path.join(output_directory, output_prefix+'-pymol.py')
+        filename = str(output_directory / (output_prefix+'-pymol.py'))
         ret = make_pymol_script(
             tls_groups = tls_groups,
             connectivity = cluster_info.connectivity,

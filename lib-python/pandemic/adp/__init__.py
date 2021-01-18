@@ -164,7 +164,7 @@ model {
             tls_matrix_eps = 1e-6
                 .help = "define non-zero values for matrix elements"
                 .type = float
-            tls_amplitude_eps = 1e-3
+            tls_amplitude_eps = 1e-4
                 .help = "define non-zero values for amplitudes (0.01A^2 == 1A^2 B-factor approximately)"
                 .type = float
         }
@@ -187,39 +187,39 @@ model {
     }
 }
 optimisation {
-    min_macro_cycles = 30
+    min_macro_cycles = 5
         .help = 'minimum number of fitting cycles to run (over all levels) -- must be at least 1'
         .type = int
-    max_macro_cycles = 200
+    max_macro_cycles = 50
         .help = 'maximum number of fitting cycles to run (over all levels) -- must be at least 1'
         .type = int
-    number_of_micro_cycles = 3
+    number_of_micro_cycles = 5
         .help = 'how many fitting cycles to run (for each level) -- must be at least 1'
         .type = int
-    fit_tls_for_isotropic_atoms_by_magnitude_only = True
+    fit_isotropic_atoms_by_magnitude_only = True
         .type = bool
         .help = "Only use the magnitude of isotropic B-factors (True) or treat them as spherical anisotropic ADPs (False)?"
     elastic_net {
         weights {
-            sum_of_amplitudes = 0.5
+            sum_of_amplitudes = 0.9
                 .help = "weight for sum(amplitudes). minimises the number of TLS components in the optimisation. equivalent to a lasso weighting term."
                 .type = float
-            sum_of_squared_amplitudes = 0.5
+            sum_of_squared_amplitudes = 0.1
                 .help = "weight for sum(amplitudes^2). minimises the variance in the sizes of the TLS components in the optimisation. equivalent to a ridge regression term."
                 .type = float
             sum_of_amplitudes_squared = 0.0
                 .help = "weight for sum(amplitudes)^2. restrains the total amplitudes sum."
                 .type = float
         }
-        weight_scale = 1e3
+        weight_scale = 1e2
             .help = "global scale applied to all optimisation_weights."
             .type = float
         weight_decay {
             decay_factor = 0.7
                 .help = "amount by which optimisation_weights is scaled every cycle. must be less than 1."
                 .type = float
-            minimum_weight = None
-                .help = "minimum weight value. weight decay will not continue once one of the weights reaches this value. The proportions between the different weights will be kept."
+            minimum_weight = 1e-8
+                .help = "minimum weight value. weight decay will not continue once the total elastic-net weight reaches this value. The proportions between the different weights will be kept."
                 .type = float
             weights_to_decay = *sum_of_amplitudes *sum_of_amplitudes_squared *sum_of_squared_amplitudes
                 .help = "which optimisation_weights to decay every cycle."
@@ -227,7 +227,7 @@ optimisation {
         }
     }
     intermediate_output {
-        write_model_every = 10
+        write_model_every = 5
             .help = 'output summary of hierarchical model every <n> cycles'
             .type = int
         stop_writing_after = 50
@@ -265,7 +265,7 @@ optimisation {
     simplex_optimisation
         .help = 'set the various step sizes taken during simplex optimisation'
     {
-        simplex_convergence = 1e-4
+        simplex_convergence = 1e-8
             .help = "cutoff for which the least-squares simplex is considered converged"
             .type = float
         vibration_delta = 1e-2
@@ -279,12 +279,12 @@ optimisation {
             .type = float
     }
     gradient_optimisation {
-        gradient_convergence = 1e-8
+        gradient_convergence = 1e-12
             .help = "cutoff for which the least-squares gradient optimisation is considered converged."
             .type = float
     }
     termination {
-        max_b_rmsd = None
+        max_b_rmsd = 1e-3
             .help = "Stop optimisation when the rmsd between the input and the output is changing less than this."
             .type = float
         max_b_change = 1.0
@@ -577,7 +577,7 @@ def run(params, args=None):
         ModelTrackingClass = echt.tracking.EchtTracking
 
         WriteModelSummary = echt.output.WriteEchtModelSummary
-        WriteStructures = echt.output.WriteEchtStructures
+        WriteStructures = echt.output.WriteEchtDatasetStructures
 
         # Define / override Html classes
 
@@ -851,7 +851,7 @@ def run(params, args=None):
     #                                  #
     ####################################
 
-    if (params.optimisation.fit_tls_for_isotropic_atoms_by_magnitude_only is True):
+    if (params.optimisation.fit_isotropic_atoms_by_magnitude_only is True):
         optimise_isotropic_mask = extract_uijs_task.result.isotropic_mask
     else:
         optimise_isotropic_mask = extract_uijs_task.result.isotropic_mask.as_fully_anisotropic()
@@ -1131,7 +1131,7 @@ if __name__=='__main__':
     except Exception as e:
         import traceback
         logger(traceback.format_exc())
-        raise e
+        raise 
     except KeyboardInterrupt:
         logger('\nProgram terminated by user')
     #finally:

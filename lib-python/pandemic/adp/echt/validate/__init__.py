@@ -9,6 +9,7 @@ from libtbx.utils import Sorry, Failure
 
 class ValidateEchtModel:
 
+    debug = False
 
     number_of_errors_to_print = 3
 
@@ -76,7 +77,7 @@ class ValidateEchtModel:
                     err_msg += '\n\t\tUij -> ({})\n\t\tEigenvalues -> ({})'.format(uij_str, eig_str)
                     err_msgs.append(err_msg)
                 # Report, etc
-                if (len(err_msgs) > self.number_of_errors_to_print) and not (logger.level < 20):
+                if (len(err_msgs) > self.number_of_errors_to_print) and not (self.debug is True):
                     n_hidden = len(err_msgs) - self.number_of_errors_to_print
                     err_msgs = err_msgs[:self.number_of_errors_to_print]
                     err_msgs.append('[...] ({} more similar warning{} not shown)'.format(n_hidden, 's' if n_hidden>1 else ''))

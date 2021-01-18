@@ -11,6 +11,7 @@ from sklearn.cluster import dbscan
 
 class IdentifyModules:
 
+    debug = False
 
     def __init__(self,
         threshold_start = 1.0,
@@ -133,7 +134,7 @@ class IdentifyModules:
         # Output hierarchy is the last module hierarchy
         reduced_hierarchy = self.create_hierarchy_from_modules(cumulative_modules, resort=True)
 
-        if logger.level < 20: # debug
+        if (self.debug is True):
             self.show('threshold_unique_modules', threshold_unique_modules.iteritems())
             self.show('threshold_cumulative_hierarchies', threshold_cumulative_hierarchies.iteritems())
             for threshold, r_hierarchy in threshold_reduced_hierarchies.iteritems():

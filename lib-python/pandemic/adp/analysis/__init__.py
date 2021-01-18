@@ -8,8 +8,7 @@ from libtbx.utils import Sorry, Failure
 
 from scitbx.array_family import flex
 
-from giant.paths import easy_directory
-
+import pathlib as pl
 
 class HierarchicalModelAnalysisTask:
 
@@ -22,19 +21,19 @@ class HierarchicalModelAnalysisTask:
         assess_hierarchy_groups = True,
         ):
 
-        output_directory = easy_directory(output_directory)
+        output_directory = pl.Path(output_directory)
 
         if analyse_residuals is True:
             from pandemic.adp.analysis.residuals import AnalyseResidualsTask
             analyse_residuals = AnalyseResidualsTask(
-                output_directory = easy_directory(os.path.join(output_directory, 'residuals')),
+                output_directory = (output_directory / 'residuals'),
                 plotting_object = plotting_object,
                 )
 
         if assess_hierarchy_groups is True:
             from pandemic.adp.analysis.hierarchy import AssessHierarchyGroupsTask
             assess_hierarchy_groups = AssessHierarchyGroupsTask(
-                output_directory = easy_directory(os.path.join(output_directory, 'hierarchy_groups')),
+                output_directory = (output_directory / 'hierarchy_groups'),
                 plotting_object = plotting_object,
                 )
 
