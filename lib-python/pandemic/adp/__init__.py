@@ -3,6 +3,7 @@ logger = lg.getLogger(__name__)
 
 import os, sys
 
+import pathlib as pl
 from libtbx import group_args
 from libtbx.utils import Sorry, Failure
 
@@ -165,7 +166,7 @@ model {
                 .help = "define non-zero values for matrix elements"
                 .type = float
             tls_amplitude_eps = 1e-4
-                .help = "define non-zero values for amplitudes (0.01A^2 == 1A^2 B-factor approximately)"
+                .help = "define non-zero values for amplitudes (0.01A^2 ~ 1A^2 B-factor, approximately)"
                 .type = float
         }
         tolerances {
@@ -190,7 +191,7 @@ optimisation {
     min_macro_cycles = 5
         .help = 'minimum number of fitting cycles to run (over all levels) -- must be at least 1'
         .type = int
-    max_macro_cycles = 50
+    max_macro_cycles = 100
         .help = 'maximum number of fitting cycles to run (over all levels) -- must be at least 1'
         .type = int
     number_of_micro_cycles = 5
@@ -215,7 +216,7 @@ optimisation {
             .help = "global scale applied to all optimisation_weights."
             .type = float
         weight_decay {
-            decay_factor = 0.7
+            decay_factor = 0.8
                 .help = "amount by which optimisation_weights is scaled every cycle. must be less than 1."
                 .type = float
             minimum_weight = 1e-8
@@ -921,7 +922,11 @@ def run(params, args=None):
             if params.output.json is True:
                 json_manager.write_model_as_json(
                     model_object = model_object,
-                    output_file = os.path.join(file_system.output_directory, 'optimised_model.json'),
+                    output_file = str(
+                        pl.Path(file_system.optimisation_directory) / 'optimised_model_cycle_{n_cycle:03d}.json'.format(
+                            n_cycle = main_tracking_object.n_cycle,
+                            )
+                        ),
                 )
 
             if params.optimisation.intermediate_output.write_model_every:

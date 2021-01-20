@@ -4,6 +4,8 @@ logger = lg.getLogger(__name__)
 import collections
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.figure import figaspect
+
 from scipy.stats import kde
 
 
@@ -357,8 +359,6 @@ class WriteModelBFactorDistributions:
         *args, **kwargs
         ):
 
-        # from matplotlib.figure import figaspect
-
         level_b_values = np.array(model_values.all_levels_b)
 
         n_levels = len(level_b_values)
@@ -366,12 +366,12 @@ class WriteModelBFactorDistributions:
 
         x_range_all = (0.0, max(1.0, np.max(level_b_values)))
 
-        fig = plt.figure()
+        fig = plt.figure(figsize=figaspect(0.25))
 
         # axes (x, y, w, h)
         main_axis = fig.add_axes([
-            0.05,0.05,
-            0.60,0.95,
+            0.05, 0.05,
+            0.65, 0.95,
             ])
 
         handles = []
@@ -483,7 +483,7 @@ class WriteModelBFactorDistributions:
             x, y,
             color = 'k',
             label = None,
-            lw = 2,
+            lw = 3,
             )
 
         handles = axis.plot(
@@ -537,10 +537,13 @@ class WriteModelLevelBFactorDistributions(WriteModelBFactorDistributions):
                 nrows = 1, ncols = 2,
                 squeeze = True,
                 gridspec_kw = {'width_ratios': [0.7,0.3]},
+                figsize = figaspect(0.25),
                 )
 
-            fig.suptitle(
-                'B-factor Distributions for level {}'.format(level_name)
+            a1.set_title(
+                'B-factor Distributions for level {level_name}'.format(
+                    level_name = level_name,
+                    )
                 )
 
             a1.set_xlabel('B-factor ($\AA$)')

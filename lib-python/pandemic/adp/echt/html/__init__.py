@@ -79,6 +79,8 @@ class EchtModelHtmlSummary(HtmlSummary):
 
     def main_summary(self):
 
+        mf = self.model_summary_task.result.output_files
+
         output = divs.Tab(
             id = 'levels',
             title = 'ECHT level-by-level TLS parameterisation',
@@ -97,6 +99,16 @@ class EchtModelHtmlSummary(HtmlSummary):
                 isotropic_mask = self.isotropic_mask,
             )
         )
+
+        output.append(
+            divs.Alert(
+                title = 'Level B-factor Distributions (all chains)',
+                width = 12,
+                image = self.image(
+                    mf.get('b_factor_distributions', None)
+                    ),
+                )
+            )
 
         output.extend(
             self.format_b_factor_table_blocks(chains='all', split_tables=True)
@@ -327,7 +339,20 @@ class EchtModelHtmlSummary(HtmlSummary):
                 n_levels = mo.n_levels,
                 n_groups = len(mo.tls_objects[i_l]),
             )
-            level_tab.extend(self.format_summary(txt, classes=['square-corners-top']))
+            
+            level_tab.extend(
+                self.format_summary(txt, classes=['square-corners-top'])
+                )
+
+            level_tab.append(
+                divs.Alert(
+                    title = "Level B-factor distribution",
+                    width = 12,
+                    image = self.image(
+                        mf.get('b_factor_distributions_level',{}).get(l)
+                        ),
+                    )
+                )
 
             ########################################################
 
@@ -638,7 +663,20 @@ class EchtModelHtmlSummary(HtmlSummary):
             n_levels = mo.n_levels,
             n_atoms = mo.n_atoms,
         )
-        atomic_tab.extend(self.format_summary(txt, classes=['square-corners-top']))
+
+        atomic_tab.extend(
+            self.format_summary(txt, classes=['square-corners-top'])
+            )
+
+        atomic_tab.append(
+            divs.Alert(
+                title = "Level B-factor distribution",
+                width = 12,
+                image = self.image(
+                    mf.get('b_factor_distributions_level',{}).get(l)
+                    ),
+                )
+            )
 
         # Add overview at the top of the tab
         tab_set = divs.TabSet(title="Chain-by-Chain Summaries")
