@@ -16,7 +16,7 @@ class ClusterTLSGroupsTask:
 
     show_file_dict = show_file_dict
 
-    max_groups = 200
+    max_groups = 50
     characters_to_print = 90
 
     _cluster_classes = {

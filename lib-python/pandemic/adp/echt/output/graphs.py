@@ -633,16 +633,23 @@ class WriteEchtModelGraphs:
 
         for f in self.functions:
 
-            of = f(
-                target_values = target_values,
-                level_group_array = level_group_array,
-                model_values = model_values,
-                structure_factory = structure_factory,
-                atom_selection = atom_selection,
-                plotting_object = plotting_object,
-                )
+            try:
 
-            merge_dicts(master_dict=output_files, merge_dict=of)
+                of = f(
+                    target_values = target_values,
+                    level_group_array = level_group_array,
+                    model_values = model_values,
+                    structure_factory = structure_factory,
+                    atom_selection = atom_selection,
+                    plotting_object = plotting_object,
+                    )
+
+                merge_dicts(master_dict=output_files, merge_dict=of)
+
+            except Exception as e: 
+                
+                logger.warning('Error generating graph: '+str(e))
+                continue
 
         return output_files
 
