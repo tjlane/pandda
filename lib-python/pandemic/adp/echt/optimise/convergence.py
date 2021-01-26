@@ -42,6 +42,8 @@ class EchtModelAmplitudeConvergenceChecker:
                 )
             )
 
+        self.previous_amplitudes = current_amplitudes
+
         return converged
 
     def get_amplitudes(self, model_object):
