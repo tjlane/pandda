@@ -96,7 +96,10 @@ class ProcessInputModelsTask:
                     continue
 
             # Extract the resolution of the dataset
-            m.resolution = self.get_resolution(model=m, mtz_filename=m_mtz)
+            try:
+                m.resolution = self.get_resolution(model=m, mtz_filename=m_mtz)
+            except: 
+                m.resolution = None
 
             # Check we have resolution information, and/or that correct columns are present in the MTZ file
             if self.has_reflection_data:
