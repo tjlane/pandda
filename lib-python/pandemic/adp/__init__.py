@@ -194,7 +194,7 @@ optimisation {
     max_macro_cycles = 100
         .help = 'maximum number of fitting cycles to run (over all levels) -- must be at least 1'
         .type = int
-    number_of_micro_cycles = 5
+    max_micro_cycles = 30
         .help = 'how many fitting cycles to run (for each level) -- must be at least 1'
         .type = int
     fit_isotropic_atoms_by_magnitude_only = True
@@ -559,7 +559,7 @@ def run(params, args=None):
             optimise_tls_function = optimise_tls_function,
             optimise_adp_function = optimise_adp_function,
             optimise_level_amplitudes_function = optimise_level_amplitudes_function,
-            n_cycles = params.optimisation.number_of_micro_cycles,
+            max_n_cycles = params.optimisation.max_micro_cycles,
             n_cpus = params.settings.cpus,
             )
 

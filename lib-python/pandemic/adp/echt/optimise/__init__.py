@@ -4,6 +4,8 @@ logger = lg.getLogger(__name__)
 import os, copy, functools
 from libtbx import adopt_init_args
 
+from .convergence import EchtModelAmplitudeConvergenceChecker
+
 # def optimisation_summary_from_target_evaluator(target_evaluator):
 
 #     te = target_evaluator
@@ -52,7 +54,7 @@ class OptimiseEchtModel:
             optimise_tls_function,
             optimise_adp_function,
             optimise_level_amplitudes_function,
-            n_cycles = 1,
+            max_n_cycles = 1,
             n_cpus = 1,
             ):
         adopt_init_args(self, locals())
@@ -160,8 +162,10 @@ class OptimiseEchtModel:
             i_level = range(model_object.n_levels),
             )
 
+        is_converged = EchtModelAmplitudeConvergenceChecker()
+
         # "micro-cycles"
-        for i_sub_cycle in xrange(self.n_cycles):
+        for i_sub_cycle in xrange(self.max_n_cycles):
 
             # Break loop if model is zero
             if self.max_u_iso(model_object) == 0.0:
@@ -280,6 +284,9 @@ class OptimiseEchtModel:
                     ),
                 i_level = range(model_object.n_levels),
                 )
+
+            if is_converged(model_object):
+                break
 
         # Close processes to clear memory, and to make KeyboardInterrupts during this easier to handle (processes are automatically reopened)
         self.close_processes()
