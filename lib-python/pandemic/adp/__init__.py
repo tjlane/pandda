@@ -194,7 +194,7 @@ optimisation {
     max_macro_cycles = 100
         .help = 'maximum number of fitting cycles to run (over all levels) -- must be at least 1'
         .type = int
-    max_micro_cycles = 30
+    max_micro_cycles = 50
         .help = 'how many fitting cycles to run (for each level) -- must be at least 1'
         .type = int
     fit_isotropic_atoms_by_magnitude_only = True
