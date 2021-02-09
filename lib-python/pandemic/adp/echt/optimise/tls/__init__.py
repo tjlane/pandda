@@ -80,6 +80,9 @@ class OptimiseTLSGroup:
             # Extract mode object
             mode = multi_dataset_tls_group.tls_parameters[i_mode]
 
+            # Extract the input amplitudes to apply at the end
+            initial_amplitudes = mode.amplitudes.get().deep_copy()
+
             # Skip if amplitudes are exactly zero
             if mode.amplitudes.get().all_eq(0.0):
                 continue
@@ -166,6 +169,9 @@ class OptimiseTLSGroup:
             #
             # THIS IS "GIVING UP"
             # # # # # # # # # # # #
+
+            # At the end of the cycle, apply the initial amplitudes
+            mode.amplitudes.set(initial_amplitudes)
 
         # If everything is null, reset everything (first mode non-zero T, otherwise all zero)
         # if multi_dataset_tls_group.tls_parameters.is_null(
