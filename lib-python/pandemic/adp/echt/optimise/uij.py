@@ -2,6 +2,7 @@ import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 import copy, tqdm
+import numpy as np
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
 from scitbx.array_family import flex
@@ -227,4 +228,39 @@ class OptimiseUijLevel:
         if uij_isotropic_mask is not None:
             new_adp_values = uij_isotropic_mask(new_adp_values)
 
+        # Scale output to input 
+        new_adp_values = self.scale_atomwise_to_input(
+            output_adps = new_adp_values,
+            input_adps = uij_values,
+            )
+
         return new_adp_values
+
+    def scale_atomwise_to_input(self,
+        output_adps, 
+        input_adps,
+        eps = 1e-3,
+        ):
+
+        output_adps = np.array(output_adps)
+        input_adps = np.array(input_adps)
+
+        # Magnitudes of the the two sets (by atom)
+        output_mags = output_adps[:,0:3].mean(axis=1)
+        input_mags = input_adps[:,0:3].mean(axis=1)
+
+        # If output < input, leave as is.
+        leave_sel = (output_mags <= input_mags)
+        output_mags[leave_sel] = 1.
+        input_mags[leave_sel] = 1.
+
+        # Multipliers needed to scale output -> input
+        multipliers = (input_mags / output_mags)
+
+        assert (multipliers <= 1.).all()
+
+        rescaled_adps = multipliers.reshape((len(multipliers),1)) * output_adps
+        rescaled_adps = flex.sym_mat3_double(map(tuple, rescaled_adps))
+
+        return rescaled_adps
+

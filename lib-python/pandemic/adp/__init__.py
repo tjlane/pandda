@@ -188,10 +188,10 @@ model {
     }
 }
 optimisation {
-    min_macro_cycles = 5
+    min_macro_cycles = 30
         .help = 'minimum number of fitting cycles to run (over all levels) -- must be at least 1'
         .type = int
-    max_macro_cycles = 100
+    max_macro_cycles = 200
         .help = 'maximum number of fitting cycles to run (over all levels) -- must be at least 1'
         .type = int
     max_micro_cycles = 50
