@@ -5,8 +5,8 @@ from pandda.utils import (
     merge_dicts,
     )
 
-from .maps import (
-    GetMakePanddaEvaluationMaps,
+from .mtzs import (
+    GetMakePanddaEvaluationMtzs,
     )
 
 from .graphs import (
@@ -30,6 +30,7 @@ class PanddaDatasetEvaluatorOutputter:
         datasets_map_dict,
         datasets_results,
         statistical_model,
+        map_resolution,
         ):
 
         output_files = {}
@@ -41,6 +42,7 @@ class PanddaDatasetEvaluatorOutputter:
                 datasets_map_dict = datasets_map_dict,
                 datasets_results = datasets_results,
                 statistical_model = statistical_model,
+                map_resolution = map_resolution,
                 )
 
             merge_dicts(
@@ -61,7 +63,7 @@ class GetPanddaDatasetEvaluatorOutputter:
         ):
 
         self.getters = [
-            GetMakePanddaEvaluationMaps(
+            GetMakePanddaEvaluationMtzs(
                 get_dataset_map_writer = get_dataset_map_writer,
                 output_dir = output_dir,
                 dataset_dir = dataset_dir, # only maps put in the dataset folders

@@ -237,6 +237,7 @@ class PanddaModelProcessor:
                 datasets_map_dict = test_maps,
                 datasets_results = events_dict,
                 statistical_model = fitted_model,
+                map_resolution = map_resolution,
                 )
             #
             show_dict(

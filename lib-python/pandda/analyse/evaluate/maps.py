@@ -37,7 +37,7 @@ class MakePanddaMapsJobGenerator:
     output_dataset_map = True
     output_ground_map = True
     output_dataset_z_maps = True
-    output_dataset_event_maps = True
+    output_dataset_event_maps = False
 
     def __init__(self, 
         write_map, 
@@ -90,7 +90,7 @@ class MakePanddaMapsJobGenerator:
         if (self.output_ground_map is True):
 
             filename = self.output_files.setdefault(
-                "dataset_map", str(self.output_dir / "pandda_ground_state_map.ccp4"),
+                "ground_map", str(self.output_dir / "pandda_ground_state_map.ccp4"),
                 )
 
             yield self.get_job(
@@ -181,6 +181,8 @@ class MakePanddaEvaluationMaps:
         statistical_model,
         ):
         
+        logger('Writing maps...')
+
         # Dataset-specific map_maker
         write_map = self.get_dataset_map_writer()
 
