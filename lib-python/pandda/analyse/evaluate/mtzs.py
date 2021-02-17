@@ -33,20 +33,21 @@ class ConvertMapsToMtz:
 
         for m_path, m_label in zip(map_paths, map_labels):
 
-            m_grid = self.load_map(
+            m_sfs = self.get_structure_factors_from_map(
                 map_path = m_path,
+                d_min = d_min,
                 )
 
             mtz_data = self.prepare_mtz_data(
                 mtz_obj = mtz_obj,
-                map_grid = m_grid,
+                map_sfs = m_sfs,
                 map_label = m_label,
-                d_min = d_min,
                 add_base = first_map,
                 )
 
             # Add columns from this map
             all_mtz_data.extend(mtz_data)
+
             # Prevent adding of further miller arrays
             first_map = False
 
@@ -66,36 +67,43 @@ class ConvertMapsToMtz:
     def get_mtz_obj(self):
 
         mtz = gemmi.Mtz(with_base=True)
+        
         mtz.add_dataset(self.dataset_name)
 
         return mtz
 
-    def load_map(self, map_path):
+    def get_structure_factors_from_map(self, map_path, d_min):
 
         map_obj = gemmi.read_ccp4_map(map_path)
+
+        # Extract original spacegroup, and swap for P1 spacegroup
+        orig_sg = map_obj.grid.spacegroup
+        map_obj.grid.spacegroup = gemmi.SpaceGroup('P1') # this is a hack
+
+        # Now do setup
         map_obj.setup()
-
-        return map_obj.grid
-
-    def prepare_mtz_data(self,
-        mtz_obj,
-        map_grid,
-        map_label,
-        d_min,
-        add_base = False,
-        ):
-
-        #####
-
+        
+        # Now extract the structure factors and reapply spacegroup
         sf = gemmi.transform_map_to_f_phi(
-            map_grid,
+            map_obj.grid,
             half_l = True,
             )
+        sf.spacegroup = orig_sg
 
+        # Extract the ASU
         asu_sf = sf.prepare_asu_data(
             dmin = d_min,
             with_000 = True,
             )
+
+        return asu_sf
+
+    def prepare_mtz_data(self,
+        mtz_obj,
+        map_sfs,
+        map_label,
+        add_base = False,
+        ):
 
         #####
 
@@ -114,24 +122,24 @@ class ConvertMapsToMtz:
 
         if add_base is True:
 
-            mtz_obj.spacegroup = sf.spacegroup
+            mtz_obj.spacegroup = map_sfs.spacegroup
 
-            mtz_obj.set_cell_for_all(sf.unit_cell)
+            mtz_obj.set_cell_for_all(map_sfs.unit_cell)
 
-            out_data.append(asu_sf.miller_array)
+            out_data.append(map_sfs.miller_array)
 
         out_data.append(
             np.absolute(
-                asu_sf.value_array
+                map_sfs.value_array
                 ).reshape(
-                (asu_sf.value_array.size, 1)
+                (map_sfs.value_array.size, 1)
                 )
             )
         out_data.append(
             np.angle(
-                asu_sf.value_array, deg=True,
+                map_sfs.value_array, deg=True,
                 ).reshape(
-                (asu_sf.value_array.size, 1)
+                (map_sfs.value_array.size, 1)
                 )
             )
 
