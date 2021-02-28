@@ -216,10 +216,10 @@ optimisation {
             .help = "global scale applied to all optimisation_weights."
             .type = float
         weight_decay {
-            decay_factor = 0.8
+            decay_factor = 0.7
                 .help = "amount by which optimisation_weights is scaled every cycle. must be less than 1."
                 .type = float
-            minimum_weight = 1e-8
+            minimum_weight = None
                 .help = "minimum weight value. weight decay will not continue once the total elastic-net weight reaches this value. The proportions between the different weights will be kept."
                 .type = float
             weights_to_decay = *sum_of_amplitudes *sum_of_amplitudes_squared *sum_of_squared_amplitudes
@@ -228,13 +228,13 @@ optimisation {
         }
     }
     intermediate_output {
-        write_model_every = 5
+        write_model_every = 10
             .help = 'output summary of hierarchical model every <n> cycles'
             .type = int
         stop_writing_after = 50
             .help = 'stop outputting graphs past this cycle'
             .type = int
-        remove_previous = False
+        remove_previous = True
             .help = 'remove previous intermediate files at each update or at end of program.'
             .type = bool
     }
@@ -256,7 +256,7 @@ optimisation {
         dataset_weights = one inverse_resolution inverse_resolution_squared *inverse_resolution_cubed
             .help = 'control how datasets are weighted during optimisation?'
             .type = choice(multi=False)
-        atom_weights = one inverse_mod_U inverse_mod_U_squared *inverse_mod_U_cubed
+        atom_weights = one *inverse_mod_U inverse_mod_U_squared inverse_mod_U_cubed
             .help = 'control how atoms are weighted during optimisation?'
             .type = choice(multi=False)
         renormalise_atom_weights_by_dataset = True
@@ -285,7 +285,7 @@ optimisation {
             .type = float
     }
     termination {
-        max_b_rmsd = 1e-3
+        max_b_rmsd = 1e-2
             .help = "Stop optimisation when the rmsd between the input and the output is changing less than this."
             .type = float
         max_b_change = 1.0
@@ -1136,7 +1136,7 @@ if __name__=='__main__':
     except Exception as e:
         import traceback
         logger(traceback.format_exc())
-        raise 
+        raise
     except KeyboardInterrupt:
         logger('\nProgram terminated by user')
     #finally:
