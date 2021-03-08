@@ -216,7 +216,7 @@ optimisation {
             .help = "global scale applied to all optimisation_weights."
             .type = float
         weight_decay {
-            decay_factor = 0.7
+            decay_factor = 0.8
                 .help = "amount by which optimisation_weights is scaled every cycle. must be less than 1."
                 .type = float
             minimum_weight = None
