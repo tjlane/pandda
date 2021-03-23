@@ -64,14 +64,12 @@ def dump_config_to_json(
     config,
     output_path,
     ):
-
-    record = {
-        "data_dirs": str(config.input.data_dirs),
-        "out_dir": str(config.output.out_dir),
-    }
+    
+    # TODO
+    return None
 
     import json
-    json_string = json.dumps(record)
+    json_string = json.dumps(json_dict)
 
     with open(str(output_path), "w") as f:
         f.write(json_string)

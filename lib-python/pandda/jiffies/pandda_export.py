@@ -136,7 +136,8 @@ def get_export_dirs(
             ]
 
     if not export_dirs:
-        raise ValueError('No Export Directories Found')
+        logger('\nNo Export Directories Found!\n')
+        sys.exit(1)
 
     return sorted(export_dirs)
 
@@ -173,6 +174,7 @@ class ExportFolder:
             )
         
         export_list = self.get_export_list(directory=i_dir)
+
 
         logger(
             'Export list: \n\t{s}'.format(
@@ -469,14 +471,14 @@ def run(args):
         )
 
     # Report modifed phil
-    log.heading('Processed parameters')
-    log(master_phil.format(params).as_str())
+    logger.heading('Processed parameters')
+    logger(master_phil.format(params).as_str())
 
     ############################################################################
 
     standard_pandda_export(params)
 
-    log.heading('FINISHED')
+    logger.heading('FINISHED')
 
 #######################################
 
@@ -501,11 +503,4 @@ def main():
 if __name__ == '__main__':
     
     main()
-    
-    run_default(
-        #run                 = run,
-        #master_phil         = master_phil,
-        #args                = sys.argv[1:],
-        #blank_arg_prepend   = blank_arg_prepend,
-        program             = PROGRAM,
-        description         = DESCRIPTION)
+

@@ -1,140 +1,167 @@
 import os, shutil, string
-import gtk
+import pathlib as pl
 
-from bamboo.ccp4_utils import generate_ligand_with_acedrg
+from giant.refinement.restraints.acedrg import (
+    generate_restraints,
+    )
 
-def modal_msg(msg):
-    """Display an error window - model"""
-    d = gtk.MessageDialog(  type    = gtk.MESSAGE_INFO,
-                            buttons = gtk.BUTTONS_CLOSE,
-                            message_format = msg )
-    d.set_position(gtk.WIN_POS_CENTER)
-    d.set_keep_above(True)
-    d.run()
-    d.destroy()
 
-def post_new_ligand_window(output_directory='.'):
-    """Display an error window - model"""
+class MakeNewLigand:
 
-    if not os.path.exists(output_directory): os.mkdir(output_directory)
+    def __init__(self,
+        output_directory,
+        ):
 
-    dialog = gtk.Dialog("Create New Ligand",
-                        None,
-                        gtk.DIALOG_MODAL,
-                        (gtk.STOCK_CANCEL, gtk.RESPONSE_DELETE_EVENT, gtk.STOCK_OK, gtk.RESPONSE_ACCEPT))
+        self.output_directory = pl.Path(
+            output_directory
+            )
 
-    # Name of the ligand
-    name_hbox = gtk.HBox(homogeneous=False, spacing=5)
-    dialog.vbox.pack_start(name_hbox)
-    label = gtk.Label('Ligand Name:')
-    label.props.width_chars = 20
-    label.set_alignment(0.5, 0.0)
-    name_hbox.pack_start(label, expand=True)
-    name_entry = gtk.Entry(max=100)
-    name_entry.set_text('new-compound')
-    name_hbox.pack_start(name_entry)
+        if not self.output_directory.exists():
+            self.output_directory.mkdir(parents=True)
 
-    # ID for the ligand
-    id_hbox = gtk.HBox(homogeneous=False, spacing=5)
-    dialog.vbox.pack_start(id_hbox)
-    label = gtk.Label('3-letter code:')
-    label.props.width_chars = 20
-    label.set_alignment(0.5, 0.0)
-    id_hbox.pack_start(label)
-    id_entry = gtk.Entry(max=3)
-    id_entry.set_text('UNL')
-    id_hbox.pack_start(id_entry)
+        self.tmp_directory = (
+            self.output_directory / 'make_ligand_tmp'
+            )
 
-    # SMILES for the ligand
-    smiles_hbox = gtk.HBox(homogeneous=False, spacing=5)
-    dialog.vbox.pack_start(smiles_hbox)
-    label = gtk.Label('Smiles:')
-    label.props.width_chars = 20
-    label.set_alignment(0.5, 0.0)
-    smiles_hbox.pack_start(label)
-    smiles_entry = gtk.Entry(max=300)
-    smiles_entry.set_text('')
-    smiles_hbox.pack_start(smiles_entry)
+        self.disallowed = set(string.punctuation)
+        self.disallowed.add(' ')
 
-    dialog.show_all()
+    def __call__(self,
+        ligand_id,
+        ligand_name,
+        ligand_smiles,
+        ):
 
-    disallowed = set(string.punctuation + ' ')
+        self.validate(
+            ligand_id = ligand_id,
+            ligand_name = ligand_name,
+            ligand_smiles = ligand_smiles,
+            )
 
-    success = False
-    while success is False:
-        ligand_pdb = ligand_cif = None
+        real_out_pdb = (
+            self.output_directory / (ligand_name + '.pdb')
+            )
 
-        response = dialog.run()
-        # Delete window/cancel?
-        if response in [int(gtk.RESPONSE_REJECT), int(gtk.RESPONSE_DELETE_EVENT)]:
-            print 'close "new-ligand" window'
-            dialog.destroy()
-            return None
+        real_out_cif = real_out_pdb.with_suffix('.cif')
 
-        assert response is int(gtk.RESPONSE_ACCEPT), 'invalid response received ({} should be {})'.format(response, int(gtk.RESPONSE_ACCEPT))
+        if real_out_pdb.exists() or real_out_cif.exists():
+            raise ValueError(
+                'Output ligand files already exist -- please choose a different id/name'
+                )
 
-        ligand_name     = name_entry.get_text().strip(' ')
-        ligand_id       = id_entry.get_text().strip(' ')
-        ligand_smiles   = smiles_entry.get_text().strip(' ')
+        # Remove temporary directory if it exists
+        self.cleanup()
 
-        if disallowed.difference(['-','_']).intersection(ligand_name):
-            modal_msg('ligand name cannot contain space or punctuation except for {}'.format(' or '.join(['-','_'])))
-            continue
-        if disallowed.difference(['_']).intersection(ligand_id):
-            modal_msg('ligand name cannot contain spaces or punctuation except for {}'.format(' or '.join(['_'])))
-            continue
-
-        if len(ligand_name) == 0:
-            modal_msg('No ligand name provided')
-            continue
-        if len(ligand_id) == 0:
-            modal_msg('No ligand id provided')
-            continue
-        if len(ligand_smiles) == 0:
-            modal_msg('No ligand smiles provided')
-            continue
-
-        ligand_prefix = os.path.join(output_directory, ligand_name)
-
-        print 'ID: {}\nNAME: {}\nSMILES: {}'.format(ligand_id, ligand_name, ligand_smiles)
-
-        ligand_pdb = ligand_prefix+'.pdb'
-        ligand_cif = ligand_prefix+'.cif'
-        ligand_dir = ligand_prefix+'_TMP'
-
-        if os.path.exists(ligand_prefix+'.pdb') or os.path.exists(ligand_prefix+'.cif'):
-            modal_msg('PDB/CIF files already exists called {}.\nPlease select another name.'.format(ligand_name))
-            continue
+        # This should really always evaluate to True...
+        if not self.tmp_directory.exists():
+            self.tmp_directory.mkdir(parents=True)
 
         try:
-            ligand_pdb, ligand_cif = generate_ligand_with_acedrg(smiles = ligand_smiles,
-                                                                 name   = ligand_id,
-                                                                 prefix = ligand_prefix,
-                                                                 verbose = True)
-        except Exception as e:
-            msg = 'Error running acedrg'
-            msg += '\n--------------->\n'
-            msg += e.message
-            if hasattr(e, 'command'):
-                msg += '\n--------------->\n'
-                msg += e.command.output
-            for f in [ligand_pdb,ligand_cif,ligand_dir]:
-                if os.path.isfile(f):
-                    os.remove(f)
-            if os.path.exists(ligand_dir):
-                shutil.rmtree(ligand_dir)
-            modal_msg(msg)
-            continue
 
-        for f in ['_approx.list']:
-            f_full = os.path.join(output_directory, f)
-            if os.path.exists(f_full):
-                os.remove(f_full)
+            tmp_pdb, tmp_cif = generate_restraints(
+                smiles = ligand_smiles,
+                name = ligand_id, 
+                prefix = str(
+                    self.tmp_directory / ligand_name
+                    ),
+                )
 
-        if os.path.exists(ligand_pdb) and os.path.exists(ligand_cif):
-            break
+        except Exception as e: 
+            raise Exception(
+                'Error during ligand generation. See terminal output for acedrg error message.\n{}'.format(str(e))
+                )
 
-    dialog.destroy()
+        self.move_output_files(
+            ligand_pdb_tmp = tmp_pdb,
+            ligand_pdb = real_out_pdb,
+            ligand_cif_tmp = tmp_cif,
+            ligand_cif = real_out_cif,
+            )
 
-    return ligand_id, ligand_name, ligand_smiles, ligand_pdb, ligand_cif
+        # Only do this upon successful completion
+        self.cleanup()
+
+        return {
+            'pdb' : str(real_out_pdb),
+            'cif' : str(real_out_cif),
+            'id' : ligand_id,
+            'name' : ligand_name,
+            'smiles' : ligand_smiles,
+        }
+
+    def validate(self, 
+        ligand_id,
+        ligand_name,
+        ligand_smiles,
+        ):
+
+        allowed_name = ['-','_']
+        disallowed_name = self.disallowed.difference(allowed_name)
+
+        allowed_id = ['_']
+        disallowed_id = self.disallowed.difference(allowed_id)
+
+        if disallowed_name.intersection(ligand_name):
+
+            raise ValueError(
+                'Ligand name cannot contain spaces or punctuation except for {}'.format(
+                    ' or '.join(allowed_path),
+                    )
+                )
+
+        if disallowed_id.intersection(ligand_id):
+            
+            raise ValueError(
+                'Ligand ID cannot contain spaces or punctuation except for {}'.format(
+                    ' or '.join(allowed_id),
+                    )
+                )
+
+        if len(ligand_id) == 0:
+
+            raise ValueError(
+                'No ligand id provided'
+                )
+
+        if len(ligand_id) != 3:
+
+            raise ValueError(
+                'Ligand ID must be three characters'
+                )
+
+        if len(ligand_name) == 0:
+
+            raise ValueError(
+                'No ligand name provided'
+                )
+            
+        if len(ligand_smiles) == 0:
+
+            raise ValueError(
+                'No ligand smiles provided'
+                )
+            
+        return
+
+    def move_output_files(self,
+        ligand_pdb_tmp,
+        ligand_pdb,
+        ligand_cif_tmp,
+        ligand_cif,
+        ):
+
+        ligand_pdb_tmp = pl.Path(ligand_pdb_tmp)
+        ligand_pdb_tmp.rename(ligand_pdb)
+
+        ligand_cif_tmp = pl.Path(ligand_cif_tmp)
+        ligand_cif_tmp.rename(ligand_cif)
+
+        assert ligand_pdb.exists()
+        assert ligand_cif.exists()
+
+    def cleanup(self):
+
+        if self.tmp_directory.exists():
+            shutil.rmtree(str(self.tmp_directory))
+
 

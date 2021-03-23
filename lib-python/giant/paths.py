@@ -55,8 +55,7 @@ def rel_symlink(orig, link):
     """Make a relative symlink from link to orig"""
     orig = str(orig)
     link = str(link)
-    assert os.path.exists(orig), 'FILE DOES NOT EXIST: {!s}'.format(orig)
-    assert not os.path.exists(link), 'LINK ALREADY EXISTS: {!s}'.format(link)
+    assert not os.path.exists(link), 'Link already exists: {!s}'.format(link)
     orig = os.path.abspath(orig)
     link = os.path.abspath(link)
     assert not link.endswith('/'), 'LINK CANNOT END WITH /'

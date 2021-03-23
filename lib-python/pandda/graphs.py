@@ -227,10 +227,11 @@ class PanddaPlotter(object):
 
         return {self.output_key : filename}
 
-    def setup(self, nrows=1, ncols=1):
+    def setup(self, nrows=1, ncols=1, **kwargs):
 
         fig, axes = plt.subplots(
             nrows=nrows, ncols=ncols,
+            **kwargs
             )
 
         return fig, axes

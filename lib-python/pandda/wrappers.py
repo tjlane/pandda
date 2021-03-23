@@ -16,7 +16,7 @@ class GetDummyClass:
 
     def __call__(self, *args, **kwargs):
 
-        return DummyClass()
+        return DummyClass(*args, **kwargs)
 
 
 class DummyClass:

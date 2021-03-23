@@ -1,7 +1,7 @@
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
-import functools, collections
+import copy, functools, collections
 
 from giant.utils import (
     make_sorted_dict,
@@ -209,6 +209,10 @@ class PanddaModelProcessor:
                 map_resolution = map_resolution,
                 )
             #
+            event_output_files = self.extract_output_files_from_events(
+                events_dict = events_dict,
+                )
+            #
             show_dict(
                 make_sorted_dict(events_dict),
                 logger = logger,
@@ -218,6 +222,7 @@ class PanddaModelProcessor:
                 master_dict = all_results,
                 merge_dict = {
                     'events' : make_sorted_dict(events_dict),
+                    'output_files' : make_sorted_dict(event_output_files),
                     },
                 )
             #
@@ -257,23 +262,32 @@ class PanddaModelProcessor:
         #####
         # Write model output
         #
+        # Extract uncertainties
+        train_dataset_map_uncertainties = {
+            dkey : fitted_model.get_sigma_uncertainty(
+                dataset_key = dkey,
+                )
+            for dkey in train_datasets.keys()
+            }
+        test_dataset_map_uncertainties = {
+            dkey : (
+                all_results['dataset_info']['map_uncertainty'][dkey]
+                )
+            for dkey in test_datasets.keys()
+            }
+        #
         output_files = self.write_model_output(
             statistical_model = fitted_model,
-            train_dataset_map_uncertainties = {
-                dkey : fitted_model.get_sigma_uncertainty(
-                    dataset_key = dkey,
-                    )
-                for dkey in train_datasets.keys()
-                },
-            test_dataset_map_uncertainties = {
-                dkey : all_results['dataset_info']['map_uncertainty'][dkey]
-                for dkey in test_datasets.keys()
-                },
+            train_dataset_map_uncertainties = train_dataset_map_uncertainties,
+            test_dataset_map_uncertainties = test_dataset_map_uncertainties,
             )
         #
         merge_dicts(
             master_dict = all_results,
             merge_dict = {
+                'shell_info' : {
+                    'map_uncertainty' : train_dataset_map_uncertainties,
+                    },
                 'output_files' : {
                     'graphs' : {
                         'shells' : {
@@ -321,13 +335,35 @@ class PanddaModelProcessor:
 
         return dataset_info
 
+    def extract_output_files_from_events(self,
+        events_dict,
+        ):
+
+        output_files = {}
+
+        for dkey, events in events_dict.items(): 
+
+            for e in events: 
+
+                ekey = e['event_num']
+
+                for k, v in e.pop('output_files', {}).items():
+
+                    # Invert the order of the dictionary keys
+                    of = output_files.setdefault(k,{}).setdefault(dkey,{})
+                    of[ekey] = v
+
+        return {'graphs' : output_files}
+
     def update_event_info(self,
         events_dict,
         map_resolution,
         ):
 
         for dkey, d_events in events_dict.items():
+
             for e in d_events: 
+                
                 e['map_resolution'] = (
                     round(map_resolution, 3)
                     )
@@ -579,6 +615,14 @@ class RunPanddaModel:
             ###
 
             ###
+            # Merge shell records
+            #
+            merge_dicts(
+                master_dict = shell_records[i],
+                merge_dict = r['shell_info'],
+                )
+
+            ###
             # Merge dataset info
             #
             merge_dicts(
@@ -599,7 +643,7 @@ class RunPanddaModel:
         return_dict = {
             'events' : sorted(
                 all_events, 
-                key = lambda e: (e['dtag'], e['event_idx'])
+                key = lambda e: (e['dtag'], e['event_num'])
                 ),
             'shell_records' : shell_records,
             'dataset_records' : make_sorted_dict(

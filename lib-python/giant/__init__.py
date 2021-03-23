@@ -4,7 +4,7 @@ logger = lg.getLogger(__name__)
 import os, sys
 import pkg_resources
 
-from libtbx import group_args, adopt_init_args
+#from libtbx import group_args, adopt_init_args
 
 __version_tuple__ = (1, 0, 0)
 __version__ = '.'.join(map(str,__version_tuple__))

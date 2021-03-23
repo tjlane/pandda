@@ -955,8 +955,8 @@ def run(params):
         logger.subheading('Collating all images and outputting to output HTML...')
 
         # Get template to be filled in
-        from giant.html import GIANT_HTML_ENV
-        template = GIANT_HTML_ENV.get_template('summary_page.html')
+        from giant.html import HTML_ENV
+        template = HTML_ENV.get_template('summary_page.html')
 
         # Output directory (for relative symlinks)
         out_dir = os.path.abspath(os.path.dirname(summary_file))

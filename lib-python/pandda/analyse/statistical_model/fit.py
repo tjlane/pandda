@@ -3,6 +3,9 @@ logger = lg.getLogger(__name__)
 
 import numpy as np
 
+from scipy import stats
+from scipy.stats import kde
+
 
 class CalculateMu:
 
@@ -28,24 +31,20 @@ class SigmaUncertaintyCalculator:
         if n_values is not None:
             self.set_n(n_values)
 
-        logger.warning('REIMPLEMENT THIS CLASS USING NUMPY/SCIPY')
-
     def set_n(self, n_values):
 
-        from scitbx.math.distributions import normal_distribution
-
         # Extract the theoretical quantiles that we would expect if these values were from a normal distribution
-        self.theoretical_values = normal_distribution().quantiles(n_values)
+        self.theoretical_values = (
+            stats.norm.ppf(np.linspace(0.,1.,n_values+2), 0., 1.)[1:-1] # chop ends which are inf
+            )
 
         # Select the points in the middle of the distribution
-        self.middle_idxs = (
-            self.theoretical_values < self.q_cut
-            ).iselection().intersection(
-            (self.theoretical_values > -1 * self.q_cut).iselection()
+        self.middle_selection = (
+            np.abs(self.theoretical_values) < self.q_cut
             )
 
         self.middle_theoretical_values = (
-            self.theoretical_values.select(self.middle_idxs)
+            self.theoretical_values[self.middle_selection]
             )
 
     def set_reference_data(self, map_data):
@@ -61,7 +60,7 @@ class SigmaUncertaintyCalculator:
         actual_values = np.array(map_data - self.reference_map_data)
         actual_values.sort()
 
-        middle_actual_values = actual_values[self.middle_idxs]
+        middle_actual_values = actual_values[self.middle_selection]
 
         # Calculate the slope of the centre of the graph
         map_unc, map_off = np.polyfit(

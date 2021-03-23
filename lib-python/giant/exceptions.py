@@ -1,1 +1,6 @@
-from libtbx.utils import Sorry, Failure
+
+class Sorry(Exception):
+    pass
+
+class Failure(Exception):
+    pass

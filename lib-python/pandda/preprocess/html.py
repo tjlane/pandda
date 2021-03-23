@@ -12,14 +12,12 @@ from giant.html import (
     )
 
 from giant.html.summary import (
+    ImageEmbedder,
     HtmlSummary,
-    HtmlSummaryCollator,
-    HtmlSummaryConcatenator,
-    as_html_summary_maybe,
-    as_html_summaries_maybe,
     )
 
 d_label = '<span class="label label-info">{k}</span>'
+
 
 class MakePanddaDatasetSummaryHtml:
 
@@ -31,7 +29,14 @@ class MakePanddaDatasetSummaryHtml:
         ):
 
         self.output_directory = pl.Path(output_directory)
-        self.output_path = (self.output_directory / self.output_filename)
+        self.output_path = (
+            self.output_directory / self.output_filename
+            )
+
+        self.image = ImageEmbedder(
+            embed = False,
+            relative_to = str(self.output_path.parent),
+            )
         
     def __call__(self,
         datasets,
@@ -310,7 +315,7 @@ class MakePanddaDatasetSummaryHtml:
         main_block = divs.Block(
             width = width,
             title = title,
-            image = HtmlSummary.image(image),
+            image = self.image(image),
             contents = (
                 HtmlSummary.format_summary(text, type="block")
                 if (text is not None) else []

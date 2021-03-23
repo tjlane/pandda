@@ -17,13 +17,13 @@ from pandda.utils import (
 
 class EventSitePlotter(PanddaPlotter):
 
-    output_key = "all_events"
+    output_key = "site_events"
 
     def __init__(self, output_path_template):
 
         self.output_path_template = str(output_path_template)
 
-        assert ('{site_num}' in output_path_template)
+        assert ('{site_num' in output_path_template)
 
     def __call__(self, event_dicts, *args, **kwargs):
 
@@ -31,7 +31,7 @@ class EventSitePlotter(PanddaPlotter):
 
         output_files = collections.OrderedDict()
 
-        for site_num, e_data in event_data.items():
+        for site_num, e_data in sorted(event_data.items()):
 
             fig = self.plot(
                 site_num = site_num, 
@@ -72,34 +72,27 @@ class EventSitePlotter(PanddaPlotter):
 
         self.make_bar_plot(
             axis = axis,
-            plot_vals = event_data,
+            bar_values = self.get_plot_values(event_data),
+            bar_colours = self.get_colour_values(event_data),
             )
 
         return fig
 
-    def make_bar_plot(self, axis, plot_vals, colour_bool=None, colour_vals=None, min_x=10):
+    def make_bar_plot(self, 
+        axis, 
+        bar_values,
+        bar_colours, 
+        min_x = 5,
+        ):
         """Plot set of bar graphs in one figure"""
 
-        assert [colour_bool,colour_vals].count(None) >= 1, 'Provide either colour_bool or colour_vals'
-
-        n = len(plot_vals)
+        n = len(bar_values)
 
         assert n > 0
 
-        if colour_bool:
-            assert len(colour_bool) == n
-            bar_colours = ['limegreen' if b else 'red' for b in colour_bool]
-
-        elif colour_vals:
-            assert len(colour_vals) == n
-            bar_colours = colour_vals
-
-        else: 
-            bar_colours = ['slategray'] * n
-
         axis.bar(
             x = np.arange(n) + 1.0,
-            height = plot_vals, 
+            height = bar_values, 
             width = 0.8, 
             color = bar_colours,
             )
@@ -109,7 +102,7 @@ class EventSitePlotter(PanddaPlotter):
             )
 
         axis.set_yticks(
-            range(0, int(max(plot_vals)+0.5))
+            range(0, int(max(bar_values)+0.5))
             )
 
         axis.set_xlim(
@@ -131,13 +124,13 @@ class EventSitePlotter(PanddaPlotter):
 
     def unpack_events(self, events):
 
-        site_nums = sorted(
+        site_nums = sorted(set(
             [e['site_num'] for e in events]
-            )
+            ))
 
         site_events = {
             i : [
-                e['z_peak'] for e in events 
+                e for e in events 
                 if (e['site_num'] == i)
                 ]
             for i in site_nums
@@ -145,6 +138,15 @@ class EventSitePlotter(PanddaPlotter):
 
         return site_events
         
+    def get_plot_values(self, events):
+
+        return [e['z_peak'] for e in events]
+
+    def get_colour_values(self, events):
+
+        return [e.get('colour','slategray') for e in events]
+
+
 
 class EventResolutionsPlotter(PanddaPlotter):
 

@@ -3,7 +3,7 @@ from __future__ import print_function
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
-import os, sys, time
+import os, sys, time, copy
 
 import pathlib as pl
 
@@ -16,6 +16,7 @@ from pandda import (
     )
 
 from pandda.utils import (
+    DataCollator,
     merge_dicts,
     )
 
@@ -36,14 +37,28 @@ program_banner = ModuleBanner(
 
 def standard_pandda(pandda_config):
 
+    # Create output dictionary
+    data_collator = DataCollator()
+    
     # Options: maps a config to code abstraction
     pandda_options = options.Options(pandda_config)
+
+    # Write parameters as computer-readable json
+    pandda_options.dump_config_to_json(pandda_config)
 
     # This function is doing a lot of heavy lifting behind the scenes
     mcd = pandda_options.dataset_initialiser()
 
+    data_collator({
+        'output_files' : pandda_options.dataset_initialiser.output_files
+        })
+
     # Make the main page 
-    pandda_options.make_html_output()
+    html_files = pandda_options.make_html_output()
+
+    data_collator({
+        'output_files' : {'html': html_files},
+        })
 
     # Prepare to load maps (make grid, etc) -- also lots of heavy lifting
     map_loader = pandda_options.get_warped_map_loader(
@@ -58,20 +73,24 @@ def standard_pandda(pandda_config):
         load_maps = map_loader,
         )
 
-    merge_dicts(
-        master_dict = pandda_results,
-        merge_dict = {
-            'output_files' : pandda_options.dataset_initialiser.output_files,
-            },
-        )
+    data_collator(pandda_results)
 
     # Write output csvs, html, etc
     results_files = pandda_options.write_results(
         mcd = mcd,
-        pandda_results = pandda_results,
+        pandda_results = data_collator.data, # give all output so far
         )
 
-    return None # could be PanddaResults object
+    data_collator({
+        'output_files' : results_files,
+        })
+
+    # Output results as a json so computer-readable
+    pandda_options.dump_results_to_json(
+        records_dict = data_collator.get_sorted(),
+        )
+
+    return data_collator.data
 
 def run(args):
 

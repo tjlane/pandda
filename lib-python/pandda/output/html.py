@@ -18,6 +18,7 @@ class MakeMainPanddaHtmlPage:
 
     name = "Pandda Html Outputter"
 
+    output_key = 'main_html'
     output_filename = 'pandda_main.html'
     template_name = 'pandda_main.html'
 
@@ -29,11 +30,13 @@ class MakeMainPanddaHtmlPage:
         ):
 
         self.output_directory = pl.Path(output_directory)
-        self.output_path = (self.output_directory / self.output_filename).absolute()
+        self.output_path = (
+            self.output_directory / self.output_filename
+            )
 
-        self.dataset_html = pl.Path(dataset_html).absolute()
-        self.analyse_html = pl.Path(analyse_html).absolute()
-        self.inspect_html = pl.Path(inspect_html).absolute()
+        self.dataset_html = pl.Path(dataset_html)
+        self.analyse_html = pl.Path(analyse_html)
+        self.inspect_html = pl.Path(inspect_html)
 
     def __str__(self):
 
@@ -48,10 +51,10 @@ class MakeMainPanddaHtmlPage:
             '`---->'
             ).format(
             name = self.name,
-            output_path = self.output_path,
-            dataset_html = self.dataset_html,
-            analyse_html = self.analyse_html,
-            inspect_html = self.inspect_html,
+            output_path = str(self.output_path),
+            dataset_html = str(self.dataset_html),
+            analyse_html = str(self.analyse_html),
+            inspect_html = str(self.inspect_html),
             )
 
         return s_.strip()
@@ -74,16 +77,16 @@ class MakeMainPanddaHtmlPage:
             'header_title' : header_title,
             'body_header' : body_header,
             'pandda_dataset_html' : os.path.relpath( # use relative paths since within output file
-                str(self.dataset_html),
-                str(self.output_path.parent),
+                str(self.dataset_html.absolute()),
+                str(self.output_path.absolute().parent),
                 ),
             'pandda_analyse_html' : os.path.relpath(
-                str(self.analyse_html),
-                str(self.output_path.parent),
+                str(self.analyse_html.absolute()),
+                str(self.output_path.absolute().parent),
                 ),
             'pandda_inspect_html' : os.path.relpath(
-                str(self.inspect_html),
-                str(self.output_path.parent),
+                str(self.inspect_html.absolute()),
+                str(self.output_path.absolute().parent),
                 ),
             'contents' : [],
             }
@@ -112,7 +115,10 @@ class MakeMainPanddaHtmlPage:
             'Output HTML written to {}'.format(str(self.output_path))
             )
 
-        return self.output_path
+        return {
+            self.output_key : str(self.output_path),
+            'inspect_html' : str(self.inspect_html), # temporary hack?
+            }
 
     def get_body_header(self):
 

@@ -342,6 +342,8 @@ class SymmetryClusterFilter:
                     clusters[c_idxs[0]]
                     )
 
+                continue
+
             # Count the number of contact for each cluster in the group
             c_contacts = [
                 self.find_number_of_contacts(
@@ -355,9 +357,15 @@ class SymmetryClusterFilter:
             max_contacts = max(c_contacts)
 
             if (max_contacts == 0):
-                # TODO change this to just choose the largest cluster? 
-                raise ValueError('No contacts between cluster and protein.')
+
+                # TODO just choose the first one for now -- revisit
+
+                out_clusters.append(
+                    clusters[c_idxs[0]]
+                    )
+
             else:
+
                 i_best = c_idxs[c_contacts.index(max_contacts)]
 
                 out_clusters.append(

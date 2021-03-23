@@ -193,16 +193,16 @@ pandda
         statistical_maps
             .help = "Settings to control the calculation of z-maps"
         {
-            min_build_datasets = 40
+            min_build_datasets = 30
                 .help = 'Minimum number of datasets needed to build distributions'
                 .type = int
             max_build_datasets = 60
                 .help = 'Maximum number of datasets used to build distributions'
                 .type = int
-            average_map_type = *mean_map medn_map
+            average_map_type = *mean median
                 .help = 'Which statistical map should the uncertainties and Z-map be calculated from?
-                    mean_map: mean map      (simple averaging)
-                    medn_map: median map    (less sensitive to outliers)'
+                    mean: mean map      (simple averaging)
+                    medn: median map    (less sensitive to outliers)'
                 .type = choice(multi=False)
             fit_mu = True
                 .type = bool
@@ -216,7 +216,7 @@ pandda
             .help = "Settings to control the finding of blobs"
             .expert_level = 1
         {
-            clustering_method = *agglomerative_hierarchical dbscan hdbscan
+            clustering_method = *agglomerative_hierarchical 
                 .help = "Method of clustering to use"
                 .type = choice(multi=False)
             contour_level = 2.5
@@ -282,14 +282,6 @@ pandda
         }
     }
 
-    autobuilding
-        .help = "Autobuilding into PanDDA events"
-    {
-        autobuild = False
-            .help = "Whether or not to do autobuilding"
-            .type = bool
-    }
-
     exit_flags
         .help = "Flags for terminating the program early"
     {
@@ -313,9 +305,9 @@ pandda
         backend = serial *parallel_joblib 
             .help = "What multiprocessing backend to use"
             .type = choice
-        pandda_backend = *numpy dask
-            .help = "NOT IMPLEMENTED: What technology to use for calculating pandda statistics"
-        process_shells = *serial luigi 
+        pandda_backend = *numpy
+            .help = "What technology to use for calculating pandda statistics"
+        process_shells = *serial  
             .help = "How to process shells"
             .type = choice
         remote_workers = None
@@ -335,9 +327,6 @@ settings
     .help = "General Settings"
 {
     verbose = False
-        .type = bool
-    plot_graphs = True
-        .help = "Output graphs using matplotlib"
         .type = bool
     plotting {
         backend = 'agg'

@@ -274,9 +274,9 @@ class MakePanddaEventMtz:
             d_min = d_min,
             )
 
-        # os.remove(
-        #     str(map_filepath)
-        #     )
+        os.remove(
+            str(map_filepath)
+            )
 
         return {self.output_key : {event_num : str(filepath)}}
 
@@ -324,7 +324,7 @@ class MakePanddaEvaluationMtzs:
         dataset_dir = None,
         dataset_subdir = "",
         processor = None,
-        delete_maps = False,
+        delete_maps = True,
         ):
 
         # Currently set to serial -- change later?
@@ -340,12 +340,14 @@ class MakePanddaEvaluationMtzs:
         self.make_maps = make_maps
 
         self.make_mtz = ConvertMapsToMtz(
-            delete_maps = False,
+            delete_maps = False, # Done at the end
             )
 
         self.output_dir = pl.Path(output_dir)
         self.dataset_dir = dataset_dir
         self.dataset_subdir = dataset_subdir
+
+        self.delete_maps = delete_maps
 
         self.processor = processor
 
@@ -408,6 +410,11 @@ class MakePanddaEvaluationMtzs:
                     master_dict = output_files, 
                     merge_dict = {dkey : of}, # every sub-dict "of" is required to have a unique structure
                     )
+
+        if (delete_maps is True):
+            self.delete_files(
+                file_dict = map_files_dict,
+                )
 
         return {self.output_key : output_files}
 
@@ -503,6 +510,18 @@ class MakePanddaEvaluationMtzs:
             *args,
             **kwargs
             )
+
+    def delete_files(self,
+        file_dict,
+        ):
+
+        for dkey, d_files in file_dict.items():
+
+            for m_key, m_file in d_files.items():
+
+                if str(m_file).endswith('.ccp4'): 
+
+                    os.remove(str(m_file))
 
 
 class GetMakePanddaEvaluationMtzs:

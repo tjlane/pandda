@@ -7,6 +7,8 @@ from giant.dispatcher import Dispatcher
 
 class MakePymolOutputImages:
 
+    output_key_front = 'events_front'
+    output_key_back = 'events_back'
     output_front = "all_events_front.png"
     output_back = "all_events_back.png"
     output_script = "all_events_pymol.py"
@@ -19,10 +21,10 @@ class MakePymolOutputImages:
         self.output_directory = output_directory
 
         self.output_files = {
-            'events_front' : str(
+            self.output_key_front : str(
                 self.output_directory / self.output_front
                 ),
-            'events_back' : str(
+            self.output_key_back : str(
                 self.output_directory / self.output_back
                 ),
             }
@@ -131,14 +133,14 @@ class MakePymolOutputImages:
         pymol_str += 'orient\n'
         pymol_str += 'png {}, width=1200, dpi=300, ray=0\n'.format(
             os.path.relpath(
-                self.output_files['events_front'], 
+                self.output_files.get(self.output_key_front), 
                 start = str(self.output_directory)
                 )
             )
         pymol_str += 'turn y, 180\n'
         pymol_str += 'png {}, width=1200, dpi=300, ray=0\n'.format(
             os.path.relpath(
-                self.output_files['events_back'], 
+                self.output_files.get(self.output_key_back), 
                 start = str(self.output_directory)
                 )
             )

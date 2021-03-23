@@ -76,22 +76,23 @@ def test_MaskedNativeMapMaker(five_baz2b_test_datasets_mcd_labelled, tmp_path):
         filename = str(tmp_path / "BAZ2BA-x434.ccp4"),
         )
 
-    assert output_map_data.mean() == pytest.approx(0.0160, abs=1e-4)
-    assert output_map_data.std() == pytest.approx(0.0752, abs=1e-4)
+    assert output_map_data.mean() == pytest.approx(0.0195, abs=1e-4)
+    assert output_map_data.std() == pytest.approx(0.1121, abs=1e-4)
 
     large_select = (output_map_data > 0.5)
     large_values = zip(*list(np.where(large_select)))
 
-    assert len(large_values) == 510
+    assert len(large_values) == 1204
+    print(large_values[:16])
     assert large_values[:16] == [
-        (4, 18, 17),(4, 18, 18),(4, 18, 19),(4, 19, 17),
-        (4, 19, 18),(4, 23, 13),(4, 24, 13),(4, 26, 17),
-        (4, 27, 17),(4, 31, 12),(4, 31, 13),(4, 32, 11),
-        (4, 32, 12),(4, 32, 13),(5, 18, 17),(5, 18, 18),
+        (5, 19, 17), (5, 19, 18), (5, 23, 13), (5, 24, 13), 
+        (5, 31, 12), (5, 31, 13), (6, 19, 17), (6, 19, 18), 
+        (6, 22, 13), (6, 22, 14), (6, 23, 13), (6, 23, 14), 
+        (6, 24, 13), (6, 24, 14), (6, 25, 13), (6, 25, 14),
         ]
 
-    assert np.array(output_map_data[large_select]).mean() == pytest.approx(0.5762, abs=1e-4)
-    assert np.array(output_map_data[large_select]).std() == pytest.approx(0.0495, abs=1e-4)
+    assert np.array(output_map_data[large_select]).mean() == pytest.approx(0.7729, abs=1e-4)
+    assert np.array(output_map_data[large_select]).std() == pytest.approx(0.1597, abs=1e-4)
 
     #
 
@@ -101,22 +102,23 @@ def test_MaskedNativeMapMaker(five_baz2b_test_datasets_mcd_labelled, tmp_path):
         filename = str(tmp_path / "BAZ2BA-x432.ccp4"),
         )
 
-    assert output_map_data.mean() == pytest.approx(0.0178, abs=1e-4)
-    assert output_map_data.std() == pytest.approx(0.0842, abs=1e-4)
+    assert output_map_data.mean() == pytest.approx(0.0193, abs=1e-4)
+    assert output_map_data.std() == pytest.approx(0.1127, abs=1e-4)
 
     large_select = (output_map_data > 0.5)
     large_values = zip(*list(np.where(large_select)))
 
-    assert len(large_values) == 552
+    assert len(large_values) == 1127
+    print(large_values[:16])
     assert large_values[:16] == [
-        (4, 18, 17),(4, 18, 18),(4, 18, 19),(4, 19, 17),
-        (4, 19, 18),(4, 23, 13),(4, 24, 13),(4, 26, 17),
-        (4, 27, 17),(4, 31, 12),(4, 31, 13),(4, 32, 11),
-        (4, 32, 12),(4, 32, 13),(5, 18, 17),(5, 18, 18),
+        (5, 19, 17), (5, 19, 18), (5, 23, 13), (5, 24, 13), 
+        (5, 26, 17), (5, 27, 17), (5, 31, 12), (5, 31, 13), 
+        (6, 18, 18), (6, 19, 17), (6, 19, 18), (6, 22, 13), 
+        (6, 22, 14), (6, 23, 13), (6, 23, 14), (6, 24, 13),
         ]
 
-    assert np.array(output_map_data[large_select]).mean() == pytest.approx(0.6409, abs=1e-4)
-    assert np.array(output_map_data[large_select]).std() == pytest.approx(0.0924, abs=1e-4)
+    assert np.array(output_map_data[large_select]).mean() == pytest.approx(0.7987, abs=1e-4)
+    assert np.array(output_map_data[large_select]).std() == pytest.approx(0.1585, abs=1e-4)
 
     #
 
@@ -194,22 +196,23 @@ def test_NativeMapMaker(five_baz2b_test_datasets_mcd_labelled, tmp_path):
         filename = str(tmp_path / "BAZ2BA-x434.ccp4"),
         )
 
-    assert output_map_data.mean() == pytest.approx(0.0010, abs=1e-4)
-    assert output_map_data.std() == pytest.approx(0.0282, abs=1e-4)
+    assert output_map_data.mean() == pytest.approx(0.0007, abs=1e-4)
+    assert output_map_data.std() == pytest.approx(0.0236, abs=1e-4)
 
     large_select = (output_map_data > 0.5)
     large_values = zip(*list(np.where(large_select)))
 
-    assert len(large_values) == 64
+    assert len(large_values) == 44
+    print(large_values[:16])
     assert large_values[:16] == [
-        (5, 18, 12), (5, 18, 13), (5, 18, 15), (5, 18, 16),
-        (5, 32, 14), (5, 32, 15), (5, 32, 17), (5, 32, 18),
-        (6, 18, 12), (6, 18, 13), (6, 18, 15), (6, 18, 16),
-        (6, 32, 14), (6, 32, 15), (6, 32, 17), (6, 32, 18),
+        (5, 18, 13), (5, 18, 15), (5, 18, 16), (5, 32, 14), 
+        (5, 32, 15), (5, 32, 17), (6, 18, 13), (6, 18, 15), 
+        (6, 18, 16), (6, 32, 14), (6, 32, 15), (6, 32, 17), 
+        (16, 7, 1), (16, 43, 29), (17, 7, 0), (17, 7, 1),
         ]
 
-    assert np.array(output_map_data[large_select]).mean() == pytest.approx(0.8502, abs=1e-4)
-    assert np.array(output_map_data[large_select]).std() == pytest.approx(0.2402, abs=1e-4)
+    assert np.array(output_map_data[large_select]).mean() == pytest.approx(0.8497, abs=1e-4)
+    assert np.array(output_map_data[large_select]).std() == pytest.approx(0.2079, abs=1e-4)
 
     #
 
@@ -219,21 +222,22 @@ def test_NativeMapMaker(five_baz2b_test_datasets_mcd_labelled, tmp_path):
         filename = str(tmp_path / "BAZ2BA-x432.ccp4"),
         )
 
-    assert output_map_data.mean() == pytest.approx(0.0010, abs=1e-4)
-    assert output_map_data.std() == pytest.approx(0.0291, abs=1e-4)
+    assert output_map_data.mean() == pytest.approx(0.0007, abs=1e-4)
+    assert output_map_data.std() == pytest.approx(0.0248, abs=1e-4)
 
     large_select = (output_map_data > 0.5)
     large_values = zip(*list(np.where(large_select)))
 
-    assert len(large_values) == 56
+    assert len(large_values) == 40
+    print(large_values[:16])
     assert large_values[:16] == [
-        (5, 18, 12), (5, 18, 13), (5, 18, 15), (5, 18, 16),
-        (5, 32, 14), (5, 32, 15), (5, 32, 17), (5, 32, 18),
-        (6, 18, 12), (6, 18, 13), (6, 18, 15), (6, 18, 16),
-        (6, 32, 14), (6, 32, 15), (6, 32, 17), (6, 32, 18),
+        (5, 18, 13), (5, 18, 15), (5, 18, 16), (5, 32, 14), 
+        (5, 32, 15), (5, 32, 17), (6, 18, 13), (6, 18, 15), 
+        (6, 18, 16), (6, 32, 14), (6, 32, 15), (6, 32, 17), 
+        (17, 7, 0), (17, 7, 1), (17, 7, 28), (17, 43, 0),
         ]
 
-    assert np.array(output_map_data[large_select]).mean() == pytest.approx(0.9411, abs=1e-4)
-    assert np.array(output_map_data[large_select]).std() == pytest.approx(0.1887, abs=1e-4)
+    assert np.array(output_map_data[large_select]).mean() == pytest.approx(0.9471, abs=1e-4)
+    assert np.array(output_map_data[large_select]).std() == pytest.approx(0.1620, abs=1e-4)
 
     #

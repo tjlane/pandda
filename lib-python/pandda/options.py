@@ -507,8 +507,21 @@ class Options:
 
     def output_objects(self, config):
 
-        from pandda.output.html import MakeMainPanddaHtmlPage
+        from pandda.config import DumpConfigToJson
+        self.dump_config_to_json = DumpConfigToJson(
+            output_path = (
+                config.output.out_dir / "params.json"
+                ),
+            )
 
+        from pandda.output import DumpDictToJson
+        self.dump_results_to_json = DumpDictToJson(
+            output_path = (
+                config.output.out_dir / "results.json"
+                ),
+            )
+
+        from pandda.output.html import MakeMainPanddaHtmlPage
         self.make_html_output = MakeMainPanddaHtmlPage(
             output_directory = (
                 config.output.out_dir / "html"

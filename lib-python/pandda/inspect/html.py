@@ -1,164 +1,601 @@
-import os, glob
+import giant.logs as lg
+logger = lg.getLogger(__name__)
 
-from bamboo.html import png2base64str
-from pandda_inspect.resources.html import PANDDA_HTML_ENV
-from pandda_inspect.constants import PanddaHtmlFilenames
+import pathlib as pl
+import numpy as np
+import pandas as pd
 
-def write_inspect_html(top_dir, inspector):
+from giant.html import (
+    divs, 
+    objects,
+    formatters,
+    )
 
-    # Get template to be filled in
-    template = PANDDA_HTML_ENV.get_template('pandda_summary.html')
-    # Output directory (for relative symlinks)
-    out_dir  = os.path.join(top_dir, 'analyses', 'html_summaries')
-    # Output file
-    out_file = os.path.join(out_dir, PanddaHtmlFilenames.inspect_html)
+from giant.html.summary import (
+    ImageEmbedder,
+    )
 
-    all_data = inspector.log_table
-    len_data = len(all_data.index)
+from .exceptions import (
+    MissingFile
+    )
 
-    #####################################################
-    #                 Organise Data                     #
-    #####################################################
+d_label = '<span class="label label-info">{k}</span>'
 
-    # Pandda Analysis outputs
-    num_blobs = len_data
-    num_sites = len(set(all_data['site_idx']))
-    num_datasets = len(set(zip(*all_data.index)[0]))
 
-    # Datasets Inspected/Modelled/Empty
-    num_fitted = sum(all_data['Ligand Placed'])
-    num_viewed = sum(all_data['Viewed'])
-    num_empty  = num_viewed - num_fitted
-    num_unviewed = len_data - num_viewed
+class MakePanddaInspectHtml:
 
-    # Interesting unfitted (bookmarked)
-    num_interesting_unfitted = sum(all_data["Interesting"][all_data['Ligand Placed']==False])
+    output_filename = 'pandda_inspect.html'
+    template_name = 'pandda_page.html'
 
-    # Number of Confident Ligand Models
-    hgh_conf = sum(all_data["Ligand Placed"][all_data['Ligand Confidence']=='High'])
-    med_conf = sum(all_data["Ligand Placed"][all_data['Ligand Confidence']=='Medium'])
-    low_conf = sum(all_data["Ligand Placed"][all_data['Ligand Confidence']=='Low'])
+    def __init__(self, 
+        output_directory,
+        ):
 
-    # Number of datasets with hits
-    try:    num_d_hit = len(set(zip(*all_data.index[all_data['Ligand Placed'] == True])[0]))
-    except: num_d_hit = 0
-    # Number of sites with hits
-    try:    num_s_hit = len(set(all_data[all_data['Ligand Placed'] == True]['site_idx']))
-    except: num_s_hit = 0
+        self.output_directory = pl.Path(output_directory)
 
-    # Site Hits
-    site_hits = []
-    for site_idx in range(1, num_sites+1):
-        site_placed = sum(all_data["Ligand Placed"][all_data['site_idx']==site_idx])
-        if site_placed > 0: site_hits.append((site_idx, site_placed))
+        self.input_files = self.build_input_files_dict()
 
-    #####################################################
-    #               Prepare html data                   #
-    #####################################################
+        self.input_path_prefix = self.find_input_prefix(
+            filepath = self.input_files['html']['main_html'],
+            )
 
-    # ===========================================================>
-    # Construct the data object to populate the template
-    output_data = {}
-    output_data['header'] = 'PANDDA Inspect Summary'
-    output_data['title'] = 'PANDDA Inspect Summary'
-    output_data['introduction'] = 'Summary of Inspection of Datasets'
-    # ===========================================================>
-    # Header Images
-    output_data['top_images'] = []
-    if os.path.exists(os.path.join(out_dir, PanddaHtmlFilenames.pymol_sites_png_1)):
-        output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=os.path.join(out_dir, PanddaHtmlFilenames.pymol_sites_png_1))),
-                                           'title': 'Identified Sites (Front)' })
-    if os.path.exists(os.path.join(out_dir, PanddaHtmlFilenames.pymol_sites_png_2)):
-        output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=os.path.join(out_dir, PanddaHtmlFilenames.pymol_sites_png_2))),
-                                           'title': 'Identified Sites (Back)' })
-    for i_png, png in enumerate(sorted(glob.glob(os.path.join(out_dir, PanddaHtmlFilenames.inspect_site_graph_mult).format('*')))):
-        output_data['top_images'].append({ 'path': 'data:image/png;base64,{}'.format(png2base64str(path=png)),
-                                           'title': 'Identified Site Summary ({})'.format(i_png+1) })
-    # ===========================================================>
-    # Summary Bar
-    output_data['summary_bar'] = []
-    output_data['summary_bar'].append({'width':'4', 'colour':'success', 'text':'Datasets w. ligands: {} (of {})'.format(num_d_hit, num_datasets)})
-    output_data['summary_bar'].append({'width':'4', 'colour':'success', 'text':'Sites w. ligands: {} (of {})'.format(num_s_hit, num_sites)})
-    output_data['summary_bar'].append({'width':'4', 'colour':'warning', 'text':'Marked as interesting (unfitted): {}'.format(num_interesting_unfitted)})
+        self.output_path = pl.Path(
+            self.get_path(['html','inspect_html'])
+            )
 
-    output_data['summary_bar'].append({'width':'3', 'colour':'info',    'text':'Total number of events: {}'.format(num_blobs)})
-    output_data['summary_bar'].append({'width':'3', 'colour':'success', 'text':'High confidence hits:   {}'.format(hgh_conf)})
-    output_data['summary_bar'].append({'width':'3', 'colour':'warning', 'text':'Medium confidence hits: {}'.format(med_conf)})
-    output_data['summary_bar'].append({'width':'3', 'colour':'danger',  'text':'Low confidence hits:    {}'.format(low_conf)})
-    # ===========================================================>
-    # Progress Bars
-    output_data['progress_bar'] = []
-    # Fitting Progress
-    output_data['progress_bar'].append({'title':'Fitting Progress', 'data':[]})
-    output_data['progress_bar'][-1]['data'].append({'text':'Fitted - {} Events'.format(num_fitted),          'colour':'success', 'size':100.0*num_fitted/len_data})
-    output_data['progress_bar'][-1]['data'].append({'text':'Unviewed - {} Events'.format(num_unviewed),      'colour':'warning', 'size':100.0*num_unviewed/len_data})
-    output_data['progress_bar'][-1]['data'].append({'text':'No Ligand Fitted - {} Events'.format(num_empty), 'colour':'danger',  'size':100.0*num_empty/len_data})
-    # Ligand Distribution
-    if num_fitted > 0:
-        import math
-        weighting = sum([math.log1p(v[1]) for v in site_hits])
-        output_data['progress_bar'].append({'title':'Identified Ligands by Site', 'data':[]})
-        for i_block, (site_idx, n_hits) in enumerate(sorted(site_hits, key=lambda x: x[1], reverse=True)):
-            colour = ('info','default')[i_block%2]
-            output_data['progress_bar'][-1]['data'].append({'text':('S{}: {} hit'+'s'*bool(n_hits-1)).format(site_idx, n_hits), 'colour':colour, 'size':100.0*math.log1p(n_hits)/weighting})
-    # ===========================================================>
-    # Panels
-    output_data['top_panels'] = []
-    # Site summaries
-    for site_idx, site_info in inspector.site_table.iterrows():
-        if (site_info['Name'], site_info['Comment']) != ('None','None'):
-            output_data['top_panels'].append({  'width':'6','color':'primary',
-                                                'title':'<strong>Site {}</strong>: {}'.format(site_idx, site_info['Name']),
-                                                'text':'<p><strong>Comment:</strong> '+site_info['Comment']+'</p>'  })
-    if num_interesting_unfitted:
-        output_data['top_panels'].append({  'width':'12','color':'primary',
-                                            'title':'<strong>Interesting Datasets with No Ligand Placed</strong>',
-                                            'text':'<p><strong>Datasets:</strong> '+', '.join(['<strong>{}</strong> (Event {})'.format(*i) for i in all_data[(all_data['Ligand Placed']==False)&(all_data['Interesting']==True)].index])+'</p>'  })
-    # ===========================================================>
-    # Tables
-    output_data['table'] = {}
-    output_data['table']['column_headings'] = ['Dataset','Viewed','Interesting','Lig. Placed','Event','Site','1 - BDC','Z-Peak','Map Res.','Map Unc.','Confidence','Comment','']
-    output_data['table']['rows'] = []
-    # Add the datasets as rows
-    for i_d in range(len(all_data.index)):
+        self.image = ImageEmbedder(
+            embed = False,
+            relative_to = str(self.output_path.parent),
+            )
 
-        # colour choices - 'success', 'muted', 'danger'
-        # icon choices   - 'ok', 'flag', 'remove'
+    def __call__(self,
+        inspector,
+        output_files,
+        ):
 
-        d_data = all_data.iloc[i_d].to_dict()
-        d_tag, d_event = all_data.index[i_d]
+        results = self.unpack_inspector(
+            inspector = inspector,
+            )
 
-        columns = []
+        contents = self.get_contents(
+            results = results,
+            output_files = output_files,
+            )
 
-        if d_data['Viewed']:        columns.append({'colour':'success', 'icon':'ok',     'message':d_data['Viewed']})
-        else:                       columns.append({'colour':'danger',  'icon':'remove', 'message':d_data['Viewed']})
+        self.make_output(
+            contents = contents,
+            )
 
-        if d_data['Interesting']:   columns.append({'colour':'success', 'icon':'ok',     'message':d_data['Interesting']})
-        else:                       columns.append({'colour':'danger',  'icon':'remove', 'message':d_data['Interesting']})
+        return self.output_path
 
-        if d_data['Ligand Placed']: columns.append({'colour':'success', 'icon':'ok',     'message':d_data['Ligand Placed']})
-        else:                       columns.append({'colour':'danger',  'icon':'remove', 'message':d_data['Ligand Placed']})
+    def build_input_files_dict(self):
 
-        columns.append({'message':d_event})
-        columns.append({'message':d_data['site_idx']})
-        columns.append({'message':round(d_data['1-BDC'],3)})
-        columns.append({'message':round(d_data['z_peak'],3)})
-        columns.append({'message':d_data['analysed_resolution']})
-        columns.append({'message':round(d_data['map_uncertainty'],3)})
+        import json
 
-        columns.append({'message':d_data['Ligand Confidence']})
-        columns.append({'message':d_data['Comment']})
+        json_file = (
+            self.output_directory / 'results.json'
+            )
 
-        row_message = 'Hit' if d_data['Ligand Placed'] else \
-                      ''
-        row_colour  = 'success' if d_data['Ligand Placed'] else \
-                      'danger' if not d_data['Viewed'] else \
-                      'info'
+        if not json_file.exists(): 
+            raise MissingFile('Json results file not found: {}'.format(str(json_file)))
 
-        output_data['table']['rows'].append({'heading' : d_tag,
-                                             'colour'  : row_colour,
-                                             'message' : row_message,
-                                             'columns' : columns})
+        json_string = open(str(json_file), 'r').read()
 
-    with open(out_file, 'w') as out_html:
-        out_html.write(template.render(output_data))
+        pandda_log_obj = json.loads(json_string)
+
+        input_files = pandda_log_obj['output_files']
+
+        return input_files
+
+    def find_input_prefix(self, filepath):
+
+        filepath = pl.Path(filepath)
+
+        prefix = filepath.parent
+
+        for _ in filepath.parts:
+
+            test_f = filepath.relative_to(prefix)
+
+            if (self.output_directory / test_f).exists():
+                break
+
+            prefix = prefix.parent
+        
+        return prefix
+
+    def get_path(self, input_keys):
+
+        assert isinstance(input_keys, list)
+
+        d = self.input_files
+        for k in input_keys:
+            d = d[k]
+
+        assert not hasattr(d, 'keys')
+
+        output_path = (
+            self.output_directory / pl.Path(d).relative_to(
+                self.input_path_prefix
+                )
+            )
+
+        return str(output_path)
+
+    def unpack_inspector(self,
+        inspector,
+        ):
+
+        results = {
+            'event_table' : inspector.tables.events.table.reset_index(),
+            'site_table' : inspector.tables.sites.table.reset_index(),
+        }
+
+        return results
+
+    def get_contents(self, 
+        results,
+        output_files,
+        ):
+
+        contents = []
+
+        contents.extend(
+            self.get_header()
+            )
+
+        contents.extend(
+            self.get_main(
+                results = results,
+                output_files = output_files,
+                )
+            )
+
+        return contents
+
+    def get_header(self):
+
+        contents = [
+            divs.Block(
+                title = "PanDDA inspection summary",
+                fancy_title = True,
+                ),
+            ]
+
+        return contents
+
+    def get_main(self,
+        results,
+        output_files,
+        ):
+
+        event_table = results['event_table']
+
+        event_table_dict = self.build_event_table_summary_dict(
+            event_table = event_table,
+            )
+
+        ###
+
+        contents = []
+
+        contents.extend(
+            self.get_inspection_progress_bars(
+                summary_dict = event_table_dict,
+                )
+            )
+
+        contents.extend(
+            self.get_inspection_site_summary(
+                summary_dict = event_table_dict,
+                output_files = output_files,
+                )
+            )
+
+        contents.extend(
+            self.get_inspection_event_summary(
+                event_table = event_table,
+                )
+            )
+
+        return contents
+
+    def get_inspection_progress_bars(self,
+        summary_dict,
+        ):
+
+        block1 = divs.Block(
+            classes = ['bordered'],
+            contents = [
+                objects.ProgressBar(
+                    title = "Inspection Progress",
+                    title_size = 4,
+                    data = [
+                        {
+                            'label' : 'Fitted',
+                            'value' : summary_dict['n_fitted'],
+                            'colour' : 'success',
+                            },
+                        {
+                            'label' : 'Unviewed',
+                            'value' : summary_dict['n_unviewed'],
+                            'colour' : 'info',
+                            },
+                        {
+                            'label' : 'No Ligand Fitted',
+                            'value' : summary_dict['n_empty'],
+                            'colour' : 'danger',
+                            },
+                        ],
+                    add_counts = True,
+                    add_percentages = False,
+                    ),
+                divs.Alert(
+                    text = "Total events: {}".format(
+                        summary_dict['n_blobs']
+                        ),
+                    colour = "info",
+                    width = 12,
+                    ),
+                divs.Alert(
+                    text = "Fitted ligands: {}".format(
+                        summary_dict['n_fitted']
+                        ),
+                    colour = "success",
+                    width = 4,
+                    ),
+                divs.Alert(
+                    text = "Unviewed: {}".format(
+                        summary_dict['n_unviewed']
+                        ),
+                    colour = "info",
+                    width = 4,
+                    ),
+                divs.Alert(
+                    text = "No ligand fitted: {}".format(
+                        summary_dict['n_empty']
+                        ),
+                    colour = "danger",
+                    width = 4,
+                    ),
+                ],
+            )
+
+        block2 = divs.Block(
+            classes = ['bordered'],
+            contents = [
+                divs.Alert(
+                    text = "Datasets with ligands: {}".format(
+                        summary_dict['n_datasets_w_hit']
+                        ),
+                    colour = "info",
+                    width = 6,
+                    ),
+                divs.Alert(
+                    text = "Sites with ligands: {}".format(
+                        summary_dict['n_sites_w_hit']
+                        ),
+                    colour = "info",
+                    width = 6,
+                    ),
+                ],
+            )
+
+        block3 = divs.Block(
+            classes = ['bordered'],
+            contents = (
+                [
+                    objects.ProgressBar(
+                        title = "Fitted ligands",
+                        title_size = 4,
+                        data = [
+                            {
+                                'label' : 'High confidence',
+                                'value' : summary_dict['n_high_confidence'],
+                                'colour' : 'success',
+                                },
+                            {
+                                'label' : 'Medium confidence',
+                                'value' : summary_dict['n_medium_confidence'],
+                                'colour' : 'info',
+                                },
+                            {
+                                'label' : 'Low confidence',
+                                'value' : summary_dict['n_low_confidence'],
+                                'colour' : 'danger',
+                                },
+                            {
+                                'label' : 'Unranked',
+                                'value' : summary_dict['n_unranked'],
+                                'colour' : 'info',
+                                },
+                            ],
+                        add_counts = True,
+                        add_percentages = False,
+                        ),
+                    divs.Alert(
+                        text = "Total ligands: {}".format(
+                            summary_dict['n_fitted']
+                            ),
+                        colour = "info",
+                        width = 12,
+                        ),
+                    divs.Alert(
+                        text = "High Confidence: {}".format(
+                            summary_dict['n_high_confidence']
+                            ),
+                        colour = "success",
+                        width = 4,
+                        ),
+                    divs.Alert(
+                        text = "Medium Confidence: {}".format(
+                            summary_dict['n_medium_confidence']
+                            ),
+                        colour = "warning",
+                        width = 4,
+                        ),
+                    divs.Alert(
+                        text = "Low Confidence: {}".format(
+                            summary_dict['n_low_confidence']
+                            ),
+                        colour = "danger",
+                        width = 4,
+                        ),
+                    divs.Alert(
+                        text = "Unfitted, marked interesting: {}".format(
+                            summary_dict['n_interesting_unfitted']
+                            ),
+                        colour = "danger",
+                        width = 6,
+                        ),
+                    ]
+                if (summary_dict['n_fitted'] > 0) else 
+                [
+                    divs.Alert(
+                        text = "Nothing to show here yet: no fitted ligands"
+                        )
+                    ]
+                ),
+            )
+
+        return [block1, block2, block3]
+
+    def get_inspection_site_summary(self,
+        summary_dict,
+        output_files,
+        ):
+
+        site_counts = summary_dict['n_hits_per_site']
+        site_images = output_files['site_events']
+
+        blocks = [
+            divs.Block(
+                width = 6,
+                text = 'Sites and Events (front)',
+                image = self.get_path(['graphs','events_front']),
+                ),
+            divs.Block(
+                width = 6,
+                text = 'Sites and Events (back)',
+                image = self.get_path(['graphs','events_back']),
+                ),
+            (
+                objects.ProgressBar(
+                    title = "Fitted ligands distribution over sites",
+                    data = [
+                        {
+                            'label' : 'Site {}'.format(i),
+                            'value' : v,
+                            'colour' : ['default','info'][i%2],
+                            }
+                            for i,v in sorted(site_counts.items())
+                        ],
+                    add_counts = True,
+                    add_percentages = True,
+                    )
+                if sum(site_counts.values()) > 0 else
+                divs.Alert(
+                    text = 'Nothing to show here yet: no fitted ligands',
+                    )
+                ),
+            divs.ScrollX(
+                contents = [
+                    divs.Block(
+                        title = 'Site {}'.format(site_num),
+                        text = 'Number of events: {}'.format(n_events),
+                        image = self.image(site_images[site_num]),
+                        width = 5,
+                        )
+                    for site_num, n_events
+                    in sorted(site_counts.items())
+                    ],
+                ),
+            ]
+
+        return blocks
+
+    def get_inspection_event_summary(self,
+        event_table,
+        ):
+
+        column_labels = [] # subsample the columns
+
+        # ['Dataset','Viewed','Interesting','Lig. Placed','Event','Site','1 - BDC','Z-Peak','Map Res.','Map Unc.','Confidence','Comment','']
+
+        blocks = [
+            self.make_table_block(
+                title = 'Events/Fitted Ligands Table', 
+                table = event_table, 
+                width = 12,
+                ),
+            ]
+
+        return blocks
+
+    def build_event_table_summary_dict(self,
+        event_table,
+        ):
+
+        # Input counts
+
+        n_blobs = len(
+            event_table.index
+            )
+
+        n_sites = len(
+            set(event_table['site_num'])
+            )
+
+        n_datasets = len(
+            # this assumes the index is (dtag, e_idx)
+            set(event_table['dtag'])
+            )
+
+        # Blobs Inspected/Modelled/Empty
+
+        n_fitted = sum(
+            event_table['Ligand Placed']
+            )
+
+        n_viewed = sum(
+            event_table['Viewed']
+            )
+
+        n_empty = (
+            n_viewed - n_fitted
+            )
+
+        n_unviewed = (
+            n_blobs - n_viewed
+            )
+
+        # Interesting unfitted (bookmarked)
+
+        n_interesting_unfitted = sum(
+            event_table["Interesting"][event_table['Ligand Placed']==False]
+            )
+
+        # Confidence of models
+
+        n_high_confidence = sum(
+            event_table["Ligand Placed"][event_table['Ligand Confidence']=='High']
+            )
+
+        n_medium_confidence = sum(
+            event_table["Ligand Placed"][event_table['Ligand Confidence']=='Medium']
+            )
+        
+        n_low_confidence = sum(
+            event_table["Ligand Placed"][event_table['Ligand Confidence']=='Low']
+            )
+
+        n_unranked = (
+            n_fitted - n_high_confidence - n_medium_confidence - n_low_confidence
+            )
+
+        # Datasets/sites with hits
+
+        try:    
+            n_datasets_w_hit = len(
+                set(zip(*event_table.index[event_table['Ligand Placed'] == True])[0])
+                )
+        except: 
+            n_datasets_w_hit = 0
+
+        try:    
+            n_sites_w_hit = len(
+                set(event_table['site_num'][event_table['Ligand Placed'] == True])
+                )
+        except: 
+            n_sites_w_hit = 0
+
+        # Hits per site
+
+        n_hits_per_site = {
+            i_site : sum(
+                event_table["Ligand Placed"][event_table['site_num']==i_site]
+                )
+            for i_site in range(1, n_sites+1)
+        }
+
+        ###
+
+        s_dict = dict(
+            n_blobs = n_blobs,
+            n_sites = n_sites,
+            n_datasets = n_datasets,
+            n_fitted = n_fitted,
+            n_viewed = n_viewed,
+            n_empty = n_empty,
+            n_unviewed = n_unviewed,
+            n_interesting_unfitted = n_interesting_unfitted,
+            n_high_confidence = n_high_confidence,
+            n_medium_confidence = n_medium_confidence,
+            n_low_confidence = n_low_confidence,
+            n_unranked = n_unranked,
+            n_datasets_w_hit = n_datasets_w_hit,
+            n_sites_w_hit = n_sites_w_hit,
+            n_hits_per_site = n_hits_per_site,
+        )
+
+        return s_dict
+
+    def make_table_block(self, title, table, width=12):
+
+        table_html = table.to_html(
+            index = False,
+            bold_rows = False,
+            na_rep = '',
+            classes = ['table table-striped table-hover datatable nowrap'],
+            ).replace(
+            '<th></th>','<th>Dataset</th>'
+            ).replace(
+            'border="1" ', ''
+            )
+
+        block = divs.Alert(
+            title = title,
+            width = width,
+            table = table_html,
+            )
+
+        return block
+
+    def make_output(self,
+        contents,
+        ):
+
+        logger.subheading(
+            'Writing output HTML: {}'.format(self.output_filename)
+            )
+
+        if not self.output_directory.exists():
+            self.output_directory.mkdir(parents=True)
+
+        from pandda.html import HTML_ENV
+        template = HTML_ENV.get_template(self.template_name)
+
+        header_title = 'PanDDA Inspection Summary'
+
+        # ===========================================================>
+        # Construct the data object to populate the template
+        output_data = {
+            'header_title' : header_title,
+            #'body_header' : body_header,
+            'contents' : contents,
+            }
+        # Jsons
+        #if json_plots:
+        #    output_data['json_plots'] = json_plots
+        # ===========================================================>
+
+        # Write out and format
+        with open(str(self.output_path), 'w') as out_html:
+            out_html.write(
+                template.render(output_data).encode( "utf-8" )
+                )
+
+        logger(
+            'Output HTML written to {}'.format(str(self.output_path))
+            )
+

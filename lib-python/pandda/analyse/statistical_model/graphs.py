@@ -1,3 +1,5 @@
+import numpy as np
+
 from pandda.graphs import (
     PanddaPlotter,
     )
@@ -76,9 +78,21 @@ class StatisticalMapUncertaintyDistributionPlotter(PanddaPlotter):
 
         test_uncertainties = test_dataset_map_uncertainties.values()
 
+        x_range = (
+            0.,
+            # min(
+            #     train_uncertainties.min(),
+            #     test_uncertainties.min(),
+            #     ),
+            np.max([
+                np.max(train_uncertainties),
+                np.max(test_uncertainties),
+                ]),
+            )
+
         ###
 
-        fig, axes = self.setup(ncols=1, nrows=2)
+        fig, axes = self.setup(ncols=1, nrows=2, sharex=True)
 
         a1, a2 = tuple(axes)
 
@@ -93,6 +107,7 @@ class StatisticalMapUncertaintyDistributionPlotter(PanddaPlotter):
             values = train_uncertainties,
             facecolor = 'gray',
             label = "train datasets",
+            range = x_range,
             )
 
         a1.legend(
@@ -111,6 +126,7 @@ class StatisticalMapUncertaintyDistributionPlotter(PanddaPlotter):
             values = test_uncertainties,
             facecolor = 'blue',
             label = "test datasets",
+            range = x_range,
             )
 
         a2.legend(

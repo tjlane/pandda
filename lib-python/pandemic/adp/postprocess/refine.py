@@ -5,7 +5,7 @@ import os, collections
 from libtbx import adopt_init_args
 from libtbx.utils import Sorry, Failure
 from giant.paths import easy_directory
-from giant.refinement import get_refiner
+from giant.refinement.wrappers import get_refiner
 
 from pandemic.adp.parallel import RunParallelWithProgressBarUnordered
 

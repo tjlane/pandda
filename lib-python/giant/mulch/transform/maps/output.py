@@ -1,4 +1,3 @@
-
 import numpy as np
 
 import copy, time
@@ -519,25 +518,3 @@ class MaskedNativeMapMaker:
             filename = filename,
             )
 
-
-# class NativeMap2MTZ:
-
-#     def __init__(self,
-#         map_grid, 
-#         map_mask,
-#         ):
-
-#         self.map_grid = map_grid
-#         self.map_mask = map_mask
-
-#     def __call__(self,
-#         dataset,
-#         map_data_list,
-#         label_list,
-#         resolution = 1.0,
-#         ):
-
-#         miller_set = dataset.model.crystal.crystal_symmetry.build_miller_set(
-#             )
-
-#         full_miller_set = miller_set.complete_set(d_min=resolution)

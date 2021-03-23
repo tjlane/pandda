@@ -15,7 +15,7 @@ def test_ExtractBasicXrayStatistics(five_baz2b_test_datasets_mcd):
     assert dataset_dict["r_free"] == pytest.approx(0.20442)
     assert dataset_dict["r_work"] == pytest.approx(0.17842)
     assert dataset_dict["space_group"] == "C 2 2 21"
-    assert dataset_dict["unit_cell"] == str((81.403, 96.831, 57.784, 90, 90, 90))
+    assert dataset_dict["unit_cell"] == (81.403, 96.831, 57.784, 90, 90, 90)
 
 def test_ExtractWilsonStatistics(five_baz2b_test_datasets_mcd):
 
@@ -79,7 +79,7 @@ def test_ExtractDatasetStatistics(five_baz2b_test_datasets_mcd):
     assert dataframe.loc["BAZ2BA-x434.dimple.pdb"]["r_free"] == pytest.approx(0.20442)
     assert dataframe.loc["BAZ2BA-x434.dimple.pdb"]["r_work"] == pytest.approx(0.17842)
     assert dataframe.loc["BAZ2BA-x434.dimple.pdb"]["space_group"] == "C 2 2 21"
-    assert dataframe.loc["BAZ2BA-x434.dimple.pdb"]["unit_cell"] == str((81.403, 96.831, 57.784, 90, 90, 90))
+    assert dataframe.loc["BAZ2BA-x434.dimple.pdb"]["unit_cell"] == (81.403, 96.831, 57.784, 90, 90, 90)
 
 def test_ClassifyDatasetStatistics(five_baz2b_test_datasets_mcd):
 

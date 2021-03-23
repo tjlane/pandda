@@ -214,7 +214,7 @@ def run(params):
     # Create command objects
     logger.subheading('Preparing command line input for refinement program')
 
-    from giant.refinement import get_refiner
+    from giant.refinement.wrappers import get_refiner
     Refinement = get_refiner( params.options.program )
 
     refinement = Refinement(

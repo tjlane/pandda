@@ -12,6 +12,42 @@ except:
 ########################################################################################################################
 
 
+class DumpConfigToJson:
+
+    def __init__(self, output_path):
+
+        self.output_path = pl.Path(output_path)
+
+    def __call__(self, config):
+
+        records = self.make_records(config)
+
+        self.write_json(records=records)
+
+        return self.output_path
+
+    def make_records(self, config):
+
+        records = {
+            "data_dirs": str(pl.Path(config.input.data_dirs).absolute()),
+            "out_dir": str(config.output.out_dir.absolute()),
+        }
+
+        return records
+
+    def write_json(self, records):
+
+        import json
+        
+        json_string = json.dumps(records, indent=2)
+
+        with open(str(self.output_path), "w") as f:
+            f.write(json_string)
+
+
+########################################################################################################################
+
+
 class InputError(Exception):
     pass
 

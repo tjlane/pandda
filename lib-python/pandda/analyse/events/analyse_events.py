@@ -27,7 +27,7 @@ class EventAnalyser:
         self.write_image = (
             MakeBdcEstimationGraph(
                 output_path_template = str(
-                    output_directory / "{label}-{event_num:03d}.png"
+                    output_directory / "{label}-event{event_num:03d}.png"
                     ),
                 )
             if (output_directory is not None)

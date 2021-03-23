@@ -4,7 +4,6 @@ logger = lg.getLogger(__name__)
 import os
 
 from giant.dispatcher import Dispatcher
-from giant.exceptions import Failure
 
 def generate_restraints(smiles, name='LIG', prefix='ligand', verbose=False):
     """Generate pdb and cif files from smiles string"""
@@ -42,7 +41,7 @@ def generate_restraints(smiles, name='LIG', prefix='ligand', verbose=False):
     if not (os.path.exists(out_pdb) and os.path.exists(out_cif)):
         logger(acedrg.result.stdout)
         logger(acedrg.result.stderr)
-        raise Failure('acedrg failed during ligand generation')
+        raise Exception('acedrg failed during ligand generation')
 
     return out_pdb, out_cif
 

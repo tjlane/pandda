@@ -12,17 +12,16 @@ from giant.html import (
     )
 
 from giant.html.summary import (
+    ImageEmbedder,
     HtmlSummary,
-    HtmlSummaryCollator,
-    HtmlSummaryConcatenator,
-    as_html_summary_maybe,
-    as_html_summaries_maybe,
     )
 
 d_label = '<span class="label label-info">{k}</span>'
 
+
 class MakePanddaResultsHtml:
 
+    output_key = 'analyse_html'
     output_filename = 'pandda_analyse.html'
     template_name = 'pandda_page.html'
 
@@ -35,6 +34,11 @@ class MakePanddaResultsHtml:
             self.output_directory / self.output_filename
             )
         
+        self.image = ImageEmbedder(
+            embed = False,
+            relative_to = str(self.output_path.parent),
+            )
+
     def __call__(self,
         event_dicts,
         shell_dicts,
@@ -53,7 +57,7 @@ class MakePanddaResultsHtml:
             contents = contents,
             )
 
-        return self.output_path
+        return {self.output_key : str(self.output_path)}
 
     def get_contents(self, 
         event_dicts,
@@ -209,11 +213,11 @@ class MakePanddaResultsHtml:
             contents = [
                 divs.Block(
                     width = 6,
-                    image = output_graphs.get('events_front'),
+                    image = self.image(output_graphs.get('events_front')),
                     ),
                 divs.Block(
                     width = 6,
-                    image = output_graphs.get('events_back'),
+                    image = self.image(output_graphs.get('events_back')),
                     ),
                 divs.Block(
                     contents = [
@@ -245,11 +249,11 @@ class MakePanddaResultsHtml:
                         divs.Block(
                             title = 'Site {}'.format(site_num),
                             text = 'Number of events: {}'.format(site_counts[site_num]),
-                            image = HtmlSummary.image(site_image),
+                            image = self.image(site_image),
                             width = 5,
                             )
                         for site_num, site_image 
-                        in sorted(output_graphs.get('all_events',{}).items())
+                        in sorted(output_graphs.get('site_events',{}).items())
                         ],
                     ),
                 divs.Block(
@@ -540,27 +544,55 @@ class MakePanddaResultsHtml:
         output_tables,
         ):
 
-        main_block = divs.TabSet(
-            title = "Processed Datasets",
-            contents = [
+        all_contents = []
+
+        for dkey in all_dataset_keys:
+
+            d_info = {
+                k : d.get(dkey)
+                for k, d in dataset_dicts.items()
+                }
+
+            d_contents = [
+                self.get_dataset_info_block(
+                    info = d_info,
+                    ),
+                self.get_dataset_base_images_block(
+                    dataset_key = dkey,
+                    output_graphs = output_graphs,
+                    ),
+                ]
+
+            if d_info['train'] is True:
+                pass
+
+            if d_info['test'] is True:
+                d_contents.append(
+                    self.get_dataset_test_images_block(
+                        dataset_key = dkey,
+                        output_graphs = output_graphs,
+                        )
+                    )
+
+            if output_graphs.get('bdc_estimation',{}).get(dkey):
+                d_contents.append(
+                    self.get_dataset_event_images_block(
+                        dataset_key = dkey,
+                        output_graphs = output_graphs,
+                        )
+                    )
+
+            all_contents.append(
                 divs.Tab(
                     title = dkey, 
                     alt_title = dkey,
-                    contents = [
-                        self.get_dataset_info_block(
-                            info = {
-                                k : d.get(dkey)
-                                for k, d in dataset_dicts.items()
-                                },
-                            ),
-                        self.get_dataset_images_block(
-                            dataset_key = dkey,
-                            output_graphs = output_graphs,
-                            ),
-                        ],
+                    contents = d_contents,
                     )
-                    for dkey in all_dataset_keys
-                ],
+                )
+
+        main_block = divs.TabSet(
+            title = "Processed Datasets",
+            contents = all_contents,
             )
         main_block.set_active()
 
@@ -600,7 +632,7 @@ class MakePanddaResultsHtml:
 
         return block
 
-    def get_dataset_images_block(self, dataset_key, output_graphs):
+    def get_dataset_base_images_block(self, dataset_key, output_graphs):
 
         block = divs.Block(
             contents = [
@@ -611,13 +643,25 @@ class MakePanddaResultsHtml:
                         "Wilson plot of dataset reflection data and the reference dataset."
                         ),
                     ),
+                ],
+            )
+
+        return block
+
+    def get_dataset_test_images_block(self, dataset_key, output_graphs):
+
+        block = divs.Block(
+            contents = [
+                divs.Alert(
+                    title = "Evaluations graphs (for test datasets)",
+                    ),
                 self.make_pretty_block(
                     title = "Dataset Z-Map Distribution",
                     image = output_graphs.get('map_distribution',{}).get(dataset_key),
                     text = (
                         "Distribution of Z-values in the dataset map. After "
                         "normalisation, the Z-values should be approximately "
-                        "normally-distirbuted."
+                        "normally-distributed."
                         ),
                     ),
                 self.make_pretty_block(
@@ -643,12 +687,36 @@ class MakePanddaResultsHtml:
 
         return block
 
+    def get_dataset_event_images_block(self, dataset_key, output_graphs):
+
+        block = divs.Block(
+            contents = [
+                divs.Alert(
+                    title = "Identified Event Graphs",
+                    ),
+                divs.ScrollX(
+                    title = "Event Background Estimation",
+                    contents = [
+                        divs.Block(
+                            title = 'Event {}'.format(event_num),
+                            image = self.image(event_image),
+                            width = 5,
+                            )
+                        for event_num, event_image 
+                        in sorted(output_graphs.get('bdc_estimation',{}).get(dataset_key).items())
+                        ],
+                    ),
+                ],
+            )
+
+        return block
+
     def make_simple_block(self, title, image, text=None, width=12):
 
         block = divs.Block(
             width = width,
             title = title,
-            image = HtmlSummary.image(image),
+            image = self.image(image),
             contents = (
                 HtmlSummary.format_summary(text, type="block")
                 if (text is not None) else []
@@ -694,7 +762,7 @@ class MakePanddaResultsHtml:
                     width = text_width,
                     ),
                 divs.Block(
-                    image = HtmlSummary.image(image),
+                    image = self.image(image),
                     width = image_width,
                     ),
                 ],

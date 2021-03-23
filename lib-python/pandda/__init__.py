@@ -2,7 +2,7 @@ import os, sys
 import giant
 import pandda.resources
 
-__version_tuple__ = (1, 0, 0)
+__version_tuple__ = (2, 0, 0)
 __version__ = '.'.join(map(str,__version_tuple__))
 
 HEADER_TEXT = """

@@ -6,7 +6,6 @@ import os
 from giant.paths import easy_directory
 from giant.exceptions import Sorry, Failure
 from giant.dispatcher import Dispatcher
-from giant.structure.tls import phenix_find_tls_groups
 
 
 class RefinementError(Exception):
@@ -343,7 +342,10 @@ class BFactorRefinementFactory(object):
 
     def determine_tls_groups(self, pdb_file):
         """Use phenix.find_tls_groups to generate tls groups for the structure"""
+        
         logger.subheading('Determining TLS groups for: {}'.format(pdb_file))
+
+        from giant.structure.tls import phenix_find_tls_groups
 
         tls_selections = phenix_find_tls_groups(pdb_file)
 

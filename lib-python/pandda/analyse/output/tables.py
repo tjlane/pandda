@@ -74,8 +74,8 @@ class MakePanddaEventTable:
 
     columns = [
         "dtag",
-        "event_idx",
-        "site_idx",
+        "event_num",
+        "site_num",
         "event_fraction",
         "bdc",
         "z_peak",
@@ -90,7 +90,6 @@ class MakePanddaEventTable:
         "local_correlation",
         "r_work",
         "r_free",
-        "interesting",
         ]
 
     def __init__(self, output_path=None):
@@ -112,7 +111,7 @@ class MakePanddaEventTable:
 
         df['interesting'] = False
 
-        df = df.set_index(["dtag", "event_idx"])
+        df = df.set_index(["dtag", "event_num"])
 
         # df = df.sort_values(
         #     by = ['site_idx','z_peak'], 
@@ -144,7 +143,6 @@ class MakePanddaEventTable:
 class MakePanddaSiteTable:
 
     columns = [
-        "site_idx",
         "site_num",
         "n_events",
         "max_value",
@@ -169,10 +167,10 @@ class MakePanddaSiteTable:
             columns = self.columns,
             )
 
-        df = df.set_index("site_idx")
+        df = df.set_index("site_num")
 
         df = df.sort_values(
-            by = 'site_idx',
+            by = 'site_num',
             ascending = True,
             )
 

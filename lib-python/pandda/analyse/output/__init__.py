@@ -105,6 +105,7 @@ class PanddaResultsOutputter:
         event_dicts = pandda_results['events']
         shell_dicts = pandda_results['shell_records']
         dataset_dicts = pandda_results['dataset_records']
+        input_files = pandda_results['output_files']
 
         ###
 
@@ -125,12 +126,7 @@ class PanddaResultsOutputter:
 
         ###
 
-        output_files = copy.copy(
-            pandda_results.get(
-                'output_files',
-                collections.OrderedDict(),
-                )
-            )
+        output_files = collections.OrderedDict()
 
         logger.heading('Writing Pandda Output Files')
 
@@ -169,7 +165,7 @@ class PanddaResultsOutputter:
         ###
 
         of = self.write_pymol_images(
-            reference_structure = output_files.get('reference_files',{})['reference_model'],
+            reference_structure = input_files['reference_files']['reference_model'],
             event_dicts = event_dicts,
             site_dicts = site_dicts,
             )
@@ -181,12 +177,23 @@ class PanddaResultsOutputter:
 
         ###
 
+        combined_files = {}
+        merge_dicts(master_dict=combined_files, merge_dict=input_files)
+        merge_dicts(master_dict=combined_files, merge_dict=output_files)
+
         of = self.write_html(
             shell_dicts = shell_dicts,
             event_dicts = event_dicts,
             dataset_dicts = dataset_dicts,
-            output_files = output_files,
+            output_files = combined_files,
             )
+
+        merge_dicts(
+            master_dict = output_files,
+            merge_dict = {'html' : of},
+            )
+
+        ###
 
         logger.subheading('Output Pandda Files')
         show_dict(output_files, logger=logger)

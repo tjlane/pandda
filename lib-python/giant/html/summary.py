@@ -36,6 +36,41 @@ class Counter(object):
         return self.i
 
 
+class ImageEmbedder: 
+
+    def __init__(self, embed=False, relative_to=None):
+
+        self.embed = embed
+        self.relative_to = relative_to
+
+    def __call__(self, image_path):
+
+        # Replace with NO_IMAGE if necessary
+        if (image_path is None):
+            import pandemic.resources
+            image_path = pandemic.resources.NO_IMAGE_PATH_ADP
+        elif not os.path.exists(image_path) and (self.embed is True):
+            import pandemic.resources
+            image_path = pandemic.resources.NO_IMAGE_PATH_ADP
+
+        # Read image and return as string
+        if (self.embed is True):
+            from giant.html import png2base64src_maybe
+            return png2base64src_maybe(
+                image_path, 
+                print_on_missing = False,
+                )
+
+        # Create relative path
+        if self.relative_to is not None:
+            image_path = os.path.relpath(
+                path = image_path, 
+                start = self.relative_to,
+                )
+
+        return image_path
+
+
 # Base class for html outputs
 class HtmlSummary:
 

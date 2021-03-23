@@ -29,6 +29,7 @@ class WritePanddaDatasetSummary:
         write_table = None,
         write_graphs = None,
         write_html = None,
+        # write_json = None,
         ):
 
         output_dir = pl.Path(output_dir)
@@ -55,6 +56,12 @@ class WritePanddaDatasetSummary:
                     output_dir / "html"
                     ),
                 )
+
+        # if (write_json is None):
+        #     write_json = MakePanddaInputSummaryJson(
+        #         output_directory = str(
+        #             )
+        #         )
 
         self.write_table = write_table
         self.write_graphs = write_graphs

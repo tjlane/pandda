@@ -12,11 +12,8 @@ def test_DefaultReferenceDataset(five_baz2b_test_datasets_mcd):
         data = input_dataset.data,
         )
 
-    assert reference_dataset.origin() == (0., 0., 0.)
-
-    reference_dataset.set_origin((2.,3.,4.))
-
-    assert list(reference_dataset.grid2ref([(3.,4.,5.)])) == [(5.,7.,9.)]
+    assert reference_dataset.model is input_dataset.model
+    assert reference_dataset.data is input_dataset.data
 
 def test_DefaultReferenceSelector(five_baz2b_test_datasets_mcd):
 
