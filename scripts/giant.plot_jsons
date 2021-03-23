@@ -11,7 +11,7 @@ import math
 import numpy as np
 import pandas as pd
 
-from giant import adopt_init_args
+from libtbx import adopt_init_args
 
 from pandemic.adp.plots import PlotHelper
 helper = PlotHelper()

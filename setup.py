@@ -3,7 +3,9 @@ from setuptools import setup, find_packages, findall
 from distutils.spawn import find_executable
 
 import imp
+
 giant = imp.load_source('giant', os.path.join(os.path.dirname(__file__), 'lib-python/giant/__init__.py'))
+
 VERSION = giant.__version__
 
 #####################################################################################
