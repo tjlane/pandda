@@ -73,7 +73,7 @@ class MakePanddaMapsJobGenerator:
         # Make this an attribute so that results can be picked up later
         self.output_files = {}
 
-        if not self.bdc_values:  # remove! 
+        if not self.bdc_values:  # remove?
             return
 
         if (self.output_dataset_map is True):
@@ -181,7 +181,7 @@ class MakePanddaEvaluationMaps:
         statistical_model,
         ):
         
-        logger('Writing maps...')
+        logger('Writing maps... (this can take a long time!)')
 
         # Dataset-specific map_maker
         write_map = self.get_dataset_map_writer()

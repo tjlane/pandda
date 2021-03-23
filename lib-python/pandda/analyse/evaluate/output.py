@@ -5,14 +5,6 @@ from pandda.utils import (
     merge_dicts,
     )
 
-from .mtzs import (
-    GetMakePanddaEvaluationMtzs,
-    )
-
-from .graphs import (
-    GetMakePanddaEvaluationGraphs,
-    )
-
 
 class PanddaDatasetEvaluatorOutputter:
     """Output dataset maps and graphs (inside processing loop)"""
@@ -61,6 +53,14 @@ class GetPanddaDatasetEvaluatorOutputter:
         dataset_dir,
         processor = None,
         ):
+
+        from .mtzs import (
+            GetMakePanddaEvaluationMtzs,
+            )
+
+        from .graphs import (
+            GetMakePanddaEvaluationGraphs,
+            )
 
         self.getters = [
             GetMakePanddaEvaluationMtzs(
