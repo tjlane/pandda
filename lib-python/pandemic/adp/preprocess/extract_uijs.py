@@ -76,21 +76,24 @@ class ExtractAndProcessModelUijsTask:
         import copy
         model_uij = copy.deepcopy(model_uij)
 
+        # Change to numpy selection -- TBD remove all flex
+        np_iso_mask_selection = numpy.array(isotropic_mask.selection, dtype=bool)
+
         # Find atoms that are isotropic
-        assert (model_uij[:,isotropic_mask.selection,:] == -1).all()
+        assert (model_uij[:,np_iso_mask_selection,:] == -1).all()
         # Set atoms to zeros
-        model_uij[:,isotropic_mask.selection,:] = 0.0
+        model_uij[:,np_iso_mask_selection,:] = 0.0
         # Extract B-values
         model_b = numpy.array([a.extract_b() for a in models_atoms])
         # Apply overall mask
         if overall_atom_mask is not None:
             model_b = model_b[:,overall_atom_mask]
         # Extract values for isotropic atoms
-        model_u_iso = model_b[:,isotropic_mask.selection] / constants.EIGHTPISQ
+        model_u_iso = model_b[:,np_iso_mask_selection] / constants.EIGHTPISQ
         # Set Uij values of isotropic atoms
-        model_uij[:,isotropic_mask.selection,0] = model_u_iso
-        model_uij[:,isotropic_mask.selection,1] = model_u_iso
-        model_uij[:,isotropic_mask.selection,2] = model_u_iso
+        model_uij[:,np_iso_mask_selection,0] = model_u_iso
+        model_uij[:,np_iso_mask_selection,1] = model_u_iso
+        model_uij[:,np_iso_mask_selection,2] = model_u_iso
 
         return model_uij
 

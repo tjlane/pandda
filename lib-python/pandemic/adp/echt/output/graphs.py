@@ -39,11 +39,11 @@ class WriteTotalBFactorProfile:
             prefix = filenames_prefix,
             hierarchies = [
                 structure_factory.custom_copy(
-                    iso = b, 
+                    iso = b,
                     mask = atom_selection,
                     ).select(
                     atom_selection
-                    ) 
+                    )
                 for b in b_values
                 ],
             legends = model_values.all_level_names,
@@ -120,23 +120,23 @@ class WriteTLSLevelBFactorProfiles:
                 prefix = filenames_prefix,
                 hierarchies = [
                     structure_factory.custom_copy(
-                        iso = b, 
+                        iso = b,
                         mask = atom_selection,
                         ).select(
                         atom_selection
-                        ) 
+                        )
                     for b in b_values
                     ],
                 legends = [
                     'TLS (Mode {mode_num})'.format(
                         mode_num = i+1,
-                        ) 
+                        )
                     for i in xrange(model_values.n_tls_modes)
                     ],
                 title = 'TLS contributions - Level {} ({})'.format(i_level+1, level_name),
                 v_line_hierarchy = boundaries,
                 colour_indices = [
-                    float(i_level)+(float(i_mode)/float(model_values.n_tls_modes)) 
+                    float(i_level)+(float(i_mode)/float(model_values.n_tls_modes))
                     for i_mode in range(model_values.n_tls_modes)
                     ],
                 )
@@ -156,7 +156,7 @@ class WriteAtomicLevelBFactorProfiles:
     output_key = 'level_uijs_profiles_png'
     output_path_template_prefix = 'profile-level_{level_num}'
 
-    def __init__(self, 
+    def __init__(self,
         output_directory,
         ):
 
@@ -186,7 +186,7 @@ class WriteAtomicLevelBFactorProfiles:
             prefix = filenames_prefix,
             hierarchies = [
                 structure_factory.custom_copy(
-                    iso = b_values, 
+                    iso = b_values,
                     mask = atom_selection,
                     ).select(
                     atom_selection
@@ -217,7 +217,7 @@ class WriteTotalAnisotropyProfile:
     output_key = 'all_levels_uijs_anisotropy_png'
     output_path_prefix = 'anisotropy-all-levels'
 
-    def __init__(self, 
+    def __init__(self,
         output_directory,
         ):
 
@@ -249,7 +249,7 @@ class WriteTotalAnisotropyProfile:
             prefix = filenames_prefix,
             hierarchies = [
                 structure_factory.custom_copy(
-                    iso = anisotropy, 
+                    iso = anisotropy,
                     mask = atom_selection,
                     ).select(atom_selection)
                 ],
@@ -265,7 +265,7 @@ class WriteTotalAnisotropyProfile:
                 'no plots have been generated! ({})'.format(filenames_prefix+'*')
                 )
             return {}
-        
+
         return {self.output_key : of}
 
 
@@ -319,7 +319,7 @@ class WriteLevelAnisotropyProfiles:
                 prefix = filenames_prefix,
                 hierarchies = [
                     structure_factory.custom_copy(
-                        iso = anisotropy, 
+                        iso = anisotropy,
                         mask = atom_selection,
                         ).select(atom_selection)
                     ],
@@ -345,7 +345,7 @@ class WriteModelBFactorDistributions:
     output_key = 'b_factor_distributions'
     output_path = 'b-factor-distributions.png'
 
-    def __init__(self, 
+    def __init__(self,
         output_directory,
         ):
 
@@ -406,8 +406,8 @@ class WriteModelBFactorDistributions:
                 label = level_name,
                 x_range = x_range,
                 )
-            
-            if hdl is not None: 
+
+            if hdl is not None:
                 handles.append(hdl)
 
 
@@ -423,8 +423,8 @@ class WriteModelBFactorDistributions:
             handles = handles,
             fontsize = plotting_object.helper.labelsize(0),
             bbox_transform = fig.transFigure,
-            ncol = 3, loc = 9, 
-            bbox_to_anchor = (0.5, -0.1), 
+            ncol = 3, loc = 9,
+            bbox_to_anchor = (0.5, -0.1),
             borderaxespad = 0.,
             )
 
@@ -435,9 +435,9 @@ class WriteModelBFactorDistributions:
 
         return {self.output_key : filename}
 
-    def make_hist(self, 
-        axis, 
-        values, 
+    def make_hist(self,
+        axis,
+        values,
         colour,
         x_range,
         label = None,
@@ -464,17 +464,17 @@ class WriteModelBFactorDistributions:
         x_range,
         label = None,
         ):
-        
-        try: 
+
+        try:
             density = kde.gaussian_kde(values)
             x = np.linspace(x_range[0], x_range[1], 100)
             y = density(x)
-        except Exception as e: 
-            return 
+        except Exception as e:
+            return
 
         # do first so under line
         _ = axis.fill_between(
-            x, y, 
+            x, y,
             alpha = 0.5,
             color = colour,
             )
@@ -483,7 +483,7 @@ class WriteModelBFactorDistributions:
             x, y,
             color = 'k',
             label = None,
-            lw = 3,
+            linewidth = 3,
             )
 
         handles = axis.plot(
@@ -496,14 +496,14 @@ class WriteModelBFactorDistributions:
         axis.set_ylim((0.0, None))
 
         return handles[0]
-    
+
 
 class WriteModelLevelBFactorDistributions(WriteModelBFactorDistributions):
 
     output_key = 'b_factor_distributions_level'
     output_path_template = 'b-factor-distribution-level_{level_num}.png'
 
-    def __init__(self, 
+    def __init__(self,
         output_directory,
         ):
 
@@ -518,7 +518,7 @@ class WriteModelLevelBFactorDistributions(WriteModelBFactorDistributions):
         plotting_object,
         *args, **kwargs
         ):
-        
+
         level_b_values = np.array(model_values.all_levels_b)
 
         output_files = collections.OrderedDict()
@@ -585,7 +585,7 @@ class WriteModelLevelBFactorDistributions(WriteModelBFactorDistributions):
 ###
 
 
-class WriteEchtModelGraphs: 
+class WriteEchtModelGraphs:
 
     def __init__(self, output_directory):
 
@@ -646,8 +646,8 @@ class WriteEchtModelGraphs:
 
                 merge_dicts(master_dict=output_files, merge_dict=of)
 
-            except Exception as e: 
-                
+            except Exception as e:
+
                 logger.warning('Error generating graph: '+str(e))
                 continue
 

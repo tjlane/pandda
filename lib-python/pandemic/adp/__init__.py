@@ -8,7 +8,7 @@ from libtbx import group_args
 from libtbx.utils import Sorry, Failure
 
 import numpy
-numpy.set_printoptions(linewidth=numpy.inf, threshold=numpy.nan)
+numpy.set_printoptions(linewidth=numpy.inf, threshold=sys.maxsize)
 
 ############################################################################
 
@@ -302,7 +302,7 @@ analysis {
     refine_output_structures = False
         .help = "Refine the structures after fitting (coordinates and occupancies)"
         .type = bool
-    calculate_r_factors = True
+    calculate_r_factors = False
         .help = "Recalculate r-factors for the input, output (and refined) models"
         .type = bool
     table_one_options {
@@ -1136,7 +1136,7 @@ if __name__=='__main__':
     except Exception as e:
         import traceback
         logger(traceback.format_exc())
-        raise 
+        raise
     except KeyboardInterrupt:
         logger('\nProgram terminated by user')
     #finally:

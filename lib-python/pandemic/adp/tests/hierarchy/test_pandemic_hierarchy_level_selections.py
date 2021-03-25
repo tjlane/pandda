@@ -3,7 +3,14 @@ from pytest import approx, raises, mark
 from libtbx import group_args
 import iotbx.pdb
 
+from giant.paths import is_available
+
 from pandemic.resources.structure_test_snippets import pdb_test_structure_atoms
+
+only_if_phenix_is_available = mark.skipif(
+    not is_available('phenix.find_tls_groups'),
+    reason = "phenix.find_tls_groups is not available",
+)
 
 def test_GenerateLevelSelectionsTask_auto_levels_1():
 
@@ -193,6 +200,7 @@ def test_GenerateLevelSelectionsTask_auto_levels_1():
         for i, l in enumerate(level_labels):
             assert gs.result.level_group_selection_strings[i] == sorted(correct_groups[l])
 
+@only_if_phenix_is_available
 def test_GenerateLevelSelectionsTask_auto_levels_2():
 
     from pandemic.adp.hierarchy.level_selections import GenerateLevelSelectionsTask

@@ -105,25 +105,25 @@ class PandemicTrackingPlotter:
             hdl1 = axes[0].plot(
                 x_vals, r_vals, 'bo-',
                 label = 'rmsd',
-                lw = lw, ms = ms,
+                linewidth = lw, markersize = ms,
                 )
             if prev_x is not None:
                 axes[0].plot(
                     [prev_x, x_vals[0]], [prev_r, r_vals[0]], 'b:',
                     label = 'rmsd',
-                    lw = lw, ms = ms,
+                    linewidth = lw, markersize = ms,
                     )
             # Create an overall B-iso TOTAL line
             hdl2 = axes[1].plot(
                 x_vals, b_vals, 'ko-',
                 label = 'total',
-                lw = lw, ms = ms,
+                linewidth = lw, markersize = ms,
                 )
             if prev_x is not None:
                 axes[1].plot(
                     [prev_x, x_vals[0]], [prev_b, b_vals[0]], 'k:',
                     label = 'total',
-                    lw = lw, ms = ms,
+                    linewidth = lw, markersize = ms,
                     )
 
             prev_x = x_vals[-1]
@@ -336,13 +336,13 @@ class PandemicTrackingPlotter:
 
             hdl_ = ax.plot(
                 x_vals, y_vals, 'ko-',
-                lw = helper.lw(nx, 'chunky'),
-                ms = helper.ms(nx, 'chunky'),
+                linewidth = helper.lw(nx, 'chunky'),
+                markersize = helper.ms(nx, 'chunky'),
                 )
             hdl_ = ax.plot(
                 x_vals, y_vals, 'o-',
-                lw = helper.lw(nx, 'narrow'),
-                ms = helper.ms(nx, 'narrow'),
+                linewidth = helper.lw(nx, 'narrow'),
+                markersize = helper.ms(nx, 'narrow'),
                 color = colours[l_no-1],
                 label = '{}: {}'.format(l_no, l_name),
                 )
@@ -364,13 +364,13 @@ class PandemicTrackingPlotter:
 
             hdl_ = ax.plot(
                 x_vals, y_vals, 'ko-',
-                lw = helper.lw(nx, 'chunky'),
-                ms = helper.ms(nx, 'chunky'),
+                linewidth = helper.lw(nx, 'chunky'),
+                markersize = helper.ms(nx, 'chunky'),
                 )
             hdl_ = ax.plot(
                 x_vals, y_vals, 'o-',
-                lw = helper.lw(nx, 'narrow'),
-                ms = helper.ms(nx, 'narrow'),
+                linewidth = helper.lw(nx, 'narrow'),
+                markersize = helper.ms(nx, 'narrow'),
                 color = colours[l_no-1],
                 label = '{}: {}'.format(l_no, l_name),
                 )

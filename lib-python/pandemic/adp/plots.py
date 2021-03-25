@@ -476,8 +476,8 @@ class PandemicAdpPlotter:
                 'marker' : self.helper.default.marker,
                 'color' : colours[i],
                 'alpha' : alphas[i],
-                'lw' : self.helper.lw(nx),
-                'ms' : self.helper.ms(nx),
+                'linewidth' : self.helper.lw(nx),
+                'markersize' : self.helper.ms(nx),
                 }
             kw_args.update(plot_kw_args) # allow overrides of defaults
 
@@ -485,8 +485,8 @@ class PandemicAdpPlotter:
             if background_line_type is not None:
                 bg_kw_args = dict(**kw_args)
                 # override any custom provided args
-                bg_kw_args['lw'] = self.helper.lw(nx, background_line_type)
-                bg_kw_args['ms'] = self.helper.ms(nx, background_line_type)
+                bg_kw_args['linewidth'] = self.helper.lw(nx, background_line_type)
+                bg_kw_args['markersize'] = self.helper.ms(nx, background_line_type)
                 bg_kw_args['color'] = 'k'
                 hdl = axis.plot(x, y, **bg_kw_args)
 

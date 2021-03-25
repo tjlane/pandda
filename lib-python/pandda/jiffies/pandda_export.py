@@ -3,10 +3,12 @@ from __future__ import print_function
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
-import os, sys, shutil
+import os, sys, shutil, copy
 
 import numpy as np
 import pathlib as pl
+
+from giant.jiffies import merge_conformations
 
 from pandda import (
     ModuleBanner,
@@ -35,7 +37,7 @@ import libtbx.phil
 master_phil = libtbx.phil.parse("""
 
 input {
-    pandda_dir = None
+    pandda_dir = pandda
         .help = 'Path to the pandda directory to export files from'
         .type = str
     select_datasets = None
@@ -65,10 +67,6 @@ options {
 settings {
     overwrite = False
         .type = bool
-    verbose = False
-        .type = bool
-    cpus = 1
-        .type = int
 }
 
 """)
@@ -107,9 +105,18 @@ def get_export_dirs(
     selected_datasets = None,
     ):
 
+    pandda_dir = pl.Path(pandda_dir)
+
+    if not pandda_dir.is_dir():
+        raise IOError(
+            'Input directory {in_dir} does not exist!'.format(
+                in_dir = str(pandda_dir),
+                )
+            )
+
     logger.heading('Identifying export folders')
 
-    e_dir = pl.Path(pandda_dir) / 'processed_datasets'
+    e_dir = (pandda_dir / 'processed_datasets')
 
     # Find the dataset directories to be exported
     if selected_datasets is not None:
@@ -130,10 +137,10 @@ def get_export_dirs(
 
     else:
 
-        export_dirs = [
+        export_dirs = sorted([
             p for p in e_dir.glob('*')
             if p.is_dir()
-            ]
+            ])
 
     if not export_dirs:
         logger('\nNo Export Directories Found!\n')
@@ -167,7 +174,7 @@ class ExportFolder:
             e_dir.mkdir(parents=True)
 
         logger(
-            'Exporting\n\tfrom {inp}\n\tto{out}\n'.format(
+            '\nExporting\n\tfrom {inp}\n\tto {out}'.format(
                 inp = str(i_dir),
                 out = str(e_dir),
                 )
@@ -177,7 +184,7 @@ class ExportFolder:
 
 
         logger(
-            'Export list: \n\t{s}'.format(
+            '\nExport list: \n\t{s}'.format(
                 s = '\n\t'.join([
                     str(p[0].relative_to(i_dir)) 
                     for p in export_list
@@ -220,17 +227,12 @@ class ExportFolder:
                 (p, p.name)
                 )
 
-        for p in directory.glob('*.ccp4'): 
-            export_list.append(
-                (p, p.name)
-                )
+        # for p in directory.glob('*.ccp4'): 
+        #     export_list.append(
+        #         (p, p.name)
+        #         )
 
-        for p in (directory/'modelled_structures').glob('*modelled.pdb'):
-            export_list.append(
-                (p, p.name)
-                )
-
-        for p in (directory / 'modelled_structures').glob('*ensemble.pdb'):
+        for p in (directory/'modelled_structures').glob('*-pandda-model.pdb'):
             export_list.append(
                 (p, p.name)
                 )
@@ -257,9 +259,11 @@ class ExportFolder:
         assert src_path.exists()
 
         if src_path.is_file():
+            shutil.copyfile(str(src_path), str(dst_path))
+        elif src_path.is_dir(): 
             shutil.copytree(str(src_path), str(dst_path))
         else: 
-            shutil.copyfile(str(src_path), str(dst_path))
+            raise Exception('error')
 
 
 class PostProcessFolder: 
@@ -272,24 +276,18 @@ class PostProcessFolder:
         overwrite = True,
         ):
         
-        self.major_state_glob = (
-            major_state_glob
-            )
+        self.major_state_glob = major_state_glob
 
-        self.minor_state_glob = (
-            minor_state_glob
-            )
+        self.minor_state_glob = minor_state_glob
 
-        self.merged_template = (
-            merged_template
-            )
+        self.merged_template = merged_template
 
         self.merging_params = self.get_merging_params(
             make_restraints = make_restraints,
             overwrite = overwrite,
             )
 
-    def __call__(
+    def __call__(self,
         dir_path,
         ):
 
@@ -316,18 +314,24 @@ class PostProcessFolder:
                     )
                 )
 
-        merged_path = self.merged_template.format(
-            dir_name = dir_name,
+        merged_path = (
+            dir_path / self.merged_template.format(
+                dir_name = dir_name,
+                )
             )
 
-        assert major_state_path.exists()
-        assert minor_state_path.exists()
+        logger(
+            "\nMerging {major}\n\tand {minor}\n\tinto {merged}".format(
+                major = str(major_state_path),
+                minor = str(minor_state_path),
+                merged = str(merged_path),
+                )
+            )
 
         self.run_merging(
             major_state_path = major_state_path,
             minor_state_path = minor_state_path,
             merged_path = merged_path,
-            prefix = dir_name,
             )
 
     def get_merging_params(self,
@@ -335,10 +339,8 @@ class PostProcessFolder:
         overwrite = True,
         ):
 
-        from giant.jiffies import merge_conformations as mc
-
         # Extract parameters for the merging and set them
-        merging_params = mc.master_phil.extract()
+        merging_params = merge_conformations.master_phil.extract()
         merging_params.output.make_restraints = bool(make_restraints)
         merging_params.settings.overwrite = overwrite
 
@@ -350,28 +352,25 @@ class PostProcessFolder:
         merged_path,
         ):
 
+        if not minor_state_path.is_file():
+            raise IOError('Input file does not exist: {}'.format(str(minor_state_path)))
+
+        if not major_state_path.is_file():
+            raise IOError('Input file does not exist: {}'.format(str(major_state_path)))
+
         m_params = copy.deepcopy(self.merging_params)
 
-        d_name = major_state_path.parent.name
+        m_params.input.major = str(major_state_path)
+        m_params.input.minor = str(minor_state_path)
 
-        m_params.input.major = major_state_path
-        m_params.input.minor = minor_state_path
+        m_params.output.pdb = str(merged_path)
+        m_params.output.log = str(merged_path.with_suffix('.log'))
 
-        m_params.output.pdb = merged_path
-        m_params.output.log = merged_path.with_suffix('.log')
+        m_params.restraints.output.phenix = str(merged_path.with_suffix('.restraints-phenix.params'))
+        m_params.restraints.output.refmac = str(merged_path.with_suffix('.restraints-refmac.params'))
+        m_params.restraints.output.log = str(merged_path.with_suffix('.restraints.log'))
 
-        m_params.restraints.output.phenix = merged_path.with_suffix('.restraints-phenix.params')
-        m_params.restraints.output.refmac = merged_path.with_suffix('.restraints-refmac.params')
-        m_params.restraints.output.log = merged_path.with_suffix('.restraints.log')
-        
-        if not os.path.exists(m_params.input.minor):
-            raise IOError('Input file does not exist: {}'.format(m_params.input.minor))
-
-        if not os.path.exists(m_params.input.major):
-            raise IOError('Input file does not exist: {}'.format(m_params.input.major))
-
-        logger.subheading('Merging event-map model with input model')
-        mc.run(params=m_params)
+        merge_conformations.run(params=m_params)
 
 
 class ValidateFolder: 
@@ -382,7 +381,7 @@ class ValidateFolder:
         ):
 
         self.required_file_for_export = required_file_for_export
-        self.model_template_glob = model_template_glob
+        self.required_model_glob = required_model_glob
 
     def __call__(self,
         dir_path,
@@ -399,15 +398,23 @@ class ValidateFolder:
 
 def standard_pandda_export(params):
 
+    selected_datasets = (
+        np.concatenate([
+            s.split(',') 
+            for s in params.input.select_datasets 
+            if s is not None
+            ]).tolist()
+        if len(params.input.select_datasets) > 0
+        else []
+        )
+
     export_dirs = get_export_dirs(
         pandda_dir = params.input.pandda_dir,
         selected_datasets = (
-            np.concatenate(
-                [s.split(',') for s in params.input.select_datasets]
-                ).tolist(),
-            if (params.input.select_datasets is not None)
+            selected_datasets
+            if len(selected_datasets) > 0
             else None
-            )
+            ),
         )
 
     # Report
@@ -422,7 +429,7 @@ def standard_pandda_export(params):
         os.mkdir(params.output.export_dir)
 
     validate_folder = ValidateFolder(
-        required_file_for_export = params.output.required_file_for_export,
+        required_file_for_export = params.options.required_file_for_export,
         )
     
     export_folder = ExportFolder(
@@ -437,12 +444,15 @@ def standard_pandda_export(params):
         overwrite = params.settings.overwrite,
         )
 
+    logger.heading('Processing identified directories')
+    
     # Merge the fitted structures
     for d_in in export_dirs:
 
-        logger.heading('Processing directory: {}'.format(d_in.name), spacer=True)
+        logger('> Processing directory: {}'.format(d_in.name))
 
         if not validate_folder(d_in): 
+            logger('...criteria not met for export')
             continue
 
         d_out = export_folder(d_in)

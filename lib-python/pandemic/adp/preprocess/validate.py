@@ -2,6 +2,7 @@ import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 import textwrap
+import multiprocessing
 
 from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
@@ -65,6 +66,11 @@ def validate_settings_phil(params):
     if params.settings.debug:
         update_string = update_parameter(params.settings, 'verbose', True)
         logger('\nDEBUG is turned on: {update_string}.'.format(update_string=update_string))
+
+    if params.settings.cpus is None: 
+        update_string = update_parameter(params.settings, 'cpus', multiprocessing.cpu_count())
+        logger('\nDEBUG is turned on: {update_string}.'.format(update_string=update_string))
+
 
 def validate_optimisation_phil(params):
 
@@ -180,7 +186,7 @@ def validate_available_programs(params):
     if params.analysis.refine_output_structures is True:
 
         # Format string showing the relevant current parameters
-        current_params_string = ' and '.format([
+        current_params_string = ' and '.join([
             phil_value(params.analysis, 'refine_output_structures'),
             phil_value(params.refinement, 'program'),
             ])
@@ -219,7 +225,7 @@ def validate_available_programs(params):
         {missing_program_info_string}
         To turn off this function add {fix_params} to command line options.
         """).format(
-            current_params=' and '.format([
+            current_params=' and '.join([
                 phil_value(params.analysis, 'calculate_r_factors'),
                 ]),
             missing_program_info_string=missing_program_info_string,
@@ -238,7 +244,7 @@ def validate_available_programs(params):
         {missing_program_info_string}
         To turn off pymol add {fix_params} to the command line options.
         """).format(
-            current_params=' and '.format([
+            current_params=' and '.join([
                 phil_value(params.output.images, 'pymol'),
                 ]),
             missing_program_info_string=missing_program_info_string,
