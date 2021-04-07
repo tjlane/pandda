@@ -423,7 +423,6 @@ class Settings:
     def __init__(self, config_obj):
         
         self.verbose = config_obj.verbose
-        self.plot_graphs = config_obj.plot_graphs
         self.plotting_backend = config_obj.plotting.backend
 
 
@@ -449,4 +448,4 @@ class Config:
         self.params = Params(config_obj.pandda.params)
         self.processing = Processing(config_obj.pandda.processing)
         self.results = Results(config_obj.pandda.results)
-        self.autobuilding = Autobuilding(config_obj.pandda.autobuilding)
+        #self.autobuilding = Autobuilding(config_obj.pandda.autobuilding)

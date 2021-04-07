@@ -472,6 +472,9 @@ class Options:
         self.run_pandda_model = RunPanddaModel(
             get_pandda_model_task = get_pandda_model_task,
             partition_shells = self.partition_resolution_shells,
+            output_dir = (
+                config.output.out_dir / "shells"
+                ),
             processor = self.process_shells,
             )
         #

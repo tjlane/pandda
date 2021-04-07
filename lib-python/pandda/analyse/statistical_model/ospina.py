@@ -1,8 +1,6 @@
 from scipy.optimize import fsolve
 import numpy
 
-import time
-
 def variable_sigma_d_log_likelihood(est_sigma, est_mu, obs_vals, obs_error):
     """Calculate the value of the differentiated log likelihood for the values of mu, sigma"""
     term1 = (obs_vals - est_mu)**2 / ((est_sigma**2 + obs_error**2)**2)
@@ -34,6 +32,8 @@ def estimate_true_underlying_sd(obs_vals, obs_error, est_mu=None, est_sigma=1e-1
     return answer
 
 if __name__ == '__main__':
+
+    import time
 
     # True values we are trying to estimate
     true_mean = 1

@@ -3,6 +3,9 @@ logger = lg.getLogger(__name__)
 
 import copy, functools, collections
 
+import json
+import pathlib as pl
+
 from giant.utils import (
     make_sorted_dict,
     show_dict,
@@ -40,6 +43,7 @@ class PanddaModelProcessor:
         write_dataset_output,
         test_chunk_size = 50,
         label = None,
+        output_json_path = None,
         ):
 
         self.load_maps = load_maps
@@ -52,6 +56,19 @@ class PanddaModelProcessor:
         self.label = label
 
         self.test_chunk_size = test_chunk_size
+
+        self.output_json_path = (
+            pl.Path(output_json_path)
+            if (output_json_path is not None) 
+            else None
+            )
+
+        if (self.output_json_path is not None) and self.output_json_path.exists(): 
+            raise IOError(
+                'Output json file {path} already exists!'.format(
+                    path = str(self.output_json_path),
+                    )
+                )
 
     def __call__(self,
         train_datasets,
@@ -300,10 +317,7 @@ class PanddaModelProcessor:
         #
         ####
 
-        # logger.subheading('Identified events and output files')
-        # show_dict(all_results, logger=logger)
-
-        return all_results
+        return self.return_results(all_results)
 
     def extract_dataset_info(self,
         datasets,
@@ -439,6 +453,32 @@ class PanddaModelProcessor:
 
         return dataset_maps
 
+    def return_results(self, results_dict):
+
+        if self.output_json_path is not None: 
+
+            assert not self.output_json_path.exists()
+
+            # Write results to json file
+            with open(str(self.output_json_path), 'w') as fh:
+
+                fh.write(
+                    json.dumps(
+                        results_dict,
+                        indent = 2,
+                        )
+                    )
+
+            logger(
+                'Output written to {}'.format(
+                    str(self.output_json_path)
+                    )
+                )
+
+            return None
+
+        return results_dict
+
 
 class GetPanddaModelProcessor:
 
@@ -457,6 +497,7 @@ class GetPanddaModelProcessor:
     def __call__(self,
         load_maps,
         run_label,
+        output_json_path = None,
         ):
 
         return PanddaModelProcessor(
@@ -470,6 +511,7 @@ class GetPanddaModelProcessor:
                 label = run_label,
                 ),
             label = run_label,
+            output_json_path = output_json_path,
             )
 
 
@@ -481,6 +523,7 @@ class RunPanddaModel:
     def __init__(self,
         get_pandda_model_task,
         partition_shells,
+        output_dir,
         processor = None,
         ):
 
@@ -490,7 +533,13 @@ class RunPanddaModel:
 
         self.get_pandda_model_task = get_pandda_model_task
         self.partition_shells = partition_shells
+        self.output_dir = output_dir
         self.processor = processor
+
+        if not self.output_dir.exists():
+            self.output_dir.mkdir(parents=True)
+
+        assert self.output_dir.is_dir()
 
     def __call__(self,
         datasets,
@@ -523,9 +572,14 @@ class RunPanddaModel:
                 low = str(shell_res_low),
                 )
 
+            output_json_path = (
+                self.output_dir / "{}-results.json".format(run_label)
+                )
+
             run_pandda_model = self.get_pandda_model_task(
                 load_maps = load_maps,
                 run_label = run_label,
+                output_json_path = output_json_path,
                 )
 
             shell_processors.append(
@@ -542,6 +596,9 @@ class RunPanddaModel:
                 collections.OrderedDict([
                     (
                         'label', run_label,
+                        ),
+                    (
+                        'json_path', str(output_json_path),
                         ),
                     (
                         'resolution_high', round(shell_res_high, 3),
@@ -581,7 +638,7 @@ class RunPanddaModel:
         ###
         #
         return_dict = self.unpack_results(
-            shell_results = shell_results,
+            #shell_results = shell_results, # shell_results now passed via json file instead
             shell_records = shell_records,
             )
         #
@@ -593,7 +650,6 @@ class RunPanddaModel:
         return return_dict
 
     def unpack_results(self,
-        shell_results,
         shell_records,
         ):
 
@@ -602,14 +658,23 @@ class RunPanddaModel:
         all_output_files = {}
         all_dataset_records = {}
 
-        for i, r in enumerate(shell_results):
+        for i, s_records in enumerate(shell_records):
+
+            # shell results now passed via json
+            s_json = pl.Path(
+                s_records['json_path']
+                )
+            assert s_json.exists()
+
+            with open(str(s_json), 'r') as fh:
+                s_results = json.loads(fh.read())
 
             ###
             # Output files for this run
             #
             merge_dicts(
                 master_dict = all_output_files,
-                merge_dict = r['output_files'],
+                merge_dict = s_results['output_files'],
                 )
             #
             ###
@@ -618,8 +683,8 @@ class RunPanddaModel:
             # Merge shell records
             #
             merge_dicts(
-                master_dict = shell_records[i],
-                merge_dict = r['shell_info'],
+                master_dict = s_records,
+                merge_dict = s_results['shell_info'],
                 )
 
             ###
@@ -627,7 +692,7 @@ class RunPanddaModel:
             #
             merge_dicts(
                 master_dict = all_dataset_records,
-                merge_dict = r['dataset_info'],
+                merge_dict = s_results['dataset_info'],
                 )
             #
             ###
@@ -635,7 +700,7 @@ class RunPanddaModel:
             ###
             # Merge event lists 
             #
-            for dkey, d_events in r['events'].items():
+            for dkey, d_events in s_results['events'].items():
                 all_events.extend(d_events)
             #
             ###
@@ -645,7 +710,9 @@ class RunPanddaModel:
                 all_events, 
                 key = lambda e: (e['dtag'], e['event_num'])
                 ),
-            'shell_records' : shell_records,
+            'shell_records' : (
+                shell_records
+                ),
             'dataset_records' : make_sorted_dict(
                 all_dataset_records
                 ),

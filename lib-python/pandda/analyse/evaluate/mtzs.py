@@ -1,10 +1,12 @@
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
+import os
+
 import pathlib as pl
+import numpy as np
 
 import gemmi
-import numpy as np
 
 from pandda.utils import merge_dicts
 
@@ -411,7 +413,7 @@ class MakePanddaEvaluationMtzs:
                     merge_dict = {dkey : of}, # every sub-dict "of" is required to have a unique structure
                     )
 
-        if (delete_maps is True):
+        if (self.delete_maps is True):
             self.delete_files(
                 file_dict = map_files_dict,
                 )
