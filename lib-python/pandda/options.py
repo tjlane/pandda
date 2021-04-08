@@ -147,8 +147,13 @@ class Options:
         from giant.mulch.partitioners import TestTrainPartitioner
         from giant.mulch.selectors import (
             SortedDatasetSelector,
-            RandomDatasetSelector,
+            #RandomDatasetSelector,
+            SoulmateSelector,
             )
+        from giant.mulch.sorters import (
+            HighResolutionSorter,
+            )
+
         self.partition_test_train = TestTrainPartitioner(
             test = config.input.flags.test,
             train = config.input.flags.train,
@@ -156,13 +161,18 @@ class Options:
             not_train = config.input.flags.not_train,
             train_selector = SortedDatasetSelector(
                 max_datasets = config.params.statistical_maps.max_build_datasets,
-                sort_datasets_func = (
-                    lambda dataset: dataset.data.crystal.resolution_high
-                    ),
+                dataset_sorter = HighResolutionSorter(),
                 ),
             # train_selector = RandomDatasetSelector(
             #     max_datasets = config.params.statistical_maps.max_build_datasets,
             #     ),
+            test_selector = (
+                SoulmateSelector( # Finds "the one" and won't select anything else
+                    dataset_sorter = HighResolutionSorter(),
+                    )
+                if (config.output.output_maps_for == 'first_dataset_only')
+                else None
+                ),
             )
 
         #####
@@ -463,6 +473,7 @@ class Options:
                     config.output.out_dir / "processed_datasets"
                     ),
                 processor = self.process_in_shell,
+                output_requires_events = (config.output.output_maps_for == 'events'),
                 ),
             )
 

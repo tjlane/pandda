@@ -206,6 +206,7 @@ class Output:
         self.out_dir = pl.Path(config_obj.out_dir)
         self.overwrite = config_obj.overwrite
         self.dataset_prefix = config_obj.dataset_prefix
+        self.output_maps_for = config_obj.output_maps_for
 
     def validate(self, config_obj):
 

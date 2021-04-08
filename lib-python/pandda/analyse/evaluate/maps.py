@@ -47,6 +47,7 @@ class MakePanddaMapsJobGenerator:
         bdc_values,
         output_dir,
         dataset_key = None,
+        output_requires_events = True,
         ):
 
         self.write_map = write_map
@@ -62,6 +63,8 @@ class MakePanddaMapsJobGenerator:
         self.output_files = None
         self.output_dir = pl.Path(output_dir)
 
+        self.output_requires_events = output_requires_events
+
     def __call__(self, processor):
 
         processor(iter(self))
@@ -73,7 +76,7 @@ class MakePanddaMapsJobGenerator:
         # Make this an attribute so that results can be picked up later
         self.output_files = {}
 
-        if not self.bdc_values:  # remove?
+        if bool(self.output_requires_events) and not self.bdc_values:
             return
 
         if (self.output_dataset_map is True):
@@ -157,6 +160,7 @@ class MakePanddaEvaluationMaps:
         dataset_dir = None,
         dataset_subdir = "",
         processor = None,
+        output_requires_events = True,
         ):
 
         if (processor is None):
@@ -171,6 +175,8 @@ class MakePanddaEvaluationMaps:
         self.output_dir = pl.Path(output_dir)
         self.dataset_dir = dataset_dir
         self.dataset_subdir = dataset_subdir
+
+        self.output_requires_events = output_requires_events
         
         self.processor = processor
 
@@ -202,6 +208,7 @@ class MakePanddaEvaluationMaps:
                 bdc_values = [e['bdc'] for e in events],
                 output_dir = str(self.dataset_dir / dkey / self.dataset_subdir),
                 dataset_key = dkey, # allows use of map uncertainties cache
+                output_requires_events = self.output_requires_events,
                 )
             dataset_generators.append(dataset_generator)
 
@@ -231,6 +238,7 @@ class GetMakePanddaEvaluationMaps:
         dataset_dir = None,
         dataset_subdir = "",
         processor = None,
+        output_requires_events = True,
         ):
     
         if (processor is None):
@@ -242,6 +250,8 @@ class GetMakePanddaEvaluationMaps:
         self.output_dir = output_dir
         self.dataset_dir = dataset_dir
         self.dataset_subdir = dataset_subdir
+
+        self.output_requires_events = output_requires_events
 
         self.processor = processor
 
@@ -259,4 +269,5 @@ class GetMakePanddaEvaluationMaps:
                 self.dataset_subdir
                 ),
             processor = self.processor,
+            output_requires_events = self.output_requires_events,
             )

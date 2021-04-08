@@ -27,21 +27,19 @@ class SortedDatasetSelector:
 
     def __init__(self,
         max_datasets,
-        sort_datasets_func,
+        dataset_sorter,
         ):
 
         self.max_datasets = max_datasets
-        self.sort_datasets_func = sort_datasets_func
+
+        self.dataset_sorter = dataset_sorter
 
     def __call__(self, datasets):
 
         if (self.max_datasets is None):
             return datasets
 
-        sorted_dtag_dataset_tuples = sorted(
-            list(datasets.items()),
-            key = lambda d_tuple: self.sort_datasets_func(d_tuple[1]),
-            )
+        sorted_dtag_dataset_tuples = self.dataset_sorter(datasets)
 
         sorted_datasets = dict(
             sorted_dtag_dataset_tuples[:self.max_datasets]
@@ -86,3 +84,28 @@ class RandomDatasetSelector:
 
         return sample_datasets
 
+
+class SoulmateSelector:
+
+    def __init__(self,
+        dataset_sorter,
+        ):
+
+        self.dataset_sorter = dataset_sorter
+
+        self.chosen_dkey = None
+
+    def __call__(self, datasets):
+
+        if self.chosen_dkey is None:
+
+            sorted_dtag_dataset_tuples = self.dataset_sorter(datasets)
+
+            self.chosen_dkey = sorted_dtag_dataset_tuples[0][0]
+
+        chosen_dataset = datasets.get(self.chosen_dkey, None)
+
+        if chosen_dataset is None:
+            return {}
+
+        return {self.chosen_dkey : chosen_dataset}

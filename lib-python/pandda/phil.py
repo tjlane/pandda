@@ -81,6 +81,9 @@ pandda
         dataset_prefix = ''
             .help = "Prefix to be attached to each dataset name"
             .type = str
+        output_maps_for = all *events first_dataset_only
+            .help = "Which datasets to write output maps for" 
+            .type = choice(multi=False)
     }
 
     params

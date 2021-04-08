@@ -329,9 +329,6 @@ class MakePanddaEvaluationMtzs:
         delete_maps = True,
         ):
 
-        # Currently set to serial -- change later?
-        # processor = None
-
         if (processor is None):
             from giant.processors import basic_processor
             processor = basic_processor
@@ -534,6 +531,7 @@ class GetMakePanddaEvaluationMtzs:
         dataset_dir = None,
         dataset_subdir = "",
         processor = None,
+        output_requires_events = True,
         ):
 
         from .maps import (
@@ -546,11 +544,8 @@ class GetMakePanddaEvaluationMtzs:
             dataset_dir = dataset_dir,
             dataset_subdir = dataset_subdir,
             processor = processor,
+            output_requires_events = output_requires_events,
             )
-
-        # if (processor is None):
-        #     from giant.processors import basic_processor
-        #     processor = basic_processor
 
         self.output_dir = output_dir
         self.dataset_dir = dataset_dir
