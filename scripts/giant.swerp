@@ -425,7 +425,7 @@ def run(params):
     if not os.path.exists(params.output.out_dir):
         new_sweep = True
 
-    from pandemic.logs import setup_logging
+    from giant.logs import setup_logging
     if not os.path.exists(params.output.out_dir):
         os.mkdir(params.output.out_dir)
     logger = setup_logging(
@@ -447,7 +447,7 @@ def run(params):
 
 if __name__=='__main__':
 
-    from pandemic.logs import setup_root_logging
+    from giant.logs import setup_root_logging
     setup_root_logging()
 
     from giant.jiffies import run_default
