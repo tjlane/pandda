@@ -263,6 +263,68 @@ def show_r_factors_table(table):
         logger(str(desc.T))
     logger('')
 
+def make_3d_plot(table, filepath, view='normal'):
+
+    assert view in ['normal','top']
+
+    import matplotlib.pyplot as plt
+    from matplotlib import cm
+    from matplotlib.ticker import LinearLocator
+    import numpy as np
+    from mpl_toolkits.mplot3d import Axes3D
+
+    fig = plt.figure()
+    ax1 = plt.subplot(2,2,1,projection='3d')
+    ax2 = plt.subplot(2,2,3,projection='3d', azim=120)
+    ax3 = plt.subplot(1,2,2,projection='3d', azim=0, elev=90)
+
+    table = table.sort_values(by=['tx', 'wxray'])
+
+    # Make data.
+    x = np.array(table['wxray'].values, dtype=float)
+    y = np.array(table['tx'].values, dtype=float)
+    z = np.array(table['R-free'].values, dtype=float)
+
+    ###
+
+    for ax in [ax1, ax2, ax3]:
+        # Plot the surface.
+        surf = ax.plot_trisurf(
+            x, y, z, 
+            cmap=cm.jet, 
+            linewidth=0.1,
+            )
+        ax.set_xlabel('WX')
+        ax.set_ylabel('TX')
+
+    # Add a color bar which maps values to colors.
+    fig.colorbar(surf, shrink=0.5, aspect=5)
+
+    plt.tight_layout()
+    plt.savefig(filepath, dpi=200)
+    plt.close(fig)
+
+def make_3d_plots(table, output_prefix):
+
+    ptls_values = set(table['pTLS'].values)
+
+    for ptls in sorted(ptls_values):
+
+        if ptls == -1:
+            assert len(ptls_values) == 1
+            output_path = (
+                output_prefix + '.png'
+                )
+        else:
+            output_path = (
+                output_prefix + '_ptls_' + str(ptls) + '.png'
+                )
+
+        make_3d_plot(
+            table = table[table['pTLS']==ptls],
+            filepath = output_path,
+            )
+
 #####
 
 def make_er_sweep(params): 
@@ -376,6 +438,12 @@ def read_er_sweep(params):
 
         logger('Parsing '+d)
 
+        if not os.path.exists(
+            os.path.join(d, 'input_ensemble.pdb.gz')
+            ):
+            logger('\tSimulation not finished')
+            continue
+
         # Extract data from the logfile
         o_log = os.path.join(d, 'input_ensemble.log')
         if not os.path.exists(o_log):
@@ -417,6 +485,13 @@ def read_er_sweep(params):
     show_r_factors_table(r_factors_table)
     r_factors_table.to_csv(
         os.path.join(params.output.out_dir, 'ensemble_sweep_results.csv'),
+        )
+
+    make_3d_plots(
+        r_factors_table,
+        output_prefix = os.path.abspath(
+            os.path.join(params.output.out_dir, 'ensemble_sweep_surface_plot')
+            ),
         )
 
 def run(params):
