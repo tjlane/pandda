@@ -1,4 +1,7 @@
-import giant.logs as lg
+try:
+    import giant.logs as lg
+except ImportError:
+    import logging as lg
 logger = lg.getLogger(__name__)
 
 import os, sys
@@ -49,8 +52,8 @@ class ModuleBanner:
     module_name = "giant"
     module_version = __version__
 
-    def __init__(self, 
-        program = None, 
+    def __init__(self,
+        program = None,
         description = None,
         ):
 
@@ -59,7 +62,7 @@ class ModuleBanner:
 
         if (description is None):
             description = ""
-        
+
         self.program = program
         self.description = description
 

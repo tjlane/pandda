@@ -17,44 +17,8 @@ def requirements():
 
 #####################################################################################
 
-if '--for-ccp4' in sys.argv:
-    # Select scripts for install
-    install_scripts = [ 'bin/pandda.analyse',
-                        'bin/pandda.inspect',
-                        'bin/pandda.export',
-                        'bin/pandemic.adp',
-                        'bin/giant.score_model',
-                        'bin/giant.quick_refine',
-                        'bin/giant.make_restraints',
-                        'bin/giant.merge_conformations',
-                        'bin/giant.split_conformations',
-                      ]
-else:
-    # Standard install
-    install_scripts = findall(dir='bin')
-
-# Enable the python command to be changed
-if '--python' in sys.argv:
-    python = sys.argv[sys.argv.index('--python')+1]
-    # And clean up
-    sys.argv.remove('--python')
-    sys.argv.remove(python)
-elif '--for-ccp4' in sys.argv:
-    python = 'ccp4-python'
-else:
-    python = 'cctbx.python'
-
-# And clean up
-try: sys.argv.remove('--for-ccp4')
-except: pass
-
-assert find_executable(python), "Can't find executable - is this the correct python: {}".format(python)
-
-# Modify the scripts to use the correct python/coot
-for s in install_scripts:
-    with open(s, 'r') as fh: s_conts = fh.read()
-    s_conts = s_conts.replace('cctbx.python', python)
-    with open(s, 'w') as fh: fh.write(s_conts)
+# Standard install
+install_scripts = findall(dir='bin')
 
 #####################################################################################
 
@@ -66,7 +30,7 @@ setup(
     author_email = 'nicholas.pearce.0@gmail.com',
     url = 'http://pandda.bitbucket.org',
     license = 'LGPL-3.0-or-later',
-    license_files = ('LICENSE.txt',),
+    #license_files = ('LICENSE.txt',),
     install_requires = requirements(),
     package_dir = {'':'lib-python'},
     scripts = install_scripts,
