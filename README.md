@@ -9,7 +9,7 @@
 
 ## Setup instructions
 
-Typical install time: &sim;1 minute.
+Typical install time: `~1 minute`.
 
 There are currently some difficulties and extra required steps to install the panddas package mostly due to the demise and somewhat zombification of python2.7. Hopefully things will be simpler in the world of python3.
 However, for the moment: 
@@ -52,12 +52,13 @@ However, for the moment:
             * on BASH/SH: ```export PATH=<path>:$PATH```
             * on CSH: ```setenv PATH <path>:$PATH```
             * where <path> is the folder containing the pandemic.adp script from above.
+        * You may want to add the appropriate line above to your rc file (e.g. `~/.bashrc`).
 
 5. To check that everything has installed properly, you should be able to run  e.g. ```pandemic.adp "?"``` and be given a list of options. To check the functionality of each of the programs, follow one of the tutorials on the webpage in the section below.
 
 ### Troubleshooting
 
-* The panddas scripts use the first available cctbx.python available in the PATH to run the programs. Therefore, if you have another sourced CCP4/PHENIX distribution available, this may get used instead, causing errors. Therefore, make sure you are not sourcing another distribution when ttrying to use panddas. Alternatively, you may simply resource the CCP4/PHENIX setup script for the distribution that you want to use and this will fix most problems.
+* The panddas scripts use the first available cctbx.python available in the PATH to run the programs. Therefore, if you have another sourced CCP4/PHENIX distribution available, this may get used instead, causing errors. Therefore, make sure you are not sourcing another distribution when trying to use panddas. Alternatively, you may simply resource the CCP4/PHENIX setup script for the distribution that you want to use and this will fix most problems.
 
 ## Tutorials and Demos
 
