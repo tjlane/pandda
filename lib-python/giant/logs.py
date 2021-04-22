@@ -258,6 +258,18 @@ def setup_logging_basic(name):
 
     return get_logger_with_headings_maybe(name)
 
+def add_warning_handler(logger, name='warnings'):
+
+    # Custom warning collector
+    wh = WarningListHandler(name=name)
+    # Special warning formatter
+    wfmt = lg.Formatter(fmt='%(levelname)s -- %(message)s')
+    wh.setFormatter(wfmt)
+    wh.setLevel(lg.WARNING)
+    logger.addHandler(wh)
+
+    return wh
+
 def setup_logging(name, log_file=None, warning_handler_name='warnings', debug=False):
     """
     One liner to setup logging for a named scope with log file and warnings tracker.
@@ -293,12 +305,10 @@ def setup_logging(name, log_file=None, warning_handler_name='warnings', debug=Fa
         logger.addHandler(fh)
 
     if (warning_handler_name is not None):
-        # Custom warning collector
-        wh = WarningListHandler(name=warning_handler_name)
-        # Special warning formatter
-        wfmt = lg.Formatter(fmt='%(levelname)s -- %(message)s')
-        wh.setFormatter(wfmt)
-        wh.setLevel(lg.WARNING)
-        logger.addHandler(wh)
+
+        wh = add_warning_handler(
+            logger = logger, 
+            name = warning_handler_name,
+            )
 
     return get_logger_with_headings_maybe(name)
