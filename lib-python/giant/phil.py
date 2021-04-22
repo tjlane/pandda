@@ -60,20 +60,6 @@ def log_running_parameters(
         ).as_str()
     )
 
-def dump_config_to_json(
-    config,
-    output_path,
-    ):
-    
-    # TODO
-    return None
-
-    import json
-    json_string = json.dumps(json_dict)
-
-    with open(str(output_path), "w") as f:
-        f.write(json_string)
-
 def dump_params_to_eff(
     master_phil,
     working_phil,
@@ -91,7 +77,6 @@ def startup_parameters_logging(
     output_directory,
     master_phil,
     working_phil,
-    working_config,
     ):
 
     # Show input objects
@@ -99,12 +84,6 @@ def startup_parameters_logging(
         params = working_phil,
         master_phil = master_phil,
         logger = None,
-    )
-
-    # Write input params
-    dump_config_to_json(
-        config = working_config,
-        output_path = str( pl.Path(output_directory) / "params.json"),
     )
     
     dump_params_to_eff(
