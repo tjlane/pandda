@@ -396,7 +396,7 @@ class NativeMapMaker:
 
         n_total = supercell_map_data.shape
         n_shift = tuple(
-            n / s for n,s in zip(n_total, supercell_size)
+            int(n / s) for n,s in zip(n_total, supercell_size)
             )
 
         total_map_data = copy.deepcopy(supercell_map_data)
@@ -407,7 +407,7 @@ class NativeMapMaker:
                 continue
 
             n_roll = tuple(
-                n*i 
+                n*int(i) 
                 for n,i in zip(n_shift, xyz)
                 )
 
@@ -442,7 +442,7 @@ class NativeMapMaker:
 
         assert one_map_data.shape == n_one
 
-        return one_map_data
+        return np.array(one_map_data)
 
     def symmetrise_map(self,
         map_data,

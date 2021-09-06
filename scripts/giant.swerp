@@ -1,10 +1,14 @@
 #!/usr/bin/env cctbx.python
 
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
 import os, sys, glob, shutil, itertools, json
 
 import logging as lg
 import numpy as np
 import pandas as pd
+import pathlib as pl
 
 import matplotlib as mpl
 mpl.use('Agg')
@@ -12,6 +16,10 @@ import matplotlib.pyplot as plt
 
 import libtbx.phil
 from libtbx.utils import Sorry, Failure
+
+from giant.paths import (
+    rel_symlink
+    )
 
 ############################################################################
 
@@ -211,9 +219,9 @@ def plot_run_rfactors(results, filename):
     plt.legend(
         [
         'Curr. R-free',
-        '{0} (RMS {1:.3f}%)'.format('Curr. R-work', np.var(current_work[1000:])**0.5),
+        '{0} (RMS {1:.3f}%)'.format('Curr. R-work', current_work.std()),
         'Roll. R-free',
-        '{0} (RMS {1:.3f}%)'.format('Roll. R-work', np.var(running_work[1000:])**0.5),
+        '{0} (RMS {1:.3f}%)'.format('Roll. R-work', running_work.std()),
         'Total R-free',
         'Total R-work',
         ], 
@@ -263,6 +271,38 @@ def show_r_factors_table(table):
         logger(str(desc.T))
     logger('')
 
+def link_best_structure(table, input_directory, output_path):
+
+    best_rfree = table['R-free'].min()
+    best_row = table.loc[table['R-free']==best_rfree].iloc[0]
+    best_lab = best_row.name
+    
+    best_dir = (
+        pl.Path(input_directory) / best_lab
+        )
+
+    assert best_dir.exists()
+
+    if output_path.exists():
+        logger(
+            'Removing old link: {link}'.format(
+                link = str(output_path)
+                )
+            )
+        output_path.unlink()
+
+    logger(
+        'Linking best R-free simulation: \n\t{best} -> \n\t{link}'.format(
+            best = str(best_dir),
+            link = str(output_path),
+            )
+        )
+
+    rel_symlink(
+        orig = str(best_dir),
+        link = str(output_path),
+        )
+
 def make_3d_plot(table, filepath, view='normal'):
 
     assert view in ['normal','top']
@@ -274,9 +314,10 @@ def make_3d_plot(table, filepath, view='normal'):
     from mpl_toolkits.mplot3d import Axes3D
 
     fig = plt.figure()
-    ax1 = plt.subplot(2,2,1,projection='3d')
-    ax2 = plt.subplot(2,2,3,projection='3d', azim=120)
-    ax3 = plt.subplot(1,2,2,projection='3d', azim=0, elev=90)
+    ax1 = plt.subplot(2,2,2,projection='3d', azim=0, elev=0)
+    ax2 = plt.subplot(2,2,1,projection='3d', azim=0, elev=90)
+    ax3 = plt.subplot(2,2,3,projection='3d')
+    ax4 = plt.subplot(2,2,4,projection='3d', azim=120)
 
     table = table.sort_values(by=['tx', 'wxray'])
 
@@ -287,7 +328,8 @@ def make_3d_plot(table, filepath, view='normal'):
 
     ###
 
-    for ax in [ax1, ax2, ax3]:
+    for ax in [ax1, ax2, ax3, ax4]:
+
         # Plot the surface.
         surf = ax.plot_trisurf(
             x, y, z, 
@@ -295,10 +337,50 @@ def make_3d_plot(table, filepath, view='normal'):
             linewidth=0.1,
             )
         ax.set_xlabel('WX')
-        ax.set_ylabel('TX')
 
-    # Add a color bar which maps values to colors.
-    fig.colorbar(surf, shrink=0.5, aspect=5)
+        if ax is ax1: 
+            ax.set_ylabel('TX', labelpad=6)
+        elif ax is ax2: 
+            ax.set_ylabel('TX', labelpad=12)
+        else: 
+            ax.set_ylabel('TX')
+
+        # Only one heatmap
+        if ax is ax2: 
+            # Add a color bar which maps values to colors.
+            fig.colorbar(
+                surf, 
+                ax=ax2, 
+                shrink=0.65, 
+                aspect=20, 
+                )
+    
+    # Only one needs the z-label
+    ax1.set_zlabel('$R_{free}$')
+    # from IPython import embed; embed()
+    
+    fig.text(
+        0.42, 0.59, '$R_{free}$', 
+        ha='right', va='top',
+        )
+    fig.text(
+        0.47, 0.45, '$R_{free}$', 
+        ha='right', va='top',
+        )
+    fig.text(
+        0.97, 0.45, '$R_{free}$', 
+        ha='right', va='top',
+        )
+    # ax4.set_zlabel('$R_{free}$')
+
+    # Hide some labels
+    ax1.set_xlabel('')
+    ax1.set_xticks([])
+    ax2.set_zlabel('')
+    ax2.set_zticks([])
+
+    #from IPython import embed; embed()
+    ax1.margins(left=0.1)
 
     plt.tight_layout()
     plt.savefig(filepath, dpi=200)
@@ -452,6 +534,7 @@ def read_er_sweep(params):
         try:
             final_rfactors = extract_final_rfactors(o_log)
         except:
+            logger('\tError parsing log file')
             continue
 
         # Extract meta from the json
@@ -474,17 +557,30 @@ def read_er_sweep(params):
 
         # plot r-factors for directory
         if (True):
-            all_r_factors = extract_all_rfactors(o_log)
-            plot_run_rfactors(
-                results = all_r_factors,
-                filename=o_log.replace('.log', '.png'),
-                )
+            run_filename = o_log.replace('.log', '.png')
+            # No point in doing this multiple times...
+            if not pl.Path(run_filename).exists():
+                all_r_factors = extract_all_rfactors(o_log)
+                plot_run_rfactors(
+                    results = all_r_factors,
+                    filename = run_filename,
+                    )
     
     r_factors_table = r_factors_table.set_index('label')
 
     show_r_factors_table(r_factors_table)
     r_factors_table.to_csv(
         os.path.join(params.output.out_dir, 'ensemble_sweep_results.csv'),
+        )
+
+    link_best_structure(
+        table = r_factors_table,
+        input_directory = (
+            pl.Path(params.output.out_dir) / 'sweep_dirs'
+            ),
+        output_path = (
+            pl.Path(params.output.out_dir) / 'best'
+            ),
         )
 
     make_3d_plots(
@@ -509,9 +605,6 @@ def run(params):
         warning_handler_name = 'warnings',
         debug = False,
     )
-
-    import logging as lg
-    logger = lg.getLogger(__name__)
 
     if (new_sweep is True):
         make_er_sweep(params)
