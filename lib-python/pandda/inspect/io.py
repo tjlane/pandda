@@ -1,12 +1,18 @@
 import json
 import pathlib as pl
 
+from .expand_tables import (
+    ExpandEventTable,
+    MakeDummySiteTable,
+    )
+
 
 class GetPanddaInspectInputOutputFiles:
 
     def __init__(self, 
         input_directory,
         output_directory,
+        mode = 'events',
         ):
 
         self.input_directory = pl.Path(
@@ -16,6 +22,8 @@ class GetPanddaInspectInputOutputFiles:
         self.output_directory = pl.Path(
             output_directory
             )
+
+        self.mode = mode
 
         assert self.input_directory.exists()
 
@@ -33,11 +41,11 @@ class GetPanddaInspectInputOutputFiles:
             }
 
         ret_dict.update(
-            self.find_input_files(output_files)
+            self.get_input_files(output_files)
             )
 
         ret_dict.update(
-            self.setup_output_files()
+            self.get_output_files()
             )
 
         return ret_dict
@@ -54,27 +62,73 @@ class GetPanddaInspectInputOutputFiles:
 
         return results_dict
 
-    def find_input_files(self, output_files):
+    def get_input_files(self, output_files):
 
-        input_event_csv = output_files['tables']['events_table']
-
-        remove_prefix = self.find_output_prefix(input_event_csv)
-
-        input_events_csv = (
-            self.input_directory / (
-                pl.Path(
-                    input_event_csv
-                    ).relative_to(remove_prefix)
-                )
+        remove_prefix = self.find_output_prefix(
+            output_files['tables']['dataset_info']
             )
 
-        input_sites_csv = (
-            self.input_directory / (
-                pl.Path(
-                    output_files['tables']['sites_table']
-                    ).relative_to(remove_prefix)
+        if self.mode == 'events':
+
+            input_events_csv = (
+                self.input_directory / (
+                    pl.Path(
+                        output_files['tables']['events_table']
+                        ).relative_to(remove_prefix)
+                    )
                 )
-            )
+
+            input_sites_csv = (
+                self.input_directory / (
+                    pl.Path(
+                        output_files['tables']['sites_table']
+                        ).relative_to(remove_prefix)
+                    )
+                )
+
+        elif self.mode == 'datasets':
+
+            input_events_csv = (
+                self.output_directory / (
+                    pl.Path(
+                        'dummy_events.csv'
+                        )
+                    )
+                )
+
+            input_sites_csv = (
+                self.output_directory / (
+                    pl.Path(
+                        'dummy_sites.csv'
+                        )
+                    )
+                )
+
+            # need to actually make these tables...
+
+            make_event_table = ExpandEventTable(
+                dataset_info_csv = str(
+                    self.input_directory / (
+                        pl.Path(
+                            output_files['tables']['dataset_table']
+                            ).relative_to(remove_prefix)
+                        )
+                    ),
+                dataset_tags = [
+                    d 
+                    for (d, d_files) 
+                    in output_files['dataset_files'].items()
+                    if d_files.get('output_data')
+                    ],
+                output_path = str(input_events_csv),
+                )
+
+            make_site_table = MakeDummySiteTable(
+                output_path = str(input_sites_csv),
+                )
+
+            make_event_table()
+            make_site_table()
         
         assert input_events_csv.exists()
         assert input_sites_csv.exists()
@@ -85,7 +139,7 @@ class GetPanddaInspectInputOutputFiles:
             'remove_prefix' : remove_prefix,
         }
 
-    def setup_output_files(self):
+    def get_output_files(self):
 
         out_dir = (
             self.output_directory
@@ -94,13 +148,25 @@ class GetPanddaInspectInputOutputFiles:
         if not out_dir.exists():
             out_dir.mkdir(parents=True)
 
-        output_events_csv = str(
-            out_dir / "pandda_inspect_events.csv"
-            )
+        if self.mode == 'events': 
 
-        output_sites_csv = str(
-            out_dir / "pandda_inspect_sites.csv"
-            )
+            output_events_csv = str(
+                out_dir / "pandda_inspect_events.csv"
+                )
+
+            output_sites_csv = str(
+                out_dir / "pandda_inspect_sites.csv"
+                )
+
+        elif self.mode == 'datasets':
+
+            output_events_csv = str(
+                out_dir / "pandda_inspect_events.datasets.csv"
+                )
+
+            output_sites_csv = str(
+                out_dir / "pandda_inspect_sites.datasets.csv"
+                )
 
         return {
             'output_events' : output_events_csv,

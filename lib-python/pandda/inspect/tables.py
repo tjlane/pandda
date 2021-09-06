@@ -14,6 +14,8 @@ def validate_path(path):
 
 class TableHandler:
 
+    require_not_empty = True
+
     def __init__(self, 
         input_csv_path,
         output_csv_path,
@@ -25,6 +27,13 @@ class TableHandler:
         self.output_path = pl.Path(output_csv_path)
 
         table = self.read_csv(self.input_path)
+
+        if self.require_not_empty is True:
+            if len(table) == 0: 
+                print(table)
+                raise SystemExit(
+                    '\n\nInput csv contains no data!\n\n'
+                    )
 
         self.initialise(table)
 
@@ -62,6 +71,13 @@ class PanddaEventTableHandler(TableHandler):
 
         table = table.set_index(['dtag', 'event_num'])
 
+        if self.require_not_empty is True:
+            if len(table) == 0: 
+                print(table)
+                raise SystemExit(
+                    '\n\nNo events to inspect: Input events csv contains no data!\n\n'
+                    )
+
         return table
 
     def initialise(self, table):
@@ -96,6 +112,13 @@ class PanddaSiteTableHandler(TableHandler):
         table = pd.read_csv(str(path), sep=',')
 
         table = table.set_index('site_num')
+
+        if self.require_not_empty is True:
+            if len(table) == 0: 
+                print(table)
+                raise SystemExit(
+                    '\n\nNo sites: Input sites csv contains no data!\n\n'
+                    )
 
         return table
 
@@ -135,6 +158,3 @@ class PanddaInspectTableHandler:
     def write(self):
         self.events.write()
         self.sites.write()
-
-
-

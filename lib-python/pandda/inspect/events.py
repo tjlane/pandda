@@ -1,4 +1,5 @@
 import os 
+import numpy as np
 import pathlib as pl
 from giant.paths import rel_symlink
 
@@ -10,23 +11,66 @@ class Event:
         self.index = info.name
 
         self.dtag = info.name[0]
-        self.event_num = int(info.name[1])
 
-        self.map_resolution = round(info['analysed_resolution'], 2)
-        self.map_uncertainty = round(info['map_uncertainty'], 2)
+        self.event_num = (
+            int(info.name[1])
+            if not np.isnan(info.name[1])
+            else None
+            )
 
-        self.rwork_rfree = (round(info['r_work'], 3), round(info['r_free'], 3))
+        self.map_resolution = (
+            round(info['analysed_resolution'], 2)
+            )
 
-        self.site_num = int(info['site_num'])
+        self.map_uncertainty = (
+            round(info['map_uncertainty'], 2)
+            )
 
-        self.est_bdc = round(info['bdc'], 2)
-        self.est_1_bdc = round(1-info['bdc'], 2)
+        self.rwork_rfree = (
+            round(info['r_work'], 3), 
+            round(info['r_free'], 3),
+            )
 
-        self.z_peak = round(info['z_peak'], 1)
-        self.z_mean = info['z_mean']
-        self.cluster_size = int(info['cluster_size'])
+        self.site_num = (
+            int(info['site_num'])
+            if not np.isnan(info['site_num'])
+            else None
+            )
 
-        self.xyz = info[['x', 'y', 'z']]
+        self.est_bdc = (
+            round(info['bdc'], 2)
+            )
+
+        self.est_1_bdc = (
+            round(1-info['bdc'], 2)
+            )
+
+        self.z_peak = (
+            round(info['z_peak'], 1)
+            if not np.isnan(info['z_peak'])
+            else None
+            )
+
+        self.z_mean = (
+            info['z_mean']
+            if not np.isnan(info['z_mean'])
+            else None
+            )
+
+        self.cluster_size = (
+            int(info['cluster_size'])
+            if not np.isnan(info['cluster_size'])
+            else None
+            )
+
+        self.xyz = tuple(
+            info[c] 
+            for c in ['x','y','z']
+            if not np.isnan(info[c])
+            )
+
+        if len(self.xyz) != 3: 
+            self.xyz = None
 
         self.added_ligand_names = [
             s for s in info['Ligand Names'].split(',') if s
@@ -106,11 +150,15 @@ class GetEventFiles:
                 ).relative_to(self.pandda_path_prefix)
             )
 
-        event_data = (
-            self.pandda_directory / pl.Path(
-                dataset_files['event_data'][str(event.event_num)]
-                ).relative_to(self.pandda_path_prefix)
-            )
+        # events are optional
+        if ('event_data' in dataset_files) and (event.event_num is not None):
+            event_data = (
+                self.pandda_directory / pl.Path(
+                    dataset_files['event_data'][str(event.event_num)]
+                    ).relative_to(self.pandda_path_prefix)
+                )
+        else:
+            event_data = None
 
         return {
             'dataset_dir' : dataset_dir,
@@ -120,7 +168,11 @@ class GetEventFiles:
             'input_model' : str(input_model),
             'input_data' : str(input_data),
             'output_data' : str(output_data),
-            'event_data' : str(event_data),
+            'event_data' : (
+                str(event_data)
+                if (event_data is not None)
+                else None
+                ),
             # 'ligand_pdbs' : map(str, ligand_pdbs),
             # 'ligand_cifs' : map(str, ligand_cifs),
         }

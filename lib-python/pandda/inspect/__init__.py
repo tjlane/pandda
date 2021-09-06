@@ -7,12 +7,16 @@ import pathlib as pl
 import pandas as pd 
 import numpy as np
 
+from pandda import (
+    resources,
+    )
+
 from pandda.inspect.exceptions import (
     MissingFile,
     )
 
-from pandda import (
-    resources,
+from pandda.inspect.parser import (
+    parser
     )
 
 IMG_DIR = pl.Path(os.path.realpath(resources.__path__[0]))
@@ -393,17 +397,19 @@ class LoadEventModelsAndMaps:
                 )
             )
 
-        # This function to be removed when event maps calculated dynamically
-        molecules.update(
-            self.load_event_map(
-                mtz_path = self.event_files['event_data'],
-                )
-            )
-
         self.dataset_map_setup(molecules.get('dataset'))
         self.ground_map_setup(molecules.get('ground'))
         self.zvalues_map_setup(molecules.get('zvalues'))
-        self.event_map_setup(molecules.get('event'))
+
+        if self.event_files['event_data'] is not None:
+
+            molecules.update(
+                self.load_event_map(
+                    mtz_path = self.event_files['event_data'],
+                    )
+                )
+
+            self.event_map_setup(molecules.get('event'))
 
         return molecules
 
@@ -534,6 +540,9 @@ class EventModelMapHandler:
             self.load_models_and_maps()
             )
 
+        if self.event_files['event_data'] is None: 
+            self.make_custom_event_map(0.0)
+
         set_main_coot_molecule(
             self.molecules['model']
             )
@@ -605,6 +614,36 @@ class EventModelMapHandler:
             )
 
         self.molecules['original_model_reference'] = imol
+
+    def make_custom_event_map(self, bdc_value):
+
+        imol = self.molecules.get('custom_event_map', None)
+
+        if imol is not None: 
+            close_molecule(imol)
+
+        imol = difference_map(
+            self.molecules['dataset'], # imol1
+            self.molecules['ground'], # imol2
+            float(bdc_value), # map_scale
+            )
+
+        self.molecules['custom_event_map'] = imol
+
+        set_contour_level_absolute(imol, 2.0*(1-bdc_value))
+        set_imol_refinement_map(imol)
+        try: 
+            set_map_is_difference_map(imol, False)
+        except: 
+            pass
+        set_map_colour(imol, 255, 0, 255)
+        set_molecule_name(imol, 'custom_event_map_1_bdc_'+str(1.0-bdc_value))
+        set_scrollable_map(imol)
+
+        # Turn off event map to avoid confusion
+        imol_event = self.molecules.get('event')
+        if imol_event is not None: 
+            set_map_displayed(imol_event, 0)
 
     def close_all(self):
 
@@ -885,7 +924,8 @@ class EventHandler:
 
         event = self.event
 
-        set_rotation_centre(*event.xyz)
+        if event.xyz is not None:
+            set_rotation_centre(*event.xyz)
 
         self.model_map_handler.load_all()
 
@@ -1219,6 +1259,30 @@ class PanddaEventListController:
 
 # =========================================================================
 
+class DummyUpdateOutput:
+
+    def __init__(self,
+        inspector,
+        mode,
+        ):
+
+        self.inspector = inspector
+        self.mode = mode
+
+    def __call__(self):
+
+        d = nonmodal_msg(
+            'Note: there is no HTML output when running in the "{mode}" mode'.format(
+                mode = self.mode,
+                )
+            )
+
+        catchup(True) 
+
+        time.sleep(2)
+
+        d.destroy()
+
 
 class UpdateOutput:
 
@@ -1234,6 +1298,8 @@ class UpdateOutput:
 
         d = nonmodal_msg('Updating html output...')
 
+        catchup(True)
+
         of = self.make_output_graphs()
 
         self.write_html( 
@@ -1248,6 +1314,9 @@ class UpdateOutput:
 
         event_dicts = self.inspector.tables.events.table.to_dict('records')
 
+        if len(event_dicts) == 0:
+            return dict()
+
         for e in event_dicts: 
             e['colour'] = (
                 'limegreen' if e['Ligand Placed']
@@ -1255,18 +1324,24 @@ class UpdateOutput:
                 else 'blue'
                 )
 
-        from pandda.analyse.output.graphs import EventSitePlotter
-        plot = EventSitePlotter(
-            'inspect/graphs/analyse_events_site_{site_num:03d}.png',
-            )
+        try:
+            
+            from pandda.analyse.output.graphs import EventSitePlotter
+            plot = EventSitePlotter(
+                'inspect/graphs/analyse_events_site_{site_num:03d}.png',
+                )
 
-        return plot(event_dicts=event_dicts)
+            return plot(event_dicts=event_dicts)
+
+        except Exception as e: 
+
+            return dict()
 
 
 # =========================================================================
 
 
-class MakeNewLigandWindow:
+class MakeNewLigandModal:
 
     def __init__(self, 
         output_directory,
@@ -1422,6 +1497,125 @@ class MakeNewLigandWindow:
 
         objects['status'].set_label(message)
         catchup(True)
+
+
+class GetMakeCustomEventMapWindow:
+
+    def __init__(self, event_handler):
+
+        self.event_handler = event_handler
+
+    def __call__(self):
+
+        window = self.make_window()
+
+        objects = self.populate(
+            window = window,
+            starting_value = self.event_handler.event.est_1_bdc,
+            )
+
+        self.connect(
+            objects = objects,
+            )
+
+        window.show_all()
+
+        return window
+
+    def make_window(self):
+
+        window = gtk.Window(gtk.WINDOW_TOPLEVEL)
+        window.set_position(gtk.WIN_POS_CENTER)
+        window.set_title("Make custom event map")
+        window.set_border_width(10)
+        
+        # dialog = gtk.Dialog(
+        #     "Make custom event map",
+        #     None,
+        #     gtk.DIALOG_MODAL,
+        #     (gtk.STOCK_OK, gtk.RESPONSE_ACCEPT),
+        #     )
+
+        return window
+
+    def populate(self, window, starting_value):
+
+        vbox = gtk.VBox(homogeneous=False, spacing=5)
+        window.add(vbox)
+
+        hbox = gtk.HBox(homogeneous=False, spacing=5)
+        vbox.pack_start(hbox, padding=5)
+
+        label = gtk.Label('New Occupancy (1-BDC):')
+        label.props.width_chars = 20
+        label.set_justify(gtk.JUSTIFY_RIGHT)
+        hbox.pack_start(label)
+
+        bdc_entry = gtk.Entry()
+        bdc_entry.set_text(
+            str(starting_value)
+            )
+        hbox.pack_start(bdc_entry)
+        
+        ##
+
+        hbox = gtk.HBox(homogeneous=False, spacing=5)
+        vbox.pack_start(hbox, padding=5)
+        
+        bdc_adjuster = gtk.Adjustment(
+            lower = 0.0,
+            upper = 1.0,
+            value = float(starting_value),
+            page_size = 0.01,
+            step_incr = 0.01,
+            page_incr = 0.1,
+            )
+
+        bdc_slider = gtk.HScrollbar(
+            adjustment = bdc_adjuster,
+            )
+        bdc_slider.set_update_policy(gtk.UPDATE_DISCONTINUOUS)
+        bdc_slider.set_round_digits(2)
+        hbox.pack_start(bdc_slider)
+
+        #bdc_slider.set_value_pos(gtk.POS_RIGHT)
+        #bdc_slider.set_draw_value(True)
+
+        return {
+            'entry' : bdc_entry,
+            'adjustment' : bdc_adjuster,
+            'slider' : bdc_slider,
+        }
+
+    def connect(self, objects):
+        
+        objects['entry'].connect(
+            "activate", 
+            lambda x: [
+                objects['adjustment'].set_value(
+                    float(
+                        objects['entry'].get_text()
+                        )
+                    ),
+                ],
+            )
+
+        objects['adjustment'].connect(
+            "value_changed",
+            lambda x: [
+                objects['entry'].set_text(
+                    str(objects['adjustment'].get_value()),
+                    ),
+                self.event_handler.model_map_handler.make_custom_event_map(
+                    bdc_value = (
+                        1.0 - float(
+                            objects['adjustment'].get_value()
+                            )
+                        ),
+                    ),
+                ],
+            )
+
 
 # =========================================================================
 
@@ -1775,6 +1969,13 @@ class MiscButtons(GuiPart):
             )
         b.child.set_justify(gtk.JUSTIFY_CENTER)
         hbox_1.pack_start(b, expand=False, fill=False, padding=5)
+
+        b = self.buttons.setdefault(
+            'custom-event-map',
+            gtk.Button('Make custom\nevent map'),
+            )
+        b.child.set_justify(gtk.JUSTIFY_CENTER)
+        hbox_1.pack_start(b, expand=False, fill=False, padding=5)
         
         hbox_1.pack_start(gtk.HBox(), expand=True, fill=False, padding=10)
         
@@ -1799,13 +2000,13 @@ class QuitButtons(GuiPart):
         
         vbox_1.pack_start(gtk.HSeparator(), expand=False, padding=2)
         
-        b = self.buttons.setdefault(
-            'summary',
-            gtk.Button(label="Summary"),
-            )
-        vbox_1.pack_start(b)
+        # b = self.buttons.setdefault(
+        #     'summary',
+        #     gtk.Button(label="Summary"),
+        #     )
+        # vbox_1.pack_start(b)
         
-        vbox_1.pack_start(gtk.HSeparator(), expand=False, padding=2)
+        # vbox_1.pack_start(gtk.HSeparator(), expand=False, padding=2)
         
         b = self.buttons.setdefault(
             'updatehtml',
@@ -1990,22 +2191,22 @@ class EventInfoTable(GuiPart):
         # Add to second column
         vbox_2.pack_start(frame)
 
-        # Currently Blank
-        gtk_label = gtk.Label('-')
-        gtk_value = self.labels.setdefault(
-            'blank',
-            gtk.Label('-'),
-            )
-        gtk_box = gtk.EventBox();
-        gtk_box.add(gtk_value)
-        hbox = gtk.HBox(homogeneous=True);
-        hbox.add(gtk_label);
-        hbox.add(gtk_box);
-        hbox.set_border_width(3)
-        frame = gtk.Frame();
-        frame.add(hbox)
-        # Add to second column
-        vbox_2.pack_start(frame)
+        # # Currently Blank
+        # gtk_label = gtk.Label('-')
+        # gtk_value = self.labels.setdefault(
+        #     'blank',
+        #     gtk.Label('-'),
+        #     )
+        # gtk_box = gtk.EventBox();
+        # gtk_box.add(gtk_value)
+        # hbox = gtk.HBox(homogeneous=True);
+        # hbox.add(gtk_label);
+        # hbox.add(gtk_box);
+        # hbox.set_border_width(3)
+        # frame = gtk.Frame();
+        # frame.add(hbox)
+        # # Add to second column
+        # vbox_2.pack_start(frame)
 
         return vbox_main
 
@@ -2084,7 +2285,6 @@ class ProgressTable(GuiPart):
 class PanddaGUI: 
 
     def __init__(self):
-
 
         self.navigation_buttons_1 = NavigationButtons1()
         self.navigation_buttons_2 = NavigationButtons2()
@@ -2231,9 +2431,11 @@ class PanddaGUI:
 class PanddaInspect(object):
     """Main Object in pandda.inspect"""
 
-    def __init__(self, working_directory, files_dict, settings):
-
-        self.settings = settings
+    def __init__(self, 
+        working_directory, 
+        files_dict,
+        mode,
+        ):
 
         from pandda.inspect.tables import (
             PanddaInspectTableHandler
@@ -2252,20 +2454,31 @@ class PanddaInspect(object):
                 ),
             )
 
-        from pandda.inspect.html import (
-            MakePanddaInspectHtml,
-            )
+        if mode in ['events']:
 
-        write_html = MakePanddaInspectHtml(
-            output_directory = (
-                working_directory
-                ),
-            )
+            from pandda.inspect.html import (
+                MakePanddaInspectHtml,
+                )
 
-        self.update_output = UpdateOutput(
-            inspector = self,
-            write_html = write_html,
-            )
+            write_html = MakePanddaInspectHtml(
+                output_directory = (
+                    working_directory
+                    ),
+                )
+
+            self.update_output = UpdateOutput(
+                inspector = self,
+                write_html = write_html,
+                )
+
+        else:
+
+            self.update_output = DummyUpdateOutput(
+                inspector = self,
+                mode = mode,
+                ) 
+
+        self._registered_windows = []
 
     def __call__(self):
 
@@ -2342,6 +2555,8 @@ class PanddaInspect(object):
     def refresh_gui(self):
         """Update information in the GUI from the tables"""
 
+        self.delete_registered_windows()
+
         # Event/Site Tracker
 
         self.labels['site_val'].set_label(
@@ -2381,10 +2596,14 @@ class PanddaInspect(object):
 
         self.labels['e_1_bdc'].set_label(
             str(e.est_1_bdc)
+            if e.est_1_bdc is not None
+            else 'n/a'
             )
 
         self.labels['zpeak'].set_label(
             str(round(e.z_peak, 3))
+            if e.z_peak is not None
+            else 'n/a'
             )
 
         self.labels['map_res'].set_label(
@@ -2568,14 +2787,14 @@ class PanddaInspect(object):
                 ],
             )
 
-        self.buttons['summary'].connect(
-            "clicked", 
-            lambda x: [
-                self.sync_and_write_tables(), 
-                self.update_output(), 
-                os.system('ccp4-python -Qnew -m pandda.jiffies.pandda_summary &'),
-                ],
-            )
+        # self.buttons['summary'].connect(
+        #     "clicked", 
+        #     lambda x: [
+        #         self.sync_and_write_tables(), 
+        #         self.update_output(), 
+        #         os.system('ccp4-python -Qnew -m pandda.jiffies.pandda_summary &'),
+        #         ],
+        #     )
 
         self.buttons['updatehtml'].connect(
             "clicked", 
@@ -2694,12 +2913,23 @@ class PanddaInspect(object):
             "clicked",
             lambda x: [
                 self.controller.event_handler.update_and_go_to_ligand(
-                    info_dict = MakeNewLigandWindow(
+                    info_dict = MakeNewLigandModal(
                         output_directory = (
                             self.controller.event_handler.event_files['ligand_dir']
                             ),
                         )(),
                     show = True,
+                    ),
+                ],
+            )
+
+        self.buttons['custom-event-map'].connect(
+            "clicked",
+            lambda x: [
+                self.register_window(
+                    window = GetMakeCustomEventMapWindow(
+                        event_handler = self.controller.event_handler,
+                        )()
                     ),
                 ],
             )
@@ -2783,37 +3013,20 @@ class PanddaInspect(object):
                 ],
             )
 
+    def register_window(self, window):
 
-class InspectFlags(object):
-    _flags = ['--update-model-links']
+        self._registered_windows.append(
+            window
+            )
 
-    def __init__(self, args=[]):
+        return window
 
-        for f in self._flags:
-            self._set_flag(f, True if f in args else False)
+    def delete_registered_windows(self):
 
-    def _set_flag(self, flag, value):
-        self.__dict__[self._translate_flag(flag)] = value
+        while self._registered_windows:
 
-    def _get_flag(self, flag):
-        return self.__dict__[self._translate_flag(flag)]
-
-    def _translate_flag(self, flag):
-        return flag.replace('-', '_').strip('_')
-
-    def print_flags(self):
-        print '\n====================++>\n'
-        print 'Possible flags:\n'
-        for f in self._flags:
-            print '\t' + f
-        print '\n====================++>\n'
-
-    def show_flags(self):
-        print '\n====================++>\n'
-        print 'Current flags:\n'
-        for f in self._flags:
-            print '\t{:30}\t{}'.format(f, self._get_flag(f))
-        print '\n====================++>\n'
+            window = self._registered_windows.pop()
+            window.destroy()
 
 
 if __name__ == '__main__':
@@ -2831,26 +3044,19 @@ if __name__ == '__main__':
     except:
         pass
 
-    flags = InspectFlags(args=sys.argv)
-    print flags.__dict__
-    flags.show_flags()
-    if '--show-options' in sys.argv:
-        flags.print_flags()
-        sys.exit()
-
     #############################################################################################
     #
-    # FIND THE INPUT CSV FILES
+    # RUN
     #
     #############################################################################################
 
-    working_directory = pl.Path(os.getcwd())
+    # args = parser.parse_args(sys.argv)
+    args, unknown = parser.parse_known_args(sys.argv)
 
-    #############################################################################################
-    #
-    # INITIALISE THE MAIN INSPECTOR OBJECT
-    #
-    #############################################################################################
+    working_directory = pl.Path(
+        args.pandda_directory
+        # os.getcwd()
+        )
     
     try: 
 
@@ -2867,12 +3073,13 @@ if __name__ == '__main__':
             output_directory = (
                 working_directory / 'inspect'
                 ),
+            mode = args.mode,
             )
 
         inspector = PanddaInspect(
             working_directory = working_directory,
             files_dict = get_io_files(),
-            settings = flags,
+            mode = args.mode,
             )
 
         gui = inspector()
@@ -2885,10 +3092,12 @@ if __name__ == '__main__':
         # gui.launch()
 
     except MissingFile as e: 
+
         modal_msg(
-            'Missing files!\n\n{}\n\npandda.inspect will now close'.format(
+            'Missing files! Are you in the right directory?\n\nNo {}\n\npandda.inspect will now close'.format(
                 str(e)
                 )
             )
+
         sys.exit()
 

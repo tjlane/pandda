@@ -131,7 +131,10 @@ class MakePanddaEventTable:
 
         for e in event_dicts:
 
-            xyz = e['xyz_centroid']
+            xyz = e.get('xyz_centroid', (None, None, None))
+
+            if xyz is None: 
+                xyz = (None, None, None)
 
             e.setdefault('x', xyz[0])
             e.setdefault('y', xyz[1])
@@ -187,7 +190,10 @@ class MakePanddaSiteTable:
 
         for s in site_dicts:
 
-            xyz = s['xyz_centroid']
+            xyz = s.get('xyz_centroid', (None, None, None))
+
+            if xyz is None: 
+                xyz = (None, None, None)
 
             s.setdefault('x', xyz[0])
             s.setdefault('y', xyz[1])
