@@ -566,6 +566,14 @@ def read_er_sweep(params):
                     filename = run_filename,
                     )
     
+    if r_factors_table is None:
+        logger(
+            'No completed runs found: {out_dir}'.format(
+                out_dir = str(params.output.out_dir),
+                )
+            )
+        sys.exit(1)
+
     r_factors_table = r_factors_table.set_index('label')
 
     show_r_factors_table(r_factors_table)
