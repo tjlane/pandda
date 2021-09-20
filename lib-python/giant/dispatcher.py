@@ -25,7 +25,7 @@ class Dispatcher:
         return (
             'Program:\n\t' + self.command[0] + '\n' +
             'Command line arguments:\n\t' + '\n\t'.join(self.command[1:] if self.command[1:] else ['None']) + '\n' +
-            'Standard Input:\n\t' + (self.stdin if self.stdin is not None else 'None').replace('\n','\n\t')
+            'Standard Input:\n\t' + (self.stdin if self.stdin is not None else 'None\n').replace('\n','\n\t')
         )
 
     def append_arg(self, arg):

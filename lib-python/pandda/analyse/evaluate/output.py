@@ -52,6 +52,7 @@ class GetPanddaDatasetEvaluatorOutputter:
         output_dir,
         dataset_dir,
         processor = None,
+        output_requires_events = True,
         ):
 
         from .mtzs import (
@@ -68,6 +69,7 @@ class GetPanddaDatasetEvaluatorOutputter:
                 output_dir = output_dir,
                 dataset_dir = dataset_dir, # only maps put in the dataset folders
                 processor = processor,
+                output_requires_events = output_requires_events,
                 ),
             GetMakePanddaEvaluationGraphs(
                 output_dir = output_dir,

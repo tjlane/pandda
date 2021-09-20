@@ -1,10 +1,12 @@
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
+import os
+
 import pathlib as pl
+import numpy as np
 
 import gemmi
-import numpy as np
 
 from pandda.utils import merge_dicts
 
@@ -327,9 +329,6 @@ class MakePanddaEvaluationMtzs:
         delete_maps = True,
         ):
 
-        # Currently set to serial -- change later?
-        # processor = None
-
         if (processor is None):
             from giant.processors import basic_processor
             processor = basic_processor
@@ -411,7 +410,7 @@ class MakePanddaEvaluationMtzs:
                     merge_dict = {dkey : of}, # every sub-dict "of" is required to have a unique structure
                     )
 
-        if (delete_maps is True):
+        if (self.delete_maps is True):
             self.delete_files(
                 file_dict = map_files_dict,
                 )
@@ -532,6 +531,7 @@ class GetMakePanddaEvaluationMtzs:
         dataset_dir = None,
         dataset_subdir = "",
         processor = None,
+        output_requires_events = True,
         ):
 
         from .maps import (
@@ -544,11 +544,8 @@ class GetMakePanddaEvaluationMtzs:
             dataset_dir = dataset_dir,
             dataset_subdir = dataset_subdir,
             processor = processor,
+            output_requires_events = output_requires_events,
             )
-
-        # if (processor is None):
-        #     from giant.processors import basic_processor
-        #     processor = basic_processor
 
         self.output_dir = output_dir
         self.dataset_dir = dataset_dir

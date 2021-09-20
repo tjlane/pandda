@@ -1,10 +1,14 @@
 #!/usr/bin/env cctbx.python
 
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
 import os, sys, glob, shutil, itertools, json
 
 import logging as lg
 import numpy as np
 import pandas as pd
+import pathlib as pl
 
 import matplotlib as mpl
 mpl.use('Agg')
@@ -12,6 +16,10 @@ import matplotlib.pyplot as plt
 
 import libtbx.phil
 from libtbx.utils import Sorry, Failure
+
+from giant.paths import (
+    rel_symlink
+    )
 
 ############################################################################
 
@@ -211,9 +219,9 @@ def plot_run_rfactors(results, filename):
     plt.legend(
         [
         'Curr. R-free',
-        '{0} (RMS {1:.3f}%)'.format('Curr. R-work', np.var(current_work[1000:])**0.5),
+        '{0} (RMS {1:.3f}%)'.format('Curr. R-work', current_work.std()),
         'Roll. R-free',
-        '{0} (RMS {1:.3f}%)'.format('Roll. R-work', np.var(running_work[1000:])**0.5),
+        '{0} (RMS {1:.3f}%)'.format('Roll. R-work', running_work.std()),
         'Total R-free',
         'Total R-work',
         ], 
@@ -262,6 +270,142 @@ def show_r_factors_table(table):
     except:
         logger(str(desc.T))
     logger('')
+
+def link_best_structure(table, input_directory, output_path):
+
+    best_rfree = table['R-free'].min()
+    best_row = table.loc[table['R-free']==best_rfree].iloc[0]
+    best_lab = best_row.name
+    
+    best_dir = (
+        pl.Path(input_directory) / best_lab
+        )
+
+    assert best_dir.exists()
+
+    if output_path.exists():
+        logger(
+            'Removing old link: {link}'.format(
+                link = str(output_path)
+                )
+            )
+        output_path.unlink()
+
+    logger(
+        'Linking best R-free simulation: \n\t{best} -> \n\t{link}'.format(
+            best = str(best_dir),
+            link = str(output_path),
+            )
+        )
+
+    rel_symlink(
+        orig = str(best_dir),
+        link = str(output_path),
+        )
+
+def make_3d_plot(table, filepath, view='normal'):
+
+    assert view in ['normal','top']
+
+    import matplotlib.pyplot as plt
+    from matplotlib import cm
+    from matplotlib.ticker import LinearLocator
+    import numpy as np
+    from mpl_toolkits.mplot3d import Axes3D
+
+    fig = plt.figure()
+    ax1 = plt.subplot(2,2,2,projection='3d', azim=0, elev=0)
+    ax2 = plt.subplot(2,2,1,projection='3d', azim=0, elev=90)
+    ax3 = plt.subplot(2,2,3,projection='3d')
+    ax4 = plt.subplot(2,2,4,projection='3d', azim=120)
+
+    table = table.sort_values(by=['tx', 'wxray'])
+
+    # Make data.
+    x = np.array(table['wxray'].values, dtype=float)
+    y = np.array(table['tx'].values, dtype=float)
+    z = np.array(table['R-free'].values, dtype=float)
+
+    ###
+
+    for ax in [ax1, ax2, ax3, ax4]:
+
+        # Plot the surface.
+        surf = ax.plot_trisurf(
+            x, y, z, 
+            cmap=cm.jet, 
+            linewidth=0.1,
+            )
+        ax.set_xlabel('WX')
+
+        if ax is ax1: 
+            ax.set_ylabel('TX', labelpad=6)
+        elif ax is ax2: 
+            ax.set_ylabel('TX', labelpad=12)
+        else: 
+            ax.set_ylabel('TX')
+
+        # Only one heatmap
+        if ax is ax2: 
+            # Add a color bar which maps values to colors.
+            fig.colorbar(
+                surf, 
+                ax=ax2, 
+                shrink=0.65, 
+                aspect=20, 
+                )
+    
+    # Only one needs the z-label
+    ax1.set_zlabel('$R_{free}$')
+    # from IPython import embed; embed()
+    
+    fig.text(
+        0.42, 0.59, '$R_{free}$', 
+        ha='right', va='top',
+        )
+    fig.text(
+        0.47, 0.45, '$R_{free}$', 
+        ha='right', va='top',
+        )
+    fig.text(
+        0.97, 0.45, '$R_{free}$', 
+        ha='right', va='top',
+        )
+    # ax4.set_zlabel('$R_{free}$')
+
+    # Hide some labels
+    ax1.set_xlabel('')
+    ax1.set_xticks([])
+    ax2.set_zlabel('')
+    ax2.set_zticks([])
+
+    #from IPython import embed; embed()
+    ax1.margins(left=0.1)
+
+    plt.tight_layout()
+    plt.savefig(filepath, dpi=200)
+    plt.close(fig)
+
+def make_3d_plots(table, output_prefix):
+
+    ptls_values = set(table['pTLS'].values)
+
+    for ptls in sorted(ptls_values):
+
+        if ptls == -1:
+            assert len(ptls_values) == 1
+            output_path = (
+                output_prefix + '.png'
+                )
+        else:
+            output_path = (
+                output_prefix + '_ptls_' + str(ptls) + '.png'
+                )
+
+        make_3d_plot(
+            table = table[table['pTLS']==ptls],
+            filepath = output_path,
+            )
 
 #####
 
@@ -376,6 +520,12 @@ def read_er_sweep(params):
 
         logger('Parsing '+d)
 
+        if not os.path.exists(
+            os.path.join(d, 'input_ensemble.pdb.gz')
+            ):
+            logger('\tSimulation not finished')
+            continue
+
         # Extract data from the logfile
         o_log = os.path.join(d, 'input_ensemble.log')
         if not os.path.exists(o_log):
@@ -384,6 +534,7 @@ def read_er_sweep(params):
         try:
             final_rfactors = extract_final_rfactors(o_log)
         except:
+            logger('\tError parsing log file')
             continue
 
         # Extract meta from the json
@@ -406,17 +557,45 @@ def read_er_sweep(params):
 
         # plot r-factors for directory
         if (True):
-            all_r_factors = extract_all_rfactors(o_log)
-            plot_run_rfactors(
-                results = all_r_factors,
-                filename=o_log.replace('.log', '.png'),
-                )
+            run_filename = o_log.replace('.log', '.png')
+            # No point in doing this multiple times...
+            if not pl.Path(run_filename).exists():
+                all_r_factors = extract_all_rfactors(o_log)
+                plot_run_rfactors(
+                    results = all_r_factors,
+                    filename = run_filename,
+                    )
     
+    if r_factors_table is None:
+        logger(
+            'No completed runs found: {out_dir}'.format(
+                out_dir = str(params.output.out_dir),
+                )
+            )
+        sys.exit(1)
+
     r_factors_table = r_factors_table.set_index('label')
 
     show_r_factors_table(r_factors_table)
     r_factors_table.to_csv(
         os.path.join(params.output.out_dir, 'ensemble_sweep_results.csv'),
+        )
+
+    link_best_structure(
+        table = r_factors_table,
+        input_directory = (
+            pl.Path(params.output.out_dir) / 'sweep_dirs'
+            ),
+        output_path = (
+            pl.Path(params.output.out_dir) / 'best'
+            ),
+        )
+
+    make_3d_plots(
+        r_factors_table,
+        output_prefix = os.path.abspath(
+            os.path.join(params.output.out_dir, 'ensemble_sweep_surface_plot')
+            ),
         )
 
 def run(params):
@@ -425,7 +604,7 @@ def run(params):
     if not os.path.exists(params.output.out_dir):
         new_sweep = True
 
-    from pandemic.logs import setup_logging
+    from giant.logs import setup_logging
     if not os.path.exists(params.output.out_dir):
         os.mkdir(params.output.out_dir)
     logger = setup_logging(
@@ -434,9 +613,6 @@ def run(params):
         warning_handler_name = 'warnings',
         debug = False,
     )
-
-    import logging as lg
-    logger = lg.getLogger(__name__)
 
     if (new_sweep is True):
         make_er_sweep(params)
@@ -447,7 +623,7 @@ def run(params):
 
 if __name__=='__main__':
 
-    from pandemic.logs import setup_root_logging
+    from giant.logs import setup_root_logging
     setup_root_logging()
 
     from giant.jiffies import run_default

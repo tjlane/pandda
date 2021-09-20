@@ -206,6 +206,7 @@ class Output:
         self.out_dir = pl.Path(config_obj.out_dir)
         self.overwrite = config_obj.overwrite
         self.dataset_prefix = config_obj.dataset_prefix
+        self.output_maps_for = config_obj.output_maps_for
 
     def validate(self, config_obj):
 
@@ -423,7 +424,6 @@ class Settings:
     def __init__(self, config_obj):
         
         self.verbose = config_obj.verbose
-        self.plot_graphs = config_obj.plot_graphs
         self.plotting_backend = config_obj.plotting.backend
 
 
@@ -449,4 +449,4 @@ class Config:
         self.params = Params(config_obj.pandda.params)
         self.processing = Processing(config_obj.pandda.processing)
         self.results = Results(config_obj.pandda.results)
-        self.autobuilding = Autobuilding(config_obj.pandda.autobuilding)
+        #self.autobuilding = Autobuilding(config_obj.pandda.autobuilding)

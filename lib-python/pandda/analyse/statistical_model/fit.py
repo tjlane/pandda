@@ -6,6 +6,8 @@ import numpy as np
 from scipy import stats
 from scipy.stats import kde
 
+from .ospina import estimate_true_underlying_sd
+
 
 class CalculateMu:
 
@@ -128,7 +130,6 @@ class SigmaAdjustedCalculator:
     def __call__(self, map_array, mu_map_data, sigma_uncertainties):
 
         import warnings
-        from giant.stats.ospina import estimate_true_underlying_sd
 
         sadj_values = np.empty_like(mu_map_data)
 

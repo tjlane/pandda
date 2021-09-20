@@ -1,19 +1,42 @@
 import giant.logs as lg
-logger = lg.getLogger(__name__)
+logger = lg.getLogger(__name__) 
 
-import os, sys, shutil
+import sys
 
-from giant.exceptions import Sorry, Failure
+import pathlib as pl
 
-from giant.paths import splice_ext, easy_directory
-from giant.dispatcher import Dispatcher
+from giant.phil import (
+    log_running_parameters,
+    )
+
+from giant.processors import (
+    ProcessorJoblib,
+    )
+
+from giant.mulch.labelling import (
+    PathLabeller,
+    )
+
+from giant.mulch.tasks.xray.mtz_utils import (
+    PrepareMTZTask,
+    RemoveColumns,
+    ReindexMtzToReference,
+    FillMissingReflections,
+    TransferRFreeFlags,
+    )
+
+from giant.mulch.tasks.xray.refinement_pipelines import (
+    RefinementPipelineTask,
+    )
+
 
 ############################################################################
 
-PROGRAM = 'giant.datasets.prepare'
+PROGRAM = 'giant.prepare_datasets'
 
 DESCRIPTION = """
-    Take input MTZs, reindex, transfer R-free flags from a reference, fill missing reflections, and optionally run refinement.
+    Take input MTZs, reindex, transfer R-free flags from a reference, 
+    fill missing reflections, and optionally run refinement pipelines.
 """
 
 ############################################################################
@@ -35,19 +58,27 @@ input {
         .type = path
 }
 output {
-    output_directory = None
+    output_log = prepared_datasets.log
         .type = str
-    labelling = none *filename foldername
+    output_directory = prepared_datasets
+        .type = str
+    labelling = none basename *filename foldername
         .type = choice
     keep_intermediate_files = False
         .type = bool
 }
-actions = *reindex_to_reference \
+actions = remove_columns \
+          *reindex_to_reference \
           *fill_missing_reflections \
           *transfer_rfree_flags \
           *refinement_pipeline
     .type = choice(multi=True)
 options {
+    remove_columns {
+        columns = None
+            .type = str
+            .multiple = True
+    }
     reindex {
         tolerance = 5
             .type  = float
@@ -59,427 +90,416 @@ options {
             .type = str
     }
     missing_reflections {
-        fill_high = 4.0
+        fill_high = None
             .type = float
         fill_low = 9999.0
             .type = float
     }
     refinement {
-        pipeline = *dimple
+        pipelines = *dimple *pipedream
             .type = choice(multi=True)
-        col_label = IMEAN
-            .type = str
+        dimple {
+            n_jelly_body = None
+                .type = int
+        }
+        pipedream {
+            protocol = quick *default thorough
+                .type = choice(multi=False)
+            reference_mtz = None
+                .type = path
+            keep_waters = None
+                .type = bool
+            restrain_to_input = None
+                .type = str
+            mr_step = None
+                .type = bool
+            n_threads = 1
+                .type = int
+        }
     }
 }
 settings {
     cpus = 1
         .help = "number of cpus to use for processing"
         .type = int
+    verbose = False
+        .type = bool
 }
 """)
 
-############################################################################
+def show_results(results):
 
-def run_program(prog):
+    logger.subheading('Results')
+    
+    n_success = 0; errored = []
 
-    logger(prog.as_string())
+    logger('Processing messages')
 
-    result = prog.run()
+    for r in results:
 
-    if result['exitcode'] != 0:
+        if r.status.success is True: 
 
-        logger.heading('{} exited with an error'.format(prog.program))
-        logger.subheading('Stdout')
-        logger(result.stdout)
-        logger.subheading('Stderr')
-        logger(result.stderr)
+            logger(
+                '\t{} - {}'.format(
+                    r.output.input_mtz, 
+                    'processed successfully'
+                    )
+                )
+            n_success += 1
 
-        raise Sorry('{} exited with an error'.format(prog.program))
+        else:
 
-############################################################################
+            logger(
+                '\t{} - {}'.format(
+                    r.output.input_mtz, 
+                    'errored'
+                    )
+                )
+            errored.append(r)
 
-def reindex_mtz_to_reference(in_mtz, out_mtz, reference_mtz, tolerance):
-    """Reindex the data in one mtz to a reference mtz"""
+    if len(errored) > 0:
 
-    logger.subheading('Running reindexing')
+        logger.subheading('Errored datasets')
 
-    prog = Dispatcher('pointless')
-    prog.extend_args([
-        'hklin',  in_mtz,
-        'hklref', reference_mtz,
-        'hklout', out_mtz,
-    ])
-    prog.extend_args([
-        'tolerance {}'.format(tolerance),
-    ])
+        logger('> See log files in output directory\n')
+        
+        for r in errored:
 
-    run_program(prog)
+            logger(
+                '\nFile: {}\n\tError(s): \n\t\t{}'.format(
+                    r.output.input_mtz, 
+                    '\n\t\t'.join([
+                        str(e) 
+                        for e in r.status.errors
+                        ]),
+                    )
+                )
 
-    if not os.path.exists(out_mtz):
-        logger(prog.result.stdout)
-        logger(prog.result.stderr)
-        raise Failure('reindexing has failed -- {} does not exist'.format(out_mtz))
+    logger.bar()
+    logger('Successfully processed:     {}'.format(n_success))
+    logger('Errors during processing: {}'.format(len(errored)))
+    logger.bar()
 
-    return prog.result
 
-def fill_missing_reflections(in_mtz, out_mtz, fill_resolution_low, fill_resolution_high, delete_tmp_files=True):
-    """Complete the set of miller indices in an MTZ file"""
+class RunRefinementPipelineJobs(object):
 
-    logger.subheading('Filling missing reflections')
+    def __init__(self, 
+        pipeline_functions,
+        processor,
+        verbose = False,
+        ):
 
-    tmp_mtz_1 = splice_ext(path=out_mtz, new='step1-truncate')
-    tmp_mtz_2 = splice_ext(path=out_mtz, new='step2-uniquify')
-    tmp_mtz_3 = splice_ext(path=out_mtz, new='step3-remerged')
+        self.pipeline_functions = pipeline_functions
+        self.processor = processor
+        self.verbose = verbose
 
-    # Stage 1 - truncate dataset, fill missing reflections, change column name
-    logger('Running CAD...')
-    prog = Dispatcher('cad')
-    prog.extend_args([
-        'hklin1', in_mtz,
-        'hklout', tmp_mtz_1,
-    ])
-    prog.extend_stdin([
-        'monitor BRIEF',
-        'labin file_number 1 ALL',
-        'resolution file 1 {} {}'.format(fill_resolution_low, fill_resolution_high),
-    ])
+    def __call__(self, 
+        mtz_list,
+        reference_pdb,
+        ):
 
-    run_program(prog)
+        arg_list = []
 
-    if not os.path.exists(tmp_mtz_1):
-        logger(prog.result.stdout)
-        logger(prog.result.stderr)
-        raise Failure('filling of missing reflections has failed -- {} does not exist'.format(tmp_mtz_1))
+        for pf in self.pipeline_functions:
 
-    # Stage 2 - Uniqueify the file
-    logger('Running uniqueify...')
-    prog = Dispatcher('uniqueify')
-    prog.extend_args([
-        '-p', '0.05',
-        tmp_mtz_1,
-        tmp_mtz_2,
-    ])
+            arg_list.extend([
+                self.processor.make_wrapper(
+                    func = pf,
+                    in_mtz = m,
+                    in_pdb = reference_pdb,
+                    )
+                for m in mtz_list
+                ])
 
-    run_program(prog)
+        # Control module logging
+        glg = lg.getLogger('giant')
 
-    if not os.path.exists(tmp_mtz_2):
-        logger(prog.result.stdout)
-        logger(prog.result.stderr)
-        raise Failure('filling of missing reflections has failed -- {} does not exist'.format(tmp_mtz_2))
+        prev_propagate_state = glg.propagate
 
-    # Stage 3 - remerge the two files
-    logger('Running CAD...')
-    prog = Dispatcher('cad')
-    prog.extend_args([
-        'hklin1', in_mtz,
-        'hklin2', tmp_mtz_2,
-        'hklout', tmp_mtz_3,
-    ])
-    prog.extend_stdin([
-        'monitor BRIEF',
-        'labin file_number 1 ALL',
-        'labin file_number 2 E1=FreeR_flag',
-        'labout file_number 2 E1=dummy',
-    ])
+        if not self.verbose:
+            glg.propagate = False
 
-    run_program(prog)
+        try: 
 
-    if not os.path.exists(tmp_mtz_3):
-        logger(prog.result.stdout)
-        logger(prog.result.stderr)
-        raise Failure('filling of missing reflections has failed -- {} does not exist'.format(tmp_mtz_3))
+            results = self.processor(arg_list)
 
-    # Stage 4 - remove the dummy column
-    prog = Dispatcher('mtzutils')
-    prog.extend_args([
-        'hklin1', tmp_mtz_3,
-        'hklout', out_mtz,
-    ])
-    prog.extend_stdin([
-        'HEADER BRIEF',
-        'EXCLUDE 1 dummy',
-        'ONEFILE',
-        'END',
-    ])
+        except Exception as e: 
 
-    run_program(prog)
+            glg.propagate = prev_propagate_state
+            raise
 
-    if not os.path.exists(tmp_mtz_3):
-        logger(prog.result.stdout)
-        logger(prog.result.stderr)
-        raise Failure('filling of missing reflections has failed -- {} does not exist'.format(out_mtz))
+        finally:
 
-    if (delete_tmp_files is True):
-        os.remove(tmp_mtz_1)
-        os.remove(tmp_mtz_2)
-        os.remove(tmp_mtz_3)
+            glg.propagate = prev_propagate_state
 
-def transfer_rfree_flags(in_mtz, out_mtz, reference_mtz, input_free_r_flag, output_free_r_flag, delete_tmp_files=True):
-    """Copy R-free flags from reference mtz"""
+        show_results(results)
 
-    tmp_mtz = splice_ext(path=out_mtz, new='step1-transfer')
+        return results
 
-    # Stage 1 - transfer R-free from reference
-    logger.subheading('Transferring R-free flags')
-    prog = Dispatcher('cad')
-    prog.extend_args([
-        'hklin1', in_mtz,
-        'hklin2', reference_mtz,
-        'hklout', tmp_mtz,
-    ])
-    prog.extend_stdin([
-        'labin file_number 1 ALL',
-        'labin file_number 2 E1={}'.format(input_free_r_flag),
-        'labout file_number 2 E1={}'.format(output_free_r_flag),
-        'END',
-    ])
+    
+class RunPrepareMTZJobs(object):
 
-    run_program(prog)
+    def __init__(self, 
+        prepare_mtz,
+        processor, 
+        verbose = False,
+        ):
 
-    if not os.path.exists(tmp_mtz):
-        logger(prog.result.stdout)
-        logger(prog.result.stderr)
-        raise Failure('transfer of R-free flags has failed -- {} does not exist'.format(tmp_mtz))
+        self.prepare_mtz = prepare_mtz
+        self.processor = processor
+        self.verbose = verbose
 
-    # Stage 2 - populate missing R-free values
-    logger.subheading('Completing R-free flags')
-    prog = Dispatcher('freerflag')
-    prog.extend_args([
-        'hklin',  tmp_mtz,
-        'hklout', out_mtz,
-    ])
-    prog.extend_stdin([
-        'COMPLETE FREE={}'.format(output_free_r_flag),
-        'END',
-    ])
+    def __call__(self,
+        mtz_list,
+        ):
 
-    run_program(prog)
+        arg_list = [
+            self.processor.make_wrapper(
+                func = self.prepare_mtz, 
+                in_mtz = m,
+                ) 
+            for m in mtz_list
+            ]
 
-    if not os.path.exists(out_mtz):
-        raise Failure('expanding of R-free flags has failed -- {} does not exist'.format(out_mtz))
+        # Control module logging
+        glg = lg.getLogger('giant')
 
-    if (delete_tmp_files is True):
-        os.remove(tmp_mtz)
+        prev_propagate_state = glg.propagate
 
-def run_refinement_pipeline(in_mtz, ref_pdb, out_dir, program='dimple'):
-    """Run refinement of the input MTZ file against a reference PDB file"""
+        if not self.verbose:
+            glg.propagate = False
 
-    logger.subheading('Running refinement pipelines')
+        try: 
 
-    if program == 'dimple':
-        # Define output files
-        out_pdb = os.path.join(out_dir, 'final.pdb')
-        out_mtz = os.path.join(out_dir, 'final.mtz')
-        # Create command manager for dimple
-        prog = Dispatcher('dimple')
-        progcmd.extend_args([
-            '--jelly', '5',
-            in_mtz,
-            ref_pdb,
-            out_dir,
-        ])
-    else:
-        raise ValueError("no stop that. you're doing it wrong.")
+            results = self.processor(arg_list)
 
-    run_program(prog)
+        except Exception as e: 
 
-    if not os.path.exists(out_pdb):
-        raise Failure('running refinement with {} has failed -- {} does not exist'.format(program, out_pdb))
-    if not os.path.exists(out_mtz):
-        raise Failure('running refinement with {} has failed -- {} does not exist'.format(program, out_mtz))
+            glg.propagate = prev_propagate_state
+            raise
 
-    return out_pdb, out_mtz
+        finally:
+
+            glg.propagate = prev_propagate_state
+
+        show_results(results)
+
+        return results
+
 
 ############################################################################
 
-def reprocess_mtz(in_mtz, params):
-    """Prepare mtz by various standard sanitisations"""
-
-    from giant.paths import foldername, filename
-
-    # Determine naming for this dataset
-    if params.output.labelling == 'foldername':
-        label = foldername(in_mtz)
-    elif params.output.labelling == 'filename':
-        label = filename(in_mtz)
-    else:
-        label = None
-
-    if label is not None:
-        logger.heading('Processing dataset {}'.format(label))
-
-    # Create output directory or identify it
-    if params.output.output_directory is not None:
-        out_dir = easy_directory(os.path.join(params.output.output_directory, label))
-        # Copy input mtz to output directory and update variable
-        new_in_mtz = os.path.join(out_dir, os.path.basename(in_mtz))
-        shutil.copy(in_mtz, new_in_mtz)
-        # Update variable to point to new file
-        in_mtz = new_in_mtz
-    else:
-        # Simply take current directory -- likely not used
-        out_dir = None
-
-    # Save the original mtz as variable
-    orig_mtz = in_mtz
-
-    # List of intermediate files to be deleted at the end
-    intermediate_files = []
-
-    stage = 1
-
-    if 'reindex_to_reference' in params.actions:
-
-        out_mtz = splice_ext(path=orig_mtz, new='{}.reindexed'.format(stage))
-        reindex_mtz_to_reference(
-            in_mtz  = in_mtz,
-            out_mtz = out_mtz,
-            reference_mtz = params.input.reference_mtz,
-            tolerance = params.options.reindex.tolerance,
-        )
-        intermediate_files.append(out_mtz)
-        # Update new input mtz
-        in_mtz = out_mtz
-        stage += 1
-
-    if 'fill_missing_reflections' in params.actions:
-
-        out_mtz = splice_ext(path=orig_mtz, new='{}.filled'.format(stage))
-        fill_missing_reflections(
-            in_mtz  = in_mtz,
-            out_mtz = out_mtz,
-            fill_resolution_low  = params.options.missing_reflections.fill_low,
-            fill_resolution_high = params.options.missing_reflections.fill_high,
-            delete_tmp_files = (not params.output.keep_intermediate_files),
-        )
-        intermediate_files.append(out_mtz)
-        # Update new input mtz
-        in_mtz = out_mtz
-        stage += 1
-
-    if 'transfer_rfree_flags' in params.actions:
-
-        out_mtz = splice_ext(path=orig_mtz, new='{}.with-free'.format(stage))
-        transfer_rfree_flags(
-            in_mtz  = in_mtz,
-            out_mtz = out_mtz,
-            reference_mtz = params.input.reference_mtz,
-            input_free_r_flag  = params.options.rfree_flag.input,
-            output_free_r_flag = params.options.rfree_flag.output,
-            delete_tmp_files = (not params.output.keep_intermediate_files),
-        )
-        intermediate_files.append(out_mtz)
-        # Update new input mtz
-        in_mtz = out_mtz
-        stage += 1
-
-    # Copy to final output mtz
-    out_mtz = splice_ext(path=orig_mtz, new='prepared')
-    shutil.copy(in_mtz, out_mtz)
-    # Update new input mtz
-    in_mtz = out_mtz
-
-    if 'refinement_pipeline' in params.actions:
-
-        for pipeline in params.options.refinement.pipeline:
-
-            if out_dir is None:
-                ref_dir = os.path.splitext(in_mtz)[0] + '_' + pipeline
-            else:
-                ref_dir = os.path.join(out_dir, pipeline)
-
-            o_pdb, o_mtz = run_refinement_pipeline(
-                in_mtz  = in_mtz,
-                ref_pdb = params.input.reference_pdb,
-                out_dir = ref_dir,
-                program = pipeline,
-            )
-
-    # Tidy up
-    if (not params.output.keep_intermediate_files):
-        for f in intermediate_files:
-            os.remove(f)
-
-    return out_mtz
-
-############################################################################
-
-SUCCESS_MESSAGE = 'processed successfully'
-
-def wrapper_reprocess(args):
-    params, mtz = args
-    try:
-        reprocess_mtz(in_mtz=mtz, params=params)
-    except Exception as e:
-        return (mtz, e)
-    return (mtz, SUCCESS_MESSAGE)
-
-############################################################################
-
-def run(params):
+def validate_params(params):
 
     if len(params.input.mtz) == 0:
-        raise IOError('no mtz files supplied (input.mtz=XXX)')
+        raise IOError(
+            'no mtz files supplied (input.mtz=XXX)'
+            )
+
+    if (params.input.reference_mtz is not None):
+
+        params.input.reference_mtz = pl.Path(params.input.reference_mtz)
+
+        assert params.input.reference_mtz.exists()
 
     if (params.output.output_directory is not None):
-        params.output.output_directory = easy_directory(params.output.output_directory)
+
+        params.output.output_directory = pl.Path(params.output.output_directory)
+
+        if not params.output.output_directory.is_dir():
+            params.output.output_directory.mkdir(parents=True)
+
         if (params.output.labelling == 'none') or (not params.output.labelling):
-            raise ValueError('Must provide labelling choice when using output directory (output.labelling=XXX)')
+            raise ValueError(
+                'Must provide labelling choice when using output directory (output.labelling=XXX)'
+                )
 
     if 'reindex_to_reference' in params.actions:
+
         if (params.input.reference_mtz is None):
-            raise IOError('no reference mtz supplied (reference_mtz=XXX)')
+            raise IOError(
+                'no reference mtz supplied (reference_mtz=XXX)'
+                )
 
     if 'fill_missing_reflections' in params.actions:
-        if (params.options.missing_reflections.fill_high > params.options.missing_reflections.fill_low):
-            raise ValueError('missing_reflections.fill_high must be less than missing_reflections.fill_low')
+
+        if (
+            (params.options.missing_reflections.fill_high is not None) and 
+            (params.options.missing_reflections.fill_low is not None) and
+            (params.options.missing_reflections.fill_high > params.options.missing_reflections.fill_low)
+            ):
+            raise ValueError(
+                'missing_reflections.fill_high must be less than missing_reflections.fill_low'
+                )
 
     if 'transfer_rfree_flags' in params.actions:
+
         if (params.input.reference_mtz is None):
-            raise IOError('no reference mtz supplied (reference_mtz=XXX)')
+            raise IOError(
+                'no reference mtz supplied (reference_mtz=XXX)'
+                )
+
         if (params.options.rfree_flag.input is None):
-            raise ValueError('R-free flag must be specified (rfree_flag.input=XXX)')
+            raise ValueError(
+                'R-free flag must be specified (rfree_flag.input=XXX)'
+                )
+
         if (params.options.rfree_flag.output is None):
             params.options.rfree_flag.output = params.options.rfree_flag.input
 
     if 'refinement_pipeline' in params.actions:
+
         if params.input.reference_pdb is None:
-            raise IOError('must provide reference_pdb to run refinement_pipeline (reference_pdb=XXX)')
+            raise IOError(
+                'must provide reference_pdb to run refinement_pipeline (reference_pdb=XXX)'
+                )
+
+        if params.input.reference_mtz is None:
+            raise IOError(
+                'must provide reference_mtz to run refinement_pipeline (reference_mtz=XXX)'
+                )
+
+        # hack alert
+        if params.options.refinement.pipedream.reference_mtz is None:
+            params.options.refinement.pipedream.reference_mtz = (
+                params.input.reference_mtz
+                )
+
+def run(params):
+
+    logpath = pl.Path(
+        params.output.output_log
+        )
+
+    logger = lg.setup_logging(
+        name = __name__,
+        log_file = str(logpath),
+    )
+
+    log_running_parameters(
+        params = params,
+        master_phil = master_phil,
+        logger = logger,
+    )
+
+    validate_params(params)
+    
+    pipeline_options = {
+        'dimple' : params.options.refinement.dimple,
+        'pipedream' : params.options.refinement.pipedream,
+    }
 
     #################
 
-    # Build argument list for multi-processing
-    arg_list = [(params, m) for m in params.input.mtz]
+    # setup
 
-    logger.heading('Re-processing {} mtz files'.format(len(arg_list)))
-    logger.setLevel(lg.WARNING) # Turn off logging for multi-processing
-    import libtbx.easy_mp
-    returned = libtbx.easy_mp.pool_map(
-        fixed_func   = wrapper_reprocess,
-        args         = arg_list,
-        processes    = params.settings.cpus,
-        chunksize    = 1,
-    )
-    logger.setLevel(lg.INFO) # re-enable logging
+    path_labeller = PathLabeller(
+        method = params.output.labelling,
+        )
 
-    logger.subheading('Re-processing results')
-    n_success = 0; errors = []
-    for mtz, message in returned:
-        if (message == success_message):
-            logger('\t{}'.format(mtz))
-            n_success += 1
-        else:
-            errors.append((mtz, message))
+    processor = ProcessorJoblib(
+        n_cpus = params.settings.cpus,
+        )
 
-    if len(errors) > 0:
-        logger.subheading('Errored datasets')
-        for mtz, err in errors:
-            logger('\nFile: {}\n\tError: {}'.format(mtz, type(message), str(message)))
+    prepare_mtzs = RunPrepareMTZJobs(
+        prepare_mtz = PrepareMTZTask(
+            remove_columns = (
+                RemoveColumns(
+                    columns_to_remove = params.options.remove_columns.columns,
+                    )
+                if ('remove_columns' in params.actions)
+                else 
+                None
+                ),
+            reindex_to_reference = (
+                ReindexMtzToReference(
+                    reference_mtz = params.input.reference_mtz,
+                    tolerance = params.options.reindex.tolerance,
+                    )
+                if ('reindex_to_reference' in params.actions)
+                else
+                None
+                ),
+            fill_missing_reflections = (
+                FillMissingReflections(
+                    fill_resolution_low = params.options.missing_reflections.fill_low,
+                    fill_resolution_high = params.options.missing_reflections.fill_high,
+                    delete_tmp_files = (not params.output.keep_intermediate_files),
+                    )
+                if ('fill_missing_reflections' in params.actions)
+                else 
+                None
+                ),
+            transfer_rfree_flags = (
+                TransferRFreeFlags(
+                    reference_mtz = params.input.reference_mtz,
+                    input_free_r_flag  = params.options.rfree_flag.input,
+                    output_free_r_flag = params.options.rfree_flag.output,
+                    delete_tmp_files = (not params.output.keep_intermediate_files),
+                    )
+                if ('transfer_rfree_flags' in params.actions)
+                else
+                None
+                ),
+            output_directory = (
+                params.output.output_directory
+                ),
+            path_labeller = (
+                path_labeller
+                ),
+            delete_tmp_files = (
+                not params.output.keep_intermediate_files
+                ),
+            ),
+        processor = processor, 
+        verbose = params.settings.verbose,
+        )
 
-    logger.bar()
-    logger('Successfully processed:     {}'.format(n_success))
-    logger('Errors during reprocessing: {}'.format(len(errors)))
-    logger.bar()
+    run_refinement_pipelines = (
+        RunRefinementPipelineJobs(
+            pipeline_functions = [
+                RefinementPipelineTask(
+                    program = p,
+                    program_options = pipeline_options[p],
+                    output_directory = (
+                        None #params.output.output_directory
+                        ),
+                    path_labeller = (
+                        path_labeller
+                        ),
+                    )
+                for p in params.options.refinement.pipelines
+                ],
+            processor = processor,
+            verbose = params.settings.verbose,
+            )
+        if 
+        ('refinement_pipeline' in params.actions)
+        else 
+        None
+        )
+
+    # run
+
+    logger.heading('Preparing MTZs')
+
+    prepared_mtzs = prepare_mtzs(
+        mtz_list = params.input.mtz,
+        )
+
+    if run_refinement_pipelines is not None: 
+
+        logger.heading('Running refinement pipelines')
+
+        run_refinement_pipelines(
+            reference_pdb = params.input.reference_pdb,
+            mtz_list = [
+                p.output.output_mtz 
+                for p in prepared_mtzs
+                if 
+                (p.status.success is True)
+                ],
+            ) 
 
 ############################################################################
 

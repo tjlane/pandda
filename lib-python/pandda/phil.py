@@ -81,6 +81,9 @@ pandda
         dataset_prefix = ''
             .help = "Prefix to be attached to each dataset name"
             .type = str
+        output_maps_for = all *events first_dataset_only
+            .help = "Which datasets to write output maps for" 
+            .type = choice(multi=False)
     }
 
     params
@@ -101,7 +104,7 @@ pandda
         }
         diffraction_data
         {
-            structure_factors = FWT,PHWT 2FOFCWT_iso-fill,PH2FOFCWT_iso-fill 2FOFCWT_fill,PH2FOFCWT_fill 2FOFCWT,PH2FOFCWT
+            structure_factors = 2FOFCWT_iso-fill,PH2FOFCWT_iso-fill FWT,PHWT 2FOFCWT_fill,PH2FOFCWT_fill 2FOFCWT,PH2FOFCWT
                 .type = strings
             checks
                 .help = "checks on the mtz file data provided for each dataset"
@@ -310,9 +313,9 @@ pandda
         process_shells = *serial  
             .help = "How to process shells"
             .type = choice
-        remote_workers = None
+        remote_nodes = None
             .help = "Number of remote nodes to use (e.g. with luigi)"
-        remote_cpus_per_worker = None
+        remote_cpus_per_node = None
             .help = "Number of cpus to use on a remote machine (e.g. with luigi)"
         h_vmem = 100
             .help = "How to process dicts"

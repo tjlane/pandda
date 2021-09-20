@@ -62,8 +62,9 @@ class SiteTracker:
         self.site_idxs = site_idxs
         self.n_total = len(set(site_idxs))
         
-        assert self.site_idxs.min() == 0
-        assert self.site_idxs.max() == (self.n_total - 1)
+        if not np.isnan(self.site_idxs).all():
+            assert self.site_idxs.min() == 0
+            assert self.site_idxs.max() == (self.n_total - 1)
 
         self.event_tracker = event_tracker
 

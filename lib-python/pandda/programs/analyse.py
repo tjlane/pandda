@@ -138,7 +138,6 @@ def run(args):
         output_directory = pandda_config.output.out_dir,
         master_phil = phil.pandda_phil,
         working_phil = working_phil,
-        working_config = pandda_config,
         )
 
     try:
