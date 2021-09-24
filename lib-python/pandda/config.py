@@ -409,8 +409,8 @@ class Processing:
         self.backend = config_obj.backend
         
         self.process_shells = config_obj.process_shells
-        self.remote_workers = config_obj.remote_workers
-        self.remote_cpus_per_worker = config_obj.remote_cpus_per_worker
+        self.remote_nodes = config_obj.remote_nodes
+        self.cpus_per_remote_node = config_obj.cpus_per_remote_node
         
         self.h_vmem = config_obj.h_vmem
         self.m_mem_free = config_obj.m_mem_free

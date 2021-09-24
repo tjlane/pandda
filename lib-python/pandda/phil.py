@@ -315,7 +315,7 @@ pandda
             .type = choice
         remote_nodes = None
             .help = "Number of remote nodes to use (e.g. with luigi)"
-        remote_cpus_per_node = None
+        cpus_per_remote_node = None
             .help = "Number of cpus to use on a remote machine (e.g. with luigi)"
         h_vmem = 100
             .help = "How to process dicts"

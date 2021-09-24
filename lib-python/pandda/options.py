@@ -20,11 +20,11 @@ class Options:
         from giant import processors
 
         # Parameters for dispatched jobs
-        self.remote_workers = (
-            config.processing.remote_workers
+        self.remote_nodes = (
+            config.processing.remote_nodes
             )
-        self.remote_cpus_per_worker = (
-            config.processing.remote_cpus_per_worker
+        self.cpus_per_remote_node = (
+            config.processing.cpus_per_remote_node
             )
         self.h_vmem = (
             config.processing.h_vmem
