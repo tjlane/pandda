@@ -153,9 +153,6 @@ class MakeSimpleOccupancyRestraints(_BaseRestraintMaker):
                     )
                 )
 
-            logger(str(g))
-            logger(str(occupancy_restraints[-1]))
-
         return RestraintsCollection(
             occupancy_restraints = occupancy_restraints,
             )

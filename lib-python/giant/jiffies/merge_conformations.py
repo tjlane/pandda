@@ -2,21 +2,44 @@ import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 import os, sys
+import pathlib as pl
+
+from giant.phil import (
+    log_running_parameters,
+    )
+
+from giant.mulch.dataset import (
+    AtomicModel,
+    )
+
+from giant.structure.conformers import (
+    MakeMultiStateModel,
+    )
+
+from giant.structure.occupancy import (
+    ScaleOccupancies,
+    SanitiseOccupancies,
+    ResetOccupancies,
+    )
+
+from giant.jiffies import (
+    make_restraints,
+    )
 
 ############################################################################
 
 PROGRAM = 'giant.merge_conformations'
 
 DESCRIPTION = """
-    A tool to merge two models of the same crystal into one structure.
-        The alternate conformers of the two models are generated and merged. Any common sections are then
-        converted back into a single conformer model. This tool is therefore particularly useful when one
-        model is an edited version of the other as many of the residues will be identical and the output
-        structure will not contain too many alternate conformations.
+    A tool to merge multiple models of the same crystal into one structure.
+        The alternate conformers of the two models are generated and merged.
+        Any common sections are then converted back into a single conformer
+        model. This tool is therefore particularly useful when one model is
+        an edited version of the other as many of the residues will be
+        identical and the output structure will not contain too many
+        alternate conformations.
 
     1) Simple usage:
-        > giant.merge_conformations major=structure_1.pdb minor=structure_2.pdb
-    2) Lazy usage -- first file with be used as the major conformation
         > giant.merge_conformations structure_1.pdb structure_2.pdb
 """
 
@@ -29,50 +52,44 @@ blank_arg_prepend = {
 import libtbx.phil
 master_phil = libtbx.phil.parse("""
 input {
-    major = None
-        .help = 'The major conformation of the protein (the conformation you want to have the lowest altlocs)'
-        .type = str
-    minor = None
-        .help = 'The minor conformation of the protein (the conformation that will have the higher altlocs)'
-        .type = str
     pdb = None
-        .help = 'Dummy holder to allow files to be specified without major= or minor=. The first file will be used as major.'
         .type = str
         .multiple = True
 }
 options {
-    minor_occupancy = 1.0
-        .help = 'occupancy of the minor state after merging (multiplies existing occupancies)'
-        .type = float
-    major_occupancy = 1.0
-        .help = 'occupancy of the major state after merging (multiplies existing occupancies)'
-        .type = float
     prune_duplicates_rmsd = 0.05
-        .help = 'rmsd at which to remove duplicate residues'
+        .help = 'RMSD below which to remove duplicate residues'
         .type = float
+    occupancy = None
+        .help = 'List of occupancies for the different states. Used to scale the input occupancies of each structure.'
+        .type = float
+        .multiple = True
+    sanitise_occupancies = True
+        .type = bool
+        .help = '(Re)scale occupancies so that group occupancies in the output structure are between 0 and 1.'
     reset_all_occupancies = False
-        .help = 'set all conformer occupancies to the same value (1.0/<number of conformers>). overrides minor_occupancy=X and major_occupancy=X.'
+        .help = 'Set all conformer occupancies to the same value (1.0/<number of conformers>). overrides all other occupancy arguments.'
         .type = bool
 }
 output {
-    pdb = 'multi-state-model.pdb'
+    pdb = 'merge_conformations.pdb'
         .help = 'output pdb file'
         .type = str
-    log = 'multi-state-merge-conformations.log'
+    log = 'merge_conformations.log'
         .help = 'output log file'
         .type = str
+}
+restraints {
     make_restraints = True
         .help = 'generate refinement restraints for the output model'
         .type = bool
-}
-restraints {
     output {
     include scope giant.jiffies.make_restraints.output_phil
     }
     include scope giant.jiffies.make_restraints.options_phil
 }
 settings {
-    overwrite = True
+    overwrite = False
         .type = bool
     verbose = False
         .type = bool
@@ -81,284 +98,310 @@ settings {
 
 ############################################################################
 
-def merge_complementary_hierarchies(
-    hierarchy_1,
-    hierarchy_2,
-    prune_duplicates_rmsd = 0.1,
-    in_place = False,
-    verbose = False,
-    ):
-    """Merge hierarchies that are alternate models of the same crystal by expanding alternate model conformations, merging, and then trimming alternate conformations where possible"""
+def validate_params(params):
 
-    import iotbx.pdb
-    from giant.structure.utils import \
-            resolve_residue_id_clashes, \
-            transfer_residue_groups_from_other
-    from giant.structure.altlocs import \
-            expand_alternate_conformations, \
-            find_next_conformer_idx, \
-            increment_altlocs, \
-            prune_redundant_alternate_conformations
+    params.input.pdb = [
+        p for p in params.input.pdb
+        if p is not None
+        ]
 
-    # Alter the original files?
-    if (not in_place):
-        # Copy the hierarchies
-        hierarchy_1 = hierarchy_1.deep_copy()
-        hierarchy_2 = hierarchy_2.deep_copy()
+    if len(params.input.pdb) == 0:
+        raise IOError('No input PDBs provided.')
 
-    # Sort the atoms
-    hierarchy_1.sort_atoms_in_place()
-    hierarchy_2.sort_atoms_in_place()
+    if len(params.input.pdb) == 1:
+        raise IOError('Only one input PDB provided.')
 
-    logger.heading('Preparing to merge structures')
+    for p in params.input.pdb:
 
-    logger.subheading('Explicitly expanding models to all conformations of the crystal')
+        if not pl.Path(p).exists():
 
-    logger('Expanding alternate conformations in structure 1')
-    expand_alternate_conformations(
-        hierarchy = hierarchy_1,
-        in_place = True,
-        verbose = verbose,
-    )
+            raise IOError(
+                'File does not exist: {path}'.format(
+                    str(p)
+                    )
+                )
 
-    logger('Expanding alternate conformations in structure 2')
-    expand_alternate_conformations(
-        hierarchy = hierarchy_2,
-        in_place = True,
-        verbose = verbose,
-    )
+    if (params.output.pdb is None) or (not params.output.pdb.strip()):
 
-    logger.subheading('Applying conformer shift to the second structure before merging')
+        raise IOError('No output PDB file provided.')
 
-    logger('Identifying the altloc shift required from the number of alternate conformers in structure 1')
-    conf_offset = find_next_conformer_idx(
-        hierarchy = hierarchy_1,
-        all_ids = iotbx.pdb.systematic_chain_ids(),
-    )
+    # Check existence of output pdb and delete as necessary
+    if pl.Path(params.output.pdb).exists() and (not params.settings.overwrite):
 
-    logger('Incrementing all altlocs in structure 2 by {}'.format(conf_offset))
-    increment_altlocs(
-        hierarchy = hierarchy_2,
-        offset = conf_offset,
-        in_place = True,
-        verbose = verbose,
-    )
+        raise IOError(
+            'Output file already exists: {path}.\nRun with overwrite=True to remove this file'.format(
+                path = params.output.pdb,
+                )
+            )
 
-    logger.subheading('Renaming residues that do not align between structures')
-    resolve_residue_id_clashes(
-        fixed_hierarchy = hierarchy_1,
-        moving_hierarchy = hierarchy_2,
-        in_place = True,
-        verbose = verbose,
-    )
+    if (params.options.occupancy is not None) and len(params.options.occupancy) > 0:
 
-    logger.heading('Merging structures')
+        occupancies = map(float, params.options.occupancy)
 
-    logger('Transferring residues from Structure 2 to Structure 1')
-    transfer_residue_groups_from_other(
-        acceptor_hierarchy = hierarchy_1,
-        donor_hierarchy = hierarchy_2,
-        in_place = True,
-        verbose = verbose,
-    )
+        if len(occupancies) != len(params.input.pdb):
 
-    logger.heading('Post-processing structure')
+            raise IOError(
+                "Must provide the same number of occupancies as input PDB files: \n{pdbs}\n{occupancies}".format(
+                    pdbs = len(params.input.pdb),
+                    occupancies = len(params.options.occupancy),
+                    )
+                )
 
-    logger('Pruning unneccessary multi-conformer residues in the merged structure')
-    prune_redundant_alternate_conformations(
-        hierarchy = hierarchy_1,
-        required_altlocs = hierarchy_1.altloc_indices(),
-        rmsd_cutoff = prune_duplicates_rmsd,
-        in_place = True,
-        verbose = verbose,
-    )
+        for o in occupancies:
 
-    return hierarchy_1
+            if (o < 0.0) or (o > 1.0):
 
-############################################################################
+                raise IOError(
+                    "Invalid occupancy (must be between 0.0 and 1.0): {o}".format(
+                        o = o,
+                        )
+                    )
+
+        occ_sum = sum(occupancies)
+
+        if occ_sum > 1.0:
+
+            raise IOError(
+                "Occupancy sum must be less than 1.0: {occs}={occ_sum}".format(
+                    occs = '+'.join(map(str, occupancies)),
+                    occ_sum = occ_sum,
+                    )
+                )
+
+
+class MergeConformations:
+
+    def __init__(self,
+        prune_rmsd_cutoff,
+        sanitise_occupancies = False,
+        reset_all_occupancies = False,
+        ):
+
+        self.scale_occupancies = ScaleOccupancies(
+            in_place = True,
+            )
+
+        self.merge_hierarchies = MakeMultiStateModel(
+            prune_rmsd_cutoff = prune_rmsd_cutoff,
+            in_place = True,
+            )
+
+        self.sanitise_occupancies = (
+            SanitiseOccupancies()
+            if sanitise_occupancies
+            else None
+            )
+
+        self.reset_occupancies = (
+            ResetOccupancies()
+            if reset_all_occupancies
+            else None
+            )
+
+    def __call__(self,
+        hierarchies,
+        occupancies = None,
+        ):
+
+        # Copy as will be modifying the list
+        hierarchies = list(hierarchies)
+
+        logger.subheading(
+            'Applying input occupancies prior to merging'
+            )
+
+        if (occupancies is not None):
+
+            assert len(occupancies) == len(hierarchies)
+
+            for h, o in zip(hierarchies, occupancies):
+
+                self.scale_occupancies(
+                    atoms = h.atoms(),
+                    occupancy = o,
+                    )
+
+        #####
+
+        logger.heading(
+            'Merging models'
+            )
+
+        hierarchy = self.merge_hierarchies(
+            hierarchies = hierarchies,
+            )
+
+        #####
+
+        logger.subheading(
+            'Post-processing occupancies'
+            )
+
+        # Reset occupancies
+        if self.reset_occupancies is not None:
+
+            hierarchy = self.reset_occupancies(hierarchy)
+
+        # Always do this last
+        if self.sanitise_occupancies is not None:
+
+            hierarchy = self.sanitise_occupancies(hierarchy)
+
+        return hierarchy
+
+
+class MakeOutputRestraints:
+
+    def __init__(self,
+        params,
+        ):
+
+        self.make_restraints_master_phil = (
+            make_restraints.master_phil
+            )
+
+        self.scope = self.get_scope(
+            params = params,
+            )
+
+    def __call__(self, pdb_path):
+
+        params = self.scope.copy().extract()
+
+        params.input.pdb = str(pdb_path)
+
+        # Report
+        logger.heading(
+            'Making restraints for output structure'
+            )
+        #
+
+        output = make_restraints.run(
+            params
+            )
+
+        return output
+
+    def get_scope(self, params):
+
+        # Transfer the other phil objects from the master phil
+        #
+        master_phil = self.make_restraints_master_phil
+        #
+        merged_params = (
+            master_phil.fetch(
+                master_phil.format(
+                    params.restraints
+                    )
+                )
+            ).extract()
+
+        # Transfer from the main params
+        merged_params.settings.overwrite = params.settings.overwrite
+        merged_params.settings.verbose = params.settings.verbose
+
+        # Set some different defaults
+        merged_params.output.log = None
+
+        # Reformat to a scope (can be copied)
+        merged_scope = master_phil.format(
+            merged_params
+            )
+
+        return merged_scope
+
 
 def run(params):
 
     logger = lg.setup_logging(
         name = __name__,
         log_file = params.output.log,
-    )
+        debug = params.settings.verbose,
+        )
 
     # Report
-    logger.heading('Validating input parameters and input files')
-
-    # Check one or other have been provided
-    if (params.input.major or params.input.minor) and not (params.input.pdb==[None] or params.input.pdb==[]):
-        raise IOError('Have provided input.major & input.minor, as well as files to input.pdb. Specify either input.major & input.minor, or two input.pdb.')
-    # Assign files to major and minor if necessary
-    if not (params.input.major and params.input.minor):
-        if len(params.input.pdb) != 2:
-            raise IOError('Must provide zero or two pdb files to input.pdb')
-        params.input.major = params.input.pdb[0]
-        params.input.minor = params.input.pdb[1]
-    # Check files exist
-    if not os.path.exists(params.input.major):
-        raise IOError('input.major does not exist: {}'.format(params.input.major))
-    if not os.path.exists(params.input.minor):
-        raise IOError('input.minor does not exist: {}'.format(params.input.minor))
-    # Just check again...
-    assert params.input.major
-    assert params.input.minor
-    assert params.output.pdb
-    # Check existence of output pdb and delete as necessary
-    if os.path.exists(params.output.pdb):
-        if params.settings.overwrite:
-            os.remove(params.output.pdb)
-        else:
-            raise IOError('Output file already exists: {}. Run with overwrite=True to remove this file'.format(params.output.pdb))
-
-    # Check that the input occupancies are valid
-    if (params.options.minor_occupancy>1.0) or (params.options.major_occupancy>1.0):
-        raise ValueError(
-            'minor_occupancy or major_occupancy cannot be greater than 1.0 (currently {} and {})'.format(
-                params.options.minor_occupancy,
-                params.options.major_occupancy,
-            )
+    logger.subheading(
+        'Validating input parameters and input files'
         )
 
-    # Report validated parameters
-    logger.subheading('Processed merging parameters')
-    for obj in master_phil.format(params).objects:
-        if obj.name == 'restraints':
-            continue
-        logger(obj.as_str().strip())
+    validate_params(params)
 
-    # Read in the ligand file and set each residue to the requested conformer
-    logger.subheading('Reading input files')
-    from giant.io.pdb import strip_pdb_to_input
-    maj_obj = strip_pdb_to_input(params.input.major, remove_ter=True)
-    min_obj = strip_pdb_to_input(params.input.minor, remove_ter=True)
-
-    # Check that ... something
-    try:
-        maj_obj.hierarchy.only_model()
-        min_obj.hierarchy.only_model()
-    except:
-        raise Sorry('Input structures may only have one model')
-
-    # Multiply the input hierarchies by occupancy multipliers
-
-    logger.subheading('Updating input occupancies prior to merging')
-
-    logger('Multiplying occupancies of input.major by {}'.format(params.options.major_occupancy))
-    maj_obj.hierarchy.atoms().set_occ(
-        maj_obj.hierarchy.atoms().extract_occ() * params.options.major_occupancy
+    log_running_parameters(
+        params = params,
+        master_phil = master_phil,
+        logger = logger,
     )
 
-    logger('Multiplying occupancies of input.minor by {}'.format(params.options.minor_occupancy))
-    min_obj.hierarchy.atoms().set_occ(
-        min_obj.hierarchy.atoms().extract_occ() * params.options.minor_occupancy
-    )
-
-    # Merge the hierarchies
-    final_struct = merge_complementary_hierarchies(
-        hierarchy_1 = maj_obj.hierarchy,
-        hierarchy_2 = min_obj.hierarchy,
-        prune_duplicates_rmsd = params.options.prune_duplicates_rmsd,
-        in_place = True,
-        verbose = params.settings.verbose,
-    )
-
-    # Set output occupancies
-
-    logger.subheading('Post-processing occupancies')
-
-    from giant.structure.occupancy import set_conformer_occupancy, sanitise_occupancies
-
-    # Reset occupancies if required
-    if params.options.reset_all_occupancies:
-        # Calculate number of altlocs and associated occupancy
-        altlocs = [a for a in final_struct.altloc_indices() if a]
-        if len(altlocs) > 0:
-            logger('Setting all conformer ({}) occupancies to {}'.format(','.join(altlocs), new_occ))
-            new_occ = 1.0/len(altlocs)
-            set_conformer_occupancy(
-                hierarchy = final_struct,
-                altlocs = altlocs,
-                occupancy = new_occ,
-                in_place = True,
-                verbose = params.settings.verbose,
-            )
-    else:
-        # Perform minimal normalisation of occupancies so that residue occupancy is in range 0-1
-        logger('Sanitising occupancies so that residue occupancies are between 0 and 1')
-        sanitise_occupancies(
-            hierarchy = final_struct,
-            in_place = True,
-            verbose = params.settings.verbose,
+    logger.subheading(
+        'Setting up...'
         )
 
-    # Set all main-conf occupancies to 1.0
-    logger('\nSetting all main-conf occupancies to 1.0')
-    set_conformer_occupancy(
-        hierarchy = final_struct,
-        altlocs = [''],
-        occupancy = 1.0,
-        in_place = True,
-        verbose = params.settings.verbose,
-    )
+    merge_conformations = MergeConformations(
+        prune_rmsd_cutoff = params.options.prune_duplicates_rmsd,
+        sanitise_occupancies = params.options.sanitise_occupancies,
+        reset_all_occupancies = params.options.reset_all_occupancies,
+        )
 
-    # Update the atoms numbering
-    final_struct.sort_atoms_in_place()
-    final_struct.atoms_reset_serial()
+    make_output_restraints = (
+        MakeOutputRestraints(
+            params = params,
+            )
+        if params.restraints.make_restraints
+        else None
+        )
+
+    #####
+
+    logger.subheading(
+        'Reading input files'
+        )
+
+    models = [
+        AtomicModel.from_file(p)
+        for p in params.input.pdb
+        ]
+
+    #####
+
+    hierarchy = merge_conformations(
+        hierarchies = [m.hierarchy for m in models],
+        occupancies = (
+            params.options.occupancy
+            if params.options.occupancy
+            else None
+            ),
+        )
+
+    # Update the atom numbering
+    hierarchy.sort_atoms_in_place()
+    hierarchy.atoms_reset_serial()
 
     # Write output file
-    logger.subheading('Writing output structure')
-    logger('Writing output structure to {}'.format(params.output.pdb))
-    final_struct.write_pdb_file(
+    logger.subheading(
+        'Writing output structure'
+        )
+
+    logger(
+        'Writing output structure to {}'.format(params.output.pdb)
+        )
+
+    model = models[0]
+    hierarchy.write_pdb_file(
         file_name = params.output.pdb,
-        crystal_symmetry = maj_obj.crystal_symmetry(),
+        crystal_symmetry = (
+            model.crystal.crystal_symmetry
+            if hasattr(model, 'crystal')
+            else None
+            ),
     )
 
-    # Run the restraint generation for the merged structure if requested
-    if params.output.make_restraints:
+    if make_output_restraints is not None:
 
-        from giant.jiffies import make_restraints
+        restraints = make_output_restraints(
+            pdb_path = params.output.pdb,
+            )
 
-        # Transfer the other phil objects from the master phil
-        r_params = make_restraints.master_phil.extract()
-
-        for name, obj in r_params.__dict__.items():
-            if name.startswith('_'): continue
-            if name not in params.restraints.__dict__:
-                params.restraints.__inject__(name, obj)
-
-        # Apply the output of merging to input of restraints
-        params.restraints.input.pdb = params.output.pdb
-
-        # Rename output files to be in same folder as output structure
-        if params.restraints.output.phenix:
-            params.restraints.output.phenix = os.path.join(os.path.dirname(params.output.pdb), os.path.basename(params.restraints.output.phenix))
-        if params.restraints.output.refmac:
-            params.restraints.output.refmac = os.path.join(os.path.dirname(params.output.pdb), os.path.basename(params.restraints.output.refmac))
-
-        # Set log file name to None as logging already set up
-        params.restraints.output.log = params.output.log
-
-        # Which alternate conformations to generate restraints for
-        params.restraints.local_restraints.altlocs = ','.join([a for a in min_obj.hierarchy.altloc_indices() if a])
-
-        # Update settings
-        params.restraints.settings.verbose = params.settings.verbose
-        params.restraints.settings.overwrite = params.settings.overwrite
-
-        # Report
-        logger.heading('Parameters for generating restraints')
-        logger(master_phil.format(params).get('restraints').as_str().strip())
-
-        # Run make_restraints
-        logger.heading('Generating restraints')
-        make_restraints.run(params.restraints)
-
-    logger.heading('FINISHED')
-
-    logger.heading('Final Parameters')
-    logger(master_phil.format(params).as_str().strip())
+    logger.heading('Program exited normally!')
 
     return
 

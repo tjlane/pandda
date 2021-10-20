@@ -8,6 +8,10 @@ from .base import (
     DistanceRestraint,
     )
 
+from giant.structure.formatting import (
+    Labeller,
+    )
+
 
 class _BaseRestraintMaker(object):
 
@@ -30,8 +34,8 @@ class MakeIntraConformerRestraints(_BaseRestraintMaker):
     name = "MakeIntraConformerRestraints"
 
     def __init__(self,
-        min_distance_cutoff = 1.6,
-        max_distance_cutoff = 4.2,
+        min_distance_cutoff = 0.0,
+        max_distance_cutoff = 6.0,
         distance_restraint_sigma = 0.1,
         #torsion_restraint_sigma = None, TODO
         select_altlocs = None,
@@ -97,6 +101,18 @@ class MakeIntraConformerRestraints(_BaseRestraintMaker):
 
         for (altloc, conformer_atoms, other_atoms) in self.iterate_conformer_sets(hierarchy):
 
+            logger.debug(
+                (
+                    '> Generating restraints for altloc {altloc}\n'
+                    '\tAlt. conf. atoms: {n_conf}\n'
+                    '\tMain+Alt conf atoms: {n_main}\n'
+                    ).format(
+                    altloc = altloc,
+                    n_conf = conformer_atoms.size(),
+                    n_main = other_atoms.size(),
+                    )
+                )
+
             atom_pairs = self.iterate_atom_pairs_within_cutoff(
                 conformer_atoms = conformer_atoms,
                 other_atoms = other_atoms,
@@ -104,6 +120,10 @@ class MakeIntraConformerRestraints(_BaseRestraintMaker):
 
             restraints = self.make_atom_pair_restraints(
                 atom_pairs = atom_pairs,
+                )
+
+            logger.debug(
+                str(restraints)
                 )
 
             rc.add(restraints)
@@ -145,7 +165,8 @@ class MakeIntraConformerRestraints(_BaseRestraintMaker):
             alt_sel = (alt_indices == i_alt) # flex.bool
 
             # Make selection for altloc atoms and main conf atoms
-            combined_sel = (alt_indices == i_alt).set_selected(alt_blank_sel, True)
+            # (doing it this way keeps atom ordering -- desirable but inefficient?)
+            combined_sel = (alt_indices == i_alt).set_selected(alt_blank_sel, True) # flex.bool
 
             yield (
                 alt,
@@ -165,7 +186,7 @@ class MakeIntraConformerRestraints(_BaseRestraintMaker):
 
         for i_conformer, conf_xyz in enumerate(conformer_xyz):
 
-            # calculate inter-atom distances
+            # calculate inter-atom distances -- only for i > j
             pairwise_distances_sq[i_conformer] = (
                 np.power(other_xyz - conf_xyz, 2).sum(axis=1)
                 )
@@ -180,25 +201,116 @@ class MakeIntraConformerRestraints(_BaseRestraintMaker):
                 )
             ).T
 
+        # Sort the atom_pair_indices by the distance
+        # so that the shortest distances are prioritised
+        sorted_atom_pair_indices = sorted(
+            atom_pair_indices.tolist(),
+            key = lambda (i,j): pairwise_distances_sq[i,j],
+            )
+
         atom_check_hash = {}
 
-        for i_at_1, i_at_2 in atom_pair_indices:
+        conformer_atoms_with_labels = [a.fetch_labels() for a in conformer_atoms]
+        other_atoms_with_labels = [a.fetch_labels() for a in other_atoms]
 
-            a1 = conformer_atoms[i_at_1]
-            a2 = other_atoms[i_at_2]
+        for i_at_conf, i_at_other in sorted_atom_pair_indices:
 
-            hash_lab = tuple(sorted([a1.i_seq,a2.i_seq]))
+            a1 = conformer_atoms[i_at_conf]
+            a2 = other_atoms[i_at_other]
 
-            # avoid duplicates
+            hash_lab = tuple(
+                sorted(
+                    [a1.serial_as_int(), a2.serial_as_int()]
+                    )
+                )
+
+            # avoid exact duplicates
             if atom_check_hash.get(hash_lab):
+                logger.debug(
+                    'Already done, skipping: \n\t{l1}\n\t{l2}'.format(
+                        l1 = Labeller.format(a1),
+                        l2 = Labeller.format(a2),
+                        )
+                    )
                 continue
 
             atom_check_hash[hash_lab] = 1
+
+            # Check not in the same residue, etc
+            if not self.is_valid_atom_pair(a1,a2):
+                logger.debug(
+                    'Not valid atom pair for restraining, skipping: \n\t{l1}\n\t{l2}'.format(
+                        l1 = Labeller.format(a1),
+                        l2 = Labeller.format(a2),
+                        )
+                    )
+                continue
 
             yield (
                 a1.fetch_labels(),
                 a2.fetch_labels(),
                 )
+
+    @staticmethod
+    def is_valid_atom_pair(atom1, atom2):
+
+        logger.debug(
+            'Testing validity of atom pair\n\t{atom1}\n\t{atom2}'.format(
+                atom1 = Labeller.format(atom1),
+                atom2 = Labeller.format(atom2),
+                )
+            )
+
+        ag1 = atom1.parent()
+        ag2 = atom2.parent()
+
+        # do not allow same ag
+        if ag1.id_str() == ag2.id_str():
+            logger.debug('same atom group: false')
+            return False
+
+        rg1 = ag1.parent()
+        rg2 = ag2.parent()
+
+        # do not allow same rg
+        if rg1.id_str() == rg2.id_str():
+            logger.debug('same residue group: false')
+            return False
+
+        ch1 = rg1.parent()
+        ch2 = rg2.parent()
+
+        # accept if different chains
+        if ch1.id.strip() != ch2.id.strip():
+            logger.debug('not the same chain: true')
+            return True
+
+        # if either is not protein, then yes (one must not be polymer)
+        if not (
+            (ch1.is_protein() or ch1.is_na()) and
+            (ch2.is_protein() or ch2.is_na())
+            ):
+            logger.debug('one is not protein/na: true')
+            return True
+
+        # know they're now in the same chain
+
+        # now know both are protein/na
+        if abs(
+            ch1.find_residue_group_index(rg1) -
+            ch1.find_residue_group_index(rg2)
+            ) == 1:
+            main_set = set(['CA','C','N','O'])
+            if main_set.issuperset(
+                [
+                    atom1.name.strip(),
+                    atom2.name.strip(),
+                    ]
+                ):
+                logger.debug('main chains of adjacent residues: false')
+                return False
+
+        return True
 
     def make_atom_pair_restraints(self, atom_pairs):
 

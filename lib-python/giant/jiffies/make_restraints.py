@@ -4,6 +4,10 @@ logger = lg.getLogger(__name__)
 import os, sys
 import pathlib as pl
 
+from giant.phil import (
+    log_running_parameters,
+    )
+
 from giant.mulch.dataset import (
     AtomicModel
     )
@@ -55,6 +59,7 @@ input_phil = """
 output_phil = """
     output_prefix = 'restraints'
         .help = 'output file root'
+        .type = str
     output_formats = *refmac *phenix
         .type = choice(multi=True)
     log = 'restraints.log'
@@ -78,7 +83,7 @@ local_altloc_restraints {
     max_distance = 4.2
         .help = "Maximum distance to create local restraints between atoms"
         .type = float
-    min_distance = 1.6
+    min_distance = 0.1
         .help = "Minimum distance to create local restraints between atoms"
         .type = float
     sigma_xyz = 0.1
@@ -225,32 +230,22 @@ def build_restraints_maker(options):
 
     return maker
 
-############################################################################
-
-# def check_peptide_links(hierarchy):
-
-#     links, warnings = generate_set_of_alternate_conformer_peptide_links(
-#         hierarchy = input_hierarchy.hierarchy,
-#     )
-
-#     if (not links) and (not warnings):
-#         logger('No breaks in the backbone - hooray! (nothing needs to be done here)')
-#         return
-
-############################################################################
 
 def run(params):
 
     logger = lg.setup_logging(
         name = __name__,
         log_file = params.output.log,
+        debug = params.settings.verbose,
         )
 
-    ######################################################################
-    # Validate input
-    ######################################################################
-
     validate_params(params)
+
+    log_running_parameters(
+        params = params,
+        master_phil = master_phil,
+        logger = logger,
+    )
 
     ######################################################################
     # Prepare output and input

@@ -221,13 +221,13 @@ def setup_root_logging(formatter=None, level=lg.INFO):
     logger = lg.getLogger()
 
     # Set logger to info by default
-    logger.setLevel(lg.INFO)
+    logger.setLevel(level)
 
     # Add standard output to root logger
     if not logger.handlers:
         ch = lg.StreamHandler(stream=sys.stdout)
         ch.setFormatter(formatter)
-        ch.setLevel(level)
+        ch.setLevel(lg.DEBUG)
         logger.addHandler(ch)
 
     return logger
@@ -301,7 +301,7 @@ def setup_logging(name, log_file=None, warning_handler_name='warnings', debug=Fa
     if (log_file is not None):
         fh = lg.FileHandler(log_file)
         fh.setFormatter(fmt)
-        fh.setLevel(level)
+        fh.setLevel(lg.DEBUG)
         logger.addHandler(fh)
 
     if (warning_handler_name is not None):
