@@ -107,11 +107,11 @@ class PhenixRestraintCollectionFormatter(object):
             )
 
     def __call__(self,
-        restraint_collection,
+        restraints_collection,
         filepath = None,
         ):
 
-        rc = restraint_collection
+        rc = restraints_collection
         fp = filepath
 
         blocks = []
@@ -140,7 +140,8 @@ class PhenixRestraintCollectionFormatter(object):
             blocks = blocks,
             )
 
-        if fp is not None:
+        if (fp is not None) and (output_block is not None):
+
             with open(str(fp), 'a') as fh:
                 fh.write(
                     output_block

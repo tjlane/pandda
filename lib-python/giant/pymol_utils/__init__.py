@@ -37,8 +37,10 @@ class _PymolScript(object):
         self._append(self._import_pml)
         self._append(self._import_cgo)
 
-        if pretty_models: self.pretty_models()
-        if pretty_maps:   self.pretty_maps()
+        if pretty_models:
+            self.pretty_models()
+        if pretty_maps:
+            self.pretty_maps()
 
         self.colour_palette(self._colours)
 

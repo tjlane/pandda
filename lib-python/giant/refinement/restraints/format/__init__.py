@@ -44,7 +44,7 @@ class WriteRestraints(object):
             for k in formats
         }
 
-    def __call__(self, restraint_collection):
+    def __call__(self, restraints_collection):
 
         formatted = {}
 
@@ -55,10 +55,20 @@ class WriteRestraints(object):
             logger.subheading('Writing restraints for {}'.format(k))
 
             formatted[k] = formatter(
-                restraint_collection = restraint_collection,
+                restraints_collection = restraints_collection,
                 filepath = self.output_path_dict.get(k),
                 )
 
-            logger(str(formatted[k]))
+            self.show_truncated(str(formatted[k]))
 
         return formatted
+
+    def show_truncated(self, log_string):
+
+        if len(log_string) > 5000:
+            log_string = (
+                log_string[:5000] +
+                '...\n[truncated after first 5000 characters]'
+                )
+
+        logger(log_string)

@@ -103,6 +103,10 @@ class DistanceRestraintList(object):
 
         return self
 
+    def remove(self, restraint):
+
+        self.distance_restraints.remove(restraint)
+
     def set_sigma(self,
         sigma,
         ):

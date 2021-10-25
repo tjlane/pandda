@@ -33,14 +33,20 @@ class MakeIntraConformerRestraints(_BaseRestraintMaker):
 
     name = "MakeIntraConformerRestraints"
 
+    _backbone_atom_set = set(['CA','C','N','O'])
+    _single_bond_elems = ['C','N','O','S','H','BR','CL','F'] # upper case
+    _multi_bond_resnames = ['HOH']
+
     def __init__(self,
-        min_distance_cutoff = 0.0,
-        max_distance_cutoff = 6.0,
+        min_distance_cutoff = 0.1,
+        max_distance_cutoff = 4.0,
         distance_restraint_sigma = 0.1,
         #torsion_restraint_sigma = None, TODO
         select_altlocs = None,
         atom_selection = None,
         exclude_hydrogens = True,
+        filter_c_x_pairs = True,
+        filter_c_c_pairs = True,
         ):
 
         self.min_distance_cutoff = float(min_distance_cutoff)
@@ -61,6 +67,9 @@ class MakeIntraConformerRestraints(_BaseRestraintMaker):
             )
 
         self.exclude_hydrogens = bool(exclude_hydrogens)
+
+        self.filter_c_x_pairs = bool(filter_c_x_pairs)
+        self.filter_c_c_pairs = bool(filter_c_c_pairs)
 
         assert self.min_distance_cutoff > 0.0
         assert self.max_distance_cutoff > self.min_distance_cutoff
@@ -99,27 +108,32 @@ class MakeIntraConformerRestraints(_BaseRestraintMaker):
 
         rc = RestraintsCollection()
 
-        for (altloc, conformer_atoms, other_atoms) in self.iterate_conformer_sets(hierarchy):
+        for (altloc, conformer_h, other_h) in self.iterate_conformer_sets(hierarchy):
 
             logger.debug(
                 (
-                    '> Generating restraints for altloc {altloc}\n'
+                    '** Generating restraints for altloc {altloc} **\n'
                     '\tAlt. conf. atoms: {n_conf}\n'
                     '\tMain+Alt conf atoms: {n_main}\n'
                     ).format(
                     altloc = altloc,
-                    n_conf = conformer_atoms.size(),
-                    n_main = other_atoms.size(),
+                    n_conf = conformer_h.atoms().size(),
+                    n_main = other_h.atoms().size(),
                     )
                 )
 
             atom_pairs = self.iterate_atom_pairs_within_cutoff(
-                conformer_atoms = conformer_atoms,
-                other_atoms = other_atoms,
+                conformer_hierarchy = conformer_h,
+                other_hierarchy = other_h,
+                )
+
+            atom_pairs = self.prune_atom_pairs(
+                atom_pairs = atom_pairs,
                 )
 
             restraints = self.make_atom_pair_restraints(
                 atom_pairs = atom_pairs,
+                label = 'Restraints for altloc {alt}'.format(alt=altloc),
                 )
 
             logger.debug(
@@ -131,8 +145,6 @@ class MakeIntraConformerRestraints(_BaseRestraintMaker):
         return rc
 
     def iterate_conformer_sets(self, hierarchy):
-
-        h_atoms = hierarchy.atoms()
 
         # Get the indices of each conformer in the structure
         alt_indices = hierarchy.get_conformer_indices()
@@ -170,14 +182,18 @@ class MakeIntraConformerRestraints(_BaseRestraintMaker):
 
             yield (
                 alt,
-                h_atoms.select(alt_sel),
-                h_atoms.select(combined_sel),
+                hierarchy.select(alt_sel),
+                hierarchy.select(combined_sel),
                 )
 
-    def iterate_atom_pairs_within_cutoff(self, conformer_atoms, other_atoms):
+    def iterate_atom_pairs_within_cutoff(self, conformer_hierarchy, other_hierarchy):
 
-        conformer_xyz = np.array(conformer_atoms.extract_xyz())
-        other_xyz = np.array(other_atoms.extract_xyz())
+        conformer_xyz = np.array(
+            conformer_hierarchy.atoms().extract_xyz()
+            )
+        other_xyz = np.array(
+            other_hierarchy.atoms().extract_xyz()
+            )
 
         pairwise_distances_sq = np.zeros(
             (len(conformer_xyz), len(other_xyz)),
@@ -210,115 +226,252 @@ class MakeIntraConformerRestraints(_BaseRestraintMaker):
 
         atom_check_hash = {}
 
-        conformer_atoms_with_labels = [a.fetch_labels() for a in conformer_atoms]
-        other_atoms_with_labels = [a.fetch_labels() for a in other_atoms]
+        # This is annoying -- could probably be optimised further
+        conformer_atoms_with_labels = list(
+            conformer_hierarchy.atoms_with_labels()
+            )
+        other_atoms_with_labels = list(
+            other_hierarchy.atoms_with_labels()
+            )
 
         for i_at_conf, i_at_other in sorted_atom_pair_indices:
 
-            a1 = conformer_atoms[i_at_conf]
-            a2 = other_atoms[i_at_other]
+            a1 = conformer_atoms_with_labels[i_at_conf]
+            a2 = other_atoms_with_labels[i_at_other]
 
-            hash_lab = tuple(
-                sorted(
-                    [a1.serial_as_int(), a2.serial_as_int()]
-                    )
+            # sort atoms by serial (unique)
+            a1, a2 = sorted(
+                [a1, a2],
+                key = lambda a: a.serial_as_int(),
                 )
 
-            # avoid exact duplicates
-            if atom_check_hash.get(hash_lab):
-                logger.debug(
-                    'Already done, skipping: \n\t{l1}\n\t{l2}'.format(
+            hash_lab = (
+                a1.serial_as_int(),
+                a2.serial_as_int(),
+                )
+
+            logger.debug(
+                    'Atom pair: \n\t{l1}\n\t{l2}'.format(
                         l1 = Labeller.format(a1),
                         l2 = Labeller.format(a2),
                         )
                     )
+
+            # avoid exact duplicates
+            if atom_check_hash.get(hash_lab):
+
+                logger.debug('Already done, skipping.\n')
+
                 continue
 
+            # Record this pair as "seen before"
             atom_check_hash[hash_lab] = 1
 
             # Check not in the same residue, etc
             if not self.is_valid_atom_pair(a1,a2):
-                logger.debug(
-                    'Not valid atom pair for restraining, skipping: \n\t{l1}\n\t{l2}'.format(
-                        l1 = Labeller.format(a1),
-                        l2 = Labeller.format(a2),
-                        )
-                    )
+
+                logger.debug('Not valid atom pair, skipping.\n')
+
                 continue
 
-            yield (
-                a1.fetch_labels(),
-                a2.fetch_labels(),
-                )
+            logger.debug('Keeping atom pair.\n')
 
-    @staticmethod
-    def is_valid_atom_pair(atom1, atom2):
+            yield (a1, a2)
 
-        logger.debug(
-            'Testing validity of atom pair\n\t{atom1}\n\t{atom2}'.format(
-                atom1 = Labeller.format(atom1),
-                atom2 = Labeller.format(atom2),
-                )
-            )
+    def is_valid_atom_pair(self, atom1, atom2):
 
-        ag1 = atom1.parent()
-        ag2 = atom2.parent()
-
-        # do not allow same ag
-        if ag1.id_str() == ag2.id_str():
-            logger.debug('same atom group: false')
-            return False
-
-        rg1 = ag1.parent()
-        rg2 = ag2.parent()
-
-        # do not allow same rg
-        if rg1.id_str() == rg2.id_str():
-            logger.debug('same residue group: false')
-            return False
-
-        ch1 = rg1.parent()
-        ch2 = rg2.parent()
-
-        # accept if different chains
-        if ch1.id.strip() != ch2.id.strip():
-            logger.debug('not the same chain: true')
+        if atom1.chain_id != atom2.chain_id:
+            logger.debug('USE: Different chains')
             return True
 
-        # if either is not protein, then yes (one must not be polymer)
-        if not (
-            (ch1.is_protein() or ch1.is_na()) and
-            (ch2.is_protein() or ch2.is_na())
-            ):
-            logger.debug('one is not protein/na: true')
+        # do not allow same residue
+        if atom1.resid() == atom2.resid():
+            logger.debug('SKIP: Same atom group')
+            return False
+
+        # now quick checks
+
+        if atom1.hetero or atom2.hetero:
+            logger.debug('USE: At least one atom is HETATM')
             return True
 
-        # know they're now in the same chain
+        if self.filter_c_c_pairs is True:
+            if (atom1.element.strip().upper() == 'C') and (atom2.element.strip().upper() == 'C'):
+                logger.debug('SKIP: Skipping C-C pairs')
+                return False
 
-        # now know both are protein/na
+        # only allow interactions between adjacent sidechains
+
         if abs(
-            ch1.find_residue_group_index(rg1) -
-            ch1.find_residue_group_index(rg2)
-            ) == 1:
-            main_set = set(['CA','C','N','O'])
-            if main_set.issuperset(
+            atom1.resseq_as_int() - atom2.resseq_as_int()
+            ) < 2:
+
+            if self._backbone_atom_set.intersection(
                 [
                     atom1.name.strip(),
                     atom2.name.strip(),
                     ]
                 ):
-                logger.debug('main chains of adjacent residues: false')
+                logger.debug('SKIP: Main chains of adjacent residues')
                 return False
 
         return True
 
-    def make_atom_pair_restraints(self, atom_pairs):
+    def prune_atom_pairs(self, atom_pairs):
 
-        distance_restraints = []
+        # sort the atom pairs by residue-interactions
+        sorting_hash = {}
 
         for a1, a2 in atom_pairs:
 
-            # Skip atoms in the same residue - TODO
+            assert a1.serial_as_int() < a2.serial_as_int(), "must be preordered"
+
+            # Sort by residue interactions
+            hash_key = (
+                a1.chain_id+a1.resid(),
+                a2.chain_id+a2.resid(),
+                )
+
+            hash_tuple = (
+                a1,
+                a2,
+                a1.distance(a2),
+                )
+
+            sorting_hash.setdefault(
+                hash_key, []
+                ).append(
+                hash_tuple
+                )
+
+        # Now return one one interaction for each atom for each residue pairing
+
+        for k, atom_pairs in sorted(sorting_hash.items()):
+
+            logger.debug(
+                'Pruning atom pairs between "{}" and "{}"'.format(
+                    *k
+                    )
+                )
+
+            sorted_atom_pairs = sorted(
+                atom_pairs,
+                key = lambda t: t[2],
+                )
+
+            logger.debug(
+                'Current atom pairs (sorted by distance):\n{}'.format(
+                    '\n'.join([
+                        (
+                        '\tAtom1: {a1}\n'
+                        '\tAtom2: {a2}\n'
+                        '\tDistance: {d}'
+                        ).format(
+                        a1 = Labeller.format(ap[0]),
+                        a2 = Labeller.format(ap[1]),
+                        d = ap[2],
+                        )
+                        for ap in atom_pairs
+                        ])
+                    )
+                )
+
+            #
+
+            use_this_atom_hash = {}
+
+            for a1, a2, d in sorted_atom_pairs:
+
+                use_this_pair = True
+
+                # Check if either atom is marked for not using
+
+                for a in [a1, a2]:
+
+                    a_id = a.id_str()
+
+                    use_this_atom = use_this_atom_hash.get(a_id, True)
+
+                    #
+                    # Flagged not to be used
+                    #
+                    if use_this_atom is False:
+
+                        # TODO Add exception here for atoms that aren't carbon that link to "exotics"?
+                        # Could be longer-range interactions that are required to keep geometry for heavier atoms
+
+                        logger.debug(
+                            'Ignoring atom pair:\n\t{a1}\n\t{a2}\n\t{m}'.format(
+                                a1 = Labeller.format(a1),
+                                a2 = Labeller.format(a2),
+                                m = '(Atom {} is marked as already used.)'.format(a_id),
+                                )
+                            )
+
+                        use_this_pair = False
+                    #
+                    # Previously seen, check we want to use it to be used again
+                    # (even if it's not used in this pair).
+                    #
+                    elif (use_this_atom is None):
+                        #
+                        # some atoms e.g. water can have as many bonds as it likes to the same residue
+                        # or at least until it starts to link to carbon atoms, then mark as done
+                        # stops too many restraints between carbon atoms and e.g. waters
+                        #
+                        if 'C' in [a1.element.strip().upper(), a2.element.strip().upper()]:
+
+                            # Flag this atom not to be used again
+                            use_this_atom_hash[a_id] = False
+
+                            # Set pair flag
+                            use_this_pair = False
+
+                            logger.debug(
+                                'Ignoring atom pair:\n\t{a1}\n\t{a2}\n\t{m}'.format(
+                                    a1 = Labeller.format(a1),
+                                    a2 = Labeller.format(a2),
+                                    m = '(Not making multiple restraints including C-X interactions.)'.format(a_id),
+                                    )
+                                )
+
+                if (use_this_pair is False):
+                    continue
+
+                #
+
+                logger.debug(
+                    'Keeping atom pair:\n\t{a1}\n\t{a2}\n\t{m}'.format(
+                        a1 = Labeller.format(a1),
+                        a2 = Labeller.format(a2),
+                        m = 'Distance = {}'.format(a1.distance(a2)),
+                        )
+                    )
+
+                # Mark each atom are now used
+
+                for a in [a1, a2]:
+
+                    a_id = a.id_str()
+
+                    # Assign check flag if unassigned
+                    if a_id not in use_this_atom_hash:
+                        #
+                        # Mark as used, but able to be considered
+                        #
+                        use_this_atom_hash[a_id] = None
+                        #
+
+                yield (a1, a2)
+
+            # makes log easier to read
+            logger.debug('')
+
+    def make_atom_pair_restraints(self, atom_pairs, label=None):
+
+        distance_restraints = []
+
+        for a1, a2 in list(atom_pairs):
 
             distance_restraints.append(
                 DistanceRestraint(
@@ -330,6 +483,7 @@ class MakeIntraConformerRestraints(_BaseRestraintMaker):
                 )
 
         return RestraintsCollection(
+            label = label,
             distance_restraints = distance_restraints,
             )
 

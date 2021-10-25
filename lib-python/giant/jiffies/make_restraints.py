@@ -28,6 +28,10 @@ from giant.refinement.restraints.format import (
     WriteRestraints,
     )
 
+from giant.refinement.restraints.to_pymol import (
+    WriteRestraintsPymolScript,
+    )
+
 
 ############################################################################
 
@@ -67,7 +71,7 @@ output_phil = """
         .type = path
 """
 options_phil = """
-modes = *local_altloc_restraints *duplicated_atom_restraints *simple_occupancy_groups *multi_state_occupancy_groups
+modes = *multi_state_occupancy_groups *local_altloc_restraints *duplicated_atom_restraints *simple_occupancy_groups
     .type = choice(multi=True)
     .help = "Which restraints should be generated"
 atom_selection = None
@@ -77,10 +81,13 @@ exclude_hydrogens = True
     .help = "Exclude all hydrogen restraints"
     .type = bool
 local_altloc_restraints {
+    selection = all *multi_state_occupancy_groups
+        .type = choice(multi=False)
+        .help = "what atoms to generate restraints for (default just those that are selected by multi_state_occupancy_groups)"
     altloc_selection = None
         .help = "Select a subset of altlocs to generate restraints for e.g. ABC"
         .type = str
-    max_distance = 4.2
+    max_distance = 4.0
         .help = "Maximum distance to create local restraints between atoms"
         .type = float
     min_distance = 0.1
@@ -120,7 +127,7 @@ multi_state_occupancy_groups {
     overlap_dist = 3.0
         .type = float
         .help = 'Distance to use when clustering groups of atoms that should have occupancies that SUM TO (LESS THAN) ONE'
-    ignore_common_solvent_molecules = True
+    ignore_common_solvent_molecules = False
         .type = bool
     include_resname = None
         .type = str
@@ -143,9 +150,9 @@ input {{input_phil}}
 output {{output_phil}}
 options {{options_phil}}
 settings {
-    overwrite = True
+    overwrite = False
         .type = bool
-    verbose = True
+    verbose = False
         .type = bool
 }
 """.replace(
@@ -167,7 +174,7 @@ def validate_params(params):
     if not pl.Path(params.input.pdb).exists():
         raise IOError(
             'File does not exist: {p}'.format(
-                p = p,
+                p = params.input.pdb,
                 )
             )
 
@@ -181,18 +188,44 @@ def build_restraints_maker(options):
     modes = options.modes
     exclude_hydrogens = options.exclude_hydrogens
 
+    make_intra_conformer_restraints_all = DummyRestraintMaker(name='< step skipped >')
+    make_intra_conformer_restraints_occ = None
+
+    if 'local_altloc_restraints' in modes:
+
+        make_intra_conformer_restraints = MakeIntraConformerRestraints(
+            min_distance_cutoff = lar.min_distance,
+            max_distance_cutoff = lar.max_distance,
+            distance_restraint_sigma = lar.sigma_xyz,
+            select_altlocs = lar.altloc_selection,
+            atom_selection = lar.atom_selection,
+            exclude_hydrogens = exclude_hydrogens,
+            )
+
+        if lar.selection == 'all':
+            make_intra_conformer_restraints_all = make_intra_conformer_restraints
+        elif lar.selection == 'multi_state_occupancy_groups':
+            make_intra_conformer_restraints_occ = make_intra_conformer_restraints
+        else:
+            raise NotImplementedError()
+
     maker = MakeMultiStateRestraints(
-        make_intra_conformer_restraints = (
-            MakeIntraConformerRestraints(
-                min_distance_cutoff = lar.min_distance,
-                max_distance_cutoff = lar.max_distance,
-                distance_restraint_sigma = lar.sigma_xyz,
-                select_altlocs = lar.altloc_selection,
-                atom_selection = lar.atom_selection,
-                exclude_hydrogens = exclude_hydrogens,
+        make_multi_state_occupancy_restraints = (
+            MakeMultiStateOccupancyRestraints(
+                group_distance_cutoff = msog.group_dist,
+                overlap_distance_cutoff = msog.overlap_dist,
+                ignore_common_solvent_molecules = msog.ignore_common_solvent_molecules,
+                include_resnames_list = msog.include_resname,
+                ignore_resnames_list = msog.ignore_resname,
+                set_group_completeness_to = msog.set_group_completeness_to,
+                atom_selection = msog.atom_selection,
+                make_intra_conformer_distance_restraints = make_intra_conformer_restraints_occ,
                 )
-            if ('local_altloc_restraints' in modes)
+            if ('multi_state_occupancy_groups' in modes)
             else DummyRestraintMaker(name='< step skipped >')
+            ),
+        make_intra_conformer_restraints = (
+            make_intra_conformer_restraints_all
             ),
         make_duplicate_conformer_restraints = (
             MakeDuplicateConformerRestraints(
@@ -211,19 +244,6 @@ def build_restraints_maker(options):
                 atom_selection = sog.atom_selection,
                 )
             if ('simple_occupancy_groups' in modes)
-            else DummyRestraintMaker(name='< step skipped >')
-            ),
-        make_multi_state_occupancy_restraints = (
-            MakeMultiStateOccupancyRestraints(
-                group_distance_cutoff = msog.group_dist,
-                overlap_distance_cutoff = msog.overlap_dist,
-                ignore_common_solvent_molecules = msog.ignore_common_solvent_molecules,
-                include_resnames_list = msog.include_resname,
-                ignore_resnames_list = msog.ignore_resname,
-                set_group_completeness_to = msog.set_group_completeness_to,
-                atom_selection = msog.atom_selection,
-                )
-            if ('multi_state_occupancy_groups' in modes)
             else DummyRestraintMaker(name='< step skipped >')
             ),
         )
@@ -271,6 +291,13 @@ def run(params):
         for k in output_formats
     }
 
+    output_pymol_filepath = (
+        out_root.with_suffix('.pymol.py')
+        )
+    if output_pymol_filepath.exists():
+        if (overwrite is True):
+            os.remove(str(output_pymol_filepath))
+
     for k, p in output_paths.items():
         if p.exists():
             if (overwrite is True):
@@ -294,6 +321,10 @@ def run(params):
         output_path_dict = output_paths,
         )
 
+    write_restraints_pymol_script = WriteRestraintsPymolScript(
+        filepath = output_pymol_filepath,
+        )
+
     ######################################################################
     # Generate restraints
     ######################################################################
@@ -301,15 +332,20 @@ def run(params):
     model = AtomicModel.from_file(input_pdb)
     model.hierarchy.sort_atoms_in_place()
 
-    restraint_collection = make_restraints(
+    restraints_collection = make_restraints(
         hierarchy = model.hierarchy,
         )
 
     logger.heading('Output Restraints')
-    logger(str(restraint_collection))
+    logger(str(restraints_collection))
 
     formatted_restraints = write_restraints(
-        restraint_collection = restraint_collection,
+        restraints_collection = restraints_collection,
+        )
+
+    write_restraints_pymol_script(
+        hierarchy = model.hierarchy,
+        restraints_collection = restraints_collection,
         )
 
     logger.heading('done')

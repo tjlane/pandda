@@ -75,6 +75,15 @@ class OccupancyRestraint(object):
 
         return s_.strip()
 
+    def add_group(self, objects, label=None):
+
+        self.occupancy_groups.append(
+            OccupancyGroup(
+                objects = objects,
+                label = label,
+                )
+            )
+
     @classmethod
     def from_list_of_lists(cls,
         objects_list,
@@ -152,6 +161,10 @@ class OccupancyRestraintList(object):
             )
 
         return self
+
+    def remove(self, restraint):
+
+        self.occupancy_restraints.remove(restraint)
 
     def set_complete(self, complete=True):
 

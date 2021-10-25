@@ -6,6 +6,8 @@ class _Selection:
 
     _labels = ('model','chain','resseq','icode','resname','altloc','name')
 
+    def __call__(self, obj):
+        return self.format(obj)
 
     @classmethod
     def format(cls, obj):
@@ -249,3 +251,5 @@ class PymolSelection(_Selection):
     altloc      = "alt '{}'"
     name        = "name {}"
 
+
+short_labeller = ShortLabeller()

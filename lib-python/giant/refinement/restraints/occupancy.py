@@ -179,6 +179,7 @@ class MakeMultiStateOccupancyRestraints(_BaseRestraintMaker):
         ignore_resnames_list = None,
         set_group_completeness_to = None,
         atom_selection = None,
+        make_intra_conformer_distance_restraints = None,
         ):
 
         # if we have exclude altlocs, need to set group_completeness to False?
@@ -218,6 +219,12 @@ class MakeMultiStateOccupancyRestraints(_BaseRestraintMaker):
         self.atom_selection = (
             str(atom_selection)
             if atom_selection is not None
+            else None
+            )
+
+        self.make_intra_conformer_distance_restraints = (
+            make_intra_conformer_distance_restraints
+            if make_intra_conformer_distance_restraints is not None
             else None
             )
 
@@ -280,12 +287,20 @@ class MakeMultiStateOccupancyRestraints(_BaseRestraintMaker):
                 )
 
         # Convert groups into restraints
-        altloc_restraints = self.make_restraints(
+        altloc_occ_restraints = self.make_occupancy_restraints(
             hierarchy = hierarchy,
             altloc_groups = altloc_groups,
             )
 
-        rc.add(altloc_restraints)
+        rc.add(altloc_occ_restraints)
+
+        # Make distance restraints within the groups (optional)
+        altloc_dist_restraints = self.get_intra_group_distance_restraints(
+            hierarchy = hierarchy,
+            altloc_groups = altloc_groups,
+            )
+
+        rc.add(altloc_dist_restraints)
 
         return rc
 
@@ -295,35 +310,84 @@ class MakeMultiStateOccupancyRestraints(_BaseRestraintMaker):
 
         unq_resnames = hierarchy.overall_counts().resnames.keys()
 
+        logger.debug(
+            'Residues in structure (and classes): \n\t{}'.format(
+                '\n\t'.join(
+                    map(str,sorted(
+                        [
+                            (n,common_residue_names_get_class(n))
+                            for n in unq_resnames
+                            ],
+                        key = lambda t: t[1],
+                        ))
+                    )
+                )
+            )
+
         int_resnames = set([
             r for r in unq_resnames
             if 'common_' not in common_residue_names_get_class(r)
             ])
 
+        logger.debug(
+            "Interesting residue names -> {}".format(
+                str(int_resnames),
+                )
+            )
+
         # Add back in small molecules
         if self.ignore_common_solvent_molecules is False:
+            #
             int_resnames.update([
                 r for r in unq_resnames
-                if common_residue_names_get_class(r) in [
-                    'common_small_molecule',
-                    'common_element',
+                if common_residue_names_get_class(r) not in [
+                    'common_amino_acid',
+                    'common_water',
                     ]
                 ])
+            #
+            logger.debug(
+                "After adding small/common molecules -> {}".format(
+                    str(int_resnames),
+                    )
+                )
         else:
             # Make sure other (non-phenix-defined) common molecules are removed
             int_resnames.difference_update(self.common_molecules)
+            #
+            logger.debug(
+                "After removing small molecules -> {}".format(
+                    str(int_resnames),
+                    )
+                )
 
         # Override -- must be last
         if self.include_resnames_list is not None:
+            #
             int_resnames.update(self.include_resnames_list)
+            #
+            logger.debug(
+                "After adding selected molecules ({}) -> {}".format(
+                    str(self.include_resnames_list),
+                    str(int_resnames),
+                    )
+                )
 
         # Override -- must be last
         if self.ignore_resnames_list is not None:
             int_resnames.difference_update(self.ignore_resnames_list)
+            logger.debug(
+                "After removing selected molecules ({}) -> {}".format(
+                    str(self.ignore_resnames_list),
+                    str(int_resnames),
+                    )
+                )
 
         return sorted(int_resnames)
 
     def cluster_altloc_atoms(self, hierarchy):
+
+        logger.debug('** Clustering alternate conformer atom groups **')
 
         h_atoms = hierarchy.atoms()
 
@@ -362,9 +426,23 @@ class MakeMultiStateOccupancyRestraints(_BaseRestraintMaker):
                 cluster_atom_selections
                 )
 
+        for k, v in sorted(altloc_cluster_dict.items()):
+            logger.debug(
+                '\n** Clustered atoms, altloc {k} **\n'.format(k=k)
+                )
+            for i, vv in enumerate(v):
+                logger.debug(
+                    'Group {i}\n{s}'.format(
+                        i = i+1,
+                        s = hierarchy.select(flex.size_t(vv)).as_str(),
+                        )
+                    )
+
         return altloc_cluster_dict
 
     def find_overlapping_altloc_groups(self, hierarchy, altloc_groups_dict):
+
+        logger.debug('** identifying overlapping altloc groups **')
 
         h_atoms = hierarchy.atoms()
 
@@ -389,10 +467,12 @@ class MakeMultiStateOccupancyRestraints(_BaseRestraintMaker):
         n_groups = len(all_altloc_group_atoms)
 
         # cluster the groups
-        distance_matrix = np.zeros(
+        distance_matrix = np.empty(
             (n_groups, n_groups),
             dtype = float,
             )
+        distance_matrix.fill(-1.)
+        np.fill_diagonal(distance_matrix, 0.0)
 
         # Do in for loops as shouldn't be /too/ many groups
         for i_group_1, (alt_1, i_idx_1, atoms_1) in enumerate(all_altloc_group_atoms):
@@ -415,7 +495,14 @@ class MakeMultiStateOccupancyRestraints(_BaseRestraintMaker):
                 distance_matrix[i_group_1, i_group_2] = min_distance
                 distance_matrix[i_group_2, i_group_1] = min_distance
 
-        connection_matrix = (distance_matrix < self.overlap_distance_cutoff)
+        connection_matrix = (
+            distance_matrix >= 0.0
+            ) & (
+            distance_matrix < self.overlap_distance_cutoff
+            )
+
+        # for r in connection_matrix:
+        #     logger.debug(np.where(r)[0])
 
         cluster_indices = np.array(
             find_connected_groups(
@@ -479,7 +566,7 @@ class MakeMultiStateOccupancyRestraints(_BaseRestraintMaker):
 
         return filtered_groups
 
-    def make_restraints(self, hierarchy, altloc_groups):
+    def make_occupancy_restraints(self, hierarchy, altloc_groups):
 
         occupancy_restraints = []
 
@@ -516,6 +603,40 @@ class MakeMultiStateOccupancyRestraints(_BaseRestraintMaker):
         return RestraintsCollection(
             occupancy_restraints = occ_r_list,
             )
+
+    def get_intra_group_distance_restraints(self, hierarchy, altloc_groups):
+
+        logger.debug('** making intra-group distance restraints **')
+
+        rc = RestraintsCollection()
+
+        if self.make_intra_conformer_distance_restraints is None:
+            return rc
+
+        alt_indices = hierarchy.get_conformer_indices() # (0,0,0,0,1,1,2,2,0,0,0...)
+        all_altlocs = list(hierarchy.altloc_indices()) # ['','A','B']
+        alt_blank_sel = (
+            alt_indices == all_altlocs.index('')
+            ) # flex.bool
+
+        for a_group_dict in altloc_groups:
+
+            atom_selection = copy.deepcopy(alt_blank_sel)
+
+            # Get selection for this group and all main conf atoms
+            for altloc, alt_atom_selection in sorted(a_group_dict.items()):
+
+                atom_selection.set_selected(
+                    flex.size_t(alt_atom_selection), True,
+                    ) # in_place
+
+            rc_group = self.make_intra_conformer_distance_restraints(
+                hierarchy = hierarchy.select(atom_selection),
+                )
+
+            rc.add(rc_group)
+
+        return rc
 
     def cluster_atoms(self, atoms, distance_cutoff):
 
@@ -570,7 +691,17 @@ class MakeMultiStateOccupancyRestraints(_BaseRestraintMaker):
         xyz_2_grid = xyz_2.reshape((n_atoms_2, 1, 3)).repeat(n_atoms_1, axis=1)
 
         xyz_diffs_sq = np.power(xyz_1_grid - xyz_2_grid.transpose((1,0,2)), 2).sum(axis=2)
+
         xyz_diffs_min = xyz_diffs_sq.min() ** 0.5
 
+        # logger.debug(
+        #     '\n'.join(
+        #         ['Atoms1']+[a.format_atom_record() for a in atoms_1] +
+        #         ['Atoms2']+[a.format_atom_record() for a in atoms_2] +
+        #         ['Min distance: {}'.format(xyz_diffs_min)]
+        #         )
+        #     )
+
+        # from IPython import embed; embed(); exist()
         return xyz_diffs_min
 
