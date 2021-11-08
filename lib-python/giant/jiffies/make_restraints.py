@@ -9,11 +9,7 @@ from giant.phil import (
     )
 
 from giant.mulch.dataset import (
-    AtomicModel
-    )
-
-from giant.refinement.restraints import (
-    DummyRestraintMaker,
+    AtomicModel,
     )
 
 from giant.refinement.restraints.multi_state import (
@@ -32,6 +28,9 @@ from giant.refinement.restraints.to_pymol import (
     WriteRestraintsPymolScript,
     )
 
+from giant.refinement.restraints import (
+    DummyRestraintMaker,
+    )
 
 ############################################################################
 
@@ -61,12 +60,15 @@ input_phil = """
         .type = str
 """
 output_phil = """
-    output_prefix = 'restraints'
-        .help = 'output file root'
+    output_root = None
+        .help = 'manual output filepath root -- by default use the input pdb path as root'
         .type = str
     output_formats = *refmac *phenix
         .type = choice(multi=True)
-    log = 'restraints.log'
+    write_pymol_script = False
+        .help = "Write restraints as pymol script for visualisation"
+        .type = bool
+    log = None
         .help = 'log file name'
         .type = path
 """
@@ -127,7 +129,7 @@ multi_state_occupancy_groups {
     overlap_dist = 3.0
         .type = float
         .help = 'Distance to use when clustering groups of atoms that should have occupancies that SUM TO (LESS THAN) ONE'
-    ignore_common_solvent_molecules = False
+    ignore_common_molecules = False
         .type = bool
     include_resname = None
         .type = str
@@ -136,7 +138,7 @@ multi_state_occupancy_groups {
         .type = str
         .multiple = True
     set_group_completeness_to = None
-        .help = 'Generate a set of fully constrained groups (that sum to unitary occupancy) when True. Generate a set of weaker constraints for overlapping atoms when False.'
+        .help = 'Generate a set of fully constrained groups (that sum to unitary occupancy) when True. Generate a set of weaker constraints for overlapping atoms when False. None will decide automatically.'
         .type = bool
     atom_selection = None
         .help = "Select a subset of atoms to generate restraints for"
@@ -165,6 +167,20 @@ settings {
     '{options_phil}',
     options_phil,
 ))
+
+def set_get_log(params):
+
+    if params.output.log is not None:
+        pass
+    elif params.output.output_root is not None:
+        params.output.log = str(
+            pl.Path(params.output.output_root).with_suffix('.log')
+            )
+    else:
+        # set some sensible default
+        params.output.log = "restraints.log"
+
+    return params.output.log
 
 def validate_params(params):
 
@@ -214,7 +230,7 @@ def build_restraints_maker(options):
             MakeMultiStateOccupancyRestraints(
                 group_distance_cutoff = msog.group_dist,
                 overlap_distance_cutoff = msog.overlap_dist,
-                ignore_common_solvent_molecules = msog.ignore_common_solvent_molecules,
+                ignore_common_molecules = msog.ignore_common_molecules,
                 include_resnames_list = msog.include_resname,
                 ignore_resnames_list = msog.ignore_resname,
                 set_group_completeness_to = msog.set_group_completeness_to,
@@ -250,16 +266,13 @@ def build_restraints_maker(options):
 
     return maker
 
-
 def run(params):
 
     logger = lg.setup_logging(
         name = __name__,
-        log_file = params.output.log,
+        log_file = set_get_log(params),
         debug = params.settings.verbose,
         )
-
-    validate_params(params)
 
     log_running_parameters(
         params = params,
@@ -267,32 +280,53 @@ def run(params):
         logger = logger,
     )
 
+    validate_params(params)
+
     ######################################################################
     # Prepare output and input
     ######################################################################
 
-    overwrite = bool(params.settings.overwrite)
-    input_pdb = params.input.pdb
-    output_prefix = params.output.output_prefix
-    output_formats = params.output.output_formats
+    overwrite = bool(
+        params.settings.overwrite
+        )
 
-    out_root = (
+    input_pdb = pl.Path(
+        params.input.pdb
+        )
+
+    output_root = (
+        params.output.output_root
+        )
+
+    output_formats = (
+        params.output.output_formats
+        )
+
+    ###
+
+    output_root = (
         pl.Path(
-            str(output_prefix) + '.params'
+            str(output_root)
             )
-        if (output_prefix is not None)
-        else pl.Path(
+        if (
+            output_root is not None
+            )
+        else (
             input_pdb
-            ).with_suffix('.params')
+            ).with_name(
+            input_pdb.stem+'-restraints'
+            )
         )
 
     output_paths = {
-        k : out_root.with_suffix('.'+str(k)+'.params')
+        k : output_root.with_suffix(
+            '.{k}.params'.format(k=k)
+            )
         for k in output_formats
     }
 
     output_pymol_filepath = (
-        out_root.with_suffix('.pymol.py')
+        output_root.with_suffix('.pymol.py')
         )
     if output_pymol_filepath.exists():
         if (overwrite is True):
@@ -321,15 +355,21 @@ def run(params):
         output_path_dict = output_paths,
         )
 
-    write_restraints_pymol_script = WriteRestraintsPymolScript(
-        filepath = output_pymol_filepath,
-        )
+    if params.output.write_pymol_script is True:
+
+        write_restraints_pymol_script = WriteRestraintsPymolScript(
+            filepath = output_pymol_filepath,
+            )
+
+    else:
+
+        write_restraints_pymol_script = None
 
     ######################################################################
     # Generate restraints
     ######################################################################
 
-    model = AtomicModel.from_file(input_pdb)
+    model = AtomicModel.from_file(str(input_pdb))
     model.hierarchy.sort_atoms_in_place()
 
     restraints_collection = make_restraints(
@@ -343,12 +383,14 @@ def run(params):
         restraints_collection = restraints_collection,
         )
 
-    write_restraints_pymol_script(
-        hierarchy = model.hierarchy,
-        restraints_collection = restraints_collection,
-        )
+    if write_restraints_pymol_script is not None:
 
-    logger.heading('done')
+        write_restraints_pymol_script(
+            hierarchy = model.hierarchy,
+            restraints_collection = restraints_collection,
+            )
+
+    logger.heading('make_restraints finished normally')
 
 ############################################################################
 

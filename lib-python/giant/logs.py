@@ -187,6 +187,14 @@ class WarningListHandler(ListHandler):
         l.subheading(banner.replace('below','above'))
 
 
+def get_warning_handler(logger, handler_name="warnings", recurse_parents=True):
+
+    return get_handler_recursive(
+        logger = logger,
+        handler_name = handler_name,
+        recurse_parents = recurse_parents,
+        )
+
 def get_handler_recursive(logger, handler_name, recurse_parents=True):
     """
     Looks for warning handlers in logger, and optionally parent loggers,

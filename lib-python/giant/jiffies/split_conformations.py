@@ -2,30 +2,40 @@ import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 import os, sys, copy
+import pathlib as pl
 
-from giant.io.pdb import strip_pdb_to_input, get_pdb_header
-from giant.structure.occupancy import calculate_residue_group_occupancy, sanitise_occupancies
-from giant.structure.formatting import Labeller
-from giant.structure.iterators import residue_groups_with_complete_set_of_conformers
-from giant.structure.altlocs import prune_redundant_alternate_conformations
+from giant.phil import (
+    log_running_parameters,
+    )
+
+from giant.mulch.dataset import (
+    AtomicModel,
+    )
+
+from giant.structure.conformers import (
+    SplitHierarchyByConformer,
+    SplitHierarchyByConformerGroup,
+    SplitHierarchyByResidueNames,
+    SplitMultiStateModel,
+    )
 
 ############################################################################
 
-PROGRAM = 'giant.strip_conformations'
+PROGRAM = 'giant.split_conformations'
 
 DESCRIPTION = """
-    A tool to remove unwanted conformations of a multi-conformer model.
-        Conformations to keep can be kept can be declared explicity (using conf=...) or implicitly,
-        through keeping the conformations associated with certain residue names (res=...).
+    A tool to split a multi-conformer model into its component states.
+        Conformation groups to keep can be kept can be declared explicity (mode=by_conformer_group [ + options ])
+        or implicitly, through keeping the conformations associated with certain residue names (mode=by_residue_name [ + options ]).
 
     1) Simple usage:
-        > giant.strip_conformations input.pdb
+        > giant.split_conformations input1.pdb input2.pdb [options]
 """
 
 ############################################################################
 
 blank_arg_prepend = {
-    '.pdb':'pdb=',
+    '.pdb':'input.pdb=',
 }
 
 import libtbx.phil
@@ -37,45 +47,59 @@ input  {
         .multiple = True
 }
 output {
-    suffix_prefix = 'split'
+    suffix_prefix = '-split'
         .help = "prefix for the suffix to be appended to the output structure -- appended to the basename of the input structure before any conformer-specific labels"
         .type = str
     log = None
-        .help = ""
+        .help = "output log file"
         .type = path
 }
 options {
-    mode = by_conformer by_conformer_group *by_residue_name
+    mode = *by_residue_name by_conformer by_conformer_group
         .help = 'How to split the model:\n\tby_conformer : output a model for each conformer\n\tby_conformer_group : output a model for a selection of conformers\n\tby_residue_name : output a model containing all states containing a specifice residue name'
         .type = choice
     by_conformer_group {
-        conformers = C,D,E,F,G
-            .help = "Output these conformers in one model. Multiple can be provided."
+        conformers = None
+            .help = "Output these conformers in one model. Multiple can be provided. e.g. [conformers=ABC conformers=BCD]"
             .multiple = True
             .type = str
     }
     by_residue_name {
-        resname = DRG,FRG,LIG,UNK,UNL
-            .help = "Group conformers containing any of these residue names"
+        ignore_common_molecules = True
+            .type = bool
+        combine_bound_states = False
+            .type = bool
+            .help = "Put all bound states into hierarchy or split by molecule"
+        include_resname = None
+            .help = "Split conformers based on residues with these names."
             .type = str
+            .multiple = True
+        ignore_resname = None
+            .help = "Ignore these residue names when making decisions."
+            .type = str
+            .multiple = True
         selected_name = 'bound-state'
             .help = "Output filename component containing selected residues"
             .type = str
         unselected_name = 'ground-state'
-            .help = "Output filename component containing residues not selected through 'rename'"
+            .help = "Output filename component containing residues
+            not selected through 'rename'"
+            .type = str
+        atom_selection = None
+            .help = "Select a set of atoms to use to decide (used in combination with other flags)."
             .type = str
     }
     pruning {
         prune_duplicates = True
             .help = 'Remove duplicated conformers in the output structure (convert to blank altloc)'
             .type = bool
-        rmsd_cutoff = 0.1
+        prune_duplicates_rmsd = 0.05
             .type = float
     }
     reset_altlocs = True
         .help = 'Relabel conformers of kept residues to begin with "A" (i.e. C,D,E -> A,B,C)'
         .type = bool
-    reset_occupancies = False
+    rescale_occupancies = False
         .help = 'Normalise the occupancies so that the maximum occupancy of the output structure is 1.0 (all relative occupancies are maintained)'
         .type = bool
 }
@@ -88,159 +112,194 @@ settings {
 
 """)
 
-############################################################################
+def set_get_log(params):
 
-def split_conformations(filename, params):
-
-    # Read the pdb header - for writing later...
-    header_contents = get_pdb_header(filename)
-
-    # Read in and validate the input file
-    ens_obj = strip_pdb_to_input(filename, remove_ter=True)
-    ens_obj.hierarchy.only_model()
-
-    # Create a new copy of the structures
-    new_ens = ens_obj.hierarchy.deep_copy()
-
-    # Extract conformers from the structure as set
-    all_confs = set(ens_obj.hierarchy.altloc_indices())
-    all_confs.discard('')
-
-    if params.options.mode == 'by_residue_name':
-        sel_resnames = params.options.by_residue_name.resname.split(',')
-        sel_confs = [ag.altloc for ag in new_ens.atom_groups() if (ag.resname in sel_resnames)]
-        # List of conformers to output for each structure, and suffixes
-        out_confs = map(sorted, [all_confs.intersection(sel_confs), all_confs.difference(sel_confs)])
-        out_suffs = [params.options.by_residue_name.selected_name, params.options.by_residue_name.unselected_name]
-    elif params.options.mode == 'by_conformer':
-        sel_resnames = None
-        sel_confs = None
-        # One structure for each conformer
-        out_confs = [[c] for c in sorted(all_confs)]
-        out_suffs = [''.join(c) for c in out_confs]
-    elif params.options.mode == 'by_conformer_group':
-        sel_resnames = None
-        sel_confs = None
-        # One structure for each set of supplied conformer sets
-        out_confs = [s.split(',') for s in params.options.by_conformer_group.conformers]
-        out_suffs = [''.join(c) for c in out_confs]
+    if params.output.log is not None:
+        pass
+    elif len(params.input.pdb) == 1:
+        params.output.log = str(
+            pl.Path(params.input.pdb[0]).with_name(
+                pl.Path(params.input.pdb[0]).stem+'-split_conformations.log'
+                )
+            )
     else:
-        raise ValueError('Invalid selection for options.mode: {}'.format(params.options.mode))
+        params.output.log = "split_conformations.log"
 
-    assert len(out_confs) == len(out_suffs), '{} not same length as {}'.format(str(out_confs), str(out_suffs))
+    return params.output.log
 
-    for confs, suffix in zip(out_confs, out_suffs):
-        logger('Conformers {} -> {}'.format(str(confs), suffix))
-
-    # Create paths from the suffixes
-    out_paths = ['.'.join([os.path.splitext(filename)[0],params.output.suffix_prefix,suff,'pdb']) for suff in out_suffs]
-
-    logger.subheading('Processing {}'.format(filename[-70:]))
-
-    for this_confs, this_path in zip(out_confs, out_paths):
-
-        if not this_confs: continue
-
-        # Select atoms to keep - no altloc, or altloc in selection
-        sel_string = ' or '.join(['altid " "']+['altid "{}"'.format(alt) for alt in this_confs])
-        # Extract selection from the hierarchy
-        sel_hiery = new_ens.select(new_ens.atom_selection_cache().selection(sel_string), copy_atoms=True)
-
-        logger.bar(True, False)
-        logger('Outputting conformer(s) {} to {}'.format(''.join(this_confs), this_path))
-        logger.bar()
-        logger('Keeping ANY atom with conformer id: {}'.format(' or '.join(['" "']+this_confs)))
-        logger('Selection: \n\t'+sel_string)
-
-        if params.options.pruning.prune_duplicates:
-            logger.bar()
-            logger('Pruning redundant conformers')
-            # Remove an alternate conformers than are duplicated after selection
-            prune_redundant_alternate_conformations(
-                hierarchy           = sel_hiery,
-                required_altlocs    = [a for a in sel_hiery.altloc_indices() if a],
-                rmsd_cutoff         = params.options.pruning.rmsd_cutoff,
-                in_place            = True,
-                verbose             = params.settings.verbose)
-
-        if params.options.reset_altlocs:
-            logger.bar()
-            # Change the altlocs so that they start from "A"
-            if len(this_confs) == 1:
-                conf_hash = {this_confs[0]: ' '}
-            else:
-                import iotbx.pdb
-                conf_hash = dict(zip(this_confs, iotbx.pdb.systematic_chain_ids()))
-            logger('Resetting structure altlocs:')
-            for k in sorted(conf_hash.keys()):
-                logger('\t{} -> "{}"'.format(k, conf_hash[k]))
-            if params.settings.verbose: logger.bar()
-            for ag in sel_hiery.atom_groups():
-                if ag.altloc in this_confs:
-                    if params.settings.verbose:
-                        logger('{} -> alt {}'.format(Labeller.format(ag), conf_hash[ag.altloc]))
-                    ag.altloc = conf_hash[ag.altloc]
-
-        if params.options.reset_occupancies:
-            logger.bar()
-            logger('Resetting output occupancies (maximum occupancy of 1.0, etc.)')
-            # Divide through by the smallest occupancy of any complete residues groups with occupancies of less than one
-            rg_occs = [calculate_residue_group_occupancy(rg) for rg in residue_groups_with_complete_set_of_conformers(sel_hiery)]
-            import numpy
-            non_uni = [v for v in numpy.unique(rg_occs) if 0.0 < v < 1.0]
-            if non_uni:
-                div_occ = min(non_uni)
-                logger('Dividing all occupancies by {}'.format(div_occ))
-                sel_hiery.atoms().set_occ(sel_hiery.atoms().extract_occ() / div_occ)
-            # Normalise the occupancies of any residue groups with more than unitary occupancy
-            logger('Fixing any residues that have greater than unitary occupancy')
-            sanitise_occupancies(hierarchy = sel_hiery,
-                                 min_occ   = 0.0,
-                                 max_occ   = 1.0,
-                                 in_place  = True,
-                                 verbose   = params.settings.verbose)
-            # Perform checks
-            max_occ = max([calculate_residue_group_occupancy(rg) for rg in sel_hiery.residue_groups()])
-            logger('Maximum occupancy of output structue: {}'.format(max_occ))
-            assert max_occ >= 0.0, 'maximum occupancy is less than 0.0?!?!'
-            assert max_occ <= 1.0, 'maximum occupancy is greater than 1.0?!?!'
-
-        logger.bar()
-        logger('Writing structure: {}'.format(this_path))
-        logger.bar(False, True)
-
-        # Write header contents
-        with open(this_path, 'w') as fh: fh.write(header_contents)
-        # Write output file
-        sel_hiery.write_pdb_file(this_path, open_append=True)
-
-    return out_paths
-
-############################################################################
-
-def run(params):
-
-    if (not params.output.log):
-        params.output.log = 'split_conformations.log'
-
-    logger = lg.setup_logging(
-        name = __name__,
-        log_file = params.output.log,
-    )
-
-    logger.heading('Validating input parameters')
+def validate_params(params):
 
     if not params.input.pdb:
         raise IOError('No PDB files given')
 
-    # Iterate through the input structures and extract the conformation
-    logger.heading('Splitting multi-state structures')
-    for pdb in params.input.pdb:
-        split_conformations(filename=pdb, params=params)
+    for p in params.input.pdb:
+        if not pl.Path(p).exists():
+            raise IOError('PDB file {} does not exist'.format(p))
 
-    logger.heading('finished normally')
+def build_splitter(options):
 
-#######################################
+    if options.mode == 'by_residue_name':
+
+        opt = options.by_residue_name
+
+        split_hierarchy = SplitHierarchyByResidueNames(
+            ignore_common_molecules = opt.ignore_common_molecules,
+            include_resnames_list = opt.include_resname,
+            ignore_resnames_list = opt.ignore_resname,
+            selected_name = opt.selected_name,
+            unselected_name = opt.unselected_name,
+            atom_selection = opt.atom_selection,
+            combine_split_states = opt.combine_bound_states,
+            )
+
+    elif options.mode == 'by_conformer':
+
+        split_hierarchy = SplitHierarchyByConformer()
+
+    elif options.mode == 'by_conformer_group':
+
+        opt = options.by_conformer_group
+
+        split_hierarchy = SplitHierarchyByConformerGroup(
+            conformer_id_sets = opt.conformers,
+            )
+
+    else:
+
+        raise NotImplementedError()
+
+    split_states = SplitMultiStateModel(
+        split_hierarchy = split_hierarchy,
+        prune_duplicates_rmsd = (
+            options.pruning.prune_duplicates_rmsd
+            if options.pruning.prune_duplicates is True
+            else None
+            ),
+        reset_altlocs = options.reset_altlocs,
+        reset_occupancies = options.rescale_occupancies,
+        )
+
+    return split_states
+
+
+class WriteStructures:
+
+    def __init__(self, overwrite=False, filepath_append=None):
+
+        self.overwrite = bool(overwrite)
+
+        self.filepath_append = (
+            str(filepath_append)
+            if filepath_append is not None
+            else None
+            )
+
+    def __call__(self, model, hierarchy_dict, output_path_root):
+
+        stem = (
+            output_path_root.stem
+            )
+
+        if self.filepath_append is not None:
+            stem = (
+                stem + str(self.filepath_append)
+                )
+
+        filepaths = {
+            k : output_path_root.with_name(
+                stem + '-' + k
+                ).with_suffix(
+                '.pdb'
+                )
+            for k in hierarchy_dict.keys()
+            }
+
+        if (self.overwrite is False):
+
+            for k, p in filepaths.items():
+
+                if p.exists():
+                    raise IOError(
+                        'Output file already exists: {}'.format(
+                            str(p)
+                            )
+                        )
+
+        for k, h in sorted(hierarchy_dict.items()):
+
+            p = filepaths[k]
+
+            logger(
+                'Writing {k} to {p}'.format(
+                    k = k,
+                    p = str(p),
+                    )
+                )
+
+            h.write_pdb_file(
+                file_name = str(p),
+                crystal_symmetry = (
+                    model.input.crystal_symmetry()
+                    ),
+                )
+
+def run(params):
+
+    logger = lg.setup_logging(
+        name = __name__,
+        log_file = set_get_log(params),
+        debug = params.settings.verbose,
+        )
+
+    log_running_parameters(
+            params = params,
+            master_phil = master_phil,
+            logger = logger,
+        )
+
+    validate_params(params)
+
+    #####
+
+    split_states = build_splitter(
+        options = params.options,
+        )
+
+    write_structures = WriteStructures(
+        filepath_append = str(params.output.suffix_prefix),
+        overwrite = bool(params.settings.overwrite),
+        )
+
+    #####
+
+    input_pdbs = list(params.input.pdb)
+
+    logger.heading('Processing structures')
+
+    for pdb_path in input_pdbs:
+
+        logger.subheading('Splitting {}'.format(str(pdb_path)))
+
+        pdb_path = pl.Path(pdb_path)
+
+        model = AtomicModel.from_file(str(pdb_path))
+        model.hierarchy.sort_atoms_in_place()
+
+        split_dict = split_states(
+            hierarchy = model.hierarchy,
+            )
+
+        write_structures(
+            model = model,
+            hierarchy_dict = split_dict,
+            output_path_root = (
+                pdb_path.with_name(pdb_path.stem)
+                ),
+            )
+
+    logger.heading('split_conformations finished normally')
+
+############################################################################
 
 if __name__=='__main__':
     from giant.jiffies import run_default

@@ -4,10 +4,21 @@ logger = lg.getLogger(__name__)
 import numpy as np
 
 from itertools import cycle
-from .formatting import Labeller
 
 import iotbx.pdb
 from scitbx.array_family import flex
+
+from .formatting import (
+    labeller,
+    )
+
+from .common import (
+    GetInterestingResnames,
+    )
+
+from .occupancy import (
+    ResetOccupancies,
+    )
 
 def rg_label(rg):
     return (rg.resseq_as_int(), rg.icode)
@@ -88,14 +99,14 @@ class ResolveHierarchyConflicts:
                         ).format(
                         rg_mov_str = (
                             '{label} ({resnames})'.format(
-                                label = Labeller.format(rg_mov),
+                                label = labeller(rg_mov),
                                 resnames = '/'.join(rg_mov.unique_resnames()),
                                 )
                             ),
                         rg_ref_strs = '\n\t'.join(
                             [
                                 '{label} ({resnames})'.format(#
-                                    label = Labeller.format(r),
+                                    label = labeller(r),
                                     resnames = '/'.join(r.unique_resnames()),
                                     )
                                 for r in rg_fixs
@@ -119,7 +130,7 @@ class ResolveHierarchyConflicts:
                     # Will need to be changed
                     logger.debug(
                         'Different residues with same id: {label}, {r1} & {r2}'.format(
-                            label = Labeller.format(rg_mov),
+                            label = labeller(rg_mov),
                             r1 = '/'.join(rg_fix.unique_resnames()),
                             r2 = '/'.join(rg_mov.unique_resnames()),
                             )
@@ -226,7 +237,7 @@ class ExpandToFullMultiConformer:
 
                     logger.debug(
                         '{label} - expanding to pure conformer (altlocs {altlocs})'.format(
-                            label = Labeller.format(residue_group),
+                            label = labeller(residue_group),
                             altlocs = str([a.altloc for a in residue_group.atom_groups()]),
                             )
                         )
@@ -256,7 +267,7 @@ class ExpandToFullMultiConformer:
 
                     logger.debug(
                         '{label} - populating missing conformers (current altlocs {current}, target set {target})'.format(
-                            label = Labeller.format(residue_group),
+                            label = labeller(residue_group),
                             current = str(current_set),
                             target = str(full_altloc_set),
                             )
@@ -274,7 +285,7 @@ class ExpandToFullMultiConformer:
 
                     logger.debug(
                         '{label} - updated conformer list: (current altlocs {current}, target set {target})'.format(
-                            label = Labeller.format(residue_group),
+                            label = labeller(residue_group),
                             current = str([a.altloc for a in residue_group.atom_groups()]),
                             target = str(full_altloc_set),
                             )
@@ -372,7 +383,7 @@ class ExpandToFullMultiConformer:
 
         logger.debug(
             '{label} - occupancy corrections: {occ_cor}'.format(
-                label = Labeller.format(residue_group),
+                label = labeller(residue_group),
                 occ_cor = str(occupancy_corrections),
                 )
             )
@@ -403,7 +414,39 @@ class ExpandToFullMultiConformer:
         return residue_group
 
 
-class IncrementConformerAltlocs:
+class _AltlocReassigner:
+
+    def reassign_altlocs(self, hierarchy, altloc_hash):
+
+        logger.debug(
+            "Updating altlocs: \n\t{}".format(
+                '\n\t'.join([
+                    "{a} -> {b}".format(
+                        a = k,
+                        b = v,
+                        )
+                    for k,v in sorted(altloc_hash.items())
+                    ])
+                )
+            )
+
+        for atom_group in hierarchy.atom_groups():
+
+            if atom_group.altloc == '':
+                continue
+
+            logger.debug(
+                '{label} - updating altloc: {a} -> {b}'.format(
+                    label = labeller(atom_group),
+                    a = atom_group.altloc,
+                    b = altloc_hash[atom_group.altloc],
+                    )
+                )
+
+            atom_group.altloc = altloc_hash[atom_group.altloc]
+
+
+class IncrementConformerAltlocs(_AltlocReassigner):
 
     def __init__(self, in_place=False):
 
@@ -420,9 +463,14 @@ class IncrementConformerAltlocs:
             hierarchy = fixed_hierarchy,
             )
 
-        self.increment_altlocs(
+        new_altlocs_hash = self.get_altloc_hash(
             hierarchy = moving_hierarchy,
-            n = n_shift,
+            i_start = n_shift,
+            )
+
+        self.reassign_altlocs(
+            hierarchy = moving_hierarchy,
+            altloc_hash = new_altlocs_hash,
             )
 
         return moving_hierarchy
@@ -443,42 +491,50 @@ class IncrementConformerAltlocs:
 
         return max(cur_altloc_idxs) + 1
 
-    def increment_altlocs(self, hierarchy, n):
+    def get_altloc_hash(self, hierarchy, i_start):
 
-        cur_altlocs = sorted([
-            a for a in hierarchy.altloc_indices() if a
-            ])
+        current_altlocs = sorted([a for a in hierarchy.altloc_indices() if a])
 
-        new_altlocs_hash = {
-            a : self.conformer_ids[self.conformer_ids.index(a)+n]
-            for a in cur_altlocs
-            }
+        new_altlocs = self.conformer_ids[i_start:i_start+len(current_altlocs)]
 
-        logger.debug(
-            "Updating altlocs: \n\t{}".format(
-                '\n\t'.join([
-                    "{a} -> {b}".format(
-                        a = a,
-                        b = new_altlocs_hash[a],
-                        )
-                    for a in cur_altlocs
-                    ])
-                )
+        altlocs_hash = dict(zip(current_altlocs, new_altlocs))
+
+        return altlocs_hash
+
+
+class SanitiseAltlocs(_AltlocReassigner):
+
+    def __init__(self, in_place=False):
+
+        self.in_place = bool(in_place)
+
+        self.conformer_ids = iotbx.pdb.systematic_chain_ids()
+
+    def __call__(self, hierarchy):
+
+        if self.in_place is False:
+            hierarchy = hierarchy.deep_copy()
+
+        new_altlocs_hash = self.get_altloc_hash(
+            hierarchy = hierarchy,
             )
 
-        for atom_group in hierarchy.atom_groups():
+        self.reassign_altlocs(
+            hierarchy = hierarchy,
+            altloc_hash = new_altlocs_hash,
+            )
 
-            logger.debug(
-                '{label} - updating altloc: {a} -> {b}'.format(
-                    label = Labeller.format(atom_group),
-                    a = atom_group.altloc,
-                    b = new_altlocs_hash[atom_group.altloc],
-                    )
-                )
+        return hierarchy
 
-            assert atom_group.altloc != ''
+    def get_altloc_hash(self, hierarchy):
 
-            atom_group.altloc = new_altlocs_hash[atom_group.altloc]
+        current_altlocs = sorted([a for a in hierarchy.altloc_indices() if a])
+
+        new_altlocs = self.conformer_ids[0:len(current_altlocs)]
+
+        altlocs_hash = dict(zip(current_altlocs, new_altlocs))
+
+        return altlocs_hash
 
 
 class JoinHierarchies:
@@ -526,7 +582,7 @@ class JoinHierarchies:
 
                 logger.debug(
                     'Transferring whole chain to acceptor hierarchy: {label}'.format(
-                        label = Labeller.format(donor_ch),
+                        label = labeller(donor_ch),
                         )
                     )
 
@@ -565,10 +621,10 @@ class JoinHierarchies:
                             'Adding to the first matching residue: {label1}.'
                             ).format(
                                 labels = '\n\t'.join([
-                                    Labeller.format(rg)
+                                    labeller(rg)
                                     for rg in acceptor_rgs
                                     ]),
-                                label1 = Labeller.format(acceptor_rg),
+                                label1 = labeller(acceptor_rg),
                                 )
                         )
 
@@ -581,8 +637,8 @@ class JoinHierarchies:
                 # Transfer atom groups to this residue_group
                 logger.debug(
                     'Transferring atom groups: {label_donor} > {label_acceptor}'.format(
-                        label_donor = Labeller.format(donor_rg),
-                        label_acceptor = Labeller.format(acceptor_rg),
+                        label_donor = labeller(donor_rg),
+                        label_acceptor = labeller(acceptor_rg),
                         )
                     )
 
@@ -639,8 +695,8 @@ class JoinHierarchies:
             # Append residue_group to chain
             logger.debug(
                 'Transferring residue group {rg} to chain {ch} in acceptor hierarchy'.format(
-                    rg = Labeller.format(donor_rg),
-                    ch = Labeller.format(acceptor_ch),
+                    rg = labeller(donor_rg),
+                    ch = labeller(acceptor_ch),
                     )
                 )
 
@@ -747,7 +803,7 @@ class PruneRedundantConformers:
 
                     logger.debug(
                         'Residue {label}, alt {a} - alt {b}: rmsd {rmsd}'.format(
-                            label = Labeller.format(residue_group),
+                            label = labeller.format(residue_group),
                             a = i,
                             b = j,
                             rmsd = rmsd,
@@ -758,7 +814,7 @@ class PruneRedundantConformers:
 
                         logger.debug(
                             '> Not pruning {label}'.format(
-                                label = Labeller.format(residue_group),
+                                label = labeller(residue_group),
                                 )
                             )
 
@@ -776,7 +832,7 @@ class PruneRedundantConformers:
             #
             logger.debug(
                 '> Pruning {label}: altlocs {alts} -> [""]'.format(
-                    label = Labeller.format(residue_group),
+                    label = labeller(residue_group),
                     alts = str([ag.altloc for ag in alt_ags]),
                     )
                 )
@@ -898,7 +954,9 @@ class MakeMultiStateModel:
                 h.deep_copy() for h in hierarchies
                 ]
 
-        logger('> Preparing input structures >')
+        logger(
+            '* Preparing input structures *'
+            )
 
         for h in hierarchies:
             h.sort_atoms_in_place()
@@ -918,7 +976,7 @@ class MakeMultiStateModel:
         # other_hierarchy = moving / donor
 
         logger(
-            '> Expanding main hierarchy to multi-conformer model >'
+            '* Expanding main hierarchy to multi-conformer model *'
             )
 
         self.expand_to_full_multi_conformer(
@@ -928,7 +986,7 @@ class MakeMultiStateModel:
         for i_h, other_hierarchy in enumerate(hierarchies):
 
             logger(
-                '> Merging model {} of {} into main hierarchy >'.format(
+                '* Merging model {} of {} into main hierarchy *'.format(
                     i_h+1, len(hierarchies),
                     )
                 )
@@ -969,7 +1027,7 @@ class MakeMultiStateModel:
                 )
 
         logger(
-            '> Pruning redundant conformations from the output hierarchy >'
+            '* Pruning redundant conformations from the output hierarchy *'
             )
 
         self.prune_redundant_conformers(
@@ -977,4 +1035,437 @@ class MakeMultiStateModel:
             )
 
         return main_hierarchy
+
+
+class SplitHierarchyByConformer:
+
+    def __init__(self):
+
+        pass
+
+    def __call__(self, hierarchy):
+
+        output_dict = {}
+
+        for conf_id in sorted(hierarchy.altloc_indices()):
+
+            # Skip main conf
+            if not conf_id.strip():
+                continue
+
+            label = str(conf_id)
+
+            output_dict[label] = self.select(
+                hierarchy = hierarchy,
+                conformers = [conf_id],
+                )
+
+        return output_dict
+
+    def select(self, hierarchy, conformers):
+
+        ac = hierarchy.atom_selection_cache()
+
+        sel_string = ' or '.join(
+            [
+                'altid "{}"'.format(c)
+                for c in sorted(set([' ']+list(conformers)))
+                ]
+            )
+
+        sel_bool = ac.selection(sel_string)
+
+        sel_hierarchy = hierarchy.select(
+            sel_bool,
+            copy_atoms = True,
+            )
+
+        return sel_hierarchy
+
+
+class SplitHierarchyByConformerGroup(SplitHierarchyByConformer):
+
+    name = "SplitHierarchyByConformerGroup"
+
+    def __init__(self, conformer_id_sets):
+
+        self.conformer_id_sets = [list(s) for s in conformer_id_sets]
+
+    def __str__(self):
+
+        s_ = (
+            'Task: {name}\n'
+            '| conformer_id_sets: \n'
+            '| \t{conformer_id_sets}\n'
+            '`---->'
+            ).format(
+                name = self.name,
+                conformer_id_sets = '\n'.join(
+                    map(str,self.conformer_id_sets)
+                    ).replace('\n','\n| \t'),
+                )
+
+        return s_.strip()
+
+    def __call__(self, hierarchy):
+
+        logger(str(self))
+
+        output_dict = {}
+
+        for conf_ids in self.conformer_id_sets:
+
+            label = ''.join(sorted(conf_ids))
+
+            output_dict[label] = self.select(
+                hierarchy = hierarchy,
+                conformers = conf_ids,
+                )
+
+        return output_dict
+
+
+class SplitHierarchyByResidueNames(SplitHierarchyByConformer):
+
+    name = "SplitHierarchyByResidueNames"
+
+    def __init__(self,
+        ignore_common_molecules = True,
+        include_resnames_list = None,
+        ignore_resnames_list = None,
+        atom_selection = None,
+        selected_name = 'selected',
+        unselected_name = 'unselected',
+        combine_split_states = False,
+        ):
+
+        self.get_interesting_resnames = GetInterestingResnames(
+            ignore_common_molecules = ignore_common_molecules,
+            include_resnames_list = include_resnames_list,
+            ignore_resnames_list = ignore_resnames_list,
+            )
+
+        self.atom_selection = (
+            atom_selection
+            if atom_selection is not None
+            else None
+            )
+
+        self.selected_name = (
+            str(selected_name)
+            )
+
+        self.unselected_name = (
+            str(unselected_name)
+            )
+
+        self.combine_split_states = bool(
+            combine_split_states
+            )
+
+        assert (
+            self.selected_name != self.unselected_name
+            ), "Selected and unselected names cannot be the same"
+
+    def __str__(self):
+
+        s_ = (
+            'Task: {name}\n'
+            '| get_interesting_resnames: \n'
+            '| \t{get_interesting_resnames}\n'
+            '| atom_selection: {atom_selection}\n'
+            '| selected_name: {selected_name}\n'
+            '| unselected_name: {unselected_name}\n'
+            '`---->'
+            ).format(
+                name = self.name,
+                get_interesting_resnames = str(self.get_interesting_resnames).replace('\n','\n| \t'),
+                atom_selection = str(self.atom_selection),
+                selected_name = str(self.selected_name),
+                unselected_name = str(self.unselected_name),
+                )
+
+        return s_.strip()
+
+    def __call__(self, hierarchy):
+
+        logger(str(self))
+
+        altloc_dict = self.get_conformer_dict(
+            hierarchy = hierarchy,
+            )
+
+        logger(
+            '\n'+'\n'.join([
+                "{k} : {conf_ids}".format(
+                    k = k,
+                    conf_ids = str(conf_ids),
+                    )
+                for k, conf_ids in sorted(altloc_dict.items())
+                ])
+            )
+
+        output_dict = {}
+
+        for conf_key, conf_ids in sorted(altloc_dict.items()):
+
+            output_dict[conf_key] = self.select(
+                hierarchy = hierarchy,
+                conformers = conf_ids,
+                )
+
+        return output_dict
+
+    def get_conformer_dict(self, hierarchy):
+
+        altlocs_dict = {}
+
+        if self.atom_selection is not None:
+
+            sel_altlocs_dict = self.get_altlocs_dict_from_selected_atoms(
+                hierarchy = hierarchy,
+                )
+
+        else:
+
+            sel_altlocs_dict = self.get_altlocs_dict_from_interesting_resnames(
+                hierarchy = hierarchy,
+                )
+
+        altlocs_dict.update(
+            sel_altlocs_dict
+            )
+
+        other_altlocs = self.get_remaining_altlocs_dict(
+            hierarchy = hierarchy,
+            altlocs = (
+                sorted(set(list(
+                    np.concatenate(sel_altlocs_dict.values())
+                    )))
+                if sel_altlocs_dict else []
+                ),
+            )
+
+        altlocs_dict.update(
+            other_altlocs
+            )
+
+        return altlocs_dict
+
+    def get_altlocs_dict_from_selected_atoms(self, hierarchy):
+
+        assert self.atom_selection is not None
+
+        sel_altlocs_groups = self.get_selection_altlocs_groups_by_residue(
+            hierarchy = hierarchy,
+            atom_selection = self.atom_selection,
+            )
+
+        if len(sel_altlocs_groups) == 0:
+            logger.warning(
+                (
+                    'No altlocs selected in hierarchy by residue name.\n'
+                    '{task}\n'
+                    'Atom selection: {selection}.'
+                    ).format(
+                    task = str(self),
+                    selection = str(self.atom_selection),
+                    )
+                )
+
+        return {
+            self.selected_name+'-'+''.join(sel_a) : sel_a
+            for sel_a in sel_altlocs_groups
+            }
+
+    def get_altlocs_dict_from_interesting_resnames(self, hierarchy):
+
+        resnames = self.get_interesting_resnames(hierarchy)
+
+        logger.debug('Selected resnames: {s}'.format(s=str(resnames)))
+
+        atom_selection = ' or '.join(
+            ['resname "{r}"'.format(r=r) for r in resnames]
+            )
+
+        sel_altlocs_groups = self.get_selection_altlocs_groups_by_residue(
+            hierarchy = hierarchy,
+            atom_selection = atom_selection,
+            )
+
+        if len(sel_altlocs_groups) == 0:
+            logger.warning(
+                (
+                    '{task}\n'
+                    '** No altlocs selected in hierarchy by residue name. **\n'
+                    '** Identified residue names: {selection}. **'
+                    ).format(
+                    task = str(self),
+                    selection = str(atom_selection),
+                    )
+                )
+
+        return {
+            self.selected_name+'-'+''.join(sel_a) : sel_a
+            for sel_a in sel_altlocs_groups
+            }
+
+    def get_remaining_altlocs_dict(self, hierarchy, altlocs):
+
+        altlocs2 = set(hierarchy.altloc_indices())
+        altlocs2.discard('')
+        altlocs2.difference_update(altlocs)
+        altlocs2 = tuple(sorted(altlocs2))
+
+        return {
+            self.unselected_name+'-'+''.join(altlocs2) : altlocs2,
+            }
+
+    def get_selection_altlocs_groups(self, hierarchy, atom_selection):
+
+        asc = hierarchy.atom_selection_cache()
+        selection = asc.selection(atom_selection)
+        hierarchy = hierarchy.select(selection)
+
+        sel_altlocs = sorted([
+            a for a in hierarchy.altloc_indices() if a.strip()
+            ])
+
+        return [sel_altlocs]
+
+    def get_selection_altlocs_groups_by_residue(self, hierarchy, atom_selection):
+
+        asc = hierarchy.atom_selection_cache()
+        selection = asc.selection(atom_selection)
+        hierarchy = hierarchy.select(selection)
+
+        sel_altlocs_groups = set()
+
+        for rg in hierarchy.residue_groups():
+
+            n_blank = rg.move_blank_altloc_atom_groups_to_front()
+
+            # if n_blank == 0:
+            #     continue
+
+            altlocs = [
+                ag.altloc for ag in rg.atom_groups()[n_blank:]
+                ]
+
+            logger(
+                "Residues {resnames} : Conformers {conformers}".format(
+                    resnames = '/'.join(rg.unique_resnames()),
+                    conformers = ','.join(altlocs),
+                    )
+                )
+
+            sel_altlocs_groups.add(
+                tuple(sorted(altlocs))
+                )
+
+        if (self.combine_split_states is True):
+
+            logger(
+                'Pooling all conformers into one group: \n\t{string}'.format(
+                    string = '\n\t'.join([
+                        "{v}".format(
+                            v = str(v),
+                            )
+                        for v in sorted(sel_altlocs_groups)
+                        ])
+                    )
+                )
+
+            combined_set = set()
+            for g in sel_altlocs_groups:
+                combined_set.update(g)
+
+            sel_altlocs_groups = set()
+            sel_altlocs_groups.add(
+                tuple(sorted(combined_set))
+                )
+
+            logger(
+                'Output groups: {}'.format(
+                    str(sorted(sel_altlocs_groups))
+                    )
+                )
+
+        return sorted(sel_altlocs_groups)
+
+
+class SplitMultiStateModel:
+
+    def __init__(self,
+        split_hierarchy,
+        prune_duplicates_rmsd = 0.05,
+        reset_altlocs = False,
+        reset_occupancies = False,
+        ):
+
+        self.split_hierarchy = (
+            split_hierarchy
+            )
+
+        self.prune_redundant_conformers = (
+            PruneRedundantConformers(
+                rmsd_cutoff = prune_duplicates_rmsd,
+                in_place = True,
+                )
+            if (prune_duplicates_rmsd is not None)
+            else None
+            )
+
+        self.sanitise_altlocs = (
+            SanitiseAltlocs(
+                in_place = True,
+                )
+            if (reset_altlocs is True)
+            else None
+            )
+
+        self.reset_occupancies = (
+            ResetOccupancies(
+                in_place = True,
+                )
+            if (reset_occupancies is True)
+            else None
+            )
+
+    def __call__(self, hierarchy):
+
+        hierarchy_dict = self.split_hierarchy(hierarchy)
+
+        logger(
+            (
+                "\n"
+                "Split hierarchy:\n"
+                "\t{output}\n"
+                ).format(
+                    output = '\n\t'.join([
+                        (
+                            "Hierarchy label: {name}\n"
+                            "Altlocs: {altlocs}"
+                            ).format(
+                            name = k,
+                            altlocs = str(list(h.altloc_indices()))
+                            ).replace('\n','\n\t')
+                        for k, h in sorted(hierarchy_dict.items())
+                        ])
+                )
+            )
+
+        for key, split_h in hierarchy_dict.items():
+
+            if self.prune_redundant_conformers is not None:
+                self.prune_redundant_conformers(split_h)
+
+            if self.sanitise_altlocs is not None:
+                self.sanitise_altlocs(split_h)
+
+            if self.reset_occupancies is not None:
+                self.reset_occupancies(split_h)
+
+        return hierarchy_dict
+
 

@@ -10,6 +10,10 @@ from giant.stats.cluster import (
     find_connected_groups
     )
 
+from giant.structure.common import (
+    GetInterestingResnames,
+    )
+
 from giant.structure.formatting import (
     Labeller,
     GenericSelection,
@@ -162,19 +166,10 @@ class MakeMultiStateOccupancyRestraints(_BaseRestraintMaker):
 
     name = "MakeMultiStateOccupancyRestraints"
 
-    common_molecules = [
-        'ACE',
-        'EDO',
-        'DMS',
-        'GOL',
-        'PO4',
-        'SO4',
-    ]
-
     def __init__(self,
         group_distance_cutoff = 6.0,
         overlap_distance_cutoff = 6.0,
-        ignore_common_solvent_molecules = True,
+        ignore_common_molecules = True,
         include_resnames_list = None,
         ignore_resnames_list = None,
         set_group_completeness_to = None,
@@ -194,20 +189,10 @@ class MakeMultiStateOccupancyRestraints(_BaseRestraintMaker):
             overlap_distance_cutoff
             )
 
-        self.ignore_common_solvent_molecules = (
-            bool(ignore_common_solvent_molecules)
-            )
-
-        self.include_resnames_list = (
-            list(include_resnames_list)
-            if (include_resnames_list is not None)
-            else None
-            )
-
-        self.ignore_resnames_list = (
-            list(ignore_resnames_list)
-            if (ignore_resnames_list is not None)
-            else None
+        self.get_interesting_resnames = GetInterestingResnames(
+            ignore_common_molecules = ignore_common_molecules,
+            include_resnames_list = include_resnames_list,
+            ignore_resnames_list = ignore_resnames_list,
             )
 
         self.set_group_completeness_to = (
@@ -234,9 +219,8 @@ class MakeMultiStateOccupancyRestraints(_BaseRestraintMaker):
             'Task: {name}\n'
             '| group_distance_cutoff: {group_distance_cutoff}\n'
             '| overlap_distance_cutoff: {overlap_distance_cutoff}\n'
-            '| ignore_common_solvent_molecules: {ignore_common_solvent_molecules}\n'
-            '| include_resnames_list: {include_resnames_list}\n'
-            '| ignore_resnames_list: {ignore_resnames_list}\n'
+            '| get_interesting_resnames: \n'
+            '| \t{get_interesting_resnames}\n'
             '| set_group_completeness_to: {set_group_completeness_to}\n'
             '| atom_selection: {atom_selection}\n'
             '`---->'
@@ -244,9 +228,7 @@ class MakeMultiStateOccupancyRestraints(_BaseRestraintMaker):
                 name = self.name,
                 group_distance_cutoff = str(self.group_distance_cutoff),
                 overlap_distance_cutoff = str(self.overlap_distance_cutoff),
-                ignore_common_solvent_molecules = str(self.ignore_common_solvent_molecules),
-                include_resnames_list = str(self.include_resnames_list),
-                ignore_resnames_list = str(self.ignore_resnames_list),
+                get_interesting_resnames = str(self.get_interesting_resnames).replace('\n','\n| \t'),
                 set_group_completeness_to = str(self.set_group_completeness_to),
                 atom_selection = str(self.atom_selection),
                 )
@@ -303,87 +285,6 @@ class MakeMultiStateOccupancyRestraints(_BaseRestraintMaker):
         rc.add(altloc_dist_restraints)
 
         return rc
-
-    def get_interesting_resnames(self, hierarchy):
-
-        from iotbx.pdb.hierarchy import common_residue_names_get_class
-
-        unq_resnames = hierarchy.overall_counts().resnames.keys()
-
-        logger.debug(
-            'Residues in structure (and classes): \n\t{}'.format(
-                '\n\t'.join(
-                    map(str,sorted(
-                        [
-                            (n,common_residue_names_get_class(n))
-                            for n in unq_resnames
-                            ],
-                        key = lambda t: t[1],
-                        ))
-                    )
-                )
-            )
-
-        int_resnames = set([
-            r for r in unq_resnames
-            if 'common_' not in common_residue_names_get_class(r)
-            ])
-
-        logger.debug(
-            "Interesting residue names -> {}".format(
-                str(int_resnames),
-                )
-            )
-
-        # Add back in small molecules
-        if self.ignore_common_solvent_molecules is False:
-            #
-            int_resnames.update([
-                r for r in unq_resnames
-                if common_residue_names_get_class(r) not in [
-                    'common_amino_acid',
-                    'common_water',
-                    ]
-                ])
-            #
-            logger.debug(
-                "After adding small/common molecules -> {}".format(
-                    str(int_resnames),
-                    )
-                )
-        else:
-            # Make sure other (non-phenix-defined) common molecules are removed
-            int_resnames.difference_update(self.common_molecules)
-            #
-            logger.debug(
-                "After removing small molecules -> {}".format(
-                    str(int_resnames),
-                    )
-                )
-
-        # Override -- must be last
-        if self.include_resnames_list is not None:
-            #
-            int_resnames.update(self.include_resnames_list)
-            #
-            logger.debug(
-                "After adding selected molecules ({}) -> {}".format(
-                    str(self.include_resnames_list),
-                    str(int_resnames),
-                    )
-                )
-
-        # Override -- must be last
-        if self.ignore_resnames_list is not None:
-            int_resnames.difference_update(self.ignore_resnames_list)
-            logger.debug(
-                "After removing selected molecules ({}) -> {}".format(
-                    str(self.ignore_resnames_list),
-                    str(int_resnames),
-                    )
-                )
-
-        return sorted(int_resnames)
 
     def cluster_altloc_atoms(self, hierarchy):
 

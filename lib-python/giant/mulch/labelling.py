@@ -7,7 +7,7 @@ def basename(path):
     p = pl.Path(path)
 
     while p.suffix:
-        p = p.parent / p.stem
+        p = p.with_name(p.stem)
 
     return p.stem
 

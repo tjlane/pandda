@@ -1,9 +1,11 @@
 import iotbx.pdb
 
+# TODO move to mulch.datasets TODO
+
 def strip_pdb_to_string(input_pdb, remove_ter=False, remove_end=False):
     """Remove all ter cards from a pdb file. Output to string"""
     assert remove_ter or remove_end, 'No functions to perform'
-    pdb_lines = open(input_pdb, 'r').readlines()
+    pdb_lines = open(str(input_pdb), 'r').readlines()
     out_lines = []
     for line in pdb_lines:
         if   remove_ter and (line[0:3]=='TER'):   pass
@@ -17,12 +19,4 @@ def strip_pdb_to_input(input_pdb, remove_ter=False, remove_end=False):
                                         remove_ter = remove_ter,
                                         remove_end = remove_end     )
     return iotbx.pdb.hierarchy.input(pdb_string=stripped)
-
-def get_pdb_header(pdb_file):
-    """Read the header of the pdb file (up to the atom records)"""
-
-    contents = open(pdb_file, 'r').read().split('\n')
-    marker = [i for i,l in enumerate(contents) if l.startswith('ATOM')][0]
-    stripped = contents[:marker]
-    return '\n'.join(stripped)+'\n'
 

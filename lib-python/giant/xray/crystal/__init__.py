@@ -135,7 +135,10 @@ class CrystalInfo(object):
         if (pdb_input is None):
             pdb_input = iotbx.pdb.input(pdb_file)
 
-        info = pdb_input.get_r_rfree_sigma()
+        try:
+            info = pdb_input.get_r_rfree_sigma()
+        except TypeError:
+            info = pdb_input.get_r_rfree_sigma(pdb_file)
 
         return cls(
             crystal_symmetry = pdb_input.crystal_symmetry(),

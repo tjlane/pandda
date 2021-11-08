@@ -1,7 +1,7 @@
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
-import os, sys
+import sys
 import pathlib as pl
 
 from giant.phil import (
@@ -56,6 +56,14 @@ input {
         .type = str
         .multiple = True
 }
+output {
+    pdb = 'merge_conformations.pdb'
+        .help = 'output pdb file'
+        .type = str
+    log = None
+        .help = 'output log file'
+        .type = str
+}
 options {
     prune_duplicates_rmsd = 0.05
         .help = 'RMSD below which to remove duplicate residues'
@@ -70,14 +78,6 @@ options {
     reset_all_occupancies = False
         .help = 'Set all conformer occupancies to the same value (1.0/<number of conformers>). overrides all other occupancy arguments.'
         .type = bool
-}
-output {
-    pdb = 'merge_conformations.pdb'
-        .help = 'output pdb file'
-        .type = str
-    log = 'merge_conformations.log'
-        .help = 'output log file'
-        .type = str
 }
 restraints {
     make_restraints = True
@@ -97,6 +97,20 @@ settings {
 """, process_includes=True)
 
 ############################################################################
+
+def set_get_log(params):
+
+    if params.output.log is not None:
+        pass
+    elif params.output.pdb is not None:
+        params.output.log = str(
+            pl.Path(params.output.pdb).with_suffix('.log')
+            )
+    else:
+        # probably going to error, so set some default
+        params.output.log = "merge_conformations.log"
+
+    return params.output.log
 
 def validate_params(params):
 
@@ -206,11 +220,13 @@ class MergeConformations:
         # Copy as will be modifying the list
         hierarchies = list(hierarchies)
 
-        logger.subheading(
-            'Applying input occupancies prior to merging'
-            )
-
         if (occupancies is not None):
+
+            logger.subheading(
+                'Applying input occupancies prior to merging: \n\t{occs}'.format(
+                    occs = str(occupancies),
+                    )
+                )
 
             assert len(occupancies) == len(hierarchies)
 
@@ -315,7 +331,7 @@ def run(params):
 
     logger = lg.setup_logging(
         name = __name__,
-        log_file = params.output.log,
+        log_file = set_get_log(params),
         debug = params.settings.verbose,
         )
 
@@ -361,6 +377,10 @@ def run(params):
         for p in params.input.pdb
         ]
 
+    logger(
+        '\n\n'.join(map(str, models))
+        )
+
     #####
 
     hierarchy = merge_conformations(
@@ -389,9 +409,7 @@ def run(params):
     hierarchy.write_pdb_file(
         file_name = params.output.pdb,
         crystal_symmetry = (
-            model.crystal.crystal_symmetry
-            if hasattr(model, 'crystal')
-            else None
+            model.input.crystal_symmetry()
             ),
     )
 
@@ -401,9 +419,7 @@ def run(params):
             pdb_path = params.output.pdb,
             )
 
-    logger.heading('Program exited normally!')
-
-    return
+    logger.heading('merge_conformations finished normally')
 
 ############################################################################
 

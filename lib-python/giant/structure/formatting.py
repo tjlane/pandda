@@ -252,4 +252,5 @@ class PymolSelection(_Selection):
     name        = "name {}"
 
 
+labeller = Labeller()
 short_labeller = ShortLabeller()
