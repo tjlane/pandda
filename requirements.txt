@@ -9,4 +9,3 @@ pathlib==1.0.1
 configparser
 constants
 pytest
-numba
