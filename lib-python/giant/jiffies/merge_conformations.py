@@ -69,9 +69,9 @@ options {
         .help = 'RMSD below which to remove duplicate residues'
         .type = float
     occupancy = None
-        .help = 'List of occupancies for the different states. Used to scale the input occupancies of each structure.'
-        .type = float
-        .multiple = True
+        .help = 'comma-separated list of occupancies for the different states. Used to scale the input occupancies of each structure.'
+        .type = str
+        .multiple = False
     sanitise_occupancies = True
         .type = bool
         .help = '(Re)scale occupancies so that group occupancies in the output structure are between 0 and 1.'
@@ -150,7 +150,7 @@ def validate_params(params):
 
     if (params.options.occupancy is not None) and len(params.options.occupancy) > 0:
 
-        occupancies = map(float, params.options.occupancy)
+        occupancies = map(float, params.options.occupancy.split(','))
 
         if len(occupancies) != len(params.input.pdb):
 
@@ -234,7 +234,7 @@ class MergeConformations:
 
                 self.scale_occupancies(
                     atoms = h.atoms(),
-                    occupancy = o,
+                    multiplier = o,
                     )
 
         #####
@@ -386,7 +386,7 @@ def run(params):
     hierarchy = merge_conformations(
         hierarchies = [m.hierarchy for m in models],
         occupancies = (
-            params.options.occupancy
+            map(float, params.options.occupancy.split(','))
             if params.options.occupancy
             else None
             ),

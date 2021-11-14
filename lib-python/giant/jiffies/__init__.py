@@ -271,7 +271,7 @@ class run_default(object):
             e.args = (
                 (
                     '\n\n' +
-                    e.args[0] +
+                    str(e.args[0]) +
                     '\n\n(This type of error normally indicates that something has gone wrong within the program that is not fixable by the user.'
                     '\nYou may need to contact the developer -- for contact info please visit https://pandda.bitbucket.io .)\n'
                     ),
@@ -281,7 +281,7 @@ class run_default(object):
             e.args = (
                 (
                     '\n\n' +
-                    e.args[0] +
+                    str(e.args[0]) +
                     '\n\n(This type of error normally indicates that something is wrong with the input provided to the program that is fixable.)\n'
                     ),
                 ) + e.args[1:]

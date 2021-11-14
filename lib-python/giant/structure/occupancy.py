@@ -71,7 +71,7 @@ class ScaleOccupancies:
 
     def __call__(self, atoms, multiplier):
 
-        assert multiplier > 0.0
+        assert multiplier >= 0.0
 
         if self.in_place is False:
             atoms = atoms.deep_copy()
