@@ -24,6 +24,7 @@ from giant.paths import (
 ############################################################################
 
 PROGRAM = 'giant.swerp'
+
 DESCRIPTION = """
 SWERP = SWeep Ensemble Refinement Parameters
 """
@@ -69,6 +70,18 @@ sweep {
     tx = None
         .type = str
         .multiple = True
+    custom
+        .multiple = True
+    {
+        variable = None
+            .type = str
+            .multiple = False
+        value = None
+            .type = str
+            .multiple = True
+    }
+    repeat = 1
+        .type = int
 }
 options {
     require_tls = True
@@ -82,542 +95,1134 @@ options {
 
 ############################################################################
 
-cmd_template = """
-cd {path}
-cp {input_pdb} input.pdb
-cp {input_mtz} input.mtz
-phenix.ensemble_refinement \\
-  input.pdb input.mtz {other_args} \\
-  ptls={pTLS} \\
-  tx={tx} \\
-  wxray_coupled_tbath_offset={wxray} \\
->& er-{pTLS}-{wxray}-{tx}.log
-"""
-
-ER_LOG_COLUMNS = [
-    'step',
-    'time (s)',
-    'time (%)',
-    'Current R-work',
-    'Current R-free',
-    'Rolling R-work',
-    'Rolling R-free',
-    'Total R-work',
-    'Total R-free',
-    'Temperature (K)',
-    'WXRAY COL1',
-    'WXRAY COL2',
-]
-
-RFACTOR_TABLE_COLUMNS = [
-    'label', 
-    'R-work', 
-    'R-free', 
-    'Rf/Rw', 
-    'Rf-Rw', 
-]
-
 def set_defaults_and_validate(params):
 
     if (not params.sweep.pTLS):
         params.sweep.pTLS = (0.6, 0.7, 0.8, 0.9)
+
     if (not params.sweep.wxray): 
         params.sweep.wxray = (2.5, 5.0, 7.5)
+
     if (not params.sweep.tx):
         params.sweep.tx = (0.25, 0.75, 1.00)
 
     if (params.input.tls_pdb is not None):
+
         if not os.path.exists(params.input.tls_pdb):
             raise IOError('tls_pdb does not exist: {}'.format(params.input.tls_pdb))
-        params.sweep.pTLS = [-1]
+
+        params.sweep.pTLS = []
+
     elif (params.options.require_tls is True): 
+
         if len(params.input.tls_selection) == 0:
+
             raise Sorry('No TLS selections provided (tls_selection=...).')
 
     if not os.path.exists(params.input.pdb):
+
         raise IOError('File does not exist: {}'.format(params.input.pdb))
 
     if not os.path.exists(params.input.mtz):
+
         raise IOError('File does not exist: {}'.format(params.input.mtz))
 
     if params.input.cif:
+
         for f in params.input.cif:
+
             if not os.path.exists(f):
+
                 raise IOError('File does not exist: {}'.format(f))
 
-def sh_filename(directory):
-    return os.path.join(directory, 'run.sh')
+def extract_other_args(params):
 
-def json_filename(directory):
-    return os.path.join(directory, 'run_info.json')
-
-#####
-
-def extract_final_rfactors(log_file):
-    log_string = open(log_file, 'r').read()
-    log_data = log_string[log_string.find('FINAL R'):].split('\n')[0].split()
-
-    label = os.path.basename(os.path.dirname(log_file))
-    rwork = float(log_data[3])
-    rfree = float(log_data[6])
-    ratio = float(log_data[9])
-    rdiff = (rfree - rwork)
-
-    return {
-        'label' : label, 
-        'R-work' : 100.*rwork, 
-        'R-free' : 100.*rfree, 
-        'Rf/Rw' : ratio, 
-        'Rf-Rw' : 100.*rdiff, 
-    }
-
-def extract_all_rfactors(log_file):
-    lines = open(log_file, 'r').readlines()
-    results = []
-    for line in lines:
-        if line[0] == '~':
-            line = line.replace('~', '').replace('|', '').split()
-            if len(line) == 12:
-                results.append(line)
-    # Convert to pandas
-    results_df = pd.DataFrame(
-        columns = ER_LOG_COLUMNS,
-        data = np.array(results, dtype=float),
-        )
-    return results_df
-
-def plot_run_rfactors(results, filename):
-
-    # Create plots with pre-defined labels.
-    time         = results['time (s)'].values
-    current_work = results['Current R-work'].values
-    current_free = results['Current R-free'].values
-    running_work = results['Rolling R-work'].values
-    running_free = results['Rolling R-free'].values
-    total_work   = results['Total R-work'].values
-    total_free   = results['Total R-free'].values
-    # Plot
-    plot_args = {
-        'markersize':5, 
-        'linewidth':1, 
-        'markevery':range(0,len(time),int(len(time)/10-1)),
-        'markerfacecolor':'k', 
-        'markeredgecolor':'k', 
-        }
-
-    fig, ax = plt.subplots()
-    ax.plot(time, current_free, 'b-', label='Current R-free',  alpha=0.5, **plot_args)
-    ax.plot(time, current_work, 'r-',  label='Current R-work', alpha=0.5, **plot_args)
-    ax.plot(time, running_free, 'b-', label='Rolling R-free',  marker='|', **plot_args)
-    ax.plot(time, running_work, 'r-',  label='Rolling R-work', marker='|', **plot_args)
-    ax.plot(time, total_free,   'b-', label='Total R-free',    marker='.', **plot_args)
-    ax.plot(time, total_work,   'r-',  label='Total R-work',   marker='.', **plot_args)
-    plt.title('Simulation R-values')
-    plt.xlabel('Time (ps)')
-    plt.ylabel('R-factor')
-    # Show variance, ignoring first 1000 macrocycles
-    plt.legend(
-        [
-        'Curr. R-free',
-        '{0} (RMS {1:.3f}%)'.format('Curr. R-work', current_work.std()),
-        'Roll. R-free',
-        '{0} (RMS {1:.3f}%)'.format('Roll. R-work', running_work.std()),
-        'Total R-free',
-        'Total R-work',
-        ], 
-        loc = 'upper left',
-        bbox_to_anchor = (1.0, 1.0),
-        )
-    plt.tight_layout()
-    plt.savefig(filename, dpi=200)
-    plt.close(fig)
-
-def show_r_factors_table(table):
-
-    logger = lg.getLogger(__name__)
-
-    logger.heading('Unsorted')
-    logger(table)
-
-    logger.heading('Sorted (R-work)')
-    logger(table.sort_values('R-work', ascending=False))
-
-    logger.heading('Sorted (R-free)')
-    logger(table.sort_values('R-free', ascending=False))
-
-    logger.heading('Summary statistics (all)')
-    filt_cols = ['R-work', 'R-free', 'Rf/Rw', 'Rf-Rw']
-    filt_rows = [ 'count', 'min', '25%', '50%', '75%', 'max', 'mean', 'std']
-    desc = table.describe()
-    desc = desc.loc[filt_rows]
-    desc = desc[filt_cols]
-    try: 
-        import tabulate
-        logger(tabulate.tabulate(desc.T, headers='keys', tablefmt='psql'))
-    except:
-        logger(str(desc))
-    logger('')
-
-    logger.heading('Summary statistics (some)')
-    filt_cols = ['R-work', 'R-free', 'Rf/Rw', 'Rf-Rw']
-    filt_rows = ['min', 'mean', 'max', 'std']
-    desc = table.describe()
-    desc = desc.loc[filt_rows]
-    desc = desc[filt_cols]
-    try: 
-        import tabulate
-        logger(tabulate.tabulate(desc.T, headers='keys', tablefmt='psql'))
-    except:
-        logger(str(desc.T))
-    logger('')
-
-def link_best_structure(table, input_directory, output_path):
-
-    best_rfree = table['R-free'].min()
-    best_row = table.loc[table['R-free']==best_rfree].iloc[0]
-    best_lab = best_row.name
-    
-    best_dir = (
-        pl.Path(input_directory) / best_lab
-        )
-
-    assert best_dir.exists()
-
-    if output_path.exists():
-        logger(
-            'Removing old link: {link}'.format(
-                link = str(output_path)
-                )
-            )
-        output_path.unlink()
-
-    logger(
-        'Linking best R-free simulation: \n\t{best} -> \n\t{link}'.format(
-            best = str(best_dir),
-            link = str(output_path),
-            )
-        )
-
-    rel_symlink(
-        orig = str(best_dir),
-        link = str(output_path),
-        )
-
-def make_3d_plot(table, filepath, view='normal'):
-
-    assert view in ['normal','top']
-
-    import matplotlib.pyplot as plt
-    from matplotlib import cm
-    from matplotlib.ticker import LinearLocator
-    import numpy as np
-    from mpl_toolkits.mplot3d import Axes3D
-
-    fig = plt.figure()
-    ax1 = plt.subplot(2,2,2,projection='3d', azim=0, elev=0)
-    ax2 = plt.subplot(2,2,1,projection='3d', azim=0, elev=90)
-    ax3 = plt.subplot(2,2,3,projection='3d')
-    ax4 = plt.subplot(2,2,4,projection='3d', azim=120)
-
-    table = table.sort_values(by=['tx', 'wxray'])
-
-    # Make data.
-    x = np.array(table['wxray'].values, dtype=float)
-    y = np.array(table['tx'].values, dtype=float)
-    z = np.array(table['R-free'].values, dtype=float)
+    other_args = []
 
     ###
 
-    for ax in [ax1, ax2, ax3, ax4]:
+    if (params.input.cif):
 
-        # Plot the surface.
-        surf = ax.plot_trisurf(
-            x, y, z, 
-            cmap=cm.jet, 
-            linewidth=0.1,
+        for f in params.input.cif:
+
+            other_args.append(
+                str(pl.Path(f).absolute())
             )
-        ax.set_xlabel('WX')
 
-        if ax is ax1: 
-            ax.set_ylabel('TX', labelpad=6)
-        elif ax is ax2: 
-            ax.set_ylabel('TX', labelpad=12)
-        else: 
-            ax.set_ylabel('TX')
+    ###
 
-        # Only one heatmap
-        if ax is ax2: 
-            # Add a color bar which maps values to colors.
-            fig.colorbar(
-                surf, 
-                ax=ax2, 
-                shrink=0.65, 
-                aspect=20, 
-                )
-    
-    # Only one needs the z-label
-    ax1.set_zlabel('$R_{free}$')
-    # from IPython import embed; embed()
-    
-    fig.text(
-        0.42, 0.59, '$R_{free}$', 
-        ha='right', va='top',
-        )
-    fig.text(
-        0.47, 0.45, '$R_{free}$', 
-        ha='right', va='top',
-        )
-    fig.text(
-        0.97, 0.45, '$R_{free}$', 
-        ha='right', va='top',
-        )
-    # ax4.set_zlabel('$R_{free}$')
+    if (params.input.tls_pdb is not None):
 
-    # Hide some labels
-    ax1.set_xlabel('')
-    ax1.set_xticks([])
-    ax2.set_zlabel('')
-    ax2.set_zticks([])
-
-    #from IPython import embed; embed()
-    ax1.margins(left=0.1)
-
-    plt.tight_layout()
-    plt.savefig(filepath, dpi=200)
-    plt.close(fig)
-
-def make_3d_plots(table, output_prefix):
-
-    ptls_values = set(table['pTLS'].values)
-
-    for ptls in sorted(ptls_values):
-
-        if ptls == -1:
-            assert len(ptls_values) == 1
-            output_path = (
-                output_prefix + '.png'
-                )
-        else:
-            output_path = (
-                output_prefix + '_ptls_' + str(ptls) + '.png'
-                )
-
-        make_3d_plot(
-            table = table[table['pTLS']==ptls],
-            filepath = output_path,
+        other_args.append(
+            'import_tls_pdb="{}"'.format(
+                str(pl.Path(params.input.tls_pdb).absolute())
             )
+        )
+
+    elif (params.input.tls_selection):
+
+        other_args.extend([
+            'tls_group_selections="{sel}"'.format(
+                sel = s,
+                )
+            for s in params.input.tls_selection
+            ]
+        )
+
+    ###
+
+    if (params.input.custom_arg):
+
+        other_args.extend(
+            params.input.custom_arg
+        )
+
+    return other_args
+
+def extract_parameter_sweep_args(params):
+
+    sparams = params.sweep
+
+    parameters_dict = {}
+
+    if len(sparams.pTLS) > 0:
+
+        parameters_dict['pTLS'] = (
+            map(float, sparams.pTLS)
+            )
+
+    if len(sparams.wxray) > 0:
+
+        parameters_dict['wxray'] = (
+            map(float, sparams.wxray)
+            )
+
+    if len(sparams.tx) > 0:
+
+        parameters_dict['tx'] = (
+            map(float, sparams.tx)
+            )
+
+    for cparams in sparams.custom:
+
+        parameters_dict[cparams.variable] = (
+            cparams.value
+            )
+
+    return parameters_dict
 
 #####
 
-def make_er_sweep(params): 
-    
-    logger = lg.getLogger(__name__)
 
-    assert os.path.exists(params.output.out_dir)
+class MakeERRunOutput:
 
-    set_defaults_and_validate(params) 
+    png_name = 'simulation_rfactors.png'
 
-    # If provided, override default variable
-    if params.options.sh_header: 
-        sh_header = open(params.options.sh_header, 'r').read()
-    else: 
-        sh_header = "#!/usr/bin/env bash"
+    def __init__(self):
 
-    master_sh = os.path.join(params.output.out_dir, 'run_all_er.sh')
-    sweep_dir = os.path.join(params.output.out_dir, 'sweep_dirs')
-    os.mkdir(sweep_dir)
+        pass
 
-    for i, (pTLS, wxray, tx) in enumerate(
-        itertools.product(
-            params.sweep.pTLS,
-            params.sweep.wxray,
-            params.sweep.tx,
-            )
-        ):
+    def __call__(self, er_run):
 
-        o_dir = os.path.join(sweep_dir, "pTLS-{}-WX-{}-TX-{}".format(pTLS,wxray,tx))
-        os.mkdir(o_dir)
-        logger('Processing '+o_dir)
-
-        # Output files
-        o_sh = sh_filename(o_dir)
-        o_json = json_filename(o_dir) 
-
-        # Format cmd for writing
-        other_args = []
-        # Any cifs?
-        if (params.input.cif):
-            for f in params.input.cif:
-                other_args.append(
-                    os.path.relpath(f, start=o_dir)
-                )
-        # Any tls inputs?
-        if (params.input.tls_pdb is not None): 
-            other_args.append(
-                'import_tls_pdb="{}"'.format(
-                    os.path.relpath(params.input.tls_pdb, start=o_dir)
+        logger(
+            'Writing output for {dir_path}'.format(
+                dir_path = str(er_run.dir_path),
                 )
             )
-        elif (params.input.tls_selection):
-            other_args.extend(
-                ['tls_group_selections="{}"'.format(s) for s in params.input.tls_selection]
-            )
-        # Add custom args
-        if (params.input.custom_arg):
-            other_args.extend(
-                params.input.custom_arg
+
+        png_path = (
+            er_run.dir_path / self.png_name
             )
 
-        # Output command
-        cmd = cmd_template.format(
-            path = os.path.abspath(o_dir),
-            input_pdb = os.path.relpath(params.input.pdb, start=o_dir), 
-            input_mtz = os.path.relpath(params.input.mtz, start=o_dir), 
-            other_args = ('' if (not other_args) else ' \\\n  '.join(['']+other_args)),
-            pTLS = pTLS,
-            wxray = wxray,
-            tx = tx,
-        )
+        if png_path.exists():
+            logger(
+                '\tAlready made {png_path}'.format(
+                    png_path = str(png_path),
+                    )
+                )
 
-        # Command for running ER
-        with open(o_sh, "w") as fh:
-            fh.write(sh_header + '\n')
-            fh.write(cmd + '\n')
+        else:
+            logger(
+                'Making R-factor plot: {png_path}'.format(
+                    png_path = str(png_path),
+                    )
+                )
 
-        # Data for this run
-        json_data = {
-                'pTLS' : pTLS, 
-                'wxray' : wxray,
-                'tx' : tx,
+            r_factors_table = er_run.get_all_rfactors()
+
+            self.make_png(
+                r_factors_table,
+                png_path,
+                )
+
+    def make_png(self, r_factors_table, png_path):
+
+        # Create plots with pre-defined labels.
+        time         = r_factors_table['time (s)'].values
+        current_work = r_factors_table['Current R-work'].values
+        current_free = r_factors_table['Current R-free'].values
+        running_work = r_factors_table['Rolling R-work'].values
+        running_free = r_factors_table['Rolling R-free'].values
+        total_work   = r_factors_table['Total R-work'].values
+        total_free   = r_factors_table['Total R-free'].values
+
+        # Plot
+        plot_args = {
+            'markersize':5,
+            'linewidth':1,
+            'markevery':range(0,len(time),int(len(time)/10-1)),
+            'markerfacecolor':'k',
+            'markeredgecolor':'k',
             }
 
-        with open(o_json, "w") as fh:
+        fig, ax = plt.subplots()
+        ax.plot(time, current_free, 'b-', label='Current R-free', alpha=0.5,  **plot_args)
+        ax.plot(time, current_work, 'r-', label='Current R-work', alpha=0.5,  **plot_args)
+        ax.plot(time, running_free, 'b-', label='Rolling R-free', marker='|', **plot_args)
+        ax.plot(time, running_work, 'r-', label='Rolling R-work', marker='|', **plot_args)
+        ax.plot(time, total_free,   'b-', label='Total R-free',   marker='.', **plot_args)
+        ax.plot(time, total_work,   'r-', label='Total R-work',   marker='.', **plot_args)
+
+        plt.title('Simulation R-values')
+        plt.xlabel('Time (ps)')
+        plt.ylabel('R-factor')
+
+        # (Show variance in legend)
+        plt.legend(
+            [
+            'Curr. R-free',
+            '{0} (RMS {1:.3f}%)'.format('Curr. R-work', current_work.std()),
+            'Roll. R-free',
+            '{0} (RMS {1:.3f}%)'.format('Roll. R-work', running_work.std()),
+            'Total R-free',
+            'Total R-work',
+            ],
+            loc = 'upper left',
+            bbox_to_anchor = (1.0, 1.0),
+            )
+
+        plt.tight_layout()
+        plt.savefig(str(png_path), dpi=200)
+        plt.close(fig)
+
+
+class MakeERSweepOutput:
+
+    csv_name = 'ensemble_sweep_results.csv'
+    png_name = 'ensemble_sweep_results.png'
+    best_name = 'best'
+
+    RFACTOR_TABLE_COLUMNS = [
+        'label',
+        'R-work',
+        'R-free',
+        'Rf/Rw',
+        'Rf-Rw',
+    ]
+
+    def __init__(self):
+
+        pass
+
+    def __call__(self, er_sweep):
+
+        er_runs = [
+            r for r in er_sweep.get_runs()
+            if r.is_finished()
+            ]
+
+        final_rfactors = self.extract_final_rfactors(
+            er_runs = er_runs,
+            )
+
+        # need to select minimum for multiple repeats, or modify plotting function
+
+        self.show_results(
+            r_factors_table = final_rfactors,
+            )
+
+        self.write_csv(
+            er_sweep = er_sweep,
+            r_factors_table = final_rfactors,
+            )
+
+        self.make_plots(
+            er_sweep = er_sweep,
+            r_factors_table = final_rfactors,
+            )
+
+        self.link_best(
+            er_sweep = er_sweep,
+            r_factors_table = final_rfactors,
+            )
+
+    def extract_final_rfactors(self, er_runs):
+
+        all_run_data = []
+
+        for er_run in er_runs:
+
+            run_data = {
+                'label' : er_run.dir_path.name
+                }
+
+            run_data.update(
+                er_run.get_final_rfactors()
+                )
+
+            run_data.update(
+                er_run.get_meta()['sweep_variables']
+                )
+
+            all_run_data.append(run_data)
+
+        r_factors_table = pd.DataFrame(
+            all_run_data
+            )
+
+        ###
+
+        all_columns = list(r_factors_table.columns)
+
+        for c in self.RFACTOR_TABLE_COLUMNS:
+            all_columns.remove(c)
+
+        # reorder columns
+        r_factors_table = (
+            r_factors_table[self.RFACTOR_TABLE_COLUMNS+all_columns]
+            )
+
+        ###
+
+        r_factors_table = r_factors_table.set_index('label')
+
+        return r_factors_table
+
+    def show_results(self, r_factors_table):
+
+        table = r_factors_table
+
+        logger.subheading('Unsorted Results')
+        logger(table)
+
+        logger.subheading('Sorted (R-work)')
+        logger(table.sort_values('R-work', ascending=False))
+
+        logger.subheading('Sorted (R-free)')
+        logger(table.sort_values('R-free', ascending=False))
+
+        logger.subheading('Summary statistics (all)')
+        filt_cols = ['R-work', 'R-free', 'Rf/Rw', 'Rf-Rw']
+        filt_rows = [ 'count', 'min', '25%', '50%', '75%', 'max', 'mean', 'std']
+        desc = table.describe()
+        desc = desc.loc[filt_rows]
+        desc = desc[filt_cols]
+        try:
+            import tabulate
+            logger(tabulate.tabulate(desc.T, headers='keys', tablefmt='psql'))
+        except:
+            logger(str(desc))
+        logger('')
+
+        logger.subheading('Summary statistics (some)')
+        filt_cols = ['R-work', 'R-free', 'Rf/Rw', 'Rf-Rw']
+        filt_rows = ['min', 'mean', 'max', 'std']
+        desc = table.describe()
+        desc = desc.loc[filt_rows]
+        desc = desc[filt_cols]
+        try:
+            import tabulate
+            logger(tabulate.tabulate(desc.T, headers='keys', tablefmt='psql'))
+        except:
+            logger(str(desc.T))
+        logger('')
+
+    def write_csv(self, er_sweep, r_factors_table):
+
+        csv_path = (
+            er_sweep.dir_path / self.csv_name
+            )
+
+        r_factors_table.to_csv(
+            str(csv_path)
+            )
+
+    def make_plots(self, er_sweep, r_factors_table):
+
+        r_factors_table = r_factors_table.reset_index()
+
+        columns = list(r_factors_table.columns)
+
+        for c in self.RFACTOR_TABLE_COLUMNS:
+            columns.remove(c)
+
+        # Remove columns with no dimension
+
+        n_vals = {
+            c : len(set(r_factors_table[c].values))
+            for c in columns
+        }
+
+        columns = [
+            c for (c,v) in n_vals.items()
+            if v > 1
+            ]
+
+        # Order columns
+
+        ordering = {
+            'pTLS':1,
+            'wxray':2,
+            'tx':3,
+            }
+
+        columns = sorted(
+            columns,
+            key = lambda x: (ordering.get(x,0),x)
+            )
+
+        png_path = (
+            er_sweep.dir_path / self.png_name
+            )
+
+        png_root = (
+            png_path.parent / png_path.stem
+            )
+
+        plot_list = []
+
+        self._make_plots_nested(
+            table = r_factors_table,
+            columns = columns,
+            png_root = png_root,
+            plot_list = plot_list,
+            plot_labs = [],
+            )
+
+        return plot_list
+
+    def _make_plots_nested(self,
+        table,
+        columns,
+        png_root,
+        plot_list,
+        plot_labs,
+        ):
+
+        if len(columns) == 1:
+
+            # 1d plot
+
+            png_path = str(png_root)+'.png'
+
+            self.make_line_plot(
+                table = table,
+                column = columns[0],
+                png_path = png_path,
+                )
+
+            plot_list.append(
+                (plot_labs, png_path)
+                )
+
+        elif len(columns) == 2:
+
+            # 2d plot
+
+            png_path = str(png_root)+'.png'
+
+            self.make_surface_plot(
+                table = table,
+                columns = columns,
+                png_path = png_path,
+                )
+
+            plot_list.append(
+                (plot_labs, png_path)
+                )
+
+        else:
+
+            # Loop one variable and repeat nesting
+
+            l_col = columns[0]
+            l_vals = sorted(set(table[l_col].values))
+            r_cols = columns[1:]
+
+            for l_val in l_vals:
+
+                plot_labs_nest = list(plot_labs) + [(l_col,l_val)]
+
+                self._make_plots_nested(
+                    table = table.loc[table[l_col]==l_val],
+                    columns = r_cols,
+                    png_root = (
+                        str(png_root)+'-{c}-{v}'.format(
+                            c = str(l_col),
+                            v = str(l_val),
+                            )
+                        ),
+                    plot_list = plot_list,
+                    plot_labs = plot_labs_nest,
+                    )
+
+        return None
+
+    def make_line_plot(self,
+        table,
+        column,
+        png_path,
+        ):
+
+        pltx = str(column)
+
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        fig, ax = plt.subplots()
+
+        table = table.sort_values(by=[pltx])
+
+        # Make data.
+        x = np.array(table[pltx].values, dtype=float)
+        y = np.array(table['R-free'].values, dtype=float)
+
+        ###
+
+        # Plot the line
+        ax.plot(x, y)
+
+        ax.set_xlabel(pltx.upper())
+        ax.set_ylabel('$R_{free}$')
+
+        plt.tight_layout()
+        plt.savefig(str(png_path), dpi=200)
+        plt.close(fig)
+
+    def make_surface_plot(self,
+        table,
+        columns,
+        png_path,
+        ):
+
+        assert len(columns) == 2
+
+        pltx = str(columns[0])
+        plty = str(columns[1])
+
+        import matplotlib.pyplot as plt
+        from matplotlib import cm
+        from matplotlib.ticker import LinearLocator
+        import numpy as np
+        from mpl_toolkits.mplot3d import Axes3D
+
+        fig = plt.figure()
+        ax1 = plt.subplot(2,2,2,projection='3d', azim=0, elev=0)
+        ax2 = plt.subplot(2,2,1,projection='3d', azim=0, elev=90)
+        ax3 = plt.subplot(2,2,3,projection='3d')
+        ax4 = plt.subplot(2,2,4,projection='3d', azim=120)
+
+        table = table.sort_values(by=[plty, pltx])
+
+        # Make data.
+        x = np.array(table[pltx].values, dtype=float)
+        y = np.array(table[plty].values, dtype=float)
+        z = np.array(table['R-free'].values, dtype=float)
+
+        ###
+
+        for ax in [ax1, ax2, ax3, ax4]:
+
+            # Plot the surface.
+            surf = ax.plot_trisurf(
+                x, y, z,
+                cmap=cm.jet,
+                linewidth=0.1,
+                )
+            ax.set_xlabel(pltx.upper())
+
+            if ax is ax1:
+                ax.set_ylabel(plty.upper(), labelpad=6)
+            elif ax is ax2:
+                ax.set_ylabel(plty.upper(), labelpad=12)
+            else:
+                ax.set_ylabel(plty.upper())
+
+            # Only one heatmap
+            if ax is ax2:
+                # Add a color bar which maps values to colors.
+                fig.colorbar(
+                    surf,
+                    ax=ax2,
+                    shrink=0.65,
+                    aspect=20,
+                    )
+
+        # Only one needs the z-label
+        ax1.set_zlabel('$R_{free}$')
+        # from IPython import embed; embed()
+
+        fig.text(
+            0.42, 0.59, '$R_{free}$',
+            ha='right', va='top',
+            )
+        fig.text(
+            0.47, 0.45, '$R_{free}$',
+            ha='right', va='top',
+            )
+        fig.text(
+            0.97, 0.45, '$R_{free}$',
+            ha='right', va='top',
+            )
+        # ax4.set_zlabel('$R_{free}$')
+
+        # Hide some labels
+        ax1.set_xlabel('')
+        ax1.set_xticks([])
+        ax2.set_zlabel('')
+        ax2.set_zticks([])
+
+        #from IPython import embed; embed()
+        ax1.margins(left=0.1)
+
+        plt.tight_layout()
+        plt.savefig(str(png_path), dpi=200)
+        plt.close(fig)
+
+    def link_best(self, er_sweep, r_factors_table):
+
+        logger.subheading('Extracting best output structure')
+
+        table = r_factors_table
+
+        best_rfree = table['R-free'].min()
+        best_row = table.loc[table['R-free']==best_rfree].iloc[0]
+        best_lab = best_row.name
+
+        best_path = (
+            er_sweep.dir_path / self.best_name
+            )
+
+        best_dir = (
+            er_sweep.run_manager.dir_path / best_lab
+            )
+
+        # assumes that label column contains the names of the dirs
+        assert best_dir.exists()
+
+        if best_path.is_dir():
+            shutil.rmtree(str(best_path))
+        elif best_path.is_symlink():
+            best_path.unlink()
+        elif best_path.exists():
+            logger.warning(
+                '{} exists but is not a directory -- cannot link best directory'.format(
+                    str(best_path)
+                    )
+                )
+            return None
+
+        logger(
+            'Copying best R-free simulation: \n\t{best} -> \n\t{link}'.format(
+                best = str(best_dir),
+                link = str(best_path),
+                )
+            )
+
+        shutil.copytree(
+            str(best_dir),
+            str(best_path),
+            )
+
+
+class PostProcessERSweep:
+
+    def __init__(self):
+
+        self.make_run_output = MakeERRunOutput()
+        self.make_sweep_output = MakeERSweepOutput()
+
+    def __call__(self, er_sweep):
+
+        finished_runs = []
+
+        logger.heading('Getting finished runs')
+
+        for er_run in er_sweep.get_runs():
+
+            er_run.show_status()
+
+            if er_run.is_finished():
+
+                finished_runs.append(er_run)
+
+        if len(finished_runs) == 0:
+
+            logger('No finished runs')
+
+            return None
+
+        logger.heading('Writing Run Outputs')
+
+        for er_run in finished_runs:
+
+            self.make_run_output(
+                er_run = er_run,
+                )
+
+        logger.heading('Writing Sweep Outputs')
+
+        self.make_sweep_output(
+            er_sweep = er_sweep,
+            )
+
+
+#####
+
+
+class ERRun:
+
+    _input_pdb_name = "input.pdb"
+    _input_mtz_name = "input.mtz"
+
+    _shell_name = "run.sh"
+    _json_name = "run_info.json"
+
+    def __init__(self, dir_path):
+
+        self.dir_path = dir_path
+
+        self.input_pdb_path = (
+            self.dir_path / self._input_pdb_name
+            )
+
+        self.input_mtz_path = (
+            self.dir_path / self._input_mtz_name
+            )
+
+        self.shell_path = (
+            self.dir_path / self._shell_name
+            )
+
+        self.json_path = (
+            self.dir_path / self._json_name
+            )
+
+        self.ensemble_pdb_path = (
+            self.input_pdb_path.parent / (self.input_pdb_path.stem + '_ensemble.pdb.gz')
+            )
+
+        self.ensemble_mtz_path = (
+            self.input_pdb_path.parent / (self.input_pdb_path.stem + '_ensemble.pdb.gz')
+            )
+
+        self.log_path = (
+            self.input_pdb_path.parent / (self.input_pdb_path.stem + '_ensemble.log')
+            )
+
+    def __str__(self):
+
+        s = (
+            'ER run\n'
+            '\tDirectory: {dir_path}\n'
+            '\tParameters: \n\t{param_json}\n'
+            ).format(
+                dir_path = str(self.dir_path),
+                param_json = (
+                    json.dumps(self.get_meta(),indent=2)
+                    ).replace(
+                    '\n','\n\t'
+                    ),
+            )
+
+        return s
+
+    def is_finished(self):
+
+        if self.ensemble_pdb_path.exists():
+            return True
+        else:
+            return False
+
+    def get_meta(self):
+
+        if self.json_path.exists():
+            return json.loads(
+                open(str(self.json_path),'r').read()
+                )
+        else:
+            return None
+
+    def get_final_rfactors(self):
+
+        log_string = open(str(self.log_path), 'r').read()
+
+        log_data = (
+            log_string[log_string.find('FINAL R'):].split('\n')[0].split()
+            )
+
+        # label = os.path.basename(os.path.dirname(log_file))
+        rwork = float(log_data[3])
+        rfree = float(log_data[6])
+        ratio = float(log_data[9])
+        rdiff = (rfree - rwork)
+
+        return {
+            'R-work' : 100.*rwork,
+            'R-free' : 100.*rfree,
+            'Rf/Rw' : ratio,
+            'Rf-Rw' : 100.*rdiff,
+        }
+
+    def get_all_rfactors(self):
+
+        assert self.is_finished()
+
+        ER_LOG_COLUMNS = [
+            'step',
+            'time (s)',
+            'time (%)',
+            'Current R-work',
+            'Current R-free',
+            'Rolling R-work',
+            'Rolling R-free',
+            'Total R-work',
+            'Total R-free',
+            'Temperature (K)',
+            'WXRAY COL1',
+            'WXRAY COL2',
+        ]
+
+        log_string = open(str(self.log_path), 'r').read()
+
+        lines = log_string.split('\n')
+
+        ncols = len(ER_LOG_COLUMNS)
+
+        results = []
+        for line in lines:
+            if line and (line[0] == '~'):
+                line = line.replace('~', '').replace('|', '').split()
+                if len(line) == ncols:
+                    results.append(line)
+
+        results_df = pd.DataFrame(
+            columns = ER_LOG_COLUMNS,
+            data = np.array(results, dtype=float),
+            )
+
+        return results_df
+
+    def show_status(self):
+
+        if self.is_finished():
+            status = 'done'
+        else:
+            status = '    '
+
+        logger(status + ' ' + str(self.dir_path.name))
+
+
+class ERRunManager:
+
+    parameter_name_hash = {
+        'wxray' : 'wxray_coupled_tbath_offset',
+        'pTLS' : 'ptls',
+        'tx' : 'tx',
+    }
+
+    shell_template = (
+    "cd {dir_path}\n"
+    "cp {input_pdb} {er_input_pdb}\n"
+    "cp {input_mtz} {er_input_mtz}\n"
+    "phenix.ensemble_refinement \\\n"
+    "  {er_input_pdb} {er_input_mtz} {args} \n"
+    )
+
+    def __init__(self,
+        dir_path,
+        max_repeats=10,
+        ):
+
+        self.dir_path = dir_path
+        self.max_repeats = int(max_repeats)
+
+        self.ERRunClass = ERRun
+
+    def setup(self,
+        shell_header = None,
+        ):
+
+        self.shell_header = (
+            shell_header
+            if shell_header is not None
+            else "#!/usr/bin/env bash"
+            )
+
+    def make(self,
+        input_pdb,
+        input_mtz,
+        parameter_dict,
+        other_args = None,
+        ):
+
+        repeat_no = 0
+
+        while True:
+
+            repeat_no += 1
+
+            if repeat_no == (self.max_repeats+1):
+                raise Exception('too many repeats')
+
+            dir_label = '-'.join(
+                [
+                "{k}-{v}".format(
+                    k=str(k).strip(' '),
+                    v=str(v).strip(' '),
+                    )
+                for k,v in sorted(parameter_dict.items())
+                ]
+            ) + (
+            '-{repeat_no}'.format(repeat_no=repeat_no)
+            )
+
+            dir_path = (
+                self.dir_path / dir_label
+                )
+
+            if not dir_path.exists():
+                break
+
+        dir_path.mkdir(parents=True)
+
+        er_run = self.ERRunClass(dir_path)
+
+        args = sorted([
+            "{key}={val}".format(
+                key = self.parameter_name_hash.get(k,k),
+                val = str(v),
+                )
+            for k,v in parameter_dict.items()
+            ])
+
+        if other_args is not None:
+            args.extend(list(other_args))
+
+        json_data = {
+            'sweep_variables' : parameter_dict,
+            'other_arguments' : other_args,
+            'repeat' : repeat_no,
+        }
+
+        shell_content = self.shell_template.format(
+            dir_path = str(dir_path.absolute()),
+            input_pdb = str(input_pdb.absolute()),
+            input_mtz = str(input_mtz.absolute()),
+            args = (
+                ""
+                if len(args) == 0
+                else " \\\n  ".join([""]+args)
+                ),
+            er_input_pdb = er_run._input_pdb_name,
+            er_input_mtz = er_run._input_mtz_name,
+            )
+
+        with open(str(er_run.shell_path), 'w') as fh:
+
+            if self.shell_header is not None:
+                fh.write(
+                    str(self.shell_header)+'\n\n'
+                    )
+
+            fh.write(
+                shell_content + '\n'
+                )
+
+        with open(str(er_run.json_path), 'w') as fh:
             fh.write(
                 json.dumps(json_data, indent=2),
                 )
 
-        # Add sh command to master file
-        os.system("chmod +x {}".format(o_sh))
-        with open(master_sh, 'a') as mfh:
-            mfh.write("{sub_cmd} ./{path}\n".format(
-                sub_cmd = params.options.queue_cmd,
-                path = os.path.relpath(o_sh, start=params.output.out_dir)),
-            )
-
-    return None
-
-def read_er_sweep(params):
-
-    logger = lg.getLogger(__name__)
-
-    assert os.path.exists(params.output.out_dir)
-
-    r_factors_table = None
-
-    for d in sorted(glob.glob(os.path.join(params.output.out_dir,'sweep_dirs/*'))):
-        if not os.path.isdir(d):
-            continue
-
-        logger('Parsing '+d)
-
-        if not os.path.exists(
-            os.path.join(d, 'input_ensemble.pdb.gz')
-            ):
-            logger('\tSimulation not finished')
-            continue
-
-        # Extract data from the logfile
-        o_log = os.path.join(d, 'input_ensemble.log')
-        if not os.path.exists(o_log):
-            raise Sorry('no log file in {}'.format(d))
-
-        try:
-            final_rfactors = extract_final_rfactors(o_log)
-        except:
-            logger('\tError parsing log file')
-            continue
-
-        # Extract meta from the json
-        o_json = json_filename(d)
-        if not os.path.exists(o_json):
-            raise Failure('No JSON file')
-        run_data = json.loads(open(o_json,'r').read())
-
-        # Create table if needed
-        if (r_factors_table is None):
-            r_factors_table = pd.DataFrame(
-                columns = RFACTOR_TABLE_COLUMNS + run_data.keys(),
-                )
-
-        # Add meta to result dict
-        final_rfactors.update(run_data)
-
-        # Add to table
-        r_factors_table.loc[len(r_factors_table)] = final_rfactors
-
-        # plot r-factors for directory
-        if (True):
-            run_filename = o_log.replace('.log', '.png')
-            # No point in doing this multiple times...
-            if not pl.Path(run_filename).exists():
-                all_r_factors = extract_all_rfactors(o_log)
-                plot_run_rfactors(
-                    results = all_r_factors,
-                    filename = run_filename,
-                    )
-    
-    if r_factors_table is None:
         logger(
-            'No completed runs found: {out_dir}'.format(
-                out_dir = str(params.output.out_dir),
+            'Prepared: \n{er_run}'.format(
+                er_run = str(er_run),
                 )
             )
-        sys.exit(1)
 
-    r_factors_table = r_factors_table.set_index('label')
+        return er_run
 
-    show_r_factors_table(r_factors_table)
-    r_factors_table.to_csv(
-        os.path.join(params.output.out_dir, 'ensemble_sweep_results.csv'),
-        )
+    def get_all(self):
 
-    link_best_structure(
-        table = r_factors_table,
-        input_directory = (
-            pl.Path(params.output.out_dir) / 'sweep_dirs'
-            ),
-        output_path = (
-            pl.Path(params.output.out_dir) / 'best'
-            ),
-        )
+        er_runs = [
+            self.ERRunClass(d)
+            for d in sorted(
+                self.dir_path.glob('*')
+                )
+            ]
 
-    make_3d_plots(
-        r_factors_table,
-        output_prefix = os.path.abspath(
-            os.path.join(params.output.out_dir, 'ensemble_sweep_surface_plot')
-            ),
-        )
+        return er_runs
+
+
+class ERSweepManager:
+
+    master_shell_name = 'run_all.sh'
+    sweep_dir_name = 'sweep_dirs'
+
+    def __init__(self, dir_path):
+
+        self.dir_path = dir_path
+
+        self.master_shell_path = (
+            self.dir_path / self.master_shell_name
+            )
+
+        self.run_manager = ERRunManager(
+            dir_path = (
+                self.dir_path / self.sweep_dir_name
+                ),
+            )
+
+        self._update_sweep = PostProcessERSweep()
+
+    def setup(self,
+        shell_header = None,
+        submit_command = None,
+        ):
+
+        self.run_manager.setup(
+            shell_header = shell_header,
+            )
+
+        self.submit_command = (
+            submit_command
+            if submit_command is not None
+            else "."
+            )
+
+    def make(self,
+        input_pdb,
+        input_mtz,
+        parameters_dict,
+        other_args,
+        ):
+
+        logger(
+            'Extracted sweep parameters: {params_json}'.format(
+                params_json = json.dumps(parameters_dict, indent=2),
+                )
+            )
+
+        parameter_combinations = [
+            dict(t)
+            for t in itertools.product(*[
+                [(k,v) for v in vv]
+                for k,vv in parameters_dict.items()
+                ])
+            ]
+
+        er_runs = []
+
+        for p_dict in parameter_combinations:
+
+            er_run = self.run_manager.make(
+                input_pdb = input_pdb,
+                input_mtz = input_mtz,
+                parameter_dict = p_dict,
+                other_args = other_args,
+                )
+
+            er_runs.append(
+                er_run
+                )
+
+        with open(str(self.master_shell_path),'a') as fh:
+
+            fh.write(
+                ''.join([
+                    "{cmd} {sh}\n".format(
+                        cmd = self.submit_command,
+                        sh = str(er_run.shell_path.absolute()),
+                        )
+                    for er_run in er_runs
+                ])
+            )
+
+        return er_runs
+
+    def update_results(self):
+
+        return self._update_sweep(self)
+
+    def get_runs(self):
+
+        return self.run_manager.get_all()
+
+    def run(self):
+
+        os.system("chmod +x {}".format(self.master_shell.absolute()))
+        os.system("{}".format(self.master_shell.absolute()))
+
+
+###
+
 
 def run(params):
 
-    new_sweep = False
-    if not os.path.exists(params.output.out_dir):
-        new_sweep = True
-
     from giant.logs import setup_logging
-    if not os.path.exists(params.output.out_dir):
-        os.mkdir(params.output.out_dir)
+
+    out_dir = pl.Path(params.output.out_dir)
+
+    new_sweep = bool(
+        not out_dir.exists()
+        )
+
+    if not out_dir.exists():
+        out_dir.mkdir(parents=True)
+
     logger = setup_logging(
         name = __name__, # setup root logging for __name__ == __main__
-        log_file = os.path.join(params.output.out_dir, 'swerp.log'),
+        log_file = str(out_dir / 'swerp.log'),
         warning_handler_name = 'warnings',
         debug = False,
     )
 
+    er_sweep = ERSweepManager(
+        dir_path = out_dir,
+        )
+
     if (new_sweep is True):
-        make_er_sweep(params)
+
+        set_defaults_and_validate(params)
+
+        er_sweep.setup(
+            shell_header = (
+                open(params.options.sh_header, 'r').read()
+                if params.options.sh_header is not None
+                else None
+                ),
+            submit_command = (
+                params.options.queue_cmd
+                if params.options.queue_cmd is not None
+                else None
+                ),
+            )
+
+        er_sweep.make(
+            input_pdb = pl.Path(params.input.pdb),
+            input_mtz = pl.Path(params.input.mtz),
+            parameters_dict = extract_parameter_sweep_args(
+                params = params,
+                ),
+            other_args = extract_other_args(
+                params = params,
+                ),
+            )
+
     else: 
-        read_er_sweep(params)
+
+        er_sweep.update_results()
+
 
 #######################################
 
