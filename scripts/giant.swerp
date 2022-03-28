@@ -14,6 +14,17 @@ import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
 
+from mpl_toolkits.axes_grid.inset_locator import (
+    inset_axes,
+    InsetPosition,
+    mark_inset,
+    )
+
+# from scipy.interpolate import (
+#     make_interp_spline,
+#     BSpline,
+#     )
+
 import libtbx.phil
 from libtbx.utils import Sorry, Failure
 
@@ -34,6 +45,7 @@ blank_arg_prepend = {
   '.mtz':'input.mtz=',
   '.cif':'input.cif=',
   '.sh':'sh_header=',
+  None:'out_dir=',
 }
 
 ############################################################################
@@ -214,7 +226,7 @@ def extract_parameter_sweep_args(params):
 #####
 
 
-class MakeERRunOutput:
+class ProcessERRunOutput:
 
     png_name = 'simulation_rfactors.png'
 
@@ -306,11 +318,113 @@ class MakeERRunOutput:
         plt.close(fig)
 
 
-class MakeERSweepOutput:
+class FitPolynomialTrendline:
 
-    csv_name = 'ensemble_sweep_results.csv'
-    png_name = 'ensemble_sweep_results.png'
-    best_name = 'best'
+    def __init__(self,
+        min_degree=1,
+        max_degree=5,
+        n_cross_validation=10,
+        r_diff_cutoff = 2.0, # above median
+        r_fitt_cutoff = 0.5, # below prediction
+        ):
+
+        self.min_degree = int(min_degree)
+        self.max_degree = int(max_degree)
+        self.n_cross_validation = int(n_cross_validation)
+
+        self.r_diff_cutoff = float(r_diff_cutoff)
+        self.r_fitt_cutoff = float(r_fitt_cutoff)
+
+        self.n_initial_cycle = 5
+        self.n_main_cycle = 5
+
+    def __call__(self, x, y):
+
+        for i in range(self.n_initial_cycle):
+
+            diffs = (
+                x - y
+                )
+
+            # Rejection selection
+            sel = (
+                (diffs - np.median(diffs)) > self.r_diff_cutoff
+                )
+
+            x = x[~sel]
+            y = y[~sel]
+
+            logger(((sel).sum(), sel.size))
+
+            if sel.sum() == 0:
+                break
+
+        for i in range(self.n_main_cycle):
+
+            fit = self.fit(x,y)
+
+            diffs = (
+                fit.predict(x[:,np.newaxis]) - y
+                )
+
+            # Rejection selection
+            sel = (
+                diffs > self.r_fitt_cutoff
+                )
+
+            x = x[~sel]
+            y = y[~sel]
+
+            logger((sel.sum(), sel.size))
+
+            if sel.sum() == 0:
+                break
+
+        fit = self.fit(x,y)
+
+        return fit
+
+    def fit(self, x, y):
+
+        from sklearn.pipeline import Pipeline
+        from sklearn.preprocessing import PolynomialFeatures
+        from sklearn.linear_model import LinearRegression
+        from sklearn.model_selection import cross_val_score
+
+        max_score = -1e10
+        best_pipeline = None
+
+        for degree in range(self.min_degree,self.max_degree+1):
+
+            polynomial_features = PolynomialFeatures(degree=degree, include_bias=False)
+
+            linear_regression = LinearRegression()
+
+            pipeline = Pipeline(
+                [
+                    ("polynomial_features", polynomial_features),
+                    ("linear_regression", linear_regression),
+                ]
+            )
+
+            pipeline.fit(x[:,np.newaxis], y)
+
+            # Evaluate the models using crossvalidation
+            scores = cross_val_score(
+                pipeline, x[:,np.newaxis], y, scoring="neg_mean_squared_error", cv=self.n_cross_validation,
+            )
+
+            logger((degree, scores.mean()))
+
+            if scores.mean() > max_score:
+
+                max_score = scores.mean()
+                best_pipeline = pipeline
+
+        return best_pipeline
+
+
+class ERSweepWrangler(object):
 
     RFACTOR_TABLE_COLUMNS = [
         'label',
@@ -320,136 +434,244 @@ class MakeERSweepOutput:
         'Rf-Rw',
     ]
 
+    RFREE_KEY = 'R-free'
+    RWORK_KEY = 'R-work'
+    RDIFF_KEY = 'Rf-Rw'
+    RRATO_KEY = 'Rf/Rw'
+
+
+class SelectBestModel(ERSweepWrangler):
+
+    scatter_plot_png_name = 'ensemble_rfree_vs_rwork_all.png'
+    distribution_plot_png_name = 'ensemble_rfree_rwork_distributions.png'
+
+    def __init__(self,
+        fit_trendline = None,
+        ):
+
+        self.fit_trendline = (
+            fit_trendline
+            if fit_trendline is not None
+            else FitPolynomialTrendline()
+            )
+
+    def __call__(self, er_sweep, r_factors_table):
+
+        r_factors_table = r_factors_table.reset_index()
+
+        trendline = self.fit_trendline(
+            x = np.array(r_factors_table[self.RFREE_KEY].values),
+            y = np.array(r_factors_table[self.RWORK_KEY].values),
+            )
+
+        best_row = self.find_best_dataset(
+            trendline = trendline,
+            r_factors_table = r_factors_table,
+            )
+
+        self.make_model_selection_plots(
+            er_sweep = er_sweep,
+            trendline = trendline,
+            r_factors_table = r_factors_table,
+            selected_row = best_row,
+            )
+
+        return best_row
+
+    def find_best_dataset(self, trendline, r_factors_table):
+
+        r_factors_table = r_factors_table.sort_values(by=[self.RFREE_KEY])
+
+        r_free_all = r_factors_table[self.RFREE_KEY]
+
+        r_free_cutoffs = np.arange(
+            r_free_all.min()+0.5,
+            r_free_all.max()+0.5,
+            0.5,
+            )
+
+        for r_free_cut in r_free_cutoffs:
+
+            table = r_factors_table[r_free_all < r_free_cut]
+
+            rf = np.array(table[self.RFREE_KEY].values)
+            rw = np.array(table[self.RWORK_KEY].values)
+
+            rw_pred = trendline.predict(rf[:,np.newaxis])
+
+            # Want to be large
+            rw_diff = (rw - rw_pred)
+
+            # Need to be within 0.1 of the line or greater
+            if rw_diff.max() < -0.1:
+                continue
+
+            i_sel = np.where(rw_diff == rw_diff.max())[0][0]
+
+            best_sel = table.iloc[i_sel]
+
+            break
+
+        return best_sel
+
+    def make_model_selection_plots(self, er_sweep, trendline, r_factors_table, selected_row):
+
+        png_path = (
+            er_sweep.dir_path / self.scatter_plot_png_name
+            )
+
+        self.make_rwork_rfree_scatter_plot(
+            table = r_factors_table,
+            trendline = trendline,
+            selected_row = selected_row,
+            png_path = png_path,
+            )
+
+        png_path = (
+            er_sweep.dir_path / self.distribution_plot_png_name
+            )
+
+        self.make_rwork_rfree_distribution_plot(
+            table = r_factors_table,
+            png_path = png_path,
+            )
+
+    def make_rwork_rfree_distribution_plot(self, table, png_path):
+
+        fig = plt.figure()
+
+        for i, col in enumerate([
+            self.RFREE_KEY,
+            self.RWORK_KEY,
+            self.RDIFF_KEY,
+            self.RRATO_KEY,
+            ]):
+
+            values = table[col].values
+
+            ax1 = plt.subplot(2,2,i+1)
+
+            ax1.hist(
+                values,
+                bins = 30,
+                )
+
+            ax1.axvline(np.mean(values), color='black')
+            ax1.axvline(np.median(values), color='red')
+
+            ax1.set_xlabel(col)
+
+        plt.tight_layout()
+        plt.savefig(str(png_path), dpi=200)
+        plt.close(fig)
+
+    def make_rwork_rfree_scatter_plot(self, table, trendline, selected_row, png_path):
+
+        fig = plt.figure()
+
+        ### Make axes (inc. inset) ###
+
+        ax1 = plt.subplot(1,1,1)
+
+        ax2 = plt.axes([0,0,1,1])
+        ax2.set_axes_locator(
+            InsetPosition(ax1, [0.6, 0.1, 0.3, 0.4])
+            )
+        mark_inset(ax1, ax2, loc1=2, loc2=4, fc="none", ec='0.5')
+
+        ax2.yaxis.set_label_position("right")
+        ax2.yaxis.tick_right()
+
+        ###
+
+        x = np.array(table[self.RFREE_KEY].values)
+        y = np.array(table[self.RWORK_KEY].values)
+
+        ###
+
+        plot_args = {
+            'alpha' : 1,
+            's' : 1,
+            'c' : 'blue',
+        }
+
+        ax1.scatter(
+            x=x,
+            y=y,
+            label = 'Individual Runs',
+            **plot_args
+            )
+
+        xnew = np.linspace(x.min(), x.max(), 200)
+        ynew = trendline.predict(xnew[:, np.newaxis])
+
+        ax1.plot(
+            xnew,
+            ynew,
+            '-',
+            label = 'Fitted trendline',
+            )
+
+        ax1.set_xlabel('R-free', labelpad=6)
+        ax1.set_ylabel('R-work', labelpad=6)
+
+        ### Inset ###
+
+        smol_x_sel = (x < (x.min() + 0.5))
+        smol_x = x[smol_x_sel]
+        smol_y = y[smol_x_sel]
+
+        ax2.scatter(
+            x=smol_x,
+            y=smol_y,
+            **plot_args
+            )
+
+        xnew = np.linspace(smol_x.min(), smol_x.max(), 200)
+        ynew = trendline.predict(xnew[:, np.newaxis])
+
+        ax2.plot(
+            xnew,
+            ynew,
+            '-',
+            )
+
+        ###
+
+        if selected_row is not None:
+
+            s_r = selected_row
+
+            plot_args = {'s':25, 'color':None, 'edgecolors':'black'}
+
+            ax1.scatter([s_r[self.RFREE_KEY]],[s_r[self.RWORK_KEY]], label='Selected Model', **plot_args)
+            ax2.scatter([s_r[self.RFREE_KEY]],[s_r[self.RWORK_KEY]], **plot_args)
+
+        ax1.legend(loc='upper left')
+
+        ###
+
+        # plt.tight_layout()
+        plt.savefig(str(png_path), dpi=200)
+        plt.close(fig)
+
+
+class MakeParameterSurfacePlots(ERSweepWrangler):
+
+    surface_plot_png_name = 'ensemble_rfree_vs_parameters.png'
+
     def __init__(self):
 
         pass
 
-    def __call__(self, er_sweep):
+    def __call__(self, er_sweep, r_factors_table):
 
-        er_runs = [
-            r for r in er_sweep.get_runs()
-            if r.is_finished()
-            ]
-
-        final_rfactors = self.extract_final_rfactors(
-            er_runs = er_runs,
-            )
-
-        # need to select minimum for multiple repeats, or modify plotting function
-
-        self.show_results(
-            r_factors_table = final_rfactors,
-            )
-
-        self.write_csv(
+        self.make_parameter_plots(
             er_sweep = er_sweep,
-            r_factors_table = final_rfactors,
+            r_factors_table = r_factors_table.reset_index(),
             )
 
-        self.make_plots(
-            er_sweep = er_sweep,
-            r_factors_table = final_rfactors,
-            )
-
-        self.link_best(
-            er_sweep = er_sweep,
-            r_factors_table = final_rfactors,
-            )
-
-    def extract_final_rfactors(self, er_runs):
-
-        all_run_data = []
-
-        for er_run in er_runs:
-
-            run_data = {
-                'label' : er_run.dir_path.name
-                }
-
-            run_data.update(
-                er_run.get_final_rfactors()
-                )
-
-            run_data.update(
-                er_run.get_meta()['sweep_variables']
-                )
-
-            all_run_data.append(run_data)
-
-        r_factors_table = pd.DataFrame(
-            all_run_data
-            )
-
-        ###
-
-        all_columns = list(r_factors_table.columns)
-
-        for c in self.RFACTOR_TABLE_COLUMNS:
-            all_columns.remove(c)
-
-        # reorder columns
-        r_factors_table = (
-            r_factors_table[self.RFACTOR_TABLE_COLUMNS+all_columns]
-            )
-
-        ###
-
-        r_factors_table = r_factors_table.set_index('label')
-
-        return r_factors_table
-
-    def show_results(self, r_factors_table):
-
-        table = r_factors_table
-
-        logger.subheading('Unsorted Results')
-        logger(table)
-
-        logger.subheading('Sorted (R-work)')
-        logger(table.sort_values('R-work', ascending=False))
-
-        logger.subheading('Sorted (R-free)')
-        logger(table.sort_values('R-free', ascending=False))
-
-        logger.subheading('Summary statistics (all)')
-        filt_cols = ['R-work', 'R-free', 'Rf/Rw', 'Rf-Rw']
-        filt_rows = [ 'count', 'min', '25%', '50%', '75%', 'max', 'mean', 'std']
-        desc = table.describe()
-        desc = desc.loc[filt_rows]
-        desc = desc[filt_cols]
-        try:
-            import tabulate
-            logger(tabulate.tabulate(desc.T, headers='keys', tablefmt='psql'))
-        except:
-            logger(str(desc))
-        logger('')
-
-        logger.subheading('Summary statistics (some)')
-        filt_cols = ['R-work', 'R-free', 'Rf/Rw', 'Rf-Rw']
-        filt_rows = ['min', 'mean', 'max', 'std']
-        desc = table.describe()
-        desc = desc.loc[filt_rows]
-        desc = desc[filt_cols]
-        try:
-            import tabulate
-            logger(tabulate.tabulate(desc.T, headers='keys', tablefmt='psql'))
-        except:
-            logger(str(desc.T))
-        logger('')
-
-    def write_csv(self, er_sweep, r_factors_table):
-
-        csv_path = (
-            er_sweep.dir_path / self.csv_name
-            )
-
-        r_factors_table.to_csv(
-            str(csv_path)
-            )
-
-    def make_plots(self, er_sweep, r_factors_table):
-
-        r_factors_table = r_factors_table.reset_index()
+    def make_parameter_plots(self, er_sweep, r_factors_table):
 
         columns = list(r_factors_table.columns)
 
@@ -482,7 +704,7 @@ class MakeERSweepOutput:
             )
 
         png_path = (
-            er_sweep.dir_path / self.png_name
+            er_sweep.dir_path / self.surface_plot_png_name
             )
 
         png_root = (
@@ -491,7 +713,7 @@ class MakeERSweepOutput:
 
         plot_list = []
 
-        self._make_plots_nested(
+        self._make_parameter_plots_nested(
             table = r_factors_table,
             columns = columns,
             png_root = png_root,
@@ -501,7 +723,7 @@ class MakeERSweepOutput:
 
         return plot_list
 
-    def _make_plots_nested(self,
+    def _make_parameter_plots_nested(self,
         table,
         columns,
         png_root,
@@ -553,7 +775,7 @@ class MakeERSweepOutput:
 
                 plot_labs_nest = list(plot_labs) + [(l_col,l_val)]
 
-                self._make_plots_nested(
+                self._make_parameter_plots_nested(
                     table = table.loc[table[l_col]==l_val],
                     columns = r_cols,
                     png_root = (
@@ -575,9 +797,6 @@ class MakeERSweepOutput:
         ):
 
         pltx = str(column)
-
-        import matplotlib.pyplot as plt
-        import numpy as np
 
         fig, ax = plt.subplots()
 
@@ -610,10 +829,8 @@ class MakeERSweepOutput:
         pltx = str(columns[0])
         plty = str(columns[1])
 
-        import matplotlib.pyplot as plt
         from matplotlib import cm
         from matplotlib.ticker import LinearLocator
-        import numpy as np
         from mpl_toolkits.mplot3d import Axes3D
 
         fig = plt.figure()
@@ -660,7 +877,6 @@ class MakeERSweepOutput:
 
         # Only one needs the z-label
         ax1.set_zlabel('$R_{free}$')
-        # from IPython import embed; embed()
 
         fig.text(
             0.42, 0.59, '$R_{free}$',
@@ -682,29 +898,169 @@ class MakeERSweepOutput:
         ax2.set_zlabel('')
         ax2.set_zticks([])
 
-        #from IPython import embed; embed()
         ax1.margins(left=0.1)
 
         plt.tight_layout()
         plt.savefig(str(png_path), dpi=200)
         plt.close(fig)
 
-    def link_best(self, er_sweep, r_factors_table):
 
-        logger.subheading('Extracting best output structure')
+class ProcessERSweepOutput(ERSweepWrangler):
+
+    results_csv_name = 'ensemble_sweep_results.csv'
+
+    best_name = 'best'
+
+    def __init__(self):
+
+        self.select_best_model = SelectBestModel()
+
+        self.make_parameter_plots = MakeParameterSurfacePlots()
+
+    def __call__(self, er_sweep):
+
+        er_runs = [
+            r for r in er_sweep.get_runs()
+            if r.is_finished()
+            ]
+
+        final_rfactors = self.extract_final_rfactors(
+            er_runs = er_runs,
+            )
+
+        # need to select minimum for multiple repeats, or modify plotting function
+
+        self.show_results(
+            r_factors_table = final_rfactors,
+            )
+
+        self.write_csv(
+            er_sweep = er_sweep,
+            r_factors_table = final_rfactors,
+            )
+
+        ##
+
+        self.make_parameter_plots(
+            er_sweep = er_sweep,
+            r_factors_table = final_rfactors,
+            )
+
+        ##
+
+        best_row = self.select_best_model(
+            er_sweep = er_sweep,
+            r_factors_table = final_rfactors,
+            )
+
+        best_run = self.link_best(
+            er_sweep = er_sweep,
+            best_run = er_sweep.get(best_row['label']),
+            )
+
+        return best_run
+
+    def extract_final_rfactors(self, er_runs):
+
+        all_run_data = []
+
+        for er_run in er_runs:
+
+            run_data = {
+                'label' : er_run.dir_path.name
+                }
+
+            run_data.update(
+                er_run.get_final_rfactors()
+                )
+
+            run_data.update(
+                er_run.get_meta()['sweep_variables']
+                )
+
+            all_run_data.append(run_data)
+
+        r_factors_table = pd.DataFrame(
+            all_run_data
+            )
+
+        ###
+
+        all_columns = list(r_factors_table.columns)
+
+        for c in self.RFACTOR_TABLE_COLUMNS:
+            all_columns.remove(c)
+
+        # reorder columns
+        r_factors_table = (
+            r_factors_table[self.RFACTOR_TABLE_COLUMNS+all_columns]
+            )
+
+        ###
+
+        r_factors_table = r_factors_table.set_index('label')
+
+        return r_factors_table
+
+    def show_results(self, r_factors_table):
 
         table = r_factors_table
 
-        best_rfree = table['R-free'].min()
-        best_row = table.loc[table['R-free']==best_rfree].iloc[0]
-        best_lab = best_row.name
+        logger.subheading('Unsorted Results')
+        logger(table)
+
+        logger.subheading('Sorted (R-work)')
+        logger(table.sort_values(self.RWORK_KEY, ascending=False))
+
+        logger.subheading('Sorted (R-free)')
+        logger(table.sort_values(self.RFREE_KEY, ascending=False))
+
+        logger.subheading('Summary statistics (all)')
+        filt_cols = [self.RWORK_KEY, self.RFREE_KEY, self.RRATO_KEY, self.RDIFF_KEY]
+        filt_rows = [ 'count', 'min', '25%', '50%', '75%', 'max', 'mean', 'std']
+        desc = table.describe()
+        desc = desc.loc[filt_rows]
+        desc = desc[filt_cols]
+        try:
+            import tabulate
+            logger(tabulate.tabulate(desc.T, headers='keys', tablefmt='psql'))
+        except:
+            logger(str(desc))
+        logger('')
+
+        logger.subheading('Summary statistics (some)')
+        filt_cols = [self.RWORK_KEY, self.RFREE_KEY, self.RRATO_KEY, self.RDIFF_KEY]
+        filt_rows = ['min', 'mean', 'max', 'std']
+        desc = table.describe()
+        desc = desc.loc[filt_rows]
+        desc = desc[filt_cols]
+        try:
+            import tabulate
+            logger(tabulate.tabulate(desc.T, headers='keys', tablefmt='psql'))
+        except:
+            logger(str(desc.T))
+        logger('')
+
+    def write_csv(self, er_sweep, r_factors_table):
+
+        csv_path = (
+            er_sweep.dir_path / self.results_csv_name
+            )
+
+        r_factors_table.to_csv(
+            str(csv_path)
+            )
+
+    def link_best(self, er_sweep, best_run):
+
+        logger.subheading('Linking/copying best output structure')
 
         best_path = (
             er_sweep.dir_path / self.best_name
             )
 
         best_dir = (
-            er_sweep.run_manager.dir_path / best_lab
+            best_run.dir_path
             )
 
         # assumes that label column contains the names of the dirs
@@ -734,13 +1090,15 @@ class MakeERSweepOutput:
             str(best_path),
             )
 
+        return er_sweep.run_manager.ERRunClass(best_dir)
+
 
 class PostProcessERSweep:
 
     def __init__(self):
 
-        self.make_run_output = MakeERRunOutput()
-        self.make_sweep_output = MakeERSweepOutput()
+        self.make_run_output = ProcessERRunOutput()
+        self.make_sweep_output = ProcessERSweepOutput()
 
     def __call__(self, er_sweep):
 
@@ -836,6 +1194,13 @@ class ERRun:
             )
 
         return s
+
+    def exists(self):
+
+        if self.dir_path.exists():
+            return True
+
+        return False
 
     def is_finished(self):
 
@@ -1063,6 +1428,20 @@ class ERRunManager:
 
         return er_runs
 
+    def get(self, label, check_exists=True, check_finished=False):
+
+        er_run = self.ERRunClass(
+            dir_path = self.dir_path / label
+            )
+
+        if bool(check_exists) is True:
+            assert er_run.exists()
+
+        if bool(check_finished) is True:
+            assert er_run.is_finished()
+
+        return er_run
+
 
 class ERSweepManager:
 
@@ -1157,6 +1536,10 @@ class ERSweepManager:
     def get_runs(self):
 
         return self.run_manager.get_all()
+
+    def get(self, label):
+
+        return self.run_manager.get(label)
 
     def run(self):
 
