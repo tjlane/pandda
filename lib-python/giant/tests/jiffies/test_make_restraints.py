@@ -1,21 +1,21 @@
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
 import os, copy
-import pytest
 
 from giant.tests.jiffies import (
-    get_params_from_phil_and_args,
+    run_module,
     check_files,
     )
 
 def run_make_restraints(args):
 
-    from giant.jiffies.make_restraints import (
-        master_phil,
-        run,
-        )
+    import giant.jiffies.make_restraints
 
-    params = get_params_from_phil_and_args(master_phil, args)
-    
-    return run(params)
+    return run_module(
+        module = giant.jiffies.make_restraints,
+        args = args,
+        )
 
 def test_make_restraints_two_states(resources, tmp_path):
 

@@ -3,7 +3,11 @@ logger = lg.getLogger(__name__)
 
 import os
 
-from pytest import approx, mark, fixture
+from pytest import (
+    approx,
+    mark,
+    fixture,
+    )
 
 from iotbx.pdb.atom_selection import AtomSelectionError
 
@@ -19,7 +23,7 @@ def example_pdbs(tmpdir):
     return pdb_mov, pdb_ref
 
 @mark.xfail(raises=AtomSelectionError, reason="library clash?")
-def test_rigid_align(example_pdbs):
+def test_align_structures_rigid(example_pdbs):
 
     pdb_mov, pdb_ref = example_pdbs
 
@@ -28,6 +32,7 @@ def test_rigid_align(example_pdbs):
     h_ref = iotbx.pdb.hierarchy.input(pdb_ref).hierarchy
 
     from giant.structure.align import align_structures_rigid
+
     alignment = align_structures_rigid(
         mov_hierarchy = h_mov,
         ref_hierarchy = h_ref,
@@ -40,7 +45,7 @@ def test_rigid_align(example_pdbs):
     assert alignment.ref2nat(test_coords)[0] == approx((3.962991, 6.137686, -1.974420))
 
 @mark.xfail(raises=AtomSelectionError, reason="library clash?")
-def test_flexible_align(example_pdbs):
+def test_align_structures_flexible(example_pdbs):
 
     pdb_mov, pdb_ref = example_pdbs
 
@@ -49,6 +54,7 @@ def test_flexible_align(example_pdbs):
     h_ref = iotbx.pdb.hierarchy.input(pdb_ref).hierarchy
 
     from giant.structure.align import align_structures_flexible
+
     alignment = align_structures_flexible(
         mov_hierarchy = h_mov,
         ref_hierarchy = h_ref,

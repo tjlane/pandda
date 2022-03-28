@@ -1,7 +1,7 @@
 import collections
 import numpy as np
 
-from giant.stats.cluster import (
+from giant.common.clustering import (
     generate_group_idxs,
     )
 

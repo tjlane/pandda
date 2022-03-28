@@ -43,7 +43,7 @@ class CrystalGroup(object):
         dist_mat_con = scipy.spatial.distance.squareform(dist_mat)
         link_mat = scipy.cluster.hierarchy.linkage(dist_mat_con, method='single', metric='euclidean')
         clusters = scipy.cluster.hierarchy.fcluster(link_mat, t=cutoff, criterion='distance')
-        from giant.stats.cluster import generate_group_idxs
+        from giant.common.clustering import generate_group_idxs
         return [cls([crystals[idx] for idx in g]) for i_g,g in generate_group_idxs(clusters)]
 
 def dendrogram(fname, link_mat, labels=None, ylab=None, xlab=None, ylim=None, annotate_y_min=0.25, num_nodes=20):

@@ -67,7 +67,7 @@ def find_symmetry_equivalent_groups(points_frac, sym_ops, unit_cell, cutoff_cart
                     equiv_sites[(i_sym_op, i_group_1, i_group_2)] = 1
 
     # Condense the cluster equivalence - take max over the symmetry operations and group by connected paths
-    from giant.stats.cluster import find_connected_groups
+    from giant.common.clustering import find_connected_groups
     sym_groups = find_connected_groups(connection_matrix=equiv_sites.max(axis=0))
 
     return sym_groups

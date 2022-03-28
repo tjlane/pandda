@@ -264,6 +264,7 @@ def test_TestTrainPartitioner(five_baz2b_test_datasets_mcd):
     ##
 
     from giant.mulch.selectors import SortedDatasetSelector
+    from giant.mulch.sorters import ArbitraryDatasetSorter
 
     if True:
 
@@ -282,7 +283,9 @@ def test_TestTrainPartitioner(five_baz2b_test_datasets_mcd):
             not_train = None,
             test_selector = SortedDatasetSelector(
                 max_datasets = 3,
-                sort_datasets_func = (lambda d: d.model.filename),
+                sort_datasets = ArbitraryDatasetSorter(
+                    sort_function = lambda d: d.model.filename,
+                    ),
                 ),
             train_selector = None,
             )
@@ -318,7 +321,9 @@ def test_TestTrainPartitioner(five_baz2b_test_datasets_mcd):
             test_selector = None,
             train_selector = SortedDatasetSelector(
                 max_datasets = 3,
-                sort_datasets_func = (lambda d: d.model.filename),
+                sort_datasets = ArbitraryDatasetSorter(
+                    sort_function = lambda d: d.model.filename,
+                    ),
                 ),
             )
 
@@ -354,11 +359,15 @@ def test_TestTrainPartitioner(five_baz2b_test_datasets_mcd):
             not_train = None,
             test_selector = SortedDatasetSelector(
                 max_datasets = 1,
-                sort_datasets_func = (lambda d: d.model.filename),
+                sort_datasets = ArbitraryDatasetSorter(
+                    sort_function = lambda d: d.model.filename,
+                    ),
                 ),
             train_selector = SortedDatasetSelector(
                 max_datasets = 3,
-                sort_datasets_func = (lambda d: d.model.filename),
+                sort_datasets = ArbitraryDatasetSorter(
+                    sort_function = lambda d: d.model.filename,
+                    ),
                 ),
             )
 

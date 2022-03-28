@@ -10,7 +10,7 @@ from giant.exceptions import Sorry, Failure
 from pandemic.adp.plots import PlotHelper
 helper = PlotHelper()
 
-from giant.maths import EIGHTPISQ
+from giant.common import EIGHTPISQ
 
 from scitbx.array_family import flex
 

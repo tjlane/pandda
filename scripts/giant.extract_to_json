@@ -4,7 +4,7 @@ import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 from giant.exceptions import Sorry, Failure
-from giant.maths import EIGHTPISQ
+from giant.common import EIGHTPISQ
 
 import os, sys, json, collections
 

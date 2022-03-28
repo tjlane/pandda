@@ -82,6 +82,7 @@ class _LeastSquaresFitter(object):
         self.out_values = None
         self.weight_array = None
 
+
 class LinearScaling(_LeastSquaresFitter):
 
     def initialise_parameters(self):
@@ -97,6 +98,7 @@ class LinearScaling(_LeastSquaresFitter):
         v0,v1 = params
         out = v0 + values*v1
         return out
+
 
 class ExponentialScaling(_LeastSquaresFitter):
 

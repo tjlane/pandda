@@ -114,7 +114,7 @@ def make_tls_isotropic(t, l, s, l_and_s_in_degrees=True):
 
     # Should return in degrees also
     if l_and_s_in_degrees is True:
-        from giant.maths import RAD2DEG, RAD2DEGSQ
+        from giant.common import RAD2DEG, RAD2DEGSQ
         T = T
         L = L * RAD2DEGSQ
         S = S * RAD2DEG

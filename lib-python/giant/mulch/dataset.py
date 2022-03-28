@@ -56,13 +56,17 @@ class AtomicModel(_DatasetObj):
 
         self.input = input
         self.hierarchy = hierarchy
-        self.filename = filename
+        self.filename = (
+            str(filename)
+            if filename is not None
+            else None
+            )
 
     @classmethod
     def from_file(cls, filename):
         from giant.io.pdb import strip_pdb_to_input
         ih = strip_pdb_to_input(
-            filename,
+            str(filename),
             remove_ter = True,
         )
         c = cls(
@@ -200,7 +204,11 @@ class CrystallographicData(ExperimentalData):
         super(CrystallographicData, self).__init__()
 
         self._mtz_object = mtz_object
-        self.filename = mtz_filename
+        self.filename = (
+            str(mtz_filename)
+            if mtz_filename is not None
+            else None
+            )
 
         from giant.xray.crystal import CrystalInfo
         self.crystal = CrystalInfo.from_mtz(
@@ -224,7 +232,7 @@ class CrystallographicData(ExperimentalData):
 
     @classmethod
     def from_file(cls, filename):
-        assert filename.endswith('.mtz'), 'Given filename is not an mtz file'
+        assert str(filename).endswith('.mtz'), 'Given filename is not an mtz file'
         c = cls(
             mtz_filename = filename,
             #mtz_object = iotbx.mtz.object(filename),
@@ -251,7 +259,7 @@ class CrystallographicData(ExperimentalData):
             return self._mtz_object
 
         return iotbx.mtz.object(
-            self.filename,
+            self.filename
             )
 
 
@@ -312,8 +320,8 @@ class ModelAndData(_DatasetObj):
 
         if (model_filename is not None):
 
-            if not os.path.exists(model_filename):
-                raise IOError('Model file does not exist: {}'.format(model_filename))
+            if not os.path.exists(str(model_filename)):
+                raise IOError('Model file does not exist: {!s}'.format(model_filename))
 
             model = cls.ModelClass.from_file(
                 filename = model_filename,
@@ -321,7 +329,7 @@ class ModelAndData(_DatasetObj):
 
         if (data_filename is not None):
 
-            if not os.path.exists(data_filename):
+            if not os.path.exists(str(data_filename)):
                 raise IOError('Experimental Data file does not exist: {}'.format(data_filename))
 
             data = cls.DataClass.from_file(

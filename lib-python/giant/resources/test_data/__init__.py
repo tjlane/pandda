@@ -58,7 +58,7 @@ def get_test_data(output_directory, n=1, dataset='BAZ2B'):
 
     from giant.paths import resolve_glob
     pdb_files = resolve_glob(
-        os.path.join(output_directory, 'data', '*', '*.dimple.pdb'),
+        os.path.join(str(output_directory), 'data', '*', '*.dimple.pdb'),
         n = n,
     )
 

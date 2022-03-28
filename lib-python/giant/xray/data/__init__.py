@@ -38,7 +38,7 @@ def estimate_wilson_b_factor(miller_array, low_res_cutoff=4.0):
     # Select only those which are valid in both
     mask = numpy.logical_not(numpy.logical_or(numpy.isnan(x_values), numpy.isnan(y_values)))
     # Perform scaling
-    from giant.stats.optimisation import LinearScaling
+    from giant.common.scaling import LinearScaling
     scl = LinearScaling(x_values   = flex.double(x_values[mask].tolist()),
                         ref_values = flex.double(y_values[mask].tolist()))
 

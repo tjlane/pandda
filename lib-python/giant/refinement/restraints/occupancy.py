@@ -6,7 +6,7 @@ import copy
 import numpy as np
 from scitbx.array_family import flex
 
-from giant.stats.cluster import (
+from giant.common.clustering import (
     find_connected_groups
     )
 

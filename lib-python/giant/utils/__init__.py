@@ -29,24 +29,35 @@ def show_dict(dictionary, logger=None):
             )
         )
 
-def merge_dicts(master_dict, merge_dict, dict_class=collections.OrderedDict):
+def merge_dicts(
+    master_dict,
+    merge_dict,
+    dict_class = collections.OrderedDict,
+    overwrite = False,
+    ):
 
     for j_key, j_val in merge_dict.items():
 
         if hasattr(j_val, 'keys'):
+
             m_dict = master_dict.setdefault(
                 j_key, 
                 dict_class(),
                 )
+
             merge_dicts(
                 master_dict = m_dict,
                 merge_dict = j_val,
+                dict_class = dict_class,
+                overwrite = overwrite,
                 )
         else: 
-            if (j_key in master_dict):
+
+            if (overwrite is False) and (j_key in master_dict):
                 show_dict(master_dict)
                 show_dict(merge_dict)
                 raise ValueError('error joining "{}"'.format(j_key))
+
             master_dict[j_key] = j_val
 
     return master_dict

@@ -40,7 +40,7 @@ class Pseudoatom(object):
             q = q,
             color = color,
             label = label,
-            pos = pos,
+            pos = (tuple(pos) if pos is not None else None),
             )
 
     def draw(self, obj):
@@ -52,6 +52,8 @@ class Pseudoatom(object):
             if v is not None: 
                 if isinstance(v, str):
                     v = '"'+v.strip(' "')+'"'
+                # else:
+                #     v = str(v)
                 arg_string += ', %s=%s' % (k, v)
         return 'cmd.pseudoatom("%s", state=%s%s)' % (obj, state, arg_string)
 

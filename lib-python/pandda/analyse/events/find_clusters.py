@@ -183,7 +183,7 @@ class BasicClusterFinder:
         map_values,
         ):
 
-        from giant.stats.cluster import generate_group_idxs
+        from giant.common.clustering import generate_group_idxs
 
         clusters = []
 

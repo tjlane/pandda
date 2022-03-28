@@ -719,7 +719,7 @@ def test_MakeVoronoiGridPartition(five_baz2b_test_datasets_mcd):
         # Check that the closest site is the assigned one
         for xyz in partition_xyzs_cart:
             diff_xyzs_cart = (this_partition.partition_sites - xyz)
-            dists = np.sqrt(np.power(diff_xyzs_cart, 2).sum(axis=1))
+            dists = np.sqrt(np.power(diff_xyzs_cart, 2).sum(axis=1)) # TODO: update to use giant.common.maths function
             assert np.where(dists == min(dists))[0] == i
 
     #
@@ -748,7 +748,7 @@ def test_MakeVoronoiGridPartition(five_baz2b_test_datasets_mcd):
         # Check that the closest site is the assigned one
         for xyz in partition_xyzs_cart:
             diff_xyzs_cart = (this_partition.partition_sites - xyz)
-            dists = np.sqrt(np.power(diff_xyzs_cart, 2).sum(axis=1))
+            dists = np.sqrt(np.power(diff_xyzs_cart, 2).sum(axis=1)) # TODO: update to use giant.common.maths function
             assert np.where(dists == min(dists))[0] == i
 
     #

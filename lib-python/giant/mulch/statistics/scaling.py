@@ -1,7 +1,7 @@
 import collections
 import numpy as np
 
-from giant.mulch.statistics.classifiers import ZScoreClassifier
+from .classifiers import ZScoreClassifier
 
 
 class ExtractScalingStatistics:

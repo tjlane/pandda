@@ -70,7 +70,7 @@ class IsotropicBfactorScalingFactory(object):
         from scitbx.array_family import flex
         from scitbx.math import scale_curves, approx_equal_relatively
 
-        from giant.stats.optimisation import ExponentialScaling
+        from giant.common.scaling import ExponentialScaling
 
         assert convergence_reject_perc > 90.0
 

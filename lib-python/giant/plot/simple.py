@@ -1,7 +1,7 @@
 import numpy
 
 from matplotlib import pyplot
-from giant.maths import finite
+from giant.common.maths import finite
 
 try:
     pyplot.style.use('ggplot')

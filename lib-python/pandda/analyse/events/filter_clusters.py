@@ -1,12 +1,13 @@
 import numpy as np 
 
-from giant.stats.cluster import (
+from giant.common.clustering import (
     find_connected_groups, 
     generate_group_idxs,
     )
 
-from find_clusters import Cluster
+from .find_clusters import Cluster
 
+# TODO: replace with giant.common.geometry.pairwise_distances
 def pairwise_distances_between_sites(sites1, sites2):
 
     n1 = len(sites1)

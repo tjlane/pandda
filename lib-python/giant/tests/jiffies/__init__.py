@@ -1,4 +1,4 @@
-#
+import os
 
 def get_params_from_phil_and_args(master_phil, args):
 
@@ -18,10 +18,53 @@ def get_params_from_phil_and_args(master_phil, args):
 
     return params
 
+def run_module(module, args):
+
+    params = get_params_from_phil_and_args(
+        master_phil = module.master_phil,
+        args = args,
+        )
+
+    return module.run(params)
+
+def run_program(program, args):
+    """
+    Run program from the command line with args
+    """
+
+    from giant.dispatcher import Dispatcher
+
+    prog = Dispatcher(program)
+    prog.extend_args(args)
+    prog.run()
+
+    return prog
+
+def run_jiffy(args, module):
+    """
+    Run a module as command line argument, assuming that
+    the name of the program is derivable from the module
+    name.
+    """
+
+    prog_name = (
+        module.__name__.replace('.jiffies', '')
+        )
+
+    run_program(
+        program = prog_name,
+        args = args,
+    )
+
+###
+
 def check_files(files_list, check_list, error_remaining=True):
 
+    # files_list = map(str, files_list)
+    # check_list = map(str, check_list)
+
     for f in check_list:
-        try: 
+        try:
             files_list.remove(
                 str(f)
                 )
@@ -32,9 +75,9 @@ def check_files(files_list, check_list, error_remaining=True):
                     )
                 )
 
-    if error_remaining is True: 
+    if error_remaining is True:
 
-        if len(files_list) > 0: 
+        if len(files_list) > 0:
 
             raise Exception(
                 'Unexpected output files: {}'.format(
@@ -42,3 +85,4 @@ def check_files(files_list, check_list, error_remaining=True):
                     ),
                 )
 
+###

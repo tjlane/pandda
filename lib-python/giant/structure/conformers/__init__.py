@@ -8,15 +8,19 @@ from itertools import cycle
 import iotbx.pdb
 from scitbx.array_family import flex
 
-from .formatting import (
+from giant.common.geometry import (
+    rmsd_coordinates,
+    )
+
+from ..formatting import (
     labeller,
     )
 
-from .common import (
+from ..common import (
     GetInterestingResnames,
     )
 
-from .occupancy import (
+from ..occupancy import (
     ResetOccupancies,
     )
 
@@ -796,9 +800,9 @@ class PruneRedundantConformers:
                         prune = False
                         break
 
-                    rmsd = self.calculate_rmsd(
-                        atoms_1 = atoms_1,
-                        atoms_2 = atoms_2,
+                    rmsd = rmsd_coordinates(
+                        atoms_1.extract_xyz(),
+                        atoms_2.extract_xyz(),
                         )
 
                     logger.debug(
@@ -885,17 +889,6 @@ class PruneRedundantConformers:
             return False
 
         return True
-
-    @staticmethod
-    def calculate_rmsd(atoms_1, atoms_2):
-
-        return np.sqrt(
-            np.mean(
-                (
-                    atoms_1.extract_xyz() - atoms_2.extract_xyz()
-                    ).dot()
-                )
-            )
 
     @staticmethod
     def rescale_occupancies(atoms, max_occ=1.0):

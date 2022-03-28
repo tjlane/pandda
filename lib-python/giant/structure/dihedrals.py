@@ -3,7 +3,7 @@ import numpy
 import iotbx.pdb
 from scitbx.math import dihedral_angle
 
-from giant.maths.angles import angle_difference
+from giant.common.maths.angles import angle_difference
 from giant.structure.select import extract_backbone_atoms
 from giant.structure.iterators import generate_residue_triplets
 

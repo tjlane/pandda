@@ -161,14 +161,14 @@ class Options:
             not_train = config.input.flags.not_train,
             train_selector = SortedDatasetSelector(
                 max_datasets = config.params.statistical_maps.max_build_datasets,
-                dataset_sorter = HighResolutionSorter(),
+                sort_datasets = HighResolutionSorter(),
                 ),
             # train_selector = RandomDatasetSelector(
             #     max_datasets = config.params.statistical_maps.max_build_datasets,
             #     ),
             test_selector = (
                 SoulmateSelector( # Finds "the one" and won't select anything else
-                    dataset_sorter = HighResolutionSorter(),
+                    sort_datasets = HighResolutionSorter(),
                     )
                 if (config.output.output_maps_for == 'first_dataset_only')
                 else None

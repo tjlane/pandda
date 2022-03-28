@@ -1,6 +1,6 @@
 import numpy as np
 
-from giant.stats import modified_z_scores
+from giant.common.statistics import modified_z_scores
 
 
 class ZScoreClassifier(object):
