@@ -4,10 +4,40 @@ logger = lg.getLogger(__name__)
 import os, sys, copy, itertools
 
 import numpy as np
+import pathlib as pl
 
-from giant.exceptions import Sorry, Failure
+from giant.mulch.labelling import (
+    PathLabeller,
+    )
 
-from giant.plot import setup_plotting
+from giant.exceptions import (
+    Sorry, Failure,
+    )
+
+from giant.processors import (
+    ProcessorJoblib,
+    )
+
+from giant.phil import (
+    log_running_parameters,
+    )
+
+from giant.plot import (
+    setup_plotting,
+    )
+
+from giant.mulch.dataset import (
+    CrystallographicDataset,
+    )
+
+from giant.validation.score_residues import (
+    ScoreModelSingle,
+    ScoreModelMultiple,
+    GetInterestingResnames,
+    WriteScores,
+    ValidationRadarPlot
+    )
+
 setup_plotting()
 
 #################################
@@ -44,21 +74,70 @@ DESCRIPTION = """
 blank_arg_prepend = {
     '.pdb' : 'pdb=',
     '.mtz' : 'mtz=',
-    None : 'directory=',
+     None  : 'directory=',
 }
 
-residue_plot_phil =  """
-plot {
-    mode = *separate combined
-        .help = "Combine residues into one plot or plot as separate images?"
-        .type = choice(multi=True)
-    limits = manual *automatic
-        .help = "Rescale plot limits to the minimum/maximum values (automatic) or use preset values."
+import libtbx.phil
+master_phil = libtbx.phil.parse("""
+input {
+    from_files {
+        pdb = None
+            .type = str
+            .multiple = True
+        mtz = None
+            .type = str
+            .multiple = True
+        reference_pdb = None
+            .type = str
+            .multiple = True
+        reference_mtz = None
+            .type = str
+            .multiple = True
+    }
+    from_directories {
+        directory = None
+            .type = str
+            .multiple = True
+        pdb_style = None
+            .type = str
+        mtz_style = None
+            .type = str
+        reference_pdb_style = None
+            .type = str
+        reference_mtz_style = None
+            .type = str
+    }
+    label = None
+        .help = "Provide labels for the input structure(s)"
+        .type = str
+        .multiple = False
+    labelling = *automatic basename filename foldername
+        .help = "If labels are not provided, labels will be derived from the filename of the input structure"
         .type = choice(multi=False)
+}
+output {
+    out_dir = score_model
+        .type = path
+    log = None
+        .type = path
+}
+options {
+    ignore_common_molecules = True
+        .type = bool
+    include_resname = None
+        .type = str
+        .multiple = True
+    ignore_resname = None
+        .type = str
+        .multiple = True
+    edstats_f_label = None
+        .help = 'Column label for experimental amplitudes in input mtz files. If left blank will try to guess the labels.'
+        .type = str
+        .multiple = False
+}
+plot {
     remove_blank_entries = False
         .type = bool
-    axis_labels = none *simplified all
-        .type = choice(multi=False)
     parameters {
         rscc {
             title = '\n\nModel\nQuality\n(RSCC)'
@@ -112,926 +191,500 @@ plot {
         }
     }
 }
-"""
-
-import libtbx.phil
-master_phil = libtbx.phil.parse("""
-input {
-
-    pdb = None
-        .type = str
-        .multiple = True
-    mtz = None
-        .type = str
-        .multiple = True
-
-    ref_pdb = None
-        .type = str
-        .multiple = True
-    ref_mtz = None
-        .type = str
-        .multiple = True
-
-    label = None
-        .help = "what is the label for the input structure -- only valid for scoring of a single structure"
-        .type = str
-        .multiple = False
-    label_func = *filename foldername
-        .help = "labelling function for each input structure -- only valid for scoring multiple structures"
-        .type = choice(multi=False)
-
-    f_label = None
-        .help = 'Column label for experimental amplitudes in input mtz files. If left blank will try to guess the labels.'
-        .type = str
-        .multiple = False
-
-    directory = None
-        .type = str
-        .multiple = True
-    pdb_style = None
-        .type = str
-    mtz_style = None
-        .type = str
-    ref_pdb_style = None
-        .type = str
-    ref_mtz_style = None
-        .type = str
-
-}
-options {
-    resnames = LIG,UNL,DRG
-        .type = str
-        .help = "Comma-separated list of residue names to score"
-}
-output {
-    out_dir = ./
-        .type = path
-}
 include scope giant.phil.settings_phil
-"""+residue_plot_phil, process_includes=True)
+""",
+process_includes=True,
+)
+
 
 #######################################
 
-table_columns = [
-    'Residue',
-    'Model RMSD',
-    'RSCC',
-    'RSZD',
-    'RSZO',
-    'RSR',
-    'RSZO/OCC',
-    'Occupancy',
-    'dRSCC',
-    'dRSZD',
-    'dRSZO',
-    'dRSR',
-    'dRSZO/OCC',
-    'dOccupancy',
-    'Surroundings B-factor Ratio',
-    'Surroundings Residue Labels',
-    'Average B-factor (Residue)',
-    'Average B-factor (Surroundings)',
-    'PDB',
-    'MTZ',
-    'PDB-2',
-    'MTZ-2',
-]
 
-def prepare_output_directory(params):
-    from giant.paths import easy_directory
-    out_dir = easy_directory(params.output.out_dir)
-    img_dir = easy_directory(os.path.join(out_dir, 'residue_plots'))
-    return out_dir, img_dir
+class validate_params:
 
-def score_model_wrapper(kw_args):
-    try:
-        return score_model(**kw_args)
-    except Exception as e:
-        return e
+    def __init__(self, params):
 
-def calculate_paired_conformer_rmsds(conformers_1, conformers_2):
-    """Return a list of rmsds between two list of conformers, paired by the minimum rmsd. Each conformer may only be paired once"""
+        self.validate_input(params)
 
-    rmsds = numpy.empty((len(conformers_1), len(conformers_2)))
-    rmsds[:] = None
+    def validate_input(self, params):
 
-    for i, c1 in enumerate(conformers_1):
-        for j, c2 in enumerate(conformers_2):
-            rmsds[i,j] = calculate_paired_atom_rmsd(atoms_1=c1.atoms(), atoms_2=c2.atoms(), sort=True, truncate_to_common_set=True, remove_H=True)
-    ret_list = []
-    print rmsds
-    while not numpy.isnan(rmsds).all():
-        min_val = numpy.nanmin(rmsds)
-        i1,i2 = zip(*numpy.where(rmsds==min_val))[0]
-        # Clear these values so that a conformer cannot be used more than once
-        rmsds[i1, :] = None
-        rmsds[:, i2] = None
-        # Return conformers and the rmsd
-        ret_list.append((conformers_1[i1], conformers_2[i2], min_val))
-        print rmsds
-        print ret_list[-1]
-    return ret_list
+        self.validate_structures(params)
+        self.validate_reference_files(params)
+        self.validate_labels(params)
 
-def calculate_paired_atom_rmsd(atoms_1, atoms_2, sort=True, truncate_to_common_set=True, remove_H=True):
-    """
-    Calculate the RMSD between two sets of equivalent atoms (i.e. atoms with the same names)
-    - sort                   - sort atoms prior to rmsd calculation (so that equivalent atoms are compared)
-    - truncate_to_common_set - only calculate rmsd over the common set of atoms, return None if different atoms are provided.
-    Raises error if atom names are present more than once in each list (e.g. alternate conformers of atoms)
-    """
+    def validate_structures(self, params):
 
-    # Need to sort by atoms to check if atoms are the same in both sets
-    if truncate_to_common_set:
-        sort=True
+        if (params.input.from_files.pdb and params.input.from_directories.directory):
+            raise Sorry('Must provide input structures OR input directories')
 
-    # Remove hydrogen atoms
-    if remove_H:
-        atoms_1 = atoms_1.select(atoms_1.extract_element() != ' H')
-        atoms_2 = atoms_2.select(atoms_2.extract_element() != ' H')
+        if (not params.input.from_files.pdb) and (not params.input.from_directories.directory):
+            raise Sorry('No input structures provided (provide structures OR input directories')
 
-    # Sort atoms by name if required
-    if sort:
-        # Extract atom names
-        names_1 = list(atoms_1.extract_name())
-        names_2 = list(atoms_2.extract_name())
-        # Get name overlap between atom sets
-        common_atoms = list(set(names_1).intersection(names_2))
-        if (not truncate_to_common_set):
-            if not (len(common_atoms)==len(atoms_1)==len(atoms_2)):
-                return None
-        # If sorting, require atom names unique
-        assert len(set(names_1)) == len(names_1), 'atom names can only be present once in each atom list -- no alternate conformers of atoms'
-        assert len(set(names_2)) == len(names_2), 'atom names can only be present once in each atom list -- no alternate conformers of atoms'
-        # Get reorderings of atoms
-        sort_1 = flex.size_t([names_1.index(an) for an in common_atoms])
-        sort_2 = flex.size_t([names_2.index(an) for an in common_atoms])
-        # Reorder the atoms
-        atoms_1 = atoms_1.select(sort_1)
-        atoms_2 = atoms_2.select(sort_2)
+        if (params.input.from_files.pdb):
 
-    # Check same number of atoms and atom names are the same, etc...
-    try:
-        assert atoms_1.size() == atoms_2.size()
-        assert atoms_1.extract_name().all_eq(atoms_2.extract_name())
-    except:
-        return None
-    # Calculate RMSD and return
-    return flex.mean((atoms_1.extract_xyz() - atoms_2.extract_xyz()).dot())**0.5
+            self.validate_input_files(
+                params.input.from_files
+                )
 
-def sanitise_hierarchy(hierarchy, in_place=True):
-    """Remove several common structure problems"""
-
-    if not in_place: hierarchy = hierarchy.deep_copy()
-
-    # Fix element problems
-    hierarchy.atoms().set_chemical_element_simple_if_necessary()
-    # Sort atoms (allows easier comparison)
-    hierarchy.sort_atoms_in_place()
-
-    return hierarchy
-
-
-def score_model(params, pdb1, mtz1, pdb2=None, mtz2=None, label_prefix=''):
-    """
-    Score residues against density, and generate other model quality indicators.
-    Identified residues in pdb1 are scored against mtz1 (and mtz2, if provided) using edstats.
-    Identified residues in pdb1 are compared to the equivalent residues in pdb2, if provided.
-    B-factors ratios of identified residues to surrounding sidechains are calculated.
-    """
-
-    from giant.io.pdb import strip_pdb_to_input
-    from giant.xray.edstats import EdstatsFactory
-    from giant.structure.b_factors import calculate_residue_group_bfactor_ratio
-    from giant.structure.occupancy import calculate_residue_group_occupancy
-    from giant.structure.formatting import ShortLabeller
-    from giant.structure.select import non_h, protein, backbone, sidechains
-
-    if (label_prefix) and (not label_prefix.endswith('-')):
-        label_prefix = label_prefix + '-'
-
-    # Extract variables from params
-    res_names = params.options.resnames.split(',')
-    f_label = params.input.f_label
-
-    logger('Reading main input structure: {}'.format(pdb1))
-
-    # Extract Structure and strip hydrogens etc
-    h1_all = non_h(
-        strip_pdb_to_input(
-            pdb1,
-            remove_ter = True,
-            remove_end = True,
-        ).hierarchy
-    )
-
-    # Normalise hierarchy (standardise atomic naming, etc...)
-    sanitise_hierarchy(h1_all)
-
-    # Extract subselections
-    h1_pro = protein(h1_all)
-    h1_bck = backbone(h1_all)
-    h1_sch = sidechains(h1_all)
-
-    # Pull out residues to analyse
-    if res_names:
-        rg_for_analysis = [
-            rg for rg in h1_all.residue_groups()
-            if [n for n in rg.unique_resnames() if n in res_names]
-        ]
-        logger(
-            'Selecting residues named {}: {} residue(s)'.format(
-                ' or '.join(res_names),
-                len(rg_for_analysis),
-            )
-        )
-    else:
-        rg_for_analysis = h1_all.residue_groups()
-        logger(
-            'Analysing all residues ({} residues)'.format(
-                len(rg_for_analysis),
-            )
-        )
-
-    # Check residues to analyse or skip
-    if (not rg_for_analysis):
-        raise Sorry('There are no residues called {} in {}'.format(' or '.join(res_names), pdb1))
-
-    # Extract PDB2
-    if (pdb2 is not None):
-        logger('Reading secondary (comparison) input structure: {}'.format(pdb2))
-        h2_all = non_h(
-            strip_pdb_to_input(
-                pdb2,
-                remove_ter = True,
-                remove_end = True,
-            ).hierarchy
-        )
-        sanitise_hierarchy(h2_all)
-
-    # Score structures against MTZ(s)
-    logger('Scoring model(s) against mtz file(s) with EDSTATs')
-    run_edstats = EdstatsFactory()
-    mtz1_edstats_scores = mtz2_edstats_scores = None
-
-    # Score MTZ1
-    if (mtz1 is not None):
-        pdb = pdb1
-        logger('Scoring {} >>> {}'.format(pdb, mtz1))
-        mtz1_edstats_scores = run_edstats(
-            pdb_file = pdb,
-            mtz_file = mtz1,
-            f_label = f_label,
-        )
-
-    # Score MTZ2
-    if (mtz2 is not None):
-        pdb = (pdb2 if (pdb2 is not None) else pdb1)
-        logger('Scoring {} >>> {}'.format(pdb, mtz2))
-        mtz2_edstats_scores = run_edstats(
-            pdb_file = pdb,
-            mtz_file = mtz2,
-            f_label = f_label,
-        )
-
-    # Prepare output table
-    import pandas
-    data_table = pandas.DataFrame(columns=table_columns)
-
-    for rg_sel in rg_for_analysis:
-
-        # label for the current residue
-        rg_label = ShortLabeller.format(rg_sel)
-
-        # Create label for the output table
-        full_label = (label_prefix + rg_label).replace(' ','')
-
-        if len(rg_sel.unique_resnames()) != 1:
-            raise Sorry(rg_label+': More than one residue name associated with residue group in the input structure -- cannot process')
-
-        # Residue occupancy
-        rg_occ = calculate_residue_group_occupancy(
-            residue_group = rg_sel,
-        )
-
-        # B-factor ratios to surroundings
-        b_factor_scores = calculate_residue_group_bfactor_ratio(
-            residue_group = rg_sel,
-            hierarchy = h1_sch,
-        )
-
-        # Extract structural comparative values
-        if (pdb2 is None):
-            # Compare to pdb1 instead
-            rg_occ_2 = rg_occ
-            model_rmsd = None
         else:
 
-            # Extract the equivalent residue in pdb2
-            rg_sel_2 = [
-                rg for rg in h2_all.residue_groups()
-                if (
-                    ShortLabeller.format(rg) == rg_label
+            self.validate_input_from_directories(
+                params.input.from_directories
                 )
-            ]
 
-            if (not rg_sel_2):
-                raise ValueError('Residue is not present in pdb file: {} not in {}'.format(rg_label, pdb2))
-            if len(rg_sel_2) >= 1:
-                raise ValueError('More than one residue has been selected for {} in {}'.format(rg_label, pdb2))
-            rg_sel_2 = rg_sel_2[0]
+    def validate_input_files(self, f_params):
 
-            # Extract occupancy
-            rg_occ_2 = calculate_residue_group_occupancy(
-                residue_group = rg_sel_2,
-            )
+        for p in f_params.pdb:
 
-            # Calculate the RMSD between the models
-            confs1, confs2, rmsds = zip(
-                *calculate_paired_conformer_rmsds(
-                    conformers_1 = rg_sel.conformers(),
-                    conformers_2 = rg_sel_2.conformers(),
-                )
-            )
-            model_rmsd = min(rmsds)
+            assert pl.Path(p).exists()
 
-        # Extract Density Scores - MTZ 1
-        ed_dict = {} # initialise optional values to None
-        if (mtz1_edstats_scores is not None):
-            ed_dict = mtz1_edstats_scores.extract_residue_group_scores(
-                residue_group  = rg_sel,
-            )
-            # Normalise the RSZO by the Occupancy of the ligand
-            ed_dict['rszo_norm'] = ed_dict['rszo'] / rg_occ
-
-        # Extract Density Scores - MTZ 2
-        ed_dict_2 = {}
-        d_ed_dict = {}
-        if (mtz2_edstats_scores is not None):
-            ed_dict_2 = mtz2_edstats_scores.extract_residue_group_scores(
-                residue_group  = rg_sel,
-            )
-            # Normalise the RSZO by the Occupancy of the ligand
-            ed_dict_2['rszo_norm'] = ed_dict_2['rszo'] / rg_occ_2
-            # Delta scores
-            d_ed_dict.update({
-                'dRSCC' : ed_dict.get('rscc') - ed_dict_2.get('rscc'),
-                'dRSZD' : ed_dict.get('rszd') - ed_dict_2.get('rszd'),
-                'dRSZO' : ed_dict.get('rszo') - ed_dict_2.get('rszo'),
-                'dRSR'  : ed_dict.get('rsr') - ed_dict_2.get('rsr'),
-                'dRSZO/OCC' : ed_dict.get('rszo_norm') - ed_dict_2.get('rszo_norm'),
-            })
-
-        rg_dict = {
-            'Residue' : rg_label,
-            'Model RMSD' : model_rmsd,
-            'Occupancy' : rg_occ,
-            'dOccupancy' : rg_occ - rg_occ_2,
-            'RSCC' : ed_dict.get('rscc'),
-            'RSZD' : ed_dict.get('rszd'),
-            'RSZO' : ed_dict.get('rszo'),
-            'RSR'  : ed_dict.get('rsr'),
-            'RSZO/OCC' : ed_dict.get('rszo_norm'),
-            'dRSCC' : d_ed_dict.get('dRSCC'),
-            'dRSZD' : d_ed_dict.get('dRSZD'),
-            'dRSZO' : d_ed_dict.get('dRSZO'),
-            'dRSR'  : d_ed_dict.get('dRSR'),
-            'dRSZO/OCC' : d_ed_dict.get('dRSZO/OCC'),
-            'Surroundings B-factor Ratio' : b_factor_scores.b_factor_ratio,
-            'Surroundings Residue Labels' : b_factor_scores.surroundings_names,
-            'Average B-factor (Residue)' : b_factor_scores.selection_av_bfactor,
-            'Average B-factor (Surroundings)' : b_factor_scores.surroundings_av_bfactor,
-            'PDB' : pdb1,
-            'MTZ' : mtz1,
-            'PDB-2' : pdb2,
-            'MTZ-2' : mtz2,
-        }
-
-        # Append to table
-        data_table.loc[full_label] = rg_dict
-
-    return data_table
-
-def label_and_value(v):
-    try:
-        l = round(v, 2)
-    except Exception as e:
-        l = 'n/a'
-        v = None
-    return l, v
-
-def make_residue_radar_plot(path, data, columns_dict, linetype=None, remove_blank_entries=False, axis_labels='simplified'):
-    "Plot radar graph. data is a list of (label, scores) tuples. label is a string. scores is a pandas Series."
-
-#    column_limit = [(0.6,0.85),(1.5,4),(0,2),(1,3),(0,1.5)]
-#    column_names = ['RSCC','RSZD','RSZO/OCC','Surroundings B-factor Ratio','Model RMSD']
-#    column_title = ['Model\nQuality\n(RSCC)', 'Model\nAccuracy\n(RSZD)', 'Model\nPrecision\n(RSZO/OCC)', 'B-Factor\nRatio', 'Model\nRMSD']
-#    column_invse = [1,0,1,0,0]
-
-    from giant.plot import Radar
-
-    assert isinstance(columns_dict, dict)
-
-    column_title = columns_dict.get('titles') # titles of the axes
-    column_names = columns_dict.get('names')  # keys for data frame
-    column_limit = columns_dict.get('limits') # axis limits
-    column_invse = columns_dict.get('invert') # which axes are inverted
-
-    assert (column_title is not None)
-    assert (column_names is not None)
-    assert len(column_names) == len(column_title)
-    if (column_limit is not None):
-        assert len(column_limit) == len(column_title)
-    if (column_invse is not None):
-        assert len(column_invse) == len(column_title)
-
-    # Extract the plot data from the data_frame
-    plot_data = data[column_names]
-    n_lines = len(data.index)
-
-    if (remove_blank_entries is True):
-
-        # Filter the entries based on whether there is at least one values for each column
-        data_mask_i = [i for i, c in enumerate(column_names) if data[c].any()]
-        filter_func = lambda values: [values[i] for i in data_mask_i]
-
-        # Filter against the mask
-        column_title = filter_func(column_title)
-        column_names = filter_func(column_names)
-        if column_invse:
-            column_invse = filter_func(column_invse)
-        if column_limit:
-            column_limit = filter_func(column_limit)
-
-        # Reselect the plot_data
-        plot_data = data[column_names]
-
-    # Format tick values for plotting
-    col_tick_vals = [[] for c in column_names] # blank
-    col_tick_labs = [[] for c in column_names] # blank
-
-    if (axis_labels == 'all'):
-        for i_col, col in enumerate(column_names):
-            for v in plot_data[col]:
-                l, v = label_and_value(v)
-                col_tick_vals[i_col].append(v)
-                col_tick_labs[i_col].append(l)
-    elif (axis_labels == 'simplified'):
-        for i_col, col in enumerate(column_names):
-            vals = plot_data[col]
-            if len(vals) == 1:
-                l, v = label_and_value(vals[0])
-                col_tick_vals[i_col].append(v)
-                col_tick_labs[i_col].append(l)
-    else:
-        pass # leave blank
-
-    # Colors of lines
-    colors = ['r', 'g', 'b', 'y']
-
-    # Prepare markers
-    if (plot_data.index.size > 1):
-        markers = ['o','^','s','D','*','+'][0:len(colors)]
-        markersize = 5
-    else:
-        markers = [None]
-        markersize = None
-
-    # Prepare linetypes
-    if (linetype is None):
-        linetype = np.repeat(['-','--'], len(markers)).tolist()
-    elif isinstance(linetype, str):
-        linetype = [linetype]
-    else:
-        pass
-
-    # Make cycles for simplicity
-    colors_iter = itertools.cycle(colors)
-    linetype_iter = itertools.cycle(linetype)
-    markers_iter = itertools.cycle(markers)
-
-    # Add each row of the data frame as a separate line
-    r = Radar(titles=column_title)
-    for label, row in plot_data.iterrows():
-        r.add(
-            row[column_names].tolist(),
-            color = colors_iter.next(),
-            linestyle = linetype_iter.next(),
-            marker = markers_iter.next(),
-            markersize = markersize,
-            markeredgecolor = 'k',
-            label = label,
-            lw = 2,
-        )
-    # Set axes to invert
-    if column_invse:
-        r.set_inversion(column_invse)
-    # Set manual limits
-    if column_limit:
-        r.set_limits(column_limit)
-    # Axis values to plot
-    r.set_ticks(values=col_tick_vals, labels=col_tick_labs)
-
-    # Plot, modify and save
-    r.plot()
-    r.legend()
-    r.axis_limits()
-    r.savefig(path)
-    r.close()
-
-    return
-
-def format_parameters_for_plot(params):
-    """Convert plot scope parameters to parameter dict"""
-
-    p = params
-    columns = {}
-    columns['titles'] = [
-        p.rscc.title,
-        p.rszd.title,
-        p.rszo.title,
-        p.b_factor_ratio.title,
-        p.rmsd.title,
-    ]
-    columns['names']  = [
-        'RSCC',
-        'RSZD',
-        'RSZO/OCC',
-        'Surroundings B-factor Ratio',
-        'Model RMSD',
-    ]
-    columns['invert'] = [
-        p.rscc.axis_invert,
-        p.rszd.axis_invert,
-        p.rszo.axis_invert,
-        p.b_factor_ratio.axis_invert,
-        p.rmsd.axis_invert,
-    ]
-    columns['limits'] = [
-        (p.rscc.axis_min,           p.rscc.axis_max),
-        (p.rszd.axis_min,           p.rszd.axis_max),
-        (p.rszo.axis_min,           p.rszo.axis_max),
-        (p.b_factor_ratio.axis_min, p.b_factor_ratio.axis_max),
-        (p.rmsd.axis_min,           p.rmsd.axis_max),
-    ]
-
-    return columns
-
-#######################################
-
-def replace_extension(filename, current_extension, new_extension):
-    assert current_extension.startswith('.')
-    assert new_extension.startswith('.')
-    assert filename.endswith(current_extension)
-    base, ext = os.path.splitext(filename)
-    assert ext == current_extension
-    return (base + new_extension)
-
-def process_and_validate_input_files(params):
-
-    if (params.input.pdb and params.input.directory):
-        raise Sorry('Must provide input structures OR input directories')
-
-    if (not params.input.pdb) and (not params.input.directory):
-        raise Sorry('No input structures provided')
-
-    if (params.input.pdb):
-
-        pdb_files = params.input.pdb
-        mtz_files = params.input.mtz
-
-        if (not mtz_files):
-
-            mtz_files = [replace_extension(f, '.pdb', '.mtz') for f in pdb_files]
+        if (not f_params.mtz):
 
             logger(
                 'No MTZ files provided. Looking for files with the same naming as pdb files: \n\t{}'.format(
-                    '\n\t'.join(['{} -> {}'.format(p,m) for p,m in zip(pdb_files, mtz_files)]),
+                    '\n\t'.join([
+                        '{pdb} -> {mtz}'.format(
+                            pdb = p,
+                            mtz = str(pl.Path(p).with_suffix('.mtz')),
+                            )
+                        for p in f_params.pdb
+                        ]),
                 )
             )
 
-    elif (params.input.directory):
+            mtz_files = []
 
-        from giant.paths import resolve_glob
+            for p in f_params.pdb:
 
-        pdb_style = params.input.pdb_style
-        mtz_style = params.input.mtz_style
+                m = pl.Path(p).with_suffix('.mtz')
 
-        if (pdb_style is None):
-            raise Sorry('Must provide pdb_style when providing directories as input')
-        if (mtz_style is None):
-            raise Sorry('Must provide mtz_style when providing directories as input')
+                if not m.exists():
+                    raise ValueError('No MTZs provided and MTZ not found: {}'.format(str(m)))
 
-        pdb_files = []
-        mtz_files = []
+                f_params.mtz.append(str(m))
 
-        logger(
-            'Looking for pdb & mtz files with names "{}" and "{}" in directories: \n\t{}'.format(
-                pdb_style,
-                mtz_style,
-                '\n\t'.join(params.input.directory),
-            )
-        )
-
-        for in_d in params.input.directory:
-
-            try:
-                pdb = resolve_glob(os.path.join(in_d, pdb_style), n=1)
-                mtz = resolve_glob(os.path.join(in_d, mtz_style), n=1)
-            except:
-                logger('Failed to find the expected files in directory "{}"'.format(in_d))
-                raise
-
-            pdb_files.append(pdb)
-            mtz_files.append(mtz)
-
-    # Check number of files
-    n_pdb = len(pdb_files)
-    n_mtz = len(mtz_files)
-
-    if (n_mtz != n_pdb):
-        raise Sorry(
-            'Different numbers of PDB and MTZ files have been provided ({} pdbs != {} mtzs)'.format(
-                n_pdb, n_mtz,
-            )
-        )
-
-    for f in (pdb_files + mtz_files):
-
-        if not os.path.exists(f):
-            raise IOError(
-                'Input file does not exist ({}). Please check provided command line arguments'.format(
-                    f,
-                )
-            )
-
-    # Labels
-    if (n_pdb == 1) and (params.input.label is not None):
-        labels = [params.input.label]
-    else:
-        from giant.paths import filename, foldername
-        if params.input.label_func == 'filename':
-            label_func = filename
         else:
-            label_func = foldername
-        labels = [label_func(f) for f in pdb_files]
 
-        if len(labels) != len(set(labels)):
-            raise ValueError(
-                'Labels generated using "{}" lead to duplicate labels.\n\t{}.\nChange labelling function or rename input files.'.format(
-                    params.input.label_func,
-                    '\n\t'.join(sorted(labels)),
+            for m in f_params.mtz:
+
+                assert pl.Path(m).exists()
+
+        assert len(f_params.pdb) == len(f_params.mtz)
+
+    def validate_input_from_directories(self, f_params):
+
+        assert f_params.directory
+        assert f_params.pdb_style is not None
+
+        if f_params.mtz_style is None:
+
+            f_params.mtz_style = (
+                f_params.pdb_style.rsplit('.pdb')[0] + '.mtz'
                 )
-            )
 
-    return pdb_files, mtz_files, labels
+            logger('Setting mtz_style is automatic value: {}'.format(f_params.mtz_style))
 
-def process_reference_files(params, n):
+        dir_paths = map(pl.Path, f_params.directory)
 
-    if (params.input.pdb):
+        for d in dir_paths:
 
-        ref_pdbs = params.input.ref_pdb
-        ref_mtzs = params.input.ref_mtz
+            pdbs = list(d.glob(f_params.pdb_style))
+            mtzs = list(d.glob(f_params.mtz_style))
 
-        if (not ref_pdbs):
-            ref_pdbs = [None] * n
-        elif len(ref_pdbs) == 1:
-            ref_pdbs = list(ref_pdbs) * n
+            if len(pdbs) == 0:
+                raise ValueError(
+                    'No PDB files found in directory for pdb_style: {}'.format(
+                        str(d),
+                        )
+                    )
 
-        if (not ref_mtzs):
-            ref_mtzs = [None] * n
-        elif len(ref_mtzs) == 1:
-            ref_mtzs = list(ref_mtzs) * n
+            if len(pdbs) > 1:
+                raise ValueError(
+                    'More than one PDB file in directory {} matches pdb_style: \n\t{}'.format(
+                        str(d),
+                        str(pdbs),
+                        )
+                    )
 
-    elif (params.input.directory):
+            if len(mtzs) == 0:
+                raise ValueError(
+                    'No MTZ files found in directory for mtz_style: {}'.format(
+                        str(d)
+                        )
+                    )
+            if len(mtzs) > 1:
+                raise ValueError(
+                    'More than one MTZ file in directory {} matches mtz_style: \n\t{}'.format(
+                        str(d),
+                        str(mtzs),
+                        )
+                    )
 
-        from giant.paths import resolve_glob
+    def validate_reference_files(self, params):
 
-        ref_pdb_style = params.input.ref_pdb_style
-        ref_mtz_style = params.input.ref_mtz_style
+        if (params.input.from_files.reference_pdb):
 
-        if (ref_mtz_style is not None) and (not ref_pdb_style is None):
-            raise Sorry('Cannot provide ref_mtz_style without providing ref_pdb_style')
+            for p in params.input.from_files.reference_pdb:
 
-        ref_pdbs = []
-        ref_mtzs = []
+                assert pl.Path(p).exists()
 
-        logger(
-            'Looking for reference pdb & mtz files with names "{}" and "{}" in directories: \n\t{}'.format(
-                ref_pdb_style,
-                ref_mtz_style,
-                '\n\t'.join(params.input.directory),
-            )
-        )
+        if (params.input.from_files.reference_mtz):
 
-        for in_d in params.input.directory:
-
-            try:
-                if (ref_pdb_style is not None):
-                    pdb = resolve_glob(os.path.join(in_d, ref_pdb_style), n=1)
-                else:
-                    pdb = None
-                if (ref_mtz_style is not None):
-                    mtz = resolve_glob(os.path.join(in_d, ref_mtz_style), n=1)
-                else:
-                    mtz = None
-            except:
-                logger('Failed to find the expected files in directory "{}"'.format(in_d))
-                raise
-
-            ref_pdbs.append(pdb)
-            ref_mtzs.append(mtz)
-
-    if len(ref_pdbs) != n:
-        raise IOError(
-            '{} reference pdbs have been provided -- expected {}'.format(
-                len(ref_pdbs),
-                n,
-            )
-        )
-
-    if len(ref_mtzs) != n:
-        raise IOError(
-            '{} reference mtzs have been provided -- expected {}'.format(
-                len(ref_mtzs),
-                n,
-            )
-        )
-
-    for f in (ref_pdbs + ref_mtzs):
-
-        if (f is None):
-            continue
-
-        if not os.path.exists(f):
-            raise IOError(
-                'Input file does not exist ({}). Please check provided command line arguments'.format(
-                    f,
+            assert (
+                len(params.input.from_files.reference_pdb) ==
+                len(params.input.from_files.reference_mtz)
                 )
+
+            for m in params.input.from_files.reference_mtz:
+
+                assert pl.Path(m).exists()
+
+        elif (params.input.from_files.reference_pdb):
+
+            for p in params.input.from_files.reference_pdb:
+
+                m = pl.Path(p).with_suffix('.mtz')
+
+                if m.exists():
+
+                    params.input.from_files.reference_mtz.append(str(m))
+
+                else:
+
+                    params.input.from_files.reference_mtz.append(None)
+
+    def validate_labels(self, params):
+
+        if (params.input.label) and (params.input.pdb):
+
+            assert len(params.input.label) == len(params.input.pdb)
+
+        elif (params.input.label) and (params.input.directory):
+
+            assert len(params.input.label) == len(params.input.directory)
+
+
+class Config:
+
+    def __init__(self, params):
+
+        self.params = params
+
+    def setup_dir(self):
+
+        p = self.params
+
+        out_dir_path = pl.Path(p.output.out_dir)
+        if not out_dir_path.exists():
+            out_dir_path.mkdir(parents=True)
+
+        return out_dir_path
+
+    def set_get_log(self):
+
+        p = self.params
+
+        if p.output.log:
+            pass
+        else:
+            p.output.log = str(
+                pl.Path(p.output.out_dir) / 'score_model.log'
+                )
+
+        return p.output.log
+
+    def get_datasets(self):
+
+        logger.subheading('Loading Datasets')
+
+        p = self.params
+
+        # Apply labels
+
+        labels = (
+            list(p.input.label)
+            if p.input.label is not None
+            else None
             )
 
-    return ref_pdbs, ref_mtzs
+        #
+
+        datasets = []
+
+        if p.input.from_files.pdb:
+
+            if labels:
+
+                assert len(labels) == len(p.input.from_files.pdb)
+
+            else:
+
+                labelling = (
+                    PathLabeller('basename')
+                    if
+                    p.input.labelling == 'automatic'
+                    else
+                    PathLabeller(p.input.labelling)
+                    )
+
+            for pdb_path, mtz_path in zip(
+                p.input.from_files.pdb,
+                p.input.from_files.mtz,
+                ):
+
+                d = CrystallographicDataset.from_file(
+                    model_filename = pdb_path,
+                    data_filename = mtz_path,
+                    )
+
+                if labels:
+                    d.label(tag=labels.pop(0))
+                else:
+                    d.label(tag=labelling(pdb_path))
+
+                datasets.append(d)
+
+        elif p.input.from_directories.directory:
+
+            if labels:
+
+                assert len(labels) == len(p.input.from_directories.directory)
+
+            else:
+
+                labelling = (
+                    PathLabeller('foldername')
+                    if
+                    p.input.labelling == 'automatic'
+                    else
+                    PathLabeller(p.input.labelling)
+                    )
+
+            for dir_path in map(pl.Path, p.input.from_directories.directory):
+
+                pdb_path = dir_path.glob(p.input.from_directories.pdb_style).next()
+                mtz_path = dir_path.glob(p.input.from_directories.mtz_style).next()
+
+                d = CrystallographicDataset.from_file(
+                    model_filename = str(pdb_path),
+                    data_filename = str(mtz_path),
+                    )
+
+                if labels:
+                    d.label(tag=labels.pop(0))
+                else:
+                    d.label(tag=labelling(pdb_path))
+
+                datasets.append(d)
+
+        else:
+
+            raise NotImplementedError()
+
+        ##
+
+        logger('\n> Loaded datasets:\n')
+
+        for d in datasets:
+
+            logger(str(d))
+
+        logger('\n\n> {} datasets loaded'.format(len(datasets)))
+
+        ##
+
+        return datasets
+
+    def get_reference_datasets(self):
+
+        logger.subheading('Loading Reference Datasets')
+
+        p = self.params
+
+        datasets = []
+
+        if p.input.from_files.reference_pdb:
+
+            for pdb_path, mtz_path in zip(
+                p.input.from_files.reference_pdb,
+                p.input.from_files.reference_mtz,
+                ):
+
+                d = CrystallographicDataset.from_file(
+                    model_filename = pdb_path,
+                    data_filename = mtz_path,
+                    )
+
+                datasets.append(d)
+
+        elif p.input.from_directories.reference_pdb_style:
+
+            for dir_path in map(pl.Path, p.input.from_directories.directory):
+
+                try:
+                    pdb_path = str(
+                        dir_path.glob(p.input.from_directories.reference_pdb_style).next()
+                        )
+                except:
+                    logger(
+                        'No reference PDB found in {}'.format(
+                            str(dir_path)
+                            )
+                        )
+                    pdb_path = None
+
+                if pdb_path is None:
+                    datasets.append(None)
+                    continue
+
+                try:
+                    mtz_path = str(
+                        dir_path.glob(p.input.from_directories.reference_mtz_style).next()
+                        )
+                except:
+                    logger(
+                        'No reference MTZ found for {}'.format(
+                            str(dir_path)
+                            )
+                        )
+                    mtz_path = None
+
+                d = CrystallographicDataset.from_file(
+                    model_filename = pdb_path,
+                    data_filename = mtz_path,
+                    )
+
+                datasets.append(d)
+
+        else:
+
+            logger('No reference datasets loaded')
+
+            return None
+
+        ##
+
+        logger('\n> Loaded reference datasets:\n')
+
+        for d in datasets:
+
+            logger(str(d))
+
+        logger('\n\n> {} reference datasets loaded'.format(len(datasets)))
+
+        ##
+
+        return datasets
+
+    def get_plot_parameters(self):
+
+        p = self.params.plot.parameters
+
+        d = {
+            'axis_params' : {
+                'rscc' : {
+                    'title' : p.rscc.title,
+                    'axis_min' : p.rscc.axis_min,
+                    'axis_max' : p.rscc.axis_max,
+                    'axis_invert' : p.rscc.axis_invert,
+                },
+                'rszd' : {
+                    'title' : p.rszd.title,
+                    'axis_min' : p.rszd.axis_min,
+                    'axis_max' : p.rszd.axis_max,
+                    'axis_invert' : p.rszd.axis_invert,
+                },
+                'rszo' : {
+                    'title' : p.rszo.title,
+                    'axis_min' : p.rszo.axis_min,
+                    'axis_max' : p.rszo.axis_max,
+                    'axis_invert' : p.rszo.axis_invert,
+                },
+                'b_factor_ratio' : {
+                    'title' : p.b_factor_ratio.title,
+                    'axis_min' : p.b_factor_ratio.axis_min,
+                    'axis_max' : p.b_factor_ratio.axis_max,
+                    'axis_invert' : p.b_factor_ratio.axis_invert,
+                },
+                'rmsd' : {
+                    'title' : p.rmsd.title,
+                    'axis_min' : p.rmsd.axis_min,
+                    'axis_max' : p.rmsd.axis_max,
+                    'axis_invert' : p.rmsd.axis_invert,
+                },
+            },
+        }
+
+        return d
+
 
 def run(params):
 
-    # REMOVE THIS WHEN IMPLEMENTED
-    if not params.options.resnames:
-        raise ValueError('Must provide resnames')
+    config = Config(params)
 
-    logger.heading('Processing input files')
-    pdb_files, mtz_files, labels = process_and_validate_input_files(params)
-    ref_pdbs, ref_mtzs = process_reference_files(params, n=len(pdb_files))
+    config.setup_dir()
 
-    output_dir, images_dir = prepare_output_directory(params)
-    scores_file = os.path.join(output_dir, 'residue_scores.csv')
-    summary_file = os.path.join(output_dir, 'residue_scores.html')
-
-    # Iterate through input files and generate sets of arguments
-    input_args = []
-    for pdb, mtz, lab, ref_pdb, ref_mtz in zip(
-        pdb_files, mtz_files, labels, ref_pdbs, ref_mtzs,
-        ):
-
-        input_args.append(
-            dict(
-                params = params,
-                pdb1 = pdb,
-                mtz1 = mtz,
-                pdb2 = ref_pdb,
-                mtz2 = ref_mtz,
-                label_prefix = lab,
-            )
+    logger = lg.setup_logging(
+        name = __name__,
+        log_file = config.set_get_log(),
+        debug = bool(params.settings.verbose),
         )
 
-        #try:
+    logger.heading(
+        'Validating input parameters and input files'
+        )
 
-        #    # Generate scores as table
-        #    logger.heading('Scoring model')
-        #    data_table = score_model(
-        #        params = params,
-        #        pdb1 = pdb,
-        #        mtz1 = mtz,
-        #        pdb2 = ref_pdb,
-        #        mtz2 = ref_mtz,
-        #        label_prefix = lab,
-        #    )
+    validate_params(params)
 
-        #    # Append to output list
-        #    output_tables.append(data_table)
-        #    logger.subheading('done!')
+    log_running_parameters(
+        params = params,
+        master_phil = master_phil,
+        logger = logger,
+    )
 
-        #except Sorry as e:
-        #    logger.heading('Program exited with an error')
-        #    logger(str(e))
-        #    sys.exit(1)
+    logger.heading(
+        'Setting up...'
+        )
 
-        #except Failure as e:
-        #    raise
-
-    logger.heading('Scoring models')
-
-    if params.settings.cpus == 1:
-        output_tables = []
-        for kw_args in input_args:
-            output_tables.append(score_model(**kw_args))
-    else:
-        import multiprocessing
-        workers = multiprocessing.Pool(processes=params.settings.cpus)
-        output_tables = workers.map(score_model_wrapper, input_args)
-        workers.close()
-
-    import pandas
-    combined_table = pandas.concat(output_tables)
-
-    logger.heading('Writing output csv')
-
-    combined_table.dropna(axis=1, how='all').to_csv(scores_file)
-    logger('Output written to {}'.format(scores_file))
-
-    logger.heading('Generating output plots')
-
-    # Create dictionary of plot parameters
-    columns_dict_master = format_parameters_for_plot(params=params.plot.parameters)
-
-    # Create ouptut lists to be optionally populated
-    import collections
-    separate_images = collections.OrderedDict()
-    combined_images = collections.OrderedDict()
-
-    if 'separate' in params.plot.mode:
-
-        logger.subheading('Generating separate plots')
-
-        # Create copy of dict to manipulate
-        columns_dict = copy.deepcopy(columns_dict_master)
-
-        # Input data
-        graph_table_data = combined_table
-
-        # Iterate through combined table and generate one plot for each row
-        for label, row in graph_table_data.iterrows():
-
-            image_path = os.path.join(
-                images_dir,
-                '{}.png'.format(
-                    label.replace(' ','')
-                )
-            )
-
-            logger('{} >> {}'.format(label, image_path))
-
-            make_residue_radar_plot(
-                path = image_path,
-                data = row.to_frame().T,
-                columns_dict = columns_dict,
-                remove_blank_entries = params.plot.remove_blank_entries,
-                axis_labels = params.plot.axis_labels,
-            )
-
-            separate_images[label] = image_path
-
-    if ('combined' in params.plot.mode) and (len(pdb_files) > 1):
-
-        logger.subheading('Generating comparative plots')
-
-        # Create copy of dict to manipulate
-        columns_dict = copy.deepcopy(columns_dict_master)
-
-        # Remove limits information if requested
-        if params.plot.limits == 'automatic':
-            columns_dict.pop('limits', None)
-        elif params.plot.limits == 'manual':
-            pass
-
-        # Input data
-        graph_table_data = combined_table
-
-        # Sort into groups based on residue labels
-        rg_labels = graph_table_data['Residue']
-
-        from giant.stats.cluster import generate_group_idxs
-        for common_label, idxs in generate_group_idxs(rg_labels):
-
-            # Create output label
-            out_label = 'residue-' + common_label.replace(' ','')
-
-            image_path = os.path.join(
-                images_dir,
-                'compare-{}.png'.format(
-                    out_label.replace(' ','')
+    score_models = ScoreModelMultiple(
+        score_model = ScoreModelSingle(
+            get_interesting_resnames = GetInterestingResnames(
+                ignore_common_molecules = params.options.ignore_common_molecules,
+                include_resnames_list = params.options.include_resname,
+                ignore_resnames_list = params.options.ignore_resname,
                 ),
-            )
+            ),
+        processor = ProcessorJoblib(
+            n_cpus = params.settings.cpus,
+            ),
+        )
 
-            logger('{} >> {}'.format(out_label, image_path))
+    write_output = WriteScores(
+        make_radar_plot = ValidationRadarPlot(
+            plot_defaults = config.get_plot_parameters(),
+            ),
+        )
 
-            make_residue_radar_plot(
-                path = image_path,
-                data = graph_table_data.iloc[idxs],
-                columns_dict = columns_dict,
-                remove_blank_entries = params.plot.remove_blank_entries,
-                axis_labels = params.plot.axis_labels,
-            )
+    logger.heading('Loading Datasets')
 
-    if True:
+    datasets = config.get_datasets()
+    reference_datasets = config.get_reference_datasets()
+
+    logger.heading('Scoring Models')
+
+    results_df = score_models(
+        dataset_list = datasets,
+        reference_datasets = reference_datasets,
+        )
+
+    logger.heading('Writing output')
+
+    output_dict = write_output(
+        residue_scores_df = results_df,
+        dir_path = pl.Path(params.output.out_dir),
+        )
+
+    if False:
 
         logger.subheading('Collating all images and outputting to output HTML...')
 
