@@ -341,7 +341,7 @@ class PostProcessFolder:
 
         # Extract parameters for the merging and set them
         merging_params = merge_conformations.master_phil.extract()
-        merging_params.output.make_restraints = bool(make_restraints)
+        merging_params.restraints.make_restraints = bool(make_restraints)
         merging_params.settings.overwrite = overwrite
 
         return merging_params
@@ -360,15 +360,20 @@ class PostProcessFolder:
 
         m_params = copy.deepcopy(self.merging_params)
 
-        m_params.input.major = str(major_state_path)
-        m_params.input.minor = str(minor_state_path)
+        m_params.input.pdb = [
+            str(major_state_path),
+            str(minor_state_path),
+            ]
 
         m_params.output.pdb = str(merged_path)
         m_params.output.log = str(merged_path.with_suffix('.log'))
 
-        m_params.restraints.output.phenix = str(merged_path.with_suffix('.restraints-phenix.params'))
-        m_params.restraints.output.refmac = str(merged_path.with_suffix('.restraints-refmac.params'))
-        m_params.restraints.output.log = str(merged_path.with_suffix('.restraints.log'))
+        m_params.restraints.output.output_root = str(
+            merged_path.parent / (merged_path.stem + '-restraints')
+            )
+        m_params.restraints.output.log = str(
+            merged_path.parent / (merged_path.stem + '-restraints.log')
+            )
 
         merge_conformations.run(params=m_params)
 
@@ -419,7 +424,7 @@ def standard_pandda_export(params):
 
     # Report
     logger(
-        'Exporting:\n\t{}'.format(
+        'Identified (possible) export directories:\n\t{}'.format(
             '\n\t'.join(map(str, export_dirs))
             )
         )
