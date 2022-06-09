@@ -73,13 +73,13 @@ class DatasetList(object):
         elif not isinstance(new_datasets, list):
             new_datasets = [new_datasets]
         for d in new_datasets:
-            assert not self._hash.has_key(d.id)
+            assert d.id not in self._hash
             self._hash[d.id] = len(self.datasets)
             self.datasets.append(d)
             assert self.get(d.id) is d
 
     def get(self, id):
-        assert self._hash.has_key(id)
+        assert id in self._hash
         return self.datasets[self._hash.get(id)]
 
     def show_summary(self, log=None):

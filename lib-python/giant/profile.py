@@ -1,3 +1,6 @@
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
 import cProfile, pstats, StringIO
 
 class profile_code(object):
@@ -15,5 +18,5 @@ class profile_code(object):
         ps = pstats.Stats(self.profiler, stream=s).sort_stats(sortby)
         if print_stats:
             ps.print_stats()
-            print s.getvalue()
+            logger(s.getvalue())
         return ps

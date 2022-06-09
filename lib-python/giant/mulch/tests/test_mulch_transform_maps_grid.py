@@ -115,7 +115,7 @@ def test_GetWarpedMapGrid(five_baz2b_test_datasets_mcd):
     assert list(map_grid.partition.query_by_grid_indices(range(10))) == [
         35, 35, 35, 34, 31, 31, 31, 31, 28, 28,
         ]
-    print list(np.where(map_grid.partition.embed().flatten() == -1)[0])
+    print(list(np.where(map_grid.partition.embed().flatten() == -1)[0]))
     assert list(np.where(map_grid.partition.embed().flatten() == -1)[0]) == [
         103, 104, 115, 116, 117, 118, 119, 127, 128, 129, 130, 131, 139, 
         140, 141, 142, 143, 151, 152, 153, 154, 155, 272, 273, 284, 285, 

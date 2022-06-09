@@ -1,3 +1,6 @@
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
 import os, sys, glob, shutil
 import wget
 
@@ -11,8 +14,11 @@ def get_pdb_index(filename='pdb_entry_type.txt'):
 def download_pdb(pdb_id, filename):
     """Download pdb file to a filename"""
     if os.path.exists(filename): return filename
-    try:    tempfile = wget.download('http://www.rcsb.org/pdb/files/{}.pdb'.format(pdb_id))
-    except: print('Failed to download:{}'.format(pdb_id)); raise
+    try:
+        tempfile = wget.download('http://www.rcsb.org/pdb/files/{}.pdb'.format(pdb_id))
+    except:
+        logger('Failed to download:{}'.format(pdb_id))
+        raise
     if tempfile != filename: shutil.move(tempfile, filename)
     assert os.path.exists(filename)
     return filename
@@ -23,7 +29,9 @@ def download_structure_factors(pdb_id, filename, zipped=True):
     try:
         if zipped:  tempfile = wget.download('https://files.rcsb.org/download/{}-sf.cif.gz'.format(pdb_id))
         else:       tempfile = wget.download('https://files.rcsb.org/download/{}-sf.cif'.format(pdb_id))
-    except: print('Failed to download:{}'.format(pdb_id)); raise
+    except:
+        logger('Failed to download:{}'.format(pdb_id))
+        raise
     if tempfile != filename: shutil.move(tempfile, filename)
     assert os.path.exists(filename)
     return filename

@@ -239,10 +239,10 @@ class CifManager:
                     column in item.loop.tags
                     ):
 
-                    print 'column {} is in block {}'.format(
+                    logger('column {} is in block {}'.format(
                         column,
                         block.name,
-                        )
+                        ))
 
                 if (
                     value is not None
@@ -260,11 +260,11 @@ class CifManager:
 
                             i = vals.index(value)
 
-                            print 'value {} is in column {} in block {}'.format(
+                            logger('value {} is in column {} in block {}'.format(
                                 value,
                                 t.column(i).tag,
                                 block.name,
-                                )
+                                ))
 
     # mods
 

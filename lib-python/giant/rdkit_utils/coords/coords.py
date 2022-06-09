@@ -12,7 +12,7 @@ def calculate_fraction_of_atom_pairs_within_tolerance(model1, model2, tolerance=
     try: differences = calculate_coordinate_differences(model1, model2)
     except EqualityError as err:
         if suppress:
-            print '{!s}: {!s}'.format(type(err),str(err))
+            print('{!s}: {!s}'.format(type(err),str(err)))
             return None
         else: raise
     # Check for failures
@@ -44,7 +44,7 @@ def calculate_rmsd(model1, model2, suppress=False):
     try: differences = calculate_coordinate_differences(model1, model2)
     except EqualityError as err:
         if suppress:
-            print '{!s}: {!s}'.format(type(err),str(err))
+            print('{!s}: {!s}'.format(type(err),str(err)))
             return None
         else: raise
     # Check for failures

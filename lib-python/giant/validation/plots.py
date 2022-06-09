@@ -182,10 +182,10 @@ class ValidationRadarPlot:
 
             r.add(
                 list(row_values),
-                color = colours.next(),
+                color = next(colours),
                 linewidth = 2,
-                linestyle = linestyle.next(),
-                marker = markers.next(),
+                linestyle = next(linestyle),
+                marker = next(markers),
                 markersize = markersize,
                 markeredgecolor = 'k',
                 label = str(row_label),

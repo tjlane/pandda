@@ -1,3 +1,6 @@
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
 import numpy
 
 import iotbx.pdb
@@ -73,7 +76,7 @@ def get_peptide_bond_type(prev_Ca, prev_C, curr_N, curr_Ca):
     elif angle_difference(a1=180, a2=ang, deg=True, abs_val=True) < 45:
         bond_type = trans
     else:
-        print 'WARNING: BOND IS NOT CIS OR TRANS (angle {:7}) for link between {} and {} - DEFAULTING TO TRANS'.format(ang, prev_C.id_str(), curr_N.id_str())
+        logger('WARNING: BOND IS NOT CIS OR TRANS (angle {:7}) for link between {} and {} - DEFAULTING TO TRANS'.format(ang, prev_C.id_str(), curr_N.id_str()))
         bond_type = trans
 
     return bond_type

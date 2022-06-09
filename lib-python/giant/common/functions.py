@@ -90,7 +90,7 @@ def get_function(form, **kw_args):
         raise Exception('Function not found: {}'.format(form))
 
     # Extract relevant keys and initialise function class
-    filt_kw_args = {k:kw_args[k] for k in keys if kw_args.has_key(k)}
+    filt_kw_args = {k:kw_args[k] for k in keys if k in kw_args}
     return func(**filt_kw_args)
 
 

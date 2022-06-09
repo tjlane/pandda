@@ -462,8 +462,8 @@ class Config:
 
             for dir_path in map(pl.Path, p.input.from_directories.directory):
 
-                pdb_path = dir_path.glob(p.input.from_directories.pdb_style).next()
-                mtz_path = dir_path.glob(p.input.from_directories.mtz_style).next()
+                pdb_path = next(dir_path.glob(p.input.from_directories.pdb_style))
+                mtz_path = next(dir_path.glob(p.input.from_directories.mtz_style))
 
                 d = CrystallographicDataset.from_file(
                     model_filename = str(pdb_path),
@@ -523,7 +523,7 @@ class Config:
 
                 try:
                     pdb_path = str(
-                        dir_path.glob(p.input.from_directories.reference_pdb_style).next()
+                        next(dir_path.glob(p.input.from_directories.reference_pdb_style))
                         )
                 except:
                     logger(
@@ -539,7 +539,7 @@ class Config:
 
                 try:
                     mtz_path = str(
-                        dir_path.glob(p.input.from_directories.reference_mtz_style).next()
+                        next(dir_path.glob(p.input.from_directories.reference_mtz_style))
                         )
                 except:
                     logger(

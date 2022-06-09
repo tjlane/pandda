@@ -164,35 +164,3 @@ def generate_crystal_contacts(hierarchy, crystal_symmetry, distance_cutoff=10):
     sym_ops_mat = get_crystal_contact_operators(hierarchy=hierarchy,crystal_symmetry=crystal_symmetry, distance_cutoff=distance_cutoff)
     sym_hierarchies, chain_mappings = apply_symmetry_operators(hierarchy=hierarchy,crystal_symmetry=crystal_symmetry,sym_ops_mat=sym_ops_mat)
     return sym_ops_mat, sym_hierarchies, chain_mappings
-
-if __name__=='__main__':
-
-    input_file = './reference.pdb'
-
-    inp = iotbx.pdb.input(input_file)
-    hie = inp.construct_hierarchy()
-
-    for method in [1,2]:
-        sym_ops, contact_mappings, sym_hierarchies, chain_mappings = generate_adjacent_symmetry_copies(    ref_hierarchy=hie,
-                                                                                                           crystal_symmetry=inp.crystal_symmetry(),
-                                                                                                           buffer_thickness=50,
-                                                                                                           method=method)
-
-        print 'CHAIN MAPPINGS:'
-        for ch in chain_mappings.keys():
-            print '\tCHAIN {!s} maps to {!s}'.format(ch, chain_mappings[ch])
-        print 'SYMMETRY HEIRARCHIES:'
-        for x in sym_hierarchies:
-            print '\t',x
-        print 'SYMMETRY OPERATIONS:'
-        for x in sorted(sym_ops, key=lambda m: str(m)):
-            print '\t',x
-        print '{!s} SYMMETRY COPIES GENERATED'.format(len(sym_hierarchies))
-
-        combined_sym_hierarchy = combine_hierarchies(sym_hierarchies)
-
-        output_file = input_file.replace('.pdb', '-contacts-method{!s}.pdb'.format(method))
-
-        assert not os.path.exists(output_file)
-        combined_sym_hierarchy.write_pdb_file(output_file)
-

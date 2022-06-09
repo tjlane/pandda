@@ -115,13 +115,13 @@ def selection_images(
         # Custom colouring
         if colour_selections:
             for sel in colour_selections:
-                s.colour(obj="sele and ({})".format(sel), colour=colours.next())
+                s.colour(obj="sele and ({})".format(sel), colour=next(colours))
         elif colours == 'bfactor':
             s.custom('spectrum', expression='b', palette='blue_red', selection='sele and (b>-1)')
         elif colours == 'chainbow':
             s.chainbow("sele")
         else:
-            s.colour_by_element(obj='sele', carbon_colour=colours.next())
+            s.colour_by_element(obj='sele', carbon_colour=next(colours))
         # Hide
         if hide_rest:
             s.hide(obj='not sele', style='everything')

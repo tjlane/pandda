@@ -221,7 +221,7 @@ class MakeIntraConformerRestraints(_BaseRestraintMaker):
         # so that the shortest distances are prioritised
         sorted_atom_pair_indices = sorted(
             atom_pair_indices.tolist(),
-            key = lambda (i,j): pairwise_distances_sq[i,j],
+            key = lambda i_j: pairwise_distances_sq[i_j[0],i_j[1]],
             )
 
         atom_check_hash = {}

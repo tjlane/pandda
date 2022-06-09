@@ -1,3 +1,5 @@
+import giant.logs as lg
+logger = lg.getLogger(__name__)
 
 import os
 import jinja2
@@ -26,7 +28,8 @@ def png2base64src_maybe(path, print_on_missing=False):
     if (path is not None) and os.path.exists(path):
         return png2base64src(path)
     else:
-        if print_on_missing: print 'missing file: {}'.format(path)
+        if print_on_missing:
+            logger('missing file: {}'.format(path))
         return 'none'
 
 class AutoDivNamer(object):

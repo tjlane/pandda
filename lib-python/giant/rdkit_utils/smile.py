@@ -1,3 +1,6 @@
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
 import os, sys, tempfile
 
 from rdkit.Chem import AllChem as Chem
@@ -79,8 +82,8 @@ def get_smile_from_block(block):
     try:
         # Try to get Mol from MolBlock
         mol = Chem.MolFromPDBBlock(block, removeHs=False, sanitize=True)
-    except Exception as Err:
-        print Err
+    except Exception as e:
+        logger(e)
         return None
     # Check for existence of Mol
     if not mol: return None

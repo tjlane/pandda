@@ -61,7 +61,9 @@ class Pseudoatom(object):
 class Shape(object):
 
     def draw(self, obj):
-        print 'Loading %s to %s ' % (self.SHAPE, obj)
+        # would only ever be called inside a pymol session
+        # so use print rather than logging
+        print('Loading {shape} to {obj} '.format(shape=self.SHAPE, obj=obj))
         exec(self.as_cmd(obj))
 
     def as_cmd(self, obj, state=0):

@@ -84,7 +84,7 @@ class _PymolScript(object):
         return self._colours
 
     def get_colour(self):
-        return self._colour_cycle.next()
+        return next(self._colour_cycle)
 
     # ----------------------------------------------------------------------- #
     # Append to/write script
