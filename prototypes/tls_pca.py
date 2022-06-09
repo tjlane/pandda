@@ -38,7 +38,7 @@ class MultiDatasetTLSAnalysis(object):
     def show(self):
         for selection in sorted(self.tables.keys()):
             self.log.subheading(selection)
-            print self.tables[selection]
+            print(self.tables[selection])
 
     def write(self):
         with open(self.csv_base+'selections.log', 'w') as csv_log:
@@ -94,7 +94,7 @@ class MultiDatasetTLSAnalysis(object):
 
                 proj_vals = pca.execute(sel_data)
 
-                print proj_vals.shape
+                print(proj_vals.shape)
 
         #        self.plot_bar(pca.d)
         #        self.plot_2d(proj_vals[:,:2])
