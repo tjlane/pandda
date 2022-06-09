@@ -1,3 +1,6 @@
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
 import os 
 import numpy as np
 import pathlib as pl
@@ -130,7 +133,7 @@ class GetEventFiles:
         dataset_files = files_dict['dataset_files'][event.dtag]
 
         import json
-        print(json.dumps(dataset_files, indent=2))
+        logger(json.dumps(dataset_files, indent=2))
 
         input_model = (
             self.pandda_directory / pl.Path(
@@ -213,17 +216,17 @@ class GetNextModelFile:
             )
 
         if fitted_outputs:
-            print 'Current models: \n\t{}'.format('\n\t'.join(fitted_outputs))
+            logger('Current models: \n\t{}'.format('\n\t'.join(fitted_outputs)))
             return fitted_outputs[-1]
         else:
-            print 'No current models'
+            logger('No current models')
             return None
 
     def next_file(self):
 
         current = self.last_file()
 
-        print 'Most recent saved model: {!s}'.format(current)
+        logger('Most recent saved model: {!s}'.format(current))
 
         if current:
             last_idx = int(current[-8:-4]) # matches to {:04d} below
@@ -251,10 +254,10 @@ class GetNextModelFile:
         if path is None: 
             return
 
-        print 'Linking {!s} -> {!s}'.format(
+        logger('Linking {!s} -> {!s}'.format(
             os.path.basename(path), 
             os.path.basename(self.output_model_link),
-            )
+            ))
 
         # Create new link the most recent file
         from giant.paths import rel_symlink

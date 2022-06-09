@@ -1,3 +1,6 @@
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
 import os
 import pandas as pd
 import pathlib as pl
@@ -30,7 +33,7 @@ class TableHandler:
 
         if self.require_not_empty is True:
             if len(table) == 0: 
-                print(table)
+                logger(str(table))
                 raise SystemExit(
                     '\n\nInput csv contains no data!\n\n'
                     )
@@ -58,7 +61,7 @@ class TableHandler:
 
     def write(self):
 
-        print('Writing output csv: {}'.format(str(self.output_path)))
+        logger('Writing output csv: {}'.format(str(self.output_path)))
 
         self.table.to_csv(str(self.output_path))
 
@@ -73,7 +76,7 @@ class PanddaEventTableHandler(TableHandler):
 
         if self.require_not_empty is True:
             if len(table) == 0: 
-                print(table)
+                logger(str(table))
                 raise SystemExit(
                     '\n\nNo events to inspect: Input events csv contains no data!\n\n'
                     )
@@ -115,7 +118,7 @@ class PanddaSiteTableHandler(TableHandler):
 
         if self.require_not_empty is True:
             if len(table) == 0: 
-                print(table)
+                logger(str(table))
                 raise SystemExit(
                     '\n\nNo sites: Input sites csv contains no data!\n\n'
                     )

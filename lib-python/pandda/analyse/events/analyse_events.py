@@ -1,8 +1,9 @@
+from __future__ import absolute_import
 import collections
 
 import numpy as np
 
-import background_correction as bc
+from . import background_correction as bc
 
 from .graphs import (
     MakeBdcEstimationGraph

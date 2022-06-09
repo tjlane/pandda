@@ -1,14 +1,15 @@
+from __future__ import absolute_import
 
-from find_events import (
+from .find_events import (
     BasicPanddaFindEvents
     )
 
-from find_clusters import (
+from .find_clusters import (
     Cluster,
     BasicClusterFinder,
     )
 
-from filter_clusters import (
+from .filter_clusters import (
     ClusterFilterList,
     PeakAndSizeClusterFilter,
     GroupNearbyClustersFilter,
@@ -16,6 +17,6 @@ from filter_clusters import (
     SymmetryClusterFilter,
     )
 
-from analyse_events import (
+from .analyse_events import (
     EventAnalyser,
     )
