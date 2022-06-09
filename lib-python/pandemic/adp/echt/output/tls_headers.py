@@ -1,5 +1,6 @@
 from libtbx import adopt_init_args
 import operator
+from functools import reduce
 
 
 class MultiModelTLSHeaderFactory:

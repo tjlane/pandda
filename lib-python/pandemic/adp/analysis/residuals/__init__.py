@@ -357,7 +357,7 @@ class AnalyseResidualsTask:
         assert len(atom_rmsds_dict.keys()) == len(set(atom_labels))
 
         # Extract as lists for plotting
-        sort_func = lambda (resname, atomname): (RES_ORDER_DICT.get(resname.strip(),''), ATOM_ORDER_DICT.get(atomname.strip(),''))
+        sort_func = lambda resname_atomname: (RES_ORDER_DICT.get(resname_atomname[0].strip(),''), ATOM_ORDER_DICT.get(resname_atomname[1].strip(),''))
         plot_labels = sorted(atom_rmsds_dict.keys(), key=sort_func)
         plot_rmsds = [atom_rmsds_dict[l] for l in plot_labels]
 

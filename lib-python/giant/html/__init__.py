@@ -42,6 +42,6 @@ class AutoDivNamer(object):
     def current(self):
         return self.format(self.index)
 
-    def next(self):
+    def __next__(self):
         self.index += 1
         return self.current()

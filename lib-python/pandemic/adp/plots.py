@@ -16,7 +16,7 @@ try:
     pyplot.switch_backend('agg') # yes I know this done twice -- for safety!
     pyplot.interactive(0)
 except Exception as e:
-    print e
+    logger(e)
     import matplotlib
     from matplotlib import pyplot
 
@@ -981,7 +981,7 @@ class PandemicAdpPlotter:
                         align='center',
                         color=colours[i_h],
                         label=legends[i_h],
-                        hatch=hatchs.next(),
+                        hatch=next(hatchs),
                         linewidth=0,
                         edgecolor='black',
                         zorder=5,

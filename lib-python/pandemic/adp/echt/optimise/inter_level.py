@@ -183,7 +183,6 @@ class OptimiseInterLevelAmplitudes:
         # Report
         ##############
 
-        print('')
         import tqdm
         pbar = tqdm.tqdm(total=len(optimisation_sets), ncols=100)
 
@@ -226,7 +225,6 @@ class OptimiseInterLevelAmplitudes:
             pbar.update(1)
 
         pbar.close()
-        print('')
 
         self.apply_group_multipliers(
             model_object = model_object,

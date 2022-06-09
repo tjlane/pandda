@@ -40,7 +40,7 @@ def setup_input_structures(output_directory, number_of_structures, include_cryst
         s_directory = structure_directory.mkdir('s{}'.format(i+1))
         s_filename = s_directory / 'structure{}.pdb'.format(i+1)
 
-        cryst_string, atoms_string = structure_strings.next()
+        cryst_string, atoms_string = next(structure_strings)
 
         if include_cryst_lines is True:
             s_filename.write(cryst_string+'\n', mode='a')

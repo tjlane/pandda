@@ -1,3 +1,6 @@
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
 import numpy
 import itertools, collections
 from libtbx import adopt_init_args
@@ -13,7 +16,7 @@ try:
     #plt.interactive(0)
     plt.rc('font', family='monospace')
 except Exception as e:
-    print e
+    logger(e)
 
 def make_linkage_graphs(
     cluster_info,
@@ -240,7 +243,7 @@ class LevelPlotAccumulator:
 
                 n_elements = len(group_indices)
 
-                group_colour = self.colour_cycle.next()
+                group_colour = next(self.colour_cycle)
                 self.used_colours.append(group_colour)
                 
                 group_label = self.block_counter
