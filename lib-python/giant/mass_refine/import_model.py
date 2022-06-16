@@ -2,7 +2,7 @@ import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 
-class ImportModel:
+class ImportModel(object):
 
     def __init__(self, 
         file_system,

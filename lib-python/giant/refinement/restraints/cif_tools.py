@@ -6,7 +6,7 @@ import gemmi as gm
 import re
 
 
-class CifManager:
+class CifManager(object):
 
     LINK_LIST_NAME = 'link_list'
     MOD_LIST_NAME = 'mod_list'
@@ -465,7 +465,7 @@ class CifManager:
                 )
 
 
-class CifIDGenerator:
+class CifIDGenerator(object):
 
     def __init__(self, seed=124, max_label_length=8):
 
@@ -568,7 +568,7 @@ class CifIDGenerator:
         return new_lab
 
 
-class CifMerger:
+class CifMerger(object):
 
 
     def __init__(self):

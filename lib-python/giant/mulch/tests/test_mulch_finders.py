@@ -23,7 +23,7 @@ def test_DummyDatasetFinder(five_baz2b_test_datasets_mcd):
 
     dkey = finder(five_baz2b_test_datasets_mcd)
 
-    assert dkey == five_baz2b_test_datasets_mcd.datasets.keys()[0] # dummy picks the first key
+    assert dkey == list(five_baz2b_test_datasets_mcd.datasets.keys())[0] # dummy picks the first key
 
 def test_HighestResolutionFinder(five_baz2b_test_datasets_mcd):
 

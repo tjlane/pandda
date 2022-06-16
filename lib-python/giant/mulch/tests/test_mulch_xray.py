@@ -126,7 +126,7 @@ def test_DataGetterPrepper(five_baz2b_test_datasets):
     from giant.mulch.xray.truncate_data import CommonSetMillerArrayTruncator
 
     truncate_data = CommonSetMillerArrayTruncator(
-        miller_arrays = map(get_miller_array, [reference_dataset, target_dataset]),
+        miller_arrays = list(map(get_miller_array, [reference_dataset, target_dataset])),
         )
 
     from giant.mulch.xray.scale_data import GetIsotropicMillerArrayScaler

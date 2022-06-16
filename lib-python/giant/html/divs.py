@@ -1,5 +1,3 @@
-
-
 class Div(object):
 
     __slots__ = [
@@ -23,7 +21,7 @@ class Div(object):
         self.contents.extend(other)
 
     def set(self, **kw_args):
-        for k, v in kw_args.items():
+        for k, v in list(kw_args.items()):
             setattr(self, k, v)
 
     def get(self, key):

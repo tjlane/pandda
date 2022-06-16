@@ -12,7 +12,7 @@ from .models import (
     )
 
 
-class MassRefineFileSystem:
+class MassRefineFileSystem(object):
 
     def __init__(self, work_folder):
 

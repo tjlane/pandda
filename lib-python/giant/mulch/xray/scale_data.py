@@ -2,7 +2,7 @@ import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 
-class MillerArrayScaler:
+class MillerArrayScaler(object):
 
     def __init__(self, scaling_result):
 
@@ -49,7 +49,7 @@ class MillerArrayScaler:
         return self.scaling_result.info
 
 
-class GetIsotropicMillerArrayScaler:
+class GetIsotropicMillerArrayScaler(object):
 
     def __init__(self, reference_miller_array=None):
 
@@ -95,7 +95,7 @@ class GetIsotropicMillerArrayScaler:
         return True, None
 
 
-class GetMultiDatasetMillerArrayScalers:
+class GetMultiDatasetMillerArrayScalers(object):
 
     def __init__(self,
         get_miller_array,

@@ -80,7 +80,7 @@ def test_MaskedNativeMapMaker(five_baz2b_test_datasets_mcd_labelled, tmp_path):
     assert output_map_data.std() == pytest.approx(0.1121, abs=1e-4)
 
     large_select = (output_map_data > 0.5)
-    large_values = zip(*list(np.where(large_select)))
+    large_values = list(zip(*list(np.where(large_select))))
 
     assert len(large_values) == 1204
     print(large_values[:16])
@@ -106,7 +106,7 @@ def test_MaskedNativeMapMaker(five_baz2b_test_datasets_mcd_labelled, tmp_path):
     assert output_map_data.std() == pytest.approx(0.1127, abs=1e-4)
 
     large_select = (output_map_data > 0.5)
-    large_values = zip(*list(np.where(large_select)))
+    large_values = list(zip(*list(np.where(large_select))))
 
     assert len(large_values) == 1127
     print(large_values[:16])
@@ -200,7 +200,7 @@ def test_NativeMapMaker(five_baz2b_test_datasets_mcd_labelled, tmp_path):
     assert output_map_data.std() == pytest.approx(0.0236, abs=1e-4)
 
     large_select = (output_map_data > 0.5)
-    large_values = zip(*list(np.where(large_select)))
+    large_values = list(zip(*list(np.where(large_select))))
 
     assert len(large_values) == 44
     print(large_values[:16])
@@ -226,7 +226,7 @@ def test_NativeMapMaker(five_baz2b_test_datasets_mcd_labelled, tmp_path):
     assert output_map_data.std() == pytest.approx(0.0248, abs=1e-4)
 
     large_select = (output_map_data > 0.5)
-    large_values = zip(*list(np.where(large_select)))
+    large_values = list(zip(*list(np.where(large_select))))
 
     assert len(large_values) == 40
     print(large_values[:16])

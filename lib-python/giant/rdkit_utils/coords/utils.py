@@ -89,7 +89,7 @@ def get_atomic_equivalences(mol1, mol2):
         raise EqualityError('Heavy Atom Numbers are not equal!')
 
     for match_pattern in match_patterns:
-        atom_pairings.append(zip(match_pattern,range(0,mol1.GetNumHeavyAtoms())))
+        atom_pairings.append(list(zip(match_pattern,range(0,mol1.GetNumHeavyAtoms()))))
 
     return atom_pairings
 

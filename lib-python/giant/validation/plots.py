@@ -17,7 +17,7 @@ from giant.plot import (
     )
 
 
-class ValidationRadarPlot:
+class ValidationRadarPlot(object):
 
     PLOT_DEFAULTS = {
         'plot_order' : [
@@ -207,11 +207,11 @@ class ValidationRadarPlot:
 
             r.set_ticks(
                 labels = [
-                    map(self.label,plot_df[c].values)
+                    list(map(self.label,plot_df[c].values))
                     for c in column_keys
                     ],
                 values = [
-                    map(self.value,plot_df[c].values)
+                    list(map(self.value,plot_df[c].values))
                     for c in column_keys
                     ],
                 )
@@ -235,7 +235,7 @@ class ValidationRadarPlot:
         return value
 
 
-class ValidationDistributionPlots:
+class ValidationDistributionPlots(object):
 
     PLOT_DEFAULTS = {}
 
@@ -329,7 +329,7 @@ class ValidationDistributionPlots:
                     continue
 
                 try:
-                    col_values = map(float, df[col].values)
+                    col_values = list(map(float, df[col].values))
                 except:
                     # invalid column
                     continue

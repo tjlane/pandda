@@ -9,7 +9,7 @@ from libtbx import group_args
 
 _here = os.path.abspath(os.path.dirname(__file__))
 
-class _TestData:
+class _TestData(object):
     datasets = {
         'BAZ2B' : os.path.join(_here, 'baz2b_test_data'),
     }

@@ -17,7 +17,7 @@ from giant.refinement import (
     )
 
 
-class MakeAltlocOmitMap:
+class MakeAltlocOmitMap(object):
 
     def __init__(self,
         refinement_program = 'refmac',
@@ -107,7 +107,7 @@ class MakeAltlocOmitMap:
             )
 
 
-class MakeLeaveOneOutOmitMaps:
+class MakeLeaveOneOutOmitMaps(object):
 
     def __init__(self,
         get_interesting_resnames = None,
@@ -130,9 +130,9 @@ class MakeLeaveOneOutOmitMaps:
 
         resname_altloc_hash = self.get_resname_altloc_sets(dataset)
 
-        unique_altloc_combinations = map(
+        unique_altloc_combinations = list(map(
             tuple, sorted(set(resname_altloc_hash.values()))
-            )
+            ))
 
         altloc_result_dict = {}
 
@@ -200,7 +200,7 @@ class MakeLeaveOneOutOmitMaps:
             ])
 
         all_conformers_used = set(
-            np.concatenate(conformer_sets.values()).tolist()
+            np.concatenate(list(conformer_sets.values())).tolist()
             )
 
         unused_conformers = (

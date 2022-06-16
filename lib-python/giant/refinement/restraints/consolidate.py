@@ -5,7 +5,7 @@ from .cif_tools import CifMerger
 from .links import UpdateLinksFromCif
 
 
-class ConsolidationResult:
+class ConsolidationResult(object):
 
     def __init__(self,
         model,
@@ -37,7 +37,7 @@ class ConsolidationResult:
             )
 
 
-class ConsolidateRestraintsAndUpdateModel:
+class ConsolidateRestraintsAndUpdateModel(object):
 
     def __init__(self):
 

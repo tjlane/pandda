@@ -68,7 +68,7 @@ def selection_images(
         ):
 
     if labels is None:
-        labels = map(str,range(1, len(selections)+1))
+        labels = list(map(str,range(1, len(selections)+1)))
 
     assert (colours is None) or (colours in ['bfactor','chainbow']) or isinstance(colours, list)
     if (colours is None):

@@ -23,7 +23,7 @@ def test_MapGrid():
     grid_points = map_grid.grid_points()
 
     assert grid_points.shape == (map_grid.grid_size_1d(), 3)
-    assert map(tuple, grid_points[:10]) == [
+    assert list(map(tuple, grid_points[:10])) == [
         (0,0,0),(0,0,1),(0,0,2),(0,0,3),(0,1,0),
         (0,1,1),(0,1,2),(0,1,3),(0,2,0),(0,2,1),
         ]
@@ -112,7 +112,7 @@ def test_GetWarpedMapGrid(five_baz2b_test_datasets_mcd):
     assert map_grid.masks["symmetry"].mask_size == 500
     assert map_grid.masks["total"].mask_size == 903
     assert len(map_grid.partition.partition_sites) == 116
-    assert list(map_grid.partition.query_by_grid_indices(range(10))) == [
+    assert list(map_grid.partition.query_by_grid_indices(list(range(10)))) == [
         35, 35, 35, 34, 31, 31, 31, 31, 28, 28,
         ]
     print(list(np.where(map_grid.partition.embed().flatten() == -1)[0]))
@@ -156,7 +156,7 @@ def test_GridMask():
 
     grid_mask = GridMask(
         grid_size = grid_size,
-        mask_indices = range(5),
+        mask_indices = list(range(5)),
         mask_binary = None,
         )
 
@@ -165,8 +165,8 @@ def test_GridMask():
     assert grid_mask.get_mask_indices().shape == (5,)
 
     assert list(grid_mask.get_mask_binary()) == [True]*5 + [False]*67
-    assert list(grid_mask.get_mask_indices()) == range(5)
-    assert map(tuple, grid_mask.get_mask_points()) == [
+    assert list(grid_mask.get_mask_indices()) == list(range(5))
+    assert list(map(tuple, grid_mask.get_mask_points())) == [
         (0, 0, 0), (0, 0, 1), (0, 0, 2), (0, 0, 3), (0, 1, 0),
         ]
 
@@ -182,17 +182,17 @@ def test_GridMask():
     assert list(grid_mask.get_mask_indices()) == [2, 20, 65]
     assert list(np.where(grid_mask.get_mask_binary())[0]) == [2, 20, 65]
 
-    assert map(tuple, grid_mask.get_mask_points()) == [
+    assert list(map(tuple, grid_mask.get_mask_points())) == [
         (0, 0, 2), (0, 5, 0), (2, 4, 1),
         ]
 
     embedded_data = grid_mask.embed_data(
-        data = range(1,4),
+        data = list(range(1,4)),
         )
     
     assert embedded_data.shape == grid_size
 
-    assert zip(*map(tuple, np.where(embedded_data))) == [
+    assert list(zip(*list(map(tuple, np.where(embedded_data))))) == [
         (0, 0, 2), (0, 5, 0), (2, 4, 1),
         ]
     assert embedded_data[(0, 0, 2)] == 1
@@ -209,7 +209,7 @@ def test_GridMask():
     with pytest.raises(ValueError) as e: 
 
         grid_mask.embed_data(
-            data = range(4),
+            data = list(range(4)),
             )
 
     ##
@@ -295,7 +295,7 @@ def test_GridIndexers():
         grid_size = (3, 6, 4),
         )
 
-    assert map(tuple, grid_idx2gps([0, 71, 3, 20, 48])) == [
+    assert list(map(tuple, grid_idx2gps([0, 71, 3, 20, 48]))) == [
         (0,0,0),(2,5,3),(0,0,3),(0,5,0),(2,0,0),
         ]
 
@@ -327,7 +327,7 @@ def test_GetSitesMask():
         )
 
     assert tuple(map_mask.get_mask_indices()) == (5, 25, 28, 29, 30, 33, 53)
-    assert map(tuple, map_mask.get_mask_points()) == [
+    assert list(map(tuple, map_mask.get_mask_points())) == [
         (0, 1, 1), (1, 0, 1), (1, 1, 0), 
         (1, 1, 1), 
         (1, 1, 2), (1, 2, 1), (2, 1, 1),
@@ -340,7 +340,7 @@ def test_GetSitesMask():
         )
 
     assert tuple(map_mask.get_mask_indices()) == (29, 30, 33, 34, 53, 54, 57, 58)
-    assert map(tuple, map_mask.get_mask_points()) == [
+    assert list(map(tuple, map_mask.get_mask_points())) == [
         (1, 1, 1), (1, 1, 2), (1, 2, 1), (1, 2, 2), 
         (2, 1, 1), (2, 1, 2), (2, 2, 1), (2, 2, 2),
         ]
@@ -355,7 +355,7 @@ def test_GetSitesMask():
         )
 
     assert tuple(map_mask.get_mask_indices()) == (5, 25, 28, 29, 30, 33, 34, 53, 54, 57, 58)
-    assert map(tuple, map_mask.get_mask_points()) == [
+    assert list(map(tuple, map_mask.get_mask_points())) == [
         (0, 1, 1), (1, 0, 1), (1, 1, 0), 
         (1, 1, 1), 
         (1, 1, 2), (1, 2, 1), (1, 2, 2), 
@@ -376,7 +376,7 @@ def test_GetSitesMask():
         )
 
     assert tuple(map_mask.get_mask_indices()) == (0, 1, 3, 4, 20, 24, 48)
-    assert map(tuple, map_mask.get_mask_points()) == [
+    assert list(map(tuple, map_mask.get_mask_points())) == [
         (0, 0, 0), (0, 0, 1), 
         (0, 0, 3), 
         (0, 1, 0), 
@@ -414,7 +414,7 @@ def test_GetNonPeriodicSitesMask():
         )
 
     assert tuple(map_mask.get_mask_indices()) == (0, 1, 4, 24)
-    assert map(tuple, map_mask.get_mask_points()) == [
+    assert list(map(tuple, map_mask.get_mask_points())) == [
         (0, 0, 0), (0, 0, 1), (0, 1, 0), (1, 0, 0),
         ]
 
@@ -427,7 +427,7 @@ def test_GetNonPeriodicSitesMask():
         )
 
     assert tuple(map_mask.get_mask_indices()) == (0,)
-    assert map(tuple, map_mask.get_mask_points()) == [
+    assert list(map(tuple, map_mask.get_mask_points())) == [
         (0, 0, 0),
         ]
 
@@ -440,7 +440,7 @@ def test_GetNonPeriodicSitesMask():
         )
 
     assert tuple(map_mask.get_mask_indices()) == tuple()
-    assert map(tuple, map_mask.get_mask_points()) == []
+    assert list(map(tuple, map_mask.get_mask_points())) == []
 
     #
 
@@ -451,7 +451,7 @@ def test_GetNonPeriodicSitesMask():
         )
 
     assert tuple(map_mask.get_mask_indices()) == (71,)
-    assert map(tuple, map_mask.get_mask_points()) == [
+    assert list(map(tuple, map_mask.get_mask_points())) == [
         (2, 5, 3),
         ]
 
@@ -466,7 +466,7 @@ def test_GetNonPeriodicSitesMask():
         )
 
     assert tuple(map_mask.get_mask_indices()) == (15, 45, 65, 68, 69, 70)
-    assert map(tuple, map_mask.get_mask_points()) == [
+    assert list(map(tuple, map_mask.get_mask_points())) == [
         (0, 3, 3), (1, 5, 1), (2, 4, 1), 
         (2, 5, 0), (2, 5, 1), (2, 5, 2),
         ]
@@ -486,7 +486,7 @@ def test_GetNonPeriodicSitesMask():
         )
 
     assert tuple(map_mask.get_mask_indices()) == (14, 50, 60, 62, 63, 70)
-    assert map(tuple, map_mask.get_mask_points()) == [
+    assert list(map(tuple, map_mask.get_mask_points())) == [
         (0, 3, 2), (2, 0, 2), (2, 3, 0), 
         (2, 3, 2), (2, 3, 3), (2, 5, 2)
         ]
@@ -505,7 +505,7 @@ def test_GetNonPeriodicSitesMask():
         )
 
     assert tuple(map_mask.get_mask_indices()) == (5, 14, 25, 28, 29, 30, 33, 50, 53, 60, 62, 63, 70)
-    assert map(tuple, map_mask.get_mask_points()) == [
+    assert list(map(tuple, map_mask.get_mask_points())) == [
         (0, 1, 1), (0, 3, 2), (1, 0, 1), (1, 1, 0), (1, 1, 1), 
         (1, 1, 2), (1, 2, 1), (2, 0, 2), (2, 1, 1), (2, 3, 0), 
         (2, 3, 2), (2, 3, 3), (2, 5, 2),
@@ -524,7 +524,7 @@ def test_GetNonPeriodicSitesMask():
         )
 
     assert tuple(map_mask.get_mask_indices()) == tuple()
-    assert map(tuple, map_mask.get_mask_points()) == []
+    assert list(map(tuple, map_mask.get_mask_points())) == []
 
     # all edges out of range and one central point
 
@@ -540,10 +540,10 @@ def test_GetNonPeriodicSitesMask():
         )
 
     print(tuple(map_mask.get_mask_indices()))
-    print(map(tuple, map_mask.get_mask_points()))
+    print(list(map(tuple, map_mask.get_mask_points())))
 
     assert tuple(map_mask.get_mask_indices()) == (5, 25, 28, 29, 30, 33, 53)
-    assert map(tuple, map_mask.get_mask_points()) == [
+    assert list(map(tuple, map_mask.get_mask_points())) == [
         (0, 1, 1), (1, 0, 1), (1, 1, 0), 
         (1, 1, 1), 
         (1, 1, 2), (1, 2, 1), (2, 1, 1),
@@ -560,7 +560,7 @@ def test_GetNonPeriodicSitesMask():
         )
 
     assert tuple(map_mask.get_mask_indices()) == tuple()
-    assert map(tuple, map_mask.get_mask_points()) == []
+    assert list(map(tuple, map_mask.get_mask_points())) == []
 
     #
 
@@ -571,7 +571,7 @@ def test_GetNonPeriodicSitesMask():
         )
 
     assert tuple(map_mask.get_mask_indices()) == tuple()
-    assert map(tuple, map_mask.get_mask_points()) == []
+    assert list(map(tuple, map_mask.get_mask_points())) == []
 
     ##
 
@@ -603,7 +603,7 @@ def test_compound_grid_masks():
         negative_masks = [],
         )
 
-    assert map(tuple, combined.get_mask_points()) == [
+    assert list(map(tuple, combined.get_mask_points())) == [
         (0, 1, 0), (0, 1, 1), (0, 1, 2), 
         (1, 0, 0), (1, 0, 1), (1, 0, 2), 
         (1, 1, 0), 
@@ -628,7 +628,7 @@ def test_compound_grid_masks():
         negative_masks = [mask_3],
         )
 
-    assert map(tuple, combined.get_mask_points()) == [
+    assert list(map(tuple, combined.get_mask_points())) == [
         (0, 1, 0), (0, 1, 1), (1, 0, 0), 
         (1, 0, 1), (1, 1, 0), 
         (1, 1, 6), 
@@ -643,9 +643,9 @@ def test_compound_grid_masks():
         negative_masks = [mask_2],
         )
 
-    print(map(tuple, combined.get_mask_points()))
+    print(list(map(tuple, combined.get_mask_points())))
 
-    assert map(tuple, combined.get_mask_points()) == [
+    assert list(map(tuple, combined.get_mask_points())) == [
         (0, 1, 0), (0, 1, 2), 
         (1, 0, 0), (1, 0, 2), 
         (1, 1, 3), 
@@ -674,7 +674,7 @@ def test_MakeVoronoiGridPartition(five_baz2b_test_datasets_mcd):
 
     map_grid.masks["test"] = GridMask(
         grid_size = map_grid.grid_size(),
-        mask_indices = range(10),
+        mask_indices = list(range(10)),
         mask_binary = None,
         )
 
@@ -691,7 +691,7 @@ def test_MakeVoronoiGridPartition(five_baz2b_test_datasets_mcd):
         ref_sites = map_grid.grid_points(),
         query_sites = map_grid.grid_points(),
         )
-    assert list(mappings) == pytest.approx(range(map_grid.grid_size_1d()))
+    assert list(mappings) == pytest.approx(list(range(map_grid.grid_size_1d())))
 
     ##
 
@@ -714,7 +714,7 @@ def test_MakeVoronoiGridPartition(five_baz2b_test_datasets_mcd):
         # Get a site
         site_xyz = this_partition.partition_sites[i]
         # Get all points assigned to this site
-        partition_xyzs_grid = zip(*np.where(map_grid.embed_data(this_partition.partition_mappings) == i))
+        partition_xyzs_grid = list(zip(*np.where(map_grid.embed_data(this_partition.partition_mappings) == i)))
         partition_xyzs_cart = map_grid.grid2cart(partition_xyzs_grid)
         # Check that the closest site is the assigned one
         for xyz in partition_xyzs_cart:
@@ -743,7 +743,7 @@ def test_MakeVoronoiGridPartition(five_baz2b_test_datasets_mcd):
         # Get a site
         site_xyz = this_partition.partition_sites[i]
         # Get all points assigned to this site
-        partition_xyzs_grid = zip(*np.where(map_grid.masks["test"].embed_data(this_partition.partition_mappings) == i))
+        partition_xyzs_grid = list(zip(*np.where(map_grid.masks["test"].embed_data(this_partition.partition_mappings) == i)))
         partition_xyzs_cart = map_grid.grid2cart(partition_xyzs_grid)
         # Check that the closest site is the assigned one
         for xyz in partition_xyzs_cart:

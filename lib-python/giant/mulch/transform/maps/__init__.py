@@ -6,7 +6,7 @@ import numpy as np
 from giant.mulch.transform.maps.grid import GetWarpedMapGrid
 
 
-class WrapperToIndexTuple:
+class WrapperToIndexTuple(object):
 
     def __init__(self, i, func):
         """
@@ -22,7 +22,7 @@ class WrapperToIndexTuple:
         return (self.i, data)
 
 
-class DatasetMapLoaderAndWarperCallback:
+class DatasetMapLoaderAndWarperCallback(object):
 
     def __init__(self, load_map, warp_map, dataset, map_resolution):
         self.load_map = load_map
@@ -42,7 +42,7 @@ class DatasetMapLoaderAndWarperCallback:
         return warped_map
 
 
-class MapArrayManager:
+class MapArrayManager(object):
 
     def __init__(self, dataset_keys, map_data):
 
@@ -66,7 +66,7 @@ class MapArrayManager:
         return output_maps
 
 
-class LoadWarpAndScaleMaps:
+class LoadWarpAndScaleMaps(object):
 
     def __init__(self,
         map_grid,
@@ -178,7 +178,7 @@ class LoadWarpAndScaleMaps:
                 data_truncator
                 )
 
-class ScaleMapsArrayInPlace:
+class ScaleMapsArrayInPlace(object):
 
     def __init__(self, map_grid):
 
@@ -234,7 +234,7 @@ class ScaleMapsArrayInPlace:
         return scaled_values
 
 
-class GetWarpedMapLoader:
+class GetWarpedMapLoader(object):
 
     def __init__(self,
         get_map_grid,

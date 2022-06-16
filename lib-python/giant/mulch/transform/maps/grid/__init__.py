@@ -28,7 +28,7 @@ def calculate_grid_size(min_carts, max_carts, grid_spacing):
     return grid_size
 
 
-class GridIndexer:
+class GridIndexer(object):
 
     def __init__(self, grid_size):
 
@@ -85,7 +85,7 @@ class MultiPointGridInverter(GridInverter):
             )
 
 
-class MapGrid:
+class MapGrid(object):
 
     def __init__(self, 
         grid_spacing, 
@@ -237,7 +237,7 @@ class MapGrid:
     #     return iotbx.crystal_symmetry_from_any.from_string("{:f},{:f},{:f},90,90,90,P1".format(*list(self.cart_size())))
 
 
-class GetWarpedMapGrid:
+class GetWarpedMapGrid(object):
 
     ReferenceDatasetClass = DefaultReferenceDataset
 

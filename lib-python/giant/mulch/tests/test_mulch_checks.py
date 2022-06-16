@@ -266,8 +266,8 @@ def test_MultiDatasetChecker(five_baz2b_test_datasets):
         )
 
     messages = checker_mcd_warn(mcd)
-    assert messages.keys() == [3]
-    assert len(messages.values()) == 1
+    assert list(messages.keys()) == [3]
+    assert len(list(messages.values())) == 1
     assert str(''.join(messages[3])).replace('\n\t','') == out_msg
 
     ##
@@ -278,8 +278,8 @@ def test_MultiDatasetChecker(five_baz2b_test_datasets):
         )
 
     messages = checker_mcd_none(mcd)
-    assert messages.keys() == [3]
-    assert len(messages.values()) == 1
+    assert list(messages.keys()) == [3]
+    assert len(list(messages.values())) == 1
     assert str(''.join(messages[3])).replace('\n\t','') == out_msg
 
     ##

@@ -100,7 +100,7 @@ class ManualDatasetFilter(DatasetFilter):
 
     def __call__(self, mcd):
 
-        remove_datasets = self.rejections.keys()
+        remove_datasets = list(self.rejections.keys())
 
         # Create a new dataset
         new_datasets = {

@@ -14,7 +14,7 @@ def generate_group_idxs(group_vals):
     sorted_val = [group_vals[i] for i in sorted_idx]
 
     # For each group val, return idxs for this group
-    for val, sel_idxs in itertools.groupby(range(num_vals), key=lambda i: sorted_val[i]):
+    for val, sel_idxs in itertools.groupby(list(range(num_vals)), key=lambda i: sorted_val[i]):
         yield val, [sorted_idx[idx] for idx in sel_idxs]
 
 def find_connected_groups(connection_matrix):

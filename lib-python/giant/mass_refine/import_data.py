@@ -10,7 +10,7 @@ from giant.mulch.labelling import (
     )
 
 
-class GetMetaFromTable:
+class GetMetaFromTable(object):
 
     def __init__(self, meta_path):
 
@@ -27,7 +27,7 @@ class GetMetaFromTable:
         return meta
 
 
-class GetMetaFromRegex:
+class GetMetaFromRegex(object):
 
     def __init__(self, meta_regex):
 
@@ -59,7 +59,7 @@ class GetMetaFromRegex:
         return meta
 
 
-class ImportDatasets:
+class ImportDatasets(object):
 
     def __init__(self,
         file_system,

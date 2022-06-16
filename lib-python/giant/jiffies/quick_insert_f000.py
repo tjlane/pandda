@@ -75,7 +75,7 @@ def run(params):
     f000_details = f000_regex.findall(cm.output)
 
     assert len(f000_details) == 1, 'Error extracting f000 from output of phenix.f000'
-    f000, solvent_density, solvent_fraction = map(float,f000_details[0])
+    f000, solvent_density, solvent_fraction = list(map(float,f000_details[0]))
     logger('F000 is {}'.format(f000))
 
     ###########################################

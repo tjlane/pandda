@@ -34,7 +34,7 @@ class LuigiSGETask(SGEJobTask):
             )
 
 
-class LuigiFunctionWrapper:
+class LuigiFunctionWrapper(object):
 
     def __init__(self, 
         function, 

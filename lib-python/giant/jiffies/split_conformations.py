@@ -182,7 +182,7 @@ def build_splitter(options):
     return split_states
 
 
-class WriteStructures:
+class WriteStructures(object):
 
     def __init__(self, overwrite=False, filepath_append=None):
 
@@ -211,12 +211,12 @@ class WriteStructures:
                 ).with_suffix(
                 '.pdb'
                 )
-            for k in hierarchy_dict.keys()
+            for k in list(hierarchy_dict.keys())
             }
 
         if (self.overwrite is False):
 
-            for k, p in filepaths.items():
+            for k, p in list(filepaths.items()):
 
                 if p.exists():
                     raise IOError(

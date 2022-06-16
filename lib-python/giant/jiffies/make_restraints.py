@@ -332,7 +332,7 @@ def run(params):
         if (overwrite is True):
             os.remove(str(output_pymol_filepath))
 
-    for k, p in output_paths.items():
+    for k, p in list(output_paths.items()):
         if p.exists():
             if (overwrite is True):
                 os.remove(str(p))
@@ -351,7 +351,7 @@ def run(params):
     make_restraints = build_restraints_maker(params.options)
 
     write_restraints = WriteRestraints(
-        formats = output_paths.keys(),
+        formats = list(output_paths.keys()),
         output_path_dict = output_paths,
         )
 

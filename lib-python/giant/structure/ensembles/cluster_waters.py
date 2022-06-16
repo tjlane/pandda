@@ -16,7 +16,7 @@ import multiprocessing
 from matplotlib import pyplot as plt
 
 
-class GetWaters:
+class GetWaters(object):
 
     def __init__(self):
 
@@ -33,7 +33,7 @@ class GetWaters:
         return h
 
 
-class FilterWaters:
+class FilterWaters(object):
 
     def __init__(self):
 
@@ -60,7 +60,7 @@ class FilterWaters:
         return hierarchy
 
 
-class AtomCluster:
+class AtomCluster(object):
 
     def __init__(self, points):
 
@@ -191,7 +191,7 @@ class AtomCluster:
         return a
 
 
-class AtomClusterList:
+class AtomClusterList(object):
 
     def __init__(self, atom_clusters):
 
@@ -247,7 +247,7 @@ class AtomClusterList:
         return np.array([c.as_atom() for c in self])
 
 
-class ClusteringResult:
+class ClusteringResult(object):
 
     def __init__(self,
         best_model,
@@ -258,7 +258,7 @@ class ClusteringResult:
         self.all_models = all_models
 
 
-class ClusterPoints:
+class ClusterPoints(object):
 
     def __init__(self,
         remove_singletons = True,
@@ -509,7 +509,7 @@ class ClusterPointsGMM(ClusterPoints):
         return (best_gmm, all_gmms)
 
 
-class AtomClusterer:
+class AtomClusterer(object):
 
     def __init__(self, cluster_func):
 
@@ -528,7 +528,7 @@ class AtomClusterer:
         return cluster_selections
 
 
-class WriteOutput:
+class WriteOutput(object):
 
     def __init__(self):
 
@@ -683,7 +683,7 @@ class WriteOutput:
         plt.close(fig)
 
 
-class ClusterWaters:
+class ClusterWaters(object):
 
     def __init__(self,
         cluster_steps = None,

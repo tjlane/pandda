@@ -4,7 +4,7 @@ logger = lg.getLogger(__name__)
 import numpy as np
 
 
-class DatasetKeySelector:
+class DatasetKeySelector(object):
 
     def __init__(self, dataset_keys):
 
@@ -12,7 +12,7 @@ class DatasetKeySelector:
 
     def __call__(self, datasets):
 
-        overlap_keys = set(self.dataset_keys).intersection(datasets.keys())
+        overlap_keys = set(self.dataset_keys).intersection(list(datasets.keys()))
 
         selected = {}
 
@@ -23,7 +23,7 @@ class DatasetKeySelector:
         return selected
 
 
-class SortedDatasetSelector:
+class SortedDatasetSelector(object):
 
 
     def __init__(self,
@@ -57,7 +57,7 @@ class SortedDatasetSelector:
         return selected_datasets
 
 
-class RandomDatasetSelector: 
+class RandomDatasetSelector(object):
 
     def __init__(self,
         max_datasets,
@@ -94,7 +94,7 @@ class RandomDatasetSelector:
         return sample_datasets
 
 
-class SoulmateSelector:
+class SoulmateSelector(object):
 
     def __init__(self,
         sort_datasets,

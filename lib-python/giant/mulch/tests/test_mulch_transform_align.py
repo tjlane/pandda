@@ -124,6 +124,6 @@ def test_AlignDatasets(five_baz2b_test_datasets_mcd_labelled):
             "BAZ2BA-x434.dimple.pdb",
             ]
 
-        assert alignments.values() == [
+        assert list(alignments.values()) == [
             "align_structures_rigid() got an unexpected keyword argument 'non_existent_kwarg'"
             ] * 5

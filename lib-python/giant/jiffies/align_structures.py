@@ -58,7 +58,7 @@ settings {
 """)
 
 
-class Aligner:
+class Aligner(object):
     """Takes two chains and aligns them - return rt_mx"""
 
     def __init__(self,

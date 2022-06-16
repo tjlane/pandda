@@ -94,7 +94,7 @@ def validate_params(params):
         raise Exception('Invalid model: {}'.format(mode))
 
 
-class MassRefineProtocol: 
+class MassRefineProtocol(object):
 
     update_config = None
     import_data = None

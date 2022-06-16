@@ -4,7 +4,7 @@ logger = lg.getLogger(__name__)
 import numpy as np
 
 
-class GridMask:
+class GridMask(object):
 
     name = "GridMask"
 
@@ -128,7 +128,7 @@ class GridMask:
         return embedded
 
 
-class GetSitesMask:
+class GetSitesMask(object):
 
     def __init__(self,
         grid_size,
@@ -181,7 +181,7 @@ class GetSitesMask:
             )
 
 
-class GetNonPeriodicSitesMask:
+class GetNonPeriodicSitesMask(object):
 
     def __init__(self, 
         grid_size,

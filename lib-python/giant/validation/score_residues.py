@@ -39,7 +39,7 @@ from .plots import (
     )
 
 
-class WriteScores:
+class WriteScores(object):
 
     def __init__(self,
         make_radar_plot = None,
@@ -177,7 +177,7 @@ class WriteScores:
         return {'score_distributions' : out_path}
 
 
-class ScoreModelMultiple: 
+class ScoreModelMultiple(object):
 
     TABLE_COLUMNS = [
         'Dataset',
@@ -285,7 +285,7 @@ class ScoreModelMultiple:
         return df
 
 
-class ScoreModelSingle:
+class ScoreModelSingle(object):
 
     ROOT_COLUMNS = [
         'RSCC',
@@ -497,12 +497,12 @@ class ScoreModelSingle:
             if rg_2 is None: 
                 continue
 
-            confs1, confs2, rmsds = zip(
+            confs1, confs2, rmsds = list(zip(
                 *self.calculate_paired_conformer_sets_rmsds(
                     conformers_1 = rg_1.conformers(),
                     conformers_2 = rg_2.conformers(),
                 )
-            )
+            ))
 
             rmsds_dict[rg_1_lab] = (
                 max(rmsds)

@@ -77,13 +77,13 @@ def default_secondary_structure_selections_filled(hierarchy):
     output_sel_all = []
 
     # Extract the chain IDs
-    chain_ids = numpy.unique(zip(*auto_sel_proc)[0])
+    chain_ids = numpy.unique(list(zip(*auto_sel_proc))[0])
 
     # Iterate through chains
     for c_id in chain_ids:
 
         # Extract residue start and end numbers
-        c_sels = sorted([map(int, s[1:]) for s in auto_sel_proc if s[0]==c_id])
+        c_sels = sorted([list(map(int, s[1:])) for s in auto_sel_proc if s[0]==c_id])
         # Extract chain
         c_obj  = [c for c in hierarchy.chains() if (c.is_protein() and c.id==c_id)]
         assert len(c_obj) == 1
@@ -112,7 +112,7 @@ def default_secondary_structure_selections_filled(hierarchy):
             # Convert to selections
             n = i+1
             g_sel = numpy.zeros_like(t_sel, dtype=bool)
-            g_sel[range(g[0]-c_start,g[1]-c_start+1)] = True
+            g_sel[list(range(g[0]-c_start,g[1]-c_start+1))] = True
             # Multiply the unassigned atoms with this group mask
             new_g_sel = (t_sel==0)*g_sel
 

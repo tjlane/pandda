@@ -26,7 +26,7 @@ BFactorRatioInfo = collections.namedtuple(
 )
 
 
-class CalculateSurroundingsBFactorRatio:
+class CalculateSurroundingsBFactorRatio(object):
 
     def __init__(self,
         distance_cutoff = 6.0,

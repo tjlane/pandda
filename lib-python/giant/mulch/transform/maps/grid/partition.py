@@ -1,7 +1,7 @@
 import numpy as np
 
 
-class GridPartition:
+class GridPartition(object):
 
     name = "GridPartition"
 
@@ -108,7 +108,7 @@ class GridPartition:
         return self.assign_sites(sites_cart)
 
 
-class AssignSites: 
+class AssignSites(object):
 
     def __init__(self, ref_sites):
         self.ref_sites = ref_sites
@@ -120,7 +120,7 @@ class AssignSites:
         return np.array(nn_groups, dtype=int)
 
 
-class AssignSitesChunked:
+class AssignSitesChunked(object):
 
     chunk_size = 10000
 
@@ -156,7 +156,7 @@ class AssignSitesChunked:
                 )
 
 
-class MakeVoronoiGridPartition:
+class MakeVoronoiGridPartition(object):
 
     def __init__(self,
         processor = None,

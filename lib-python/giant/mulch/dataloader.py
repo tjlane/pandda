@@ -13,7 +13,7 @@ from giant.mulch.checks import (
     )
 
 
-class DefaultInputDirectoryParser:
+class DefaultInputDirectoryParser(object):
 
     def __init__(self,
         data_dirs,
@@ -404,7 +404,7 @@ class DefaultInputDirectoryParser:
         return tag
 
 
-class DefaultDatasetLoader:
+class DefaultDatasetLoader(object):
 
     DatasetClass = CrystallographicDataset
     DatasetCheckerClass = CrystallographicDatasetChecker
@@ -450,7 +450,7 @@ class DefaultDatasetLoader:
         return ""
 
 
-class MultiDatasetDataloader:
+class MultiDatasetDataloader(object):
 
     InputDirectoryParser = DefaultInputDirectoryParser
     DatasetLoader = DefaultDatasetLoader

@@ -10,7 +10,7 @@ from .base import (
     )
 
 
-class MakeRefinementFolder:
+class MakeRefinementFolder(object):
 
     def __init__(self, refinement_folder):
 
@@ -147,7 +147,7 @@ class RefinementFolder(FolderWithMeta):
             return None
 
 
-class RefinementsFileSystem: 
+class RefinementsFileSystem(object): 
 
     name = "Refinements"
 

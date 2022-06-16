@@ -1,6 +1,4 @@
-
-
-class ProcessorNotAvailable:
+class ProcessorNotAvailable(object):
 
     def __init__(self, *args, **kwargs):
 
@@ -35,7 +33,7 @@ class ProcessorDict(object):
     def __call__(self, funcs):
 
         # unpack
-        keys = funcs.keys()
+        keys = list(funcs.keys())
         values = [funcs[k] for k in keys]
 
         processed = self.processor(values)

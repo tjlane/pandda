@@ -13,7 +13,7 @@ from .refinements import (
     )
 
 
-class MakeDatasetFolder:
+class MakeDatasetFolder(object):
 
     def __init__(self, dataset_folder):
 
@@ -124,7 +124,7 @@ class DatasetFolder(FolderWithMeta):
         return self.data_path
 
 
-class DatasetsFileSystem:
+class DatasetsFileSystem(object):
 
     name = "Datasets"
 

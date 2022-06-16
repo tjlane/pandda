@@ -2,7 +2,7 @@ import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 
-class LinkRecord:
+class LinkRecord(object):
 
     def __init__(self, link_record):
 
@@ -125,7 +125,7 @@ class LinkRecord:
         self.set_link_id(link_id)
 
 
-class UpdateLinksFromCif:
+class UpdateLinksFromCif(object):
 
     LinkClass = LinkRecord
 

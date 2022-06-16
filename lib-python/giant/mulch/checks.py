@@ -139,10 +139,10 @@ class DiffractionDataCompletenessAndValidityChecker(DatasetChecker):
                             i[0], i[1], i[2], d, v
                             )
                         for (i, d), v in
-                        zip(
+                        list(zip(
                             ms_d.select(zero_sel).d_spacings(),
                             values.select(zero_sel)
-                            )[:10]
+                            ))[:10]
                         ])
 
                     messages.append(
@@ -202,10 +202,10 @@ class DiffractionDataCompletenessAndValidityChecker(DatasetChecker):
                                 i[0], i[1], i[2], d, v
                                 )
                             for (i, d), v
-                            in zip(
+                            in list(zip(
                                 ms_d_low.select(zero_sel_low).d_spacings(),
                                 values.select(sel_low).select(zero_sel_low)
-                                )[:10]
+                                ))[:10]
                             ])
 
                         messages.append(
@@ -341,7 +341,7 @@ class MultiDatasetChecker(object):
 
     def __call__(self, mcd):
 
-        for dtag, dataset in mcd.datasets.iteritems():
+        for dtag, dataset in mcd.datasets.items():
 
             d_messages = self.dataset_checker(dataset)
 

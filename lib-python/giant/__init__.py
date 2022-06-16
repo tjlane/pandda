@@ -31,7 +31,7 @@ HEADER_TEXT = """
 ------------------------------------------------------------------>
 """
 
-class module_info: # backwards compatibility
+class module_info(object): # backwards compatibility
     name = 'giant'
     version = __version__
     header_text = HEADER_TEXT.format(
@@ -41,7 +41,7 @@ class module_info: # backwards compatibility
         )
 
 
-class ModuleBanner:
+class ModuleBanner(object):
 
     banner_string = HEADER_TEXT.format(
         version = "{module_version}",

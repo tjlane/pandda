@@ -9,12 +9,12 @@ from giant.dispatcher import Dispatcher
 from giant.exceptions import Failure
 
 # 2FOFC cols
-F_COMP_OPTIONS = ['2FOFCWT','FWT']
-PHI_COMP_OPTIONS = ['PH2FOFCWT','PHWT','PHFWT']
+F_COMP_OPTIONS = [u'2FOFCWT',u'FWT']
+PHI_COMP_OPTIONS = [u'PH2FOFCWT',u'PHWT',u'PHFWT']
 
 # FOFC cols
-F_DIFF_OPTIONS = ['FOFCWT','DELFWT']
-PHI_DIFF_OPTIONS = ['PHFOFCWT','DELPHWT','PHDELWT']
+F_DIFF_OPTIONS = [u'FOFCWT',u'DELFWT']
+PHI_DIFF_OPTIONS = [u'PHFOFCWT',u'DELPHWT',u'PHDELWT']
 
 def _get_first_if_not_none(item):
     if (item is not None):
@@ -117,7 +117,7 @@ def assign_column_labels(col_labs, col_types):
         )
     ]
 
-    used_labels = []; [used_labels.extend(vals) for vals in lab_dict.values()]
+    used_labels = []; [used_labels.extend(vals) for vals in list(lab_dict.values())]
     used_labels = sorted(used_labels, key=lambda x: col_labs.index(x))
     unused_labels = [l for l in col_labs if (l not in used_labels)]
 
@@ -126,7 +126,7 @@ def assign_column_labels(col_labs, col_types):
 
     return lab_dict
 
-class MtzHeaderData:
+class MtzHeaderData(object):
     """Object to hold the meta data for an MTZ file"""
 
     def __init__(self,
@@ -143,7 +143,7 @@ class MtzHeaderData:
 
     def __str__(self):
 
-        s = """
+        s = u"""
         Resolution Range: {low} - {high} A
         Spacegroup: {sg} (No. {sgno})
         Cell: {cell}
@@ -172,7 +172,7 @@ class MtzHeaderData:
         )
 
 
-class MtzColumnLabels:
+class MtzColumnLabels(object):
     """Object to contain the column labels of an MTZ file"""
 
     def __init__(self,
@@ -193,7 +193,7 @@ class MtzColumnLabels:
         adopt_init_args(self, locals())
 
     def __str__(self):
-        s = """
+        s = u"""
         MTZ Column labels:
             F: {f} ({sigf})
             I: {i} ({sigi})
@@ -222,7 +222,7 @@ class MtzColumnLabels:
         return str(self)
 
 
-class MtzSummary:
+class MtzSummary(object):
     """Class for summarising an MTZ file"""
 
     def __init__(self, mtz_file):
@@ -267,7 +267,7 @@ class MtzSummary:
             self.labels.summary(),
         ]
 
-        return '\n'.join(s)
+        return u'\n'.join(s)
 
     def summary(self):
         return str(self)
@@ -301,15 +301,15 @@ def parse_mtzdmp_logtext(logtext):
     # Get the resolution range
     res_range_str = _get_regex_matches(
         text = logtext,
-        regex_str = '\*  Resolution Range :.*\n.*\n.*\((.*)A \)\n',
+        regex_str = u'\*  Resolution Range :.*\n.*\n.*\((.*)A \)\n',
     )
-    res_range = map(float, res_range_str.replace(' ','').split('-'))
+    res_range = list(map(float, res_range_str.replace(' ','').split('-')))
     summary['reslow'], summary['reshigh'] = res_range
 
     # Get the Number of Columns
     n_cols_str = _get_regex_matches(
         text = logtext,
-        regex_str = '\* Number of Columns =(.*)\n',
+        regex_str = u'\* Number of Columns =(.*)\n',
     )
     n_cols = int(n_cols_str.strip())
     summary['numcols'] = n_cols
@@ -317,7 +317,7 @@ def parse_mtzdmp_logtext(logtext):
     # Get the Number of Reflections
     n_refl_str = _get_regex_matches(
         text = logtext,
-        regex_str = '\* Number of Reflections =(.*)\n',
+        regex_str = u'\* Number of Reflections =(.*)\n',
     )
     n_refl = int(n_refl_str.strip())
     summary['numreflections'] = n_refl
@@ -325,7 +325,7 @@ def parse_mtzdmp_logtext(logtext):
     # Get the Column Labels
     col_labs_str = _get_regex_matches(
         text = logtext,
-        regex_str = '\* Column Labels :.*\n.*\n(.*)\n',
+        regex_str = u'\* Column Labels :.*\n.*\n(.*)\n',
     )
     col_labs = col_labs_str.strip().split()
     summary['colheadings'] = col_labs
@@ -333,7 +333,7 @@ def parse_mtzdmp_logtext(logtext):
     # Get the Column Types
     col_types_str = _get_regex_matches(
         text = logtext,
-        regex_str = '\* Column Types :.*\n.*\n(.*)\n',
+        regex_str = u'\* Column Types :.*\n.*\n(.*)\n',
     )
     col_types = col_types_str.strip().split()
     summary['coltypes'] = col_types
@@ -341,7 +341,7 @@ def parse_mtzdmp_logtext(logtext):
     # Get the different datasets
     col_datasets_str = _get_regex_matches(
         text = logtext,
-        regex_str = '\* Associated datasets :.*\n.*\n(.*)\n',
+        regex_str = u'\* Associated datasets :.*\n.*\n(.*)\n',
     )
     col_datasets = col_datasets_str.strip().split()
     summary['coldatasets'] = col_datasets
@@ -349,7 +349,7 @@ def parse_mtzdmp_logtext(logtext):
     # Get the Spacegroup
     spacegroup_strs = _get_regex_matches(
         text = logtext,
-        regex_str = '\* Space group =.*\'(.*)\'.\(number(.*)\)',
+        regex_str = u'\* Space group =.*\'(.*)\'.\(number(.*)\)',
     )
     spacegroup = spacegroup_strs[0].strip()
     spacegroup_no = int(spacegroup_strs[1].strip())
@@ -359,9 +359,9 @@ def parse_mtzdmp_logtext(logtext):
     # Get the Cell Dimensions
     cell_str = _get_regex_matches(
         text = logtext,
-        regex_str = '\* Cell Dimensions :.*\n.*\n(.*)\n',
+        regex_str = u'\* Cell Dimensions :.*\n.*\n(.*)\n',
     )
-    cell = map(float,cell_str.split())
+    cell = list(map(float,cell_str.split()))
     summary['cell'] = cell
 
     return summary

@@ -1,8 +1,9 @@
+from builtins import object
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 
-class DatasetProcessor:
+class DatasetProcessor(object):
 
     def __init__(self, functions=None):
 

@@ -11,7 +11,7 @@ class DatasetFinder(object):
 
     def __call__(self, mcd):
         
-        dataset_keys, datasets = zip(*list(mcd.datasets.items()))
+        dataset_keys, datasets = list(zip(*list(mcd.datasets.items())))
 
         # Get the rankings of the datasets
         dataset_ranks = self.get_ranks(datasets)
@@ -34,7 +34,7 @@ class DummyDatasetFinder(DatasetFinder):
         self.name = "DummyDatasetFinder"
 
     def get_ranks(self, datasets):
-        return range(len(datasets))
+        return list(range(len(datasets)))
 
 
 class HighestResolutionFinder(DatasetFinder):

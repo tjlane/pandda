@@ -2,7 +2,7 @@ import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 
-class LoadFirstValidMillerArrayFromListOfColumnOptions:
+class LoadFirstValidMillerArrayFromListOfColumnOptions(object):
 
     def __init__(self, structure_factor_pairs):
 

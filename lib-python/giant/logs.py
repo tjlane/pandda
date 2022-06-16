@@ -6,7 +6,7 @@ WARNING = lg.WARNING
 DEBUG = lg.DEBUG
 
 
-class Bar:
+class Bar(object):
 
     width = 40
     body = '-'
@@ -20,7 +20,7 @@ class Bar:
         return '\n'*blank_before + self._bar + '\n'*blank_after
 
 
-class Heading:
+class Heading(object):
 
     width = 100
     spacer = '#'

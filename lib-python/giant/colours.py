@@ -1,5 +1,5 @@
 
-class bcolours:
+class bcolours(object):
     ENDC = '\033[0m'
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'

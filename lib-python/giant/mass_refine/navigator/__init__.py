@@ -14,7 +14,7 @@ def coot_customisation():
     set_colour_map_rotation_on_read_pdb_c_only_flag(1)
     #set-stop-scroll-iso-map 0
 
-class GuiPart:
+class GuiPart(object):
 
     def __init__(self):
 
@@ -36,7 +36,7 @@ class GuiPart:
 
 
 
-class DatasetTracker:
+class DatasetTracker(object):
 
     def __init__(self, file_system):
 
@@ -64,7 +64,7 @@ class DatasetTracker:
             )
 
 
-class MassRefineNavigator:
+class MassRefineNavigator(object):
 
     def __init__(self, dir_path):
 

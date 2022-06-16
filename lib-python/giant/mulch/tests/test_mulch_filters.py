@@ -130,7 +130,7 @@ def test_SpaceGroupFilter(five_baz2b_test_datasets_mcd):
     from giant.mulch.filters import SpaceGroupFilter    
 
     filter = SpaceGroupFilter(
-        reference_dataset = five_baz2b_test_datasets_mcd.datasets.values()[0],
+        reference_dataset = list(five_baz2b_test_datasets_mcd.datasets.values())[0],
         )
 
     mcd = filter(five_baz2b_test_datasets_mcd)
@@ -165,7 +165,7 @@ def test_IdenticalHierarchyFilter(five_baz2b_test_datasets_mcd):
     from giant.mulch.filters import IdenticalHierarchyFilter
 
     filter = IdenticalHierarchyFilter(
-        reference_dataset = five_baz2b_test_datasets_mcd.datasets.values()[0],
+        reference_dataset = list(five_baz2b_test_datasets_mcd.datasets.values())[0],
         atom_selection_string = "pepnames",
         )
 
@@ -190,7 +190,7 @@ def test_DefaultDatasetFilter(five_baz2b_test_datasets_mcd):
         similar_models_only = False,
         max_rfree = 0.210,
         max_rwork = 0.182,
-        reference_dataset = five_baz2b_test_datasets_mcd.datasets.values()[0],
+        reference_dataset = list(five_baz2b_test_datasets_mcd.datasets.values())[0],
         )
 
     mcd = filter(five_baz2b_test_datasets_mcd)

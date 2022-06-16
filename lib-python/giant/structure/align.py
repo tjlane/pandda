@@ -186,7 +186,7 @@ class LocalAlignment(CoordinateAlignment):
 
         import scipy.spatial
 
-        assert coordinate_frame in self._tree_sites.keys()
+        assert coordinate_frame in list(self._tree_sites.keys())
 
         return scipy.spatial.KDTree(
             data = self._tree_sites[coordinate_frame],
@@ -637,7 +637,7 @@ def transform_coordinates_with_multiple_alignments(coordinates, alignments, mapp
     out_coords = numpy.zeros(num_coords, dtype=[('x',float),('y',float),('z',float)])
 
     # Iterate through the coords in groups and transform
-    for key_or_idx, sel_idxs in itertools.groupby(range(num_coords), key=lambda i: sorted_mappings[i]):
+    for key_or_idx, sel_idxs in itertools.groupby(list(range(num_coords)), key=lambda i: sorted_mappings[i]):
 
         sel_idxs = flex.size_t(sel_idxs)
         sel_coords   = sorted_coords.select(sel_idxs)

@@ -80,7 +80,7 @@ def calculate_dihedral_angles(mol, dihedral_atom_sets):
         # Calculate dot-product and then inverse cosine to get the angle
         dot_prod = cross12.DotProduct(cross23)
         dihedral_rad = math.acos(dot_prod)
-        dihedral_deg = 180*dihedral_rad/math.pi
+        dihedral_deg = 180.0*dihedral_rad/math.pi
         dihedral_angles.append(dihedral_deg)
     return dihedral_angles
 

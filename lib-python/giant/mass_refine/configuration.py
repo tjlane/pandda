@@ -10,7 +10,7 @@ from giant.processors import (
 system_cpus = multiprocessing.cpu_count()
 
 
-class UpdateConfiguration:
+class UpdateConfiguration(object):
 
     def __init__(self,
         backend,
@@ -29,7 +29,7 @@ class UpdateConfiguration:
         return configuration
 
 
-class MassRefineConfiguration: 
+class MassRefineConfiguration(object): 
 
     def __init__(self, json_path):
 

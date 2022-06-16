@@ -1,3 +1,5 @@
+from future import standard_library
+standard_library.install_aliases()
 
 import os, sys, time
 
@@ -42,8 +44,8 @@ class ZenodoDataset(Dataset):
         source_file = self.data_url
         target_file = os.path.join(out_dir, 'data.zip')
         self.log('Downloading zipfile: {} -> {}'.format(source_file, target_file))
-        import urllib
-        urllib.urlretrieve(source_file, target_file, reporthook=_ReportHook())
+        import urllib.request, urllib.parse, urllib.error
+        urllib.request.urlretrieve(source_file, target_file, reporthook=_ReportHook())
         self.log('Unzipping: {} -> {}/'.format(target_file, out_dir))
         import zipfile
         zf = zipfile.ZipFile(target_file)

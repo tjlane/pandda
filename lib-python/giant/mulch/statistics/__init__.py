@@ -26,7 +26,7 @@ class DatasetStatistics(object):
         keys_dict = collections.OrderedDict()
         for dtag, d_dict in self.data.items():
             keys_dict.update(d_dict)
-        return keys_dict.keys()
+        return list(keys_dict.keys())
 
     def as_dataframe(self):
         index = self.get_row_names()

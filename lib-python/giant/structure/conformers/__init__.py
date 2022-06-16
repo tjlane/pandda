@@ -48,7 +48,7 @@ def hierarchy_to_residue_group_dict(hierarchy):
     return h_dict
 
 
-class ResolveHierarchyConflicts:
+class ResolveHierarchyConflicts(object):
     """
     Move residues in mov_hierarchy to new residue numbers
     if they have the same resid as a residue in fixed_hierarchy
@@ -187,7 +187,7 @@ class ResolveHierarchyConflicts:
         return resnum_dict
 
 
-class ExpandToFullMultiConformer:
+class ExpandToFullMultiConformer(object):
 
     def __init__(self, in_place=False):
 
@@ -418,7 +418,7 @@ class ExpandToFullMultiConformer:
         return residue_group
 
 
-class _AltlocReassigner:
+class _AltlocReassigner(object):
 
     def reassign_altlocs(self, hierarchy, altloc_hash):
 
@@ -541,7 +541,7 @@ class SanitiseAltlocs(_AltlocReassigner):
         return altlocs_hash
 
 
-class JoinHierarchies:
+class JoinHierarchies(object):
     """
     Transfer atom_groups from donor_hierarchy to matching
     residue_groups in acceptor_hierarchy, creating new chains
@@ -711,7 +711,7 @@ class JoinHierarchies:
         return acceptor_hierarchy
 
 
-class PruneRedundantConformers:
+class PruneRedundantConformers(object):
     """
     Remove alternate conformers of residues if residue has conformers
     of required_altlocs and all conformers are within rmsd_cutoff
@@ -905,7 +905,7 @@ class PruneRedundantConformers:
         return atoms
 
 
-class MakeMultiStateModel:
+class MakeMultiStateModel(object):
 
     def __init__(self,
         prune_rmsd_cutoff = 0.05,
@@ -1030,7 +1030,7 @@ class MakeMultiStateModel:
         return main_hierarchy
 
 
-class SplitHierarchyByConformer:
+class SplitHierarchyByConformer(object):
 
     def __init__(self):
 
@@ -1233,7 +1233,7 @@ class SplitHierarchyByResidueNames(SplitHierarchyByConformer):
             hierarchy = hierarchy,
             altlocs = (
                 sorted(set(list(
-                    np.concatenate(sel_altlocs_dict.values())
+                    np.concatenate(list(sel_altlocs_dict.values()))
                     )))
                 if sel_altlocs_dict else []
                 ),
@@ -1387,7 +1387,7 @@ class SplitHierarchyByResidueNames(SplitHierarchyByConformer):
         return sorted(sel_altlocs_groups)
 
 
-class SplitMultiStateModel:
+class SplitMultiStateModel(object):
 
     def __init__(self,
         split_hierarchy,

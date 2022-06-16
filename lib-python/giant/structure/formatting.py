@@ -1,7 +1,7 @@
 import iotbx.pdb.hierarchy as iotbx_pdbh
 
 
-class _Selection:
+class _Selection(object):
 
 
     _labels = ('model','chain','resseq','icode','resname','altloc','name')
@@ -101,7 +101,7 @@ class _Selection:
                ]
     @classmethod
     def _format_dict(cls, obj_dict):
-        return [ cls.__dict__.get(l).format(obj_dict.get(l)) for l in cls._labels if (l in obj_dict.keys()) ]
+        return [ cls.__dict__.get(l).format(obj_dict.get(l)) for l in cls._labels if (l in obj_dict) ]
 
 
 class Labeller(_Selection):

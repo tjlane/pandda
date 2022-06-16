@@ -1,6 +1,4 @@
-
-
-class CommonSetMillerArrayTruncator:
+class CommonSetMillerArrayTruncator(object):
 
     def __init__(self, miller_arrays):
 

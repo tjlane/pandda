@@ -17,7 +17,7 @@ def write_map(map_data, dataset, filename):
         )
 
 
-class MapGridMapWriter:
+class MapGridMapWriter(object):
 
     def __init__(self,
         map_grid,
@@ -51,7 +51,7 @@ class MapGridMapWriter:
             )
 
 
-class NativeMapMaker:
+class NativeMapMaker(object):
 
     debug = False
 
@@ -486,7 +486,7 @@ class NativeMapMaker:
         return total_map_data
 
 
-class MaskedNativeMapMaker:
+class MaskedNativeMapMaker(object):
 
     def __init__(self,
         map_grid,

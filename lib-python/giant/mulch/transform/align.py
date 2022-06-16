@@ -60,7 +60,7 @@ class LabelledAlignDatasetToReference(AlignDatasetToReference):
         return (dataset.tag, alignment_or_error)
 
 
-class AlignDatasets: 
+class AlignDatasets(object): 
 
     def __init__(self, method="local", alignment_kwargs=None, processor=None):
 

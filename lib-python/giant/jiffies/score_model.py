@@ -200,7 +200,7 @@ process_includes=True,
 #######################################
 
 
-class validate_params:
+class validate_params(object):
 
     def __init__(self, params):
 
@@ -284,7 +284,7 @@ class validate_params:
 
             logger('Setting mtz_style is automatic value: {}'.format(f_params.mtz_style))
 
-        dir_paths = map(pl.Path, f_params.directory)
+        dir_paths = list(map(pl.Path, f_params.directory))
 
         for d in dir_paths:
 
@@ -364,7 +364,7 @@ class validate_params:
             assert len(params.input.label) == len(params.input.directory)
 
 
-class Config:
+class Config(object):
 
     def __init__(self, params):
 
@@ -704,7 +704,7 @@ def run(params):
         # ===========================================================>
         # Header Images
         output_data['small_images'] = []
-        for img in (combined_images.values() + separate_images.values()):
+        for img in (list(combined_images.values()) + list(separate_images.values())):
             output_data['small_images'].append({
                 'path': './'+os.path.relpath(path=img, start=out_dir),
                 'title': 'Scores for {}'.format(os.path.splitext(os.path.basename(img))[0]),

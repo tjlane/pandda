@@ -1,10 +1,9 @@
-
 import numpy
 from math import cos, pi, sqrt
 from scitbx.array_family import flex
 
 
-class UnitCellVariation:
+class UnitCellVariation(object):
 
     def __init__(self, unit_cells):
 

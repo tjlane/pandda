@@ -4,7 +4,7 @@ import copy
 from . import divs
 
 
-class DivFormatter:
+class DivFormatter(object):
 
     def __init__(self,
         div_class = divs.Block,
@@ -64,7 +64,7 @@ class CitationFormatter(DivFormatter):
 
     def format_title(self, title):
 
-        return '<strong>{}</strong>'.format(title)
+        return u'<strong>{}</strong>'.format(title)
 
     def format_journal_year(self, journal, year):
 
@@ -73,7 +73,7 @@ class CitationFormatter(DivFormatter):
             year = year,
             )
 
-        return '<small><strong>{}</strong></small>'.format(journal_year)
+        return u'<small><strong>{}</strong></small>'.format(journal_year)
 
     def format_authors(self, authors):
 
@@ -89,12 +89,12 @@ class CitationFormatter(DivFormatter):
         else: 
             authors = str(authors)
 
-        return '<small>{}</small>'.format(authors)
+        return u'<small>{}</small>'.format(authors)
 
     def format_link(self, link, link_text):
 
         link_text = (
-            '<a href="{link}"><small>{link_text}</small></a>'.format(
+            u'<a href="{link}"><small>{link_text}</small></a>'.format(
                 link = link,
                 link_text = link_text,
                 )

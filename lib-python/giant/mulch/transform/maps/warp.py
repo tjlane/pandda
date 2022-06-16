@@ -46,7 +46,7 @@ def get_interpolated_mapping_between_coordinates(query_list, ref_list, tol=0.01)
     return out_idxs_q_to_r
     
 
-class VoronoiMapWarper:
+class VoronoiMapWarper(object):
 
     debug = True
 
@@ -106,7 +106,7 @@ class VoronoiMapWarper:
         return morphed_map_data
 
 
-class ReferenceMapGridSampler: 
+class ReferenceMapGridSampler(object): 
 
     def __init__(self, map_grid, mask_name=None):
         

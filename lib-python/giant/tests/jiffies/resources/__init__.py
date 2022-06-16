@@ -2,7 +2,7 @@ import shutil
 import pathlib as pl
 
 
-class MultiStateResources:
+class MultiStateResources(object):
 
     def __init__(self, dir_path):
 

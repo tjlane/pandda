@@ -1,9 +1,12 @@
+from future import standard_library
+standard_library.install_aliases()
+
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 import os
 import jinja2
-import urlparse, urllib
+import urllib.parse, urllib.request, urllib.parse, urllib.error
 
 from . import divs
 from . import summary
@@ -14,7 +17,7 @@ HTML_ENV = jinja2.Environment(
     )
 
 def path2url(path):
-    return urlparse.urljoin('file:', urllib.pathname2url(path))
+    return urllib.parse.urljoin('file:', urllib.request.pathname2url(path))
 
 def png2base64str(path):
     """Convert a png for embedding into an html page"""

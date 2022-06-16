@@ -69,7 +69,7 @@ class EdstatsResidueScores(_EdstatsResidueScores):
         return s_
 
 
-class EdstatsResults:
+class EdstatsResults(object):
 
     def __init__(self,
         results_table,
@@ -145,7 +145,7 @@ class EdstatsResults:
             )
 
 
-class ParseEdstatsLog:
+class ParseEdstatsLog(object):
 
     RMS_DEFAULTS = {
         'atm_all_ZD+' : None,
@@ -219,7 +219,7 @@ class ParseEdstatsLog:
             )
 
 
-class CalculateEdstatsScores:
+class CalculateEdstatsScores(object):
 
     _parse_log = ParseEdstatsLog()
 
@@ -392,7 +392,7 @@ class CalculateEdstatsScores:
         # Convert to buffer for reading
         import io
         table_str_io = io.StringIO(
-            unicode(table_str)
+            str(table_str)
             )
 
         # Cleanup

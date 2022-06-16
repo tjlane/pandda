@@ -6,7 +6,7 @@ def test_LinearScaling():
     v0 = 16.0
     v1 = 15.0
 
-    t1_x_values = flex.double(range(1000))
+    t1_x_values = flex.double(list(range(1000)))
 
     t1_ref_values = v1*t1_x_values + v0
     t1_mov_values = flex.double(t1_x_values)

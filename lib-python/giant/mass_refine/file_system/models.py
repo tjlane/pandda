@@ -10,7 +10,7 @@ from .base import (
     )
 
 
-class MakeModelFolder:
+class MakeModelFolder(object):
 
     def __init__(self, model_folder):
 
@@ -217,7 +217,7 @@ class ModelFolder(FolderWithMeta):
         return cif_files
 
 
-class ModelsFileSystem:
+class ModelsFileSystem(object):
 
     name = "Models"
 

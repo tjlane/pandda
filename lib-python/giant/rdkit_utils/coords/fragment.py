@@ -99,5 +99,5 @@ def calculate_rmsd_between_fragged_mols(mol1, mol2):
     # Get those associated scores
     minimising_match_pattern = [r for r in match_pattern_fragment_rmsds if r[3] == min_rmsd][0]
 
-    return zip(*minimising_match_pattern[0:3])
+    return list(zip(*minimising_match_pattern[0:3]))
 

@@ -48,7 +48,7 @@ class Pseudoatom(object):
 
     def as_cmd(self, obj, state=0):
         arg_string = ''
-        for k, v in self.arg_dict.iteritems():
+        for k, v in self.arg_dict.items():
             if v is not None: 
                 if isinstance(v, str):
                     v = '"'+v.strip(' "')+'"'

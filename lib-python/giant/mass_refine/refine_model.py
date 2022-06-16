@@ -4,7 +4,7 @@ logger = lg.getLogger(__name__)
 import shutil 
 
 
-class RefinementGenerator:
+class RefinementGenerator(object):
 
     def __init__(self, 
         refiner,
@@ -24,7 +24,7 @@ class RefinementGenerator:
             pdb_file = str(input_model),
             mtz_file = str(input_data),
             cif_files = (
-                map(str,cif_files)
+                list(map(str,cif_files))
                 if cif_files is not None
                 else None
                 ),
@@ -42,7 +42,7 @@ class RefinementGenerator:
         return refine
 
 
-class RefineSingle:
+class RefineSingle(object):
 
     def __init__(self, 
         refinement_folder,
@@ -97,7 +97,7 @@ class RefineSingle:
             )
 
 
-class RefineModel: 
+class RefineModel(object):
 
     def __init__(self, 
         file_system, 
@@ -137,7 +137,7 @@ class RefineModel:
         #
         refine_folders = {}
         #
-        for dkey, d_folder in datasets.items():
+        for dkey, d_folder in list(datasets.items()):
 
             r_folder = d_folder.refinements.create_refinement_folder(
                 label = model_label,

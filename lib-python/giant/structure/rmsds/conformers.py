@@ -7,7 +7,7 @@ from .atoms import (
     CalculatePairedAtomSetsRMSD,
     )
 
-class CalculatePairedConformerSetsRMSDs:
+class CalculatePairedConformerSetsRMSDs(object):
 
     def __init__(self):
         
@@ -45,9 +45,9 @@ class CalculatePairedConformerSetsRMSDs:
 
             min_val = np.nanmin(rmsds)
 
-            i1, i2 = zip(*
+            i1, i2 = list(zip(*
                 np.where(rmsds==min_val)
-                )[0]
+                ))[0]
 
             # Clear these values so that a conformer cannot be used more than once
             rmsds[i1, :] = None

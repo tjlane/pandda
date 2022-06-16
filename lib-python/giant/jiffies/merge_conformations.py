@@ -150,7 +150,7 @@ def validate_params(params):
 
     if (params.options.occupancy is not None) and len(params.options.occupancy) > 0:
 
-        occupancies = map(float, params.options.occupancy.split(','))
+        occupancies = list(map(float, params.options.occupancy.split(',')))
 
         if len(occupancies) != len(params.input.pdb):
 
@@ -183,7 +183,7 @@ def validate_params(params):
                 )
 
 
-class MergeConformations:
+class MergeConformations(object):
 
     def __init__(self,
         prune_rmsd_cutoff,
@@ -266,7 +266,7 @@ class MergeConformations:
         return hierarchy
 
 
-class MakeOutputRestraints:
+class MakeOutputRestraints(object):
 
     def __init__(self,
         params,
@@ -386,7 +386,7 @@ def run(params):
     hierarchy = merge_conformations(
         hierarchies = [m.hierarchy for m in models],
         occupancies = (
-            map(float, params.options.occupancy.split(','))
+            list(map(float, params.options.occupancy.split(',')))
             if params.options.occupancy
             else None
             ),

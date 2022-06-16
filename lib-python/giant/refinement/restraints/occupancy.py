@@ -454,11 +454,11 @@ class MakeMultiStateOccupancyRestraints(_BaseRestraintMaker):
         for a_group_dict in altloc_groups:
 
             # Get all the atoms in this group across altlocs
-            full_selection = flex.size_t(np.sort(np.concatenate(a_group_dict.values())))
+            full_selection = flex.size_t(np.sort(np.concatenate(list(a_group_dict.values()))))
 
             h = hierarchy.select(full_selection)
 
-            this_resnames = h.overall_counts().resnames.keys()
+            this_resnames = list(h.overall_counts().resnames.keys())
 
             overlap = filter_resnames.intersection(this_resnames)
 

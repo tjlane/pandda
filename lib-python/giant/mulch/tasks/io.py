@@ -1,4 +1,3 @@
-
 class TaskReturn(object):
 
     def __init__(self, 
@@ -9,7 +8,7 @@ class TaskReturn(object):
         self.output = output
         self.status = status
 
-class TaskReturnStatus:
+class TaskReturnStatus(object):
 
     def __init__(self, 
         success,
@@ -21,7 +20,7 @@ class TaskReturnStatus:
         self.errors = errors
         self.warnings = warnings
 
-class ModelDataInputOutput:
+class ModelDataInputOutput(object):
 
     def __init__(self, 
         input_pdb = None, 

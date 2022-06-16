@@ -10,7 +10,7 @@ def set_occupancy(atoms, occupancy):
         )
 
 
-class CalculateResidueGroupOccupancy:
+class CalculateResidueGroupOccupancy(object):
 
     def __init__(self):
 
@@ -63,7 +63,7 @@ class CalculateResidueGroupOccupancy:
         return sum(alt_ag_occs)
 
 
-class ScaleOccupancies:
+class ScaleOccupancies(object):
 
     def __init__(self, in_place=True):
 
@@ -83,7 +83,7 @@ class ScaleOccupancies:
         return atoms
 
 
-class ResetOccupancies:
+class ResetOccupancies(object):
 
     def __init__(self,
         default_occupancy = 1.0,
@@ -144,7 +144,7 @@ class ResetOccupancies:
         return hierarchy
 
 
-class SanitiseOccupancies:
+class SanitiseOccupancies(object):
 
     def __init__(self,
         min_occupancy = 0.0,

@@ -5,7 +5,7 @@ from giant.mulch.statistics.classifiers import (
     )
 
 
-class ExtractBasicXrayStatistics:
+class ExtractBasicXrayStatistics(object):
 
     def __init__(self):
         pass
@@ -52,7 +52,7 @@ class ExtractBasicXrayStatistics:
         return d
 
 
-class ExtractWilsonStatistics:
+class ExtractWilsonStatistics(object):
 
     def __init__(self):
         pass

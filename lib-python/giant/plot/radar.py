@@ -275,7 +275,7 @@ class Radar(object):
     def axis_limits(self):
 
         assert len(self._limits) == self.n
-        assert map(len,self._limits).count(2) == self.n
+        assert list(map(len,self._limits)).count(2) == self.n
 
         lim_vals = self._normalise(self._limits)
         lim_labs = [[round(v,2) for v in vs] for vs in self._limits]

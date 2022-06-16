@@ -36,7 +36,7 @@ class Counter(object):
         return self.i
 
 
-class ImageEmbedder: 
+class ImageEmbedder(object):
 
     def __init__(self, embed=False, relative_to=None):
 
@@ -72,7 +72,7 @@ class ImageEmbedder:
 
 
 # Base class for html outputs
-class HtmlSummary:
+class HtmlSummary(object):
 
     # Permanent counter than links all subclasses!
     # Ensures all divs are uniquely numbered
@@ -86,7 +86,10 @@ class HtmlSummary:
 
     @staticmethod
     def wrap_string(string, tag='p'):
-        return '<'+tag+'>'+str(string)+'</'+tag+'>'
+        return u'<{t}>{s}</{t}>'.format(
+            t = tag,
+            s = str(string),
+            )
 
     @staticmethod
     def format_summary(text, width=12, type='alert', colour=None, classes=None):
@@ -102,7 +105,7 @@ class HtmlSummary:
             fmt_lines = []
             for l in lines:
                 if l.count(':')==1:
-                    l = ':<strong>'.join(l.split(':')) + "</strong>"
+                    l = u':<strong>'.join(l.split(':')) + u"</strong>"
                 l = l.replace('\t','&emsp;')
                 fmt_lines.append(l)
             obj = div_obj_class(
@@ -199,7 +202,7 @@ class HtmlSummaryCollator(HtmlSummary):
         return l
 
 
-class HtmlSummaryConcatenator:
+class HtmlSummaryConcatenator(object):
 
 
     def __init__(self,

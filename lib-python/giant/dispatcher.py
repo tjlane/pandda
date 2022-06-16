@@ -5,7 +5,7 @@ import procrunner
 from giant.paths import is_available
 
 
-class Dispatcher:
+class Dispatcher(object):
 
     def __init__(self, program):
 

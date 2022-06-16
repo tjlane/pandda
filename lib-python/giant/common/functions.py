@@ -14,7 +14,7 @@ class _ScalingFunction(object):
     def set(self, **kw_args):
         """Set function parameters"""
         for k in kw_args:
-            assert k in self.__dict__.keys()
+            assert k in self.__dict__
             self.__setattr__(k, kw_args[k])
 
 

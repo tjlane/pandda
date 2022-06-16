@@ -45,7 +45,7 @@ class _refiner(object):
                 else None
                 ),
             cif = (
-                map(str,cif_files)
+                list(map(str,cif_files))
                 if cif_files is not None
                 else None
                 ),
@@ -325,6 +325,6 @@ def get_refiner(name):
     try:
         return refiners[name]
     except KeyError:
-        raise Failure('Invalid refinement program selected: {} (options {})'.format(name, refiners.keys()))
-    raise Failure('Invalid refinement program selected: {} (options {})'.format(name, refiners.keys()))
+        raise Failure('Invalid refinement program selected: {} (options {})'.format(name, list(refiners.keys())))
+    raise Failure('Invalid refinement program selected: {} (options {})'.format(name, list(refiners.keys())))
 

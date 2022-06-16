@@ -1,4 +1,3 @@
-
 import itertools
 import numpy, pandas
 
@@ -83,7 +82,7 @@ def sort_pdbs_by_space_group(pdb_files=None, pdb_inputs=None, labels=None):
     else:         pdb_files  = [None]*len(pdb_inputs)
     # Check or create labels
     if labels: assert len(labels) == len(pdb_files), 'labels must be the same length as pdb_files/pdb_objects'
-    else:      labels = range(len(pdb_files))
+    else:      labels = list(range(len(pdb_files)))
     # Create summary objects
     from giant.xray.crystal import CrystalInfo
     pdb_summaries = [CrystalInfo.from_pdb(pdb_file=p_f, pdb_input=p_o, name=lab) for p_f,p_o,lab in zip(pdb_files, pdb_inputs, labels)]
@@ -97,7 +96,7 @@ def sort_mtzs_by_spacegroup(mtz_files=None, mtz_objects=None, labels=None):
     else:         mtz_files   = [None]*len(mtz_objects)
     # Check or create labels
     if labels: assert len(labels) == len(mtz_files), 'labels must be the same length as mtz_files/mtz_objects'
-    else:      labels = range(len(mtz_files))
+    else:      labels = list(range(len(mtz_files)))
     # Create summary objects
     from giant.xray.crystal import CrystalInfo
     mtz_summaries = [CrystalInfo.from_mtz(mtz_file=m_f, mtz_object=m_o, name=lab) for m_f,m_o,lab in zip(mtz_files, mtz_objects, labels)]

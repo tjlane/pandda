@@ -342,7 +342,7 @@ class ResolutionShellTestTrainPartitioner(object):
                 continue
 
             # Get the dataset keys selected for testing
-            test_dtags = dataset_partitions['test'].keys()
+            test_dtags = list(dataset_partitions['test'].keys())
 
             # Remove them from future test sets (add to excluded datasets)
             partition_datasets.update( # add to negative set
@@ -371,8 +371,8 @@ class ResolutionShellTestTrainPartitioner(object):
 
     def validate_partitions(self, p_dict):
 
-        test_keys = p_dict['test'].keys()
-        train_keys = p_dict['train'].keys()
+        test_keys = list(p_dict['test'].keys())
+        train_keys = list(p_dict['train'].keys())
 
         # Skip to next if no test datasets
         if (len(test_keys) == 0) or (len(train_keys) == 0):

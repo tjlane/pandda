@@ -16,7 +16,7 @@ class MultiCrystalDataset(object):
             datasets = {}
 
         self.datasets = datasets
-        self.dataset_keys = datasets.keys() # can be reordered as desired
+        self.dataset_keys = list(datasets.keys()) # can be reordered as desired
 
         if (sort_keys is True):
             self.dataset_keys.sort()

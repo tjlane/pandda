@@ -140,7 +140,7 @@ def parse_phil_args(
 
                     found_key = False
 
-                    for key in blank_arg_prepend.keys():
+                    for key in list(blank_arg_prepend.keys()):
 
                         if key is None:
                             continue
@@ -151,7 +151,7 @@ def parse_phil_args(
                             found_key = True
                             break
 
-                    if (found_key == False) and (None in blank_arg_prepend.keys()):
+                    if (found_key == False) and (None in list(blank_arg_prepend.keys())):
 
                         arg = (
                             blank_arg_prepend[None]+arg
@@ -270,19 +270,19 @@ class run_default(object):
         except Failure as e:
             e.args = (
                 (
-                    '\n\n' +
+                    u'\n\n' +
                     str(e.args[0]) +
-                    '\n\n(This type of error normally indicates that something has gone wrong within the program that is not fixable by the user.'
-                    '\nYou may need to contact the developer -- for contact info please visit https://pandda.bitbucket.io .)\n'
+                    u'\n\n(This type of error normally indicates that something has gone wrong within the program that is not fixable by the user.'
+                    u'\nYou may need to contact the developer -- for contact info please visit https://pandda.bitbucket.io .)\n'
                     ),
                 ) + e.args[1:]
             raise
         except (Sorry, IOError, ValueError) as e:
             e.args = (
                 (
-                    '\n\n' +
+                    u'\n\n' +
                     str(e.args[0]) +
-                    '\n\n(This type of error normally indicates that something is wrong with the input provided to the program that is fixable.)\n'
+                    u'\n\n(This type of error normally indicates that something is wrong with the input provided to the program that is fixable.)\n'
                     ),
                 ) + e.args[1:]
             raise

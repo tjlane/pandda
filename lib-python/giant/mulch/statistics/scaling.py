@@ -4,7 +4,7 @@ import numpy as np
 from .classifiers import ZScoreClassifier
 
 
-class ExtractScalingStatistics:
+class ExtractScalingStatistics(object):
 
     resolution_divider = 4.0
 

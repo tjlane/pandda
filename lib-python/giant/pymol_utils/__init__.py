@@ -6,7 +6,7 @@ from itertools import cycle
 from giant.pymol_utils.shapes import *
 
 
-class PymolColourPalettes:
+class PymolColourPalettes(object):
 
 
     set1 = ['carbon','cyan','lightmagenta','yellow','salmon','hydrogen','slate','orange']

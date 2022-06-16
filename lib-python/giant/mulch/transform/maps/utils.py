@@ -2,7 +2,7 @@ import numpy as np
 from scitbx.array_family import flex
 
 
-class SampleableMap:
+class SampleableMap(object):
 
     def __init__(self,
         map_data,
@@ -85,10 +85,10 @@ class SampleableMap:
             if len(frac_points) == 0:
                 raise ValueError('no points selected')
 
-        map_vals = map(
+        map_vals = list(map(
             self.map_data.eight_point_interpolation, 
             frac_points,
-            )
+            ))
 
         if (self.filter_out_of_bounds_points is True):
 

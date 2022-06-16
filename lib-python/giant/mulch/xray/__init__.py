@@ -2,7 +2,7 @@ import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 
-class DataGetterPrepper:
+class DataGetterPrepper(object):
     """
     Class for loading miller arrays from datasets using pre-loaded functions.
 
@@ -38,7 +38,7 @@ class DataGetterPrepper:
         return data
 
 
-class MapGetterPrepper:
+class MapGetterPrepper(object):
     """
     Class for loading fft maps from datasets using pre-loaded functions.
 

@@ -61,7 +61,7 @@ class GetInterestingResnames(object):
 
     def __call__(self, hierarchy):
 
-        unq_resnames = hierarchy.overall_counts().resnames.keys()
+        unq_resnames = list(hierarchy.overall_counts().resnames.keys())
 
         logger.debug(
             'Residues in structure (and classes): \n\t{}'.format(
