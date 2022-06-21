@@ -1,9 +1,7 @@
-from __future__ import print_function
-
 import numpy as np
 
 
-class Cluster:
+class Cluster(object):
 
     def __init__(self, points, values):
 
@@ -40,7 +38,7 @@ class Cluster:
         return self.points.mean(axis=0)
 
 
-class BasicClusterFinder:
+class BasicClusterFinder(object):
 
     def __init__(self, 
         grid_clustering_cutoff, 

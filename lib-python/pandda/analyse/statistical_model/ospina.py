@@ -4,7 +4,7 @@ import numpy
 def variable_sigma_d_log_likelihood(est_sigma, est_mu, obs_vals, obs_error):
     """Calculate the value of the differentiated log likelihood for the values of mu, sigma"""
     term1 = (obs_vals - est_mu)**2 / ((est_sigma**2 + obs_error**2)**2)
-    term2 = 1 / (est_sigma**2 + obs_error**2)
+    term2 = 1.0 / (est_sigma**2 + obs_error**2)
     return numpy.sum(term1) - numpy.sum(term2)
 
 def estimate_true_underlying_sd(obs_vals, obs_error, est_mu=None, est_sigma=1e-16, try_number=1):
@@ -26,7 +26,7 @@ def estimate_true_underlying_sd(obs_vals, obs_error, est_mu=None, est_sigma=1e-1
     answer = abs(fsolve(func=variable_sigma_d_log_likelihood, x0=est_sigma, args=(est_mu, obs_vals, obs_error)))[0]
 
     if answer > 2e40:
-        est_sigma = est_sigma/1000
+        est_sigma = est_sigma / 1000.0
         answer = estimate_true_underlying_sd(obs_vals=obs_vals, obs_error=obs_error, est_mu=est_mu, est_sigma=est_sigma, try_number=try_number+1)
 
     return answer
@@ -49,7 +49,7 @@ if __name__ == '__main__':
 
     start_t = time.time()
 
-    for attempt in xrange(num_cycles):
+    for attempt in range(num_cycles):
 
 #        print('============================>')
 
@@ -83,7 +83,7 @@ if __name__ == '__main__':
 
     end_t = time.time()
     print('    TIME TAKEN TOTAL: {!s} (Seconds)'.format(int(end_t - start_t)))
-    print('TIME TAKEN PER CYCLE: {!s} (Millionths)'.format(int(1000000*(end_t-start_t)/num_cycles)))
+    print('TIME TAKEN PER CYCLE: {!s} (Millionths)'.format(int(1000000.0*(end_t-start_t)/num_cycles)))
 
     print('============================>')
 

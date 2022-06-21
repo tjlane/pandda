@@ -151,7 +151,7 @@ def format_ligand_names(ligand_name_list, new_name):
     return ','.join(names)
 
 
-class Notices:
+class Notices(object):
     def __init__(self):
         self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
         self.window.set_position(gtk.WIN_POS_CENTER)
@@ -264,7 +264,7 @@ class Notices:
         self.window.set_keep_above(True)
 
 
-class SplashScreen:
+class SplashScreen(object):
 
     def __init__(self):
         # ---------------------------
@@ -359,7 +359,7 @@ from pandda.inspect.trackers import (
     )
 
 
-class LoadEventModelsAndMaps:
+class LoadEventModelsAndMaps(object):
 
     default_contours = {
         'dataset' : 2.0,
@@ -511,7 +511,7 @@ class LoadEventModelsAndMaps:
         set_imol_refinement_map(imol)
 
 
-class EventModelMapHandler:
+class EventModelMapHandler(object):
 
     def __init__(self,
         event_files,
@@ -655,7 +655,7 @@ class EventModelMapHandler:
                 pass
 
 
-class LigandHandler: 
+class LigandHandler(object):
 
     def __init__(self, 
         ligand_directory,
@@ -692,8 +692,8 @@ class LigandHandler:
 
 
         # Need ordered lists for tracker
-        self.ligand_pdbs = map(str, pdbs)
-        self.ligand_cifs = map(str, cifs)
+        self.ligand_pdbs = list(map(str, pdbs))
+        self.ligand_cifs = list(map(str, cifs))
 
         # Create hashable for convenience
         self.ligand_cif_dict = {
@@ -895,7 +895,7 @@ class LigandHandler:
             close_molecule(imol)
 
 
-class EventHandler: 
+class EventHandler(object):
 
     def __init__(self, 
         event,
@@ -1007,7 +1007,7 @@ class EventHandler:
             )
         
 
-class GetEventHandler: 
+class GetEventHandler(object):
 
     def __init__(self,
         pandda_directory, 
@@ -1051,7 +1051,7 @@ from pandda.inspect.trackers import (
     )
 
 
-class PanddaEventListController: 
+class PanddaEventListController(object):
     """Responsible for loading events models and maps"""
 
     def __init__(self,
@@ -1259,7 +1259,7 @@ class PanddaEventListController:
 
 # =========================================================================
 
-class DummyUpdateOutput:
+class DummyUpdateOutput(object):
 
     def __init__(self,
         inspector,
@@ -1284,7 +1284,7 @@ class DummyUpdateOutput:
         d.destroy()
 
 
-class UpdateOutput:
+class UpdateOutput(object):
 
     def __init__(self,
         inspector,
@@ -1341,7 +1341,7 @@ class UpdateOutput:
 # =========================================================================
 
 
-class MakeNewLigandModal:
+class MakeNewLigandModal(object):
 
     def __init__(self, 
         output_directory,
@@ -1499,7 +1499,7 @@ class MakeNewLigandModal:
         catchup(True)
 
 
-class GetMakeCustomEventMapWindow:
+class GetMakeCustomEventMapWindow(object):
 
     def __init__(self, event_handler):
 
@@ -1620,7 +1620,7 @@ class GetMakeCustomEventMapWindow:
 # =========================================================================
 
 
-class GuiPart:
+class GuiPart(object):
 
     def __init__(self):
 
@@ -2282,7 +2282,7 @@ class ProgressTable(GuiPart):
         return vbox_main
 
 
-class PanddaGUI: 
+class PanddaGUI(object):
 
     def __init__(self):
 

@@ -98,11 +98,11 @@ class EventSitePlotter(PanddaPlotter):
             )
 
         axis.set_xticks(
-            range(1, n+1)
+            list(range(1, n+1))
             )
 
         axis.set_yticks(
-            range(0, int(max(bar_values)+0.5))
+            list(range(0, int(max(bar_values)+0.5)))
             )
 
         axis.set_xlim(
@@ -268,7 +268,7 @@ class MapUncertaintyDistributionPlotter(PanddaPlotter):
         *args, **kwargs
         ):
 
-        uncertainty_values = map_uncertainty.values()
+        uncertainty_values = list(map_uncertainty.values())
 
         ###
 
@@ -297,7 +297,7 @@ class MapUncertaintyDistributionPlotter(PanddaPlotter):
 ###
 
 
-class MakePanddaResultsGraphs:
+class MakePanddaResultsGraphs(object):
     
     def __init__(self, 
         output_directory, 

@@ -1,5 +1,3 @@
-from __future__ import print_function
-
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
@@ -149,7 +147,7 @@ def get_export_dirs(
     return sorted(export_dirs)
 
 
-class ExportFolder: 
+class ExportFolder(object):
 
     def __init__(self, 
         export_dir, 
@@ -266,7 +264,7 @@ class ExportFolder:
             raise Exception('error')
 
 
-class PostProcessFolder: 
+class PostProcessFolder(object):
 
     def __init__(self,
         major_state_glob = "*-pandda-input.pdb",
@@ -378,7 +376,7 @@ class PostProcessFolder:
         merge_conformations.run(params=m_params)
 
 
-class ValidateFolder: 
+class ValidateFolder(object):
 
     def __init__(self, 
         required_file_for_export,

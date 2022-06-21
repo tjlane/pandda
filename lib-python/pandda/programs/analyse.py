@@ -1,5 +1,3 @@
-from __future__ import print_function
-
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 

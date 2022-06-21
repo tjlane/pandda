@@ -7,7 +7,7 @@ import pathlib as pl
 from giant.paths import rel_symlink
 
 
-class Event:
+class Event(object):
 
     def __init__(self, info):
 
@@ -80,7 +80,7 @@ class Event:
             ]
 
 
-class GetEventFiles: 
+class GetEventFiles(object):
 
     def __init__(self,
         pandda_directory,
@@ -181,7 +181,7 @@ class GetEventFiles:
         }
 
 
-class GetNextModelFile:
+class GetNextModelFile(object):
 
     output_prefix = 'fitted-v'
 
@@ -208,12 +208,12 @@ class GetNextModelFile:
     def last_file(self):
         """Get the most recent saved model of this protein"""
 
-        fitted_outputs = map(
+        fitted_outputs = list(map(
             str,
             sorted(
                 self.model_directory.glob(self.output_prefix+'*')
                 )
-            )
+            ))
 
         if fitted_outputs:
             logger('Current models: \n\t{}'.format('\n\t'.join(fitted_outputs)))

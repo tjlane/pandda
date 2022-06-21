@@ -13,7 +13,7 @@ from giant.mulch.statistics.xray import (
     )
 
 
-class ExtractPanddaDatasetOutputInfo:
+class ExtractPanddaDatasetOutputInfo(object):
 
     def __init__(self):
 
@@ -52,7 +52,7 @@ class ExtractPanddaDatasetOutputInfo:
             merge_dict = make_sorted_dict(
                 self.unpack_shell_dicts(
                     shell_dicts = shell_dicts,
-                    all_dataset_keys = mcd.datasets.keys(),
+                    all_dataset_keys = list(mcd.datasets.keys()),
                     )
                 ),
             )

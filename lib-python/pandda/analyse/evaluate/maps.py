@@ -7,7 +7,7 @@ import pathlib as pl
 from pandda.analyse.events import background_correction as bc
 
 
-class GetStandardSparseMapWriter:
+class GetStandardSparseMapWriter(object):
     """docstring for GetDatasetMapMaker"""
 
     def __init__(self, 
@@ -32,7 +32,7 @@ class GetStandardSparseMapWriter:
             )
 
 
-class MakePanddaMapsJobGenerator:
+class MakePanddaMapsJobGenerator(object):
 
     output_dataset_map = True
     output_ground_map = True
@@ -150,7 +150,7 @@ class MakePanddaMapsJobGenerator:
 ###
 
 
-class MakePanddaEvaluationMaps:
+class MakePanddaEvaluationMaps(object):
 
     output_key = "dataset_files"
 
@@ -193,7 +193,7 @@ class MakePanddaEvaluationMaps:
         write_map = self.get_dataset_map_writer()
 
         # Iterators which will produce map writer jobs to be consumed
-        dataset_keys = datasets.keys()
+        dataset_keys = list(datasets.keys())
         dataset_generators = []
 
         for dkey in dataset_keys:
@@ -230,7 +230,7 @@ class MakePanddaEvaluationMaps:
         return {self.output_key : output_files}
 
 
-class GetMakePanddaEvaluationMaps: 
+class GetMakePanddaEvaluationMaps(object):
 
     def __init__(self, 
         get_dataset_map_writer,

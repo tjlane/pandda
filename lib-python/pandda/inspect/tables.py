@@ -15,7 +15,7 @@ def validate_path(path):
             )
 
 
-class TableHandler:
+class TableHandler(object):
 
     require_not_empty = True
 
@@ -142,7 +142,7 @@ class PanddaSiteTableHandler(TableHandler):
             )
         
 
-class PanddaInspectTableHandler: 
+class PanddaInspectTableHandler(object): 
 
     def __init__(self,
         files_dict,

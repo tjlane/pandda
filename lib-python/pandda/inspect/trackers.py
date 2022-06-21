@@ -1,7 +1,7 @@
 import numpy as np
 
 
-class iTracker:
+class iTracker(object):
 
     def __init__(self,
         n_total,
@@ -52,7 +52,7 @@ class LigandTracker(iTracker):
     pass
 
 
-class SiteTracker:
+class SiteTracker(object):
 
     def __init__(self,
         site_idxs,

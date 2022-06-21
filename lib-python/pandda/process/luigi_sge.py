@@ -88,6 +88,8 @@ an open-source SGE cluster manager for use with Amazon EC2::
 # - Runner function loads the class from pickle
 # - Runner function hits the work button on it
 
+from future import standard_library
+standard_library.install_aliases()
 import os
 import subprocess
 import time
@@ -96,7 +98,7 @@ import logging
 import random
 
 try:
-    import cPickle as pickle
+    import pickle as pickle
 except ImportError:
     import pickle
 

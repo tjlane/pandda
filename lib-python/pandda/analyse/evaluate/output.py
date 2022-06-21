@@ -6,7 +6,7 @@ from pandda.utils import (
     )
 
 
-class PanddaDatasetEvaluatorOutputter:
+class PanddaDatasetEvaluatorOutputter(object):
     """Output dataset maps and graphs (inside processing loop)"""
 
     def __init__(self,
@@ -45,7 +45,7 @@ class PanddaDatasetEvaluatorOutputter:
         return output_files
 
 
-class GetPanddaDatasetEvaluatorOutputter:
+class GetPanddaDatasetEvaluatorOutputter(object):
 
     def __init__(self,
         get_dataset_map_writer,

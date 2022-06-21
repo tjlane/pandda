@@ -3,7 +3,7 @@ import json
 import pathlib as pl
 
 
-class DumpDictToJson:
+class DumpDictToJson(object):
 
     def __init__(self, output_path):
 

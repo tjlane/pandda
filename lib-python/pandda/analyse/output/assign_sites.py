@@ -6,7 +6,7 @@ from giant.common.clustering import (
     )
 
 
-class AssignEventsToSites:
+class AssignEventsToSites(object):
 
     def __init__(self,
         clustering_distance = 5.0,

@@ -11,7 +11,7 @@ import gemmi
 from pandda.utils import merge_dicts
 
 
-class ConvertMapsToMtz:
+class ConvertMapsToMtz(object):
 
     def __init__(self,
         dataset_name = 'pandda',
@@ -154,7 +154,7 @@ class ConvertMapsToMtz:
             os.remove(str(f))
 
 
-class MakePanddaMainMtz: 
+class MakePanddaMainMtz(object):
 
     output_key = "output_data"
     output_filename_template = "{dkey}-pandda-output.mtz"
@@ -230,7 +230,7 @@ class MakePanddaMainMtz:
         return (map_paths, map_labels)
 
 
-class MakePanddaEventMtz:
+class MakePanddaEventMtz(object):
 
     output_key = "event_data"
     output_filename_template = "{dkey}-pandda-output-event-{event_num:03d}.mtz"
@@ -316,7 +316,7 @@ class MakePanddaEventMtz:
 ###
 
 
-class MakePanddaEvaluationMtzs:
+class MakePanddaEvaluationMtzs(object):
 
     output_key = "dataset_files"
 
@@ -523,7 +523,7 @@ class MakePanddaEvaluationMtzs:
                     os.remove(str(m_file))
 
 
-class GetMakePanddaEvaluationMtzs:
+class GetMakePanddaEvaluationMtzs(object):
 
     def __init__(self,
         get_dataset_map_writer,

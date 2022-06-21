@@ -9,7 +9,7 @@ from giant.utils import (
     )
 
 
-class DataCollator:
+class DataCollator(object):
 
     def __init__(self):
 

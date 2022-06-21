@@ -22,7 +22,7 @@ def failure_graph(title):
     plt.title('Failed to make {}'.format(title))
     return fig
 
-class PlotConfig:
+class PlotConfig(object):
 
     def __init__(self):
 
@@ -126,7 +126,7 @@ class PlotConfig:
 
             font_family_str = 'font.'+str(font_family)
 
-            if font_family_str not in plt.rcParams.keys():
+            if font_family_str not in list(plt.rcParams.keys()):
                 logger.warning(
                     'Cannot set font: invalid font family provided "{}".'.format(font_family)
                     )

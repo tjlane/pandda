@@ -12,7 +12,7 @@ except:
 ########################################################################################################################
 
 
-class DumpConfigToJson:
+class DumpConfigToJson(object):
 
     def __init__(self, output_path):
 
@@ -56,7 +56,7 @@ class ConfigurationError(Exception):
     pass
 
 
-class Input:
+class Input(object):
 
     def __init__(self, config_obj):
         self.data_dirs = config_obj.data_dirs
@@ -69,7 +69,7 @@ class Input:
         self.flags = InputFlags(config_obj.flags)
 
 
-class InputRegex:
+class InputRegex(object):
 
     def __init__(self, config_obj):
         self.dir_regex = config_obj.dir_regex
@@ -79,7 +79,7 @@ class InputRegex:
         # self.ligand_pdb_regex = config_obj.ligand_pdb_regex
 
 
-class InputFilter: 
+class InputFilter(object): 
 
     def __init__(self, config_obj):
 
@@ -101,7 +101,7 @@ class InputFilter:
                 )
 
 
-class InputReference:
+class InputReference(object):
 
     def __init__(self, config_obj):
 
@@ -128,7 +128,7 @@ class InputReference:
                 )
 
 
-class InputFlags:
+class InputFlags(object):
 
     def __init__(self, config_obj):
 
@@ -197,7 +197,7 @@ class InputFlags:
 ########################################################################################################################
 
 
-class Output:
+class Output(object):
 
     def __init__(self, config_obj):
 
@@ -233,7 +233,7 @@ class Output:
 ########################################################################################################################
 
 
-class Params:
+class Params(object):
 
     def __init__(self, config_obj):
         self.analysis = Analysis(config_obj.analysis)
@@ -248,7 +248,7 @@ class Params:
         self.background_correction = BackgroundCorrection(config_obj.background_correction)
 
 
-class Analysis:
+class Analysis(object):
 
     def __init__(self, config_obj):
 
@@ -257,7 +257,7 @@ class Analysis:
         self.high_res_increment = float(config_obj.high_res_increment)
 
 
-class DiffractionData:
+class DiffractionData(object):
 
     def __init__(self, config_obj):
 
@@ -277,7 +277,7 @@ class DiffractionData:
                 raise InputError("structure_factors must be F,PHI pairs separated by a comma.")
 
 
-class DiffractionDataChecks:
+class DiffractionDataChecks(object):
 
     def __init__(self, config_obj):
 
@@ -292,20 +292,20 @@ class DiffractionDataChecks:
             raise InputError("low_resolution_completeness must be greater than 0.0")
 
 
-class DiffractionDataScaling:
+class DiffractionDataScaling(object):
 
     def __init__(self, config_obj):
 
         self.apply_b_factor_scaling = config_obj.apply_b_factor_scaling
 
 
-class Alignment:
+class Alignment(object):
 
     def __init__(self, config_obj):
         self.method = config_obj.method
 
 
-class Filtering:
+class Filtering(object):
 
     def __init__(self, config_obj):
         self.max_rfree = config_obj.max_rfree
@@ -313,13 +313,13 @@ class Filtering:
         self.similar_models_only = config_obj.similar_models_only
 
 
-class Excluding:
+class Excluding(object):
 
     def __init__(self, config_obj):
         self.max_wilson_plot_z_score = config_obj.max_wilson_plot_z_score
 
 
-class Maps:
+class Maps(object):
 
     def __init__(self, config_obj):
         self.resolution_factor = config_obj.resolution_factor
@@ -327,7 +327,7 @@ class Maps:
         self.density_scaling = config_obj.density_scaling
 
 
-class Masks:
+class Masks(object):
 
     def __init__(self, config_obj):
         self.mask_pdb = config_obj.mask_pdb
@@ -338,7 +338,7 @@ class Masks:
         self.inner_mask_symmetry = config_obj.inner_mask_symmetry
 
 
-class ZMapAnalysis:
+class ZMapAnalysis(object):
 
     def __init__(self, config_obj):
         self.clustering_method = config_obj.clustering_method
@@ -351,7 +351,7 @@ class ZMapAnalysis:
         self.agglomerative_hierarchical = AgglomerativeHierarchical(config_obj.agglomerative_hierarchical)
 
 
-class ZMasks:
+class ZMasks(object):
 
     def __init__(self, config_obj):
         self.selection_string = config_obj.selection_string
@@ -359,7 +359,7 @@ class ZMasks:
         self.inner_mask = config_obj.inner_mask
 
 
-class BackgroundCorrection:
+class BackgroundCorrection(object):
 
     def __init__(self, config_obj):
         self.max_bdc = config_obj.max_bdc
@@ -368,13 +368,13 @@ class BackgroundCorrection:
         self.output_multiplier = config_obj.output_multiplier
 
 
-class AgglomerativeHierarchical:
+class AgglomerativeHierarchical(object):
 
     def __init__(self, config_obj):
         self.clustering_cutoff = config_obj.clustering_cutoff
 
 
-class StatisticalMaps:
+class StatisticalMaps(object):
 
     def __init__(self, config_obj):
         self.min_build_datasets = config_obj.min_build_datasets
@@ -386,13 +386,13 @@ class StatisticalMaps:
 ########################################################################################################################
 
 
-class Results:
+class Results(object):
 
     def __init__(self, config_obj):
         self.events = Events(config_obj.events)
 
 
-class Events:
+class Events(object):
 
     def __init__(self, config_obj):
         self.order_by = config_obj.order_by
@@ -401,7 +401,7 @@ class Events:
 ########################################################################################################################
 
 
-class Processing:
+class Processing(object):
 
     def __init__(self, config_obj):
         
@@ -419,7 +419,7 @@ class Processing:
 ########################################################################################################################
 
 
-class Settings:
+class Settings(object):
 
     def __init__(self, config_obj):
         
@@ -430,7 +430,7 @@ class Settings:
 ########################################################################################################################
 
 
-class Autobuilding:
+class Autobuilding(object):
 
     def __init__(self, config_obj):
         self.autobuild = config_obj.autobuild
@@ -439,7 +439,7 @@ class Autobuilding:
 ########################################################################################################################
 
 
-class Config:
+class Config(object):
 
     def __init__(self, config_obj):
         self.settings = Settings(config_obj.settings)

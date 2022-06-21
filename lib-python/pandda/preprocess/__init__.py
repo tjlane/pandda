@@ -12,7 +12,7 @@ from pandda.utils import (
     )
 
 
-class DatasetInitialiser:
+class DatasetInitialiser(object):
 
     map_scaling = "rmsd"
     map_resolution_factor = 0.25

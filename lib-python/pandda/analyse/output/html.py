@@ -19,7 +19,7 @@ from giant.html.summary import (
 d_label = '<span class="label label-info">{k}</span>'
 
 
-class MakePanddaResultsHtml:
+class MakePanddaResultsHtml(object):
 
     output_key = 'analyse_html'
     output_filename = 'pandda_analyse.html'

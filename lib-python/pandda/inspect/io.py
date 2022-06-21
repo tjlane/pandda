@@ -7,7 +7,7 @@ from .expand_tables import (
     )
 
 
-class GetPanddaInspectInputOutputFiles:
+class GetPanddaInspectInputOutputFiles(object):
 
     def __init__(self, 
         input_directory,

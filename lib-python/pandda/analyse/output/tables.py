@@ -11,7 +11,7 @@ from pandda.utils import (
     )
 
 
-class MakePanddaDatasetTable:
+class MakePanddaDatasetTable(object):
 
     columns = [
         "map_uncertainty",
@@ -70,7 +70,7 @@ class MakePanddaDatasetTable:
         return dataset_dicts
         
 
-class MakePanddaEventTable: 
+class MakePanddaEventTable(object):
 
     columns = [
         "dtag",
@@ -143,7 +143,7 @@ class MakePanddaEventTable:
         return event_dicts
 
 
-class MakePanddaSiteTable:
+class MakePanddaSiteTable(object):
 
     columns = [
         "site_num",
@@ -202,7 +202,7 @@ class MakePanddaSiteTable:
         return site_dicts
 
 
-class MakePanddaResultsTables: 
+class MakePanddaResultsTables(object):
 
     def __init__(self,
         output_directory,

@@ -76,7 +76,7 @@ def calculate_feature_fraction_correlations(
             (feature_fraction, feature_correlation, reference_correlation)
             )
 
-    return zip(*return_values)
+    return list(zip(*return_values))
 
 def find_maximum_series_discrepancy(labels, series_1, series_2):
     """Calculate the point at which two series are maximally different"""

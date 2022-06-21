@@ -22,7 +22,7 @@ from .exceptions import (
 d_label = '<span class="label label-info">{k}</span>'
 
 
-class MakePanddaInspectHtml:
+class MakePanddaInspectHtml(object):
 
     output_filename = 'pandda_inspect.html'
     template_name = 'pandda_page.html'

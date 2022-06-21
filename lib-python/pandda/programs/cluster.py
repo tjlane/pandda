@@ -7,7 +7,7 @@ import pandas as pd
 import gemmi
 
 
-class Args:
+class Args(object):
     def __init__(self):
         parser = argparse.ArgumentParser()
         # IO
@@ -68,7 +68,7 @@ class Args:
         self.n_procs = int(args.n_procs)
 
 
-class ClusterFSModel:
+class ClusterFSModel(object):
     def __init__(self,
                  input_dir,
                  output_dir,

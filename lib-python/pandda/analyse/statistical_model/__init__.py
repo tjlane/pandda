@@ -8,7 +8,7 @@ from .output import (
     )
 
 
-class PanddaStatisticalModel:
+class PanddaStatisticalModel(object):
 
     name = "PanddaStatisticalModel"
 
@@ -142,7 +142,7 @@ class PanddaStatisticalModel:
     #     return map_data - (bdc * self.mu_map_data)
 
 
-class GetPanddaStatisticalModelFitter:
+class GetPanddaStatisticalModelFitter(object):
 
     def __init__(self,
         fit_mu,

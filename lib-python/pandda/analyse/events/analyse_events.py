@@ -10,7 +10,7 @@ from .graphs import (
     )
 
 
-class EventAnalyser:
+class EventAnalyser(object):
 
     def __init__(self,
         min_bdc = 0.0,
@@ -212,5 +212,3 @@ class EventAnalyser:
             )[0, 1]
 
         return local_correlation, global_correlation
-
-        

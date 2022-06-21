@@ -14,7 +14,7 @@ from giant.html.summary import (
     )
 
 
-class MakeMainPanddaHtmlPage:
+class MakeMainPanddaHtmlPage(object):
 
     name = "Pandda Html Outputter"
 

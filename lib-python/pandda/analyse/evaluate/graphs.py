@@ -226,7 +226,7 @@ class QQDistributionPlotter(PanddaDatasetPlotter):
 ###
 
 
-class MakePanddaEvaluationGraphs:
+class MakePanddaEvaluationGraphs(object):
 
     output_key = "graphs"
     
@@ -292,7 +292,7 @@ class MakePanddaEvaluationGraphs:
         return {self.output_key : output_files}
 
 
-class GetMakePanddaEvaluationGraphs: 
+class GetMakePanddaEvaluationGraphs(object): 
 
     def __init__(self, 
         output_dir,

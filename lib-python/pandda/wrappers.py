@@ -4,7 +4,7 @@ logger = lg.getLogger(__name__)
 import traceback
 
 
-class GetDummyClass:
+class GetDummyClass(object):
     """
     A getter for a class that can be passed to override automatically assigned internal classes.
     Typically used to nullify an output class getter.
@@ -19,7 +19,7 @@ class GetDummyClass:
         return DummyClass(*args, **kwargs)
 
 
-class DummyClass:
+class DummyClass(object):
     """
     A class that can be passed to override automatically assigned internal classes.
     Typically used to nullify an output class.
@@ -34,7 +34,7 @@ class DummyClass:
         pass
 
 
-class DelayedGetter: 
+class DelayedGetter(object):
 
     def __init__(self, get_func):
 
@@ -49,7 +49,7 @@ class DelayedGetter:
         return self.func(*args, **kwargs)
 
 
-class TaskWrapper:
+class TaskWrapper(object):
 
     verbose = False
 
@@ -67,7 +67,7 @@ class TaskWrapper:
             raise
 
 
-class IteratorIterator:
+class IteratorIterator(object):
 
     def __init__(self, iterators):
         self.iterators = iterators

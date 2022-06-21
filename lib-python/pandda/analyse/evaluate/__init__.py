@@ -5,7 +5,7 @@ from .output import (
     )
 
 
-class PanddaEvaluateSingleDataset:
+class PanddaEvaluateSingleDataset(object):
 
     def __init__(self,
         map_grid,
@@ -92,7 +92,7 @@ class PanddaEvaluateSingleDataset:
         return d
 
 
-class PanddaDatasetEvaluator:
+class PanddaDatasetEvaluator(object):
 
     def __init__(self,
         evaluate_dataset,
@@ -112,7 +112,7 @@ class PanddaDatasetEvaluator:
         statistical_model,
         ):
 
-        dataset_keys = datasets.keys()
+        dataset_keys = list(datasets.keys())
         jobs = []
 
         for dkey in dataset_keys:
@@ -132,7 +132,7 @@ class PanddaDatasetEvaluator:
         return dict(zip(dataset_keys, results))
 
 
-class GetPanddaDatasetEvaluator: 
+class GetPanddaDatasetEvaluator(object):
 
     def __init__(self, 
         get_map_grid,

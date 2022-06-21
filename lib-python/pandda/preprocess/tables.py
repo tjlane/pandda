@@ -2,7 +2,7 @@ import pathlib as pl
 import pandas as pd
 
 
-class MakePanddaDatasetSummaryTable:
+class MakePanddaDatasetSummaryTable(object):
 
     columns = [
         "high_resolution",

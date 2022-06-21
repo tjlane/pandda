@@ -21,7 +21,7 @@ from pandda.utils import (
     )
 
 
-class WritePanddaDatasetSummary:
+class WritePanddaDatasetSummary(object):
 
     def __init__(self,
         output_dir,
@@ -202,7 +202,7 @@ class WritePanddaDatasetSummary:
 
         output_info = {
             'rejected_datasets' : dataset_info.get('rejection_reason', {}),
-            'loaded_datasets' : mcd.datasets.keys(),
+            'loaded_datasets' : list(mcd.datasets.keys()),
         }
 
         output_info.update(

@@ -28,7 +28,7 @@ from libtbx import easy_mp
 #         repr = OrderedDict()
 #         return repr
 
-class Processor:
+class Processor(object):
     def __init__(self):
         pass
 
@@ -61,7 +61,7 @@ class Task(SGEJobTask):
         return luigi.LocalTarget(str(self.output_path))
 
 
-class ProcessorLuigi:
+class ProcessorLuigi(object):
 
     def __init__(self,
                  jobs=10,
@@ -120,7 +120,7 @@ class ProcessorLuigi:
         return repr
 
 
-class ProcessorDict:
+class ProcessorDict(object):
     def __init__(self):
         pass
 
@@ -145,7 +145,7 @@ class ProcessorDict:
         return repr
 
 
-class ProcessorDictJoblib:
+class ProcessorDictJoblib(object):
     def __init__(self,
                  cpus=21,
                  verbosity=8,
@@ -170,7 +170,7 @@ class ProcessorDictJoblib:
 
         if hasattr(funcs, "keys"):
 
-            keys = funcs.keys()
+            keys = list(funcs.keys())
             values = [funcs[key] for key in keys]
 
             processed = self.parallel(joblib.delayed(value)()
@@ -197,7 +197,7 @@ class ProcessorDictJoblib:
         return repr
 
 
-class ProcessorJoblib:
+class ProcessorJoblib(object):
     def __init__(self,
                  cpus=21,
                  verbosity=8,
@@ -220,7 +220,7 @@ def wrap_call(f):
     return f()
 
 
-class ProcessorDictEasyMP:
+class ProcessorDictEasyMP(object):
     def __init__(self,
                  cpus=21,
                  verbosity=8,
@@ -231,7 +231,7 @@ class ProcessorDictEasyMP:
     def __call__(self,
                  funcs,
                  ):
-        keys = funcs.keys()
+        keys = list(funcs.keys())
         values = [funcs[key] for key in keys]
 
         results = easy_mp.pool_map(fixed_func=wrap_call,

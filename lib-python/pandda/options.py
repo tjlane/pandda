@@ -4,7 +4,7 @@ logger = lg.getLogger(__name__)
 import os, sys
 
 
-class Options:
+class Options(object):
 
     def __init__(self, config):
 

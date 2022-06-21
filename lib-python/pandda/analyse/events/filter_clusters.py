@@ -40,7 +40,7 @@ def minimum_distance_between_clusters(cluster1, cluster2):
         )
 
 
-class ClusterFilterList:
+class ClusterFilterList(object):
 
     def __init__(self, filters):
         
@@ -64,7 +64,7 @@ class ClusterFilterList:
         return clusters
 
 
-class PeakAndSizeClusterFilter:
+class PeakAndSizeClusterFilter(object):
 
     def __init__(self,
         min_blob_z_peak,
@@ -113,7 +113,7 @@ class PeakAndSizeClusterFilter:
         return out_clusters
 
 
-class GroupNearbyClustersFilter:
+class GroupNearbyClustersFilter(object):
 
     def __init__(self, 
         distance_cutoff,
@@ -188,7 +188,7 @@ class GroupNearbyClustersFilter:
         return out_clusters
 
 
-class ContactsClusterFilter:
+class ContactsClusterFilter(object):
 
     def __init__(self,
         distance_cutoff,
@@ -264,7 +264,7 @@ class ContactsClusterFilter:
         return xyz
 
 
-class SymmetryClusterFilter:
+class SymmetryClusterFilter(object):
 
     def __init__(self,
         cluster_distance_cutoff,

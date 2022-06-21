@@ -9,7 +9,7 @@ from scipy.stats import kde
 from .ospina import estimate_true_underlying_sd
 
 
-class CalculateMu:
+class CalculateMu(object):
 
     def __init__(self):
         pass
@@ -23,7 +23,7 @@ class CalculateMu:
         return map_array.mean(axis=0)
 
 
-class SigmaUncertaintyCalculator:
+class SigmaUncertaintyCalculator(object):
 
     def __init__(self, n_values=None, q_cut=1.5):
 
@@ -74,7 +74,7 @@ class SigmaUncertaintyCalculator:
         return map_unc
 
 
-class CalculateSigmaUncertainties:
+class CalculateSigmaUncertainties(object):
 
     def __init__(self, 
         map_selection = None,
@@ -122,7 +122,7 @@ class CalculateSigmaUncertainties:
         return sigma_uncertainties
 
 
-class SigmaAdjustedCalculator:
+class SigmaAdjustedCalculator(object):
 
     def __init__(self, minimal_guess=1e-6):
         self.minimal_guess = minimal_guess
@@ -158,7 +158,7 @@ class SigmaAdjustedCalculator:
         return sadj_values
 
 
-class CalculateSigmaAdjusted:
+class CalculateSigmaAdjusted(object):
 
     def __init__(self, processor, chunk_size=1000):
 
@@ -210,7 +210,7 @@ class CalculateSigmaAdjusted:
             yield func
 
 
-class PanddaStatisticalModelFitter:
+class PanddaStatisticalModelFitter(object):
 
     def __init__(self,
         fit_mu = True,

@@ -7,7 +7,7 @@ from pandda.analyse.output.tables import (
     )
 
 
-class ExpandEventTable:
+class ExpandEventTable(object):
 
     def __init__(self,
         dataset_info_csv,
@@ -125,7 +125,7 @@ class ExpandEventTable:
         return event_dicts
 
 
-class MakeDummySiteTable:
+class MakeDummySiteTable(object):
 
     def __init__(self,
         output_path = None,

@@ -74,9 +74,9 @@ class StatisticalMapUncertaintyDistributionPlotter(PanddaPlotter):
         *args, **kwargs
         ):
 
-        train_uncertainties = train_dataset_map_uncertainties.values() 
+        train_uncertainties = list(train_dataset_map_uncertainties.values()) 
 
-        test_uncertainties = test_dataset_map_uncertainties.values()
+        test_uncertainties = list(test_dataset_map_uncertainties.values())
 
         x_range = (
             0.,
@@ -149,7 +149,7 @@ class StatisticalMapUncertaintyDistributionPlotter(PanddaPlotter):
 ###
 
 
-class MakePanddaStatisticalModelGraphs:
+class MakePanddaStatisticalModelGraphs(object):
 
     def __init__(self, 
         output_dir,
@@ -197,7 +197,7 @@ class MakePanddaStatisticalModelGraphs:
         return output_files
 
 
-class GetMakePanddaStatisticalModelGraphs: 
+class GetMakePanddaStatisticalModelGraphs(object): 
 
     def __init__(self, 
         output_dir,

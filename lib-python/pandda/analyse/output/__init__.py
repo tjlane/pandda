@@ -34,7 +34,7 @@ from .html import (
     )
 
 
-class PanddaResultsOutputter:
+class PanddaResultsOutputter(object):
     """Output final results (outside processing loop)"""
 
     def __init__(self,

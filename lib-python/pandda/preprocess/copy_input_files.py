@@ -159,7 +159,7 @@ class FindAndCopyLigands(CopyDatasetPath):
 #########
 
 
-class CopyPanddaInputFiles:
+class CopyPanddaInputFiles(object):
 
     def __init__(self, output_dir):
 

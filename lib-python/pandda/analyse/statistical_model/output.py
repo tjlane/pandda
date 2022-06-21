@@ -10,7 +10,7 @@ from .graphs import (
     )
 
 
-class PanddaStatisticalModelOutputter:
+class PanddaStatisticalModelOutputter(object):
     """Output statistical model maps and graphs (inside processing loop)"""
 
     def __init__(self,
@@ -43,7 +43,7 @@ class PanddaStatisticalModelOutputter:
         return output_files
 
 
-class GetPanddaStatisticalModelOutputter:
+class GetPanddaStatisticalModelOutputter(object):
 
     def __init__(self,
         output_dir,

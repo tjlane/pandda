@@ -1,7 +1,7 @@
 import collections 
 
 
-class BasicPanddaFindEvents: 
+class BasicPanddaFindEvents(object):
 
     sort_key = "cluster_size"
 

@@ -5,7 +5,7 @@ import os
 from giant.dispatcher import Dispatcher
 
 
-class MakePymolOutputImages:
+class MakePymolOutputImages(object):
 
     output_key_front = 'events_front'
     output_key_back = 'events_back'

@@ -33,7 +33,7 @@ from .evaluate import (
 #         pass
 
 
-class PanddaModelProcessor:
+class PanddaModelProcessor(object):
 
     def __init__(self,
         load_maps,
@@ -480,7 +480,7 @@ class PanddaModelProcessor:
         return results_dict
 
 
-class GetPanddaModelProcessor:
+class GetPanddaModelProcessor(object):
 
     def __init__(self,
         get_model_fitter,
@@ -518,7 +518,7 @@ class GetPanddaModelProcessor:
 #####
 
 
-class RunPanddaModel:
+class RunPanddaModel(object):
 
     def __init__(self,
         get_pandda_model_task,

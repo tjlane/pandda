@@ -6,7 +6,7 @@ from giant.refinement.restraints.acedrg import (
     )
 
 
-class MakeNewLigand:
+class MakeNewLigand(object):
 
     def __init__(self,
         output_directory,

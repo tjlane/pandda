@@ -93,9 +93,9 @@ class ResolutionDistributionPlotter(PanddaMultiDatasetPlotter):
         *args, **kwargs
         ):
 
-        resolution_high_values = dataset_dicts['high_resolution'].values()
+        resolution_high_values = list(dataset_dicts['high_resolution'].values())
         
-        resolution_low_values = dataset_dicts['low_resolution'].values()
+        resolution_low_values = list(dataset_dicts['low_resolution'].values())
 
         ###
 
@@ -154,9 +154,9 @@ class RFactorDistributionPlotter(PanddaMultiDatasetPlotter):
         *args, **kwargs
         ):
 
-        r_free_values = dataset_dicts['r_free'].values()
+        r_free_values = list(dataset_dicts['r_free'].values())
 
-        r_work_values = dataset_dicts['r_work'].values()
+        r_work_values = list(dataset_dicts['r_work'].values())
 
         ###
 
@@ -213,7 +213,7 @@ class UnitCellDistributionPlotter(PanddaMultiDatasetPlotter):
         *args, **kwargs
         ):
 
-        unit_cell_parameters = zip(*dataset_dicts['unit_cell'].values())
+        unit_cell_parameters = list(zip(*list(dataset_dicts['unit_cell'].values())))
 
         ###
 
@@ -308,7 +308,7 @@ class UnitCellDistributionPlotter(PanddaMultiDatasetPlotter):
 ###
 
 
-class MakePanddaDatasetSummaryGraphs: 
+class MakePanddaDatasetSummaryGraphs(object):
 
     def __init__(self,
         output_dir,
