@@ -1,6 +1,6 @@
 import time
 
-class Timer:
+class Timer(object):
     def __init__(self):
         self._start = None
         self._last = None

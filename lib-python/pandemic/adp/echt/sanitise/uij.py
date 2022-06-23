@@ -3,7 +3,7 @@ from scitbx.array_family import flex
 from pandemic.adp.echt.sanitise.decompose_u import get_positive_u_component
 
 
-class SanitiseUijValue:
+class SanitiseUijValue(object):
 
     def __init__(self,
         tolerance,

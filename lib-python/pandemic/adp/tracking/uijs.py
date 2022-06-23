@@ -4,7 +4,7 @@ import numpy
 from libtbx import adopt_init_args
 
 
-class UijHistory:
+class UijHistory(object):
 
     def __init__(self):
         uijs = collections.OrderedDict()
@@ -39,5 +39,5 @@ class UijHistory:
         sh1 = (numpy.product(sh[:-2]), sh[-2], 6)
         # Reshape back to input
         sh2 = sh[:-1] + (3, )
-        eig_values = numpy.array(map(uij_eigenvalues, map(flex.sym_mat3_double, u_values.reshape(sh1))))
+        eig_values = numpy.array(list(map(uij_eigenvalues, map(flex.sym_mat3_double, u_values.reshape(sh1)))))
         return eig_values.reshape(sh2)

@@ -5,7 +5,7 @@ from libtbx import adopt_init_args
 from pandemic.adp import constants
 
 
-class PandemicTrackingPlotter:
+class PandemicTrackingPlotter(object):
 
     _snapshots_png         = 'tracking_snapshots.png'
     _level_convergence_png = 'tracking_convergence.png'
@@ -69,7 +69,7 @@ class PandemicTrackingPlotter:
         start_cycle = min(table['cycle'])
         n = max(table['cycle'])
         # trim the table to certain rows
-        cycles_to_plot = range(start_cycle, n, int(n/number_to_plot)+1) + [n]
+        cycles_to_plot = list(range(start_cycle, n, int(n/number_to_plot)+1)) + [n]
         cycles_to_plot_bool = table['cycle'].isin(cycles_to_plot)
         table = table[cycles_to_plot_bool]
 
@@ -77,7 +77,7 @@ class PandemicTrackingPlotter:
         grouped = table.groupby(['cycle','step'], sort=False, as_index=False)
         n_total = len(grouped)
         grouped_reduced = grouped.max()
-        grouped_reduced['x'] = range(len(grouped_reduced))
+        grouped_reduced['x'] = list(range(len(grouped_reduced)))
 
         # Previous cycle variables for connecting lines
         prev_x = prev_r = prev_b = None

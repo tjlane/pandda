@@ -29,7 +29,7 @@ def setup_input_structures(output_directory, number_of_structures, include_cryst
         pdb_test_structure_cryst_lines
     assert len(pdb_test_structure_atoms) == len(pdb_test_structure_cryst_lines)
 
-    structure_strings = itertools.cycle(zip(pdb_test_structure_cryst_lines, pdb_test_structure_atoms))
+    structure_strings = itertools.cycle(list(zip(pdb_test_structure_cryst_lines, pdb_test_structure_atoms)))
 
     structure_directory = output_directory.mkdir('structures')
 
@@ -51,7 +51,7 @@ def setup_input_structures(output_directory, number_of_structures, include_cryst
     return output_filenames
 
 
-class _CheckPandemicOutputFiles:
+class _CheckPandemicOutputFiles(object):
 
     chains = None
 
@@ -304,7 +304,7 @@ class CheckPandemicOutputFiles(_CheckPandemicOutputFiles):
         ]
 
 
-class TestPandemicIntegrationSingleStructure:
+class TestPandemicIntegrationSingleStructure(object):
 
     short_run_options = [
         "max_macro_cycles=1",

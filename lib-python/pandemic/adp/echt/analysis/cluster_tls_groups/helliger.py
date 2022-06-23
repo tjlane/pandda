@@ -113,7 +113,7 @@ def make_pymol_script(
     return
 
 
-class ClusterTLSGroups_HelligerDistance:
+class ClusterTLSGroups_HelligerDistance(object):
 
 
     _comparison_functions = {
@@ -133,10 +133,10 @@ class ClusterTLSGroups_HelligerDistance:
         ):
         adopt_init_args(self, locals())
 
-        if linkage not in self._linkage_functions.keys():
+        if linkage not in self._linkage_functions:
             raise Sorry('Invalid linkage type ({}). Must be one of: {}'.format(linkage, ', '.join(self._linkage_functions.keys())))
 
-        if self.comparison not in self._comparison_functions.keys():
+        if self.comparison not in self._comparison_functions:
             raise Sorry('Invalid comparison function ({}). Must be one of: {}'.format(self.comparison, ', '.join(self._comparison_functions.keys())))
 
     def run(self,
@@ -187,7 +187,7 @@ class ClusterTLSGroups_HelligerDistance:
         # Dictionary of contents of each cluster (ALL)
         cluster_children = {i:[i] for i in range(n_points)}
         # Currently unmerged clusters
-        current_clusters = range(n_points)
+        current_clusters = list(range(n_points))
         # Calculated linkages between clusters
         cluster_linkages = {}
         # list of merges
@@ -211,11 +211,11 @@ class ClusterTLSGroups_HelligerDistance:
 
             for j_clust in sorted(current_clusters):
                 # Skip if not connected
-                if j_clust not in cluster_neighbours.keys():
+                if j_clust not in cluster_neighbours:
                     continue
                 for i_clust in sorted(current_clusters):
                     # Skip if not connected to anything
-                    if i_clust not in cluster_neighbours.keys():
+                    if i_clust not in cluster_neighbours:
                         continue
                     # Make sure clusters are compared only once
                     if i_clust >= j_clust:
@@ -316,14 +316,14 @@ class ClusterTLSGroups_HelligerDistance:
 
             active_steps = merging_steps[:stop_step+1] # inclusive
 
-            final_clusters = range(n_points)
+            final_clusters = list(range(n_points))
             for i_merge, (merge_linkage, merge_pair) in enumerate(active_steps):
                 i_new = n_points + i_merge
                 final_clusters.remove(merge_pair[0])
                 final_clusters.remove(merge_pair[1])
                 final_clusters.append(i_new)
 
-            max_linkage = max(zip(*active_steps)[0])
+            max_linkage = max(list(zip(*active_steps))[0])
             clusters = [cluster_children[f] for f in final_clusters]
             strings = make_selection_strings(
                 selections = selection_strings,

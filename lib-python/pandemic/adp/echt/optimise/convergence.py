@@ -6,7 +6,7 @@ import numpy as np
 from pandemic.adp.tracking.uijs import UijHistory
 
 
-class EchtModelAmplitudeConvergenceChecker: 
+class EchtModelAmplitudeConvergenceChecker(object):
 
     def __init__(self,
         max_amplitude_change = 0.01,
@@ -56,7 +56,7 @@ class EchtModelAmplitudeConvergenceChecker:
                     ]
                 for g in model_object.tls_objects[i]
                 ]
-            for i in xrange(model_object.n_tls_levels)
+            for i in range(model_object.n_tls_levels)
         ])
 
         array = array.flatten()

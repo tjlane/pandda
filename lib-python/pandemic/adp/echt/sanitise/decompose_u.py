@@ -8,7 +8,7 @@ def get_negative_u_component(u):
     """
 
     es = eigensystem_real_symmetric(u)
-    vals = es.values()
+    vals = list(es.values())
     vecs = es.vectors().as_scitbx_matrix()
 
     sel = (vals > -0.0)
@@ -26,7 +26,7 @@ def get_positive_u_component(u):
     """
 
     es = eigensystem_real_symmetric(u)
-    vals = es.values()
+    vals = list(es.values())
     vecs = es.vectors().as_scitbx_matrix()
 
     sel = (vals < +0.0)
@@ -41,7 +41,7 @@ def decompose_u(u):
     """Split u into contributions with positive eigenvalues and negative eigenvalues"""
 
     es = eigensystem_real_symmetric(u)
-    vals = es.values()
+    vals = list(es.values())
     vecs = es.vectors().as_scitbx_matrix()
 
     # Create copy of eigenvalues

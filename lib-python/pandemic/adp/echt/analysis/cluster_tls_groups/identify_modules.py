@@ -9,7 +9,7 @@ import numpy
 from sklearn.cluster import dbscan
 
 
-class IdentifyModules:
+class IdentifyModules(object):
 
     debug = False
 
@@ -98,7 +98,7 @@ class IdentifyModules:
         cumulative_hierarchy = []
 
         # Need to iterate through in reverse order (remember -- using sorted dict!)
-        threshold_keys = threshold_modules.keys()
+        threshold_keys = list(threshold_modules.keys())
         threshold_keys.reverse()
         # Create output levels for each threshold -- REMEMBER NOW USING REVERSED ORDER
         for threshold in threshold_keys:
@@ -135,9 +135,9 @@ class IdentifyModules:
         reduced_hierarchy = self.create_hierarchy_from_modules(cumulative_modules, resort=True)
 
         if (self.debug is True):
-            self.show('threshold_unique_modules', threshold_unique_modules.iteritems())
-            self.show('threshold_cumulative_hierarchies', threshold_cumulative_hierarchies.iteritems())
-            for threshold, r_hierarchy in threshold_reduced_hierarchies.iteritems():
+            self.show('threshold_unique_modules', threshold_unique_modules.items())
+            self.show('threshold_cumulative_hierarchies', threshold_cumulative_hierarchies.items())
+            for threshold, r_hierarchy in threshold_reduced_hierarchies.items():
                 self.show('Reduced Hierarchy (@ Threshold {}):'.format(threshold), r_hierarchy)
             self.show('Total Hierarchy (all thresholds):', reduced_hierarchy)
 

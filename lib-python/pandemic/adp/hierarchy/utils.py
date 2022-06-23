@@ -4,7 +4,7 @@ import numpy
 from scitbx.array_family import flex
 
 
-class StructureFactory:
+class StructureFactory(object):
 
 
     def __init__(self,
@@ -45,7 +45,7 @@ class StructureFactory:
         return m_h
 
 
-class MaskedStructureFactory:
+class MaskedStructureFactory(object):
 
 
     def __init__(self,

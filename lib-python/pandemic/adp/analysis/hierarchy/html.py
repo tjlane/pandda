@@ -66,7 +66,7 @@ class AssessHierarchyGroupsHtmlSummary(HtmlSummary):
         # Add tab for each chain
         input_partitions = of.get('input_partitions_png',{})
         output_partitions = of.get('output_partitions_png',{})
-        chain_ids = sorted(set(input_partitions.keys() + output_partitions.keys()))
+        chain_ids = sorted(set(list(input_partitions.keys()) + list(output_partitions.keys())))
 
         for c in chain_ids:
 

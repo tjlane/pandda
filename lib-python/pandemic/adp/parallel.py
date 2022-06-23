@@ -4,7 +4,7 @@ logger = lg.getLogger(__name__)
 from libtbx import adopt_init_args
 
 
-class MultiProcessWrapper:
+class MultiProcessWrapper(object):
 
     get_timeout = 0.05
     gc_interval = 60
@@ -62,7 +62,7 @@ class MultiProcessWrapper:
             del done_list
 
 
-class RunParallelWithProgressBarUnordered:
+class RunParallelWithProgressBarUnordered(object):
 
     def __init__(self,
             function,

@@ -17,7 +17,7 @@ from giant.html.summary import (
     )
 
 
-class WriteHtmlSummaryTask:
+class WriteHtmlSummaryTask(object):
 
     output_filename = 'results.html'
     template_name = 'adp_summary.html'

@@ -54,7 +54,7 @@ class ReplaceableOptimisationWeights(OptimisationWeights):
         return self._replace(**update_dict)
 
 
-class UpdateOptimisationFunction:
+class UpdateOptimisationFunction(object):
 
     level_amplitude_string = 'level amplitudes weights'
 
@@ -142,8 +142,8 @@ class UpdateOptimisationFunction:
 
         for s in [self.level_amplitude_string]:
             prefix = os.path.join(self.output_directory, s.replace(' ', '_'))
-            for variable, values in self.history[s].iteritems():
-                x_vals, y_vals = zip(*values)
+            for variable, values in self.history[s].items():
+                x_vals, y_vals = list(zip(*values))
                 filename = prefix+'-{variable}.png'.format(variable=variable)
                 fig, axis = self.plotting_object.lineplot(
                     x_vals = x_vals,
@@ -151,7 +151,7 @@ class UpdateOptimisationFunction:
                     title = 'Weight "{}" over cycles'.format(variable),
                     x_label = 'cycle',
                     y_label = 'weight',
-                    x_ticks = map(int,x_vals),
+                    x_ticks = list(map(int,x_vals)),
                     filename = None, # returns fig and axis
                     background_line_type = 'chunky',
                     )

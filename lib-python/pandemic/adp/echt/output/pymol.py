@@ -6,7 +6,7 @@ import os, collections
 from giant.structure.pymol import auto_chain_images
 
 
-class WriteEchtPymolImages:
+class WriteEchtPymolImages(object):
 
     output_key = 'level_uijs_pymol_by_chain_png'
     output_path_template_prefix = 'level_{level_num}'
@@ -70,7 +70,7 @@ class WriteEchtPymolImages:
         return {self.output_key : output_files}
 
 
-class WriteEchtPymolScript:
+class WriteEchtPymolScript(object):
 
     output_key = 'pymol_script'
     output_path = 'pymol_script.py'
@@ -97,7 +97,7 @@ class WriteEchtPymolScript:
             path = os.path.abspath(str(self.output_directory)),
             )
 
-        for f in [file_dict.get('target_uijs_pdb',None)] + file_dict.get('level_uijs_pdb',{}).values():
+        for f in [file_dict.get('target_uijs_pdb',None)] + list(file_dict.get('level_uijs_pdb',{}).values()):
             if f is None: continue
             obj = os.path.basename(f)
             s.load_pdb(
@@ -106,7 +106,7 @@ class WriteEchtPymolScript:
                 )
             s.custom('spectrum', expression='b', selection=obj)
             
-        for f in [file_dict.get('output_uijs_pdb',None)] + file_dict.get('level_uijs_by_mode_pdb',{}).values():
+        for f in [file_dict.get('output_uijs_pdb',None)] + list(file_dict.get('level_uijs_by_mode_pdb',{}).values()):
             if f is None: continue
             obj = os.path.basename(f)
             s.load_pdb(

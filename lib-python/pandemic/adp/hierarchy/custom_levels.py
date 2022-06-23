@@ -2,7 +2,7 @@ import copy, collections
 from libtbx import adopt_init_args
 
 
-class WriteNewCustomLevelsEffFile:
+class WriteNewCustomLevelsEffFile(object):
 
 
     def __init__(self,
@@ -64,7 +64,7 @@ class WriteNewCustomLevelsEffFile:
         return custom_level_formatted
 
 
-class _MakeNewEffFile:
+class _MakeNewEffFile(object):
 
 
     def __init__(self,
@@ -114,7 +114,7 @@ class MakeNewCustomLevelEffFilesFromIndices(_MakeNewEffFile):
         ):
 
         # Skip missing levels (allowed)
-        if level_name not in self.selection_strings_dict.keys():
+        if level_name not in self.selection_strings_dict:
             valid_keys = ', '.join(map(str,self.selection_strings_dict.keys()))
             raise Exception('level_name "{}" not found in selection_strings_dict (valid keys: {})'.format(level_name, valid_keys))
 
@@ -130,7 +130,7 @@ class MakeNewCustomLevelEffFilesFromIndices(_MakeNewEffFile):
         eff_phil = self.make_eff_file(
             selection_string_hierarchy = strings_hierarchy,
             output_filename = output_filename,
-            output_level_names = map(label_template.format, output_level_name_strings),#[label_template.format(i_l+1) for i_l in range(len(strings_hierarchy))],
+            output_level_names = list(map(label_template.format, output_level_name_strings)),#[label_template.format(i_l+1) for i_l in range(len(strings_hierarchy))],
             comment_lines = comment_lines,
             depth = depth,
             insert_before = insert_before,

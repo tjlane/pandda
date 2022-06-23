@@ -19,7 +19,7 @@ def wrapper_run(obj):
     return obj
 
 
-class RefineStructures:
+class RefineStructures(object):
 
 
     def __init__(self,
@@ -50,7 +50,7 @@ class RefineStructures:
         output_prefixes = [os.path.join(d, l+output_suffix) for d,l in zip(output_directories, labels)]
 
         arg_dicts = []
-        for i in xrange(n):
+        for i in range(n):
 
             i_pdb = input_structures[i]
             i_mtz = input_reflection_data[i]

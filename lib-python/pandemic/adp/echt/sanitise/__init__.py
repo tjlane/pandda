@@ -7,7 +7,7 @@ from scitbx.array_family import flex
 import numpy
 
 
-class SanitiseEchtModel:
+class SanitiseEchtModel(object):
 
     def __init__(self,
         tls_parameters_dict,

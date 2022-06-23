@@ -7,7 +7,7 @@ from libtbx import adopt_init_args
 from giant.paths import easy_directory, compress_file
 
 
-class PandemicAdpFileSystem:
+class PandemicAdpFileSystem(object):
 
 
     def __init__(self, output_directory):
@@ -24,7 +24,7 @@ class PandemicAdpFileSystem:
         return easy_directory(os.path.join(*args))
 
 
-class TidyOutputFolder:
+class TidyOutputFolder(object):
 
 
     def __init__(self,

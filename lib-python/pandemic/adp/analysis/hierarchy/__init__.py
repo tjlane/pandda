@@ -13,7 +13,7 @@ from pandemic.adp.utils import show_file_dict
 import pathlib as pl
 
 
-class AssessHierarchyGroupsTask:
+class AssessHierarchyGroupsTask(object):
 
 
     show_file_dict = show_file_dict

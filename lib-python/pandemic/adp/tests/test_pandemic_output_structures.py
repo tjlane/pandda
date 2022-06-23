@@ -23,7 +23,7 @@ def test_structure_factory():
 
     # Randomly generate new atoms
     new_vals_b   = flex.double(numpy.random.random(n))
-    new_vals_uij = flex.sym_mat3_double([numpy.random.random(6) for i in xrange(n)])
+    new_vals_uij = flex.sym_mat3_double([numpy.random.random(6) for i in range(n)])
 
     zer_vals_b   = flex.double(n,  0.)
     zer_vals_uij = flex.sym_mat3_double(n, ( 0., 0., 0., 0., 0., 0.)).as_double()
@@ -127,7 +127,7 @@ def test_partition_borders():
     assert list((bounds.atoms().extract_b() > 0.0).iselection()) == [4, 13, 21, 28]
 
     sel = pdb_h.atom_selection_cache().selection('resseq 12:16')
-    assert list(sel.iselection()) == range(5,37)
+    assert list(sel.iselection()) == list(range(5,37))
     atom_labels = [a.resseq for a in pdb_h.select(sel).atoms_with_labels()]
     bounds = sf.partition_boundaries(atom_labels, mask=sel)
     assert list((bounds.atoms().extract_b() > 0.0).iselection()) == [4, 13, 21, 28]

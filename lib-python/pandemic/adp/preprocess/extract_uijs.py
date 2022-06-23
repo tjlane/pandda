@@ -8,7 +8,7 @@ import numpy
 from pandemic.adp import constants
 
 
-class ExtractAndProcessModelUijsTask:
+class ExtractAndProcessModelUijsTask(object):
 
     eigenvalues_b_warn = 5.
 
@@ -158,13 +158,13 @@ class ExtractAndProcessModelUijsTask:
         from scitbx.array_family import flex
 
         if dataset_labels is None:
-            dataset_labels = map(str, range(1, len(uijs_array)+1))
+            dataset_labels = list(map(str, range(1, len(uijs_array)+1)))
 
         sh = uijs_array.shape
         sh1 = (numpy.product(sh[:-2]), sh[-2], 6)   # Reshape for calculating eigenvalues
         sh2 = sh[:-1] + (3, )                       # Reshape back to input
         eig_values_b = constants.EIGHTPISQ * numpy.array(
-                map(uij_eigenvalues, map(flex.sym_mat3_double, uijs_array.reshape(sh1)))
+                list(map(uij_eigenvalues, map(flex.sym_mat3_double, uijs_array.reshape(sh1))))
             ).reshape(
                 sh2
             )

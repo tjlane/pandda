@@ -19,7 +19,7 @@ def test_uij_overlap_mass():
     for a,b,o in a_b_o:
         assert o == approx(uij_overlap_mass(a,b))
 
-    a_b_o_z = zip(*a_b_o)
+    a_b_o_z = list(zip(*a_b_o))
 
     assert a_b_o_z[2] == approx(uij_overlap_mass_function(a_b_o_z[0], a_b_o_z[1]).tolist())
     assert a_b_o_z[2] == approx(uij_overlap_mass_function(a_b_o_z[1], a_b_o_z[0]).tolist())

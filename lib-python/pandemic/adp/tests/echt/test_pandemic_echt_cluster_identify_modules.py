@@ -107,7 +107,7 @@ def test_identify_modules():
         ]
 
     um = result.threshold_unique_modules
-    assert um.keys() == [10.0, 9.0, 8.0, 7.0, 6.0, 4.0, 3.0, 2.0]
+    assert list(um.keys()) == [10.0, 9.0, 8.0, 7.0, 6.0, 4.0, 3.0, 2.0]
     assert um[10.0] == [(9, 10), (2, 3)]
     assert um[9.0] == [(3, 4)]
     assert um[8.0] == [(2, 3, 4)]
@@ -116,7 +116,7 @@ def test_identify_modules():
     assert um[2.0] == [(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)]
 
     uh = result.threshold_unique_hierarchies
-    assert uh.keys() == [10.0, 9.0, 8.0, 7.0, 6.0, 4.0, 3.0, 2.0]
+    assert list(uh.keys()) == [10.0, 9.0, 8.0, 7.0, 6.0, 4.0, 3.0, 2.0]
     assert uh[10.0] == [[(9, 10), (2, 3)]]
     assert uh[9.0] == [[(3, 4)]]
     assert uh[8.0] == [[(2, 3, 4)]]
@@ -125,7 +125,7 @@ def test_identify_modules():
     assert uh[2.0] == [[(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)]]
 
     ch = result.threshold_cumulative_hierarchies
-    assert ch.keys() == [10.0, 9.0, 8.0, 7.0, 6.0, 4.0, 3.0, 2.0]
+    assert list(ch.keys()) == [10.0, 9.0, 8.0, 7.0, 6.0, 4.0, 3.0, 2.0]
     assert ch[10.0] == [
         [(9, 10), (2, 3)],
         ]
@@ -165,7 +165,7 @@ def test_identify_modules():
         ]
 
     rh = result.threshold_reduced_hierarchies
-    assert rh.keys() == [10.0, 9.0, 8.0, 7.0, 6.0, 4.0, 3.0, 2.0]
+    assert list(rh.keys()) == [10.0, 9.0, 8.0, 7.0, 6.0, 4.0, 3.0, 2.0]
     assert rh[10.0] == [
         [(9, 10), (2, 3)],
         ]

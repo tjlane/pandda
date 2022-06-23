@@ -3,7 +3,7 @@ from scitbx.array_family import flex
 from giant.structure.uij import sym_mat3_eigenvalues
 
 
-class ValidateUijValues:
+class ValidateUijValues(object):
 
     def __init__(self,
             uij_tol,

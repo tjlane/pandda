@@ -6,7 +6,7 @@ from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
 
 
-class SelectOptimisationDatasetsTask:
+class SelectOptimisationDatasetsTask(object):
 
 
     def __init__(self,
@@ -26,7 +26,7 @@ class SelectOptimisationDatasetsTask:
             assert len(models) == len(resolutions)
 
         if (self.max_resolution is None):
-            opt_datasets = range(len(models))
+            opt_datasets = list(range(len(models)))
         else:
             assert resolutions is not None, 'no resolutions provided'
             opt_datasets = numpy.where(resolutions < self.max_resolution)[0]

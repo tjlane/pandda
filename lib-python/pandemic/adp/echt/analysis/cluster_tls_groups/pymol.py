@@ -3,7 +3,7 @@ import numpy
 from giant.pymol_utils import PythonScript, shapes
 
 
-class base_pymol_script:
+class base_pymol_script(object):
 
 
     def __init__(self,

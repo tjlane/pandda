@@ -12,7 +12,7 @@ from pandemic.adp.echt.analysis.amplitudes import AnalyseTLSAmplitudesTask
 import pathlib as pl
 
 
-class AnalyseEchtModelTask:
+class AnalyseEchtModelTask(object):
 
 
     def __init__(self,

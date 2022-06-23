@@ -5,7 +5,7 @@ from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
 
 
-class GenerateLevelSelectionsTask:
+class GenerateLevelSelectionsTask(object):
 
 
     def __init__(self,
@@ -277,7 +277,7 @@ class GenerateLevelSelectionsTask:
         import copy
         out_selections = copy.deepcopy(selections)
 
-        for i, ag_sels in assigned_groups_hash.iteritems():
+        for i, ag_sels in assigned_groups_hash.items():
             orig_sel = selections[i]
             new_sel = '(' + ') or ('.join([orig_sel]+ag_sels) + ')'
             out_selections[i] = new_sel

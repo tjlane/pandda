@@ -6,7 +6,7 @@ from libtbx import adopt_init_args
 from libtbx.utils import Sorry, Failure
 
 
-class JsonDataManager:
+class JsonDataManager(object):
 
 
     def __init__(self,
@@ -97,10 +97,10 @@ class JsonDataManager:
         """Check the fields for a tls level"""
 
         required_fields = ['level_number', 'level_name', 'tls_group_data']
-        required_types  = [int, unicode, list]
+        required_types  = [int, str, list]
 
         for r_field, r_type in zip(required_fields, required_types):
-            assert r_field in data.keys()
+            assert r_field in data
             assert isinstance(data.get(r_field), r_type)
 
         for group_data in data.get('tls_group_data'):
@@ -109,9 +109,9 @@ class JsonDataManager:
     def validate_tls_group(self, data):
         """Check the fields for a tls group"""
         required_fields = ['group_number', 'selection', 'tls_origins', 'tls_modes']
-        required_types  = [int, unicode, dict, list]
+        required_types  = [int, str, dict, list]
         for r_field, r_type in zip(required_fields, required_types):
-            assert r_field in data.keys()
+            assert r_field in data
             assert isinstance(data.get(r_field), r_type)
 
         for mode_data in data.get('tls_modes'):
@@ -124,7 +124,7 @@ class JsonDataManager:
 
         for r_field, r_type in zip(required_fields, required_types):
 
-            assert r_field in data.keys()
+            assert r_field in data
             assert isinstance(data.get(r_field), r_type)
 
         assert len(data.get('T')) == 6
@@ -138,14 +138,14 @@ class JsonDataManager:
 
         all_level_meta = []
 
-        for i_l in xrange(len(mo.all_level_names)):
+        for i_l in range(len(mo.all_level_names)):
 
             level_meta = collections.OrderedDict()
             all_level_meta.append(level_meta)
 
             level_meta['level_number'] = i_l+1
-            level_meta['level_name'] = unicode(model_object.all_level_names[i_l])
-            level_meta['level_type'] = unicode(model_object.all_level_types[i_l])
+            level_meta['level_name'] = str(model_object.all_level_names[i_l])
+            level_meta['level_type'] = str(model_object.all_level_types[i_l])
 
         return all_level_meta
 
@@ -154,7 +154,7 @@ class JsonDataManager:
 
         mo = model_object
 
-        dataset_labels = map(unicode, mo.dataset_labels)
+        dataset_labels = list(map(str, mo.dataset_labels))
 
         tls_level_data = collections.OrderedDict()
 
@@ -168,10 +168,10 @@ class JsonDataManager:
             i_tls_level = mo.tls_level_names.index(level_name)
 
             level_data = collections.OrderedDict()
-            tls_level_data[unicode(level_name)] = level_data
+            tls_level_data[str(level_name)] = level_data
 
             level_data['level_number']   = i_l+1
-            level_data['level_name']     = unicode(level_name)
+            level_data['level_name']     = str(level_name)
             level_data['tls_group_data'] = []
 
             tls_strings = mo.tls_selection_strings[i_tls_level]
@@ -184,7 +184,7 @@ class JsonDataManager:
                 level_data['tls_group_data'].append(group_data)
 
                 group_data['group_number']    = i_group+1
-                group_data['selection']       = unicode(tls_s)
+                group_data['selection']       = str(tls_s)
                 group_data['number_of_atoms'] = tls_g.n_atoms
                 group_data['tls_modes']       = []
                 group_data['tls_origins']     = collections.OrderedDict(zip(dataset_labels, tls_g.origins))
@@ -198,7 +198,7 @@ class JsonDataManager:
 
                     for letter in 'TLS':
                         matrix_values = list(ma_values.matrices.get(letter))
-                        mode_data[unicode(letter)] = matrix_values
+                        mode_data[str(letter)] = matrix_values
 
                     amplitudes = list(ma_values.amplitudes.get())
                     amplitudes_dict = collections.OrderedDict(zip(dataset_labels, amplitudes))
@@ -225,7 +225,7 @@ class JsonDataManager:
         missing_datasets = set()
 
         # Apply the tls levels
-        for level_name, level_data in self.model_data.get('tls_level_data').iteritems():
+        for level_name, level_data in self.model_data.get('tls_level_data').items():
 
             if level_name not in mo.tls_level_names:
                 logger.warning(msg.format('Level "{}" not found in model'.format(level_name)))
@@ -270,7 +270,7 @@ class JsonDataManager:
                     tls_values.matrices.set(values=mode_info.get('S'), component_string='S')
 
                     # Apply tls amplitudes values
-                    for dataset_label, amplitude in mode_info.get('amplitudes').iteritems():
+                    for dataset_label, amplitude in mode_info.get('amplitudes').items():
                         # Check that this dataset exists in the new model
                         if (dataset_label not in model_object.dataset_labels):
                             skip_datasets.add(dataset_label)
@@ -281,7 +281,7 @@ class JsonDataManager:
                         tls_values.amplitudes.set(values=[amplitude], selection=[i_dst])
 
                 # Apply origins
-                for dataset_label, origin in source_info.get('tls_origins').iteritems():
+                for dataset_label, origin in source_info.get('tls_origins').items():
                     # Check that this dataset exists in the new model
                     if (dataset_label not in model_object.dataset_labels):
                         skip_datasets.add(dataset_label)

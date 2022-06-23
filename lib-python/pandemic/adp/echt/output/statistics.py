@@ -1,11 +1,10 @@
-
 import pandas as pd
 import pathlib as pl
 
 from scitbx.array_family import flex
 
 
-class CalculateBFactorStatistics: 
+class CalculateBFactorStatistics(object):
 
     def __init__(self):
         pass

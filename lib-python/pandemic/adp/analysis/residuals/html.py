@@ -63,7 +63,7 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
 
         tab_set = chain_block.append(divs.TabSet(width=8))
 
-        for c, p in of.get('residuals_by_residue',{}).iteritems():
+        for c, p in of.get('residuals_by_residue',{}).items():
             tab = divs.Tab(
                 alt_title = 'Chain {}'.format(c),
                 contents = [divs.Block(image=self.image(p))],
@@ -89,7 +89,7 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
 
         tab_set = dataset_block.append(divs.TabSet(width=8))
 
-        for l, p in of.get('residuals_by_dataset',{}).iteritems():
+        for l, p in of.get('residuals_by_dataset',{}).items():
             tab = divs.Tab(
                 alt_title = l,
                 contents = [divs.Block(image=self.image(p))],
@@ -117,7 +117,7 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
         tab_set = divs.TabSet(width=8)
         atom_type_block.append(tab_set)
 
-        for l, p in of.get('residuals_by_atom_type',{}).iteritems():
+        for l, p in of.get('residuals_by_atom_type',{}).items():
             tab = divs.Tab(
                 alt_title = l,
                 contents = [divs.Block(image=self.image(p))],
@@ -167,9 +167,9 @@ class AnalyseResidualHtmlSummary(HtmlSummary):
 
         tab_hash = collections.OrderedDict()
 
-        for l, l_dict in of['residual_correlations'].iteritems():
+        for l, l_dict in of['residual_correlations'].items():
 
-            for c, p in l_dict.iteritems():
+            for c, p in l_dict.items():
 
                 # Changing the order of levels -> chains to chains -> levels
                 if c not in tab_hash:

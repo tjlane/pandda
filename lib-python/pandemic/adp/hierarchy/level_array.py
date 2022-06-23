@@ -8,7 +8,7 @@ from libtbx.utils import Sorry
 import numpy
 
 
-class SelectionStringConverter:
+class SelectionStringConverter(object):
 
 
     def __init__(self,
@@ -29,7 +29,7 @@ class SelectionStringConverter:
         return sel_bool
 
 
-class BuildLevelArrayTask:
+class BuildLevelArrayTask(object):
 
 
     def __init__(self,
@@ -119,7 +119,7 @@ class BuildLevelArrayTask:
             assert max(level_values) < len(level_strings)
 
             if assert_complete is True:
-                assert range(len(level_strings)) == sorted(set(level_values).difference({-1}))
+                assert list(range(len(level_strings))) == sorted(set(level_values).difference({-1}))
 
     def generate_array(self,
         hierarchy,

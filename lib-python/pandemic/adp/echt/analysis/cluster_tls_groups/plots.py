@@ -29,10 +29,10 @@ def make_linkage_graphs(
     if n_steps == 0:
         return False
 
-    linkages = zip(*merging_steps)[0]
-    labels = zip(*merging_steps)[1]
+    linkages = list(zip(*merging_steps))[0]
+    labels = list(zip(*merging_steps))[1]
 
-    markers = numpy.arange(0, n_steps, max(1, int(n_steps/10)))
+    markers = numpy.arange(0, n_steps, max(1, int(float(n_steps) / 10.)))
     markers[-1] = n_steps-1
     
     fig, axis = plt.subplots(nrows=1, ncols=1)
@@ -51,7 +51,7 @@ def make_linkage_graphs(
     return
 
 
-class Dendrogram:
+class Dendrogram(object):
 
 
     def __init__(self, 
@@ -147,7 +147,7 @@ class Dendrogram:
         return
 
 
-class LevelPlotAccumulator:
+class LevelPlotAccumulator(object):
 
 
     def __init__(self,
@@ -168,7 +168,7 @@ class LevelPlotAccumulator:
 
         colours = list(self.get_systematic_colours(n_colours))
         spliced_colours = []
-        n_splices = max(1, int(n_colours/5))
+        n_splices = max(1, int(float(n_colours)/5.))
         [spliced_colours.extend(colours[i::n_splices]) for i in range(n_splices)]
         self.colour_cycle = itertools.cycle(spliced_colours)
         self.used_colours = []
@@ -198,7 +198,7 @@ class LevelPlotAccumulator:
         self.axis.set_xlabel(x_label)
         self.axis.set_ylabel(y_label)
 
-        xticks = range(1, n_groups+1)
+        xticks = list(range(1, n_groups+1))
         self.max_x_labels = min(n_groups, self.max_x_labels)
         plot_every = max(1, 1+((n_groups-1)//self.max_x_labels))
         self.axis.set_xticks(xticks)
@@ -262,7 +262,7 @@ class LevelPlotAccumulator:
                     for i, x in enumerate(x_values): 
                         self.axis.text(
                             x, y_sub_level + bar_width / 2.0, int(group_label), 
-                            fontsize=self.font_size/n_sub_levels,
+                            fontsize=int(float(self.font_size) / float(n_sub_levels)),
                             horizontalalignment='center',
                             verticalalignment='center',
                             rotation=0, rotation_mode="default",

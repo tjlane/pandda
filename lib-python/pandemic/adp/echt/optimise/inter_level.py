@@ -16,7 +16,7 @@ def uij_modulus(uij_array):
     assert uij_mods.shape == sh_
     return uij_mods
 
-class OptimisationSetGenerator:
+class OptimisationSetGenerator(object):
 
     def __init__(self, level_group_tree):
         adopt_init_args(self, locals())
@@ -67,7 +67,7 @@ class OptimisationSetGenerator:
         return output
 
 
-class OptimiseInterLevelAmplitudes:
+class OptimiseInterLevelAmplitudes(object):
 
     debug = False
 
@@ -133,8 +133,8 @@ class OptimiseInterLevelAmplitudes:
             #
             opt_group_uij_values = numpy.zeros_like(group_uij_values)
             sh_ = group_uij_values.shape
-            for i_level in xrange(sh_[0]):
-                for i_mode in xrange(sh_[1]):
+            for i_level in range(sh_[0]):
+                for i_mode in range(sh_[1]):
                     opt_group_uij_values[i_level, i_mode] = uij_isotropic_mask(group_uij_values[i_level, i_mode])
             #
             # ADP values
@@ -156,7 +156,7 @@ class OptimiseInterLevelAmplitudes:
         get_optimisation_indices_sets = OptimisationSetGenerator(level_group_tree=level_group_tree)
         # Get the sets
         optimisation_sets = get_optimisation_indices_sets(
-            i_datasets = range(model_object.n_datasets),
+            i_datasets = list(range(model_object.n_datasets)),
             max_recursions = max_recursions,
             recursion_direction = recursion_direction,
             optimise_atomic_adp_amplitudes = optimise_atomic_adp_amplitudes,
@@ -176,7 +176,7 @@ class OptimiseInterLevelAmplitudes:
                 for l, g in groupby(sorted(l_g_pairs), lambda x: x[0]):
                     start_str = "Level {}, Groups ".format(l+1)
                     padding = '\n\t'+(' '*len(start_str))
-                    group_str = ', '.join([padding*(int(i)%20==19)+str(i_g+1) for i, i_g in enumerate(zip(*g)[1])])
+                    group_str = ', '.join([padding*(int(i)%20==19)+str(i_g+1) for i, i_g in enumerate(list(zip(*g))[1])])
                     logger('\t'+start_str+group_str)
             logger.bar()
         #
@@ -263,12 +263,12 @@ class OptimiseInterLevelAmplitudes:
             )) for groups in model_object.tls_objects]
 
         # Extract amplitudes and uijs group-by-group
-        for i_level in xrange(model_object.n_tls_levels):
+        for i_level in range(model_object.n_tls_levels):
             for i_group, group in enumerate(model_object.tls_objects[i_level]):
                 selection = model_object.tls_selections[i_level][i_group]
                 for i_mode, (amps, uijs) in enumerate(group.uijs_unmultiplied()):
                     # Extract the uijs for each dataset
-                    for i_dataset in xrange(group.n_datasets):
+                    for i_dataset in range(group.n_datasets):
                         group_uij_values[i_level, i_mode, i_dataset, selection] = uijs[i_dataset]
                     # Extract the amplitudes for this mode/group
                     group_multipliers[i_level][i_group, i_mode, :] = amps
@@ -368,7 +368,7 @@ class OptimiseInterLevelAmplitudes:
 
         # Objects to be returned along with extracted values
         level_group_dict = {}
-        base_dataset_hash = flex.size_t(range(n_datasets) * n_groups * n_modes)
+        base_dataset_hash = flex.size_t(list(range(n_datasets)) * n_groups * n_modes)
         atom_selection = numpy.zeros((group_uij_values.shape[-2],), dtype=bool)
 
         # Generate necessary reindexing operations and masks
@@ -384,7 +384,7 @@ class OptimiseInterLevelAmplitudes:
             # Reindex this on the subselection
             this_group_atom_indices = flex.bool(g_sel[atom_selection]).iselection()
             # Extract uijs for each mode for each dataset
-            for i_m in xrange(group_uij_values.shape[1]):
+            for i_m in range(group_uij_values.shape[1]):
                 for i_d in dataset_indices:
                     # Extract uij values for mode of group in dataset
                     this_group_uij_values = flex.sym_mat3_double(group_uij_values[i_l, i_m, i_d, g_sel])
@@ -421,8 +421,8 @@ class OptimiseInterLevelAmplitudes:
 
         # Extract the contributions for non-optimised selections
         l_mults = numpy.zeros_like(group_uij_values)
-        for i_l in xrange(len(group_selections)):
-            for i_g in xrange(len(group_selections[i_l])):
+        for i_l in range(len(group_selections)):
+            for i_g in range(len(group_selections[i_l])):
                 # Skip the groups being optimised
                 if level_group_dict_mask.get(i_l, {}).get(i_g):
                     continue
@@ -431,7 +431,7 @@ class OptimiseInterLevelAmplitudes:
                 if not (g_sel * atom_selection).any():
                     continue
                 # Extract multipliers
-                for i_t in xrange(group_uij_values.shape[1]):
+                for i_t in range(group_uij_values.shape[1]):
                     for i_d in dataset_indices: # Only need to iterate over selected datasets
                         l_mults[i_l, i_t, i_d, g_sel] = group_amplitudes[i_l][i_g, i_t, i_d]
         # Multiply the fitted uijs and subtract them from target

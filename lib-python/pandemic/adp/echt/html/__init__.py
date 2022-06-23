@@ -31,7 +31,7 @@ class EchtModelHtmlSummary(HtmlSummary):
         img2 = mf.get('all_levels_uijs_anisotropy_png', {})
         img3 = hf.get('level_partitions_png', {})
 
-        chain_ids = sorted(set(img1.keys()+img2.keys()+img3.keys()))
+        chain_ids = sorted(set(list(img1.keys())+list(img2.keys())+list(img3.keys())))
 
         b_factor_table_blocks = self.format_b_factor_table_blocks(chains=None)
 
@@ -194,7 +194,7 @@ class EchtModelHtmlSummary(HtmlSummary):
         s += '\nTotal TLS parameters: {}'.format(n_tls_params)
         if adp_level_opt:
             s += '\nTotal ADP ({} level) parameters: {} (6*{} + 1*{})'.format(mo.adp_level_name, n_adp_params, n_ani, n_iso)
-        s += '\nTotal parameters: {} ({:.2f} per atom per dataset)'.format(n_params, n_params/(mo.n_atoms * mo.n_datasets))
+        s += '\nTotal parameters: {} ({:.2f} per atom per dataset)'.format(n_params, float(n_params)/float(mo.n_atoms * mo.n_datasets))
 
         return self.format_summary(s, width=6)
 
@@ -307,14 +307,14 @@ class EchtModelHtmlSummary(HtmlSummary):
         img4 = mf.get('level_uijs_anisotropy_png', {})
 
         chain_ids = []
-        if img1.values():
-            chain_ids += img1.values()[0].keys()
-        if img2.values():
-            chain_ids += img2.values()[0].keys()
-        if img3.values():
-            chain_ids += img3.values()[0].keys()
-        if img4.values():
-            chain_ids += img4.values()[0].keys()
+        if list(img1.values()):
+            chain_ids += list(img1.values())[0].keys()
+        if list(img2.values()):
+            chain_ids += list(img2.values())[0].keys()
+        if list(img3.values()):
+            chain_ids += list(img3.values())[0].keys()
+        if list(img4.values()):
+            chain_ids += list(img4.values())[0].keys()
         chain_ids = sorted(set(chain_ids))
 
         # -------------------------------->
@@ -646,7 +646,7 @@ class EchtModelHtmlSummary(HtmlSummary):
         img2 = mf.get('level_uijs_profiles_png', {}).get(l, {})
         img3 = mf.get('level_uijs_anisotropy_png', {}).get(l, {})
 
-        chain_ids = img1.keys()+img2.keys()+img3.keys()
+        chain_ids = list(img1.keys())+list(img2.keys())+list(img3.keys())
         chain_ids = sorted(set(chain_ids))
 
         atomic_tab = divs.Tab(

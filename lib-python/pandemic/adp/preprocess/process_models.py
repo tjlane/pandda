@@ -15,7 +15,7 @@ def get_resolution_from_model_mtz(model=None, mtz_filename=None):
     return CrystalInfo.from_mtz(mtz_filename).resolution_high
 
 
-class ProcessInputModelsTask:
+class ProcessInputModelsTask(object):
 
 
     get_resolution = staticmethod(get_resolution_from_model_pdb_input)

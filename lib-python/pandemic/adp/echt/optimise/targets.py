@@ -4,7 +4,7 @@ from scitbx.array_family import flex
 from mmtbx.tls.utils import uij_eigenvalues
 
 
-class TargetTerm_UijLeastSquares:
+class TargetTerm_UijLeastSquares(object):
 
     def __init__(self):
         adopt_init_args(self, locals())

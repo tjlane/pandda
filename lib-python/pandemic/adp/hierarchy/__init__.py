@@ -8,7 +8,7 @@ from pandemic.adp.hierarchy.summary import WriteHierarchicalModelSummaryTask
 from pandemic.adp.hierarchy.utils import StructureFactory, MaskedStructureFactory
 
 
-class CreateHierarchicalModelTask:
+class CreateHierarchicalModelTask(object):
 
 
     def __init__(self,

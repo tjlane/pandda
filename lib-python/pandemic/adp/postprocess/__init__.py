@@ -14,7 +14,7 @@ from pandemic.adp.postprocess.refine import RefineStructures
 from pandemic.adp.postprocess.table_one import CalculateTableOnes
 
 
-class PostProcessTask:
+class PostProcessTask(object):
 
 
     RefineStructuresClass = RefineStructures
@@ -157,13 +157,13 @@ class PostProcessTask:
             # Extract data columns (only needed once)
             results_object.add_table_one(
                 csv_file = inp_csv,
-                column_labels = self.reflection_data_columns.values(),
+                column_labels = list(self.reflection_data_columns.values()),
                 output_suffix = None,
                 )
             # Extract model columns
             results_object.add_table_one(
                 csv_file = inp_csv,
-                column_labels = self.model_columns.values(),
+                column_labels = list(self.model_columns.values()),
                 output_suffix = self.input_suffix,
                 )
             all_suffixes.append(self.input_suffix)
@@ -176,7 +176,7 @@ class PostProcessTask:
             # Extract model columns
             results_object.add_table_one(
                 csv_file = fit_csv,
-                column_labels = self.model_columns.values(),
+                column_labels = list(self.model_columns.values()),
                 output_suffix = self.fitted_suffix,
                 )
             all_suffixes.append(self.fitted_suffix)
@@ -188,7 +188,7 @@ class PostProcessTask:
                 )
             # Calculate differences between columns
             results_object.calculate_column_differences(
-                column_labels = self.model_columns.values(),
+                column_labels = list(self.model_columns.values()),
                 input_suffixes = [fitted_suffix, input_suffix],
                 output_suffix = fitted_input_suffix,
                 )
@@ -202,7 +202,7 @@ class PostProcessTask:
                     reference_suffix.strip(strip_chars),
                     )
                 results_object.calculate_column_differences(
-                    column_labels = self.model_columns.values(),
+                    column_labels = list(self.model_columns.values()),
                     input_suffixes = [fitted_suffix, reference_suffix],
                     output_suffix = fitted_reference_suffix,
                     )
@@ -218,7 +218,7 @@ class PostProcessTask:
             # Extract model columns
             results_object.add_table_one(
                 csv_file = ref_csv,
-                column_labels = self.model_columns.values(),
+                column_labels = list(self.model_columns.values()),
                 output_suffix = self.refined_suffix,
                 )
             all_suffixes.append(self.refined_suffix)
@@ -230,7 +230,7 @@ class PostProcessTask:
                 )
             # Calculate differences between columns
             results_object.calculate_column_differences(
-                column_labels = self.model_columns.values(),
+                column_labels = list(self.model_columns.values()),
                 input_suffixes = [refined_suffix, input_suffix],
                 output_suffix = refined_input_suffix,
                 )
@@ -244,7 +244,7 @@ class PostProcessTask:
                     reference_suffix.strip(strip_chars),
                     )
                 results_object.calculate_column_differences(
-                    column_labels = self.model_columns.values(),
+                    column_labels = list(self.model_columns.values()),
                     input_suffixes = [refined_suffix, reference_suffix],
                     output_suffix = refined_reference_suffix,
                     )

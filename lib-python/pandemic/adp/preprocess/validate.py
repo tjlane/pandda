@@ -11,7 +11,7 @@ def elastic_net_weight_summary(params):
 
     summary_lines = []
     summary_lines.append('Overall weight scale: {}'.format(params.weight_scale))
-    for k, w in params.weights.__dict__.iteritems():
+    for k, w in params.weights.__dict__.items():
         if k.startswith('_'):
             continue
         summary_lines.append('> {}: {}'.format(k, w))

@@ -8,7 +8,7 @@ from libtbx import adopt_init_args, group_args
 from pandemic.adp import constants
 
 
-class PandemicConvergenceChecker:
+class PandemicConvergenceChecker(object):
 
     def __init__(self,
         parent,

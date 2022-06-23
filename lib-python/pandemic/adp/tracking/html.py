@@ -37,7 +37,7 @@ class TrackingHtmlSummary(HtmlSummary):
         chain_block.append(txt_block)
 
         tab_set = chain_block.append(divs.TabSet(width=8))
-        for c, p in of.get('model_changes',{}).iteritems():
+        for c, p in of.get('model_changes',{}).items():
             tab = divs.Tab(
                 alt_title = 'Chain {}'.format(c),
                 contents = [divs.Block(image=self.image(p))],

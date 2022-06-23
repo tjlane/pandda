@@ -7,7 +7,7 @@ from libtbx import adopt_init_args
 from giant.paths import easy_directory
 
 
-class TaskMultipleRunWrapper:
+class TaskMultipleRunWrapper(object):
     """Class for calling a task multiple times with different output directories"""
 
     def __init__(self,
@@ -59,7 +59,7 @@ class TaskMultipleRunWrapper:
 
 def show_file_dict(self, file_dict, indent=0):
     s = '  '
-    for k, v in file_dict.iteritems():
+    for k, v in file_dict.items():
         if isinstance(v, dict):
             logger(s*indent + '> {}'.format(k))
             show_file_dict(self, v, indent+1)

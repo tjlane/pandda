@@ -15,7 +15,7 @@ from pandemic.adp.tracking import plots
 from pandemic.functions import rms
 
 
-class PandemicTrackingObject:
+class PandemicTrackingObject(object):
 
     _csv_name1 = 'tracking_levels.csv'
     _csv_name2 = 'tracking_rmsds.csv'

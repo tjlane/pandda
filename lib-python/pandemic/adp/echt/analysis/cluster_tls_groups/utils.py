@@ -19,7 +19,7 @@ def tls_group_comparison_matrix(tls_groups, comparison_function, make_symmetric=
     """Returns n x n matrix where [i,j] represents comparison of how parameters of i reproduce values of j"""
 
     if make_symmetric is not None: 
-        assert make_symmetric in make_symmetric_hash.keys(), 'make_symmetric={} is not implemented'.format(make_symmetric)
+        assert make_symmetric in make_symmetric_hash, 'make_symmetric={} is not implemented'.format(make_symmetric)
         make_symmetric_function = make_symmetric_hash[make_symmetric]
     else: 
         make_symmetric_function = None

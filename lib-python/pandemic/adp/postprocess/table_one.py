@@ -8,7 +8,7 @@ from libtbx.utils import Sorry, Failure
 from giant.jiffies import multi_table_ones
 
 
-class CalculateTableOnes:
+class CalculateTableOnes(object):
 
     debug = False
 

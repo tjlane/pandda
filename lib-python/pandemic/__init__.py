@@ -38,7 +38,7 @@ HEADER_TEXT = """
 """
 
 
-class module_info:
+class module_info(object):
     name        = 'pandemic'
     version     = __version__
     header_text = HEADER_TEXT

@@ -11,7 +11,7 @@ from scitbx.array_family import flex
 from pandemic.adp.hierarchy.utils import StructureFactory
 
 
-class MultiModelStructureWriter:
+class MultiModelStructureWriter(object):
 
 
     def __init__(self,

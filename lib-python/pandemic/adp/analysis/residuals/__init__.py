@@ -26,7 +26,7 @@ for l in ['G', 'D', 'E', 'Z', 'H']: # Sort first on distance from CA
 ATOM_ORDER_DICT = dict(zip(ATOM_ORDER_LIST, range(len(ATOM_ORDER_LIST))))
 
 
-class AnalyseResidualsTask:
+class AnalyseResidualsTask(object):
 
 
     mean_model_fit_rmsd = 'Mean RMSD'
@@ -191,8 +191,8 @@ class AnalyseResidualsTask:
 
         # Calculate isotropic ADPs for input and fitted uijs
         from giant.structure.uij import uij_to_b
-        b_target = numpy.array(map(uij_to_b, uij_target))
-        b_fitted = numpy.array(map(uij_to_b, uij_fitted))
+        b_target = numpy.array(list(map(uij_to_b, uij_target)))
+        b_fitted = numpy.array(list(map(uij_to_b, uij_fitted)))
 
         # Calculate mean/median ADPs for each atom
         mean_b_target = numpy.mean(b_target, axis=1)
@@ -316,7 +316,7 @@ class AnalyseResidualsTask:
 
         n = len(iso_target)
 
-        alpha = 0.1 + 0.9*math.e ** (-(n-1)**2 / 100**2)
+        alpha = 0.1 + 0.9*math.e ** (-float(n-1)**2 / 100.0**2)
 
         self.plotting_object.scatter(
             x_vals_array = [a for a in iso_target],
@@ -354,7 +354,7 @@ class AnalyseResidualsTask:
         for label, rmsds in zip(atom_labels, atom_rmsds):
             atom_rmsds_dict.setdefault(label,[]).extend(rmsds)
 
-        assert len(atom_rmsds_dict.keys()) == len(set(atom_labels))
+        assert len(list(atom_rmsds_dict.keys())) == len(set(atom_labels))
 
         # Extract as lists for plotting
         sort_func = lambda resname_atomname: (RES_ORDER_DICT.get(resname_atomname[0].strip(),''), ATOM_ORDER_DICT.get(resname_atomname[1].strip(),''))

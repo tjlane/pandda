@@ -3,7 +3,7 @@ from libtbx import adopt_init_args
 from scitbx.array_family import flex
 
 
-class EchtBFactorModel:
+class EchtBFactorModel(object):
 
 
     def __init__(self,
@@ -28,7 +28,7 @@ class EchtBFactorModel:
         if dataset_labels is None:
             dataset_labels = ['Dataset {}'.format(i+1) for i in range(n_datasets)]
         if tls_level_names is None:
-            tls_level_names = ['Level {}'.format(i+1) for i in xrange(n_tls_levels)]
+            tls_level_names = ['Level {}'.format(i+1) for i in range(n_tls_levels)]
         all_level_names = tls_level_names + [adp_level_name]
         all_level_types = ['tls']*n_tls_levels + ['adp']
         adopt_init_args(self, locals())
@@ -62,7 +62,7 @@ class EchtBFactorModel:
         """
         uij_values = numpy.zeros(shape=(self.n_levels, self.n_datasets, self.n_atoms, 6))
         # Iterate through levels and extract tls values from each group in each level
-        for i_level in xrange(self.n_tls_levels):
+        for i_level in range(self.n_tls_levels):
             # Iterate through groups in level
             for g_sel, g_obj in zip(self.tls_selections[i_level], self.tls_objects[i_level]):
                 g_uijs = numpy.array(g_obj.uijs()).reshape(
@@ -70,7 +70,7 @@ class EchtBFactorModel:
                     )
                 uij_values[i_level][:, g_sel] = g_uijs
         # Store the fixed adps as the last level
-        for i_dataset in xrange(self.n_datasets):
+        for i_dataset in range(self.n_datasets):
             uij_values[self.n_levels-1, i_dataset] = self.adp_values
         return uij_values
 
@@ -81,7 +81,7 @@ class EchtBFactorModel:
         """
         uij_values = numpy.zeros(shape=(self.n_tls_levels, self.n_modes, self.n_datasets, self.n_atoms, 6))
         # Iterate through levels
-        for i_level in xrange(self.n_tls_levels):
+        for i_level in range(self.n_tls_levels):
             # Iterate through groups in level
             for g_sel, g_obj in zip(self.tls_selections[i_level], self.tls_objects[i_level]):
                 g_uijs = numpy.array(g_obj.uijs_by_mode()).reshape(
@@ -91,7 +91,7 @@ class EchtBFactorModel:
         return uij_values
 
 
-class MultiDatasetTLSGroup:
+class MultiDatasetTLSGroup(object):
 
 
     def __init__(self,
@@ -146,14 +146,14 @@ class MultiDatasetTLSGroup:
         return [(m.amplitudes.get(), [m.matrices.uijs(
                 sites_cart = self.coordinates[i*self.n_atoms:(i+1)*self.n_atoms],
                 origin = self.origins[i],
-                ) for i in xrange(self.n_datasets)],
+                ) for i in range(self.n_datasets)],
                 ) for m in self.tls_parameters]
 
     def summary(self):
         """Print the number of parameters/input data"""
         bar = '=========>'
         s = bar+'\nTLS Group Fit Summary: {}\n'.format(self.label)+bar
-        for i_tls in xrange(self.n_models):
+        for i_tls in range(self.n_models):
             s += '\n> TLS model {}'.format(i_tls+1)
             mode = self.tls_parameters.get(index=i_tls)
             s += '\n\t' + mode.matrices.summary().replace('\n','\n\t')

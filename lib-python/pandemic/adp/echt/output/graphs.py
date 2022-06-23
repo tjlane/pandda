@@ -9,7 +9,7 @@ from matplotlib.figure import figaspect
 from scipy.stats import kde
 
 
-class WriteTotalBFactorProfile:
+class WriteTotalBFactorProfile(object):
 
     output_key = 'all_levels_uijs_profiles_png'
     output_path_prefix = 'profile-all-levels'
@@ -57,7 +57,7 @@ class WriteTotalBFactorProfile:
             reference_functions = ['mean'],
             title = 'All Level contributions',
             reverse_legend_order = False,
-            colour_indices = range(len(model_values.all_level_names)),
+            colour_indices = list(range(len(model_values.all_level_names))),
             legend_kw_args = dict(ncol=3, bbox_to_anchor=(0.5, 0.0), loc=9, borderaxespad=0.),
             )
 
@@ -70,7 +70,7 @@ class WriteTotalBFactorProfile:
         return {self.output_key : of}
 
 
-class WriteTLSLevelBFactorProfiles:
+class WriteTLSLevelBFactorProfiles(object):
 
     output_key = 'level_uijs_profiles_png'
     output_path_template_prefix = 'profile-level_{level_num}'
@@ -131,7 +131,7 @@ class WriteTLSLevelBFactorProfiles:
                     'TLS (Mode {mode_num})'.format(
                         mode_num = i+1,
                         )
-                    for i in xrange(model_values.n_tls_modes)
+                    for i in range(model_values.n_tls_modes)
                     ],
                 title = 'TLS contributions - Level {} ({})'.format(i_level+1, level_name),
                 v_line_hierarchy = boundaries,
@@ -151,7 +151,7 @@ class WriteTLSLevelBFactorProfiles:
         return {self.output_key : output_files}
 
 
-class WriteAtomicLevelBFactorProfiles:
+class WriteAtomicLevelBFactorProfiles(object):
 
     output_key = 'level_uijs_profiles_png'
     output_path_template_prefix = 'profile-level_{level_num}'
@@ -212,7 +212,7 @@ class WriteAtomicLevelBFactorProfiles:
         return {self.output_key : output_files}
 
 
-class WriteTotalAnisotropyProfile:
+class WriteTotalAnisotropyProfile(object):
 
     output_key = 'all_levels_uijs_anisotropy_png'
     output_path_prefix = 'anisotropy-all-levels'
@@ -269,7 +269,7 @@ class WriteTotalAnisotropyProfile:
         return {self.output_key : of}
 
 
-class WriteLevelAnisotropyProfiles:
+class WriteLevelAnisotropyProfiles(object):
 
     output_key = 'level_uijs_anisotropy_png'
     output_path_template_prefix = 'anisotropy-level_{level_num}'
@@ -340,7 +340,7 @@ class WriteLevelAnisotropyProfiles:
         return {self.output_key : output_files}
 
 
-class WriteModelBFactorDistributions:
+class WriteModelBFactorDistributions(object):
 
     output_key = 'b_factor_distributions'
     output_path = 'b-factor-distributions.png'
@@ -585,7 +585,7 @@ class WriteModelLevelBFactorDistributions(WriteModelBFactorDistributions):
 ###
 
 
-class WriteEchtModelGraphs:
+class WriteEchtModelGraphs(object):
 
     def __init__(self, output_directory):
 

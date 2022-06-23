@@ -12,7 +12,7 @@ from giant.structure.tls import tls_str_to_n_params
 _DEBUG = False
 
 
-class TLSSimplexGenerator:
+class TLSSimplexGenerator(object):
 
 
     _I_sqr = (1.,0.,0.,
@@ -184,7 +184,7 @@ class TLSSimplexGenerator:
         return s
 
 
-class OptimiseTLSGroup_Matrices_AdoptValues:
+class OptimiseTLSGroup_Matrices_AdoptValues(object):
 
 
     def __init__(self,
@@ -209,7 +209,7 @@ class OptimiseTLSGroup_Matrices_AdoptValues:
 
 
 from pandemic.adp.echt.validate.tls import ValidateTLSMode
-class OptimiseTLSGroup_Matrices_TargetEvaluator:
+class OptimiseTLSGroup_Matrices_TargetEvaluator(object):
 
 
     start_target = 1e6
@@ -289,7 +289,7 @@ class OptimiseTLSGroup_Matrices_TargetEvaluator:
         logger('[{}] -> ({:>12}, {:>10})'.format(', '.join(['{:+10.7f}'.format(r) for r in values]), 'UNPHYSICAL', ''))
 
 
-class OptimiseTLSGroup_Matrices:
+class OptimiseTLSGroup_Matrices(object):
 
 
     evaluator_class = OptimiseTLSGroup_Matrices_TargetEvaluator
@@ -341,7 +341,7 @@ class OptimiseTLSGroup_Matrices:
         # Optimise these parameters
         from scitbx import simplex
         optimised = simplex.simplex_opt(dimension = len(starting_simplex[0]),
-                                        matrix    = map(flex.double, starting_simplex),
+                                        matrix    = list(map(flex.double, starting_simplex)),
                                         evaluator = evaluator,
                                         tolerance = self.convergence_tolerance)
 

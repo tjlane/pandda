@@ -11,7 +11,7 @@ from pandemic.adp.echt.analysis.cluster_tls_groups.helliger import ClusterTLSGro
 from pandemic.adp.echt.analysis.cluster_tls_groups.overlap import ClusterTLSGroups_OverlapMass
 
 
-class ClusterTLSGroupsTask:
+class ClusterTLSGroupsTask(object):
 
 
     show_file_dict = show_file_dict
@@ -48,7 +48,7 @@ class ClusterTLSGroupsTask:
 
         if not isinstance(metric_parameters, dict):
             metric_parameters = vars(metric_parameters)
-            metric_parameters = {k:v for k,v in metric_parameters.iteritems() if not k.startswith('_')}
+            metric_parameters = {k:v for k,v in metric_parameters.items() if not k.startswith('_')}
 
         self.cluster = cluster_class(
             xyz_cutoff_distance = parameters['xyz_cutoff_distance'],
@@ -117,7 +117,7 @@ class ClusterTLSGroupsTask:
                 model_object = model_object,
                 write_levels_function = self.write_levels_function,
                 )
-            for k, v in of.iteritems():
+            for k, v in of.items():
                 output_files.setdefault(k, {})['new_levels'] = v
 
         self.show_file_dict(output_files)
@@ -144,7 +144,7 @@ class ClusterTLSGroupsTask:
 
         logger.subheading('Outputting levels generated at each clustering threshold', spacer=True)
 
-        for level_name, level_data in clustering_results.iteritems():
+        for level_name, level_data in clustering_results.items():
 
             o_dict = output_files.setdefault(level_name, collections.OrderedDict())
 
@@ -153,7 +153,7 @@ class ClusterTLSGroupsTask:
 
             logger.subheading('New groupings derived from level {} ({})'.format(i_l+1, level_name))
 
-            for threshold, hierarchy in level_data.module_info.threshold_unique_hierarchies.iteritems():
+            for threshold, hierarchy in level_data.module_info.threshold_unique_hierarchies.items():
 
                 filename = str(out_directory / 'level_{}_threshold_{}.eff'.format(i_l+1, threshold))
 

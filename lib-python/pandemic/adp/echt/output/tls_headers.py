@@ -3,7 +3,7 @@ import operator
 from functools import reduce
 
 
-class MultiModelTLSHeaderFactory:
+class MultiModelTLSHeaderFactory(object):
 
 
     def __init__(self,
@@ -29,7 +29,8 @@ class MultiModelTLSHeaderFactory:
         ):
 
         import mmtbx.tls.tools
-        if i_levels is None: i_levels = range(len(self.tls_objects))
+        if i_levels is None:
+            i_levels = list(range(len(self.tls_objects)))
 
         assert isinstance(i_levels, list)
         assert set(map(type, i_levels)) == {int}
@@ -50,7 +51,7 @@ class MultiModelTLSHeaderFactory:
                 continue
 
             # Level-group pairs
-            i_level_groups = zip(i_levels, i_groups)
+            i_level_groups = list(zip(i_levels, i_groups))
 
             # Combine the selection strings for this combination
             group_selection_strings = []

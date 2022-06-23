@@ -8,7 +8,7 @@ from scitbx.array_family import flex
 from pandemic.adp.echt.optimise.targets import TargetTerm_UijLeastSquares
 
 
-class OptimiseTLSGroup:
+class OptimiseTLSGroup(object):
 
 
     target_function_class = TargetTerm_UijLeastSquares
@@ -199,7 +199,7 @@ class OptimiseTLSGroup:
         mode.amplitudes.zero_values()
 
 
-class OptimiseTLSLevel:
+class OptimiseTLSLevel(object):
 
 
     def __init__(self,

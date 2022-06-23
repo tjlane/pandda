@@ -4,7 +4,7 @@ logger = lg.getLogger(__name__)
 from libtbx import adopt_init_args, group_args
 
 
-class LevelGroupTree:
+class LevelGroupTree(object):
 
 
     def __init__(self,
@@ -15,7 +15,7 @@ class LevelGroupTree:
         # Cache for saving results
         set_cache = {}
         # Max number of possible links
-        max_links = len(links.keys())
+        max_links = len(list(links.keys()))
 
         adopt_init_args(self, locals())
 
@@ -49,7 +49,7 @@ class LevelGroupTree:
 
     def iter_nodes_by_level(self):
         for l_label, l_links in sorted(self.links.items()):
-            yield (l_label, l_links.keys())
+            yield (l_label, list(l_links.keys()))
 
     def is_convergent_node(self, l, g):
         """Check if a node has more than one parent"""
@@ -191,10 +191,10 @@ class LevelGroupTree:
         if global_overlaps_found is True:
             return self.merge_overlapping_groups(output_sets)
 
-        return map(sorted, output_sets)
+        return list(map(sorted, output_sets))
 
 
-class BuildLevelArrayAsTreeTask:
+class BuildLevelArrayAsTreeTask(object):
 
 
     def __init__(self,

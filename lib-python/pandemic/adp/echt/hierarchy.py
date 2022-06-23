@@ -6,7 +6,7 @@ import numpy
 from scitbx.array_family import flex
 
 
-class CreateEchtModelTask:
+class CreateEchtModelTask(object):
 
 
     adp_level_name = 'atomic'
@@ -62,7 +62,7 @@ class CreateEchtModelTask:
         return self.model_object
 
 
-class CreateMultiDatasetTLSGroupHierarchyTask:
+class CreateMultiDatasetTLSGroupHierarchyTask(object):
 
 
     def __init__(self,
@@ -89,7 +89,7 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
             ):
 
         # Create level labels if they don't exist for reporting purposes
-        level_labels = (level_labels if level_labels else ['Level {}'.format(i+1) for i in xrange(len(level_group_array))])
+        level_labels = (level_labels if level_labels else ['Level {}'.format(i+1) for i in range(len(level_group_array))])
 
         # Extract coordinates
         coordinates = self.extract_coordinates_from_models(
@@ -345,7 +345,7 @@ class CreateMultiDatasetTLSGroupHierarchyTask:
                 this_level_group_selections.append(group_selection)
                 this_level_group_objects.append(group)
                 #level_groups.append((group_selection, group))
-            assert [g.index for g in this_level_group_objects] == range(len(this_level_group_objects))
+            assert [g.index for g in this_level_group_objects] == list(range(len(this_level_group_objects)))
             all_level_group_selections.append(this_level_group_selections)
             all_level_group_objects.append(this_level_group_objects)
 

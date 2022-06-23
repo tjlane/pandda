@@ -33,7 +33,7 @@ from .structures import (
     )
 
 
-class AverageEchtModelValues:
+class AverageEchtModelValues(object):
 
     def __init__(self, model_object, isotropic_mask):
         """Extract average values"""
@@ -49,7 +49,7 @@ class AverageEchtModelValues:
             )
         # (n_tls_level, n_mode, n_atom)
         self.tls_levels_modes_b = np.array(
-            [map(uij_to_b, u) for u in self.tls_levels_modes_uij]
+            [list(map(uij_to_b, u)) for u in self.tls_levels_modes_uij]
             )
 
         # Now SUM over *modes*
@@ -97,7 +97,7 @@ class AverageEchtModelValues:
         self.adp_level_name = model_object.adp_level_name
 
 
-class AverageTargetValues: 
+class AverageTargetValues(object): 
 
     def __init__(self, uij_target):
 
@@ -107,7 +107,7 @@ class AverageTargetValues:
         self.total_b = np.array(uij_to_b(self.total_uij))
 
 
-class EchtModelSummaryOutput:
+class EchtModelSummaryOutput(object):
 
     def __init__(self,
         output_files,
@@ -118,7 +118,7 @@ class EchtModelSummaryOutput:
         self.level_b_factor_statistics_table = level_b_factor_statistics_table
 
 
-class WriteEchtModelSummary:
+class WriteEchtModelSummary(object):
 
     def __init__(self,
         output_directory,

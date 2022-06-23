@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 
-class WriteEchtModelTables:
+class WriteEchtModelTables(object):
 
     level_tls_matrices_csv   = 'tls_matrices_level_{level_num:04d}.csv'
     level_tls_amplitudes_csv = 'tls_amplitudes_level_{level_num:04d}.csv'
@@ -60,7 +60,7 @@ class WriteEchtModelTables:
 
                 assert tls_matrices.shape == (model_object.n_modes, 21)
 
-                for i_mode in xrange(model_object.n_modes):
+                for i_mode in range(model_object.n_modes):
 
                     headers = np.array(
                         [ i_group+1, i_mode+1, group_object.label ],
@@ -114,7 +114,7 @@ class WriteEchtModelTables:
 
                 assert tls_amplitudes.shape == (model_object.n_modes, model_object.n_datasets)
 
-                for i_mode in xrange(model_object.n_modes):
+                for i_mode in range(model_object.n_modes):
 
                     headers = np.array(
                         [ i_group+1, i_mode+1, group_object.label ], 
@@ -158,7 +158,7 @@ class WriteEchtModelTables:
             for i_group, group_object in enumerate(tls_objects):
 
                 tls_origins = np.array(
-                    map(str, group_object.origins.round(3)), 
+                    list(map(str, group_object.origins.round(3))),
                     dtype = str,
                     )
 

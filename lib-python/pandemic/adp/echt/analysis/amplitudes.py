@@ -5,7 +5,7 @@ from libtbx import adopt_init_args, group_args
 from giant.paths import easy_directory
 
 
-class AnalyseTLSAmplitudesTask:
+class AnalyseTLSAmplitudesTask(object):
 
 
     def __init__(self,
@@ -72,7 +72,7 @@ class AnalyseTLSAmplitudesTask:
             logger.bar(False, True)
             # Plot histogram of amplitudes for each dataset for this level
             ga_new = ga.copy().set_index(['group','mode','label'])
-            ga_new.index = range(len(ga_new.index))
+            ga_new.index = list(range(len(ga_new.index)))
             ga_new = ga_new.transpose()
             for label, values in ga_new.iterrows():
                 logger.bar()

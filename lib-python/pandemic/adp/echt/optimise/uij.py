@@ -9,7 +9,7 @@ from scitbx.array_family import flex
 from pandemic.adp.echt.optimise.targets import TargetTerm_UijLeastSquares
 
 
-class UijSimplexGenerator:
+class UijSimplexGenerator(object):
 
 
     def __init__(self,
@@ -43,7 +43,7 @@ class UijSimplexGenerator:
 
 
 from pandemic.adp.echt.validate.uij import ValidateUijValues
-class OptimiseUijValue_TargetEvaluator:
+class OptimiseUijValue_TargetEvaluator(object):
 
 
     start_target = 1e6
@@ -85,7 +85,7 @@ class OptimiseUijValue_TargetEvaluator:
         return target
 
 
-class OptimiseUijValue:
+class OptimiseUijValue(object):
 
 
     target_function_class = TargetTerm_UijLeastSquares
@@ -149,7 +149,7 @@ class OptimiseUijValue:
         # Optimise these parameters
         from scitbx import simplex
         optimised = simplex.simplex_opt(dimension = 6, # len(starting_simplex[0]),
-                                        matrix    = map(flex.double, starting_simplex),
+                                        matrix    = list(map(flex.double, starting_simplex)),
                                         evaluator = evaluator,
                                         tolerance = self.convergence_tolerance)
 
@@ -163,7 +163,7 @@ class OptimiseUijValue:
         return optimised.get_solution()
 
 
-class OptimiseUijLevel:
+class OptimiseUijLevel(object):
 
 
     def __init__(self,
@@ -222,7 +222,7 @@ class OptimiseUijLevel:
             raise Failure('{} errors raised during optimisation (above)'.format(len(errors)))
 
         # Repackage optimised values
-        new_adp_values = flex.sym_mat3_double(map(tuple,results))
+        new_adp_values = flex.sym_mat3_double(list(map(tuple,results)))
 
         # Make necessary values isotropic
         if uij_isotropic_mask is not None:
@@ -260,7 +260,7 @@ class OptimiseUijLevel:
         assert (multipliers <= 1.).all()
 
         rescaled_adps = multipliers.reshape((len(multipliers),1)) * output_adps
-        rescaled_adps = flex.sym_mat3_double(map(tuple, rescaled_adps))
+        rescaled_adps = flex.sym_mat3_double(list(map(tuple, rescaled_adps)))
 
         return rescaled_adps
 

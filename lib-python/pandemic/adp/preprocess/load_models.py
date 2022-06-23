@@ -9,7 +9,7 @@ from libtbx.utils import Sorry, Failure
 from giant.mulch.dataset import CrystallographicModel, AtomicModel
 
 
-class ModelLoader:
+class ModelLoader(object):
 
 
     def __init__(self,

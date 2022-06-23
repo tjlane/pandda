@@ -6,7 +6,7 @@ import numpy
 from scitbx.array_family import flex
 
 
-class UijIsotropicMask:
+class UijIsotropicMask(object):
 
 
     def __init__(self,

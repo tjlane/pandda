@@ -7,7 +7,7 @@ from libtbx import adopt_init_args, group_args
 from libtbx.utils import Sorry, Failure
 
 
-class ValidateEchtModel:
+class ValidateEchtModel(object):
 
     debug = False
 

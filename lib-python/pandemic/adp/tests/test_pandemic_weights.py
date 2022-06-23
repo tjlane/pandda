@@ -106,14 +106,14 @@ def test_dataset_weight_calculator():
         if w_str == 'one':
             wgts = wc(
                 resolutions = None,
-                dataset_labels = range(2),
+                dataset_labels = list(range(2)),
                 )
             assert wgts == approx(ref_wgts / ref_wgts.mean())
         else:
             with raises(Exception):
                 wgts = wc(
                     resolutions = None,
-                    dataset_labels = range(2),
+                    dataset_labels = list(range(2)),
                     )
             with raises(Exception):
                 wgts = wc(
@@ -226,7 +226,7 @@ def test_uij_array_weight_task():
                     wgts = wc.run(
                         uij_values = uij_array,
                         resolutions = None,
-                        dataset_labels = range(n_datasets),
+                        dataset_labels = list(range(n_datasets)),
                         )
                 with raises(Exception):
                     wgts = wc.run(

@@ -49,7 +49,7 @@ def translate_phenix_selections_to_pymol_selections_simple(selections):
     return output_selections
 
 
-class HierarchySummaryOutput:
+class HierarchySummaryOutput(object):
 
     def __init__(self,
         output_files,
@@ -58,7 +58,7 @@ class HierarchySummaryOutput:
         adopt_init_args(self, locals())
 
 
-class WriteHierarchicalModelSummaryTask:
+class WriteHierarchicalModelSummaryTask(object):
 
 
     debug = False
@@ -242,7 +242,7 @@ class WriteHierarchicalModelSummaryTask:
         missing_files = []
 
         from giant.structure.formatting import PymolSelection
-        for level_lab, structure_filename in level_atoms_pdb.iteritems():
+        for level_lab, structure_filename in level_atoms_pdb.items():
             i_level = level_labels.index(level_lab)
             # Images for each chain (of the partitions) - coloured by group
             f_prefix = self.filepath(self.level_atoms_pymol_png_prefix.format(i_level+1))

@@ -1,7 +1,7 @@
 from libtbx import adopt_init_args
 
 
-class ValidateTLSMode:
+class ValidateTLSMode(object):
 
     def __init__(self,
             matrix_tol = -1,

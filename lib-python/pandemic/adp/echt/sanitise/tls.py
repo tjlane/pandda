@@ -9,7 +9,7 @@ from mmtbx.tls.utils import uij_eigenvalues
 from pandemic.adp.echt.sanitise.decompose_u import get_negative_u_component
 
 
-class SanitiseTLSGroup:
+class SanitiseTLSGroup(object):
 
     max_cycles = 10
 
@@ -57,7 +57,7 @@ class SanitiseTLSGroup:
                 uijs = np.array(uijs)
                 uijs = uijs.reshape((np.product(uijs.shape[:-1]), 6))
                 # Get eigenvalues for each dataset
-                neg_comps = np.array(map(get_negative_u_component, uijs))
+                neg_comps = np.array(list(map(get_negative_u_component, uijs)))
                 neg_magnitudes = np.abs(neg_comps[...,0:3].mean(axis=-1))
                 max_mag = neg_magnitudes.max()
 

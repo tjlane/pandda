@@ -43,7 +43,7 @@ except Exception as e:
 #     return fig
 
 
-class PiecewiseLinearFunction:
+class PiecewiseLinearFunction(object):
 
     def __init__(self, v_min, v_max, m, c):
         adopt_init_args(self, locals())
@@ -52,7 +52,7 @@ class PiecewiseLinearFunction:
         return max(self.v_min, min(self.v_max, self.m*x+self.c))
 
 
-class PlotHelper:
+class PlotHelper(object):
 
     _ms_map = dict(
         # (min, max, m, c)
@@ -104,7 +104,7 @@ class PlotHelper:
             try:
                 assert font_family is not None, 'Cannot set font: must provide a font family in order to set font.'
                 font_family_str = 'font.'+str(font_family)
-                assert font_family_str in pyplot.rcParams.keys(), 'Cannot set font: invalid font family provided "{}".'.format(font_family)
+                assert font_family_str in list(pyplot.rcParams.keys()), 'Cannot set font: invalid font family provided "{}".'.format(font_family)
                 family_fonts = pyplot.rcParams[font_family_str]
                 if (font_name not in family_fonts):
                     logger.warning('WARNING: font "{}" does not exist in font family "{}". Setting the font may not work... (valid options: {})'.format(font_name, font_family, ', '.join(family_fonts)))
@@ -172,8 +172,8 @@ class PlotHelper:
         ):
         n_total = len(x_ticks)
         if (x_tick_labels is None):
-            x_tick_labels = map(str, x_ticks)
-        i_x_ticks = numpy.arange(0, n_total, int(max(1.0, numpy.floor(n_total/n_labels))))
+            x_tick_labels = list(map(str, x_ticks))
+        i_x_ticks = numpy.arange(0, n_total, int(max(1.0, numpy.floor(float(n_total)/float(n_labels)))))
         axis.set_xticks(
             [x_ticks[i] for i in i_x_ticks],
             )
@@ -208,7 +208,7 @@ class PlotHelper:
         # Assign data to bins
         indices = numpy.digitize(data, bins)
         # Generate bin labels
-        bin_labels = ['{:.2f} - {:.2f}'.format(bins[i],bins[i+1]) for i in xrange(n_bins)]
+        bin_labels = ['{:.2f} - {:.2f}'.format(bins[i],bins[i+1]) for i in range(n_bins)]
         return bins, indices, bin_labels
 
     def resolve_value_arrays(self,
@@ -236,7 +236,7 @@ class PlotHelper:
         return (n, x_vals_array, y_vals_array)
 
 
-class PandemicAdpPlotter:
+class PandemicAdpPlotter(object):
     """
     Generic plotting class. Needs to be initialised for some functions but not for all.
     """
@@ -315,7 +315,7 @@ class PandemicAdpPlotter:
 
             # Post-process the extracted values (for instance, combine all hierarchies into one using array_concatentate)
             y_vals_array = y_array_values_function(y_vals_array)
-            n = max(map(len,y_vals_array))
+            n = max(list(map(len,y_vals_array)))
 
             #
             kw_args = {}
@@ -574,7 +574,7 @@ class PandemicAdpPlotter:
             x_ticks = x_vals
 
         if (x_tick_labels is None):
-            x_tick_labels = map(str, x_ticks)
+            x_tick_labels = list(map(str, x_ticks))
 
         for i, (x, y) in enumerate(zip(x_vals_array, y_vals_array)):
             kw_args = {
@@ -659,7 +659,7 @@ class PandemicAdpPlotter:
         # Generate binning for the x axis
         bins, indices, bin_labels = self.helper.bin_x_values(data=x, n_bins=n_bins)
         # Sort the y_vals into the bins
-        binned_y = [[y[indices==i] for i in xrange(1, n_bins+1)] for y in y_vals]
+        binned_y = [[y[indices==i] for i in range(1, n_bins+1)] for y in y_vals]
         # Width of the boxplot bars
         bar_width = 2./float(1+3*n_y) # half-bar padding between bars
         # Colours of each of y_vals
@@ -678,7 +678,7 @@ class PandemicAdpPlotter:
             x_offset = 0.5 + (1+1.5*i_y)*bar_width
             positions = numpy.arange(n_bins) + x_offset
             # Filter on values that are actually present
-            y_idx = [i for i in xrange(len(y)) if len(y[i])>0]
+            y_idx = [i for i in range(len(y)) if len(y[i])>0]
             # Plot
             if plot_type == 'boxplot':
                 plt = axis.boxplot(
@@ -737,7 +737,7 @@ class PandemicAdpPlotter:
         axis.set_xlim((0.25, n_bins+0.75))
         # Plot v_lines
         if n_y > 1:
-            for i in xrange(n_bins+1):
+            for i in range(n_bins+1):
                 axis.axvline(i+0.5, c='grey', ls="dashed", lw=1.0)#ls="solid", lw=0.5)
         # X-axis rotations
         if rotate_x_labels:
@@ -882,7 +882,7 @@ class PandemicAdpPlotter:
             n_labels = 30,
             )
 
-        axis.set_yticks(range(1, len(hierarchies)+1))
+        axis.set_yticks(list(range(1, len(hierarchies)+1)))
         axis.set_yticklabels(labels)
         axis.set_xlim((-0.01*len(a_labels), 1.01*(len(a_labels)+1)))
         pyplot.setp(axis.get_xticklabels(), rotation=90)
@@ -947,7 +947,7 @@ class PandemicAdpPlotter:
             output_files[chain_id] = filename
 
             # Create x-values for each residue starting from 1
-            x_vals = numpy.array(range(len(list(sel_mh.residue_groups()))))+1
+            x_vals = numpy.array(list(range(len(list(sel_mh.residue_groups())))))+1
             x_labels = ['']+[ShortLabeller.format(rg) for rg in sel_mh.residue_groups()]
             # Cumulative y-values (for bottoms of bars)
             cuml_y = None
@@ -1041,7 +1041,7 @@ class PandemicAdpPlotter:
                 )
 
             # Axis ticks & labels
-            x_ticks = numpy.arange(1, len(x_labels)+1, int(max(1.0, numpy.floor(len(x_labels)/20))))
+            x_ticks = numpy.arange(1, len(x_labels)+1, int(max(1.0, numpy.floor(float(len(x_labels))/20.0))))
             #x_ticks = numpy.unique(numpy.floor(numpy.linspace(1,len(x_labels)+1,20)))
             axis.set_xticks(x_ticks)
             axis.set_xticklabels([x_labels[int(i)] if (i<len(x_labels)) and (float(int(i))==i) else '' for i in axis.get_xticks()])

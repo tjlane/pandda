@@ -32,9 +32,9 @@ def test_CreateHierarchicalModelTask():
     assert (hm.result.level_group_array[0] == 0).all()
     #
     assert set(hm.result.level_group_array[1]) == {0,1,2}
-    assert numpy.where(hm.result.level_group_array[1]==0)[0].tolist() == range(0,49)
-    assert numpy.where(hm.result.level_group_array[1]==1)[0].tolist() == range(49,82)
-    assert numpy.where(hm.result.level_group_array[1]==2)[0].tolist() == range(82,171)
+    assert numpy.where(hm.result.level_group_array[1]==0)[0].tolist() == list(range(0,49))
+    assert numpy.where(hm.result.level_group_array[1]==1)[0].tolist() == list(range(49,82))
+    assert numpy.where(hm.result.level_group_array[1]==2)[0].tolist() == list(range(82,171))
     #
     assert len(hm.result.level_group_selection_strings) == 2
     assert hm.result.level_group_selection_strings[0] == ["chain 'A'"]
@@ -43,7 +43,7 @@ def test_CreateHierarchicalModelTask():
     assert hm.result.level_group_tree.links == {0: {0: {1: [0, 1, 2]}}, 1: {0: {}, 1: {}, 2: {}}}
     #
     assert hm.result.overall_atom_mask.shape == (428,)
-    assert numpy.where(hm.result.overall_atom_mask)[0].tolist() == range(0,171)
+    assert numpy.where(hm.result.overall_atom_mask)[0].tolist() == list(range(0,171))
 
 def test_translate_phenix_selections_to_pymol_selections_simple():
 

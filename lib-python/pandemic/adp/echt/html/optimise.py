@@ -39,7 +39,7 @@ class EchtOptimisationParametersHtmlSummary(HtmlSummary):
             wgt_block.append(scroll_block)
 
             wgt_dict = output_files.get('level amplitudes weights')
-            for variable, image_path in sorted(wgt_dict.iteritems()):
+            for variable, image_path in sorted(wgt_dict.items()):
                 block = divs.Block(
                     title = 'Weight: {}'.format(variable),
                     image = self.image(image_path),

@@ -14,7 +14,7 @@ from scitbx.array_family import flex
 from giant.structure.uij import uij_to_b
 
 
-class WriteStructure:
+class WriteStructure(object):
 
     def __init__(self, structure_factory, atom_mask):
         self.structure_factory = structure_factory
@@ -41,7 +41,7 @@ class WriteStructure:
         return filename
 
 
-class WriteEchtAverageStructures: 
+class WriteEchtAverageStructures(object): 
 
     target_uijs_path = 'average_uijs_input.pdb'
     output_uijs_path = 'average_uijs_output.pdb'
@@ -150,7 +150,7 @@ class WriteEchtAverageStructures:
 
         for i_level, level_name in enumerate(model_values.tls_level_names):
 
-            for i_mode in xrange(model_values.n_tls_modes):
+            for i_mode in range(model_values.n_tls_modes):
 
                 path = str(
                     self.output_directory / self.tls_mode_uijs_path_template.format(
@@ -196,7 +196,7 @@ class WriteEchtAverageStructures:
             }
 
 
-class WriteEchtDatasetStructures:
+class WriteEchtDatasetStructures(object):
 
     pymol_script_py = 'pymol_script.py'
 
@@ -207,7 +207,7 @@ class WriteEchtDatasetStructures:
 
     def show(self, label, pdbs, max=5):
         logger(label)
-        for l, p in list(pdbs.iteritems())[:max]+[('', '...')]*(len(pdbs)>max):
+        for l, p in list(pdbs.items())[:max]+[('', '...')]*(len(pdbs)>max):
             logger('> {}: {}'.format(l, p))
 
     def __call__(self,
@@ -258,7 +258,7 @@ class WriteEchtDatasetStructures:
         # Full models (with original values for non-fitted atoms)
         pdbs = output_structures(
             uij = uij_all,
-            iso = map(uij_to_b, uij_all),
+            iso = list(map(uij_to_b, uij_all)),
             headers = tls_headers,
             model_suffix = '.all.pdb',
             blank_copy = False)
@@ -268,7 +268,7 @@ class WriteEchtDatasetStructures:
         # Full models (zero values for non-fitted atoms)
         pdbs = output_structures(
             uij = uij_all,
-            iso = map(uij_to_b, uij_all),
+            iso = list(map(uij_to_b, uij_all)),
             headers = tls_headers,
             model_suffix = '.all-levels.pdb',
             blank_copy = True)
@@ -279,7 +279,7 @@ class WriteEchtDatasetStructures:
         logger.subheading('Writing all TLS contributions')
         pdbs = output_structures(
             uij = uij_tls,
-            iso = map(uij_to_b, uij_tls),
+            iso = list(map(uij_to_b, uij_tls)),
             headers = tls_headers,
             model_suffix = '.all-tls-levels.pdb',
             blank_copy = True)
@@ -291,7 +291,7 @@ class WriteEchtDatasetStructures:
         uij_atom = uij_lvl[-1]
         pdbs = output_structures(
             uij = uij_atom,
-            iso = map(uij_to_b, uij_atom),
+            iso = list(map(uij_to_b, uij_atom)),
             headers = None,
             model_suffix = '.atomic-level.pdb',
             blank_copy = True)
@@ -300,11 +300,11 @@ class WriteEchtDatasetStructures:
 
         # Level by level TLS-parameterised structures (single level contribution)
         logger.subheading('Writing individual TLS levels')
-        for i_level in xrange(model_object.n_tls_levels):
+        for i_level in range(model_object.n_tls_levels):
             uij_this = uij_lvl[i_level]
             pdbs = output_structures(
                 uij = uij_this,
-                iso = map(uij_to_b, uij_this),
+                iso = list(map(uij_to_b, uij_this)),
                 headers = make_tls_headers(i_levels=[i_level]),
                 model_suffix = '.tls-level-{:04}.pdb'.format(i_level+1),
                 blank_copy = True)
@@ -318,8 +318,8 @@ class WriteEchtDatasetStructures:
             cuml_uij = uij_lvl[i_level:j_level+1].sum(axis=0)
             pdbs = output_structures(
                 uij = cuml_uij,
-                iso = map(uij_to_b, cuml_uij),
-                headers = make_tls_headers(i_levels=range(i_level, j_level+1)),
+                iso = list(map(uij_to_b, cuml_uij)),
+                headers = make_tls_headers(i_levels=list(range(i_level, j_level+1))),
                 model_suffix = '.tls-level-{:04}-to-{:04}.pdb'.format(i_level+1,j_level+1),
                 blank_copy = True)
             self.show('Levels {}-{}'.format(i_level+1, j_level+1), pdbs)
@@ -356,7 +356,7 @@ class WriteEchtDatasetStructures:
             f = file_dict.get('all_components',{}).get(key)
             if (f is not None): f_list.append(f)
 
-            for i_l, f_dict in file_dict.get('tls_levels',{}).iteritems():
+            for i_l, f_dict in file_dict.get('tls_levels',{}).items():
                 f = f_dict.get(key)
                 if (f is not None):
                     f_list.append(f)

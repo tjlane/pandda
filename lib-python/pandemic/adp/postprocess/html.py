@@ -74,7 +74,7 @@ class PostProcessingHtmlSummary(HtmlSummary):
                 title = 'R-factor differences between structures',
             )
             output.append(panel)
-            for (s1, s2), img in f.iteritems():
+            for (s1, s2), img in f.items():
                 panel.append(
                     divs.Block(
                         width = 6,

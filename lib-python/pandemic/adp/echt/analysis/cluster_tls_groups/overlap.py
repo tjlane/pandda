@@ -19,7 +19,7 @@ def uij_overlap_mass(a,b):
     d = tuple([av-bv for av,bv in zip(a,b)])
     # Diagonalise
     es = eigensystem_real_symmetric(d)
-    vals = es.values()
+    vals = list(es.values())
     vecs = es.vectors().as_scitbx_matrix()
     # Set negative eigenvalues to zero and back transform
     vals.set_selected(vals<0.0, 0.0)
@@ -140,7 +140,7 @@ def make_pymol_script(
     return
 
 
-class ClusterTLSGroups_OverlapMass:
+class ClusterTLSGroups_OverlapMass(object):
 
 
     _comparison_functions = {
@@ -157,7 +157,12 @@ class ClusterTLSGroups_OverlapMass:
         self.metric_type = 'similarity'
 
         if self.comparison not in self._comparison_functions.keys():
-            raise Sorry('Invalid comparison function ({}). Must be one of: {}'.format(self.comparison, ', '.join(self._comparison_functions.keys())))
+            raise Sorry(
+                'Invalid comparison function ({}). Must be one of: {}'.format(
+                    self.comparison,
+                    ', '.join(self._comparison_functions.keys()),
+                    )
+                )
 
         from pandemic.adp.echt.analysis.cluster_tls_groups.identify_modules import IdentifyModules
         self.identify_modules = IdentifyModules(
@@ -221,7 +226,7 @@ class ClusterTLSGroups_OverlapMass:
         r = result
 
         off_diagonal_values = r.comparison_matrix[~numpy.eye(r.comparison_matrix.shape[0], dtype=bool)]
-        thresholds = r.module_info.threshold_unique_modules.keys()
+        thresholds = list(r.module_info.threshold_unique_modules.keys())
 
         s = ""
         s += "Overlap between groups: {:.3f} - {:.3f} A^2.\n".format(off_diagonal_values.min(), off_diagonal_values.max())
@@ -230,7 +235,7 @@ class ClusterTLSGroups_OverlapMass:
             s += "Modules identified at thresholds from {:.3f} - {:.3f} A^2.\n".format(min(thresholds),max(thresholds))
             s += "\n"
             s += "Thresholds & Modules:"
-            for thresh, modules in r.module_info.threshold_unique_modules.iteritems():
+            for thresh, modules in r.module_info.threshold_unique_modules.items():
                 s += "\n\n"
                 s += "> Threshold: {}\n".format(thresh)
                 s += "  New potential groupings: {}".format(", ".join(['+'.join(map(str,[i+1 for i in sorted(m)])) for m in modules]))

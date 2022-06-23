@@ -879,7 +879,7 @@ def run(params, args=None):
 
     try:
 
-        for _ in xrange(params.optimisation.max_macro_cycles):
+        for _ in range(params.optimisation.max_macro_cycles):
 
             # Increment before each cycle -- ensures new counter for this cycle.
             main_tracking_object.n_cycle += 1

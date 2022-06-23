@@ -30,19 +30,19 @@ def test_BuildLevelArrayTask():
     assert (bl.result.level_group_array[0] == 0).all()
     #
     assert set(bl.result.level_group_array[1]) == {-1,0,1,2}
-    assert numpy.where(bl.result.level_group_array[1]==-1)[0].tolist() == range(0,90) + range(259,335)
-    assert numpy.where(bl.result.level_group_array[1]==+0)[0].tolist() == range(90,171)
-    assert numpy.where(bl.result.level_group_array[1]==+1)[0].tolist() == range(171,259)
-    assert numpy.where(bl.result.level_group_array[1]==+2)[0].tolist() == range(335,428)
+    assert numpy.where(bl.result.level_group_array[1]==-1)[0].tolist() == list(range(0,90)) + list(range(259,335))
+    assert numpy.where(bl.result.level_group_array[1]==+0)[0].tolist() == list(range(90,171))
+    assert numpy.where(bl.result.level_group_array[1]==+1)[0].tolist() == list(range(171,259))
+    assert numpy.where(bl.result.level_group_array[1]==+2)[0].tolist() == list(range(335,428))
     assert numpy.where(bl.result.level_group_array[1]==+3)[0].tolist() == []
     #
     assert set(bl.result.level_group_array[2]) == set(range(0, 51))
     assert numpy.where(bl.result.level_group_array[2]==-1)[0].tolist() == []
-    assert numpy.where(bl.result.level_group_array[2]==+0)[0].tolist() == range(0,4)
-    assert numpy.where(bl.result.level_group_array[2]==+1)[0].tolist() == range(4,16)
-    assert numpy.where(bl.result.level_group_array[2]==21)[0].tolist() == range(171,175)
-    assert numpy.where(bl.result.level_group_array[2]==49)[0].tolist() == range(412,420)
-    assert numpy.where(bl.result.level_group_array[2]==50)[0].tolist() == range(420,428)
+    assert numpy.where(bl.result.level_group_array[2]==+0)[0].tolist() == list(range(0,4))
+    assert numpy.where(bl.result.level_group_array[2]==+1)[0].tolist() == list(range(4,16))
+    assert numpy.where(bl.result.level_group_array[2]==21)[0].tolist() == list(range(171,175))
+    assert numpy.where(bl.result.level_group_array[2]==49)[0].tolist() == list(range(412,420))
+    assert numpy.where(bl.result.level_group_array[2]==50)[0].tolist() == list(range(420,428))
     assert numpy.where(bl.result.level_group_array[2]==51)[0].tolist() == []
 
     assert bl.result.overall_atom_mask.shape == (428,)
@@ -70,11 +70,11 @@ def test_BuildLevelArrayTask():
     assert (bl.result.level_group_array[0] == 0).all()
     #
     set(bl.result.level_group_array[1]) == {-1,0}
-    assert numpy.where(bl.result.level_group_array[1]==-1)[0].tolist() == range(0,90)
-    assert numpy.where(bl.result.level_group_array[1]==+0)[0].tolist() == range(90,133)
+    assert numpy.where(bl.result.level_group_array[1]==-1)[0].tolist() == list(range(0,90))
+    assert numpy.where(bl.result.level_group_array[1]==+0)[0].tolist() == list(range(90,133))
 
     assert bl.result.overall_atom_mask.shape == (428,)
-    assert numpy.where(bl.result.overall_atom_mask)[0].tolist() == range(0,133)
+    assert numpy.where(bl.result.overall_atom_mask)[0].tolist() == list(range(0,133))
 
     assert len(bl.result.level_group_selection_strings) == 2
     assert bl.result.level_group_selection_strings[0] == ['chain A']
@@ -125,18 +125,18 @@ def test_BuildLevelArrayTask_duplicate_groups():
     assert set(bl.result.level_group_array[3]) == {-1,0,1,2}
 
     assert numpy.where(bl.result.level_group_array[0]==-1)[0].tolist() == []
-    assert numpy.where(bl.result.level_group_array[1]==-1)[0].tolist() == range(0,90) + range(175,428)
-    assert numpy.where(bl.result.level_group_array[2]==-1)[0].tolist() == range(0,90) + range(175,428)
-    assert numpy.where(bl.result.level_group_array[3]==-1)[0].tolist() == range(0,90) + range(175,428)
+    assert numpy.where(bl.result.level_group_array[1]==-1)[0].tolist() == list(range(0,90)) + list(range(175,428))
+    assert numpy.where(bl.result.level_group_array[2]==-1)[0].tolist() == list(range(0,90)) + list(range(175,428))
+    assert numpy.where(bl.result.level_group_array[3]==-1)[0].tolist() == list(range(0,90)) + list(range(175,428))
 
-    assert numpy.where(bl.result.level_group_array[1]==+0)[0].tolist() == range(90,171)
-    assert numpy.where(bl.result.level_group_array[1]==+1)[0].tolist() == range(171,175)
+    assert numpy.where(bl.result.level_group_array[1]==+0)[0].tolist() == list(range(90,171))
+    assert numpy.where(bl.result.level_group_array[1]==+1)[0].tolist() == list(range(171,175))
 
-    assert numpy.where(bl.result.level_group_array[2]==+0)[0].tolist() == range(90,175)
+    assert numpy.where(bl.result.level_group_array[2]==+0)[0].tolist() == list(range(90,175))
 
-    assert numpy.where(bl.result.level_group_array[3]==+0)[0].tolist() == range(90,133)
-    assert numpy.where(bl.result.level_group_array[3]==+1)[0].tolist() == range(133,171)
-    assert numpy.where(bl.result.level_group_array[3]==+2)[0].tolist() == range(171,175)
+    assert numpy.where(bl.result.level_group_array[3]==+0)[0].tolist() == list(range(90,133))
+    assert numpy.where(bl.result.level_group_array[3]==+1)[0].tolist() == list(range(133,171))
+    assert numpy.where(bl.result.level_group_array[3]==+2)[0].tolist() == list(range(171,175))
 
     # Remove upper groups
     bl = BuildLevelArrayTask(
@@ -155,18 +155,18 @@ def test_BuildLevelArrayTask_duplicate_groups():
     assert set(bl.result.level_group_array[3]) == {-1,0,1,2}
 
     assert numpy.where(bl.result.level_group_array[0]==-1)[0].tolist() == []
-    assert numpy.where(bl.result.level_group_array[1]==-1)[0].tolist() == range(0,90) + range(171,428) #!
-    assert numpy.where(bl.result.level_group_array[2]==-1)[0].tolist() == range(0,90) + range(175,428)
-    assert numpy.where(bl.result.level_group_array[3]==-1)[0].tolist() == range(0,90) + range(175,428)
+    assert numpy.where(bl.result.level_group_array[1]==-1)[0].tolist() == list(range(0,90)) + list(range(171,428)) #!
+    assert numpy.where(bl.result.level_group_array[2]==-1)[0].tolist() == list(range(0,90)) + list(range(175,428))
+    assert numpy.where(bl.result.level_group_array[3]==-1)[0].tolist() == list(range(0,90)) + list(range(175,428))
 
-    assert numpy.where(bl.result.level_group_array[1]==+0)[0].tolist() == range(90,171)
+    assert numpy.where(bl.result.level_group_array[1]==+0)[0].tolist() == list(range(90,171))
     #!
 
-    assert numpy.where(bl.result.level_group_array[2]==+0)[0].tolist() == range(90,175)
+    assert numpy.where(bl.result.level_group_array[2]==+0)[0].tolist() == list(range(90,175))
 
-    assert numpy.where(bl.result.level_group_array[3]==+0)[0].tolist() == range(90,133)
-    assert numpy.where(bl.result.level_group_array[3]==+1)[0].tolist() == range(133,171)
-    assert numpy.where(bl.result.level_group_array[3]==+2)[0].tolist() == range(171,175)
+    assert numpy.where(bl.result.level_group_array[3]==+0)[0].tolist() == list(range(90,133))
+    assert numpy.where(bl.result.level_group_array[3]==+1)[0].tolist() == list(range(133,171))
+    assert numpy.where(bl.result.level_group_array[3]==+2)[0].tolist() == list(range(171,175))
 
     # Remove lower groups
     bl = BuildLevelArrayTask(
@@ -185,16 +185,16 @@ def test_BuildLevelArrayTask_duplicate_groups():
     assert set(bl.result.level_group_array[3]) == {-1,0,1} #!
 
     assert numpy.where(bl.result.level_group_array[0]==-1)[0].tolist() == []
-    assert numpy.where(bl.result.level_group_array[1]==-1)[0].tolist() == range(0,90) + range(175,428)
-    assert numpy.where(bl.result.level_group_array[2]==-1)[0].tolist() == range(0,90) + range(175,428)
-    assert numpy.where(bl.result.level_group_array[3]==-1)[0].tolist() == range(0,90) + range(171,428) #!
+    assert numpy.where(bl.result.level_group_array[1]==-1)[0].tolist() == list(range(0,90)) + list(range(175,428))
+    assert numpy.where(bl.result.level_group_array[2]==-1)[0].tolist() == list(range(0,90)) + list(range(175,428))
+    assert numpy.where(bl.result.level_group_array[3]==-1)[0].tolist() == list(range(0,90)) + list(range(171,428)) #!
 
-    assert numpy.where(bl.result.level_group_array[1]==+0)[0].tolist() == range(90,171)
-    assert numpy.where(bl.result.level_group_array[1]==+1)[0].tolist() == range(171,175)
+    assert numpy.where(bl.result.level_group_array[1]==+0)[0].tolist() == list(range(90,171))
+    assert numpy.where(bl.result.level_group_array[1]==+1)[0].tolist() == list(range(171,175))
 
-    assert numpy.where(bl.result.level_group_array[2]==+0)[0].tolist() == range(90,175)
+    assert numpy.where(bl.result.level_group_array[2]==+0)[0].tolist() == list(range(90,175))
 
-    assert numpy.where(bl.result.level_group_array[3]==+0)[0].tolist() == range(90,133)
-    assert numpy.where(bl.result.level_group_array[3]==+1)[0].tolist() == range(133,171)
+    assert numpy.where(bl.result.level_group_array[3]==+0)[0].tolist() == list(range(90,133))
+    assert numpy.where(bl.result.level_group_array[3]==+1)[0].tolist() == list(range(133,171))
     #!
 

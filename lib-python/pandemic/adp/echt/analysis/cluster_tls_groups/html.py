@@ -37,7 +37,7 @@ class ClusterTLSGroupsTaskHtmlSummary(HtmlSummary):
 
         tab_set = divs.TabSet(title='Clustering Results')
 
-        for level_name, clustering_result in self.task.result.clustering_results.iteritems():
+        for level_name, clustering_result in self.task.result.clustering_results.items():
             clustering_files = self.task.result.output_files[level_name]
 
             cluster_summary = divs.Tab(

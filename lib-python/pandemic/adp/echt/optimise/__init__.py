@@ -23,7 +23,7 @@ from .convergence import EchtModelAmplitudeConvergenceChecker
 #     return s
 
 
-class LevelTargetUijCalculator:
+class LevelTargetUijCalculator(object):
 
     def __init__(self,
             uij_target,
@@ -46,7 +46,7 @@ class LevelTargetUijCalculator:
         return self.uij_target - arr_sum
 
 
-class OptimiseEchtModel:
+class OptimiseEchtModel(object):
 
     debug = False
     
@@ -159,13 +159,13 @@ class OptimiseEchtModel:
         tracking_object.update(
             uijs = uij_isotropic_mask_or_not(model_object.uijs()),
             step = 'start',
-            i_level = range(model_object.n_levels),
+            i_level = list(range(model_object.n_levels)),
             )
 
         is_converged = EchtModelAmplitudeConvergenceChecker()
 
         # "micro-cycles"
-        for i_sub_cycle in xrange(self.max_n_cycles):
+        for i_sub_cycle in range(self.max_n_cycles):
 
             # Break loop if model is zero
             if self.max_u_iso(model_object) == 0.0:
@@ -180,7 +180,7 @@ class OptimiseEchtModel:
                 break
 
             # Iterate through the TLS levels of the fitting
-            for i_level in xrange(model_object.n_tls_levels):
+            for i_level in range(model_object.n_tls_levels):
 
                 logger.subheading(
                     (
@@ -232,7 +232,7 @@ class OptimiseEchtModel:
                             n_sub_cycle = i_sub_cycle+1, 
                             n_level = i_level+1,
                             ),
-                        i_level = range(model_object.n_levels),
+                        i_level = list(range(model_object.n_levels)),
                         )
 
             if self.optimise_adp_level is not None:
@@ -282,7 +282,7 @@ class OptimiseEchtModel:
                     n_cycle = tracking_object.n_cycle, 
                     n_sub_cycle = i_sub_cycle+1,
                     ),
-                i_level = range(model_object.n_levels),
+                i_level = list(range(model_object.n_levels)),
                 )
 
             if is_converged(model_object):
@@ -311,7 +311,7 @@ class OptimiseEchtModel:
         tracking_object.update(
             uijs = uij_isotropic_mask_or_not(model_object.uijs()),
             step = 'end',
-            i_level = range(model_object.n_levels),
+            i_level = list(range(model_object.n_levels)),
             )
 
         return model_object

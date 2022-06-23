@@ -4,7 +4,7 @@ import numpy, pandas
 from libtbx import adopt_init_args, group_args
 
 
-class EchtTracking:
+class EchtTracking(object):
 
     csv_name = 'tracking_echt.csv'
 
@@ -77,7 +77,7 @@ class EchtTracking:
         return EchtTrackingHtmlSummary(self)
 
 
-class EchtTrackingPlotter:
+class EchtTrackingPlotter(object):
 
     _amplitudes_png = 'tracking_amplitudes.png'
 
@@ -121,7 +121,7 @@ class EchtTrackingPlotter:
             y_vals_array.append(l_table['average'].values)
         nx = max(map(len,x_vals_array))
 
-        x_ticks = map(int,sorted(set(table['cycle'].values)))
+        x_ticks = list(map(int,sorted(set(table['cycle'].values))))
 
         self.plotting_object.lineplot(
             x_vals_array = x_vals_array,

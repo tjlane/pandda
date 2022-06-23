@@ -10,7 +10,7 @@ from scitbx.array_family import flex
 
 import pathlib as pl
 
-class HierarchicalModelAnalysisTask:
+class HierarchicalModelAnalysisTask(object):
 
 
     def __init__(self,

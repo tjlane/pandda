@@ -11,7 +11,7 @@ from libtbx.utils import Sorry, Failure
 from giant.structure.uij import uij_to_b
 
 
-class PandemicResultsObject:
+class PandemicResultsObject(object):
 
 
     initial_columns = [
@@ -78,7 +78,7 @@ class PandemicResultsObject:
 
         # Form input and output label dictionaries
         i_labs = input_column_labels
-        o_labs = {k:v+output_suffix for k,v in self.output_column_labels_base.iteritems()}
+        o_labs = {k:v+output_suffix for k,v in self.output_column_labels_base.items()}
 
         # Check keys
         assert not set(column_keys).difference(i_labs.keys())
@@ -164,7 +164,7 @@ class PandemicResultsObject:
 
         # Separate high- and low-resolution limits
         if 'Resolution range' in table_one.columns:
-            table_one['Low Resolution Limit'], table_one['High Resolution Limit'] = zip(*table_one['Resolution range'].apply(lambda x: x.split('(')[0].split('-')))
+            table_one['Low Resolution Limit'], table_one['High Resolution Limit'] = list(zip(*table_one['Resolution range'].apply(lambda x: x.split('(')[0].split('-'))))
 
         # Select columns that exist
         table_one = table_one[table_one.columns.intersection(column_labels)]
