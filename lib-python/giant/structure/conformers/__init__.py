@@ -409,7 +409,7 @@ class ExpandToFullMultiConformer(object):
                 continue
 
             # Create copy and add to residue_group
-            new_ag = ag_cycle.next().detached_copy()
+            new_ag = next(ag_cycle).detached_copy()
             new_ag.altloc = altloc
             residue_group.append_atom_group(
                 new_ag
