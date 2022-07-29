@@ -51,18 +51,18 @@ class ProgressBar(divs.Block):
             p = 100.0 * float(v) / total_width
 
             if (add_counts and add_percentages):
-                l = u'{}: {} ({}%)'.format(
+                l = '{}: {} ({}%)'.format(
                     str(l),
                     str(v),
                     int(p),
                     )
             elif add_counts: 
-                l = u'{} ({})'.format(
+                l = '{} ({})'.format(
                     str(l), 
                     str(v),
                     )
             elif add_percentages: 
-                l = u'{} ({}%)'.format(
+                l = '{} ({}%)'.format(
                     str(l), 
                     int(p),
                     )

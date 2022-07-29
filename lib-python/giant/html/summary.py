@@ -86,7 +86,7 @@ class HtmlSummary(object):
 
     @staticmethod
     def wrap_string(string, tag='p'):
-        return u'<{t}>{s}</{t}>'.format(
+        return '<{t}>{s}</{t}>'.format(
             t = tag,
             s = str(string),
             )
@@ -105,7 +105,7 @@ class HtmlSummary(object):
             fmt_lines = []
             for l in lines:
                 if l.count(':')==1:
-                    l = u':<strong>'.join(l.split(':')) + u"</strong>"
+                    l = ':<strong>'.join(l.split(':')) + '</strong>'
                 l = l.replace('\t','&emsp;')
                 fmt_lines.append(l)
             obj = div_obj_class(

@@ -9,12 +9,12 @@ from giant.dispatcher import Dispatcher
 from giant.exceptions import Failure
 
 # 2FOFC cols
-F_COMP_OPTIONS = [u'2FOFCWT',u'FWT']
-PHI_COMP_OPTIONS = [u'PH2FOFCWT',u'PHWT',u'PHFWT']
+F_COMP_OPTIONS = ['2FOFCWT','FWT']
+PHI_COMP_OPTIONS = ['PH2FOFCWT','PHWT','PHFWT']
 
 # FOFC cols
-F_DIFF_OPTIONS = [u'FOFCWT',u'DELFWT']
-PHI_DIFF_OPTIONS = [u'PHFOFCWT',u'DELPHWT',u'PHDELWT']
+F_DIFF_OPTIONS = ['FOFCWT','DELFWT']
+PHI_DIFF_OPTIONS = ['PHFOFCWT','DELPHWT','PHDELWT']
 
 def _get_first_if_not_none(item):
     if (item is not None):
@@ -143,7 +143,7 @@ class MtzHeaderData(object):
 
     def __str__(self):
 
-        s = u"""
+        s = """
         Resolution Range: {low} - {high} A
         Spacegroup: {sg} (No. {sgno})
         Cell: {cell}
@@ -193,7 +193,7 @@ class MtzColumnLabels(object):
         adopt_init_args(self, locals())
 
     def __str__(self):
-        s = u"""
+        s = """
         MTZ Column labels:
             F: {f} ({sigf})
             I: {i} ({sigi})
@@ -267,7 +267,7 @@ class MtzSummary(object):
             self.labels.summary(),
         ]
 
-        return u'\n'.join(s)
+        return '\n'.join(s)
 
     def summary(self):
         return str(self)
@@ -301,7 +301,7 @@ def parse_mtzdmp_logtext(logtext):
     # Get the resolution range
     res_range_str = _get_regex_matches(
         text = logtext,
-        regex_str = u'\*  Resolution Range :.*\n.*\n.*\((.*)A \)\n',
+        regex_str = r'\*  Resolution Range :.*\\n.*\\n.*\((.*)A \)\\n',
     )
     res_range = list(map(float, res_range_str.replace(' ','').split('-')))
     summary['reslow'], summary['reshigh'] = res_range
@@ -309,7 +309,7 @@ def parse_mtzdmp_logtext(logtext):
     # Get the Number of Columns
     n_cols_str = _get_regex_matches(
         text = logtext,
-        regex_str = u'\* Number of Columns =(.*)\n',
+        regex_str = r'\* Number of Columns =(.*?)\\n',
     )
     n_cols = int(n_cols_str.strip())
     summary['numcols'] = n_cols
@@ -317,7 +317,7 @@ def parse_mtzdmp_logtext(logtext):
     # Get the Number of Reflections
     n_refl_str = _get_regex_matches(
         text = logtext,
-        regex_str = u'\* Number of Reflections =(.*)\n',
+        regex_str = r'\* Number of Reflections =(.*?)\\n',
     )
     n_refl = int(n_refl_str.strip())
     summary['numreflections'] = n_refl
@@ -325,7 +325,7 @@ def parse_mtzdmp_logtext(logtext):
     # Get the Column Labels
     col_labs_str = _get_regex_matches(
         text = logtext,
-        regex_str = u'\* Column Labels :.*\n.*\n(.*)\n',
+        regex_str = r'\* Column Labels :.*?\\n.*?\\n(.*?)\\n',
     )
     col_labs = col_labs_str.strip().split()
     summary['colheadings'] = col_labs
@@ -333,7 +333,7 @@ def parse_mtzdmp_logtext(logtext):
     # Get the Column Types
     col_types_str = _get_regex_matches(
         text = logtext,
-        regex_str = u'\* Column Types :.*\n.*\n(.*)\n',
+        regex_str = r'\* Column Types :.*?\\n.*?\\n(.*?)\\n',
     )
     col_types = col_types_str.strip().split()
     summary['coltypes'] = col_types
@@ -341,7 +341,7 @@ def parse_mtzdmp_logtext(logtext):
     # Get the different datasets
     col_datasets_str = _get_regex_matches(
         text = logtext,
-        regex_str = u'\* Associated datasets :.*\n.*\n(.*)\n',
+        regex_str = r'\* Associated datasets :.*?\\n.*?\\n(.*?)\\n',
     )
     col_datasets = col_datasets_str.strip().split()
     summary['coldatasets'] = col_datasets
@@ -349,7 +349,7 @@ def parse_mtzdmp_logtext(logtext):
     # Get the Spacegroup
     spacegroup_strs = _get_regex_matches(
         text = logtext,
-        regex_str = u'\* Space group =.*\'(.*)\'.\(number(.*)\)',
+        regex_str = r'\* Space group =.*?\\\'(.*?)\\\'.\(number(.*?)\)',
     )
     spacegroup = spacegroup_strs[0].strip()
     spacegroup_no = int(spacegroup_strs[1].strip())
@@ -359,7 +359,7 @@ def parse_mtzdmp_logtext(logtext):
     # Get the Cell Dimensions
     cell_str = _get_regex_matches(
         text = logtext,
-        regex_str = u'\* Cell Dimensions :.*\n.*\n(.*)\n',
+        regex_str = r'\* Cell Dimensions :.*?\\n.*?\\n(.*?)\\n',
     )
     cell = list(map(float,cell_str.split()))
     summary['cell'] = cell

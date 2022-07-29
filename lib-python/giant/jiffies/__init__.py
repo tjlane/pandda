@@ -270,19 +270,19 @@ class run_default(object):
         except Failure as e:
             e.args = (
                 (
-                    u'\n\n' +
+                    '\n\n' +
                     str(e.args[0]) +
-                    u'\n\n(This type of error normally indicates that something has gone wrong within the program that is not fixable by the user.'
-                    u'\nYou may need to contact the developer -- for contact info please visit https://pandda.bitbucket.io .)\n'
+                    '\n\n(This type of error normally indicates that something has gone wrong within the program that is not fixable by the user.'
+                    '\nYou may need to contact the developer -- for contact info please visit https://pandda.bitbucket.io .)\n'
                     ),
                 ) + e.args[1:]
             raise
         except (Sorry, IOError, ValueError) as e:
             e.args = (
                 (
-                    u'\n\n' +
+                    '\n\n' +
                     str(e.args[0]) +
-                    u'\n\n(This type of error normally indicates that something is wrong with the input provided to the program that is fixable.)\n'
+                    '\n\n(This type of error normally indicates that something is wrong with the input provided to the program that is fixable.)\n'
                     ),
                 ) + e.args[1:]
             raise
