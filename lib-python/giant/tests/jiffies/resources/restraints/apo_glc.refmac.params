@@ -1,773 +1,773 @@
-exte dist first chain A resi   16 atom  NE1 second chain S resi  231 alte A atom  O   value 3.38017558716 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  CD1 second chain S resi  284 alte A atom  O   value 3.99614827052 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  CZ2 second chain A resi   23 alte A atom  O   value 3.60121590577 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  NE1 second chain A resi   23 alte A atom  O   value 3.75889890793 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  NE1 second chain A resi  289 alte A atom  NZ  value 3.91231670497 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  NE1 second chain S resi  181 alte A atom  O   value 3.50902151604 sigma 0.1 type 1
-exte dist first chain A resi   21 atom  C   second chain A resi   23 alte A atom  N   value 3.51647166916 sigma 0.1 type 1
-exte dist first chain A resi   21 atom  O   second chain A resi   23 alte A atom  N   value 3.8611482748 sigma 0.1 type 1
-exte dist first chain A resi   22 atom  O   second chain A resi   28 alte A atom  O   value 3.52538409255 sigma 0.1 type 1
-exte dist first chain A resi   23 alte A atom  CG  second chain A resi   27 atom  O   value 3.33213580155 sigma 0.1 type 1
-exte dist first chain A resi   23 alte A atom  NH1 second chain A resi   28 alte A atom  CA  value 3.7280272263 sigma 0.1 type 1
-exte dist first chain A resi   23 alte A atom  NH1 second chain A resi   29 atom  N   value 3.20884044477 sigma 0.1 type 1
-exte dist first chain A resi   23 alte A atom  NH2 second chain A resi   29 atom  CB  value 3.7078429039 sigma 0.1 type 1
-exte dist first chain A resi   23 alte A atom  N   second chain A resi   29 atom  CA  value 3.93123263112 sigma 0.1 type 1
-exte dist first chain A resi   23 alte A atom  N   second chain S resi   53 atom  O   value 3.12781409294 sigma 0.1 type 1
-exte dist first chain A resi   23 alte A atom  O   second chain S resi  181 alte A atom  O   value 2.85079094288 sigma 0.1 type 1
-exte dist first chain A resi   28 alte A atom  O   second chain A resi   30 atom  N   value 3.51062060041 sigma 0.1 type 1
-exte dist first chain A resi   28 alte A atom  O   second chain A resi  292 atom  NH2 value 2.70732432486 sigma 0.1 type 1
-exte dist first chain A resi   28 alte A atom  N   second chain A resi  292 atom  NH2 value 3.72301289281 sigma 0.1 type 1
-exte dist first chain A resi   28 alte A atom  OD2 second chain S resi  105 atom  O   value 2.17213466433 sigma 0.1 type 1
-exte dist first chain A resi   28 alte A atom  OD2 second chain S resi  206 atom  O   value 3.83309457227 sigma 0.1 type 1
-exte dist first chain A resi   28 alte A atom  OD1 second chain S resi  221 atom  O   value 2.86498202438 sigma 0.1 type 1
-exte dist first chain A resi   28 alte A atom  N   second chain S resi  221 atom  O   value 3.91763921259 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  NE2 second chain S resi   60 alte A atom  O   value 3.93103103524 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  CB  second chain S resi  142 alte A atom  O   value 3.66090439646 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  NE2 second chain S resi  147 alte A atom  O   value 2.75457310667 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  ND1 second chain S resi  194 alte A atom  O   value 3.88190996804 sigma 0.1 type 1
-exte dist first chain A resi   56 atom  CB  second chain S resi  142 alte A atom  O   value 3.49374455277 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  OD1 second chain S resi  142 alte A atom  O   value 2.92966260856 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  N   second chain S resi  142 alte A atom  O   value 3.68909772167 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  OD1 second chain S resi  194 alte A atom  O   value 3.6141386249 sigma 0.1 type 1
-exte dist first chain A resi   90 atom  OG1 second chain S resi   60 alte A atom  O   value 2.66779946773 sigma 0.1 type 1
-exte dist first chain A resi   90 atom  CG2 second chain S resi  285 alte A atom  O   value 3.97283651816 sigma 0.1 type 1
-exte dist first chain A resi   91 atom  O   second chain S resi   60 alte A atom  O   value 3.15103855895 sigma 0.1 type 1
-exte dist first chain A resi   92 atom  ND2 second chain S resi  142 alte A atom  O   value 2.74833676976 sigma 0.1 type 1
-exte dist first chain A resi   92 atom  ND2 second chain S resi  194 alte A atom  O   value 3.84278622877 sigma 0.1 type 1
-exte dist first chain A resi   93 atom  CD1 second chain S resi  123 alte A atom  O   value 3.62105537102 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CE2 second chain S resi  147 alte A atom  O   value 3.7020039168 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CZ  second chain S resi  194 alte A atom  O   value 3.97041433606 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CE1 second chain S resi  284 alte A atom  O   value 3.93070489862 sigma 0.1 type 1
-exte dist first chain A resi  135 atom  CG1 second chain S resi  285 alte A atom  O   value 3.48038173194 sigma 0.1 type 1
-exte dist first chain A resi  136 atom  CA  second chain S resi  123 alte A atom  O   value 3.50679027032 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  N   second chain S resi   60 alte A atom  O   value 3.19341791816 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  N   second chain S resi  123 alte A atom  O   value 3.48643887083 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  O   second chain S resi  123 alte A atom  O   value 3.62435014865 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CB  second chain S resi  147 alte A atom  O   value 3.49420105317 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CZ2 second chain S resi  205 alte A atom  O   value 3.36677798496 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CB  second chain S resi  285 alte A atom  O   value 3.90379379578 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE1 second chain S resi  173 alte A atom  O   value 2.47773888858 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE2 second chain S resi  173 alte A atom  O   value 2.70163450526 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE2 second chain S resi  187 alte A atom  O   value 2.56932714927 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE1 second chain S resi  285 alte A atom  O   value 2.97520873217 sigma 0.1 type 1
-exte dist first chain A resi  183 atom  NZ  second chain S resi  205 alte A atom  O   value 3.09788669903 sigma 0.1 type 1
-exte dist first chain A resi  217 atom  OE1 second chain S resi  187 alte A atom  O   value 3.25430622407 sigma 0.1 type 1
-exte dist first chain A resi  220 atom  CE1 second chain S resi  187 alte A atom  O   value 3.76150196065 sigma 0.1 type 1
-exte dist first chain A resi  220 atom  NE2 second chain S resi  205 alte A atom  O   value 3.6178550275 sigma 0.1 type 1
-exte dist first chain A resi  245 atom  OD2 second chain S resi  173 alte A atom  O   value 2.73289114309 sigma 0.1 type 1
-exte dist first chain A resi  254 atom  OH  second chain S resi   78 alte A atom  O   value 2.80470123186 sigma 0.1 type 1
-exte dist first chain A resi  254 atom  CE2 second chain S resi  152 alte A atom  O   value 3.48682606392 sigma 0.1 type 1
-exte dist first chain A resi  255 atom  O   second chain S resi  188 alte A atom  O   value 3.20716853315 sigma 0.1 type 1
-exte dist first chain A resi  255 atom  OD2 second chain S resi  205 alte A atom  O   value 3.19707147246 sigma 0.1 type 1
-exte dist first chain A resi  256 atom  O   second chain S resi  188 alte A atom  O   value 3.08617092851 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  O   second chain A resi  289 alte A atom  N   value 2.77055752512 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  O   second chain A resi  289 alte A atom  O   value 3.47127599018 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  OD2 second chain A resi  289 alte A atom  CE  value 3.90299218549 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD2 second chain S resi  173 alte A atom  O   value 2.69551201073 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD2 second chain S resi  187 alte A atom  O   value 2.718557338 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD2 second chain S resi  231 alte A atom  O   value 2.74496812368 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD1 second chain S resi  231 alte A atom  O   value 3.44165207422 sigma 0.1 type 1
-exte dist first chain A resi  289 alte A atom  O   second chain A resi  291 atom  N   value 3.24104982992 sigma 0.1 type 1
-exte dist first chain A resi  289 alte A atom  O   second chain S resi   35 atom  O   value 2.56938066467 sigma 0.1 type 1
-exte dist first chain A resi  289 alte A atom  NZ  second chain S resi  181 alte A atom  O   value 3.38557262513 sigma 0.1 type 1
-exte dist first chain A resi  289 alte A atom  CD  second chain S resi  188 alte A atom  O   value 3.86957697946 sigma 0.1 type 1
-exte dist first chain A resi  289 alte A atom  NZ  second chain S resi  234 atom  O   value 2.93461241052 sigma 0.1 type 1
-exte dist first chain A resi  289 alte A atom  CG  second chain S resi  265 atom  O   value 3.43795942384 sigma 0.1 type 1
-exte dist first chain A resi  289 alte A atom  NZ  second chain S resi  283 alte A atom  O   value 2.68043373356 sigma 0.1 type 1
-exte dist first chain B resi    1 atom MG   second chain S resi  173 alte A atom  O   value 2.03893231864 sigma 0.1 type 1
-exte dist first chain B resi    1 atom MG   second chain S resi  187 alte A atom  O   value 2.19479065061 sigma 0.1 type 1
-exte dist first chain B resi    1 atom MG   second chain S resi  231 alte A atom  O   value 3.78555174314 sigma 0.1 type 1
-exte dist first chain C resi    1 atom MN   second chain S resi  205 alte A atom  O   value 3.80063718342 sigma 0.1 type 1
-exte dist first chain S resi   27 atom  O   second chain S resi   78 alte A atom  O   value 3.55974985076 sigma 0.1 type 1
-exte dist first chain S resi   32 atom  O   second chain S resi   60 alte A atom  O   value 3.09661815534 sigma 0.1 type 1
-exte dist first chain S resi   32 atom  O   second chain S resi  123 alte A atom  O   value 2.88011006734 sigma 0.1 type 1
-exte dist first chain S resi   56 atom  O   second chain S resi  188 alte A atom  O   value 3.99818021105 sigma 0.1 type 1
-exte dist first chain S resi   56 atom  O   second chain S resi  283 alte A atom  O   value 2.92336193449 sigma 0.1 type 1
-exte dist first chain S resi   60 alte A atom  O   second chain S resi  123 alte A atom  O   value 3.83321144734 sigma 0.1 type 1
-exte dist first chain S resi   60 alte A atom  O   second chain S resi  147 alte A atom  O   value 2.49853677179 sigma 0.1 type 1
-exte dist first chain S resi   60 alte A atom  O   second chain S resi  285 alte A atom  O   value 3.52871662223 sigma 0.1 type 1
-exte dist first chain S resi   74 atom  O   second chain S resi  123 alte A atom  O   value 2.87982794625 sigma 0.1 type 1
-exte dist first chain S resi   78 alte A atom  O   second chain S resi  106 atom  O   value 3.42651119946 sigma 0.1 type 1
-exte dist first chain S resi   78 alte A atom  O   second chain S resi  116 atom  O   value 3.04206936147 sigma 0.1 type 1
-exte dist first chain S resi   78 alte A atom  O   second chain S resi  119 atom  O   value 3.99086820128 sigma 0.1 type 1
-exte dist first chain S resi  106 atom  O   second chain S resi  152 alte A atom  O   value 3.46426817669 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  152 alte A atom  O   value 2.45126538751 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  188 alte A atom  O   value 2.6840957509 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  283 alte A atom  O   value 3.33260918801 sigma 0.1 type 1
-exte dist first chain S resi  123 alte A atom  O   second chain S resi  146 atom  O   value 2.53253410638 sigma 0.1 type 1
-exte dist first chain S resi  131 atom  O   second chain S resi  152 alte A atom  O   value 2.7582256978 sigma 0.1 type 1
-exte dist first chain S resi  131 atom  O   second chain S resi  283 alte A atom  O   value 3.43957163031 sigma 0.1 type 1
-exte dist first chain S resi  142 alte A atom  O   second chain S resi  194 alte A atom  O   value 3.00008883202 sigma 0.1 type 1
-exte dist first chain S resi  147 alte A atom  O   second chain S resi  285 alte A atom  O   value 2.47585480188 sigma 0.1 type 1
-exte dist first chain S resi  173 alte A atom  O   second chain S resi  187 alte A atom  O   value 2.26002544233 sigma 0.1 type 1
-exte dist first chain S resi  173 alte A atom  O   second chain S resi  231 alte A atom  O   value 3.04544791451 sigma 0.1 type 1
-exte dist first chain S resi  173 alte A atom  O   second chain S resi  285 alte A atom  O   value 2.81379832255 sigma 0.1 type 1
-exte dist first chain S resi  173 alte A atom  O   second chain S resi  286 atom  O   value 2.54096930324 sigma 0.1 type 1
-exte dist first chain S resi  181 alte A atom  O   second chain S resi  283 alte A atom  O   value 3.08474229069 sigma 0.1 type 1
-exte dist first chain S resi  187 alte A atom  O   second chain S resi  205 alte A atom  O   value 3.88423171296 sigma 0.1 type 1
-exte dist first chain S resi  187 alte A atom  O   second chain S resi  222 atom  O   value 3.20262189464 sigma 0.1 type 1
-exte dist first chain S resi  187 alte A atom  O   second chain S resi  231 alte A atom  O   value 2.53422611462 sigma 0.1 type 1
-exte dist first chain S resi  188 alte A atom  O   second chain S resi  283 alte A atom  O   value 3.25250026902 sigma 0.1 type 1
-exte dist first chain S resi  194 alte A atom  O   second chain S resi  284 alte A atom  O   value 2.81666345167 sigma 0.1 type 1
-exte dist first chain S resi  205 alte A atom  O   second chain S resi  222 atom  O   value 3.07054832237 sigma 0.1 type 1
-exte dist first chain S resi  222 atom  O   second chain S resi  231 alte A atom  O   value 3.59341188844 sigma 0.1 type 1
-exte dist first chain S resi  234 atom  O   second chain S resi  283 alte A atom  O   value 3.40972036977 sigma 0.1 type 1
-exte dist first chain S resi  285 alte A atom  O   second chain S resi  286 atom  O   value 3.33113794371 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  NE1 second chain S resi  231 alte B atom  O   value 3.38017558716 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  CD1 second chain S resi  284 alte B atom  O   value 3.99614827052 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  CZ2 second chain A resi   23 alte B atom  O   value 3.49591275635 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  NE1 second chain A resi   23 alte B atom  O   value 3.70178456964 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  NE1 second chain A resi  289 alte B atom  CE  value 3.57932004716 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  NE1 second chain S resi  181 alte B atom  O   value 3.50902151604 sigma 0.1 type 1
-exte dist first chain A resi   21 atom  C   second chain A resi   23 alte B atom  N   value 3.52143110113 sigma 0.1 type 1
-exte dist first chain A resi   21 atom  O   second chain A resi   23 alte B atom  N   value 3.87453919841 sigma 0.1 type 1
-exte dist first chain A resi   22 atom  O   second chain A resi   28 alte B atom  O   value 3.46111326021 sigma 0.1 type 1
-exte dist first chain A resi   23 alte B atom  CD  second chain A resi   27 atom  O   value 3.16646016871 sigma 0.1 type 1
-exte dist first chain A resi   23 alte B atom  NE  second chain A resi   27 atom  O   value 3.51164975474 sigma 0.1 type 1
-exte dist first chain A resi   23 alte B atom  CG  second chain A resi   28 alte B atom  OD1 value 3.85254474341 sigma 0.1 type 1
-exte dist first chain A resi   23 alte B atom  CG  second chain A resi   29 atom  N   value 3.70178470471 sigma 0.1 type 1
-exte dist first chain A resi   23 alte B atom  N   second chain A resi   29 atom  CA  value 3.96221579422 sigma 0.1 type 1
-exte dist first chain A resi   23 alte B atom  N   second chain S resi   53 atom  O   value 3.11809894006 sigma 0.1 type 1
-exte dist first chain A resi   23 alte B atom  O   second chain S resi  181 alte B atom  O   value 2.79895569811 sigma 0.1 type 1
-exte dist first chain A resi   23 alte B atom  NH1 second chain S resi  191 atom  O   value 3.98378726842 sigma 0.1 type 1
-exte dist first chain A resi   23 alte B atom  NH2 second chain S resi  221 atom  O   value 2.94252272718 sigma 0.1 type 1
-exte dist first chain A resi   28 alte B atom  O   second chain A resi   30 atom  N   value 3.56870690867 sigma 0.1 type 1
-exte dist first chain A resi   28 alte B atom  O   second chain A resi  292 atom  NH2 value 2.72542565483 sigma 0.1 type 1
-exte dist first chain A resi   28 alte B atom  N   second chain A resi  292 atom  NH2 value 3.77784396184 sigma 0.1 type 1
-exte dist first chain A resi   28 alte B atom  CB  second chain S resi  105 atom  O   value 3.38620908982 sigma 0.1 type 1
-exte dist first chain A resi   28 alte B atom  OD2 second chain S resi  105 atom  O   value 3.78313282875 sigma 0.1 type 1
-exte dist first chain A resi   28 alte B atom  N   second chain S resi  221 atom  O   value 3.87051146491 sigma 0.1 type 1
-exte dist first chain A resi   28 alte B atom  OD2 second chain S resi  232 atom  O   value 3.07339161188 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  NE2 second chain S resi   60 alte B atom  O   value 3.93103103524 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  CB  second chain S resi  142 alte B atom  O   value 3.66090439646 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  NE2 second chain S resi  147 alte B atom  O   value 2.75457310667 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  ND1 second chain S resi  194 alte B atom  O   value 3.88190996804 sigma 0.1 type 1
-exte dist first chain A resi   56 atom  CB  second chain S resi  142 alte B atom  O   value 3.49374455277 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  OD1 second chain S resi  142 alte B atom  O   value 2.92966260856 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  N   second chain S resi  142 alte B atom  O   value 3.68909772167 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  OD1 second chain S resi  194 alte B atom  O   value 3.6141386249 sigma 0.1 type 1
-exte dist first chain A resi   90 atom  OG1 second chain S resi   60 alte B atom  O   value 2.66779946773 sigma 0.1 type 1
-exte dist first chain A resi   90 atom  CG2 second chain S resi  285 alte B atom  O   value 3.97283651816 sigma 0.1 type 1
-exte dist first chain A resi   91 atom  O   second chain S resi   60 alte B atom  O   value 3.15103855895 sigma 0.1 type 1
-exte dist first chain A resi   92 atom  ND2 second chain S resi  142 alte B atom  O   value 2.74833676976 sigma 0.1 type 1
-exte dist first chain A resi   92 atom  ND2 second chain S resi  194 alte B atom  O   value 3.84278622877 sigma 0.1 type 1
-exte dist first chain A resi   93 atom  CD1 second chain S resi  123 alte B atom  O   value 3.62105537102 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CE2 second chain S resi  147 alte B atom  O   value 3.7020039168 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CZ  second chain S resi  194 alte B atom  O   value 3.97041433606 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CE1 second chain S resi  284 alte B atom  O   value 3.93070489862 sigma 0.1 type 1
-exte dist first chain A resi  135 atom  CG1 second chain S resi  285 alte B atom  O   value 3.48038173194 sigma 0.1 type 1
-exte dist first chain A resi  136 atom  CA  second chain S resi  123 alte B atom  O   value 3.50679027032 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  N   second chain S resi   60 alte B atom  O   value 3.19341791816 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  N   second chain S resi  123 alte B atom  O   value 3.48643887083 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  O   second chain S resi  123 alte B atom  O   value 3.62435014865 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CB  second chain S resi  147 alte B atom  O   value 3.49420105317 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CZ2 second chain S resi  205 alte B atom  O   value 3.36677798496 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CB  second chain S resi  285 alte B atom  O   value 3.90379379578 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE1 second chain S resi  173 alte B atom  O   value 2.47773888858 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE2 second chain S resi  173 alte B atom  O   value 2.70163450526 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE2 second chain S resi  187 alte B atom  O   value 2.56932714927 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE1 second chain S resi  285 alte B atom  O   value 2.97520873217 sigma 0.1 type 1
-exte dist first chain A resi  183 atom  NZ  second chain S resi  205 alte B atom  O   value 3.09788669903 sigma 0.1 type 1
-exte dist first chain A resi  217 atom  OE1 second chain S resi  187 alte B atom  O   value 3.25430622407 sigma 0.1 type 1
-exte dist first chain A resi  220 atom  CE1 second chain S resi  187 alte B atom  O   value 3.76150196065 sigma 0.1 type 1
-exte dist first chain A resi  220 atom  NE2 second chain S resi  205 alte B atom  O   value 3.6178550275 sigma 0.1 type 1
-exte dist first chain A resi  245 atom  OD2 second chain S resi  173 alte B atom  O   value 2.73289114309 sigma 0.1 type 1
-exte dist first chain A resi  254 atom  OH  second chain S resi   78 alte B atom  O   value 2.80470123186 sigma 0.1 type 1
-exte dist first chain A resi  254 atom  CE2 second chain S resi  152 alte B atom  O   value 3.48682606392 sigma 0.1 type 1
-exte dist first chain A resi  255 atom  O   second chain S resi  188 alte B atom  O   value 3.20716853315 sigma 0.1 type 1
-exte dist first chain A resi  255 atom  OD2 second chain S resi  205 alte B atom  O   value 3.19707147246 sigma 0.1 type 1
-exte dist first chain A resi  256 atom  O   second chain S resi  188 alte B atom  O   value 3.08617092851 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  O   second chain A resi  289 alte B atom  N   value 2.76845462307 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  O   second chain A resi  289 alte B atom  O   value 3.46921576152 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  OD2 second chain A resi  289 alte B atom  NZ  value 3.59943023269 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD2 second chain S resi  173 alte B atom  O   value 2.69551201073 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD2 second chain S resi  187 alte B atom  O   value 2.718557338 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD2 second chain S resi  231 alte B atom  O   value 2.74496812368 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD1 second chain S resi  231 alte B atom  O   value 3.44165207422 sigma 0.1 type 1
-exte dist first chain A resi  289 alte B atom  O   second chain A resi  291 atom  N   value 3.24080499259 sigma 0.1 type 1
-exte dist first chain A resi  289 alte B atom  O   second chain S resi   35 atom  O   value 2.57983022697 sigma 0.1 type 1
-exte dist first chain A resi  289 alte B atom  CD  second chain S resi  188 alte B atom  O   value 3.70223027377 sigma 0.1 type 1
-exte dist first chain A resi  289 alte B atom  NZ  second chain S resi  234 atom  O   value 3.56299340443 sigma 0.1 type 1
-exte dist first chain A resi  289 alte B atom  NZ  second chain S resi  265 atom  O   value 2.77747277214 sigma 0.1 type 1
-exte dist first chain A resi  289 alte B atom  CE  second chain S resi  283 alte B atom  O   value 3.68511858697 sigma 0.1 type 1
-exte dist first chain B resi    1 atom MG   second chain S resi  173 alte B atom  O   value 2.03893231864 sigma 0.1 type 1
-exte dist first chain B resi    1 atom MG   second chain S resi  187 alte B atom  O   value 2.19479065061 sigma 0.1 type 1
-exte dist first chain B resi    1 atom MG   second chain S resi  231 alte B atom  O   value 3.78555174314 sigma 0.1 type 1
-exte dist first chain C resi    1 atom MN   second chain S resi  205 alte B atom  O   value 3.80063718342 sigma 0.1 type 1
-exte dist first chain S resi   27 atom  O   second chain S resi   78 alte B atom  O   value 3.55974985076 sigma 0.1 type 1
-exte dist first chain S resi   32 atom  O   second chain S resi   60 alte B atom  O   value 3.09661815534 sigma 0.1 type 1
-exte dist first chain S resi   32 atom  O   second chain S resi  123 alte B atom  O   value 2.88011006734 sigma 0.1 type 1
-exte dist first chain S resi   56 atom  O   second chain S resi  188 alte B atom  O   value 3.99818021105 sigma 0.1 type 1
-exte dist first chain S resi   56 atom  O   second chain S resi  283 alte B atom  O   value 2.92336193449 sigma 0.1 type 1
-exte dist first chain S resi   60 alte B atom  O   second chain S resi  123 alte B atom  O   value 3.83321144734 sigma 0.1 type 1
-exte dist first chain S resi   60 alte B atom  O   second chain S resi  147 alte B atom  O   value 2.49853677179 sigma 0.1 type 1
-exte dist first chain S resi   60 alte B atom  O   second chain S resi  285 alte B atom  O   value 3.52871662223 sigma 0.1 type 1
-exte dist first chain S resi   74 atom  O   second chain S resi  123 alte B atom  O   value 2.87982794625 sigma 0.1 type 1
-exte dist first chain S resi   78 alte B atom  O   second chain S resi  106 atom  O   value 3.42651119946 sigma 0.1 type 1
-exte dist first chain S resi   78 alte B atom  O   second chain S resi  116 atom  O   value 3.04206936147 sigma 0.1 type 1
-exte dist first chain S resi   78 alte B atom  O   second chain S resi  119 atom  O   value 3.99086820128 sigma 0.1 type 1
-exte dist first chain S resi  106 atom  O   second chain S resi  152 alte B atom  O   value 3.46426817669 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  152 alte B atom  O   value 2.45126538751 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  188 alte B atom  O   value 2.6840957509 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  283 alte B atom  O   value 3.33260918801 sigma 0.1 type 1
-exte dist first chain S resi  123 alte B atom  O   second chain S resi  146 atom  O   value 2.53253410638 sigma 0.1 type 1
-exte dist first chain S resi  131 atom  O   second chain S resi  152 alte B atom  O   value 2.7582256978 sigma 0.1 type 1
-exte dist first chain S resi  131 atom  O   second chain S resi  283 alte B atom  O   value 3.43957163031 sigma 0.1 type 1
-exte dist first chain S resi  142 alte B atom  O   second chain S resi  194 alte B atom  O   value 3.00008883202 sigma 0.1 type 1
-exte dist first chain S resi  147 alte B atom  O   second chain S resi  285 alte B atom  O   value 2.47585480188 sigma 0.1 type 1
-exte dist first chain S resi  173 alte B atom  O   second chain S resi  187 alte B atom  O   value 2.26002544233 sigma 0.1 type 1
-exte dist first chain S resi  173 alte B atom  O   second chain S resi  231 alte B atom  O   value 3.04544791451 sigma 0.1 type 1
-exte dist first chain S resi  173 alte B atom  O   second chain S resi  285 alte B atom  O   value 2.81379832255 sigma 0.1 type 1
-exte dist first chain S resi  173 alte B atom  O   second chain S resi  286 atom  O   value 2.54096930324 sigma 0.1 type 1
-exte dist first chain S resi  181 alte B atom  O   second chain S resi  283 alte B atom  O   value 3.08474229069 sigma 0.1 type 1
-exte dist first chain S resi  187 alte B atom  O   second chain S resi  205 alte B atom  O   value 3.88423171296 sigma 0.1 type 1
-exte dist first chain S resi  187 alte B atom  O   second chain S resi  222 atom  O   value 3.20262189464 sigma 0.1 type 1
-exte dist first chain S resi  187 alte B atom  O   second chain S resi  231 alte B atom  O   value 2.53422611462 sigma 0.1 type 1
-exte dist first chain S resi  188 alte B atom  O   second chain S resi  283 alte B atom  O   value 3.25250026902 sigma 0.1 type 1
-exte dist first chain S resi  194 alte B atom  O   second chain S resi  284 alte B atom  O   value 2.81666345167 sigma 0.1 type 1
-exte dist first chain S resi  205 alte B atom  O   second chain S resi  222 atom  O   value 3.07054832237 sigma 0.1 type 1
-exte dist first chain S resi  222 atom  O   second chain S resi  231 alte B atom  O   value 3.59341188844 sigma 0.1 type 1
-exte dist first chain S resi  234 atom  O   second chain S resi  283 alte B atom  O   value 3.40972036977 sigma 0.1 type 1
-exte dist first chain S resi  285 alte B atom  O   second chain S resi  286 atom  O   value 3.33113794371 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  NE1 second chain S resi  231 alte C atom  O   value 3.38017558716 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  CD1 second chain S resi  284 alte C atom  O   value 3.99614827052 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  CZ2 second chain A resi   23 alte C atom  O   value 3.49591275635 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  NE1 second chain A resi   23 alte C atom  O   value 3.70178456964 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  NE1 second chain A resi  289 alte C atom  CE  value 3.57932004716 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  NE1 second chain S resi  181 alte C atom  O   value 3.50902151604 sigma 0.1 type 1
-exte dist first chain A resi   21 atom  C   second chain A resi   23 alte C atom  N   value 3.52143110113 sigma 0.1 type 1
-exte dist first chain A resi   21 atom  O   second chain A resi   23 alte C atom  N   value 3.87453919841 sigma 0.1 type 1
-exte dist first chain A resi   22 atom  O   second chain A resi   28 alte C atom  O   value 3.52538409255 sigma 0.1 type 1
-exte dist first chain A resi   23 alte C atom  CD  second chain A resi   27 atom  O   value 3.16646016871 sigma 0.1 type 1
-exte dist first chain A resi   23 alte C atom  NE  second chain A resi   27 atom  O   value 3.51164975474 sigma 0.1 type 1
-exte dist first chain A resi   23 alte C atom  NH2 second chain A resi   28 alte C atom  OD1 value 3.55349377374 sigma 0.1 type 1
-exte dist first chain A resi   23 alte C atom  NE  second chain A resi   28 alte C atom  OD1 value 3.79163131119 sigma 0.1 type 1
-exte dist first chain A resi   23 alte C atom  CG  second chain A resi   29 atom  N   value 3.70178470471 sigma 0.1 type 1
-exte dist first chain A resi   23 alte C atom  N   second chain A resi   29 atom  CA  value 3.96221579422 sigma 0.1 type 1
-exte dist first chain A resi   23 alte C atom  N   second chain S resi   53 atom  O   value 3.11809894006 sigma 0.1 type 1
-exte dist first chain A resi   23 alte C atom  O   second chain S resi  181 alte C atom  O   value 2.79895569811 sigma 0.1 type 1
-exte dist first chain A resi   23 alte C atom  NH1 second chain S resi  191 atom  O   value 3.98378726842 sigma 0.1 type 1
-exte dist first chain A resi   23 alte C atom  NH2 second chain S resi  221 atom  O   value 2.94252272718 sigma 0.1 type 1
-exte dist first chain A resi   28 alte C atom  O   second chain A resi   30 atom  N   value 3.51062060041 sigma 0.1 type 1
-exte dist first chain A resi   28 alte C atom  O   second chain A resi  292 atom  NH2 value 2.70732432486 sigma 0.1 type 1
-exte dist first chain A resi   28 alte C atom  N   second chain A resi  292 atom  NH2 value 3.72301289281 sigma 0.1 type 1
-exte dist first chain A resi   28 alte C atom  OD2 second chain S resi  105 atom  O   value 2.17213466433 sigma 0.1 type 1
-exte dist first chain A resi   28 alte C atom  OD2 second chain S resi  206 atom  O   value 3.83309457227 sigma 0.1 type 1
-exte dist first chain A resi   28 alte C atom  OD1 second chain S resi  221 atom  O   value 2.86498202438 sigma 0.1 type 1
-exte dist first chain A resi   28 alte C atom  N   second chain S resi  221 atom  O   value 3.91763921259 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  NE2 second chain S resi   60 alte C atom  O   value 3.93103103524 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  CB  second chain S resi  142 alte C atom  O   value 3.66090439646 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  NE2 second chain S resi  147 alte C atom  O   value 2.75457310667 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  ND1 second chain S resi  194 alte C atom  O   value 3.88190996804 sigma 0.1 type 1
-exte dist first chain A resi   56 atom  CB  second chain S resi  142 alte C atom  O   value 3.49374455277 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  OD1 second chain S resi  142 alte C atom  O   value 2.92966260856 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  N   second chain S resi  142 alte C atom  O   value 3.68909772167 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  OD1 second chain S resi  194 alte C atom  O   value 3.6141386249 sigma 0.1 type 1
-exte dist first chain A resi   90 atom  OG1 second chain S resi   60 alte C atom  O   value 2.66779946773 sigma 0.1 type 1
-exte dist first chain A resi   90 atom  CG2 second chain S resi  285 alte C atom  O   value 3.97283651816 sigma 0.1 type 1
-exte dist first chain A resi   91 atom  O   second chain S resi   60 alte C atom  O   value 3.15103855895 sigma 0.1 type 1
-exte dist first chain A resi   92 atom  ND2 second chain S resi  142 alte C atom  O   value 2.74833676976 sigma 0.1 type 1
-exte dist first chain A resi   92 atom  ND2 second chain S resi  194 alte C atom  O   value 3.84278622877 sigma 0.1 type 1
-exte dist first chain A resi   93 atom  CD1 second chain S resi  123 alte C atom  O   value 3.62105537102 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CE2 second chain S resi  147 alte C atom  O   value 3.7020039168 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CZ  second chain S resi  194 alte C atom  O   value 3.97041433606 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CE1 second chain S resi  284 alte C atom  O   value 3.93070489862 sigma 0.1 type 1
-exte dist first chain A resi  135 atom  CG1 second chain S resi  285 alte C atom  O   value 3.48038173194 sigma 0.1 type 1
-exte dist first chain A resi  136 atom  CA  second chain S resi  123 alte C atom  O   value 3.50679027032 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  N   second chain S resi   60 alte C atom  O   value 3.19341791816 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  N   second chain S resi  123 alte C atom  O   value 3.48643887083 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  O   second chain S resi  123 alte C atom  O   value 3.62435014865 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CB  second chain S resi  147 alte C atom  O   value 3.49420105317 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CZ2 second chain S resi  205 alte C atom  O   value 3.36677798496 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CB  second chain S resi  285 alte C atom  O   value 3.90379379578 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE1 second chain S resi  173 alte C atom  O   value 2.47773888858 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE2 second chain S resi  173 alte C atom  O   value 2.70163450526 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE2 second chain S resi  187 alte C atom  O   value 2.56932714927 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE1 second chain S resi  285 alte C atom  O   value 2.97520873217 sigma 0.1 type 1
-exte dist first chain A resi  183 atom  NZ  second chain S resi  205 alte C atom  O   value 3.09788669903 sigma 0.1 type 1
-exte dist first chain A resi  217 atom  OE1 second chain S resi  187 alte C atom  O   value 3.25430622407 sigma 0.1 type 1
-exte dist first chain A resi  220 atom  CE1 second chain S resi  187 alte C atom  O   value 3.76150196065 sigma 0.1 type 1
-exte dist first chain A resi  220 atom  NE2 second chain S resi  205 alte C atom  O   value 3.6178550275 sigma 0.1 type 1
-exte dist first chain A resi  245 atom  OD2 second chain S resi  173 alte C atom  O   value 2.73289114309 sigma 0.1 type 1
-exte dist first chain A resi  254 atom  OH  second chain S resi   78 alte C atom  O   value 2.80470123186 sigma 0.1 type 1
-exte dist first chain A resi  254 atom  CE2 second chain S resi  152 alte C atom  O   value 3.48682606392 sigma 0.1 type 1
-exte dist first chain A resi  255 atom  O   second chain S resi  188 alte C atom  O   value 3.20716853315 sigma 0.1 type 1
-exte dist first chain A resi  255 atom  OD2 second chain S resi  205 alte C atom  O   value 3.19707147246 sigma 0.1 type 1
-exte dist first chain A resi  256 atom  O   second chain S resi  188 alte C atom  O   value 3.08617092851 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  O   second chain A resi  289 alte C atom  N   value 2.76845462307 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  O   second chain A resi  289 alte C atom  O   value 3.46921576152 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  OD2 second chain A resi  289 alte C atom  NZ  value 3.59943023269 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD2 second chain S resi  173 alte C atom  O   value 2.69551201073 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD2 second chain S resi  187 alte C atom  O   value 2.718557338 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD2 second chain S resi  231 alte C atom  O   value 2.74496812368 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD1 second chain S resi  231 alte C atom  O   value 3.44165207422 sigma 0.1 type 1
-exte dist first chain A resi  289 alte C atom  O   second chain A resi  291 atom  N   value 3.24080499259 sigma 0.1 type 1
-exte dist first chain A resi  289 alte C atom  O   second chain S resi   35 atom  O   value 2.57983022697 sigma 0.1 type 1
-exte dist first chain A resi  289 alte C atom  CD  second chain S resi  188 alte C atom  O   value 3.70223027377 sigma 0.1 type 1
-exte dist first chain A resi  289 alte C atom  NZ  second chain S resi  234 atom  O   value 3.56299340443 sigma 0.1 type 1
-exte dist first chain A resi  289 alte C atom  NZ  second chain S resi  265 atom  O   value 2.77747277214 sigma 0.1 type 1
-exte dist first chain A resi  289 alte C atom  CE  second chain S resi  283 alte C atom  O   value 3.68511858697 sigma 0.1 type 1
-exte dist first chain B resi    1 atom MG   second chain S resi  173 alte C atom  O   value 2.03893231864 sigma 0.1 type 1
-exte dist first chain B resi    1 atom MG   second chain S resi  187 alte C atom  O   value 2.19479065061 sigma 0.1 type 1
-exte dist first chain B resi    1 atom MG   second chain S resi  231 alte C atom  O   value 3.78555174314 sigma 0.1 type 1
-exte dist first chain C resi    1 atom MN   second chain S resi  205 alte C atom  O   value 3.80063718342 sigma 0.1 type 1
-exte dist first chain S resi   27 atom  O   second chain S resi   78 alte C atom  O   value 3.55974985076 sigma 0.1 type 1
-exte dist first chain S resi   32 atom  O   second chain S resi   60 alte C atom  O   value 3.09661815534 sigma 0.1 type 1
-exte dist first chain S resi   32 atom  O   second chain S resi  123 alte C atom  O   value 2.88011006734 sigma 0.1 type 1
-exte dist first chain S resi   56 atom  O   second chain S resi  188 alte C atom  O   value 3.99818021105 sigma 0.1 type 1
-exte dist first chain S resi   56 atom  O   second chain S resi  283 alte C atom  O   value 2.92336193449 sigma 0.1 type 1
-exte dist first chain S resi   60 alte C atom  O   second chain S resi  123 alte C atom  O   value 3.83321144734 sigma 0.1 type 1
-exte dist first chain S resi   60 alte C atom  O   second chain S resi  147 alte C atom  O   value 2.49853677179 sigma 0.1 type 1
-exte dist first chain S resi   60 alte C atom  O   second chain S resi  285 alte C atom  O   value 3.52871662223 sigma 0.1 type 1
-exte dist first chain S resi   74 atom  O   second chain S resi  123 alte C atom  O   value 2.87982794625 sigma 0.1 type 1
-exte dist first chain S resi   78 alte C atom  O   second chain S resi  106 atom  O   value 3.42651119946 sigma 0.1 type 1
-exte dist first chain S resi   78 alte C atom  O   second chain S resi  116 atom  O   value 3.04206936147 sigma 0.1 type 1
-exte dist first chain S resi   78 alte C atom  O   second chain S resi  119 atom  O   value 3.99086820128 sigma 0.1 type 1
-exte dist first chain S resi  106 atom  O   second chain S resi  152 alte C atom  O   value 3.46426817669 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  152 alte C atom  O   value 2.45126538751 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  188 alte C atom  O   value 2.6840957509 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  283 alte C atom  O   value 3.33260918801 sigma 0.1 type 1
-exte dist first chain S resi  123 alte C atom  O   second chain S resi  146 atom  O   value 2.53253410638 sigma 0.1 type 1
-exte dist first chain S resi  131 atom  O   second chain S resi  152 alte C atom  O   value 2.7582256978 sigma 0.1 type 1
-exte dist first chain S resi  131 atom  O   second chain S resi  283 alte C atom  O   value 3.43957163031 sigma 0.1 type 1
-exte dist first chain S resi  142 alte C atom  O   second chain S resi  194 alte C atom  O   value 3.00008883202 sigma 0.1 type 1
-exte dist first chain S resi  147 alte C atom  O   second chain S resi  285 alte C atom  O   value 2.47585480188 sigma 0.1 type 1
-exte dist first chain S resi  173 alte C atom  O   second chain S resi  187 alte C atom  O   value 2.26002544233 sigma 0.1 type 1
-exte dist first chain S resi  173 alte C atom  O   second chain S resi  231 alte C atom  O   value 3.04544791451 sigma 0.1 type 1
-exte dist first chain S resi  173 alte C atom  O   second chain S resi  285 alte C atom  O   value 2.81379832255 sigma 0.1 type 1
-exte dist first chain S resi  173 alte C atom  O   second chain S resi  286 atom  O   value 2.54096930324 sigma 0.1 type 1
-exte dist first chain S resi  181 alte C atom  O   second chain S resi  283 alte C atom  O   value 3.08474229069 sigma 0.1 type 1
-exte dist first chain S resi  187 alte C atom  O   second chain S resi  205 alte C atom  O   value 3.88423171296 sigma 0.1 type 1
-exte dist first chain S resi  187 alte C atom  O   second chain S resi  222 atom  O   value 3.20262189464 sigma 0.1 type 1
-exte dist first chain S resi  187 alte C atom  O   second chain S resi  231 alte C atom  O   value 2.53422611462 sigma 0.1 type 1
-exte dist first chain S resi  188 alte C atom  O   second chain S resi  283 alte C atom  O   value 3.25250026902 sigma 0.1 type 1
-exte dist first chain S resi  194 alte C atom  O   second chain S resi  284 alte C atom  O   value 2.81666345167 sigma 0.1 type 1
-exte dist first chain S resi  205 alte C atom  O   second chain S resi  222 atom  O   value 3.07054832237 sigma 0.1 type 1
-exte dist first chain S resi  222 atom  O   second chain S resi  231 alte C atom  O   value 3.59341188844 sigma 0.1 type 1
-exte dist first chain S resi  234 atom  O   second chain S resi  283 alte C atom  O   value 3.40972036977 sigma 0.1 type 1
-exte dist first chain S resi  285 alte C atom  O   second chain S resi  286 atom  O   value 3.33113794371 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  NE1 second chain A resi  401 alte D atom  O1  value 3.45179388145 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  CB  second chain S resi  194 alte D atom  O   value 3.72873450382 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  CD1 second chain S resi  284 alte D atom  O   value 3.83538707303 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  O   second chain S resi  289 alte D atom  O   value 3.16570513472 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  CZ2 second chain A resi   23 alte D atom  O   value 3.60121590577 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  NE1 second chain A resi   23 alte D atom  O   value 3.75889890793 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  NE1 second chain A resi  289 alte D atom  CE  value 3.83616735818 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  CD1 second chain S resi  288 alte D atom  O   value 3.82248649442 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  CB  second chain S resi  289 alte D atom  O   value 3.99826212247 sigma 0.1 type 1
-exte dist first chain A resi   21 atom  C   second chain A resi   23 alte D atom  N   value 3.51647166916 sigma 0.1 type 1
-exte dist first chain A resi   21 atom  O   second chain A resi   23 alte D atom  N   value 3.8611482748 sigma 0.1 type 1
-exte dist first chain A resi   22 atom  O   second chain A resi   28 alte D atom  O   value 3.52538409255 sigma 0.1 type 1
-exte dist first chain A resi   23 alte D atom  CG  second chain A resi   27 atom  O   value 3.33213580155 sigma 0.1 type 1
-exte dist first chain A resi   23 alte D atom  NH1 second chain A resi   28 alte D atom  CA  value 3.7280272263 sigma 0.1 type 1
-exte dist first chain A resi   23 alte D atom  NH1 second chain A resi   29 atom  N   value 3.20884044477 sigma 0.1 type 1
-exte dist first chain A resi   23 alte D atom  NH2 second chain A resi   29 atom  CB  value 3.7078429039 sigma 0.1 type 1
-exte dist first chain A resi   23 alte D atom  N   second chain A resi   29 atom  CA  value 3.93123263112 sigma 0.1 type 1
-exte dist first chain A resi   23 alte D atom  N   second chain S resi   53 atom  O   value 3.12781409294 sigma 0.1 type 1
-exte dist first chain A resi   24 atom  OD2 second chain S resi  152 alte D atom  O   value 3.55323022052 sigma 0.1 type 1
-exte dist first chain A resi   25 atom  CD  second chain S resi  152 alte D atom  O   value 3.82565837471 sigma 0.1 type 1
-exte dist first chain A resi   28 alte D atom  O   second chain A resi   30 atom  N   value 3.51062060041 sigma 0.1 type 1
-exte dist first chain A resi   28 alte D atom  O   second chain A resi  292 atom  NH2 value 2.70732432486 sigma 0.1 type 1
-exte dist first chain A resi   28 alte D atom  N   second chain A resi  292 atom  NH2 value 3.72301289281 sigma 0.1 type 1
-exte dist first chain A resi   28 alte D atom  OD2 second chain S resi  105 atom  O   value 2.17213466433 sigma 0.1 type 1
-exte dist first chain A resi   28 alte D atom  OD2 second chain S resi  206 atom  O   value 3.83309457227 sigma 0.1 type 1
-exte dist first chain A resi   28 alte D atom  OD1 second chain S resi  221 atom  O   value 2.86498202438 sigma 0.1 type 1
-exte dist first chain A resi   28 alte D atom  N   second chain S resi  221 atom  O   value 3.91763921259 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  NE2 second chain A resi  401 alte D atom  O5  value 2.65420157486 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  CE1 second chain A resi  401 alte D atom  O1  value 3.37069933397 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  NE2 second chain S resi   60 alte D atom  O   value 3.62306472479 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  ND1 second chain S resi  194 alte D atom  O   value 3.46083270327 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  CE1 second chain S resi  284 alte D atom  O   value 3.88206195211 sigma 0.1 type 1
-exte dist first chain A resi   56 atom  CB  second chain S resi  142 alte D atom  O   value 3.19540795518 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  OD1 second chain S resi  142 alte D atom  O   value 3.12500176 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  N   second chain S resi  142 alte D atom  O   value 3.63081271894 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  OD1 second chain S resi  194 alte D atom  O   value 2.75682861274 sigma 0.1 type 1
-exte dist first chain A resi   90 atom  OG1 second chain A resi  401 alte D atom  C6  value 3.72091225374 sigma 0.1 type 1
-exte dist first chain A resi   90 atom  OG1 second chain A resi  401 alte D atom  O6  value 3.93094606933 sigma 0.1 type 1
-exte dist first chain A resi   90 atom  OG1 second chain S resi   60 alte D atom  O   value 2.75080151956 sigma 0.1 type 1
-exte dist first chain A resi   91 atom  O   second chain S resi   60 alte D atom  O   value 3.01885855912 sigma 0.1 type 1
-exte dist first chain A resi   91 atom  O   second chain S resi  123 alte D atom  O   value 3.66832604876 sigma 0.1 type 1
-exte dist first chain A resi   92 atom  ND2 second chain S resi  142 alte D atom  O   value 2.83799788583 sigma 0.1 type 1
-exte dist first chain A resi   93 atom  CD1 second chain S resi  123 alte D atom  O   value 3.80802652302 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CZ  second chain A resi  401 alte D atom  C1  value 3.59374985217 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CE2 second chain A resi  401 alte D atom  O5  value 3.87794094849 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CE2 second chain S resi   60 alte D atom  O   value 3.89126303403 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CZ  second chain S resi  284 alte D atom  O   value 3.77206177044 sigma 0.1 type 1
-exte dist first chain A resi  135 atom  CG1 second chain A resi  401 alte D atom  O6  value 2.90657822878 sigma 0.1 type 1
-exte dist first chain A resi  136 atom  CA  second chain S resi  123 alte D atom  O   value 3.528661786 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CE3 second chain A resi  401 alte D atom  C2  value 3.32828995131 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CB  second chain A resi  401 alte D atom  C6  value 3.68544746266 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CZ3 second chain A resi  401 alte D atom  O2  value 3.74553934701 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  N   second chain S resi   60 alte D atom  O   value 3.4997572773 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  N   second chain S resi  123 alte D atom  O   value 3.37353612697 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  O   second chain S resi  123 alte D atom  O   value 3.51151505764 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CZ2 second chain S resi  205 alte D atom  O   value 3.4724050743 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE1 second chain A resi  401 alte D atom  O4  value 2.34235437114 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE2 second chain A resi  401 alte D atom  O4  value 2.64479432093 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE1 second chain A resi  401 alte D atom  O6  value 2.6683678532 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE2 second chain A resi  401 alte D atom  O3  value 3.04135397479 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  CD  second chain A resi  401 alte D atom  C4  value 3.46751438353 sigma 0.1 type 1
-exte dist first chain A resi  183 atom  NZ  second chain S resi  205 alte D atom  O   value 2.80740894777 sigma 0.1 type 1
-exte dist first chain A resi  217 atom  OE1 second chain A resi  401 alte D atom  O3  value 3.1588911029 sigma 0.1 type 1
-exte dist first chain A resi  220 atom  CE1 second chain A resi  401 alte D atom  O3  value 3.36352835576 sigma 0.1 type 1
-exte dist first chain A resi  220 atom  NE2 second chain A resi  401 alte D atom  O3  value 3.80448695621 sigma 0.1 type 1
-exte dist first chain A resi  220 atom  NE2 second chain S resi  205 alte D atom  O   value 3.584358799 sigma 0.1 type 1
-exte dist first chain A resi  245 atom  OD2 second chain A resi  401 alte D atom  O4  value 2.97858389172 sigma 0.1 type 1
-exte dist first chain A resi  254 atom  OH  second chain S resi   78 alte D atom  O   value 2.95141152671 sigma 0.1 type 1
-exte dist first chain A resi  254 atom  CE2 second chain S resi  188 alte D atom  O   value 3.86673790164 sigma 0.1 type 1
-exte dist first chain A resi  255 atom  O   second chain S resi  188 alte D atom  O   value 3.50305666526 sigma 0.1 type 1
-exte dist first chain A resi  255 atom  OD2 second chain S resi  205 alte D atom  O   value 2.96194952692 sigma 0.1 type 1
-exte dist first chain A resi  256 atom  O   second chain S resi  188 alte D atom  O   value 2.69025556407 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  O   second chain A resi  289 alte D atom  N   value 2.72242245069 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  O   second chain A resi  289 alte D atom  O   value 3.42777828921 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  OD2 second chain S resi  287 alte D atom  O   value 3.6884671613 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD2 second chain A resi  401 alte D atom  O3  value 2.8793988956 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD2 second chain A resi  401 alte D atom  O4  value 2.88022690078 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  CG  second chain A resi  401 alte D atom  C3  value 3.99509837176 sigma 0.1 type 1
-exte dist first chain A resi  289 alte D atom  O   second chain A resi  291 atom  N   value 3.28519481919 sigma 0.1 type 1
-exte dist first chain A resi  289 alte D atom  O   second chain S resi   35 atom  O   value 2.61721034692 sigma 0.1 type 1
-exte dist first chain A resi  289 alte D atom  NZ  second chain S resi  234 atom  O   value 2.79236691715 sigma 0.1 type 1
-exte dist first chain A resi  289 alte D atom  CG  second chain S resi  265 atom  O   value 3.53235176618 sigma 0.1 type 1
-exte dist first chain A resi  289 alte D atom  NZ  second chain S resi  283 alte D atom  O   value 2.81620045451 sigma 0.1 type 1
-exte dist first chain A resi  289 alte D atom  CE  second chain S resi  287 alte D atom  O   value 3.3385263216 sigma 0.1 type 1
-exte dist first chain A resi  289 alte D atom  NZ  second chain S resi  287 alte D atom  O   value 3.70111077921 sigma 0.1 type 1
-exte dist first chain A resi  289 alte D atom  CE  second chain S resi  288 alte D atom  O   value 3.36613844041 sigma 0.1 type 1
-exte dist first chain A resi  289 alte D atom  NZ  second chain S resi  288 alte D atom  O   value 3.88191563535 sigma 0.1 type 1
-exte dist first chain A resi  289 alte D atom  CE  second chain S resi  289 alte D atom  O   value 2.9259304503 sigma 0.1 type 1
-exte dist first chain A resi  401 alte D atom  O4  second chain B resi    1 atom MG   value 2.16999193547 sigma 0.1 type 1
-exte dist first chain A resi  401 alte D atom  O3  second chain B resi    1 atom MG   value 2.61420351159 sigma 0.1 type 1
-exte dist first chain A resi  401 alte D atom  O3  second chain C resi    1 atom MN   value 3.95520277609 sigma 0.1 type 1
-exte dist first chain A resi  401 alte D atom  C6  second chain S resi   60 alte D atom  O   value 2.76181407774 sigma 0.1 type 1
-exte dist first chain A resi  401 alte D atom  O6  second chain S resi   60 alte D atom  O   value 3.62018480191 sigma 0.1 type 1
-exte dist first chain A resi  401 alte D atom  O5  second chain S resi   60 alte D atom  O   value 3.77249599072 sigma 0.1 type 1
-exte dist first chain A resi  401 alte D atom  O2  second chain S resi  205 alte D atom  O   value 2.71505543221 sigma 0.1 type 1
-exte dist first chain A resi  401 alte D atom  O3  second chain S resi  205 alte D atom  O   value 3.4277585971 sigma 0.1 type 1
-exte dist first chain A resi  401 alte D atom  O3  second chain S resi  222 atom  O   value 2.53153253979 sigma 0.1 type 1
-exte dist first chain A resi  401 alte D atom  O2  second chain S resi  222 atom  O   value 3.2143817446 sigma 0.1 type 1
-exte dist first chain A resi  401 alte D atom  O1  second chain S resi  284 alte D atom  O   value 2.47918151816 sigma 0.1 type 1
-exte dist first chain A resi  401 alte D atom  O4  second chain S resi  286 atom  O   value 2.74231052217 sigma 0.1 type 1
-exte dist first chain A resi  401 alte D atom  O6  second chain S resi  286 atom  O   value 3.35644693091 sigma 0.1 type 1
-exte dist first chain A resi  401 alte D atom  O2  second chain S resi  287 alte D atom  O   value 2.83764162642 sigma 0.1 type 1
-exte dist first chain A resi  401 alte D atom  O1  second chain S resi  287 alte D atom  O   value 3.51220571721 sigma 0.1 type 1
-exte dist first chain C resi    1 atom MN   second chain S resi  205 alte D atom  O   value 3.73048468701 sigma 0.1 type 1
-exte dist first chain S resi   27 atom  O   second chain S resi   78 alte D atom  O   value 3.41757018948 sigma 0.1 type 1
-exte dist first chain S resi   32 atom  O   second chain S resi   60 alte D atom  O   value 3.08984061078 sigma 0.1 type 1
-exte dist first chain S resi   32 atom  O   second chain S resi  123 alte D atom  O   value 2.58378017641 sigma 0.1 type 1
-exte dist first chain S resi   35 atom  O   second chain S resi  188 alte D atom  O   value 3.92364932174 sigma 0.1 type 1
-exte dist first chain S resi   56 atom  O   second chain S resi  283 alte D atom  O   value 3.23812754536 sigma 0.1 type 1
-exte dist first chain S resi   60 alte D atom  O   second chain S resi  123 alte D atom  O   value 3.60822213839 sigma 0.1 type 1
-exte dist first chain S resi   74 atom  O   second chain S resi  123 alte D atom  O   value 2.81425389757 sigma 0.1 type 1
-exte dist first chain S resi   78 alte D atom  O   second chain S resi  106 atom  O   value 3.20126443769 sigma 0.1 type 1
-exte dist first chain S resi   78 alte D atom  O   second chain S resi  116 atom  O   value 2.76150049792 sigma 0.1 type 1
-exte dist first chain S resi   78 alte D atom  O   second chain S resi  119 atom  O   value 3.3696421175 sigma 0.1 type 1
-exte dist first chain S resi   78 alte D atom  O   second chain S resi  188 alte D atom  O   value 3.52917129083 sigma 0.1 type 1
-exte dist first chain S resi  106 atom  O   second chain S resi  152 alte D atom  O   value 3.54001779657 sigma 0.1 type 1
-exte dist first chain S resi  116 atom  O   second chain S resi  188 alte D atom  O   value 3.49380952543 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  152 alte D atom  O   value 2.99755400285 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  188 alte D atom  O   value 2.82557003098 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  283 alte D atom  O   value 2.74053662628 sigma 0.1 type 1
-exte dist first chain S resi  123 alte D atom  O   second chain S resi  146 atom  O   value 2.94975541359 sigma 0.1 type 1
-exte dist first chain S resi  131 atom  O   second chain S resi  152 alte D atom  O   value 2.99459796968 sigma 0.1 type 1
-exte dist first chain S resi  131 atom  O   second chain S resi  283 alte D atom  O   value 3.22202327738 sigma 0.1 type 1
-exte dist first chain S resi  142 alte D atom  O   second chain S resi  194 alte D atom  O   value 2.97504890716 sigma 0.1 type 1
-exte dist first chain S resi  186 atom  O   second chain S resi  288 alte D atom  O   value 3.30814479731 sigma 0.1 type 1
-exte dist first chain S resi  186 atom  O   second chain S resi  289 alte D atom  O   value 3.87048666191 sigma 0.1 type 1
-exte dist first chain S resi  188 alte D atom  O   second chain S resi  283 alte D atom  O   value 3.73015777146 sigma 0.1 type 1
-exte dist first chain S resi  194 alte D atom  O   second chain S resi  284 alte D atom  O   value 3.10709639374 sigma 0.1 type 1
-exte dist first chain S resi  205 alte D atom  O   second chain S resi  222 atom  O   value 3.15179885145 sigma 0.1 type 1
-exte dist first chain S resi  222 atom  O   second chain S resi  287 alte D atom  O   value 3.83013289587 sigma 0.1 type 1
-exte dist first chain S resi  234 atom  O   second chain S resi  283 alte D atom  O   value 3.95238156053 sigma 0.1 type 1
-exte dist first chain S resi  234 atom  O   second chain S resi  287 alte D atom  O   value 3.6886710344 sigma 0.1 type 1
-exte dist first chain S resi  265 atom  O   second chain S resi  287 alte D atom  O   value 2.94931500522 sigma 0.1 type 1
-exte dist first chain S resi  265 atom  O   second chain S resi  289 alte D atom  O   value 2.51447449778 sigma 0.1 type 1
-exte dist first chain S resi  284 alte D atom  O   second chain S resi  287 alte D atom  O   value 3.75604233203 sigma 0.1 type 1
-exte dist first chain S resi  284 alte D atom  O   second chain S resi  288 alte D atom  O   value 3.11622175077 sigma 0.1 type 1
-exte dist first chain S resi  287 alte D atom  O   second chain S resi  288 alte D atom  O   value 2.96125412621 sigma 0.1 type 1
-exte dist first chain S resi  287 alte D atom  O   second chain S resi  289 alte D atom  O   value 3.41398960162 sigma 0.1 type 1
-exte dist first chain S resi  288 alte D atom  O   second chain S resi  289 alte D atom  O   value 2.76901661245 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  NE1 second chain A resi  401 alte E atom  O1  value 3.45179388145 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  CB  second chain S resi  194 alte E atom  O   value 3.72873450382 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  CD1 second chain S resi  284 alte E atom  O   value 3.83538707303 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  O   second chain S resi  289 alte E atom  O   value 3.16570513472 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  CZ2 second chain A resi   23 alte E atom  O   value 3.49591275635 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  NE1 second chain A resi   23 alte E atom  O   value 3.70178456964 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  NE1 second chain A resi  289 alte E atom  CE  value 3.83616735818 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  CD1 second chain S resi  288 alte E atom  O   value 3.82248649442 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  CB  second chain S resi  289 alte E atom  O   value 3.99826212247 sigma 0.1 type 1
-exte dist first chain A resi   21 atom  C   second chain A resi   23 alte E atom  N   value 3.52143110113 sigma 0.1 type 1
-exte dist first chain A resi   21 atom  O   second chain A resi   23 alte E atom  N   value 3.87453919841 sigma 0.1 type 1
-exte dist first chain A resi   22 atom  O   second chain A resi   28 alte E atom  O   value 3.46111326021 sigma 0.1 type 1
-exte dist first chain A resi   23 alte E atom  CD  second chain A resi   27 atom  O   value 3.16646016871 sigma 0.1 type 1
-exte dist first chain A resi   23 alte E atom  NE  second chain A resi   27 atom  O   value 3.51164975474 sigma 0.1 type 1
-exte dist first chain A resi   23 alte E atom  CG  second chain A resi   28 alte E atom  OD1 value 3.85254474341 sigma 0.1 type 1
-exte dist first chain A resi   23 alte E atom  CG  second chain A resi   29 atom  N   value 3.70178470471 sigma 0.1 type 1
-exte dist first chain A resi   23 alte E atom  N   second chain A resi   29 atom  CA  value 3.96221579422 sigma 0.1 type 1
-exte dist first chain A resi   23 alte E atom  N   second chain S resi   53 atom  O   value 3.11809894006 sigma 0.1 type 1
-exte dist first chain A resi   23 alte E atom  NH1 second chain S resi  191 atom  O   value 3.98378726842 sigma 0.1 type 1
-exte dist first chain A resi   23 alte E atom  NH2 second chain S resi  221 atom  O   value 2.94252272718 sigma 0.1 type 1
-exte dist first chain A resi   24 atom  OD2 second chain S resi  152 alte E atom  O   value 3.55323022052 sigma 0.1 type 1
-exte dist first chain A resi   25 atom  CD  second chain S resi  152 alte E atom  O   value 3.82565837471 sigma 0.1 type 1
-exte dist first chain A resi   28 alte E atom  O   second chain A resi   30 atom  N   value 3.56870690867 sigma 0.1 type 1
-exte dist first chain A resi   28 alte E atom  O   second chain A resi  292 atom  NH2 value 2.72542565483 sigma 0.1 type 1
-exte dist first chain A resi   28 alte E atom  N   second chain A resi  292 atom  NH2 value 3.77784396184 sigma 0.1 type 1
-exte dist first chain A resi   28 alte E atom  CB  second chain S resi  105 atom  O   value 3.38620908982 sigma 0.1 type 1
-exte dist first chain A resi   28 alte E atom  OD2 second chain S resi  105 atom  O   value 3.78313282875 sigma 0.1 type 1
-exte dist first chain A resi   28 alte E atom  N   second chain S resi  221 atom  O   value 3.87051146491 sigma 0.1 type 1
-exte dist first chain A resi   28 alte E atom  OD2 second chain S resi  232 atom  O   value 3.07339161188 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  NE2 second chain A resi  401 alte E atom  O5  value 2.65420157486 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  CE1 second chain A resi  401 alte E atom  O1  value 3.37069933397 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  NE2 second chain S resi   60 alte E atom  O   value 3.62306472479 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  ND1 second chain S resi  194 alte E atom  O   value 3.46083270327 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  CE1 second chain S resi  284 alte E atom  O   value 3.88206195211 sigma 0.1 type 1
-exte dist first chain A resi   56 atom  CB  second chain S resi  142 alte E atom  O   value 3.19540795518 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  OD1 second chain S resi  142 alte E atom  O   value 3.12500176 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  N   second chain S resi  142 alte E atom  O   value 3.63081271894 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  OD1 second chain S resi  194 alte E atom  O   value 2.75682861274 sigma 0.1 type 1
-exte dist first chain A resi   90 atom  OG1 second chain A resi  401 alte E atom  C6  value 3.72091225374 sigma 0.1 type 1
-exte dist first chain A resi   90 atom  OG1 second chain A resi  401 alte E atom  O6  value 3.93094606933 sigma 0.1 type 1
-exte dist first chain A resi   90 atom  OG1 second chain S resi   60 alte E atom  O   value 2.75080151956 sigma 0.1 type 1
-exte dist first chain A resi   91 atom  O   second chain S resi   60 alte E atom  O   value 3.01885855912 sigma 0.1 type 1
-exte dist first chain A resi   91 atom  O   second chain S resi  123 alte E atom  O   value 3.66832604876 sigma 0.1 type 1
-exte dist first chain A resi   92 atom  ND2 second chain S resi  142 alte E atom  O   value 2.83799788583 sigma 0.1 type 1
-exte dist first chain A resi   93 atom  CD1 second chain S resi  123 alte E atom  O   value 3.80802652302 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CZ  second chain A resi  401 alte E atom  C1  value 3.59374985217 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CE2 second chain A resi  401 alte E atom  O5  value 3.87794094849 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CE2 second chain S resi   60 alte E atom  O   value 3.89126303403 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CZ  second chain S resi  284 alte E atom  O   value 3.77206177044 sigma 0.1 type 1
-exte dist first chain A resi  135 atom  CG1 second chain A resi  401 alte E atom  O6  value 2.90657822878 sigma 0.1 type 1
-exte dist first chain A resi  136 atom  CA  second chain S resi  123 alte E atom  O   value 3.528661786 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CE3 second chain A resi  401 alte E atom  C2  value 3.32828995131 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CB  second chain A resi  401 alte E atom  C6  value 3.68544746266 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CZ3 second chain A resi  401 alte E atom  O2  value 3.74553934701 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  N   second chain S resi   60 alte E atom  O   value 3.4997572773 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  N   second chain S resi  123 alte E atom  O   value 3.37353612697 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  O   second chain S resi  123 alte E atom  O   value 3.51151505764 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CZ2 second chain S resi  205 alte E atom  O   value 3.4724050743 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE1 second chain A resi  401 alte E atom  O4  value 2.34235437114 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE2 second chain A resi  401 alte E atom  O4  value 2.64479432093 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE1 second chain A resi  401 alte E atom  O6  value 2.6683678532 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE2 second chain A resi  401 alte E atom  O3  value 3.04135397479 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  CD  second chain A resi  401 alte E atom  C4  value 3.46751438353 sigma 0.1 type 1
-exte dist first chain A resi  183 atom  NZ  second chain S resi  205 alte E atom  O   value 2.80740894777 sigma 0.1 type 1
-exte dist first chain A resi  217 atom  OE1 second chain A resi  401 alte E atom  O3  value 3.1588911029 sigma 0.1 type 1
-exte dist first chain A resi  220 atom  CE1 second chain A resi  401 alte E atom  O3  value 3.36352835576 sigma 0.1 type 1
-exte dist first chain A resi  220 atom  NE2 second chain A resi  401 alte E atom  O3  value 3.80448695621 sigma 0.1 type 1
-exte dist first chain A resi  220 atom  NE2 second chain S resi  205 alte E atom  O   value 3.584358799 sigma 0.1 type 1
-exte dist first chain A resi  245 atom  OD2 second chain A resi  401 alte E atom  O4  value 2.97858389172 sigma 0.1 type 1
-exte dist first chain A resi  254 atom  OH  second chain S resi   78 alte E atom  O   value 2.95141152671 sigma 0.1 type 1
-exte dist first chain A resi  254 atom  CE2 second chain S resi  188 alte E atom  O   value 3.86673790164 sigma 0.1 type 1
-exte dist first chain A resi  255 atom  O   second chain S resi  188 alte E atom  O   value 3.50305666526 sigma 0.1 type 1
-exte dist first chain A resi  255 atom  OD2 second chain S resi  205 alte E atom  O   value 2.96194952692 sigma 0.1 type 1
-exte dist first chain A resi  256 atom  O   second chain S resi  188 alte E atom  O   value 2.69025556407 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  O   second chain A resi  289 alte E atom  N   value 2.72242245069 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  O   second chain A resi  289 alte E atom  O   value 3.42777828921 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  OD2 second chain S resi  287 alte E atom  O   value 3.6884671613 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD2 second chain A resi  401 alte E atom  O3  value 2.8793988956 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD2 second chain A resi  401 alte E atom  O4  value 2.88022690078 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  CG  second chain A resi  401 alte E atom  C3  value 3.99509837176 sigma 0.1 type 1
-exte dist first chain A resi  289 alte E atom  O   second chain A resi  291 atom  N   value 3.28519481919 sigma 0.1 type 1
-exte dist first chain A resi  289 alte E atom  O   second chain S resi   35 atom  O   value 2.61721034692 sigma 0.1 type 1
-exte dist first chain A resi  289 alte E atom  NZ  second chain S resi  234 atom  O   value 2.79236691715 sigma 0.1 type 1
-exte dist first chain A resi  289 alte E atom  CG  second chain S resi  265 atom  O   value 3.53235176618 sigma 0.1 type 1
-exte dist first chain A resi  289 alte E atom  NZ  second chain S resi  283 alte E atom  O   value 2.81620045451 sigma 0.1 type 1
-exte dist first chain A resi  289 alte E atom  CE  second chain S resi  287 alte E atom  O   value 3.3385263216 sigma 0.1 type 1
-exte dist first chain A resi  289 alte E atom  NZ  second chain S resi  287 alte E atom  O   value 3.70111077921 sigma 0.1 type 1
-exte dist first chain A resi  289 alte E atom  CE  second chain S resi  288 alte E atom  O   value 3.36613844041 sigma 0.1 type 1
-exte dist first chain A resi  289 alte E atom  NZ  second chain S resi  288 alte E atom  O   value 3.88191563535 sigma 0.1 type 1
-exte dist first chain A resi  289 alte E atom  CE  second chain S resi  289 alte E atom  O   value 2.9259304503 sigma 0.1 type 1
-exte dist first chain A resi  401 alte E atom  O4  second chain B resi    1 atom MG   value 2.16999193547 sigma 0.1 type 1
-exte dist first chain A resi  401 alte E atom  O3  second chain B resi    1 atom MG   value 2.61420351159 sigma 0.1 type 1
-exte dist first chain A resi  401 alte E atom  O3  second chain C resi    1 atom MN   value 3.95520277609 sigma 0.1 type 1
-exte dist first chain A resi  401 alte E atom  C6  second chain S resi   60 alte E atom  O   value 2.76181407774 sigma 0.1 type 1
-exte dist first chain A resi  401 alte E atom  O6  second chain S resi   60 alte E atom  O   value 3.62018480191 sigma 0.1 type 1
-exte dist first chain A resi  401 alte E atom  O5  second chain S resi   60 alte E atom  O   value 3.77249599072 sigma 0.1 type 1
-exte dist first chain A resi  401 alte E atom  O2  second chain S resi  205 alte E atom  O   value 2.71505543221 sigma 0.1 type 1
-exte dist first chain A resi  401 alte E atom  O3  second chain S resi  205 alte E atom  O   value 3.4277585971 sigma 0.1 type 1
-exte dist first chain A resi  401 alte E atom  O3  second chain S resi  222 atom  O   value 2.53153253979 sigma 0.1 type 1
-exte dist first chain A resi  401 alte E atom  O2  second chain S resi  222 atom  O   value 3.2143817446 sigma 0.1 type 1
-exte dist first chain A resi  401 alte E atom  O1  second chain S resi  284 alte E atom  O   value 2.47918151816 sigma 0.1 type 1
-exte dist first chain A resi  401 alte E atom  O4  second chain S resi  286 atom  O   value 2.74231052217 sigma 0.1 type 1
-exte dist first chain A resi  401 alte E atom  O6  second chain S resi  286 atom  O   value 3.35644693091 sigma 0.1 type 1
-exte dist first chain A resi  401 alte E atom  O2  second chain S resi  287 alte E atom  O   value 2.83764162642 sigma 0.1 type 1
-exte dist first chain A resi  401 alte E atom  O1  second chain S resi  287 alte E atom  O   value 3.51220571721 sigma 0.1 type 1
-exte dist first chain C resi    1 atom MN   second chain S resi  205 alte E atom  O   value 3.73048468701 sigma 0.1 type 1
-exte dist first chain S resi   27 atom  O   second chain S resi   78 alte E atom  O   value 3.41757018948 sigma 0.1 type 1
-exte dist first chain S resi   32 atom  O   second chain S resi   60 alte E atom  O   value 3.08984061078 sigma 0.1 type 1
-exte dist first chain S resi   32 atom  O   second chain S resi  123 alte E atom  O   value 2.58378017641 sigma 0.1 type 1
-exte dist first chain S resi   35 atom  O   second chain S resi  188 alte E atom  O   value 3.92364932174 sigma 0.1 type 1
-exte dist first chain S resi   56 atom  O   second chain S resi  283 alte E atom  O   value 3.23812754536 sigma 0.1 type 1
-exte dist first chain S resi   60 alte E atom  O   second chain S resi  123 alte E atom  O   value 3.60822213839 sigma 0.1 type 1
-exte dist first chain S resi   74 atom  O   second chain S resi  123 alte E atom  O   value 2.81425389757 sigma 0.1 type 1
-exte dist first chain S resi   78 alte E atom  O   second chain S resi  106 atom  O   value 3.20126443769 sigma 0.1 type 1
-exte dist first chain S resi   78 alte E atom  O   second chain S resi  116 atom  O   value 2.76150049792 sigma 0.1 type 1
-exte dist first chain S resi   78 alte E atom  O   second chain S resi  119 atom  O   value 3.3696421175 sigma 0.1 type 1
-exte dist first chain S resi   78 alte E atom  O   second chain S resi  188 alte E atom  O   value 3.52917129083 sigma 0.1 type 1
-exte dist first chain S resi  106 atom  O   second chain S resi  152 alte E atom  O   value 3.54001779657 sigma 0.1 type 1
-exte dist first chain S resi  116 atom  O   second chain S resi  188 alte E atom  O   value 3.49380952543 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  152 alte E atom  O   value 2.99755400285 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  188 alte E atom  O   value 2.82557003098 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  283 alte E atom  O   value 2.74053662628 sigma 0.1 type 1
-exte dist first chain S resi  123 alte E atom  O   second chain S resi  146 atom  O   value 2.94975541359 sigma 0.1 type 1
-exte dist first chain S resi  131 atom  O   second chain S resi  152 alte E atom  O   value 2.99459796968 sigma 0.1 type 1
-exte dist first chain S resi  131 atom  O   second chain S resi  283 alte E atom  O   value 3.22202327738 sigma 0.1 type 1
-exte dist first chain S resi  142 alte E atom  O   second chain S resi  194 alte E atom  O   value 2.97504890716 sigma 0.1 type 1
-exte dist first chain S resi  186 atom  O   second chain S resi  288 alte E atom  O   value 3.30814479731 sigma 0.1 type 1
-exte dist first chain S resi  186 atom  O   second chain S resi  289 alte E atom  O   value 3.87048666191 sigma 0.1 type 1
-exte dist first chain S resi  188 alte E atom  O   second chain S resi  283 alte E atom  O   value 3.73015777146 sigma 0.1 type 1
-exte dist first chain S resi  194 alte E atom  O   second chain S resi  284 alte E atom  O   value 3.10709639374 sigma 0.1 type 1
-exte dist first chain S resi  205 alte E atom  O   second chain S resi  222 atom  O   value 3.15179885145 sigma 0.1 type 1
-exte dist first chain S resi  222 atom  O   second chain S resi  287 alte E atom  O   value 3.83013289587 sigma 0.1 type 1
-exte dist first chain S resi  234 atom  O   second chain S resi  283 alte E atom  O   value 3.95238156053 sigma 0.1 type 1
-exte dist first chain S resi  234 atom  O   second chain S resi  287 alte E atom  O   value 3.6886710344 sigma 0.1 type 1
-exte dist first chain S resi  265 atom  O   second chain S resi  287 alte E atom  O   value 2.94931500522 sigma 0.1 type 1
-exte dist first chain S resi  265 atom  O   second chain S resi  289 alte E atom  O   value 2.51447449778 sigma 0.1 type 1
-exte dist first chain S resi  284 alte E atom  O   second chain S resi  287 alte E atom  O   value 3.75604233203 sigma 0.1 type 1
-exte dist first chain S resi  284 alte E atom  O   second chain S resi  288 alte E atom  O   value 3.11622175077 sigma 0.1 type 1
-exte dist first chain S resi  287 alte E atom  O   second chain S resi  288 alte E atom  O   value 2.96125412621 sigma 0.1 type 1
-exte dist first chain S resi  287 alte E atom  O   second chain S resi  289 alte E atom  O   value 3.41398960162 sigma 0.1 type 1
-exte dist first chain S resi  288 alte E atom  O   second chain S resi  289 alte E atom  O   value 2.76901661245 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  NE1 second chain A resi  401 alte F atom  O1  value 3.45179388145 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  CB  second chain S resi  194 alte F atom  O   value 3.72873450382 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  CD1 second chain S resi  284 alte F atom  O   value 3.83538707303 sigma 0.1 type 1
-exte dist first chain A resi   16 atom  O   second chain S resi  289 alte F atom  O   value 3.16570513472 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  CZ2 second chain A resi   23 alte F atom  O   value 3.49591275635 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  NE1 second chain A resi   23 alte F atom  O   value 3.70178456964 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  NE1 second chain A resi  289 alte F atom  CE  value 3.83616735818 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  CD1 second chain S resi  288 alte F atom  O   value 3.82248649442 sigma 0.1 type 1
-exte dist first chain A resi   20 atom  CB  second chain S resi  289 alte F atom  O   value 3.99826212247 sigma 0.1 type 1
-exte dist first chain A resi   21 atom  C   second chain A resi   23 alte F atom  N   value 3.52143110113 sigma 0.1 type 1
-exte dist first chain A resi   21 atom  O   second chain A resi   23 alte F atom  N   value 3.87453919841 sigma 0.1 type 1
-exte dist first chain A resi   22 atom  O   second chain A resi   28 alte F atom  O   value 3.52538409255 sigma 0.1 type 1
-exte dist first chain A resi   23 alte F atom  CD  second chain A resi   27 atom  O   value 3.16646016871 sigma 0.1 type 1
-exte dist first chain A resi   23 alte F atom  NE  second chain A resi   27 atom  O   value 3.51164975474 sigma 0.1 type 1
-exte dist first chain A resi   23 alte F atom  NH2 second chain A resi   28 alte F atom  OD1 value 3.55349377374 sigma 0.1 type 1
-exte dist first chain A resi   23 alte F atom  NE  second chain A resi   28 alte F atom  OD1 value 3.79163131119 sigma 0.1 type 1
-exte dist first chain A resi   23 alte F atom  CG  second chain A resi   29 atom  N   value 3.70178470471 sigma 0.1 type 1
-exte dist first chain A resi   23 alte F atom  N   second chain A resi   29 atom  CA  value 3.96221579422 sigma 0.1 type 1
-exte dist first chain A resi   23 alte F atom  N   second chain S resi   53 atom  O   value 3.11809894006 sigma 0.1 type 1
-exte dist first chain A resi   23 alte F atom  NH1 second chain S resi  191 atom  O   value 3.98378726842 sigma 0.1 type 1
-exte dist first chain A resi   23 alte F atom  NH2 second chain S resi  221 atom  O   value 2.94252272718 sigma 0.1 type 1
-exte dist first chain A resi   24 atom  OD2 second chain S resi  152 alte F atom  O   value 3.55323022052 sigma 0.1 type 1
-exte dist first chain A resi   25 atom  CD  second chain S resi  152 alte F atom  O   value 3.82565837471 sigma 0.1 type 1
-exte dist first chain A resi   28 alte F atom  O   second chain A resi   30 atom  N   value 3.51062060041 sigma 0.1 type 1
-exte dist first chain A resi   28 alte F atom  O   second chain A resi  292 atom  NH2 value 2.70732432486 sigma 0.1 type 1
-exte dist first chain A resi   28 alte F atom  N   second chain A resi  292 atom  NH2 value 3.72301289281 sigma 0.1 type 1
-exte dist first chain A resi   28 alte F atom  OD2 second chain S resi  105 atom  O   value 2.17213466433 sigma 0.1 type 1
-exte dist first chain A resi   28 alte F atom  OD2 second chain S resi  206 atom  O   value 3.83309457227 sigma 0.1 type 1
-exte dist first chain A resi   28 alte F atom  OD1 second chain S resi  221 atom  O   value 2.86498202438 sigma 0.1 type 1
-exte dist first chain A resi   28 alte F atom  N   second chain S resi  221 atom  O   value 3.91763921259 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  NE2 second chain A resi  401 alte F atom  O5  value 2.65420157486 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  CE1 second chain A resi  401 alte F atom  O1  value 3.37069933397 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  NE2 second chain S resi   60 alte F atom  O   value 3.62306472479 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  ND1 second chain S resi  194 alte F atom  O   value 3.46083270327 sigma 0.1 type 1
-exte dist first chain A resi   54 atom  CE1 second chain S resi  284 alte F atom  O   value 3.88206195211 sigma 0.1 type 1
-exte dist first chain A resi   56 atom  CB  second chain S resi  142 alte F atom  O   value 3.19540795518 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  OD1 second chain S resi  142 alte F atom  O   value 3.12500176 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  N   second chain S resi  142 alte F atom  O   value 3.63081271894 sigma 0.1 type 1
-exte dist first chain A resi   57 atom  OD1 second chain S resi  194 alte F atom  O   value 2.75682861274 sigma 0.1 type 1
-exte dist first chain A resi   90 atom  OG1 second chain A resi  401 alte F atom  C6  value 3.72091225374 sigma 0.1 type 1
-exte dist first chain A resi   90 atom  OG1 second chain A resi  401 alte F atom  O6  value 3.93094606933 sigma 0.1 type 1
-exte dist first chain A resi   90 atom  OG1 second chain S resi   60 alte F atom  O   value 2.75080151956 sigma 0.1 type 1
-exte dist first chain A resi   91 atom  O   second chain S resi   60 alte F atom  O   value 3.01885855912 sigma 0.1 type 1
-exte dist first chain A resi   91 atom  O   second chain S resi  123 alte F atom  O   value 3.66832604876 sigma 0.1 type 1
-exte dist first chain A resi   92 atom  ND2 second chain S resi  142 alte F atom  O   value 2.83799788583 sigma 0.1 type 1
-exte dist first chain A resi   93 atom  CD1 second chain S resi  123 alte F atom  O   value 3.80802652302 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CZ  second chain A resi  401 alte F atom  C1  value 3.59374985217 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CE2 second chain A resi  401 alte F atom  O5  value 3.87794094849 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CE2 second chain S resi   60 alte F atom  O   value 3.89126303403 sigma 0.1 type 1
-exte dist first chain A resi   94 atom  CZ  second chain S resi  284 alte F atom  O   value 3.77206177044 sigma 0.1 type 1
-exte dist first chain A resi  135 atom  CG1 second chain A resi  401 alte F atom  O6  value 2.90657822878 sigma 0.1 type 1
-exte dist first chain A resi  136 atom  CA  second chain S resi  123 alte F atom  O   value 3.528661786 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CE3 second chain A resi  401 alte F atom  C2  value 3.32828995131 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CB  second chain A resi  401 alte F atom  C6  value 3.68544746266 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CZ3 second chain A resi  401 alte F atom  O2  value 3.74553934701 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  N   second chain S resi   60 alte F atom  O   value 3.4997572773 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  N   second chain S resi  123 alte F atom  O   value 3.37353612697 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  O   second chain S resi  123 alte F atom  O   value 3.51151505764 sigma 0.1 type 1
-exte dist first chain A resi  137 atom  CZ2 second chain S resi  205 alte F atom  O   value 3.4724050743 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE1 second chain A resi  401 alte F atom  O4  value 2.34235437114 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE2 second chain A resi  401 alte F atom  O4  value 2.64479432093 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE1 second chain A resi  401 alte F atom  O6  value 2.6683678532 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  OE2 second chain A resi  401 alte F atom  O3  value 3.04135397479 sigma 0.1 type 1
-exte dist first chain A resi  181 atom  CD  second chain A resi  401 alte F atom  C4  value 3.46751438353 sigma 0.1 type 1
-exte dist first chain A resi  183 atom  NZ  second chain S resi  205 alte F atom  O   value 2.80740894777 sigma 0.1 type 1
-exte dist first chain A resi  217 atom  OE1 second chain A resi  401 alte F atom  O3  value 3.1588911029 sigma 0.1 type 1
-exte dist first chain A resi  220 atom  CE1 second chain A resi  401 alte F atom  O3  value 3.36352835576 sigma 0.1 type 1
-exte dist first chain A resi  220 atom  NE2 second chain A resi  401 alte F atom  O3  value 3.80448695621 sigma 0.1 type 1
-exte dist first chain A resi  220 atom  NE2 second chain S resi  205 alte F atom  O   value 3.584358799 sigma 0.1 type 1
-exte dist first chain A resi  245 atom  OD2 second chain A resi  401 alte F atom  O4  value 2.97858389172 sigma 0.1 type 1
-exte dist first chain A resi  254 atom  OH  second chain S resi   78 alte F atom  O   value 2.95141152671 sigma 0.1 type 1
-exte dist first chain A resi  254 atom  CE2 second chain S resi  188 alte F atom  O   value 3.86673790164 sigma 0.1 type 1
-exte dist first chain A resi  255 atom  O   second chain S resi  188 alte F atom  O   value 3.50305666526 sigma 0.1 type 1
-exte dist first chain A resi  255 atom  OD2 second chain S resi  205 alte F atom  O   value 2.96194952692 sigma 0.1 type 1
-exte dist first chain A resi  256 atom  O   second chain S resi  188 alte F atom  O   value 2.69025556407 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  O   second chain A resi  289 alte F atom  N   value 2.72242245069 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  O   second chain A resi  289 alte F atom  O   value 3.42777828921 sigma 0.1 type 1
-exte dist first chain A resi  257 atom  OD2 second chain S resi  287 alte F atom  O   value 3.6884671613 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD2 second chain A resi  401 alte F atom  O3  value 2.8793988956 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  OD2 second chain A resi  401 alte F atom  O4  value 2.88022690078 sigma 0.1 type 1
-exte dist first chain A resi  287 atom  CG  second chain A resi  401 alte F atom  C3  value 3.99509837176 sigma 0.1 type 1
-exte dist first chain A resi  289 alte F atom  O   second chain A resi  291 atom  N   value 3.28519481919 sigma 0.1 type 1
-exte dist first chain A resi  289 alte F atom  O   second chain S resi   35 atom  O   value 2.61721034692 sigma 0.1 type 1
-exte dist first chain A resi  289 alte F atom  NZ  second chain S resi  234 atom  O   value 2.79236691715 sigma 0.1 type 1
-exte dist first chain A resi  289 alte F atom  CG  second chain S resi  265 atom  O   value 3.53235176618 sigma 0.1 type 1
-exte dist first chain A resi  289 alte F atom  NZ  second chain S resi  283 alte F atom  O   value 2.81620045451 sigma 0.1 type 1
-exte dist first chain A resi  289 alte F atom  CE  second chain S resi  287 alte F atom  O   value 3.3385263216 sigma 0.1 type 1
-exte dist first chain A resi  289 alte F atom  NZ  second chain S resi  287 alte F atom  O   value 3.70111077921 sigma 0.1 type 1
-exte dist first chain A resi  289 alte F atom  CE  second chain S resi  288 alte F atom  O   value 3.36613844041 sigma 0.1 type 1
-exte dist first chain A resi  289 alte F atom  NZ  second chain S resi  288 alte F atom  O   value 3.88191563535 sigma 0.1 type 1
-exte dist first chain A resi  289 alte F atom  CE  second chain S resi  289 alte F atom  O   value 2.9259304503 sigma 0.1 type 1
-exte dist first chain A resi  401 alte F atom  O4  second chain B resi    1 atom MG   value 2.16999193547 sigma 0.1 type 1
-exte dist first chain A resi  401 alte F atom  O3  second chain B resi    1 atom MG   value 2.61420351159 sigma 0.1 type 1
-exte dist first chain A resi  401 alte F atom  O3  second chain C resi    1 atom MN   value 3.95520277609 sigma 0.1 type 1
-exte dist first chain A resi  401 alte F atom  C6  second chain S resi   60 alte F atom  O   value 2.76181407774 sigma 0.1 type 1
-exte dist first chain A resi  401 alte F atom  O6  second chain S resi   60 alte F atom  O   value 3.62018480191 sigma 0.1 type 1
-exte dist first chain A resi  401 alte F atom  O5  second chain S resi   60 alte F atom  O   value 3.77249599072 sigma 0.1 type 1
-exte dist first chain A resi  401 alte F atom  O2  second chain S resi  205 alte F atom  O   value 2.71505543221 sigma 0.1 type 1
-exte dist first chain A resi  401 alte F atom  O3  second chain S resi  205 alte F atom  O   value 3.4277585971 sigma 0.1 type 1
-exte dist first chain A resi  401 alte F atom  O3  second chain S resi  222 atom  O   value 2.53153253979 sigma 0.1 type 1
-exte dist first chain A resi  401 alte F atom  O2  second chain S resi  222 atom  O   value 3.2143817446 sigma 0.1 type 1
-exte dist first chain A resi  401 alte F atom  O1  second chain S resi  284 alte F atom  O   value 2.47918151816 sigma 0.1 type 1
-exte dist first chain A resi  401 alte F atom  O4  second chain S resi  286 atom  O   value 2.74231052217 sigma 0.1 type 1
-exte dist first chain A resi  401 alte F atom  O6  second chain S resi  286 atom  O   value 3.35644693091 sigma 0.1 type 1
-exte dist first chain A resi  401 alte F atom  O2  second chain S resi  287 alte F atom  O   value 2.83764162642 sigma 0.1 type 1
-exte dist first chain A resi  401 alte F atom  O1  second chain S resi  287 alte F atom  O   value 3.51220571721 sigma 0.1 type 1
-exte dist first chain C resi    1 atom MN   second chain S resi  205 alte F atom  O   value 3.73048468701 sigma 0.1 type 1
-exte dist first chain S resi   27 atom  O   second chain S resi   78 alte F atom  O   value 3.41757018948 sigma 0.1 type 1
-exte dist first chain S resi   32 atom  O   second chain S resi   60 alte F atom  O   value 3.08984061078 sigma 0.1 type 1
-exte dist first chain S resi   32 atom  O   second chain S resi  123 alte F atom  O   value 2.58378017641 sigma 0.1 type 1
-exte dist first chain S resi   35 atom  O   second chain S resi  188 alte F atom  O   value 3.92364932174 sigma 0.1 type 1
-exte dist first chain S resi   56 atom  O   second chain S resi  283 alte F atom  O   value 3.23812754536 sigma 0.1 type 1
-exte dist first chain S resi   60 alte F atom  O   second chain S resi  123 alte F atom  O   value 3.60822213839 sigma 0.1 type 1
-exte dist first chain S resi   74 atom  O   second chain S resi  123 alte F atom  O   value 2.81425389757 sigma 0.1 type 1
-exte dist first chain S resi   78 alte F atom  O   second chain S resi  106 atom  O   value 3.20126443769 sigma 0.1 type 1
-exte dist first chain S resi   78 alte F atom  O   second chain S resi  116 atom  O   value 2.76150049792 sigma 0.1 type 1
-exte dist first chain S resi   78 alte F atom  O   second chain S resi  119 atom  O   value 3.3696421175 sigma 0.1 type 1
-exte dist first chain S resi   78 alte F atom  O   second chain S resi  188 alte F atom  O   value 3.52917129083 sigma 0.1 type 1
-exte dist first chain S resi  106 atom  O   second chain S resi  152 alte F atom  O   value 3.54001779657 sigma 0.1 type 1
-exte dist first chain S resi  116 atom  O   second chain S resi  188 alte F atom  O   value 3.49380952543 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  152 alte F atom  O   value 2.99755400285 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  188 alte F atom  O   value 2.82557003098 sigma 0.1 type 1
-exte dist first chain S resi  119 atom  O   second chain S resi  283 alte F atom  O   value 2.74053662628 sigma 0.1 type 1
-exte dist first chain S resi  123 alte F atom  O   second chain S resi  146 atom  O   value 2.94975541359 sigma 0.1 type 1
-exte dist first chain S resi  131 atom  O   second chain S resi  152 alte F atom  O   value 2.99459796968 sigma 0.1 type 1
-exte dist first chain S resi  131 atom  O   second chain S resi  283 alte F atom  O   value 3.22202327738 sigma 0.1 type 1
-exte dist first chain S resi  142 alte F atom  O   second chain S resi  194 alte F atom  O   value 2.97504890716 sigma 0.1 type 1
-exte dist first chain S resi  186 atom  O   second chain S resi  288 alte F atom  O   value 3.30814479731 sigma 0.1 type 1
-exte dist first chain S resi  186 atom  O   second chain S resi  289 alte F atom  O   value 3.87048666191 sigma 0.1 type 1
-exte dist first chain S resi  188 alte F atom  O   second chain S resi  283 alte F atom  O   value 3.73015777146 sigma 0.1 type 1
-exte dist first chain S resi  194 alte F atom  O   second chain S resi  284 alte F atom  O   value 3.10709639374 sigma 0.1 type 1
-exte dist first chain S resi  205 alte F atom  O   second chain S resi  222 atom  O   value 3.15179885145 sigma 0.1 type 1
-exte dist first chain S resi  222 atom  O   second chain S resi  287 alte F atom  O   value 3.83013289587 sigma 0.1 type 1
-exte dist first chain S resi  234 atom  O   second chain S resi  283 alte F atom  O   value 3.95238156053 sigma 0.1 type 1
-exte dist first chain S resi  234 atom  O   second chain S resi  287 alte F atom  O   value 3.6886710344 sigma 0.1 type 1
-exte dist first chain S resi  265 atom  O   second chain S resi  287 alte F atom  O   value 2.94931500522 sigma 0.1 type 1
-exte dist first chain S resi  265 atom  O   second chain S resi  289 alte F atom  O   value 2.51447449778 sigma 0.1 type 1
-exte dist first chain S resi  284 alte F atom  O   second chain S resi  287 alte F atom  O   value 3.75604233203 sigma 0.1 type 1
-exte dist first chain S resi  284 alte F atom  O   second chain S resi  288 alte F atom  O   value 3.11622175077 sigma 0.1 type 1
-exte dist first chain S resi  287 alte F atom  O   second chain S resi  288 alte F atom  O   value 2.96125412621 sigma 0.1 type 1
-exte dist first chain S resi  287 alte F atom  O   second chain S resi  289 alte F atom  O   value 3.41398960162 sigma 0.1 type 1
-exte dist first chain S resi  288 alte F atom  O   second chain S resi  289 alte F atom  O   value 2.76901661245 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  NE1 second chain S resi  231 alte A atom  O   value 3.3801755871551995 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  CD1 second chain S resi  284 alte A atom  O   value 3.9961482705225047 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  CZ2 second chain A resi   23 alte A atom  O   value 3.6012159057740485 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  NE1 second chain A resi   23 alte A atom  O   value 3.7588989079250363 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  NE1 second chain A resi  289 alte A atom  NZ  value 3.91231670497162 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  NE1 second chain S resi  181 alte A atom  O   value 3.509021516035488 sigma 0.1 type 1
+exte dist first chain A resi   21 atom  C   second chain A resi   23 alte A atom  N   value 3.5164716691593005 sigma 0.1 type 1
+exte dist first chain A resi   21 atom  O   second chain A resi   23 alte A atom  N   value 3.8611482748011636 sigma 0.1 type 1
+exte dist first chain A resi   22 atom  O   second chain A resi   28 alte A atom  O   value 3.5253840925493494 sigma 0.1 type 1
+exte dist first chain A resi   23 alte A atom  CG  second chain A resi   27 atom  O   value 3.3321358015543163 sigma 0.1 type 1
+exte dist first chain A resi   23 alte A atom  NH1 second chain A resi   28 alte A atom  CA  value 3.728027226295433 sigma 0.1 type 1
+exte dist first chain A resi   23 alte A atom  NH1 second chain A resi   29 atom  N   value 3.2088404447712895 sigma 0.1 type 1
+exte dist first chain A resi   23 alte A atom  NH2 second chain A resi   29 atom  CB  value 3.707842903899787 sigma 0.1 type 1
+exte dist first chain A resi   23 alte A atom  N   second chain A resi   29 atom  CA  value 3.9312326311222034 sigma 0.1 type 1
+exte dist first chain A resi   23 alte A atom  N   second chain S resi   53 atom  O   value 3.1278140929409433 sigma 0.1 type 1
+exte dist first chain A resi   23 alte A atom  O   second chain S resi  181 alte A atom  O   value 2.850790942878838 sigma 0.1 type 1
+exte dist first chain A resi   28 alte A atom  O   second chain A resi   30 atom  N   value 3.5106206004067144 sigma 0.1 type 1
+exte dist first chain A resi   28 alte A atom  O   second chain A resi  292 atom  NH2 value 2.7073243248639396 sigma 0.1 type 1
+exte dist first chain A resi   28 alte A atom  N   second chain A resi  292 atom  NH2 value 3.72301289280604 sigma 0.1 type 1
+exte dist first chain A resi   28 alte A atom  OD2 second chain S resi  105 atom  O   value 2.17213466433368 sigma 0.1 type 1
+exte dist first chain A resi   28 alte A atom  OD2 second chain S resi  206 atom  O   value 3.8330945722744674 sigma 0.1 type 1
+exte dist first chain A resi   28 alte A atom  OD1 second chain S resi  221 atom  O   value 2.864982024376419 sigma 0.1 type 1
+exte dist first chain A resi   28 alte A atom  N   second chain S resi  221 atom  O   value 3.9176392125870914 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  NE2 second chain S resi   60 alte A atom  O   value 3.93103103523745 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  CB  second chain S resi  142 alte A atom  O   value 3.6609043964572443 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  NE2 second chain S resi  147 alte A atom  O   value 2.7545731066718875 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  ND1 second chain S resi  194 alte A atom  O   value 3.8819099680440785 sigma 0.1 type 1
+exte dist first chain A resi   56 atom  CB  second chain S resi  142 alte A atom  O   value 3.493744552768559 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  OD1 second chain S resi  142 alte A atom  O   value 2.9296626085609243 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  N   second chain S resi  142 alte A atom  O   value 3.6890977216658265 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  OD1 second chain S resi  194 alte A atom  O   value 3.61413862490082 sigma 0.1 type 1
+exte dist first chain A resi   90 atom  OG1 second chain S resi   60 alte A atom  O   value 2.6677994677261636 sigma 0.1 type 1
+exte dist first chain A resi   90 atom  CG2 second chain S resi  285 alte A atom  O   value 3.972836518156769 sigma 0.1 type 1
+exte dist first chain A resi   91 atom  O   second chain S resi   60 alte A atom  O   value 3.1510385589516368 sigma 0.1 type 1
+exte dist first chain A resi   92 atom  ND2 second chain S resi  142 alte A atom  O   value 2.7483367697573025 sigma 0.1 type 1
+exte dist first chain A resi   92 atom  ND2 second chain S resi  194 alte A atom  O   value 3.842786228766829 sigma 0.1 type 1
+exte dist first chain A resi   93 atom  CD1 second chain S resi  123 alte A atom  O   value 3.6210553710209976 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CE2 second chain S resi  147 alte A atom  O   value 3.7020039167996583 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CZ  second chain S resi  194 alte A atom  O   value 3.970414336061162 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CE1 second chain S resi  284 alte A atom  O   value 3.930704898615514 sigma 0.1 type 1
+exte dist first chain A resi  135 atom  CG1 second chain S resi  285 alte A atom  O   value 3.480381731936889 sigma 0.1 type 1
+exte dist first chain A resi  136 atom  CA  second chain S resi  123 alte A atom  O   value 3.5067902703184286 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  N   second chain S resi   60 alte A atom  O   value 3.193417918156031 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  N   second chain S resi  123 alte A atom  O   value 3.4864388708250726 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  O   second chain S resi  123 alte A atom  O   value 3.624350148647339 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CB  second chain S resi  147 alte A atom  O   value 3.494201053173671 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CZ2 second chain S resi  205 alte A atom  O   value 3.366777984958319 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CB  second chain S resi  285 alte A atom  O   value 3.9037937957837885 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE1 second chain S resi  173 alte A atom  O   value 2.477738888583705 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE2 second chain S resi  173 alte A atom  O   value 2.701634505257882 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE2 second chain S resi  187 alte A atom  O   value 2.5693271492746894 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE1 second chain S resi  285 alte A atom  O   value 2.975208732173259 sigma 0.1 type 1
+exte dist first chain A resi  183 atom  NZ  second chain S resi  205 alte A atom  O   value 3.0978866990256417 sigma 0.1 type 1
+exte dist first chain A resi  217 atom  OE1 second chain S resi  187 alte A atom  O   value 3.2543062240668132 sigma 0.1 type 1
+exte dist first chain A resi  220 atom  CE1 second chain S resi  187 alte A atom  O   value 3.7615019606534843 sigma 0.1 type 1
+exte dist first chain A resi  220 atom  NE2 second chain S resi  205 alte A atom  O   value 3.6178550274990298 sigma 0.1 type 1
+exte dist first chain A resi  245 atom  OD2 second chain S resi  173 alte A atom  O   value 2.7328911430937026 sigma 0.1 type 1
+exte dist first chain A resi  254 atom  OH  second chain S resi   78 alte A atom  O   value 2.804701231860534 sigma 0.1 type 1
+exte dist first chain A resi  254 atom  CE2 second chain S resi  152 alte A atom  O   value 3.4868260639154363 sigma 0.1 type 1
+exte dist first chain A resi  255 atom  O   second chain S resi  188 alte A atom  O   value 3.207168533145705 sigma 0.1 type 1
+exte dist first chain A resi  255 atom  OD2 second chain S resi  205 alte A atom  O   value 3.197071472457256 sigma 0.1 type 1
+exte dist first chain A resi  256 atom  O   second chain S resi  188 alte A atom  O   value 3.086170928513193 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  O   second chain A resi  289 alte A atom  N   value 2.77055752512017 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  O   second chain A resi  289 alte A atom  O   value 3.4712759901799815 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  OD2 second chain A resi  289 alte A atom  CE  value 3.902992185490513 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD2 second chain S resi  173 alte A atom  O   value 2.695512010731911 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD2 second chain S resi  187 alte A atom  O   value 2.7185573380011676 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD2 second chain S resi  231 alte A atom  O   value 2.7449681236764856 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD1 second chain S resi  231 alte A atom  O   value 3.4416520742224956 sigma 0.1 type 1
+exte dist first chain A resi  289 alte A atom  O   second chain A resi  291 atom  N   value 3.2410498299162276 sigma 0.1 type 1
+exte dist first chain A resi  289 alte A atom  O   second chain S resi   35 atom  O   value 2.569380664673882 sigma 0.1 type 1
+exte dist first chain A resi  289 alte A atom  NZ  second chain S resi  181 alte A atom  O   value 3.3855726251256235 sigma 0.1 type 1
+exte dist first chain A resi  289 alte A atom  CD  second chain S resi  188 alte A atom  O   value 3.869576979464291 sigma 0.1 type 1
+exte dist first chain A resi  289 alte A atom  NZ  second chain S resi  234 atom  O   value 2.9346124105237466 sigma 0.1 type 1
+exte dist first chain A resi  289 alte A atom  CG  second chain S resi  265 atom  O   value 3.43795942384432 sigma 0.1 type 1
+exte dist first chain A resi  289 alte A atom  NZ  second chain S resi  283 alte A atom  O   value 2.6804337335588073 sigma 0.1 type 1
+exte dist first chain B resi    1 atom MG   second chain S resi  173 alte A atom  O   value 2.038932318641304 sigma 0.1 type 1
+exte dist first chain B resi    1 atom MG   second chain S resi  187 alte A atom  O   value 2.1947906506088457 sigma 0.1 type 1
+exte dist first chain B resi    1 atom MG   second chain S resi  231 alte A atom  O   value 3.785551743141283 sigma 0.1 type 1
+exte dist first chain C resi    1 atom MN   second chain S resi  205 alte A atom  O   value 3.8006371834206956 sigma 0.1 type 1
+exte dist first chain S resi   27 atom  O   second chain S resi   78 alte A atom  O   value 3.559749850761991 sigma 0.1 type 1
+exte dist first chain S resi   32 atom  O   second chain S resi   60 alte A atom  O   value 3.0966181553430188 sigma 0.1 type 1
+exte dist first chain S resi   32 atom  O   second chain S resi  123 alte A atom  O   value 2.880110067341177 sigma 0.1 type 1
+exte dist first chain S resi   56 atom  O   second chain S resi  188 alte A atom  O   value 3.9981802110460203 sigma 0.1 type 1
+exte dist first chain S resi   56 atom  O   second chain S resi  283 alte A atom  O   value 2.923361934485703 sigma 0.1 type 1
+exte dist first chain S resi   60 alte A atom  O   second chain S resi  123 alte A atom  O   value 3.833211447337598 sigma 0.1 type 1
+exte dist first chain S resi   60 alte A atom  O   second chain S resi  147 alte A atom  O   value 2.4985367717926437 sigma 0.1 type 1
+exte dist first chain S resi   60 alte A atom  O   second chain S resi  285 alte A atom  O   value 3.528716622229673 sigma 0.1 type 1
+exte dist first chain S resi   74 atom  O   second chain S resi  123 alte A atom  O   value 2.8798279462495655 sigma 0.1 type 1
+exte dist first chain S resi   78 alte A atom  O   second chain S resi  106 atom  O   value 3.4265111994563795 sigma 0.1 type 1
+exte dist first chain S resi   78 alte A atom  O   second chain S resi  116 atom  O   value 3.0420693614709053 sigma 0.1 type 1
+exte dist first chain S resi   78 alte A atom  O   second chain S resi  119 atom  O   value 3.9908682012815215 sigma 0.1 type 1
+exte dist first chain S resi  106 atom  O   second chain S resi  152 alte A atom  O   value 3.4642681766860934 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  152 alte A atom  O   value 2.451265387509073 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  188 alte A atom  O   value 2.684095750900109 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  283 alte A atom  O   value 3.3326091880086994 sigma 0.1 type 1
+exte dist first chain S resi  123 alte A atom  O   second chain S resi  146 atom  O   value 2.532534106384354 sigma 0.1 type 1
+exte dist first chain S resi  131 atom  O   second chain S resi  152 alte A atom  O   value 2.7582256977992214 sigma 0.1 type 1
+exte dist first chain S resi  131 atom  O   second chain S resi  283 alte A atom  O   value 3.439571630305148 sigma 0.1 type 1
+exte dist first chain S resi  142 alte A atom  O   second chain S resi  194 alte A atom  O   value 3.0000888320181454 sigma 0.1 type 1
+exte dist first chain S resi  147 alte A atom  O   second chain S resi  285 alte A atom  O   value 2.4758548018815625 sigma 0.1 type 1
+exte dist first chain S resi  173 alte A atom  O   second chain S resi  187 alte A atom  O   value 2.260025442334664 sigma 0.1 type 1
+exte dist first chain S resi  173 alte A atom  O   second chain S resi  231 alte A atom  O   value 3.0454479145110964 sigma 0.1 type 1
+exte dist first chain S resi  173 alte A atom  O   second chain S resi  285 alte A atom  O   value 2.813798322552633 sigma 0.1 type 1
+exte dist first chain S resi  173 alte A atom  O   second chain S resi  286 atom  O   value 2.5409693032384344 sigma 0.1 type 1
+exte dist first chain S resi  181 alte A atom  O   second chain S resi  283 alte A atom  O   value 3.0847422906946407 sigma 0.1 type 1
+exte dist first chain S resi  187 alte A atom  O   second chain S resi  205 alte A atom  O   value 3.8842317129646116 sigma 0.1 type 1
+exte dist first chain S resi  187 alte A atom  O   second chain S resi  222 atom  O   value 3.202621894635707 sigma 0.1 type 1
+exte dist first chain S resi  187 alte A atom  O   second chain S resi  231 alte A atom  O   value 2.534226114615664 sigma 0.1 type 1
+exte dist first chain S resi  188 alte A atom  O   second chain S resi  283 alte A atom  O   value 3.252500269023816 sigma 0.1 type 1
+exte dist first chain S resi  194 alte A atom  O   second chain S resi  284 alte A atom  O   value 2.8166634516746942 sigma 0.1 type 1
+exte dist first chain S resi  205 alte A atom  O   second chain S resi  222 atom  O   value 3.0705483223684986 sigma 0.1 type 1
+exte dist first chain S resi  222 atom  O   second chain S resi  231 alte A atom  O   value 3.5934118884425175 sigma 0.1 type 1
+exte dist first chain S resi  234 atom  O   second chain S resi  283 alte A atom  O   value 3.4097203697664082 sigma 0.1 type 1
+exte dist first chain S resi  285 alte A atom  O   second chain S resi  286 atom  O   value 3.331137943706325 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  NE1 second chain S resi  231 alte B atom  O   value 3.3801755871551995 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  CD1 second chain S resi  284 alte B atom  O   value 3.9961482705225047 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  CZ2 second chain A resi   23 alte B atom  O   value 3.4959127563484755 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  NE1 second chain A resi   23 alte B atom  O   value 3.7017845696366534 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  NE1 second chain A resi  289 alte B atom  CE  value 3.579320047159793 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  NE1 second chain S resi  181 alte B atom  O   value 3.509021516035488 sigma 0.1 type 1
+exte dist first chain A resi   21 atom  C   second chain A resi   23 alte B atom  N   value 3.5214311011291977 sigma 0.1 type 1
+exte dist first chain A resi   21 atom  O   second chain A resi   23 alte B atom  N   value 3.874539198407986 sigma 0.1 type 1
+exte dist first chain A resi   22 atom  O   second chain A resi   28 alte B atom  O   value 3.4611132602097854 sigma 0.1 type 1
+exte dist first chain A resi   23 alte B atom  CD  second chain A resi   27 atom  O   value 3.166460168705744 sigma 0.1 type 1
+exte dist first chain A resi   23 alte B atom  NE  second chain A resi   27 atom  O   value 3.5116497547449157 sigma 0.1 type 1
+exte dist first chain A resi   23 alte B atom  CG  second chain A resi   28 alte B atom  OD1 value 3.8525447434131093 sigma 0.1 type 1
+exte dist first chain A resi   23 alte B atom  CG  second chain A resi   29 atom  N   value 3.701784704706632 sigma 0.1 type 1
+exte dist first chain A resi   23 alte B atom  N   second chain A resi   29 atom  CA  value 3.962215794224237 sigma 0.1 type 1
+exte dist first chain A resi   23 alte B atom  N   second chain S resi   53 atom  O   value 3.1180989400594665 sigma 0.1 type 1
+exte dist first chain A resi   23 alte B atom  O   second chain S resi  181 alte B atom  O   value 2.798955698113139 sigma 0.1 type 1
+exte dist first chain A resi   23 alte B atom  NH1 second chain S resi  191 atom  O   value 3.9837872684168247 sigma 0.1 type 1
+exte dist first chain A resi   23 alte B atom  NH2 second chain S resi  221 atom  O   value 2.942522727184954 sigma 0.1 type 1
+exte dist first chain A resi   28 alte B atom  O   second chain A resi   30 atom  N   value 3.568706908671542 sigma 0.1 type 1
+exte dist first chain A resi   28 alte B atom  O   second chain A resi  292 atom  NH2 value 2.725425654828984 sigma 0.1 type 1
+exte dist first chain A resi   28 alte B atom  N   second chain A resi  292 atom  NH2 value 3.777843961838551 sigma 0.1 type 1
+exte dist first chain A resi   28 alte B atom  CB  second chain S resi  105 atom  O   value 3.3862090898230113 sigma 0.1 type 1
+exte dist first chain A resi   28 alte B atom  OD2 second chain S resi  105 atom  O   value 3.783132828754494 sigma 0.1 type 1
+exte dist first chain A resi   28 alte B atom  N   second chain S resi  221 atom  O   value 3.8705114649100314 sigma 0.1 type 1
+exte dist first chain A resi   28 alte B atom  OD2 second chain S resi  232 atom  O   value 3.0733916118841735 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  NE2 second chain S resi   60 alte B atom  O   value 3.93103103523745 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  CB  second chain S resi  142 alte B atom  O   value 3.6609043964572443 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  NE2 second chain S resi  147 alte B atom  O   value 2.7545731066718875 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  ND1 second chain S resi  194 alte B atom  O   value 3.8819099680440785 sigma 0.1 type 1
+exte dist first chain A resi   56 atom  CB  second chain S resi  142 alte B atom  O   value 3.493744552768559 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  OD1 second chain S resi  142 alte B atom  O   value 2.9296626085609243 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  N   second chain S resi  142 alte B atom  O   value 3.6890977216658265 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  OD1 second chain S resi  194 alte B atom  O   value 3.61413862490082 sigma 0.1 type 1
+exte dist first chain A resi   90 atom  OG1 second chain S resi   60 alte B atom  O   value 2.6677994677261636 sigma 0.1 type 1
+exte dist first chain A resi   90 atom  CG2 second chain S resi  285 alte B atom  O   value 3.972836518156769 sigma 0.1 type 1
+exte dist first chain A resi   91 atom  O   second chain S resi   60 alte B atom  O   value 3.1510385589516368 sigma 0.1 type 1
+exte dist first chain A resi   92 atom  ND2 second chain S resi  142 alte B atom  O   value 2.7483367697573025 sigma 0.1 type 1
+exte dist first chain A resi   92 atom  ND2 second chain S resi  194 alte B atom  O   value 3.842786228766829 sigma 0.1 type 1
+exte dist first chain A resi   93 atom  CD1 second chain S resi  123 alte B atom  O   value 3.6210553710209976 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CE2 second chain S resi  147 alte B atom  O   value 3.7020039167996583 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CZ  second chain S resi  194 alte B atom  O   value 3.970414336061162 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CE1 second chain S resi  284 alte B atom  O   value 3.930704898615514 sigma 0.1 type 1
+exte dist first chain A resi  135 atom  CG1 second chain S resi  285 alte B atom  O   value 3.480381731936889 sigma 0.1 type 1
+exte dist first chain A resi  136 atom  CA  second chain S resi  123 alte B atom  O   value 3.5067902703184286 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  N   second chain S resi   60 alte B atom  O   value 3.193417918156031 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  N   second chain S resi  123 alte B atom  O   value 3.4864388708250726 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  O   second chain S resi  123 alte B atom  O   value 3.624350148647339 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CB  second chain S resi  147 alte B atom  O   value 3.494201053173671 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CZ2 second chain S resi  205 alte B atom  O   value 3.366777984958319 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CB  second chain S resi  285 alte B atom  O   value 3.9037937957837885 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE1 second chain S resi  173 alte B atom  O   value 2.477738888583705 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE2 second chain S resi  173 alte B atom  O   value 2.701634505257882 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE2 second chain S resi  187 alte B atom  O   value 2.5693271492746894 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE1 second chain S resi  285 alte B atom  O   value 2.975208732173259 sigma 0.1 type 1
+exte dist first chain A resi  183 atom  NZ  second chain S resi  205 alte B atom  O   value 3.0978866990256417 sigma 0.1 type 1
+exte dist first chain A resi  217 atom  OE1 second chain S resi  187 alte B atom  O   value 3.2543062240668132 sigma 0.1 type 1
+exte dist first chain A resi  220 atom  CE1 second chain S resi  187 alte B atom  O   value 3.7615019606534843 sigma 0.1 type 1
+exte dist first chain A resi  220 atom  NE2 second chain S resi  205 alte B atom  O   value 3.6178550274990298 sigma 0.1 type 1
+exte dist first chain A resi  245 atom  OD2 second chain S resi  173 alte B atom  O   value 2.7328911430937026 sigma 0.1 type 1
+exte dist first chain A resi  254 atom  OH  second chain S resi   78 alte B atom  O   value 2.804701231860534 sigma 0.1 type 1
+exte dist first chain A resi  254 atom  CE2 second chain S resi  152 alte B atom  O   value 3.4868260639154363 sigma 0.1 type 1
+exte dist first chain A resi  255 atom  O   second chain S resi  188 alte B atom  O   value 3.207168533145705 sigma 0.1 type 1
+exte dist first chain A resi  255 atom  OD2 second chain S resi  205 alte B atom  O   value 3.197071472457256 sigma 0.1 type 1
+exte dist first chain A resi  256 atom  O   second chain S resi  188 alte B atom  O   value 3.086170928513193 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  O   second chain A resi  289 alte B atom  N   value 2.7684546230704226 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  O   second chain A resi  289 alte B atom  O   value 3.469215761523055 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  OD2 second chain A resi  289 alte B atom  NZ  value 3.599430232689615 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD2 second chain S resi  173 alte B atom  O   value 2.695512010731911 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD2 second chain S resi  187 alte B atom  O   value 2.7185573380011676 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD2 second chain S resi  231 alte B atom  O   value 2.7449681236764856 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD1 second chain S resi  231 alte B atom  O   value 3.4416520742224956 sigma 0.1 type 1
+exte dist first chain A resi  289 alte B atom  O   second chain A resi  291 atom  N   value 3.24080499259058 sigma 0.1 type 1
+exte dist first chain A resi  289 alte B atom  O   second chain S resi   35 atom  O   value 2.579830226972309 sigma 0.1 type 1
+exte dist first chain A resi  289 alte B atom  CD  second chain S resi  188 alte B atom  O   value 3.702230273767423 sigma 0.1 type 1
+exte dist first chain A resi  289 alte B atom  NZ  second chain S resi  234 atom  O   value 3.5629934044283624 sigma 0.1 type 1
+exte dist first chain A resi  289 alte B atom  NZ  second chain S resi  265 atom  O   value 2.7774727721437706 sigma 0.1 type 1
+exte dist first chain A resi  289 alte B atom  CE  second chain S resi  283 alte B atom  O   value 3.6851185869656895 sigma 0.1 type 1
+exte dist first chain B resi    1 atom MG   second chain S resi  173 alte B atom  O   value 2.038932318641304 sigma 0.1 type 1
+exte dist first chain B resi    1 atom MG   second chain S resi  187 alte B atom  O   value 2.1947906506088457 sigma 0.1 type 1
+exte dist first chain B resi    1 atom MG   second chain S resi  231 alte B atom  O   value 3.785551743141283 sigma 0.1 type 1
+exte dist first chain C resi    1 atom MN   second chain S resi  205 alte B atom  O   value 3.8006371834206956 sigma 0.1 type 1
+exte dist first chain S resi   27 atom  O   second chain S resi   78 alte B atom  O   value 3.559749850761991 sigma 0.1 type 1
+exte dist first chain S resi   32 atom  O   second chain S resi   60 alte B atom  O   value 3.0966181553430188 sigma 0.1 type 1
+exte dist first chain S resi   32 atom  O   second chain S resi  123 alte B atom  O   value 2.880110067341177 sigma 0.1 type 1
+exte dist first chain S resi   56 atom  O   second chain S resi  188 alte B atom  O   value 3.9981802110460203 sigma 0.1 type 1
+exte dist first chain S resi   56 atom  O   second chain S resi  283 alte B atom  O   value 2.923361934485703 sigma 0.1 type 1
+exte dist first chain S resi   60 alte B atom  O   second chain S resi  123 alte B atom  O   value 3.833211447337598 sigma 0.1 type 1
+exte dist first chain S resi   60 alte B atom  O   second chain S resi  147 alte B atom  O   value 2.4985367717926437 sigma 0.1 type 1
+exte dist first chain S resi   60 alte B atom  O   second chain S resi  285 alte B atom  O   value 3.528716622229673 sigma 0.1 type 1
+exte dist first chain S resi   74 atom  O   second chain S resi  123 alte B atom  O   value 2.8798279462495655 sigma 0.1 type 1
+exte dist first chain S resi   78 alte B atom  O   second chain S resi  106 atom  O   value 3.4265111994563795 sigma 0.1 type 1
+exte dist first chain S resi   78 alte B atom  O   second chain S resi  116 atom  O   value 3.0420693614709053 sigma 0.1 type 1
+exte dist first chain S resi   78 alte B atom  O   second chain S resi  119 atom  O   value 3.9908682012815215 sigma 0.1 type 1
+exte dist first chain S resi  106 atom  O   second chain S resi  152 alte B atom  O   value 3.4642681766860934 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  152 alte B atom  O   value 2.451265387509073 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  188 alte B atom  O   value 2.684095750900109 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  283 alte B atom  O   value 3.3326091880086994 sigma 0.1 type 1
+exte dist first chain S resi  123 alte B atom  O   second chain S resi  146 atom  O   value 2.532534106384354 sigma 0.1 type 1
+exte dist first chain S resi  131 atom  O   second chain S resi  152 alte B atom  O   value 2.7582256977992214 sigma 0.1 type 1
+exte dist first chain S resi  131 atom  O   second chain S resi  283 alte B atom  O   value 3.439571630305148 sigma 0.1 type 1
+exte dist first chain S resi  142 alte B atom  O   second chain S resi  194 alte B atom  O   value 3.0000888320181454 sigma 0.1 type 1
+exte dist first chain S resi  147 alte B atom  O   second chain S resi  285 alte B atom  O   value 2.4758548018815625 sigma 0.1 type 1
+exte dist first chain S resi  173 alte B atom  O   second chain S resi  187 alte B atom  O   value 2.260025442334664 sigma 0.1 type 1
+exte dist first chain S resi  173 alte B atom  O   second chain S resi  231 alte B atom  O   value 3.0454479145110964 sigma 0.1 type 1
+exte dist first chain S resi  173 alte B atom  O   second chain S resi  285 alte B atom  O   value 2.813798322552633 sigma 0.1 type 1
+exte dist first chain S resi  173 alte B atom  O   second chain S resi  286 atom  O   value 2.5409693032384344 sigma 0.1 type 1
+exte dist first chain S resi  181 alte B atom  O   second chain S resi  283 alte B atom  O   value 3.0847422906946407 sigma 0.1 type 1
+exte dist first chain S resi  187 alte B atom  O   second chain S resi  205 alte B atom  O   value 3.8842317129646116 sigma 0.1 type 1
+exte dist first chain S resi  187 alte B atom  O   second chain S resi  222 atom  O   value 3.202621894635707 sigma 0.1 type 1
+exte dist first chain S resi  187 alte B atom  O   second chain S resi  231 alte B atom  O   value 2.534226114615664 sigma 0.1 type 1
+exte dist first chain S resi  188 alte B atom  O   second chain S resi  283 alte B atom  O   value 3.252500269023816 sigma 0.1 type 1
+exte dist first chain S resi  194 alte B atom  O   second chain S resi  284 alte B atom  O   value 2.8166634516746942 sigma 0.1 type 1
+exte dist first chain S resi  205 alte B atom  O   second chain S resi  222 atom  O   value 3.0705483223684986 sigma 0.1 type 1
+exte dist first chain S resi  222 atom  O   second chain S resi  231 alte B atom  O   value 3.5934118884425175 sigma 0.1 type 1
+exte dist first chain S resi  234 atom  O   second chain S resi  283 alte B atom  O   value 3.4097203697664082 sigma 0.1 type 1
+exte dist first chain S resi  285 alte B atom  O   second chain S resi  286 atom  O   value 3.331137943706325 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  NE1 second chain S resi  231 alte C atom  O   value 3.3801755871551995 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  CD1 second chain S resi  284 alte C atom  O   value 3.9961482705225047 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  CZ2 second chain A resi   23 alte C atom  O   value 3.4959127563484755 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  NE1 second chain A resi   23 alte C atom  O   value 3.7017845696366534 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  NE1 second chain A resi  289 alte C atom  CE  value 3.579320047159793 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  NE1 second chain S resi  181 alte C atom  O   value 3.509021516035488 sigma 0.1 type 1
+exte dist first chain A resi   21 atom  C   second chain A resi   23 alte C atom  N   value 3.5214311011291977 sigma 0.1 type 1
+exte dist first chain A resi   21 atom  O   second chain A resi   23 alte C atom  N   value 3.874539198407986 sigma 0.1 type 1
+exte dist first chain A resi   22 atom  O   second chain A resi   28 alte C atom  O   value 3.5253840925493494 sigma 0.1 type 1
+exte dist first chain A resi   23 alte C atom  CD  second chain A resi   27 atom  O   value 3.166460168705744 sigma 0.1 type 1
+exte dist first chain A resi   23 alte C atom  NE  second chain A resi   27 atom  O   value 3.5116497547449157 sigma 0.1 type 1
+exte dist first chain A resi   23 alte C atom  NH2 second chain A resi   28 alte C atom  OD1 value 3.553493773738737 sigma 0.1 type 1
+exte dist first chain A resi   23 alte C atom  NE  second chain A resi   28 alte C atom  OD1 value 3.7916313111904754 sigma 0.1 type 1
+exte dist first chain A resi   23 alte C atom  CG  second chain A resi   29 atom  N   value 3.701784704706632 sigma 0.1 type 1
+exte dist first chain A resi   23 alte C atom  N   second chain A resi   29 atom  CA  value 3.962215794224237 sigma 0.1 type 1
+exte dist first chain A resi   23 alte C atom  N   second chain S resi   53 atom  O   value 3.1180989400594665 sigma 0.1 type 1
+exte dist first chain A resi   23 alte C atom  O   second chain S resi  181 alte C atom  O   value 2.798955698113139 sigma 0.1 type 1
+exte dist first chain A resi   23 alte C atom  NH1 second chain S resi  191 atom  O   value 3.9837872684168247 sigma 0.1 type 1
+exte dist first chain A resi   23 alte C atom  NH2 second chain S resi  221 atom  O   value 2.942522727184954 sigma 0.1 type 1
+exte dist first chain A resi   28 alte C atom  O   second chain A resi   30 atom  N   value 3.5106206004067144 sigma 0.1 type 1
+exte dist first chain A resi   28 alte C atom  O   second chain A resi  292 atom  NH2 value 2.7073243248639396 sigma 0.1 type 1
+exte dist first chain A resi   28 alte C atom  N   second chain A resi  292 atom  NH2 value 3.72301289280604 sigma 0.1 type 1
+exte dist first chain A resi   28 alte C atom  OD2 second chain S resi  105 atom  O   value 2.17213466433368 sigma 0.1 type 1
+exte dist first chain A resi   28 alte C atom  OD2 second chain S resi  206 atom  O   value 3.8330945722744674 sigma 0.1 type 1
+exte dist first chain A resi   28 alte C atom  OD1 second chain S resi  221 atom  O   value 2.864982024376419 sigma 0.1 type 1
+exte dist first chain A resi   28 alte C atom  N   second chain S resi  221 atom  O   value 3.9176392125870914 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  NE2 second chain S resi   60 alte C atom  O   value 3.93103103523745 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  CB  second chain S resi  142 alte C atom  O   value 3.6609043964572443 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  NE2 second chain S resi  147 alte C atom  O   value 2.7545731066718875 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  ND1 second chain S resi  194 alte C atom  O   value 3.8819099680440785 sigma 0.1 type 1
+exte dist first chain A resi   56 atom  CB  second chain S resi  142 alte C atom  O   value 3.493744552768559 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  OD1 second chain S resi  142 alte C atom  O   value 2.9296626085609243 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  N   second chain S resi  142 alte C atom  O   value 3.6890977216658265 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  OD1 second chain S resi  194 alte C atom  O   value 3.61413862490082 sigma 0.1 type 1
+exte dist first chain A resi   90 atom  OG1 second chain S resi   60 alte C atom  O   value 2.6677994677261636 sigma 0.1 type 1
+exte dist first chain A resi   90 atom  CG2 second chain S resi  285 alte C atom  O   value 3.972836518156769 sigma 0.1 type 1
+exte dist first chain A resi   91 atom  O   second chain S resi   60 alte C atom  O   value 3.1510385589516368 sigma 0.1 type 1
+exte dist first chain A resi   92 atom  ND2 second chain S resi  142 alte C atom  O   value 2.7483367697573025 sigma 0.1 type 1
+exte dist first chain A resi   92 atom  ND2 second chain S resi  194 alte C atom  O   value 3.842786228766829 sigma 0.1 type 1
+exte dist first chain A resi   93 atom  CD1 second chain S resi  123 alte C atom  O   value 3.6210553710209976 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CE2 second chain S resi  147 alte C atom  O   value 3.7020039167996583 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CZ  second chain S resi  194 alte C atom  O   value 3.970414336061162 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CE1 second chain S resi  284 alte C atom  O   value 3.930704898615514 sigma 0.1 type 1
+exte dist first chain A resi  135 atom  CG1 second chain S resi  285 alte C atom  O   value 3.480381731936889 sigma 0.1 type 1
+exte dist first chain A resi  136 atom  CA  second chain S resi  123 alte C atom  O   value 3.5067902703184286 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  N   second chain S resi   60 alte C atom  O   value 3.193417918156031 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  N   second chain S resi  123 alte C atom  O   value 3.4864388708250726 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  O   second chain S resi  123 alte C atom  O   value 3.624350148647339 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CB  second chain S resi  147 alte C atom  O   value 3.494201053173671 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CZ2 second chain S resi  205 alte C atom  O   value 3.366777984958319 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CB  second chain S resi  285 alte C atom  O   value 3.9037937957837885 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE1 second chain S resi  173 alte C atom  O   value 2.477738888583705 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE2 second chain S resi  173 alte C atom  O   value 2.701634505257882 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE2 second chain S resi  187 alte C atom  O   value 2.5693271492746894 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE1 second chain S resi  285 alte C atom  O   value 2.975208732173259 sigma 0.1 type 1
+exte dist first chain A resi  183 atom  NZ  second chain S resi  205 alte C atom  O   value 3.0978866990256417 sigma 0.1 type 1
+exte dist first chain A resi  217 atom  OE1 second chain S resi  187 alte C atom  O   value 3.2543062240668132 sigma 0.1 type 1
+exte dist first chain A resi  220 atom  CE1 second chain S resi  187 alte C atom  O   value 3.7615019606534843 sigma 0.1 type 1
+exte dist first chain A resi  220 atom  NE2 second chain S resi  205 alte C atom  O   value 3.6178550274990298 sigma 0.1 type 1
+exte dist first chain A resi  245 atom  OD2 second chain S resi  173 alte C atom  O   value 2.7328911430937026 sigma 0.1 type 1
+exte dist first chain A resi  254 atom  OH  second chain S resi   78 alte C atom  O   value 2.804701231860534 sigma 0.1 type 1
+exte dist first chain A resi  254 atom  CE2 second chain S resi  152 alte C atom  O   value 3.4868260639154363 sigma 0.1 type 1
+exte dist first chain A resi  255 atom  O   second chain S resi  188 alte C atom  O   value 3.207168533145705 sigma 0.1 type 1
+exte dist first chain A resi  255 atom  OD2 second chain S resi  205 alte C atom  O   value 3.197071472457256 sigma 0.1 type 1
+exte dist first chain A resi  256 atom  O   second chain S resi  188 alte C atom  O   value 3.086170928513193 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  O   second chain A resi  289 alte C atom  N   value 2.7684546230704226 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  O   second chain A resi  289 alte C atom  O   value 3.469215761523055 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  OD2 second chain A resi  289 alte C atom  NZ  value 3.599430232689615 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD2 second chain S resi  173 alte C atom  O   value 2.695512010731911 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD2 second chain S resi  187 alte C atom  O   value 2.7185573380011676 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD2 second chain S resi  231 alte C atom  O   value 2.7449681236764856 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD1 second chain S resi  231 alte C atom  O   value 3.4416520742224956 sigma 0.1 type 1
+exte dist first chain A resi  289 alte C atom  O   second chain A resi  291 atom  N   value 3.24080499259058 sigma 0.1 type 1
+exte dist first chain A resi  289 alte C atom  O   second chain S resi   35 atom  O   value 2.579830226972309 sigma 0.1 type 1
+exte dist first chain A resi  289 alte C atom  CD  second chain S resi  188 alte C atom  O   value 3.702230273767423 sigma 0.1 type 1
+exte dist first chain A resi  289 alte C atom  NZ  second chain S resi  234 atom  O   value 3.5629934044283624 sigma 0.1 type 1
+exte dist first chain A resi  289 alte C atom  NZ  second chain S resi  265 atom  O   value 2.7774727721437706 sigma 0.1 type 1
+exte dist first chain A resi  289 alte C atom  CE  second chain S resi  283 alte C atom  O   value 3.6851185869656895 sigma 0.1 type 1
+exte dist first chain B resi    1 atom MG   second chain S resi  173 alte C atom  O   value 2.038932318641304 sigma 0.1 type 1
+exte dist first chain B resi    1 atom MG   second chain S resi  187 alte C atom  O   value 2.1947906506088457 sigma 0.1 type 1
+exte dist first chain B resi    1 atom MG   second chain S resi  231 alte C atom  O   value 3.785551743141283 sigma 0.1 type 1
+exte dist first chain C resi    1 atom MN   second chain S resi  205 alte C atom  O   value 3.8006371834206956 sigma 0.1 type 1
+exte dist first chain S resi   27 atom  O   second chain S resi   78 alte C atom  O   value 3.559749850761991 sigma 0.1 type 1
+exte dist first chain S resi   32 atom  O   second chain S resi   60 alte C atom  O   value 3.0966181553430188 sigma 0.1 type 1
+exte dist first chain S resi   32 atom  O   second chain S resi  123 alte C atom  O   value 2.880110067341177 sigma 0.1 type 1
+exte dist first chain S resi   56 atom  O   second chain S resi  188 alte C atom  O   value 3.9981802110460203 sigma 0.1 type 1
+exte dist first chain S resi   56 atom  O   second chain S resi  283 alte C atom  O   value 2.923361934485703 sigma 0.1 type 1
+exte dist first chain S resi   60 alte C atom  O   second chain S resi  123 alte C atom  O   value 3.833211447337598 sigma 0.1 type 1
+exte dist first chain S resi   60 alte C atom  O   second chain S resi  147 alte C atom  O   value 2.4985367717926437 sigma 0.1 type 1
+exte dist first chain S resi   60 alte C atom  O   second chain S resi  285 alte C atom  O   value 3.528716622229673 sigma 0.1 type 1
+exte dist first chain S resi   74 atom  O   second chain S resi  123 alte C atom  O   value 2.8798279462495655 sigma 0.1 type 1
+exte dist first chain S resi   78 alte C atom  O   second chain S resi  106 atom  O   value 3.4265111994563795 sigma 0.1 type 1
+exte dist first chain S resi   78 alte C atom  O   second chain S resi  116 atom  O   value 3.0420693614709053 sigma 0.1 type 1
+exte dist first chain S resi   78 alte C atom  O   second chain S resi  119 atom  O   value 3.9908682012815215 sigma 0.1 type 1
+exte dist first chain S resi  106 atom  O   second chain S resi  152 alte C atom  O   value 3.4642681766860934 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  152 alte C atom  O   value 2.451265387509073 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  188 alte C atom  O   value 2.684095750900109 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  283 alte C atom  O   value 3.3326091880086994 sigma 0.1 type 1
+exte dist first chain S resi  123 alte C atom  O   second chain S resi  146 atom  O   value 2.532534106384354 sigma 0.1 type 1
+exte dist first chain S resi  131 atom  O   second chain S resi  152 alte C atom  O   value 2.7582256977992214 sigma 0.1 type 1
+exte dist first chain S resi  131 atom  O   second chain S resi  283 alte C atom  O   value 3.439571630305148 sigma 0.1 type 1
+exte dist first chain S resi  142 alte C atom  O   second chain S resi  194 alte C atom  O   value 3.0000888320181454 sigma 0.1 type 1
+exte dist first chain S resi  147 alte C atom  O   second chain S resi  285 alte C atom  O   value 2.4758548018815625 sigma 0.1 type 1
+exte dist first chain S resi  173 alte C atom  O   second chain S resi  187 alte C atom  O   value 2.260025442334664 sigma 0.1 type 1
+exte dist first chain S resi  173 alte C atom  O   second chain S resi  231 alte C atom  O   value 3.0454479145110964 sigma 0.1 type 1
+exte dist first chain S resi  173 alte C atom  O   second chain S resi  285 alte C atom  O   value 2.813798322552633 sigma 0.1 type 1
+exte dist first chain S resi  173 alte C atom  O   second chain S resi  286 atom  O   value 2.5409693032384344 sigma 0.1 type 1
+exte dist first chain S resi  181 alte C atom  O   second chain S resi  283 alte C atom  O   value 3.0847422906946407 sigma 0.1 type 1
+exte dist first chain S resi  187 alte C atom  O   second chain S resi  205 alte C atom  O   value 3.8842317129646116 sigma 0.1 type 1
+exte dist first chain S resi  187 alte C atom  O   second chain S resi  222 atom  O   value 3.202621894635707 sigma 0.1 type 1
+exte dist first chain S resi  187 alte C atom  O   second chain S resi  231 alte C atom  O   value 2.534226114615664 sigma 0.1 type 1
+exte dist first chain S resi  188 alte C atom  O   second chain S resi  283 alte C atom  O   value 3.252500269023816 sigma 0.1 type 1
+exte dist first chain S resi  194 alte C atom  O   second chain S resi  284 alte C atom  O   value 2.8166634516746942 sigma 0.1 type 1
+exte dist first chain S resi  205 alte C atom  O   second chain S resi  222 atom  O   value 3.0705483223684986 sigma 0.1 type 1
+exte dist first chain S resi  222 atom  O   second chain S resi  231 alte C atom  O   value 3.5934118884425175 sigma 0.1 type 1
+exte dist first chain S resi  234 atom  O   second chain S resi  283 alte C atom  O   value 3.4097203697664082 sigma 0.1 type 1
+exte dist first chain S resi  285 alte C atom  O   second chain S resi  286 atom  O   value 3.331137943706325 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  NE1 second chain A resi  401 alte D atom  O1  value 3.451793881447733 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  CB  second chain S resi  194 alte D atom  O   value 3.72873450382298 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  CD1 second chain S resi  284 alte D atom  O   value 3.835387073034481 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  O   second chain S resi  289 alte D atom  O   value 3.165705134721174 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  CZ2 second chain A resi   23 alte D atom  O   value 3.6012159057740485 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  NE1 second chain A resi   23 alte D atom  O   value 3.7588989079250363 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  NE1 second chain A resi  289 alte D atom  CE  value 3.8361673581844657 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  CD1 second chain S resi  288 alte D atom  O   value 3.822486494416949 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  CB  second chain S resi  289 alte D atom  O   value 3.998262122472715 sigma 0.1 type 1
+exte dist first chain A resi   21 atom  C   second chain A resi   23 alte D atom  N   value 3.5164716691593005 sigma 0.1 type 1
+exte dist first chain A resi   21 atom  O   second chain A resi   23 alte D atom  N   value 3.8611482748011636 sigma 0.1 type 1
+exte dist first chain A resi   22 atom  O   second chain A resi   28 alte D atom  O   value 3.5253840925493494 sigma 0.1 type 1
+exte dist first chain A resi   23 alte D atom  CG  second chain A resi   27 atom  O   value 3.3321358015543163 sigma 0.1 type 1
+exte dist first chain A resi   23 alte D atom  NH1 second chain A resi   28 alte D atom  CA  value 3.728027226295433 sigma 0.1 type 1
+exte dist first chain A resi   23 alte D atom  NH1 second chain A resi   29 atom  N   value 3.2088404447712895 sigma 0.1 type 1
+exte dist first chain A resi   23 alte D atom  NH2 second chain A resi   29 atom  CB  value 3.707842903899787 sigma 0.1 type 1
+exte dist first chain A resi   23 alte D atom  N   second chain A resi   29 atom  CA  value 3.9312326311222034 sigma 0.1 type 1
+exte dist first chain A resi   23 alte D atom  N   second chain S resi   53 atom  O   value 3.1278140929409433 sigma 0.1 type 1
+exte dist first chain A resi   24 atom  OD2 second chain S resi  152 alte D atom  O   value 3.5532302205176625 sigma 0.1 type 1
+exte dist first chain A resi   25 atom  CD  second chain S resi  152 alte D atom  O   value 3.8256583747114665 sigma 0.1 type 1
+exte dist first chain A resi   28 alte D atom  O   second chain A resi   30 atom  N   value 3.5106206004067144 sigma 0.1 type 1
+exte dist first chain A resi   28 alte D atom  O   second chain A resi  292 atom  NH2 value 2.7073243248639396 sigma 0.1 type 1
+exte dist first chain A resi   28 alte D atom  N   second chain A resi  292 atom  NH2 value 3.72301289280604 sigma 0.1 type 1
+exte dist first chain A resi   28 alte D atom  OD2 second chain S resi  105 atom  O   value 2.17213466433368 sigma 0.1 type 1
+exte dist first chain A resi   28 alte D atom  OD2 second chain S resi  206 atom  O   value 3.8330945722744674 sigma 0.1 type 1
+exte dist first chain A resi   28 alte D atom  OD1 second chain S resi  221 atom  O   value 2.864982024376419 sigma 0.1 type 1
+exte dist first chain A resi   28 alte D atom  N   second chain S resi  221 atom  O   value 3.9176392125870914 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  NE2 second chain A resi  401 alte D atom  O5  value 2.6542015748620136 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  CE1 second chain A resi  401 alte D atom  O1  value 3.3706993339661713 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  NE2 second chain S resi   60 alte D atom  O   value 3.6230647247875667 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  ND1 second chain S resi  194 alte D atom  O   value 3.4608327032666546 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  CE1 second chain S resi  284 alte D atom  O   value 3.882061952107406 sigma 0.1 type 1
+exte dist first chain A resi   56 atom  CB  second chain S resi  142 alte D atom  O   value 3.1954079551756776 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  OD1 second chain S resi  142 alte D atom  O   value 3.1250017599995044 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  N   second chain S resi  142 alte D atom  O   value 3.6308127189377335 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  OD1 second chain S resi  194 alte D atom  O   value 2.7568286127360175 sigma 0.1 type 1
+exte dist first chain A resi   90 atom  OG1 second chain A resi  401 alte D atom  C6  value 3.7209122537356363 sigma 0.1 type 1
+exte dist first chain A resi   90 atom  OG1 second chain A resi  401 alte D atom  O6  value 3.930946069332417 sigma 0.1 type 1
+exte dist first chain A resi   90 atom  OG1 second chain S resi   60 alte D atom  O   value 2.7508015195575277 sigma 0.1 type 1
+exte dist first chain A resi   91 atom  O   second chain S resi   60 alte D atom  O   value 3.0188585591246233 sigma 0.1 type 1
+exte dist first chain A resi   91 atom  O   second chain S resi  123 alte D atom  O   value 3.66832604875848 sigma 0.1 type 1
+exte dist first chain A resi   92 atom  ND2 second chain S resi  142 alte D atom  O   value 2.8379978858343082 sigma 0.1 type 1
+exte dist first chain A resi   93 atom  CD1 second chain S resi  123 alte D atom  O   value 3.8080265230168773 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CZ  second chain A resi  401 alte D atom  C1  value 3.5937498521739077 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CE2 second chain A resi  401 alte D atom  O5  value 3.877940948493156 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CE2 second chain S resi   60 alte D atom  O   value 3.8912630340289254 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CZ  second chain S resi  284 alte D atom  O   value 3.772061770438015 sigma 0.1 type 1
+exte dist first chain A resi  135 atom  CG1 second chain A resi  401 alte D atom  O6  value 2.9065782287769246 sigma 0.1 type 1
+exte dist first chain A resi  136 atom  CA  second chain S resi  123 alte D atom  O   value 3.528661786003301 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CE3 second chain A resi  401 alte D atom  C2  value 3.328289951311334 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CB  second chain A resi  401 alte D atom  C6  value 3.6854474626563327 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CZ3 second chain A resi  401 alte D atom  O2  value 3.7455393470099887 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  N   second chain S resi   60 alte D atom  O   value 3.499757277297957 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  N   second chain S resi  123 alte D atom  O   value 3.373536126974189 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  O   second chain S resi  123 alte D atom  O   value 3.5115150576353775 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CZ2 second chain S resi  205 alte D atom  O   value 3.4724050742964887 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE1 second chain A resi  401 alte D atom  O4  value 2.3423543711402885 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE2 second chain A resi  401 alte D atom  O4  value 2.6447943209255422 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE1 second chain A resi  401 alte D atom  O6  value 2.668367853201656 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE2 second chain A resi  401 alte D atom  O3  value 3.0413539747947813 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  CD  second chain A resi  401 alte D atom  C4  value 3.467514383531811 sigma 0.1 type 1
+exte dist first chain A resi  183 atom  NZ  second chain S resi  205 alte D atom  O   value 2.8074089477666027 sigma 0.1 type 1
+exte dist first chain A resi  217 atom  OE1 second chain A resi  401 alte D atom  O3  value 3.1588911029030426 sigma 0.1 type 1
+exte dist first chain A resi  220 atom  CE1 second chain A resi  401 alte D atom  O3  value 3.3635283557597675 sigma 0.1 type 1
+exte dist first chain A resi  220 atom  NE2 second chain A resi  401 alte D atom  O3  value 3.804486956213673 sigma 0.1 type 1
+exte dist first chain A resi  220 atom  NE2 second chain S resi  205 alte D atom  O   value 3.5843587990043644 sigma 0.1 type 1
+exte dist first chain A resi  245 atom  OD2 second chain A resi  401 alte D atom  O4  value 2.9785838917176735 sigma 0.1 type 1
+exte dist first chain A resi  254 atom  OH  second chain S resi   78 alte D atom  O   value 2.9514115267105665 sigma 0.1 type 1
+exte dist first chain A resi  254 atom  CE2 second chain S resi  188 alte D atom  O   value 3.8667379016426753 sigma 0.1 type 1
+exte dist first chain A resi  255 atom  O   second chain S resi  188 alte D atom  O   value 3.503056665256784 sigma 0.1 type 1
+exte dist first chain A resi  255 atom  OD2 second chain S resi  205 alte D atom  O   value 2.9619495269163516 sigma 0.1 type 1
+exte dist first chain A resi  256 atom  O   second chain S resi  188 alte D atom  O   value 2.6902555640682153 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  O   second chain A resi  289 alte D atom  N   value 2.7224224506861523 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  O   second chain A resi  289 alte D atom  O   value 3.427778289213 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  OD2 second chain S resi  287 alte D atom  O   value 3.6884671613015625 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD2 second chain A resi  401 alte D atom  O3  value 2.8793988956030376 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD2 second chain A resi  401 alte D atom  O4  value 2.880226900784031 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  CG  second chain A resi  401 alte D atom  C3  value 3.9950983717550703 sigma 0.1 type 1
+exte dist first chain A resi  289 alte D atom  O   second chain A resi  291 atom  N   value 3.285194819185007 sigma 0.1 type 1
+exte dist first chain A resi  289 alte D atom  O   second chain S resi   35 atom  O   value 2.617210346915201 sigma 0.1 type 1
+exte dist first chain A resi  289 alte D atom  NZ  second chain S resi  234 atom  O   value 2.7923669171511087 sigma 0.1 type 1
+exte dist first chain A resi  289 alte D atom  CG  second chain S resi  265 atom  O   value 3.5323517661750476 sigma 0.1 type 1
+exte dist first chain A resi  289 alte D atom  NZ  second chain S resi  283 alte D atom  O   value 2.816200454513142 sigma 0.1 type 1
+exte dist first chain A resi  289 alte D atom  CE  second chain S resi  287 alte D atom  O   value 3.338526321597603 sigma 0.1 type 1
+exte dist first chain A resi  289 alte D atom  NZ  second chain S resi  287 alte D atom  O   value 3.7011107792120996 sigma 0.1 type 1
+exte dist first chain A resi  289 alte D atom  CE  second chain S resi  288 alte D atom  O   value 3.3661384404091277 sigma 0.1 type 1
+exte dist first chain A resi  289 alte D atom  NZ  second chain S resi  288 alte D atom  O   value 3.8819156353532427 sigma 0.1 type 1
+exte dist first chain A resi  289 alte D atom  CE  second chain S resi  289 alte D atom  O   value 2.9259304503012387 sigma 0.1 type 1
+exte dist first chain A resi  401 alte D atom  O4  second chain B resi    1 atom MG   value 2.169991935468886 sigma 0.1 type 1
+exte dist first chain A resi  401 alte D atom  O3  second chain B resi    1 atom MG   value 2.6142035115881863 sigma 0.1 type 1
+exte dist first chain A resi  401 alte D atom  O3  second chain C resi    1 atom MN   value 3.9552027760912556 sigma 0.1 type 1
+exte dist first chain A resi  401 alte D atom  C6  second chain S resi   60 alte D atom  O   value 2.761814077739485 sigma 0.1 type 1
+exte dist first chain A resi  401 alte D atom  O6  second chain S resi   60 alte D atom  O   value 3.620184801912741 sigma 0.1 type 1
+exte dist first chain A resi  401 alte D atom  O5  second chain S resi   60 alte D atom  O   value 3.772495990720199 sigma 0.1 type 1
+exte dist first chain A resi  401 alte D atom  O2  second chain S resi  205 alte D atom  O   value 2.7150554322149665 sigma 0.1 type 1
+exte dist first chain A resi  401 alte D atom  O3  second chain S resi  205 alte D atom  O   value 3.4277585971010267 sigma 0.1 type 1
+exte dist first chain A resi  401 alte D atom  O3  second chain S resi  222 atom  O   value 2.531532539786916 sigma 0.1 type 1
+exte dist first chain A resi  401 alte D atom  O2  second chain S resi  222 atom  O   value 3.2143817445972402 sigma 0.1 type 1
+exte dist first chain A resi  401 alte D atom  O1  second chain S resi  284 alte D atom  O   value 2.479181518162797 sigma 0.1 type 1
+exte dist first chain A resi  401 alte D atom  O4  second chain S resi  286 atom  O   value 2.742310522169219 sigma 0.1 type 1
+exte dist first chain A resi  401 alte D atom  O6  second chain S resi  286 atom  O   value 3.3564469309077425 sigma 0.1 type 1
+exte dist first chain A resi  401 alte D atom  O2  second chain S resi  287 alte D atom  O   value 2.837641626421488 sigma 0.1 type 1
+exte dist first chain A resi  401 alte D atom  O1  second chain S resi  287 alte D atom  O   value 3.512205717209625 sigma 0.1 type 1
+exte dist first chain C resi    1 atom MN   second chain S resi  205 alte D atom  O   value 3.730484687007842 sigma 0.1 type 1
+exte dist first chain S resi   27 atom  O   second chain S resi   78 alte D atom  O   value 3.4175701894767294 sigma 0.1 type 1
+exte dist first chain S resi   32 atom  O   second chain S resi   60 alte D atom  O   value 3.089840610775902 sigma 0.1 type 1
+exte dist first chain S resi   32 atom  O   second chain S resi  123 alte D atom  O   value 2.5837801764082 sigma 0.1 type 1
+exte dist first chain S resi   35 atom  O   second chain S resi  188 alte D atom  O   value 3.923649321741177 sigma 0.1 type 1
+exte dist first chain S resi   56 atom  O   second chain S resi  283 alte D atom  O   value 3.23812754535704 sigma 0.1 type 1
+exte dist first chain S resi   60 alte D atom  O   second chain S resi  123 alte D atom  O   value 3.6082221383944755 sigma 0.1 type 1
+exte dist first chain S resi   74 atom  O   second chain S resi  123 alte D atom  O   value 2.8142538975721414 sigma 0.1 type 1
+exte dist first chain S resi   78 alte D atom  O   second chain S resi  106 atom  O   value 3.2012644376870822 sigma 0.1 type 1
+exte dist first chain S resi   78 alte D atom  O   second chain S resi  116 atom  O   value 2.761500497917755 sigma 0.1 type 1
+exte dist first chain S resi   78 alte D atom  O   second chain S resi  119 atom  O   value 3.369642117495568 sigma 0.1 type 1
+exte dist first chain S resi   78 alte D atom  O   second chain S resi  188 alte D atom  O   value 3.529171290827357 sigma 0.1 type 1
+exte dist first chain S resi  106 atom  O   second chain S resi  152 alte D atom  O   value 3.540017796565434 sigma 0.1 type 1
+exte dist first chain S resi  116 atom  O   second chain S resi  188 alte D atom  O   value 3.493809525432089 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  152 alte D atom  O   value 2.9975540028496566 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  188 alte D atom  O   value 2.8255700309849003 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  283 alte D atom  O   value 2.740536626283251 sigma 0.1 type 1
+exte dist first chain S resi  123 alte D atom  O   second chain S resi  146 atom  O   value 2.949755413589406 sigma 0.1 type 1
+exte dist first chain S resi  131 atom  O   second chain S resi  152 alte D atom  O   value 2.9945979696780656 sigma 0.1 type 1
+exte dist first chain S resi  131 atom  O   second chain S resi  283 alte D atom  O   value 3.222023277383327 sigma 0.1 type 1
+exte dist first chain S resi  142 alte D atom  O   second chain S resi  194 alte D atom  O   value 2.975048907161022 sigma 0.1 type 1
+exte dist first chain S resi  186 atom  O   second chain S resi  288 alte D atom  O   value 3.308144797314654 sigma 0.1 type 1
+exte dist first chain S resi  186 atom  O   second chain S resi  289 alte D atom  O   value 3.8704866619070035 sigma 0.1 type 1
+exte dist first chain S resi  188 alte D atom  O   second chain S resi  283 alte D atom  O   value 3.7301577714622196 sigma 0.1 type 1
+exte dist first chain S resi  194 alte D atom  O   second chain S resi  284 alte D atom  O   value 3.1070963937412683 sigma 0.1 type 1
+exte dist first chain S resi  205 alte D atom  O   second chain S resi  222 atom  O   value 3.1517988514497564 sigma 0.1 type 1
+exte dist first chain S resi  222 atom  O   second chain S resi  287 alte D atom  O   value 3.830132895866668 sigma 0.1 type 1
+exte dist first chain S resi  234 atom  O   second chain S resi  283 alte D atom  O   value 3.9523815605277792 sigma 0.1 type 1
+exte dist first chain S resi  234 atom  O   second chain S resi  287 alte D atom  O   value 3.6886710343970797 sigma 0.1 type 1
+exte dist first chain S resi  265 atom  O   second chain S resi  287 alte D atom  O   value 2.9493150052173136 sigma 0.1 type 1
+exte dist first chain S resi  265 atom  O   second chain S resi  289 alte D atom  O   value 2.514474497782783 sigma 0.1 type 1
+exte dist first chain S resi  284 alte D atom  O   second chain S resi  287 alte D atom  O   value 3.7560423320298204 sigma 0.1 type 1
+exte dist first chain S resi  284 alte D atom  O   second chain S resi  288 alte D atom  O   value 3.1162217507744896 sigma 0.1 type 1
+exte dist first chain S resi  287 alte D atom  O   second chain S resi  288 alte D atom  O   value 2.961254126210718 sigma 0.1 type 1
+exte dist first chain S resi  287 alte D atom  O   second chain S resi  289 alte D atom  O   value 3.4139896016244693 sigma 0.1 type 1
+exte dist first chain S resi  288 alte D atom  O   second chain S resi  289 alte D atom  O   value 2.769016612445652 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  NE1 second chain A resi  401 alte E atom  O1  value 3.451793881447733 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  CB  second chain S resi  194 alte E atom  O   value 3.72873450382298 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  CD1 second chain S resi  284 alte E atom  O   value 3.835387073034481 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  O   second chain S resi  289 alte E atom  O   value 3.165705134721174 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  CZ2 second chain A resi   23 alte E atom  O   value 3.4959127563484755 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  NE1 second chain A resi   23 alte E atom  O   value 3.7017845696366534 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  NE1 second chain A resi  289 alte E atom  CE  value 3.8361673581844657 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  CD1 second chain S resi  288 alte E atom  O   value 3.822486494416949 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  CB  second chain S resi  289 alte E atom  O   value 3.998262122472715 sigma 0.1 type 1
+exte dist first chain A resi   21 atom  C   second chain A resi   23 alte E atom  N   value 3.5214311011291977 sigma 0.1 type 1
+exte dist first chain A resi   21 atom  O   second chain A resi   23 alte E atom  N   value 3.874539198407986 sigma 0.1 type 1
+exte dist first chain A resi   22 atom  O   second chain A resi   28 alte E atom  O   value 3.4611132602097854 sigma 0.1 type 1
+exte dist first chain A resi   23 alte E atom  CD  second chain A resi   27 atom  O   value 3.166460168705744 sigma 0.1 type 1
+exte dist first chain A resi   23 alte E atom  NE  second chain A resi   27 atom  O   value 3.5116497547449157 sigma 0.1 type 1
+exte dist first chain A resi   23 alte E atom  CG  second chain A resi   28 alte E atom  OD1 value 3.8525447434131093 sigma 0.1 type 1
+exte dist first chain A resi   23 alte E atom  CG  second chain A resi   29 atom  N   value 3.701784704706632 sigma 0.1 type 1
+exte dist first chain A resi   23 alte E atom  N   second chain A resi   29 atom  CA  value 3.962215794224237 sigma 0.1 type 1
+exte dist first chain A resi   23 alte E atom  N   second chain S resi   53 atom  O   value 3.1180989400594665 sigma 0.1 type 1
+exte dist first chain A resi   23 alte E atom  NH1 second chain S resi  191 atom  O   value 3.9837872684168247 sigma 0.1 type 1
+exte dist first chain A resi   23 alte E atom  NH2 second chain S resi  221 atom  O   value 2.942522727184954 sigma 0.1 type 1
+exte dist first chain A resi   24 atom  OD2 second chain S resi  152 alte E atom  O   value 3.5532302205176625 sigma 0.1 type 1
+exte dist first chain A resi   25 atom  CD  second chain S resi  152 alte E atom  O   value 3.8256583747114665 sigma 0.1 type 1
+exte dist first chain A resi   28 alte E atom  O   second chain A resi   30 atom  N   value 3.568706908671542 sigma 0.1 type 1
+exte dist first chain A resi   28 alte E atom  O   second chain A resi  292 atom  NH2 value 2.725425654828984 sigma 0.1 type 1
+exte dist first chain A resi   28 alte E atom  N   second chain A resi  292 atom  NH2 value 3.777843961838551 sigma 0.1 type 1
+exte dist first chain A resi   28 alte E atom  CB  second chain S resi  105 atom  O   value 3.3862090898230113 sigma 0.1 type 1
+exte dist first chain A resi   28 alte E atom  OD2 second chain S resi  105 atom  O   value 3.783132828754494 sigma 0.1 type 1
+exte dist first chain A resi   28 alte E atom  N   second chain S resi  221 atom  O   value 3.8705114649100314 sigma 0.1 type 1
+exte dist first chain A resi   28 alte E atom  OD2 second chain S resi  232 atom  O   value 3.0733916118841735 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  NE2 second chain A resi  401 alte E atom  O5  value 2.6542015748620136 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  CE1 second chain A resi  401 alte E atom  O1  value 3.3706993339661713 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  NE2 second chain S resi   60 alte E atom  O   value 3.6230647247875667 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  ND1 second chain S resi  194 alte E atom  O   value 3.4608327032666546 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  CE1 second chain S resi  284 alte E atom  O   value 3.882061952107406 sigma 0.1 type 1
+exte dist first chain A resi   56 atom  CB  second chain S resi  142 alte E atom  O   value 3.1954079551756776 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  OD1 second chain S resi  142 alte E atom  O   value 3.1250017599995044 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  N   second chain S resi  142 alte E atom  O   value 3.6308127189377335 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  OD1 second chain S resi  194 alte E atom  O   value 2.7568286127360175 sigma 0.1 type 1
+exte dist first chain A resi   90 atom  OG1 second chain A resi  401 alte E atom  C6  value 3.7209122537356363 sigma 0.1 type 1
+exte dist first chain A resi   90 atom  OG1 second chain A resi  401 alte E atom  O6  value 3.930946069332417 sigma 0.1 type 1
+exte dist first chain A resi   90 atom  OG1 second chain S resi   60 alte E atom  O   value 2.7508015195575277 sigma 0.1 type 1
+exte dist first chain A resi   91 atom  O   second chain S resi   60 alte E atom  O   value 3.0188585591246233 sigma 0.1 type 1
+exte dist first chain A resi   91 atom  O   second chain S resi  123 alte E atom  O   value 3.66832604875848 sigma 0.1 type 1
+exte dist first chain A resi   92 atom  ND2 second chain S resi  142 alte E atom  O   value 2.8379978858343082 sigma 0.1 type 1
+exte dist first chain A resi   93 atom  CD1 second chain S resi  123 alte E atom  O   value 3.8080265230168773 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CZ  second chain A resi  401 alte E atom  C1  value 3.5937498521739077 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CE2 second chain A resi  401 alte E atom  O5  value 3.877940948493156 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CE2 second chain S resi   60 alte E atom  O   value 3.8912630340289254 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CZ  second chain S resi  284 alte E atom  O   value 3.772061770438015 sigma 0.1 type 1
+exte dist first chain A resi  135 atom  CG1 second chain A resi  401 alte E atom  O6  value 2.9065782287769246 sigma 0.1 type 1
+exte dist first chain A resi  136 atom  CA  second chain S resi  123 alte E atom  O   value 3.528661786003301 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CE3 second chain A resi  401 alte E atom  C2  value 3.328289951311334 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CB  second chain A resi  401 alte E atom  C6  value 3.6854474626563327 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CZ3 second chain A resi  401 alte E atom  O2  value 3.7455393470099887 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  N   second chain S resi   60 alte E atom  O   value 3.499757277297957 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  N   second chain S resi  123 alte E atom  O   value 3.373536126974189 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  O   second chain S resi  123 alte E atom  O   value 3.5115150576353775 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CZ2 second chain S resi  205 alte E atom  O   value 3.4724050742964887 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE1 second chain A resi  401 alte E atom  O4  value 2.3423543711402885 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE2 second chain A resi  401 alte E atom  O4  value 2.6447943209255422 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE1 second chain A resi  401 alte E atom  O6  value 2.668367853201656 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE2 second chain A resi  401 alte E atom  O3  value 3.0413539747947813 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  CD  second chain A resi  401 alte E atom  C4  value 3.467514383531811 sigma 0.1 type 1
+exte dist first chain A resi  183 atom  NZ  second chain S resi  205 alte E atom  O   value 2.8074089477666027 sigma 0.1 type 1
+exte dist first chain A resi  217 atom  OE1 second chain A resi  401 alte E atom  O3  value 3.1588911029030426 sigma 0.1 type 1
+exte dist first chain A resi  220 atom  CE1 second chain A resi  401 alte E atom  O3  value 3.3635283557597675 sigma 0.1 type 1
+exte dist first chain A resi  220 atom  NE2 second chain A resi  401 alte E atom  O3  value 3.804486956213673 sigma 0.1 type 1
+exte dist first chain A resi  220 atom  NE2 second chain S resi  205 alte E atom  O   value 3.5843587990043644 sigma 0.1 type 1
+exte dist first chain A resi  245 atom  OD2 second chain A resi  401 alte E atom  O4  value 2.9785838917176735 sigma 0.1 type 1
+exte dist first chain A resi  254 atom  OH  second chain S resi   78 alte E atom  O   value 2.9514115267105665 sigma 0.1 type 1
+exte dist first chain A resi  254 atom  CE2 second chain S resi  188 alte E atom  O   value 3.8667379016426753 sigma 0.1 type 1
+exte dist first chain A resi  255 atom  O   second chain S resi  188 alte E atom  O   value 3.503056665256784 sigma 0.1 type 1
+exte dist first chain A resi  255 atom  OD2 second chain S resi  205 alte E atom  O   value 2.9619495269163516 sigma 0.1 type 1
+exte dist first chain A resi  256 atom  O   second chain S resi  188 alte E atom  O   value 2.6902555640682153 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  O   second chain A resi  289 alte E atom  N   value 2.7224224506861523 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  O   second chain A resi  289 alte E atom  O   value 3.427778289213 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  OD2 second chain S resi  287 alte E atom  O   value 3.6884671613015625 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD2 second chain A resi  401 alte E atom  O3  value 2.8793988956030376 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD2 second chain A resi  401 alte E atom  O4  value 2.880226900784031 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  CG  second chain A resi  401 alte E atom  C3  value 3.9950983717550703 sigma 0.1 type 1
+exte dist first chain A resi  289 alte E atom  O   second chain A resi  291 atom  N   value 3.285194819185007 sigma 0.1 type 1
+exte dist first chain A resi  289 alte E atom  O   second chain S resi   35 atom  O   value 2.617210346915201 sigma 0.1 type 1
+exte dist first chain A resi  289 alte E atom  NZ  second chain S resi  234 atom  O   value 2.7923669171511087 sigma 0.1 type 1
+exte dist first chain A resi  289 alte E atom  CG  second chain S resi  265 atom  O   value 3.5323517661750476 sigma 0.1 type 1
+exte dist first chain A resi  289 alte E atom  NZ  second chain S resi  283 alte E atom  O   value 2.816200454513142 sigma 0.1 type 1
+exte dist first chain A resi  289 alte E atom  CE  second chain S resi  287 alte E atom  O   value 3.338526321597603 sigma 0.1 type 1
+exte dist first chain A resi  289 alte E atom  NZ  second chain S resi  287 alte E atom  O   value 3.7011107792120996 sigma 0.1 type 1
+exte dist first chain A resi  289 alte E atom  CE  second chain S resi  288 alte E atom  O   value 3.3661384404091277 sigma 0.1 type 1
+exte dist first chain A resi  289 alte E atom  NZ  second chain S resi  288 alte E atom  O   value 3.8819156353532427 sigma 0.1 type 1
+exte dist first chain A resi  289 alte E atom  CE  second chain S resi  289 alte E atom  O   value 2.9259304503012387 sigma 0.1 type 1
+exte dist first chain A resi  401 alte E atom  O4  second chain B resi    1 atom MG   value 2.169991935468886 sigma 0.1 type 1
+exte dist first chain A resi  401 alte E atom  O3  second chain B resi    1 atom MG   value 2.6142035115881863 sigma 0.1 type 1
+exte dist first chain A resi  401 alte E atom  O3  second chain C resi    1 atom MN   value 3.9552027760912556 sigma 0.1 type 1
+exte dist first chain A resi  401 alte E atom  C6  second chain S resi   60 alte E atom  O   value 2.761814077739485 sigma 0.1 type 1
+exte dist first chain A resi  401 alte E atom  O6  second chain S resi   60 alte E atom  O   value 3.620184801912741 sigma 0.1 type 1
+exte dist first chain A resi  401 alte E atom  O5  second chain S resi   60 alte E atom  O   value 3.772495990720199 sigma 0.1 type 1
+exte dist first chain A resi  401 alte E atom  O2  second chain S resi  205 alte E atom  O   value 2.7150554322149665 sigma 0.1 type 1
+exte dist first chain A resi  401 alte E atom  O3  second chain S resi  205 alte E atom  O   value 3.4277585971010267 sigma 0.1 type 1
+exte dist first chain A resi  401 alte E atom  O3  second chain S resi  222 atom  O   value 2.531532539786916 sigma 0.1 type 1
+exte dist first chain A resi  401 alte E atom  O2  second chain S resi  222 atom  O   value 3.2143817445972402 sigma 0.1 type 1
+exte dist first chain A resi  401 alte E atom  O1  second chain S resi  284 alte E atom  O   value 2.479181518162797 sigma 0.1 type 1
+exte dist first chain A resi  401 alte E atom  O4  second chain S resi  286 atom  O   value 2.742310522169219 sigma 0.1 type 1
+exte dist first chain A resi  401 alte E atom  O6  second chain S resi  286 atom  O   value 3.3564469309077425 sigma 0.1 type 1
+exte dist first chain A resi  401 alte E atom  O2  second chain S resi  287 alte E atom  O   value 2.837641626421488 sigma 0.1 type 1
+exte dist first chain A resi  401 alte E atom  O1  second chain S resi  287 alte E atom  O   value 3.512205717209625 sigma 0.1 type 1
+exte dist first chain C resi    1 atom MN   second chain S resi  205 alte E atom  O   value 3.730484687007842 sigma 0.1 type 1
+exte dist first chain S resi   27 atom  O   second chain S resi   78 alte E atom  O   value 3.4175701894767294 sigma 0.1 type 1
+exte dist first chain S resi   32 atom  O   second chain S resi   60 alte E atom  O   value 3.089840610775902 sigma 0.1 type 1
+exte dist first chain S resi   32 atom  O   second chain S resi  123 alte E atom  O   value 2.5837801764082 sigma 0.1 type 1
+exte dist first chain S resi   35 atom  O   second chain S resi  188 alte E atom  O   value 3.923649321741177 sigma 0.1 type 1
+exte dist first chain S resi   56 atom  O   second chain S resi  283 alte E atom  O   value 3.23812754535704 sigma 0.1 type 1
+exte dist first chain S resi   60 alte E atom  O   second chain S resi  123 alte E atom  O   value 3.6082221383944755 sigma 0.1 type 1
+exte dist first chain S resi   74 atom  O   second chain S resi  123 alte E atom  O   value 2.8142538975721414 sigma 0.1 type 1
+exte dist first chain S resi   78 alte E atom  O   second chain S resi  106 atom  O   value 3.2012644376870822 sigma 0.1 type 1
+exte dist first chain S resi   78 alte E atom  O   second chain S resi  116 atom  O   value 2.761500497917755 sigma 0.1 type 1
+exte dist first chain S resi   78 alte E atom  O   second chain S resi  119 atom  O   value 3.369642117495568 sigma 0.1 type 1
+exte dist first chain S resi   78 alte E atom  O   second chain S resi  188 alte E atom  O   value 3.529171290827357 sigma 0.1 type 1
+exte dist first chain S resi  106 atom  O   second chain S resi  152 alte E atom  O   value 3.540017796565434 sigma 0.1 type 1
+exte dist first chain S resi  116 atom  O   second chain S resi  188 alte E atom  O   value 3.493809525432089 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  152 alte E atom  O   value 2.9975540028496566 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  188 alte E atom  O   value 2.8255700309849003 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  283 alte E atom  O   value 2.740536626283251 sigma 0.1 type 1
+exte dist first chain S resi  123 alte E atom  O   second chain S resi  146 atom  O   value 2.949755413589406 sigma 0.1 type 1
+exte dist first chain S resi  131 atom  O   second chain S resi  152 alte E atom  O   value 2.9945979696780656 sigma 0.1 type 1
+exte dist first chain S resi  131 atom  O   second chain S resi  283 alte E atom  O   value 3.222023277383327 sigma 0.1 type 1
+exte dist first chain S resi  142 alte E atom  O   second chain S resi  194 alte E atom  O   value 2.975048907161022 sigma 0.1 type 1
+exte dist first chain S resi  186 atom  O   second chain S resi  288 alte E atom  O   value 3.308144797314654 sigma 0.1 type 1
+exte dist first chain S resi  186 atom  O   second chain S resi  289 alte E atom  O   value 3.8704866619070035 sigma 0.1 type 1
+exte dist first chain S resi  188 alte E atom  O   second chain S resi  283 alte E atom  O   value 3.7301577714622196 sigma 0.1 type 1
+exte dist first chain S resi  194 alte E atom  O   second chain S resi  284 alte E atom  O   value 3.1070963937412683 sigma 0.1 type 1
+exte dist first chain S resi  205 alte E atom  O   second chain S resi  222 atom  O   value 3.1517988514497564 sigma 0.1 type 1
+exte dist first chain S resi  222 atom  O   second chain S resi  287 alte E atom  O   value 3.830132895866668 sigma 0.1 type 1
+exte dist first chain S resi  234 atom  O   second chain S resi  283 alte E atom  O   value 3.9523815605277792 sigma 0.1 type 1
+exte dist first chain S resi  234 atom  O   second chain S resi  287 alte E atom  O   value 3.6886710343970797 sigma 0.1 type 1
+exte dist first chain S resi  265 atom  O   second chain S resi  287 alte E atom  O   value 2.9493150052173136 sigma 0.1 type 1
+exte dist first chain S resi  265 atom  O   second chain S resi  289 alte E atom  O   value 2.514474497782783 sigma 0.1 type 1
+exte dist first chain S resi  284 alte E atom  O   second chain S resi  287 alte E atom  O   value 3.7560423320298204 sigma 0.1 type 1
+exte dist first chain S resi  284 alte E atom  O   second chain S resi  288 alte E atom  O   value 3.1162217507744896 sigma 0.1 type 1
+exte dist first chain S resi  287 alte E atom  O   second chain S resi  288 alte E atom  O   value 2.961254126210718 sigma 0.1 type 1
+exte dist first chain S resi  287 alte E atom  O   second chain S resi  289 alte E atom  O   value 3.4139896016244693 sigma 0.1 type 1
+exte dist first chain S resi  288 alte E atom  O   second chain S resi  289 alte E atom  O   value 2.769016612445652 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  NE1 second chain A resi  401 alte F atom  O1  value 3.451793881447733 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  CB  second chain S resi  194 alte F atom  O   value 3.72873450382298 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  CD1 second chain S resi  284 alte F atom  O   value 3.835387073034481 sigma 0.1 type 1
+exte dist first chain A resi   16 atom  O   second chain S resi  289 alte F atom  O   value 3.165705134721174 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  CZ2 second chain A resi   23 alte F atom  O   value 3.4959127563484755 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  NE1 second chain A resi   23 alte F atom  O   value 3.7017845696366534 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  NE1 second chain A resi  289 alte F atom  CE  value 3.8361673581844657 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  CD1 second chain S resi  288 alte F atom  O   value 3.822486494416949 sigma 0.1 type 1
+exte dist first chain A resi   20 atom  CB  second chain S resi  289 alte F atom  O   value 3.998262122472715 sigma 0.1 type 1
+exte dist first chain A resi   21 atom  C   second chain A resi   23 alte F atom  N   value 3.5214311011291977 sigma 0.1 type 1
+exte dist first chain A resi   21 atom  O   second chain A resi   23 alte F atom  N   value 3.874539198407986 sigma 0.1 type 1
+exte dist first chain A resi   22 atom  O   second chain A resi   28 alte F atom  O   value 3.5253840925493494 sigma 0.1 type 1
+exte dist first chain A resi   23 alte F atom  CD  second chain A resi   27 atom  O   value 3.166460168705744 sigma 0.1 type 1
+exte dist first chain A resi   23 alte F atom  NE  second chain A resi   27 atom  O   value 3.5116497547449157 sigma 0.1 type 1
+exte dist first chain A resi   23 alte F atom  NH2 second chain A resi   28 alte F atom  OD1 value 3.553493773738737 sigma 0.1 type 1
+exte dist first chain A resi   23 alte F atom  NE  second chain A resi   28 alte F atom  OD1 value 3.7916313111904754 sigma 0.1 type 1
+exte dist first chain A resi   23 alte F atom  CG  second chain A resi   29 atom  N   value 3.701784704706632 sigma 0.1 type 1
+exte dist first chain A resi   23 alte F atom  N   second chain A resi   29 atom  CA  value 3.962215794224237 sigma 0.1 type 1
+exte dist first chain A resi   23 alte F atom  N   second chain S resi   53 atom  O   value 3.1180989400594665 sigma 0.1 type 1
+exte dist first chain A resi   23 alte F atom  NH1 second chain S resi  191 atom  O   value 3.9837872684168247 sigma 0.1 type 1
+exte dist first chain A resi   23 alte F atom  NH2 second chain S resi  221 atom  O   value 2.942522727184954 sigma 0.1 type 1
+exte dist first chain A resi   24 atom  OD2 second chain S resi  152 alte F atom  O   value 3.5532302205176625 sigma 0.1 type 1
+exte dist first chain A resi   25 atom  CD  second chain S resi  152 alte F atom  O   value 3.8256583747114665 sigma 0.1 type 1
+exte dist first chain A resi   28 alte F atom  O   second chain A resi   30 atom  N   value 3.5106206004067144 sigma 0.1 type 1
+exte dist first chain A resi   28 alte F atom  O   second chain A resi  292 atom  NH2 value 2.7073243248639396 sigma 0.1 type 1
+exte dist first chain A resi   28 alte F atom  N   second chain A resi  292 atom  NH2 value 3.72301289280604 sigma 0.1 type 1
+exte dist first chain A resi   28 alte F atom  OD2 second chain S resi  105 atom  O   value 2.17213466433368 sigma 0.1 type 1
+exte dist first chain A resi   28 alte F atom  OD2 second chain S resi  206 atom  O   value 3.8330945722744674 sigma 0.1 type 1
+exte dist first chain A resi   28 alte F atom  OD1 second chain S resi  221 atom  O   value 2.864982024376419 sigma 0.1 type 1
+exte dist first chain A resi   28 alte F atom  N   second chain S resi  221 atom  O   value 3.9176392125870914 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  NE2 second chain A resi  401 alte F atom  O5  value 2.6542015748620136 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  CE1 second chain A resi  401 alte F atom  O1  value 3.3706993339661713 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  NE2 second chain S resi   60 alte F atom  O   value 3.6230647247875667 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  ND1 second chain S resi  194 alte F atom  O   value 3.4608327032666546 sigma 0.1 type 1
+exte dist first chain A resi   54 atom  CE1 second chain S resi  284 alte F atom  O   value 3.882061952107406 sigma 0.1 type 1
+exte dist first chain A resi   56 atom  CB  second chain S resi  142 alte F atom  O   value 3.1954079551756776 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  OD1 second chain S resi  142 alte F atom  O   value 3.1250017599995044 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  N   second chain S resi  142 alte F atom  O   value 3.6308127189377335 sigma 0.1 type 1
+exte dist first chain A resi   57 atom  OD1 second chain S resi  194 alte F atom  O   value 2.7568286127360175 sigma 0.1 type 1
+exte dist first chain A resi   90 atom  OG1 second chain A resi  401 alte F atom  C6  value 3.7209122537356363 sigma 0.1 type 1
+exte dist first chain A resi   90 atom  OG1 second chain A resi  401 alte F atom  O6  value 3.930946069332417 sigma 0.1 type 1
+exte dist first chain A resi   90 atom  OG1 second chain S resi   60 alte F atom  O   value 2.7508015195575277 sigma 0.1 type 1
+exte dist first chain A resi   91 atom  O   second chain S resi   60 alte F atom  O   value 3.0188585591246233 sigma 0.1 type 1
+exte dist first chain A resi   91 atom  O   second chain S resi  123 alte F atom  O   value 3.66832604875848 sigma 0.1 type 1
+exte dist first chain A resi   92 atom  ND2 second chain S resi  142 alte F atom  O   value 2.8379978858343082 sigma 0.1 type 1
+exte dist first chain A resi   93 atom  CD1 second chain S resi  123 alte F atom  O   value 3.8080265230168773 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CZ  second chain A resi  401 alte F atom  C1  value 3.5937498521739077 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CE2 second chain A resi  401 alte F atom  O5  value 3.877940948493156 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CE2 second chain S resi   60 alte F atom  O   value 3.8912630340289254 sigma 0.1 type 1
+exte dist first chain A resi   94 atom  CZ  second chain S resi  284 alte F atom  O   value 3.772061770438015 sigma 0.1 type 1
+exte dist first chain A resi  135 atom  CG1 second chain A resi  401 alte F atom  O6  value 2.9065782287769246 sigma 0.1 type 1
+exte dist first chain A resi  136 atom  CA  second chain S resi  123 alte F atom  O   value 3.528661786003301 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CE3 second chain A resi  401 alte F atom  C2  value 3.328289951311334 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CB  second chain A resi  401 alte F atom  C6  value 3.6854474626563327 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CZ3 second chain A resi  401 alte F atom  O2  value 3.7455393470099887 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  N   second chain S resi   60 alte F atom  O   value 3.499757277297957 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  N   second chain S resi  123 alte F atom  O   value 3.373536126974189 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  O   second chain S resi  123 alte F atom  O   value 3.5115150576353775 sigma 0.1 type 1
+exte dist first chain A resi  137 atom  CZ2 second chain S resi  205 alte F atom  O   value 3.4724050742964887 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE1 second chain A resi  401 alte F atom  O4  value 2.3423543711402885 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE2 second chain A resi  401 alte F atom  O4  value 2.6447943209255422 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE1 second chain A resi  401 alte F atom  O6  value 2.668367853201656 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  OE2 second chain A resi  401 alte F atom  O3  value 3.0413539747947813 sigma 0.1 type 1
+exte dist first chain A resi  181 atom  CD  second chain A resi  401 alte F atom  C4  value 3.467514383531811 sigma 0.1 type 1
+exte dist first chain A resi  183 atom  NZ  second chain S resi  205 alte F atom  O   value 2.8074089477666027 sigma 0.1 type 1
+exte dist first chain A resi  217 atom  OE1 second chain A resi  401 alte F atom  O3  value 3.1588911029030426 sigma 0.1 type 1
+exte dist first chain A resi  220 atom  CE1 second chain A resi  401 alte F atom  O3  value 3.3635283557597675 sigma 0.1 type 1
+exte dist first chain A resi  220 atom  NE2 second chain A resi  401 alte F atom  O3  value 3.804486956213673 sigma 0.1 type 1
+exte dist first chain A resi  220 atom  NE2 second chain S resi  205 alte F atom  O   value 3.5843587990043644 sigma 0.1 type 1
+exte dist first chain A resi  245 atom  OD2 second chain A resi  401 alte F atom  O4  value 2.9785838917176735 sigma 0.1 type 1
+exte dist first chain A resi  254 atom  OH  second chain S resi   78 alte F atom  O   value 2.9514115267105665 sigma 0.1 type 1
+exte dist first chain A resi  254 atom  CE2 second chain S resi  188 alte F atom  O   value 3.8667379016426753 sigma 0.1 type 1
+exte dist first chain A resi  255 atom  O   second chain S resi  188 alte F atom  O   value 3.503056665256784 sigma 0.1 type 1
+exte dist first chain A resi  255 atom  OD2 second chain S resi  205 alte F atom  O   value 2.9619495269163516 sigma 0.1 type 1
+exte dist first chain A resi  256 atom  O   second chain S resi  188 alte F atom  O   value 2.6902555640682153 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  O   second chain A resi  289 alte F atom  N   value 2.7224224506861523 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  O   second chain A resi  289 alte F atom  O   value 3.427778289213 sigma 0.1 type 1
+exte dist first chain A resi  257 atom  OD2 second chain S resi  287 alte F atom  O   value 3.6884671613015625 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD2 second chain A resi  401 alte F atom  O3  value 2.8793988956030376 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  OD2 second chain A resi  401 alte F atom  O4  value 2.880226900784031 sigma 0.1 type 1
+exte dist first chain A resi  287 atom  CG  second chain A resi  401 alte F atom  C3  value 3.9950983717550703 sigma 0.1 type 1
+exte dist first chain A resi  289 alte F atom  O   second chain A resi  291 atom  N   value 3.285194819185007 sigma 0.1 type 1
+exte dist first chain A resi  289 alte F atom  O   second chain S resi   35 atom  O   value 2.617210346915201 sigma 0.1 type 1
+exte dist first chain A resi  289 alte F atom  NZ  second chain S resi  234 atom  O   value 2.7923669171511087 sigma 0.1 type 1
+exte dist first chain A resi  289 alte F atom  CG  second chain S resi  265 atom  O   value 3.5323517661750476 sigma 0.1 type 1
+exte dist first chain A resi  289 alte F atom  NZ  second chain S resi  283 alte F atom  O   value 2.816200454513142 sigma 0.1 type 1
+exte dist first chain A resi  289 alte F atom  CE  second chain S resi  287 alte F atom  O   value 3.338526321597603 sigma 0.1 type 1
+exte dist first chain A resi  289 alte F atom  NZ  second chain S resi  287 alte F atom  O   value 3.7011107792120996 sigma 0.1 type 1
+exte dist first chain A resi  289 alte F atom  CE  second chain S resi  288 alte F atom  O   value 3.3661384404091277 sigma 0.1 type 1
+exte dist first chain A resi  289 alte F atom  NZ  second chain S resi  288 alte F atom  O   value 3.8819156353532427 sigma 0.1 type 1
+exte dist first chain A resi  289 alte F atom  CE  second chain S resi  289 alte F atom  O   value 2.9259304503012387 sigma 0.1 type 1
+exte dist first chain A resi  401 alte F atom  O4  second chain B resi    1 atom MG   value 2.169991935468886 sigma 0.1 type 1
+exte dist first chain A resi  401 alte F atom  O3  second chain B resi    1 atom MG   value 2.6142035115881863 sigma 0.1 type 1
+exte dist first chain A resi  401 alte F atom  O3  second chain C resi    1 atom MN   value 3.9552027760912556 sigma 0.1 type 1
+exte dist first chain A resi  401 alte F atom  C6  second chain S resi   60 alte F atom  O   value 2.761814077739485 sigma 0.1 type 1
+exte dist first chain A resi  401 alte F atom  O6  second chain S resi   60 alte F atom  O   value 3.620184801912741 sigma 0.1 type 1
+exte dist first chain A resi  401 alte F atom  O5  second chain S resi   60 alte F atom  O   value 3.772495990720199 sigma 0.1 type 1
+exte dist first chain A resi  401 alte F atom  O2  second chain S resi  205 alte F atom  O   value 2.7150554322149665 sigma 0.1 type 1
+exte dist first chain A resi  401 alte F atom  O3  second chain S resi  205 alte F atom  O   value 3.4277585971010267 sigma 0.1 type 1
+exte dist first chain A resi  401 alte F atom  O3  second chain S resi  222 atom  O   value 2.531532539786916 sigma 0.1 type 1
+exte dist first chain A resi  401 alte F atom  O2  second chain S resi  222 atom  O   value 3.2143817445972402 sigma 0.1 type 1
+exte dist first chain A resi  401 alte F atom  O1  second chain S resi  284 alte F atom  O   value 2.479181518162797 sigma 0.1 type 1
+exte dist first chain A resi  401 alte F atom  O4  second chain S resi  286 atom  O   value 2.742310522169219 sigma 0.1 type 1
+exte dist first chain A resi  401 alte F atom  O6  second chain S resi  286 atom  O   value 3.3564469309077425 sigma 0.1 type 1
+exte dist first chain A resi  401 alte F atom  O2  second chain S resi  287 alte F atom  O   value 2.837641626421488 sigma 0.1 type 1
+exte dist first chain A resi  401 alte F atom  O1  second chain S resi  287 alte F atom  O   value 3.512205717209625 sigma 0.1 type 1
+exte dist first chain C resi    1 atom MN   second chain S resi  205 alte F atom  O   value 3.730484687007842 sigma 0.1 type 1
+exte dist first chain S resi   27 atom  O   second chain S resi   78 alte F atom  O   value 3.4175701894767294 sigma 0.1 type 1
+exte dist first chain S resi   32 atom  O   second chain S resi   60 alte F atom  O   value 3.089840610775902 sigma 0.1 type 1
+exte dist first chain S resi   32 atom  O   second chain S resi  123 alte F atom  O   value 2.5837801764082 sigma 0.1 type 1
+exte dist first chain S resi   35 atom  O   second chain S resi  188 alte F atom  O   value 3.923649321741177 sigma 0.1 type 1
+exte dist first chain S resi   56 atom  O   second chain S resi  283 alte F atom  O   value 3.23812754535704 sigma 0.1 type 1
+exte dist first chain S resi   60 alte F atom  O   second chain S resi  123 alte F atom  O   value 3.6082221383944755 sigma 0.1 type 1
+exte dist first chain S resi   74 atom  O   second chain S resi  123 alte F atom  O   value 2.8142538975721414 sigma 0.1 type 1
+exte dist first chain S resi   78 alte F atom  O   second chain S resi  106 atom  O   value 3.2012644376870822 sigma 0.1 type 1
+exte dist first chain S resi   78 alte F atom  O   second chain S resi  116 atom  O   value 2.761500497917755 sigma 0.1 type 1
+exte dist first chain S resi   78 alte F atom  O   second chain S resi  119 atom  O   value 3.369642117495568 sigma 0.1 type 1
+exte dist first chain S resi   78 alte F atom  O   second chain S resi  188 alte F atom  O   value 3.529171290827357 sigma 0.1 type 1
+exte dist first chain S resi  106 atom  O   second chain S resi  152 alte F atom  O   value 3.540017796565434 sigma 0.1 type 1
+exte dist first chain S resi  116 atom  O   second chain S resi  188 alte F atom  O   value 3.493809525432089 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  152 alte F atom  O   value 2.9975540028496566 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  188 alte F atom  O   value 2.8255700309849003 sigma 0.1 type 1
+exte dist first chain S resi  119 atom  O   second chain S resi  283 alte F atom  O   value 2.740536626283251 sigma 0.1 type 1
+exte dist first chain S resi  123 alte F atom  O   second chain S resi  146 atom  O   value 2.949755413589406 sigma 0.1 type 1
+exte dist first chain S resi  131 atom  O   second chain S resi  152 alte F atom  O   value 2.9945979696780656 sigma 0.1 type 1
+exte dist first chain S resi  131 atom  O   second chain S resi  283 alte F atom  O   value 3.222023277383327 sigma 0.1 type 1
+exte dist first chain S resi  142 alte F atom  O   second chain S resi  194 alte F atom  O   value 2.975048907161022 sigma 0.1 type 1
+exte dist first chain S resi  186 atom  O   second chain S resi  288 alte F atom  O   value 3.308144797314654 sigma 0.1 type 1
+exte dist first chain S resi  186 atom  O   second chain S resi  289 alte F atom  O   value 3.8704866619070035 sigma 0.1 type 1
+exte dist first chain S resi  188 alte F atom  O   second chain S resi  283 alte F atom  O   value 3.7301577714622196 sigma 0.1 type 1
+exte dist first chain S resi  194 alte F atom  O   second chain S resi  284 alte F atom  O   value 3.1070963937412683 sigma 0.1 type 1
+exte dist first chain S resi  205 alte F atom  O   second chain S resi  222 atom  O   value 3.1517988514497564 sigma 0.1 type 1
+exte dist first chain S resi  222 atom  O   second chain S resi  287 alte F atom  O   value 3.830132895866668 sigma 0.1 type 1
+exte dist first chain S resi  234 atom  O   second chain S resi  283 alte F atom  O   value 3.9523815605277792 sigma 0.1 type 1
+exte dist first chain S resi  234 atom  O   second chain S resi  287 alte F atom  O   value 3.6886710343970797 sigma 0.1 type 1
+exte dist first chain S resi  265 atom  O   second chain S resi  287 alte F atom  O   value 2.9493150052173136 sigma 0.1 type 1
+exte dist first chain S resi  265 atom  O   second chain S resi  289 alte F atom  O   value 2.514474497782783 sigma 0.1 type 1
+exte dist first chain S resi  284 alte F atom  O   second chain S resi  287 alte F atom  O   value 3.7560423320298204 sigma 0.1 type 1
+exte dist first chain S resi  284 alte F atom  O   second chain S resi  288 alte F atom  O   value 3.1162217507744896 sigma 0.1 type 1
+exte dist first chain S resi  287 alte F atom  O   second chain S resi  288 alte F atom  O   value 2.961254126210718 sigma 0.1 type 1
+exte dist first chain S resi  287 alte F atom  O   second chain S resi  289 alte F atom  O   value 3.4139896016244693 sigma 0.1 type 1
+exte dist first chain S resi  288 alte F atom  O   second chain S resi  289 alte F atom  O   value 2.769016612445652 sigma 0.1 type 1
 exte dist first chain A resi   23 alte A atom  C   second chain A resi   23 alte D atom  C   value 0.0 sigma 0.02 type 1
 exte dist first chain A resi   23 alte A atom  CA  second chain A resi   23 alte D atom  CA  value 0.0 sigma 0.02 type 1
 exte dist first chain A resi   23 alte A atom  CB  second chain A resi   23 alte D atom  CB  value 0.0 sigma 0.02 type 1
