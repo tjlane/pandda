@@ -102,8 +102,8 @@ class _refiner(object):
         try:
             self.export()
         except RefinementError:
-            logger(result.stdout)
-            logger(result.stderr)
+            logger(str(result.stdout))
+            logger(str(result.stderr))
             raise
         return result
 

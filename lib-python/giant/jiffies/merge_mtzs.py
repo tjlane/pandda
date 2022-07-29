@@ -106,8 +106,8 @@ def run(params):
     result = cm.run()
     cm.write_output(log_file=out_log)
     if result['exitcode'] != 0:
-        logger(cm.result.stdout)
-        logger(cm.result.stderr)
+        logger(str(cm.result.stdout))
+        logger(str(cm.result.stderr))
         raise Sorry('{} returned an error'.format(cm.progam))
 
 #######################################

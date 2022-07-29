@@ -73,9 +73,11 @@ def compress_file(filename, delete_original=True):
     """Compress a file with gzip"""
     import gzip
     zip_file = filename + '.gz'
-    with open(filename, 'r') as fh:
+    with open(filename, 'rb') as fh:
         f = gzip.open(zip_file, 'wb')
-        f.write(fh.read())
+        f.write(
+            fh.read()
+            )
         f.close()
     if delete_original:
         os.remove(filename)
@@ -93,9 +95,11 @@ def decompress_all_files_in_directory(path, recursive=True, extension='.gz', del
             assert not os.path.exists(f_out), 'output file already exists: {}'.format(f_out)
             if extension == '.gz':
                 import gzip
-                with gzip.open(f_zip) as fh_zip:
-                    with open(f_out, 'w') as fh_out:
-                        fh_out.write(fh_zip.read())
+                with gzip.open(f_zip, 'rb') as fh_zip:
+                    with open(f_out, 'wb') as fh_out:
+                        fh_out.write(
+                            fh_zip.read()
+                            )
             else:
                 pass
             assert os.path.exists(f_out), 'output file does not exist: {}'.format(f_out)

@@ -39,8 +39,8 @@ def generate_restraints(smiles, name='LIG', prefix='ligand', verbose=False):
     acedrg.write_output(out_log)
 
     if not (os.path.exists(out_pdb) and os.path.exists(out_cif)):
-        logger(acedrg.result.stdout)
-        logger(acedrg.result.stderr)
+        logger(str(acedrg.result.stdout))
+        logger(str(acedrg.result.stderr))
         raise Exception('acedrg failed during ligand generation')
 
     return out_pdb, out_cif

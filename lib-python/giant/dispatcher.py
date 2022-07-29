@@ -87,10 +87,10 @@ class Dispatcher(object):
             fh.write(self.as_command()+'\n')
             fh.write(separator)
             fh.write('Program STDOUT:\n')
-            fh.write(self.result.stdout)
+            fh.write(str(self.result.stdout))
             fh.write(separator)
             fh.write('Program STDERR:\n')
-            fh.write(self.result.stderr)
+            fh.write(str(self.result.stderr))
             fh.write(separator)
 
 

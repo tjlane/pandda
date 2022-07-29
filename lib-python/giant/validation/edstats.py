@@ -387,7 +387,7 @@ class CalculateEdstatsScores(object):
             table_str = f.read()
 
         # Extract log_text for potential parsing
-        log_text = prog.result.stdout
+        log_text = str(prog.result.stdout)
 
         # Convert to buffer for reading
         import io

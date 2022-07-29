@@ -24,13 +24,13 @@ def phenix_find_tls_groups(filename=None, hierarchy=None):
     result = cmd.run()
 
     if result['exitcode'] != 0:
-        logger(result.stdout)
-        logger(result.stderr)
+        logger(str(result.stdout))
+        logger(str(result.stderr))
         raise Failure('Failed to determine TLS groups: {}'.format(cmd.program))
 
     import re
     regex = re.compile("refinement\.refine\.adp \{([\s\S]*?)\}")
-    tls_command = regex.findall(cmd.result.stdout)[0]
+    tls_command = regex.findall(str(cmd.result.stdout))[0]
     tls_selections = [s.strip() for s in tls_command.split('tls =') if s.strip()]
 
     if (tmp_file is not None):

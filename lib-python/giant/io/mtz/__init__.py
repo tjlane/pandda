@@ -286,12 +286,12 @@ def get_mtz_summary_dict(mtz_file):
         raise RuntimeError(
             'mtzdmp failed to read file {!s}\n> STDOUT \n{!s}\n> STDERR\n{!s}'.format(
                 mtz_file,
-                mtzdmp.result.stdout,
-                mtzdmp.result.stderr,
+                str(mtzdmp.result.stdout),
+                str(mtzdmp.result.stderr),
             )
         )
 
-    return parse_mtzdmp_logtext(logtext=mtzdmp.result.stdout)
+    return parse_mtzdmp_logtext(logtext=str(mtzdmp.result.stdout))
 
 def parse_mtzdmp_logtext(logtext):
 

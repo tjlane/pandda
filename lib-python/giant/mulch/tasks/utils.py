@@ -12,10 +12,10 @@ def run_program(prog):
         logger.heading('{} exited with an error'.format(prog.program))
 
         logger.subheading('Stdout')
-        logger(result.stdout)
+        logger(str(result.stdout))
         
         logger.subheading('Stderr')
-        logger(result.stderr)
+        logger(str(result.stderr))
 
         raise Exception(
             '{} exited with an error'.format(
@@ -26,10 +26,10 @@ def run_program(prog):
 def raise_missing(self, filepath, result):
 
     logger.subheading('Stdout')
-    logger(result.stdout)
+    logger(str(result.stdout))
     
     logger.subheading('Stderr')
-    logger(result.stderr)
+    logger(str(result.stderr))
 
     raise Exception(
         'Failed: {} does not exist'.format(

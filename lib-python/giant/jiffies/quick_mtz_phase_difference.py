@@ -70,8 +70,8 @@ def run(params):
     merge.write_output(params.output.merging_log)
 
     if not os.path.exists(params.output.merged_mtz):
-        logger(merge.result.stdout)
-        logger(merge.result.stderr)
+        logger(str(merge.result.stdout))
+        logger(str(merge.result.stderr))
         raise Failure('giant.mtz.merge has failed to merge the mtz files')
 
     fo1, fo2 = params.settings.f_obs.split(',')
