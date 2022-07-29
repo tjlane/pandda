@@ -363,7 +363,7 @@ class NativeMapMaker(object):
             )
 
         sites_cart = np.array(
-            map(g2c, map(tuple, sites_grid))
+            list(map(g2c, map(tuple, sites_grid)))
             )
 
         return sites_cart

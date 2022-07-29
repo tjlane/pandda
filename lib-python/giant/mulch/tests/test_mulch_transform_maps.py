@@ -137,9 +137,8 @@ def test_GetWarpedMapLoader(five_baz2b_test_datasets_mcd_labelled):
         fft_map = reference_map,
         )
 
-    from scipy import corrcoef
     correlation_coeffs = [
-        corrcoef([warped_reference_map, map_data[dkey]])[0,1] 
+        np.corrcoef([warped_reference_map, map_data[dkey]])[0,1]
         for dkey in [
             "BAZ2BA-x430.dimple.pdb",
             "BAZ2BA-x431.dimple.pdb",
