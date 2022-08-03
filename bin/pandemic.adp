@@ -1,3 +1,3 @@
 #!/usr/bin/env sh
 
-cctbx.python -Qnew -m pandemic.adp.__init__ "$@"
+cctbx.python -m pandemic.adp.__init__ "$@"

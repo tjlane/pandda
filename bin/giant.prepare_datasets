@@ -1,3 +1,3 @@
 #!/usr/bin/env sh
 
-cctbx.python -Qnew -m giant.jiffies.prepare_datasets "$@"
+cctbx.python -m giant.jiffies.prepare_datasets "$@"

@@ -1,3 +1,3 @@
 #!/usr/bin/env sh
 
-cctbx.python -Qnew -m giant.jiffies.score_model "$@"
+cctbx.python -m giant.jiffies.score_model "$@"

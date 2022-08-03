@@ -1,3 +1,3 @@
 #!/usr/bin/env sh
 
-cctbx.python -Qnew -m giant.jiffies.merge_conformations "$@"
+cctbx.python -m giant.jiffies.merge_conformations "$@"
