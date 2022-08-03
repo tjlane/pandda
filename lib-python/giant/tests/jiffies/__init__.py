@@ -1,29 +1,38 @@
 import os
 
-def get_params_from_phil_and_args(master_phil, args):
+from giant.jiffies import (
+    parse_phil_args,
+    )
 
-    cmd_interpr = master_phil.command_line_argument_interpreter()
+# def get_params_from_phil_and_args(master_phil, args):
 
-    arg_sources = [
-        cmd_interpr.process(arg=a) for a in args
-        ]
+#     cmd_interpr = master_phil.command_line_argument_interpreter()
 
-    working_phil = master_phil.fetch(
-        sources = (
-            arg_sources
-            ),
-        )
+#     arg_sources = [
+#         cmd_interpr.process(arg=a) for a in args
+#         ]
 
-    params = working_phil.extract()
+#     working_phil = master_phil.fetch(
+#         sources = (
+#             arg_sources
+#             ),
+#         )
 
-    return params
+#     params = working_phil.extract()
+
+#     return params
 
 def run_module(module, args):
 
-    params = get_params_from_phil_and_args(
+    params = parse_phil_args(
         master_phil = module.master_phil,
         args = args,
-        )
+        blank_arg_prepend = (
+            module.blank_arg_prepend
+            if hasattr(module, 'blank_arg_prepend')
+            else None
+            ),
+        ).extract()
 
     return module.run(params)
 

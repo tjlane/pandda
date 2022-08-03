@@ -1,21 +1,22 @@
+import giant.logs as lg
+logger = lg.getLogger(__name__)
+
 import os, copy
 import pytest
 
 from giant.tests.jiffies import (
-    get_params_from_phil_and_args,
+    run_module,
     check_files,
     )
 
 def run_merge_conformations(args):
 
-    from giant.jiffies.merge_conformations import (
-        master_phil,
-        run,
-        )
+    import giant.jiffies.merge_conformations
 
-    params = get_params_from_phil_and_args(master_phil, args)
-    
-    return run(params)
+    return run_module(
+        module = giant.jiffies.merge_conformations,
+        args = args,
+        )
 
 def test_merge_conformations_two_states(resources, tmp_path):
 

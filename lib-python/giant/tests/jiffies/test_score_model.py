@@ -7,7 +7,7 @@ import pathlib as pl
 from pytest import mark, fixture
 
 from giant.tests.jiffies import (
-    run_jiffy,
+    run_module,
     check_files,
     )
 
@@ -21,15 +21,10 @@ def run_score_model(args):
 
     import giant.jiffies.score_model
 
-    run_jiffy(
+    run_module(
         module = giant.jiffies.score_model,
         args = args,
         )
-
-    # return run_module(
-    #     module = giant.jiffies.score_model,
-    #     args = args,
-    #     )
 
 @fixture
 def score_model_data(tmp_path):

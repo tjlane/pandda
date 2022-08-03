@@ -2,20 +2,18 @@ import os, copy
 import pytest
 
 from giant.tests.jiffies import (
-    get_params_from_phil_and_args,
+    run_module,
     check_files,
     )
 
 def run_split_conformations(args):
 
-    from giant.jiffies.split_conformations import (
-        master_phil,
-        run,
+    import giant.jiffies.split_conformations
+
+    run_module(
+        module = giant.jiffies.split_conformations,
+        args = args,
         )
-
-    params = get_params_from_phil_and_args(master_phil, args)
-
-    return run(params)
 
 def test_split_two_states_defaults(resources, tmp_path):
 

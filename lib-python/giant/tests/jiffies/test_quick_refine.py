@@ -5,7 +5,7 @@ from pytest import mark, xfail
 from giant.paths import is_available
 
 from giant.tests.jiffies import (
-    run_jiffy,
+    run_module,
     )
 
 fail_if_phenix_refine_unavailable = mark.xfail(
@@ -22,7 +22,7 @@ def run_quick_refine(args):
 
     import giant.jiffies.quick_refine
 
-    run_jiffy(
+    run_module(
         module = giant.jiffies.quick_refine,
         args = args,
     )
