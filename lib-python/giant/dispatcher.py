@@ -60,7 +60,11 @@ class Dispatcher(object):
             command = self.command,
             timeout = self.timeout,
             debug = self.debug,
-            stdin = self.stdin,
+            stdin = (
+                bytes(self.stdin, 'utf-8')
+                if self.stdin is not None
+                else None
+                ),
             print_stdout = False,
             print_stderr = False,
             #callback_stdout = None,
