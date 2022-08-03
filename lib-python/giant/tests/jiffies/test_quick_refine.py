@@ -40,8 +40,8 @@ def run_quick_refine_simple(dir_path, other_args, run_no=1):
     link_prefix = str(dir_path / 'link_test')
 
     test_args = [
-        pdb_file,
-        mtz_file,
+        str(pdb_file),
+        str(mtz_file),
         'dir_prefix='+dir_prefix,
         'link_prefix='+link_prefix,
         ]
@@ -53,9 +53,9 @@ def run_quick_refine_simple(dir_path, other_args, run_no=1):
 @fail_if_refmac_unavailable
 def test_jiffies_quick_refine_refmac(tmp_path):
 
-    params_str = """
-    NCYC 1
-    """
+    params_str = (
+        "NCYC 1"
+        )
 
     params_file = (tmp_path / 'refmac.params')
 
@@ -64,7 +64,7 @@ def test_jiffies_quick_refine_refmac(tmp_path):
 
     other_args = [
         'program=refmac',
-        params_file,
+        str(params_file),
         ]
 
     run_quick_refine_simple(
@@ -95,7 +95,7 @@ def test_jiffies_quick_refine_phenix(tmp_path):
 
     other_args = [
         'program=phenix',
-        params_file,
+        str(params_file),
         ]
 
     run_quick_refine_simple(
