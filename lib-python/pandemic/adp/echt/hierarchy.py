@@ -52,7 +52,10 @@ class CreateEchtModelTask(object):
         self.model_object = EchtBFactorModel(
                 tls_objects     = self.tls_objects_constructor.result.tls_objects,
                 tls_selections  = self.tls_objects_constructor.result.tls_selections,
-                adp_values      = flex.sym_mat3_double(overall_atom_mask.sum()),
+                adp_values      = flex.sym_mat3_double(
+                    int(overall_atom_mask.sum()),
+                    (0.0,0.0,0.0,0.0,0.0,0.0),
+                    ),
                 tls_level_names = level_labels,
                 adp_level_name  = self.adp_level_name,
                 tls_selection_strings = level_group_labels,

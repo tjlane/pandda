@@ -329,7 +329,10 @@ class OptimiseInterLevelAmplitudes(object):
             sel_adp_amplitudes = flex.double(adp_amplitudes[opt_parameters.atom_selection])
         else:
             assert adp_amplitudes is None
-            sel_adp_uij_values = flex.sym_mat3_double(opt_parameters.atom_selection.sum())
+            sel_adp_uij_values = flex.sym_mat3_double(
+                int(opt_parameters.atom_selection.sum()),
+                (0.0,0.0,0.0,0.0,0.0,0.0),
+                )
             sel_adp_amplitudes = flex.double(sel_adp_uij_values.size(), 0.0)
 
         result = group_args(
