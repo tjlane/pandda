@@ -183,7 +183,7 @@ class PandemicTrackingPlotter(object):
             axis = ax,
             title = 'Model Fit',
             x_label = None,
-            y_label = 'Model fit\n($\AA^2$)',
+            y_label = 'Model fit\n($\\AA^2$)',
             )
         helper.hide_x_labels(axis=ax)
         #ax.set_ylim(bottom=0.0)
@@ -196,7 +196,7 @@ class PandemicTrackingPlotter(object):
             axis = ax,
             title = 'Model B-factors',
             x_label = 'Optimisation Stage/Cycle',
-            y_label = 'Isotropic B\n($\AA^2$)',
+            y_label = 'Isotropic B\n($\\AA^2$)',
             )
         helper.make_x_ticks(
             axis = ax,
@@ -385,7 +385,7 @@ class PandemicTrackingPlotter(object):
             axis = ax,
             title = 'Total B-factors',
             x_label = 'Optimisation Cycle',
-            y_label = 'B-factor ($\AA^2$)',
+            y_label = 'B-factor ($\\AA^2$)',
             )
         helper.make_x_ticks(
             axis = ax,
@@ -400,7 +400,7 @@ class PandemicTrackingPlotter(object):
             axis = ax,
             title = 'Level B-factors',
             x_label = 'Optimisation Cycle',
-            y_label = 'B-factor ($\AA^2$)',
+            y_label = 'B-factor ($\\AA^2$)',
             )
         helper.make_x_ticks(
             axis = ax,
@@ -468,7 +468,7 @@ class PandemicTrackingPlotter(object):
             y_vals = y_vals,
             title = 'RMSD to target values',
             x_label = 'Cycle',
-            y_label = 'RMSD (B-factor; $\AA^2$)',
+            y_label = 'RMSD (B-factor; $\\AA^2$)',
             x_ticks = x_vals,
             legends = ['rmsd'],
             filename = None, # returns fig and axis
@@ -482,9 +482,9 @@ class PandemicTrackingPlotter(object):
             y_vals = y_vals_delta,
             title = 'RMSD change from previous cycle',
             x_label = 'Cycle',
-            y_label = 'RMSD (B-factor; $\AA^2$)',
+            y_label = 'RMSD (B-factor; $\\AA^2$)',
             x_ticks = x_vals,
-            legends = ['$\Delta$ rmsd'],
+            legends = ['$\\Delta$ rmsd'],
             filename = None, # returns fig and axis
             legend_kw_args = {'bbox_to_anchor':(1.0, 1.0), 'loc':4, 'borderaxespad':0.5},
             background_line_type = 'chunky',
@@ -528,7 +528,7 @@ class PandemicTrackingPlotter(object):
             plot_kw_args = dict(
                 title   = 'Changes over last cycle',
                 x_label = 'Residue',
-                y_label = 'B-factor Changes ($\AA^2$)',
+                y_label = 'B-factor Changes ($\\AA^2$)',
                 legends = self.parent.level_names,
                 marker  = 'o',
                 legend_kw_args = dict(ncol=3, bbox_to_anchor=(0.5, 1.1), loc=8, borderaxespad=0.),

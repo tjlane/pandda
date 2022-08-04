@@ -333,7 +333,7 @@ class PostProcessTask(object):
         column_prefix_label = None,
         column_suffixes_labels = None,
         x_column = 'High Resolution Limit',
-        x_label = 'Resolution ($\AA$)',
+        x_label = 'Resolution ($\\AA$)',
         title = 'Structure R-values',
         r_factors_as_percentages = True,
         horizontal_lines = [],

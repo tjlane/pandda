@@ -416,7 +416,7 @@ class WriteModelBFactorDistributions(object):
             )
 
         main_axis.set_title('B-factor Distributions for all levels')
-        main_axis.set_xlabel('B-factor ($\AA$)')
+        main_axis.set_xlabel('B-factor ($\\AA$)')
         main_axis.set_ylabel('Number Density')
 
         lgd = fig.legend(
@@ -546,9 +546,9 @@ class WriteModelLevelBFactorDistributions(WriteModelBFactorDistributions):
                     )
                 )
 
-            a1.set_xlabel('B-factor ($\AA$)')
+            a1.set_xlabel('B-factor ($\\AA$)')
             a1.set_ylabel('Number Density')
-            a2.set_xlabel('B-factor ($\AA$)')
+            a2.set_xlabel('B-factor ($\\AA$)')
             a2.set_ylabel('Number')
 
             self.make_density(

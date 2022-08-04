@@ -128,7 +128,7 @@ class EchtTrackingPlotter(object):
             y_vals_array = y_vals_array,
             title = 'Model parameters/penalties across cycles',
             x_label = 'Cycle',
-            y_label = 'Amplitudes ($\AA^2$ or $\AA^4$)',
+            y_label = 'Amplitudes ($\\AA^2$ or $\\AA^4$)',
             x_ticks = x_ticks,
             legends = weight_labels,
             filename = filename,

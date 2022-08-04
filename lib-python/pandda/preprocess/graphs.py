@@ -33,7 +33,7 @@ class WilsonPlotter(PanddaDatasetPlotter):
         fig, axis = self.setup()
 
         axis.set_title('Dataset wilson plot')
-        axis.set_xlabel('Resolution ($\AA$)')
+        axis.set_xlabel('Resolution ($\\AA$)')
         axis.set_ylabel('ln(mean amplitude)')
 
         if (reference_miller_array is not None):
@@ -110,7 +110,7 @@ class ResolutionDistributionPlotter(PanddaMultiDatasetPlotter):
         
         #
 
-        a1.set_xlabel('High Resolution Limit ($\AA$)')
+        a1.set_xlabel('High Resolution Limit ($\\AA$)')
         a1.set_ylabel('Count')
 
         self.make_histogram(
@@ -120,7 +120,7 @@ class ResolutionDistributionPlotter(PanddaMultiDatasetPlotter):
 
         #
 
-        a2.set_xlabel('Low Resolution Limit ($\AA$)')
+        a2.set_xlabel('Low Resolution Limit ($\\AA$)')
         a2.set_ylabel('Count')
 
         self.make_histogram(
@@ -169,7 +169,7 @@ class RFactorDistributionPlotter(PanddaMultiDatasetPlotter):
 
         #
 
-        a1.set_xlabel('R-free Values ($\AA$)')
+        a1.set_xlabel('R-free Values ($\\AA$)')
         a1.set_ylabel('Count')
 
         self.make_histogram(
@@ -179,7 +179,7 @@ class RFactorDistributionPlotter(PanddaMultiDatasetPlotter):
 
         #
 
-        a2.set_xlabel('R-work Values ($\AA$)')
+        a2.set_xlabel('R-work Values ($\\AA$)')
         a2.set_ylabel('Count')
 
         self.make_histogram(
@@ -232,7 +232,7 @@ class UnitCellDistributionPlotter(PanddaMultiDatasetPlotter):
 
         #
 
-        a1.set_xlabel('a ($\AA$)')
+        a1.set_xlabel('a ($\\AA$)')
         a1.set_ylabel('Count')
 
         self.make_histogram(
@@ -242,7 +242,7 @@ class UnitCellDistributionPlotter(PanddaMultiDatasetPlotter):
 
         #
 
-        a2.set_xlabel('b ($\AA$)')
+        a2.set_xlabel('b ($\\AA$)')
         a2.set_ylabel('Count')
 
         self.make_histogram(
@@ -252,7 +252,7 @@ class UnitCellDistributionPlotter(PanddaMultiDatasetPlotter):
 
         #
 
-        a3.set_xlabel('c ($\AA$)')
+        a3.set_xlabel('c ($\\AA$)')
         a3.set_ylabel('Count')
 
         self.make_histogram(
@@ -262,7 +262,7 @@ class UnitCellDistributionPlotter(PanddaMultiDatasetPlotter):
 
         #
 
-        a4.set_xlabel('$alpha ($\AA$)')
+        a4.set_xlabel('$alpha ($\\AA$)')
         a4.set_ylabel('Count')
 
         self.make_histogram(
@@ -272,7 +272,7 @@ class UnitCellDistributionPlotter(PanddaMultiDatasetPlotter):
 
         #
 
-        a5.set_xlabel('beta ($\AA$)')
+        a5.set_xlabel('beta ($\\AA$)')
         a5.set_ylabel('Count')
 
         self.make_histogram(
@@ -282,7 +282,7 @@ class UnitCellDistributionPlotter(PanddaMultiDatasetPlotter):
 
         #
 
-        a6.set_xlabel('gamma ($\AA$)')
+        a6.set_xlabel('gamma ($\\AA$)')
         a6.set_ylabel('Count')
 
         self.make_histogram(

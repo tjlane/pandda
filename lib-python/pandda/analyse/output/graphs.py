@@ -164,7 +164,7 @@ class EventResolutionsPlotter(PanddaPlotter):
         fig, axis = self.setup()
 
         axis.set_title('Event Resolutions')
-        axis.set_xlabel('Resolution ($\AA$)')
+        axis.set_xlabel('Resolution ($\\AA$)')
         axis.set_ylabel('Count')
 
         self.make_histogram(
@@ -232,7 +232,7 @@ class AnalysedResolutionDistributionPlotter(PanddaPlotter):
         fig, axis = self.setup()
 
         axis.set_title('Analysed Resolutions')
-        axis.set_xlabel('Resolution ($\AA$)')
+        axis.set_xlabel('Resolution ($\\AA$)')
         axis.set_ylabel('Count')
 
         axis.bar(

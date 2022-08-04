@@ -282,7 +282,7 @@ class ClusterTLSGroups_OverlapMass(object):
             n_groups = len(tls_groups),
             title = "New TLS groupings generated\nfrom {} input TLS groups".format(len(tls_groups)),
             x_label = 'Existing TLS Groups',
-            y_label = 'B-factor overlap threshold ($\AA^2$)',
+            y_label = 'B-factor overlap threshold ($\\AA^2$)',
             y_width = y_width,
             y_lim = y_lim,
             )

@@ -900,7 +900,7 @@ class PandemicAdpPlotter(object):
         reference_legend=None,
         reference_functions=['mean'],
         title=None,
-        y_lab='Isotropic B ($\AA^2$)',
+        y_lab='Isotropic B ($\\AA^2$)',
         y_lim=None,
         v_line_hierarchy=None,
         rotate_x_labels=True,

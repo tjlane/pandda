@@ -240,9 +240,9 @@ class AnalyseResidualsTask(object):
             hierarchies = atom_hierarchies,
             plot_function = self.plotting_object.boxplot,
             plot_kw_args = {
-                'title' : 'Fitting Residuals by Residue\n residual = $8\pi^2$rms($U_{model} - U_{target}$)',
+                'title' : 'Fitting Residuals by Residue\n residual = $8\\pi^2$rms($U_{model} - U_{target}$)',
                 'x_label' : 'Residue',
-                'y_label' : 'Residuals ($\AA^2$)',
+                'y_label' : 'Residuals ($\\AA^2$)',
                 'legends' : dataset_labels if (len(dataset_labels) < 10) else None,
                 'flierprops' : flierprops,
                 },
@@ -263,9 +263,9 @@ class AnalyseResidualsTask(object):
             filename = str(self.output_directory / 'residual_by_dataset_{}-{}.png'.format(i_min+1, i_max))
             self.plotting_object.boxplot(
                 y_vals = list(constants.EIGHTPISQ*atom_rmsds[i_min:i_max]),
-                title = 'Fitting Residuals by Dataset\n residual = $8\pi^2$rms($U_{model} - U_{target}$)',
+                title = 'Fitting Residuals by Dataset\n residual = $8\\pi^2$rms($U_{model} - U_{target}$)',
                 x_label = 'Dataset',
-                y_label = 'Residuals ($\AA^2$)',
+                y_label = 'Residuals ($\\AA^2$)',
                 x_tick_labels = dataset_labels[i_min:i_max],
                 flierprops = flierprops,
                 rotate_x_labels = True,
@@ -321,9 +321,9 @@ class AnalyseResidualsTask(object):
         self.plotting_object.scatter(
             x_vals_array = [a for a in iso_target],
             y_vals_array = [a for a in atom_rmsds],
-            title = 'Fitting Residual vs Target B-factor\nresidual = $8\pi^2$rms($U_{model} - U_{target}$)',
-            x_label = 'Target B-factor ($\AA^2$)',
-            y_label = 'Residual ($\AA^2$)',
+            title = 'Fitting Residual vs Target B-factor\nresidual = $8\\pi^2$rms($U_{model} - U_{target}$)',
+            x_label = 'Target B-factor ($\\AA^2$)',
+            y_label = 'Residual ($\\AA^2$)',
             alphas = [alpha] * n,
             s = 1.5,
             legends = dataset_labels if (n < 10) else None,
@@ -372,9 +372,9 @@ class AnalyseResidualsTask(object):
             filename = str(self.output_directory / 'residual_by_atom_type_{}-{}.png'.format(i_min+1, i_max))
             self.plotting_object.boxplot(
                 y_vals = list(plot_rmsds[i_min:i_max]),
-                title = 'Fitting Residuals by Atom Type\n residual = $8\pi^2$rms($U_{model} - U_{target}$)',
+                title = 'Fitting Residuals by Atom Type\n residual = $8\\pi^2$rms($U_{model} - U_{target}$)',
                 x_label = 'Atom Type',
-                y_label = 'Residuals ($\AA^2$)',
+                y_label = 'Residuals ($\\AA^2$)',
                 x_tick_labels = ['{} - {}'.format(l[1].replace(' ',''), l[0].lower()) for l in plot_labels[i_min:i_max]],
                 y_lim = min_max,
                 flierprops = flierprops,
