@@ -1,9 +1,11 @@
 class Div(object):
 
-    __slots__ = [
+    __slots__ = (
         'id',
         'contents',
-    ]
+    )
+
+    type = 'div'
 
     def __init__(self, **kw_args):
 
@@ -40,8 +42,7 @@ class Div(object):
 
 class Block(Div):
 
-    __slots__ = Div.__slots__ + [
-        'type',
+    __slots__ = (
         'title',
         'text',
         'html',
@@ -55,7 +56,7 @@ class Block(Div):
         'max_width',
         'fancy_title',
         'title_size',
-    ]
+    )
 
     type = 'block'
 
@@ -69,6 +70,7 @@ class Block(Div):
         # MUST BE FIRST
         super(Block, self).__init__(**kw_args)
 
+        # Not captured by kw_args
         self.set(
             width = width,
             fancy_title = fancy_title,
@@ -87,23 +89,22 @@ class ScrollX(Block):
 
 class Panel(Block):
 
-    __slots__ = Block.__slots__ + [
+    __slots__ = Block.__slots__ + (
         'show',
-    ]
+    )
 
     type = 'panel'
 
 
 class TabSet(Div):
 
-    __slots__ = Div.__slots__ + [
-        'type',
+    __slots__ = Div.__slots__ + (
         'title',
         'width',
         'title_size',
         'classes',
         'colour',
-    ]
+    )
 
     type = 'tabs'
 
@@ -126,10 +127,10 @@ class TabSet(Div):
 
 class Tab(Block):
 
-    __slots__ = Block.__slots__ + [
+    __slots__ = Block.__slots__ + (
         'alt_title',
         'active',
-    ]
+    )
 
     type = 'tab'
 
