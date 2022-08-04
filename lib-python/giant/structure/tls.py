@@ -29,7 +29,7 @@ def phenix_find_tls_groups(filename=None, hierarchy=None):
         raise Failure('Failed to determine TLS groups: {}'.format(cmd.program))
 
     import re
-    regex = re.compile("refinement\.refine\.adp \{([\s\S]*?)\}")
+    regex = re.compile(r"refinement\.refine\.adp \{([\s\S]*?)\}")
     tls_command = regex.findall(str(cmd.result.stdout))[0]
     tls_selections = [s.strip() for s in tls_command.split('tls =') if s.strip()]
 
