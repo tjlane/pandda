@@ -7,15 +7,15 @@ def test_BuildLevelArrayAsTreeTask():
 
     level_group_array = -1 * numpy.ones((3, 20))
 
-    level_group_array[0, 00:15] = 0
+    level_group_array[0, 0:15] = 0
 
-    level_group_array[1, 00:05] = 0
+    level_group_array[1, 0:5] = 0
     level_group_array[1, 10:15] = 1
 
-    level_group_array[2, 00:02] = 0
-    level_group_array[2, 02:05] = 1
-    level_group_array[2, 05:07] = 2
-    level_group_array[2, 07:10] = 3
+    level_group_array[2, 0:2] = 0
+    level_group_array[2, 2:5] = 1
+    level_group_array[2, 5:7] = 2
+    level_group_array[2, 7:10] = 3
     level_group_array[2, 10:13] = 4
     level_group_array[2, 13:15] = 5
     level_group_array[2, 15:18] = 6
