@@ -417,7 +417,7 @@ class PandemicTrackingPlotter(object):
             x_label = 'Optimisation Cycle',
             y_label = None,
             )
-        ax.set_yscale('symlog', linthreshy=0.1)
+        ax.set_yscale('symlog', linthresh=0.1)
 
         # Create legend
         lgd = fig.legend(
@@ -498,7 +498,7 @@ class PandemicTrackingPlotter(object):
             ax1.set_ylim((y_min, y_max))
             ax1.set_yscale('log')
             # Just set sym log for delta plot
-            ax2.set_yscale('symlog', linthreshy=0.001)
+            ax2.set_yscale('symlog', linthresh=0.001)
 
         helper.write_and_close_fig(
             fig = fig,
