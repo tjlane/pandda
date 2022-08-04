@@ -49,7 +49,7 @@ def extract_rmsf_dict(hierarchy):
             atom_coords.setdefault(lab, []).append(xyz)
 
     logger('Calculating RMSFs')
-    for lab, coords in atom_coords.iteritems():
+    for lab, coords in atom_coords.items():
         coords = flex.vec3_double(coords)
         rmsf = (coords - coords.mean()).rms_length()
         rmsf_dict[lab] = rmsf
@@ -118,7 +118,7 @@ def run(params):
 
         rmsf_data = extract_rmsf_dict(hierarchy=h)
         bfac_data = extract_bfac_dict(hierarchy=h)
-        bfac_rmsf_data = collections.OrderedDict([(k, (v/EIGHTPISQ)**0.5) for k,v in bfac_data.iteritems()])
+        bfac_rmsf_data = collections.OrderedDict([(k, (v/EIGHTPISQ)**0.5) for k,v in bfac_data.items()])
 
         json_data = {
             'rmsf'      : rmsf_data,

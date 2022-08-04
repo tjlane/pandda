@@ -93,7 +93,7 @@ def make_dataframe_from_dicts(
     if (splice_function is None):
         splice_function = lambda x: x
 
-    data_dicts_spliced = [{splice_function(k):v for k,v in d.iteritems()} for d in data_dicts]
+    data_dicts_spliced = [{splice_function(k):v for k,v in d.items()} for d in data_dicts]
 
     all_keys = set()
     for d in data_dicts_spliced:
@@ -254,10 +254,10 @@ def run(params):
 
         if (params.options.split_json_data_by_chain is True):
             chain_dict = {}
-            for k, v in json_data.iteritems():
+            for k, v in json_data.items():
                 c_id = get_chain_from_pdb_str(k)
                 chain_dict.setdefault(c_id,{}).setdefault(k,v)
-            for c_id, c_data in chain_dict.iteritems():
+            for c_id, c_data in chain_dict.items():
                 all_json_data.append(
                     (json_labels[i]+'-chain_{}'.format(c_id), c_data)
                 )

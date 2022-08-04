@@ -268,7 +268,7 @@ class ClusterTLSGroups_OverlapMass(object):
             y_lim = None
 
         # Sort hierarchies in ascending order
-        threshold_unique_hierarchies = sorted(result.module_info.threshold_unique_hierarchies.iteritems())
+        threshold_unique_hierarchies = sorted(result.module_info.threshold_unique_hierarchies.items())
 
         ###############################################
 

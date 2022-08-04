@@ -85,7 +85,7 @@ def set_atom_values(bdict, hierarchy):
         for a in hierarchy.atoms()
         }
 
-    for k, v in bdict.iteritems():
+    for k, v in bdict.items():
         a = atom_hash.get(k)
         if a is None:
             continue
@@ -131,7 +131,7 @@ def set_residue_values(bdict, hierarchy):
         for rg in hierarchy.residue_groups()
     }
 
-    for k, v in bdict.iteritems():
+    for k, v in bdict.items():
         rg = res_hash.get(k)
         if rg is None:
             continue
@@ -196,10 +196,10 @@ class StructureComparer:
         # Concatenate for each structure
         import collections
         all_s1_values = collections.OrderedDict()
-        for k, v in values1.iteritems():
+        for k, v in values1.items():
             all_s1_values.update(collections.OrderedDict([(k+kk,vv) for kk,vv in v.items()]))
         all_s2_values = collections.OrderedDict()
-        for k, v in values2.iteritems():
+        for k, v in values2.items():
             all_s2_values.update(collections.OrderedDict([(k+kk,vv) for kk,vv in v.items()]))
 
         # from IPython import embed; embed()
@@ -243,7 +243,7 @@ class StructureComparer:
             )
 
         # Calculate differences between each chain in the second structure iteratively
-        for c2, vals2 in values2.iteritems():
+        for c2, vals2 in values2.items():
 
             diff_values = self.calculate_differences(
                 values_dict_1 = values1,
@@ -289,7 +289,7 @@ class StructureComparer:
 
         cache = h.atom_selection_cache()
 
-        for ch_id, ch_values in b_values_dict.iteritems():
+        for ch_id, ch_values in b_values_dict.items():
 
             # Select the chain
             chain_h = h.select(
@@ -520,7 +520,7 @@ class StructureComparer:
 
         diff_dict = collections.OrderedDict()
 
-        for c, values_1 in values_dict_1.iteritems():
+        for c, values_1 in values_dict_1.items():
 
             cdict = diff_dict.setdefault(c, collections.OrderedDict())
 
