@@ -19,7 +19,7 @@ def uij_overlap_mass(a,b):
     d = tuple([av-bv for av,bv in zip(a,b)])
     # Diagonalise
     es = eigensystem_real_symmetric(d)
-    vals = list(es.values())
+    vals = es.values()
     vecs = es.vectors().as_scitbx_matrix()
     # Set negative eigenvalues to zero and back transform
     vals.set_selected(vals<0.0, 0.0)
