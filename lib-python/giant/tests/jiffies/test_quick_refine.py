@@ -49,7 +49,7 @@ def run_quick_refine_simple(dir_path, other_args, run_no=1):
     for i in range(run_no):
         run_quick_refine(test_args+other_args)
 
-#@mark.slow
+@mark.slow
 @fail_if_refmac_unavailable
 def test_jiffies_quick_refine_refmac(tmp_path):
 

@@ -43,6 +43,7 @@ def run_standard_pandda(phil_str):
     standard_pandda(pandda_config)
 
 
+@pytest.mark.slow
 class TestStandardPandda(object):
 
     @pytest.mark.dependency(name="test_standard_pandda")

@@ -1,6 +1,8 @@
 import giant.logs as lg
 logger = lg.getLogger(__name__)
 
+from pytest import mark
+
 import os, copy
 
 from giant.tests.jiffies import (
@@ -17,6 +19,7 @@ def run_make_restraints(args):
         args = args,
         )
 
+@mark.slow
 def test_make_restraints_two_states(resources, tmp_path):
 
     input_pdb = resources.merged_apo_glc(tmp_path/"input.pdb")
@@ -55,6 +58,7 @@ def test_make_restraints_two_states(resources, tmp_path):
         out_phenix,
         )
 
+@mark.slow
 def test_make_restraints_three_states(resources, tmp_path):
 
     input_pdb = resources.merged_apo_glc_glo(tmp_path/"input.pdb")
@@ -93,6 +97,7 @@ def test_make_restraints_three_states(resources, tmp_path):
         out_phenix,
         )
 
+@mark.slow
 def test_make_restraints_four_states(resources, tmp_path):
 
     input_pdb = resources.merged_apo_glc_glo_z9n(tmp_path/"input.pdb")

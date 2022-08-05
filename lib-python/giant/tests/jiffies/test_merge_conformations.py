@@ -4,6 +4,8 @@ logger = lg.getLogger(__name__)
 import os, copy
 import pytest
 
+from pytest import mark
+
 from giant.tests.jiffies import (
     run_module,
     check_files,
@@ -18,6 +20,7 @@ def run_merge_conformations(args):
         args = args,
         )
 
+@mark.slow
 def test_merge_conformations_two_states(resources, tmp_path):
 
     input_apo = resources.input_apo(tmp_path/"state1.pdb")
@@ -65,6 +68,7 @@ def test_merge_conformations_two_states(resources, tmp_path):
         output.with_suffix('.refmac.params'),
         )
 
+@mark.slow
 def test_merge_conformations_two_states_no_restraints(resources, tmp_path):
 
     input_apo = resources.input_apo(tmp_path/"state1.pdb")
@@ -98,6 +102,7 @@ def test_merge_conformations_two_states_no_restraints(resources, tmp_path):
         output,
         )
 
+@mark.slow
 def test_merge_conformations_three_states_no_restraints(resources, tmp_path):
 
     input_apo = resources.input_apo(tmp_path/"state1.pdb")
@@ -134,6 +139,7 @@ def test_merge_conformations_three_states_no_restraints(resources, tmp_path):
         output,
         )
 
+@mark.slow
 def test_merge_conformations_four_states_no_restraints(resources, tmp_path):
 
     input_apo = resources.input_apo(tmp_path/"state1.pdb")
