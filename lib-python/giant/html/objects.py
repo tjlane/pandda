@@ -5,9 +5,9 @@ from . import divs
 
 class ProgressBar(divs.Block):
 
-    __slots__ = divs.Block.__slots__ + [
+    __slots__ = (
         'data',
-    ]
+    )
 
     type = 'progressbar'
 
