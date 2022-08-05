@@ -364,7 +364,7 @@ class EchtModelHtmlSummary(HtmlSummary):
             for c_id in chain_ids:
 
                 chain_tab = divs.Tab(
-                    id = level_tab['id']+'chain{}'.format(next(self.counter)),
+                    id = level_tab['id']+'chain{}'.format(self.counter.next()),
                     title = 'Disorder Summary for Chain {}'.format(c_id),
                     alt_title = 'Chain {}'.format(c_id),
                     contents = [
@@ -444,7 +444,7 @@ class EchtModelHtmlSummary(HtmlSummary):
 
                 # Create panel dictionary
                 group_tab = divs.Tab(
-                    id = level_tab['id']+'group{}'.format(next(self.counter)),
+                    id = level_tab['id']+'group{}'.format(self.counter.next()),
                     alt_title = 'Group {}'.format(n_g),
                 )
                 tab_set.append(group_tab)
@@ -685,7 +685,7 @@ class EchtModelHtmlSummary(HtmlSummary):
         for c_id in chain_ids:
 
             chain_tab = divs.Tab(
-                id = atomic_tab['id']+'chain{}'.format(next(self.counter)),
+                id = atomic_tab['id']+'chain{}'.format(self.counter.next()),
                 title = 'Summary for Chain {}'.format(c_id),
                 alt_title = 'Chain {}'.format(c_id),
             )

@@ -115,7 +115,7 @@ def make_pymol_script(
         for indices in groups_of_indices:
             indices = sorted(indices)
 
-            group_colour = group_colours.next()[:3]
+            group_colour = next(group_colours)[:3]
 
             for i in indices:
                 for j in indices:

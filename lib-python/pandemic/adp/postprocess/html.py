@@ -106,7 +106,7 @@ class PostProcessingHtmlSummary(HtmlSummary):
         if len(table.columns) > 0:
             # JSON data for the interactive plots
             json_plot = {
-                'id'        : 'variable-plots-{}'.format(next(self.counter)),
+                'id'        : 'variable-plots-{}'.format(self.counter.next()),
                 'json'      : table.T.to_json(orient='split'),
                 'default_x' : 'High Resolution Limit',
                 'default_y' : 'R-free Diff. (Fitted-Input)',

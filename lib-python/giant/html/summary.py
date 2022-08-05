@@ -31,7 +31,7 @@ def as_html_summaries_maybe(tasks):
 class Counter(object):
     def __init__(self, start=0):
         self.i = start
-    def __next__(self):
+    def next(self):
         self.i += 1
         return self.i
 
