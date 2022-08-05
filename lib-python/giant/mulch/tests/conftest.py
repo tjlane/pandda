@@ -1,7 +1,3 @@
-import giant.logs as lg
-# uncomment to enable logging in all modules during testing
-#logger = lg.setup_logging_basic(__name__)
-
 import os, copy
 import pytest
 

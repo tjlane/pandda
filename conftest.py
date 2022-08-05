@@ -1,6 +1,9 @@
-import giant.logs as lg
-# uncomment to enable logging in all modules during testing
-#logger = lg.setup_logging_basic(__name__)
+try:
+    import giant.logs as lg
+    # uncomment to enable logging in all modules during testing
+    #logger = lg.setup_logging_basic(__name__)
+except Exception as e:
+    pass
 
 import pytest
 
