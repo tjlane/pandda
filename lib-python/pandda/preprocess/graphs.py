@@ -49,6 +49,11 @@ class WilsonPlotter(PanddaDatasetPlotter):
             linestyle = 'k-',
             )
 
+        # Use to avoid warnings
+        axis.set_xticks(
+            axis.get_xticks()
+            )
+
         axis.set_xticklabels([
             round(t**-0.5, 1) 
             if t >0 

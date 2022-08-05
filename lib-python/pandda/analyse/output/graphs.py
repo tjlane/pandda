@@ -252,7 +252,7 @@ class AnalysedResolutionDistributionPlotter(PanddaPlotter):
         ):
 
         x, y = np.unique(
-            dkey_dict.values(), 
+            list(dkey_dict.values()),
             return_counts = True,
             )
 
