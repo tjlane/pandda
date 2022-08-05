@@ -5,6 +5,7 @@ import giant.logs as lg
 logger = lg.getLogger(__name__)
 
 import os
+import base64
 import jinja2
 import urllib.parse, urllib.request, urllib.parse, urllib.error
 
@@ -21,8 +22,10 @@ def path2url(path):
 
 def png2base64str(path):
     """Convert a png for embedding into an html page"""
-    contents = open(path, 'rb').read().encode('base64').replace('\n', '')
-    return contents
+    with open(path, 'rb') as fh:
+        contents = fh.read()
+    b64_str = base64.b64encode(contents)
+    return b64_str
 
 def png2base64src(path):
     return 'data:image/png;base64,{}'.format(png2base64str(path))

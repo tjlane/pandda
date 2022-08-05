@@ -592,7 +592,7 @@ class MakePanddaInspectHtml(object):
         # Write out and format
         with open(str(self.output_path), 'w') as out_html:
             out_html.write(
-                template.render(output_data).encode( "utf-8" )
+                template.render(output_data)#.encode( "utf-8" )
                 )
 
         logger(
