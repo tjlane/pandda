@@ -21,6 +21,11 @@ class ConsolidationResult:
 
         logger('Writing {}'.format(str(path)))
 
+        with open(str(path), 'w') as fh:
+            fh.write("HEADER    ----                                                XXXX\n")
+            fh.write("TITLE     ---\n")
+            fh.write("COMPND    ---\n")
+
         self.model.hierarchy.write_pdb_file(
             str(path),
             open_append = True,

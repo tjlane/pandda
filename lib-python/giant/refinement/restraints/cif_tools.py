@@ -609,7 +609,11 @@ class CifMerger:
                 column_name = '_chem_comp.id',
                 ):
 
-                if other_comp_id in all_comp_ids:
+                if other_comp_id not in all_comp_ids:
+
+                    all_comp_ids.append(other_comp_id)
+
+                else:
 
                     logger(
                         'Removing repeated compound {comp_id} (from source: {src})'.format(
@@ -627,6 +631,7 @@ class CifMerger:
                     other_cif.remove_block(
                         block_name = 'comp_' + str(other_comp_id),
                         )
+
 
     def resolve_mod_clashes(self, cif_managers):
 

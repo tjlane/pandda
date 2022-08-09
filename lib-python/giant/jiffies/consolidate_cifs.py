@@ -81,7 +81,12 @@ def set_get_log(params):
 
 def validate_params(params):
 
-    pass
+    for f in [
+        params.output.pdb,
+        params.output.cif,
+        ]:
+        if pl.Path(f).exists():
+            raise Exception('Output file already exists: {}'.format(str(f)))
 
 def run(params):
 
