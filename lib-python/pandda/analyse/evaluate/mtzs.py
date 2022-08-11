@@ -83,7 +83,7 @@ class ConvertMapsToMtz(object):
         map_obj.grid.spacegroup = gemmi.SpaceGroup('P1') # this is a hack
 
         # Now do setup
-        map_obj.setup()
+        map_obj.setup(default_value=0.0)
         
         # Now extract the structure factors and reapply spacegroup
         sf = gemmi.transform_map_to_f_phi(
