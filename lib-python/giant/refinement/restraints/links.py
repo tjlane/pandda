@@ -19,7 +19,7 @@ class LinkRecord:
                 link_record + ' '*(80-len(link_record))
                 )
 
-        self.link_type = (
+        self.set_link_type(
             link_record[0:6].strip(' ')
             )
 
@@ -68,9 +68,14 @@ class LinkRecord:
             link_record[66:72].strip(' ')
             )
 
-        self.set_link_id(
-            link_record[72:80].strip(' ')
-            )
+        if self.link_type == "LINK": 
+            self.set_link_dist(
+                link_record[73:78].strip(' ')
+                )    
+        else: 
+            self.set_link_id(
+                link_record[72:80].strip(' ')
+                )
 
     def format_pdb(self):
 
@@ -96,21 +101,50 @@ class LinkRecord:
             '{:>6}'.format(self.sym_op_1),
             ' '*1,
             '{:>6}'.format(self.sym_op_2),
-            '{:>8}'.format(self.link_id),
+            (
+                '{:>8}'.format(
+                    self.link_id
+                    )
+                if 
+                self.link_type == "LINKR"
+                else 
+                ' {:>5}  '.format(
+                    self.link_dist
+                    )
+                ),
             ])
 
         assert len(s) == 80
 
         return s
 
+    def set_link_type(self, link_type):
+
+        link_type = link_type.strip()
+
+        assert link_type in ["LINK","LINKR"]
+
+        self.link_type = link_type
+
+    def set_link_dist(self, link_dist): 
+
+        if link_dist is None: 
+            self.link_dist = None
+            return
+
+        self.link_dist = float(link_dist)
+        self.set_link_type("LINK")
+        self.set_link_id(None)
+
     def set_link_id(self, link_id):
 
-        self.link_id = link_id.strip(' ')
+        if link_id is None: 
+            self.link_id = None
+            return
 
-        if (self.link_id is not None) and self.link_id.strip(' '):
-            self.link_type = 'LINKR'
-        else:
-            self.link_type = 'LINK'
+        self.link_id = link_id.strip(' ')
+        self.set_link_type("LINKR")
+        self.set_link_dist(None)
 
     def set_link_id_from_cif(self, cif_manager):
 
@@ -149,14 +183,27 @@ class UpdateLinksFromCif:
             if l.startswith('LINKR ') or l.startswith('LINK  ')
             ]
 
+        for l in link_records:
+
+            logger('\nModel Link:  {l}'.format(l=str(l)))
+
+            try:
+                l.set_link_id_from_cif(cif_manager)
+                logger('  Updated -> {l}'.format(l=str(l)))
+            except Exception as e: 
+                w = "{}: {}".format(str(e),str(l))
+                logger.warning(str(w))
+                continue
+
         link_records = sorted(
             link_records,
             key = lambda l: (
+                str(l.link_type),
                 str(l.atom_1_chain),
+                str(l.atom_2_chain),
                 int(l.atom_1_resseq),
                 str(l.atom_1_inscode),
                 str(l.atom_1_altloc),
-                str(l.atom_2_chain),
                 int(l.atom_2_resseq),
                 str(l.atom_2_inscode),
                 str(l.atom_2_altloc),
@@ -164,14 +211,6 @@ class UpdateLinksFromCif:
                 str(l.atom_2_name),
                 ),
             )
-
-        for l in link_records:
-
-            logger('Model Link:  {l}'.format(l=str(l)))
-
-            l.set_link_id_from_cif(cif_manager)
-
-            logger('  Updated -> {l}\n'.format(l=str(l)))
 
         return link_records
 
