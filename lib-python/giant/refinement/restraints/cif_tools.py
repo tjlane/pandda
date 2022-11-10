@@ -774,12 +774,20 @@ class CifMerger:
                     main_block.add_item(
                         other_item
                         )
+
                 else:
 
                     # existing loop
                     main_loop = main_loop_col.get_loop()
 
-                    assert main_loop.tags == other_loop.tags, 'incompatible loops'
+                    if main_loop.tags != other_loop.tags:
+                        logger('Receiving Block')
+                        logger(main_block.name)
+                        logger(main_loop.tags)
+                        logger('Donor Block')
+                        logger(other_block.name)
+                        logger(other_loop.tags)
+                        raise Exception('incompatible loop tags -- resolve manually')
 
                     for other_row in other_block.item_as_table(other_item):
 
@@ -789,8 +797,51 @@ class CifMerger:
 
             if other_pair is not None:
 
-                # TODO
-                raise Exception('not implemented')
+                # Get matching pair
+                main_pair = main_block.find_pair(other_pair[0])
+
+                if main_pair is None:
+
+                    logger(
+                        'Adding pair: {pair}'.format(
+                            pair = str(other_pair),
+                            )
+                        )
+
+                    main_block.set_pair(
+                        other_pair[0],
+                        other_pair[1],
+                        )
+
+                else:
+
+                    assert main_pair[0] == other_pair[0], 'mismatched keys'
+
+                    if main_pair[1] != other_pair[1]:
+
+                        logger(
+                            (
+                                'Pair values in blocks {main_block} and {other_block}, '
+                                'field "{pair_key}" do not match, '
+                                '\n- main: "{main_value}"\n- other: "{other_value}"), '
+                                '\n...but not doing anything about it.'
+                                ).format(
+                                main_block = main_block.name,
+                                other_block = other_block.name,
+                                pair_key = main_pair[0],
+                                main_value = main_pair[1],
+                                other_value = other_pair[1],
+                                )
+                            )
+
+                    else:
+
+                        logger(
+                            'Pair matches: {pair}'.format(
+                                pair = str(main_pair),
+                                )
+                            )
+
 
 
 #class LinkRecord:

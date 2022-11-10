@@ -109,7 +109,7 @@ class LinkRecord:
                 self.link_type == "LINKR"
                 else 
                 ' {:>5}  '.format(
-                    self.link_dist
+                    self.link_dist if (self.link_dist is not None) else ''
                     )
                 ),
             ])
@@ -128,7 +128,7 @@ class LinkRecord:
 
     def set_link_dist(self, link_dist): 
 
-        if link_dist is None: 
+        if (link_dist is None) or (link_dist == ''):
             self.link_dist = None
             return
 
